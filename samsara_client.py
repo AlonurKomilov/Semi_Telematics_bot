@@ -2,19 +2,33 @@
 Samsara API Client — async wrapper for fleet telematics data.
 """
 
+import re
 import aiohttp
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# Names that indicate ghost / deactivated records (case-insensitive)
+_SKIP_NAME_RE = re.compile(
+    r"^(deactivated|gpuj-)",
+    re.IGNORECASE,
+)
 
 
 class SamsaraClient:
     """Async client for the Samsara REST API."""
 
-    def __init__(self, api_key: str, base_url: str = "https://api.samsara.com"):
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = "https://api.samsara.com",
+        active_days: int = 30,
+    ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
+        self.active_days = active_days   # 0 = no filter
         self._session: Optional[aiohttp.ClientSession] = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
@@ -80,12 +94,43 @@ class SamsaraClient:
         data = await self._get("/fleet/drivers")
         return data.get("data", [])
 
+    # ── Active-vehicle filter ────────────────────────────────────
+
+    def _is_active(self, name: str, location: dict) -> bool:
+        """Check if a vehicle should be included.
+
+        Filters out:
+          1. Ghost names (Deactivated…, GPUJ-…)
+          2. Vehicles with no GPS data
+          3. Vehicles whose last GPS ping is older than active_days
+             (skip this check when active_days == 0)
+        """
+        if _SKIP_NAME_RE.search(name):
+            return False
+
+        if self.active_days == 0:
+            return True
+
+        loc_time = location.get("time", "")
+        if not loc_time:
+            return False
+
+        try:
+            dt = datetime.fromisoformat(loc_time.replace("Z", "+00:00"))
+            days_ago = (datetime.now(timezone.utc) - dt).days
+            return days_ago <= self.active_days
+        except Exception:
+            return False
+
     # ── Combined: Enriched Vehicle Data ──────────────────────────
 
     async def get_fleet_overview(self) -> list[dict]:
         """
-        Build an enriched list of vehicles by merging:
+        Build an enriched list of **active** vehicles by merging:
         vehicle info + fault codes + GPS + fuel.
+
+        Vehicles are filtered by GPS recency (active_days) and
+        ghost-name patterns.
         """
         vehicles_raw = await self.get_vehicles()
         fault_raw = await self.get_fault_codes()
@@ -99,19 +144,31 @@ class SamsaraClient:
         fuel_by_id = {v["id"]: v.get("fuelPercent", {}) for v in fuel_raw}
 
         enriched = []
+        skipped = 0
         for vid, v in vehicles.items():
+            name = v.get("name", "?")
+            loc  = loc_by_id.get(vid, {})
+
+            if not self._is_active(name, loc):
+                skipped += 1
+                continue
+
             enriched.append({
                 "id": vid,
-                "name": v.get("name", "?"),
+                "name": name,
                 "vin": v.get("vin", "N/A"),
                 "make": v.get("make", "N/A"),
                 "model": v.get("model", "N/A"),
                 "year": v.get("year", "N/A"),
                 "license_plate": v.get("licensePlate", "N/A"),
                 "fault_codes": faults_by_id.get(vid, {}),
-                "location": loc_by_id.get(vid, {}),
+                "location": loc,
                 "fuel": fuel_by_id.get(vid, {}),
             })
+
+        if skipped:
+            logger.info(f"Filtered out {skipped} inactive vehicles "
+                        f"(active_days={self.active_days})")
 
         # Sort by name (truck number)
         enriched.sort(key=lambda x: x["name"])

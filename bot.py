@@ -42,6 +42,7 @@ SAMSARA_API_KEY = os.getenv("SAMSARA_API_KEY")
 SAMSARA_BASE_URL = os.getenv("SAMSARA_BASE_URL", "https://api.samsara.com")
 ALERT_INTERVAL = int(os.getenv("ALERT_CHECK_INTERVAL_MINUTES", "30"))
 FUEL_THRESHOLD = int(os.getenv("FUEL_LOW_THRESHOLD_PERCENT", "20"))
+ACTIVE_DAYS = int(os.getenv("ACTIVE_VEHICLE_GPS_DAYS", "30"))
 
 AUTHORIZED_CHAT_IDS = set()
 raw_ids = os.getenv("TELEGRAM_CHAT_IDS", "")
@@ -58,7 +59,7 @@ logger = logging.getLogger(__name__)
 
 # ── Globals ──────────────────────────────────────────────────────
 
-samsara = SamsaraClient(SAMSARA_API_KEY, SAMSARA_BASE_URL)
+samsara = SamsaraClient(SAMSARA_API_KEY, SAMSARA_BASE_URL, active_days=ACTIVE_DAYS)
 _known_faults: dict[str, set[str]] = {}
 _alerts_enabled: set[int] = set()
 
