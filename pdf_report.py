@@ -1,10 +1,15 @@
 """
-PDF Fault Report Generator — professional fleet fault code reports.
+PDF Fault Report Generator — professional multi-org fleet fault code reports.
 Uses ReportLab to build clean, visual PDF documents.
 
 Two report types:
   • Full Fault Report   — all trucks with active faults
   • Critical Report     — only STOP / PROTECT / EMISSIONS trucks
+
+Multi-org enhancements:
+  • Org breakdown summary table (Company | Trucks | Faulted | DTCs)
+  • Org-section banners grouping trucks by company
+  • Per-org or combined reports
 
 Improvements (v2):
   M1  Dashboard stat cells — proper padding, two-row layout
@@ -29,6 +34,8 @@ from reportlab.platypus import (
     HRFlowable, KeepTogether, PageBreak,
 )
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+
+from samsara_client import ORG_DISPLAY
 
 
 # ── Color Palette ────────────────────────────────────────────────
@@ -65,6 +72,9 @@ DOT_RED    = "#e94560"
 DOT_ORANGE = "#f59e0b"
 DOT_YELLOW = "#eab308"
 DOT_GRAY   = "#94a3b8"
+
+# Org-banner colors
+C_ORG_BANNER = colors.HexColor("#1e3a5f")
 
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -141,34 +151,22 @@ def _safe(val, fallback: str = "\u2014") -> str:
 # ── M4: Smart SPN description ───────────────────────────────────
 
 def _spn_display(dtc: dict) -> str:
-    """Human-readable SPN description.
-    'Manufacturer Assignable SPN' → 'MFR SPN 520562'
-    Missing description → 'SPN 61683 (no description)'
-    """
     desc = dtc.get("spnDescription", "")
     spn_id = dtc.get("spnId", "?")
-
     if not desc:
         if spn_id and spn_id != 0:
             return f"SPN {spn_id} (no description)"
         return "Unknown Component"
-
-    # Manufacturer Assignable SPN is useless — replace with code
     if desc.strip().lower() == "manufacturer assignable spn":
         return f"MFR SPN {spn_id}"
-
     return desc
 
 
 # ── N3: Smart FMI description ───────────────────────────────────
 
 def _fmi_display(dtc: dict) -> str:
-    """Human-readable FMI description.
-    Missing → 'FMI 31 (no description)'
-    """
     desc = dtc.get("fmiDescription", "")
     fmi_id = dtc.get("fmiId", "?")
-
     if not desc:
         return f"FMI {fmi_id} (no description)"
     return desc
@@ -177,24 +175,16 @@ def _fmi_display(dtc: dict) -> str:
 # ── M3 / N5: Per-DTC severity from fmiDescription ───────────────
 
 def _dtc_severity_info(fmi_desc: str) -> tuple[colors.Color, str, str]:
-    """Return (row_bg_color, dot_hex_color, dot_symbol) for a DTC row.
-
-    Based on fmiDescription text keywords:
-      'most severe' / 'failure' → red
-      'moderate'                → orange
-      'least severe'            → yellow
-      everything else           → neutral
-    """
     lower = (fmi_desc or "").lower()
     if "most severe" in lower:
-        return ROW_MOST_SEVERE, DOT_RED, "\u25cf"       # ●
+        return ROW_MOST_SEVERE, DOT_RED, "\u25cf"
     if "failure" in lower:
         return ROW_FAILURE, DOT_RED, "\u25cf"
     if "moderate" in lower:
         return ROW_MODERATE, DOT_ORANGE, "\u25cf"
     if "least severe" in lower:
         return ROW_LEAST, DOT_YELLOW, "\u25cf"
-    return ROW_DEFAULT, DOT_GRAY, "\u25cb"               # ○
+    return ROW_DEFAULT, DOT_GRAY, "\u25cb"
 
 
 # ── Styles ───────────────────────────────────────────────────────
@@ -212,6 +202,8 @@ def _build_styles():
          spaceAfter=2)
     _add("SectionHeader",  parent=base["Heading2"], fontName="Helvetica-Bold",
          fontSize=12, textColor=C_WHITE, spaceBefore=14, spaceAfter=6)
+    _add("OrgBanner",      parent=base["Heading2"], fontName="Helvetica-Bold",
+         fontSize=11, textColor=C_WHITE, spaceBefore=10, spaceAfter=4)
     _add("TruckTitle",     parent=base["Heading3"], fontName="Helvetica-Bold",
          fontSize=11, textColor=C_DARK, spaceBefore=8, spaceAfter=3)
     _add("TruckMeta",      parent=base["Normal"],  fontName="Helvetica",
@@ -222,12 +214,17 @@ def _build_styles():
          fontSize=7.5, textColor=C_BLACK, leading=9.5)
     _add("FooterText",     parent=base["Normal"],  fontName="Helvetica",
          fontSize=8, textColor=C_GRAY, alignment=TA_CENTER)
-    # M1: stat cells — dedicated styles with more breathing room
     _add("StatNumber",     parent=base["Normal"],  fontName="Helvetica-Bold",
          fontSize=16, alignment=TA_CENTER, leading=20, spaceBefore=0, spaceAfter=0)
     _add("StatLabel",      parent=base["Normal"],  fontName="Helvetica",
          fontSize=7.5, textColor=C_GRAY, alignment=TA_CENTER,
          leading=9, spaceBefore=0, spaceAfter=0)
+    _add("OrgTableHeader", parent=base["Normal"],  fontName="Helvetica-Bold",
+         fontSize=8, textColor=C_WHITE, leading=10)
+    _add("OrgTableCell",   parent=base["Normal"],  fontName="Helvetica",
+         fontSize=8, textColor=C_BLACK, leading=10)
+    _add("OrgTableBold",   parent=base["Normal"],  fontName="Helvetica-Bold",
+         fontSize=8, textColor=C_BLACK, leading=10)
 
     return base
 
@@ -279,7 +276,17 @@ _style_counter = 0
 def generate_fault_report_pdf(
     vehicles_with_faults: list,
     total_vehicles: int,
+    org_breakdown: dict[str, dict] | None = None,
+    org_filter: str | None = None,
 ) -> io.BytesIO:
+    """Generate PDF fault report.
+
+    Args:
+        vehicles_with_faults: List of vehicle dicts (each has ``_org`` key).
+        total_vehicles: Grand total of active vehicles scanned.
+        org_breakdown: Per-org stats {code: {total, faulted, dtcs}}.
+        org_filter: If set, this is a single-org report.
+    """
     buf = io.BytesIO()
     styles = _build_styles()
 
@@ -294,41 +301,73 @@ def generate_fault_report_pdf(
     stats = compute_stats(vehicles_with_faults, total_vehicles)
 
     # ── Header Banner ────────────────────────────────────────────
-    _add_header(story, styles, "SEMI TELEMATICS", "Fleet Fault Code Report", now)
+    subtitle = "Fleet Fault Code Report"
+    if org_filter:
+        subtitle = f"{ORG_DISPLAY.get(org_filter, org_filter)} — Fault Report"
+    _add_header(story, styles, "SEMI TELEMATICS", subtitle, now)
 
     # ── Summary Dashboard (M1 fix) ──────────────────────────────
     _add_summary_dashboard(story, styles, stats)
 
-    # ── Truck cards by severity ──────────────────────────────────
+    # ── Org Breakdown Table (multi-org only) ─────────────────────
+    if org_breakdown and not org_filter and len(org_breakdown) > 1:
+        _add_org_breakdown_table(story, styles, org_breakdown)
+
+    # ── Truck cards grouped by org then severity ─────────────────
     vehicles_with_faults.sort(key=_sev_rank)
 
-    sections = [
-        ("CRITICAL \u2014 Needs Immediate Attention", C_RED,
-         [v for v in vehicles_with_faults if _sev_rank(v) <= 2]),
-        ("WARNING \u2014 Monitor Closely", C_ORANGE,
-         [v for v in vehicles_with_faults if _sev_rank(v) == 3]),
-        ("MINOR \u2014 No Dashboard Lights", C_GREEN,
-         [v for v in vehicles_with_faults if _sev_rank(v) >= 4]),
-    ]
+    # Group by org
+    orgs_present = []
+    if org_filter:
+        orgs_present = [org_filter]
+    else:
+        seen = []
+        for v in vehicles_with_faults:
+            o = v.get("_org", "???")
+            if o not in seen:
+                seen.append(o)
+        orgs_present = seen
 
-    for title, color, vlist in sections:
-        if not vlist:
+    multi_org = len(orgs_present) > 1
+
+    for org_code in orgs_present:
+        org_vehicles = [v for v in vehicles_with_faults if v.get("_org") == org_code]
+        if not org_vehicles:
             continue
-        # N1: section header with truck + DTC counts
-        sec_dtcs = sum(len(v.get("_dtcs", [])) for v in vlist)
-        count_text = (
-            f"{title}  \u2502  {len(vlist)} truck{'s' if len(vlist) != 1 else ''}"
-            f"  \u00b7  {sec_dtcs} fault code{'s' if sec_dtcs != 1 else ''}"
-        )
-        _add_section_header(story, styles, count_text, color)
-        for v in vlist:
-            story.extend(_build_truck_card(v, styles))
-            story.append(Spacer(1, 4))
+
+        # Org banner (only for multi-org combined reports)
+        if multi_org:
+            org_name = ORG_DISPLAY.get(org_code, org_code)
+            org_dtcs = sum(len(v.get("_dtcs", [])) for v in org_vehicles)
+            _add_org_banner(story, styles, org_code, org_name,
+                            len(org_vehicles), org_dtcs)
+
+        # Severity sections within this org
+        sections = [
+            ("CRITICAL \u2014 Needs Immediate Attention", C_RED,
+             [v for v in org_vehicles if _sev_rank(v) <= 2]),
+            ("WARNING \u2014 Monitor Closely", C_ORANGE,
+             [v for v in org_vehicles if _sev_rank(v) == 3]),
+            ("MINOR \u2014 No Dashboard Lights", C_GREEN,
+             [v for v in org_vehicles if _sev_rank(v) >= 4]),
+        ]
+
+        for title, color, vlist in sections:
+            if not vlist:
+                continue
+            sec_dtcs = sum(len(v.get("_dtcs", [])) for v in vlist)
+            count_text = (
+                f"{title}  \u2502  {len(vlist)} truck{'s' if len(vlist) != 1 else ''}"
+                f"  \u00b7  {sec_dtcs} fault code{'s' if sec_dtcs != 1 else ''}"
+            )
+            _add_section_header(story, styles, count_text, color)
+            for v in vlist:
+                story.extend(_build_truck_card(v, styles, show_org=multi_org))
+                story.append(Spacer(1, 4))
 
     # ── Footer ───────────────────────────────────────────────────
     _add_footer(story, styles, now)
 
-    # N2: page numbers via onPage callback
     doc.build(story, onFirstPage=_page_number, onLaterPages=_page_number)
     buf.seek(0)
     return buf
@@ -341,6 +380,8 @@ def generate_fault_report_pdf(
 def generate_critical_report_pdf(
     critical_vehicles: list,
     total_vehicles: int,
+    org_breakdown: dict[str, dict] | None = None,
+    org_filter: str | None = None,
 ) -> io.BytesIO:
     buf = io.BytesIO()
     styles = _build_styles()
@@ -354,8 +395,10 @@ def generate_critical_report_pdf(
     story = []
     now = datetime.now(timezone.utc).strftime("%B %d, %Y  %I:%M %p UTC")
 
-    # ── Header Banner ────────────────────────────────────────────
-    _add_header(story, styles, "SEMI TELEMATICS", "Critical Fault Report", now)
+    subtitle = "Critical Fault Report"
+    if org_filter:
+        subtitle = f"{ORG_DISPLAY.get(org_filter, org_filter)} — Critical Faults"
+    _add_header(story, styles, "SEMI TELEMATICS", subtitle, now)
 
     # ── Mini summary ─────────────────────────────────────────────
     stop = sum(1 for v in critical_vehicles if v.get("_lights", {}).get("stopIsOn"))
@@ -384,22 +427,46 @@ def generate_critical_report_pdf(
     story.append(t)
     story.append(Spacer(1, 12))
 
-    # ── Truck cards (N1) ─────────────────────────────────────────
+    # ── Org Breakdown Table (multi-org only) ─────────────────────
+    if org_breakdown and not org_filter and len(org_breakdown) > 1:
+        _add_org_breakdown_table(story, styles, org_breakdown)
+
+    # ── Truck cards grouped by org ───────────────────────────────
     critical_vehicles.sort(key=_sev_rank)
 
-    sec_text = (
-        f"{len(critical_vehicles)} TRUCKS NEED ATTENTION NOW  \u2502  "
-        f"{total_dtcs} fault code{'s' if total_dtcs != 1 else ''}"
-    )
-    _add_section_header(story, styles, sec_text, C_RED)
-
+    orgs_present = []
+    seen = []
     for v in critical_vehicles:
-        story.extend(_build_truck_card(v, styles))
-        story.append(Spacer(1, 4))
+        o = v.get("_org", "???")
+        if o not in seen:
+            seen.append(o)
+    orgs_present = seen
+    multi_org = len(orgs_present) > 1
+
+    for org_code in orgs_present:
+        org_vehicles = [v for v in critical_vehicles if v.get("_org") == org_code]
+        if not org_vehicles:
+            continue
+
+        if multi_org:
+            org_name = ORG_DISPLAY.get(org_code, org_code)
+            org_dtcs = sum(len(v.get("_dtcs", [])) for v in org_vehicles)
+            _add_org_banner(story, styles, org_code, org_name,
+                            len(org_vehicles), org_dtcs)
+
+        sec_text = (
+            f"{len(org_vehicles)} TRUCK{'S' if len(org_vehicles) != 1 else ''} "
+            f"NEED ATTENTION  \u2502  "
+            f"{sum(len(v.get('_dtcs', [])) for v in org_vehicles)} fault codes"
+        )
+        _add_section_header(story, styles, sec_text, C_RED)
+
+        for v in org_vehicles:
+            story.extend(_build_truck_card(v, styles, show_org=multi_org))
+            story.append(Spacer(1, 4))
 
     _add_footer(story, styles, now)
 
-    # N2: page numbers
     doc.build(story, onFirstPage=_page_number, onLaterPages=_page_number)
     buf.seek(0)
     return buf
@@ -448,7 +515,6 @@ def _add_header(story, styles, title, subtitle, date_str):
 def _add_summary_dashboard(story, styles, stats):
     page_w = 7.1 * inch
 
-    # Row 1: big numbers — 4 stats
     row1 = [[
         _mini_stat(styles, str(stats["total"]),      "Total Trucks", C_ACCENT),
         _mini_stat(styles, str(stats["faulted"]),     "With Faults",  C_RED),
@@ -470,7 +536,6 @@ def _add_summary_dashboard(story, styles, stats):
     story.append(t1)
     story.append(Spacer(1, 4))
 
-    # Row 2: severity breakdown — 5 stats
     row2 = [[
         _mini_stat(styles, str(stats["stop"]),      "STOP",      C_RED),
         _mini_stat(styles, str(stats["protect"]),    "PROTECT",   C_RED),
@@ -492,6 +557,93 @@ def _add_summary_dashboard(story, styles, stats):
     ]))
     story.append(t2)
     story.append(Spacer(1, 10))
+
+
+# ── Org Breakdown Table (multi-org) ─────────────────────────────
+
+def _add_org_breakdown_table(story, styles, org_breakdown: dict[str, dict]):
+    """Render a Company | Trucks | Faulted | DTCs summary table."""
+    page_w = 7.1 * inch
+    col_widths = [2.8 * inch, 1.2 * inch, 1.2 * inch, 1.2 * inch]
+
+    hdr = [
+        Paragraph("<b>Company</b>", styles["OrgTableHeader"]),
+        Paragraph("<b>Trucks</b>",  styles["OrgTableHeader"]),
+        Paragraph("<b>Faulted</b>", styles["OrgTableHeader"]),
+        Paragraph("<b>DTCs</b>",    styles["OrgTableHeader"]),
+    ]
+    table_data = [hdr]
+
+    grand_total = grand_faulted = grand_dtcs = 0
+    for code in sorted(org_breakdown.keys()):
+        info = org_breakdown[code]
+        name = ORG_DISPLAY.get(code, code)
+        total = info.get("total", 0)
+        faulted = info.get("faulted", 0)
+        dtcs = info.get("dtcs", 0)
+        grand_total += total
+        grand_faulted += faulted
+        grand_dtcs += dtcs
+        table_data.append([
+            Paragraph(f"{name}  ({code})", styles["OrgTableCell"]),
+            Paragraph(str(total),  styles["OrgTableCell"]),
+            Paragraph(str(faulted), styles["OrgTableCell"]),
+            Paragraph(str(dtcs),   styles["OrgTableCell"]),
+        ])
+
+    # Totals row
+    table_data.append([
+        Paragraph("<b>TOTAL</b>",          styles["OrgTableBold"]),
+        Paragraph(f"<b>{grand_total}</b>",  styles["OrgTableBold"]),
+        Paragraph(f"<b>{grand_faulted}</b>", styles["OrgTableBold"]),
+        Paragraph(f"<b>{grand_dtcs}</b>",   styles["OrgTableBold"]),
+    ])
+
+    t = Table(table_data, colWidths=col_widths)
+    num_rows = len(table_data)
+    cmds = [
+        ("BACKGROUND",    (0, 0), (-1, 0), C_ACCENT),
+        ("TEXTCOLOR",     (0, 0), (-1, 0), C_WHITE),
+        ("BACKGROUND",    (0, -1), (-1, -1), C_LIGHT_BG),
+        ("GRID",          (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+        ("BOX",           (0, 0), (-1, -1), 0.8, C_ACCENT),
+        ("TOPPADDING",    (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+        ("ALIGN",         (1, 0), (-1, -1), "CENTER"),
+    ]
+    # Alternate row shading for data rows
+    for i in range(1, num_rows - 1):
+        if i % 2 == 0:
+            cmds.append(("BACKGROUND", (0, i), (-1, i), C_LIGHT_BG))
+    t.setStyle(TableStyle(cmds))
+    story.append(t)
+    story.append(Spacer(1, 12))
+
+
+# ── Org Banner (multi-org) ──────────────────────────────────────
+
+def _add_org_banner(story, styles, org_code, org_name, truck_count, dtc_count):
+    """Dark blue banner with org name, code, and counts."""
+    page_w = 7.1 * inch
+    text = (
+        f"  {org_name.upper()}  ({org_code})  \u2502  "
+        f"{truck_count} truck{'s' if truck_count != 1 else ''}  \u00b7  "
+        f"{dtc_count} fault code{'s' if dtc_count != 1 else ''}"
+    )
+    t = Table(
+        [[Paragraph(text, styles["OrgBanner"])]],
+        colWidths=[page_w],
+    )
+    t.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), C_ORG_BANNER),
+        ("TOPPADDING",    (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    story.append(Spacer(1, 8))
+    story.append(t)
+    story.append(Spacer(1, 4))
 
 
 def _add_section_header(story, styles, title, color):
@@ -524,9 +676,6 @@ def _add_footer(story, styles, date_str):
 # ── M1: Mini stat cell with proper spacing ──────────────────────
 
 def _mini_stat(styles, value: str, label: str, accent: colors.Color):
-    """A stat cell with two stacked Paragraphs: big number + small label.
-    Returns a list of two Paragraphs — used as a single table cell value.
-    """
     global _style_counter
     _style_counter += 1
     uid = _style_counter
@@ -550,7 +699,7 @@ def _mini_stat(styles, value: str, label: str, accent: colors.Color):
 
 # ── Per-Truck Fault Card ────────────────────────────────────────
 
-def _build_truck_card(v: dict, styles) -> list:
+def _build_truck_card(v: dict, styles, show_org: bool = False) -> list:
     """One truck card: info header + DTC table with per-row severity."""
     elements = []
 
@@ -560,6 +709,7 @@ def _build_truck_card(v: dict, styles) -> list:
     fuel     = v.get("fuel", {})
     fuel_pct = fuel.get("value")
     fc_time  = v.get("fault_codes", {}).get("time", "") or v.get("_fault_time", "")
+    org_code = v.get("_org", "")
 
     sev_label, card_bg = _severity_label(lights)
     loc_str    = _short_location(loc)
@@ -567,8 +717,9 @@ def _build_truck_card(v: dict, styles) -> list:
     fuel_str   = f"{fuel_pct}%" if fuel_pct is not None else "\u2014"
 
     # === Truck info line ===
+    org_tag = f"[{org_code}] " if show_org and org_code else ""
     info_text = (
-        f'<b>Truck #{v["name"]}</b>  \u00b7  '
+        f'<b>{org_tag}Truck #{v["name"]}</b>  \u00b7  '
         f'{_safe(v.get("year"))} {_safe(v.get("make"))} {_safe(v.get("model"))}  \u00b7  '
         f'VIN: <font face="Courier">{_safe(v.get("vin"), "N/A")}</font>'
     )
@@ -584,15 +735,14 @@ def _build_truck_card(v: dict, styles) -> list:
 
     # === DTC table ===
     if dtcs:
-        # M2: Wider Severity + Source columns
         col_widths = [
             0.30 * inch,   # # (with severity dot)
             0.50 * inch,   # SPN
             0.35 * inch,   # FMI
             1.85 * inch,   # Issue
-            1.70 * inch,   # Severity (widened from 1.55)
+            1.70 * inch,   # Severity (M2)
             0.40 * inch,   # Cnt
-            1.00 * inch,   # Source (widened from 0.90)
+            1.00 * inch,   # Source (M2)
         ]
 
         hdr = [
@@ -605,25 +755,21 @@ def _build_truck_card(v: dict, styles) -> list:
             Paragraph("<b>Source</b>",   styles["CellBold"]),
         ]
         table_data = [hdr]
-
-        # Collect per-row severity info for styling
-        row_severity_info = []  # list of (bg_color, dot_hex, dot_sym)
+        row_severity_info = []
 
         for i, dtc in enumerate(dtcs, 1):
             spn_id   = _safe(dtc.get("spnId"), "?")
             fmi_id   = _safe(dtc.get("fmiId"), "?")
-            issue    = _spn_display(dtc)       # M4
-            severity = _fmi_display(dtc)       # N3
+            issue    = _spn_display(dtc)
+            severity = _fmi_display(dtc)
             occ      = _safe(dtc.get("occurrenceCount"), "\u2014")
             source   = _safe(dtc.get("sourceAddressName"), "\u2014")
 
-            # M3 / N5: determine row severity
             row_bg, dot_hex, dot_sym = _dtc_severity_info(
                 dtc.get("fmiDescription", "")
             )
             row_severity_info.append((row_bg, dot_hex, dot_sym))
 
-            # Truncate — wider columns now (M2)
             if len(issue) > 52:
                 issue = issue[:49] + "\u2026"
             if len(severity) > 38:
@@ -631,12 +777,10 @@ def _build_truck_card(v: dict, styles) -> list:
             if len(source) > 26:
                 source = source[:23] + "\u2026"
 
-            # N5: # column with severity dot
             num_cell = Paragraph(
                 f'<font color="{dot_hex}">{dot_sym}</font> {i}',
                 styles["CellText"],
             )
-            # N4: Bold SPN/FMI codes
             spn_cell = Paragraph(f"<b>{spn_id}</b>", styles["CellBold"])
             fmi_cell = Paragraph(f"<b>{fmi_id}</b>", styles["CellBold"])
 
@@ -653,35 +797,29 @@ def _build_truck_card(v: dict, styles) -> list:
         dtc_table = Table(table_data, colWidths=col_widths, repeatRows=1)
 
         cmds = [
-            # Header row
             ("BACKGROUND",    (0, 0), (-1, 0), C_ACCENT),
             ("TEXTCOLOR",     (0, 0), (-1, 0), C_WHITE),
             ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
             ("FONTSIZE",      (0, 0), (-1, 0), 7.5),
-            # Alignment
-            ("ALIGN",         (0, 0), (0, -1), "CENTER"),  # #
-            ("ALIGN",         (1, 0), (2, -1), "CENTER"),  # SPN, FMI
-            ("ALIGN",         (5, 0), (5, -1), "CENTER"),  # Cnt
+            ("ALIGN",         (0, 0), (0, -1), "CENTER"),
+            ("ALIGN",         (1, 0), (2, -1), "CENTER"),
+            ("ALIGN",         (5, 0), (5, -1), "CENTER"),
             ("VALIGN",        (0, 0), (-1, -1), "TOP"),
-            # Padding
             ("TOPPADDING",    (0, 0), (-1, -1), 3),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
             ("LEFTPADDING",   (0, 0), (-1, -1), 3),
             ("RIGHTPADDING",  (0, 0), (-1, -1), 3),
-            # Borders
             ("GRID",          (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
             ("BOX",           (0, 0), (-1, -1), 0.8, C_ACCENT),
         ]
 
-        # M3: Per-DTC row background based on severity
         for idx, (bg_color, _, _) in enumerate(row_severity_info):
-            row_num = idx + 1  # +1 because row 0 is the header
+            row_num = idx + 1
             cmds.append(("BACKGROUND", (0, row_num), (-1, row_num), bg_color))
 
         dtc_table.setStyle(TableStyle(cmds))
         elements.append(dtc_table)
 
-    # Updated timestamp
     if fc_time:
         elements.append(Paragraph(
             f"Last updated: {_fmt_time(fc_time)}", styles["TruckMeta"],

@@ -1,7 +1,17 @@
 """
 Samsara API Client — async wrapper for fleet telematics data.
+
+Supports multi-org: each SamsaraClient wraps one org's API key.
+MultiOrgClient orchestrates parallel queries across all orgs.
+
+v3 — Database-driven: org display names and API keys come from the
+     database layer, not from hardcoded dicts or env vars.
+     Legacy `parse_orgs()` and `ORG_DISPLAY` kept as thin compat shims
+     so pdf_report.py and formatters.py can still import them during
+     transition; callers should migrate to `build_multi_org_client()`.
 """
 
+import asyncio
 import re
 import aiohttp
 import logging
@@ -9,6 +19,22 @@ from datetime import datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# ── Legacy compat shim — populated at runtime by bot.py ──────────
+# pdf_report.py and formatters.py still read ORG_DISPLAY.
+# bot.py calls `populate_org_display(orgs)` once at startup.
+ORG_DISPLAY: dict[str, str] = {}
+
+
+def populate_org_display(orgs: list) -> None:
+    """Populate ORG_DISPLAY from a list of database Organization objects.
+
+    Called once at bot startup so formatters / pdf_report see the names.
+    """
+    ORG_DISPLAY.clear()
+    for org in orgs:
+        ORG_DISPLAY[org.code] = org.display_name or org.code
+
 
 # Names that indicate ghost / deactivated records (case-insensitive)
 _SKIP_NAME_RE = re.compile(
@@ -185,9 +211,10 @@ class SamsaraClient:
                 return v
         return None
 
-    async def get_vehicles_with_faults(self) -> list[dict]:
-        """Return only vehicles that have active diagnostic trouble codes."""
+    async def get_vehicles_with_faults(self) -> tuple[list[dict], int]:
+        """Return (vehicles_with_active_DTCs, total_active_vehicles)."""
         fleet = await self.get_fleet_overview()
+        total = len(fleet)
         result = []
         for v in fleet:
             fc = v.get("fault_codes", {})
@@ -199,7 +226,7 @@ class SamsaraClient:
                 v["_lights"] = cel
                 v["_fault_time"] = fc.get("time", "")
                 result.append(v)
-        return result
+        return result, total
 
     async def get_critical_faults(self) -> list[dict]:
         """
@@ -209,7 +236,7 @@ class SamsaraClient:
         - EMISSIONS light on
         - Any FMI with 'most severe' in description
         """
-        faulted = await self.get_vehicles_with_faults()
+        faulted, total = await self.get_vehicles_with_faults()
         critical = []
         for v in faulted:
             lights = v.get("_lights", {})
@@ -242,3 +269,184 @@ class SamsaraClient:
                 low.append(v)
         low.sort(key=lambda x: x.get("_fuel_pct", 999))
         return low
+
+
+# ══════════════════════════════════════════════════════════════════
+# Multi-Org Client — parallel queries across all organizations
+# ══════════════════════════════════════════════════════════════════
+
+def parse_orgs(env_value: str, base_url: str = "https://api.samsara.com",
+               active_days: int = 30) -> dict[str, "SamsaraClient"]:
+    """Parse SAMSARA_ORGS env var → dict of {code: SamsaraClient}.
+
+    LEGACY — kept for backwards compatibility & seed migration.
+    New code should use build_multi_org_client().
+
+    Format: CODE:api_key,CODE:api_key,...
+    Example: PTG:samsara_api_xxx,CFT:samsara_api_yyy
+    """
+    clients: dict[str, SamsaraClient] = {}
+    for entry in env_value.split(","):
+        entry = entry.strip()
+        if ":" not in entry:
+            continue
+        code, key = entry.split(":", 1)
+        code = code.strip().upper()
+        key = key.strip()
+        if code and key:
+            clients[code] = SamsaraClient(key, base_url, active_days=active_days)
+    return clients
+
+
+def build_multi_org_client(
+    orgs: list,
+    base_url: str = "https://api.samsara.com",
+) -> "MultiOrgClient":
+    """Build a MultiOrgClient from database Organization objects.
+
+    Args:
+        orgs: list of database.Organization dataclass instances
+        base_url: Samsara API base URL
+    Returns:
+        A ready-to-use MultiOrgClient
+    """
+    clients: dict[str, SamsaraClient] = {}
+    for org in orgs:
+        clients[org.code] = SamsaraClient(
+            api_key=org.samsara_api_key,
+            base_url=base_url,
+            active_days=org.active_days,
+        )
+    return MultiOrgClient(clients)
+
+
+class MultiOrgClient:
+    """Wraps multiple SamsaraClient instances for parallel multi-org queries.
+
+    Every vehicle dict returned gets an ``_org`` key with the org code.
+    """
+
+    def __init__(self, org_clients: dict[str, SamsaraClient]):
+        self.clients = org_clients
+        self.org_codes = list(org_clients.keys())
+
+    async def close(self):
+        await asyncio.gather(*(c.close() for c in self.clients.values()),
+                             return_exceptions=True)
+
+    # ── helpers ──────────────────────────────────────────────────
+
+    def _tag(self, vehicles: list[dict], org: str) -> list[dict]:
+        for v in vehicles:
+            v["_org"] = org
+        return vehicles
+
+    async def _run_per_org(self, coro_fn, *args, org: str | None = None):
+        """Run *coro_fn(client, *args)* on one or all orgs in parallel.
+        Returns dict  {org_code: result}.
+        """
+        if org:
+            client = self.clients.get(org)
+            if not client:
+                raise ValueError(f"Unknown org: {org}")
+            return {org: await coro_fn(client, *args)}
+
+        tasks = {code: asyncio.create_task(coro_fn(client, *args))
+                 for code, client in self.clients.items()}
+        results = {}
+        for code, task in tasks.items():
+            try:
+                results[code] = await task
+            except Exception as e:
+                logger.error(f"[{code}] query failed: {e}")
+        return results
+
+    # ── fleet overview ───────────────────────────────────────────
+
+    async def get_fleet_overview(self, org: str | None = None) -> list[dict]:
+        async def _fn(c):
+            return await c.get_fleet_overview()
+
+        per_org = await self._run_per_org(_fn, org=org)
+        combined = []
+        for code, vehicles in per_org.items():
+            combined.extend(self._tag(vehicles, code))
+        combined.sort(key=lambda x: (x.get("_org", ""), x["name"]))
+        return combined
+
+    # ── faults ───────────────────────────────────────────────────
+
+    async def get_vehicles_with_faults(
+        self, org: str | None = None,
+    ) -> tuple[list[dict], int, dict[str, dict]]:
+        """Return (faulted_list, total_active, org_breakdown).
+
+        org_breakdown: {code: {"total": int, "faulted": int, "dtcs": int}}
+        """
+        async def _fn(c):
+            return await c.get_vehicles_with_faults()
+
+        per_org = await self._run_per_org(_fn, org=org)
+
+        all_faulted: list[dict] = []
+        grand_total = 0
+        breakdown: dict[str, dict] = {}
+
+        for code, (faulted, total) in per_org.items():
+            self._tag(faulted, code)
+            dtc_count = sum(len(v.get("_dtcs", [])) for v in faulted)
+            all_faulted.extend(faulted)
+            grand_total += total
+            breakdown[code] = {
+                "total": total,
+                "faulted": len(faulted),
+                "dtcs": dtc_count,
+            }
+
+        return all_faulted, grand_total, breakdown
+
+    # ── critical faults ──────────────────────────────────────────
+
+    async def get_critical_faults(self, org: str | None = None) -> list[dict]:
+        async def _fn(c):
+            return await c.get_critical_faults()
+
+        per_org = await self._run_per_org(_fn, org=org)
+        combined = []
+        for code, vehicles in per_org.items():
+            combined.extend(self._tag(vehicles, code))
+        return combined
+
+    # ── low fuel ─────────────────────────────────────────────────
+
+    async def get_low_fuel_vehicles(
+        self, threshold: int = 20, org: str | None = None,
+    ) -> list[dict]:
+        async def _fn(c, thr):
+            return await c.get_low_fuel_vehicles(thr)
+
+        per_org = await self._run_per_org(_fn, threshold, org=org)
+        combined = []
+        for code, vehicles in per_org.items():
+            combined.extend(self._tag(vehicles, code))
+        combined.sort(key=lambda x: x.get("_fuel_pct", 999))
+        return combined
+
+    # ── single truck lookup ──────────────────────────────────────
+
+    async def get_vehicle_detail(
+        self, truck_name: str, org: str | None = None,
+    ) -> list[dict]:
+        """Search all (or one) org for a truck name.
+        Returns a list — may contain 0, 1, or 2+ matches.
+        """
+        async def _fn(c):
+            return await c.get_vehicle_detail(truck_name)
+
+        per_org = await self._run_per_org(_fn, org=org)
+        matches = []
+        for code, vehicle in per_org.items():
+            if vehicle:
+                vehicle["_org"] = code
+                matches.append(vehicle)
+        return matches
