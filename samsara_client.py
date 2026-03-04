@@ -6,16 +6,14 @@ MultiOrgClient orchestrates parallel queries across all orgs.
 
 v3 — Database-driven: org display names and API keys come from the
      database layer, not from hardcoded dicts or env vars.
-     Legacy `parse_orgs()` and `ORG_DISPLAY` kept as thin compat shims
-     so pdf_report.py and formatters.py can still import them during
-     transition; callers should migrate to `build_multi_org_client()`.
+     Use `build_multi_org_client()` to create clients from DB org objects.
 """
 
 import asyncio
 import re
 import aiohttp
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -270,33 +268,143 @@ class SamsaraClient:
         low.sort(key=lambda x: x.get("_fuel_pct", 999))
         return low
 
+    # ── Engine Hours + Idle Analysis ─────────────────────────────
+
+    async def _get_paginated_history(
+        self, types: str, start: datetime, end: datetime,
+    ) -> dict[str, dict]:
+        """Fetch stats/history with full cursor pagination.
+
+        Returns ``{vehicle_id: {"name": str, **per_type_lists}}``
+        where per-type keys map to lists of data-point dicts.
+
+        Example types: ``"obdEngineSeconds,obdOdometerMeters"``
+        """
+        type_keys = [t.strip() for t in types.split(",")]
+        vehicles: dict[str, dict] = {}
+        cursor: str | None = None
+
+        for _ in range(200):  # safety limit
+            params: dict = {
+                "types": types,
+                "startTime": start.isoformat(),
+                "endTime": end.isoformat(),
+            }
+            if cursor:
+                params["after"] = cursor
+
+            resp = await self._get(
+                "/fleet/vehicles/stats/history", params=params,
+            )
+            for v in resp.get("data", []):
+                vid = v.get("id", "")
+                if vid not in vehicles:
+                    vehicles[vid] = {"name": v.get("name", "?")}
+                    for k in type_keys:
+                        vehicles[vid][k] = []
+                for k in type_keys:
+                    vehicles[vid][k].extend(v.get(k, []))
+
+            pag = resp.get("pagination", {})
+            if not pag.get("hasNextPage"):
+                break
+            cursor = pag.get("endCursor")
+
+        return vehicles
+
+    async def get_engine_hours(self, days: int = 7) -> list[dict]:
+        """Get weekly engine hours with driving / idle breakdown.
+
+        Uses paginated ``obdEngineSeconds`` (total engine-on time) and
+        ``obdOdometerMeters`` (odometer) from Samsara stats history.
+
+        Driving detection: if odometer increases between consecutive
+        readings, the truck was moving during that interval.
+        Idle = engine-on time minus driving time.
+
+        Returns a list of dicts sorted by name:
+            name, id, _engine_hours, _driving_hours, _idle_hours,
+            _driving_pct, _idle_pct, _miles
+        """
+        now = datetime.now(timezone.utc)
+        start = now - timedelta(days=days)
+
+        raw = await self._get_paginated_history(
+            "obdEngineSeconds,obdOdometerMeters", start, end=now,
+        )
+
+        # Build a set of active vehicle names for filtering
+        fleet = await self.get_fleet_overview()
+        active_names = {v["name"].lower() for v in fleet}
+
+        results: list[dict] = []
+        for vid, v in raw.items():
+            name = v.get("name", "?")
+            if name.lower() not in active_names:
+                continue
+
+            eng_pts = v.get("obdEngineSeconds", [])
+            odo_pts = v.get("obdOdometerMeters", [])
+
+            if len(eng_pts) < 2:
+                continue
+
+            # Total engine hours (cumulative counter delta)
+            eng_delta_s = eng_pts[-1]["value"] - eng_pts[0]["value"]
+            if eng_delta_s <= 0:
+                continue
+            eng_hours = eng_delta_s / 3600
+
+            # Total miles driven
+            miles = 0.0
+            if len(odo_pts) >= 2:
+                odo_delta_m = odo_pts[-1]["value"] - odo_pts[0]["value"]
+                miles = max(0.0, odo_delta_m / 1609.34)
+
+            # Time-weighted driving from odometer changes
+            driving_s = 0.0
+            if len(odo_pts) >= 2:
+                for i in range(1, len(odo_pts)):
+                    try:
+                        t1 = datetime.fromisoformat(
+                            odo_pts[i - 1]["time"].replace("Z", "+00:00"))
+                        t2 = datetime.fromisoformat(
+                            odo_pts[i]["time"].replace("Z", "+00:00"))
+                        interval = (t2 - t1).total_seconds()
+                        # skip gaps > 1 h (truck was off)
+                        if interval <= 0 or interval > 3600:
+                            continue
+                        if odo_pts[i]["value"] > odo_pts[i - 1]["value"]:
+                            driving_s += interval
+                    except Exception:
+                        continue
+
+            # Cap driving at engine time (odometer timestamps may
+            # slightly extend beyond engine reading window)
+            driving_s = min(driving_s, eng_delta_s)
+            idle_s = eng_delta_s - driving_s
+
+            driving_pct = driving_s / eng_delta_s * 100
+            idle_pct = idle_s / eng_delta_s * 100
+
+            results.append({
+                "id": vid,
+                "name": name,
+                "_engine_hours": round(eng_hours, 1),
+                "_driving_hours": round(driving_s / 3600, 1),
+                "_idle_hours": round(idle_s / 3600, 1),
+                "_driving_pct": round(driving_pct),
+                "_idle_pct": round(idle_pct),
+                "_miles": round(miles),
+            })
+
+        results.sort(key=lambda x: x["name"])
+        return results
+
 
 # ══════════════════════════════════════════════════════════════════
 # Multi-Org Client — parallel queries across all organizations
 # ══════════════════════════════════════════════════════════════════
-
-def parse_orgs(env_value: str, base_url: str = "https://api.samsara.com",
-               active_days: int = 30) -> dict[str, "SamsaraClient"]:
-    """Parse SAMSARA_ORGS env var → dict of {code: SamsaraClient}.
-
-    LEGACY — kept for backwards compatibility & seed migration.
-    New code should use build_multi_org_client().
-
-    Format: CODE:api_key,CODE:api_key,...
-    Example: PTG:samsara_api_xxx,CFT:samsara_api_yyy
-    """
-    clients: dict[str, SamsaraClient] = {}
-    for entry in env_value.split(","):
-        entry = entry.strip()
-        if ":" not in entry:
-            continue
-        code, key = entry.split(":", 1)
-        code = code.strip().upper()
-        key = key.strip()
-        if code and key:
-            clients[code] = SamsaraClient(key, base_url, active_days=active_days)
-    return clients
-
 
 def build_multi_org_client(
     orgs: list,
@@ -450,3 +558,19 @@ class MultiOrgClient:
                 vehicle["_org"] = code
                 matches.append(vehicle)
         return matches
+
+    # ── engine hours ─────────────────────────────────────────────
+
+    async def get_engine_hours(
+        self, days: int = 7, org: str | None = None,
+    ) -> list[dict]:
+        """Get engine hours + driving/idle breakdown across orgs."""
+        async def _fn(c):
+            return await c.get_engine_hours(days)
+
+        per_org = await self._run_per_org(_fn, org=org)
+        combined: list[dict] = []
+        for code, vehicles in per_org.items():
+            combined.extend(self._tag(vehicles, code))
+        combined.sort(key=lambda x: (x.get("_org", ""), x["name"]))
+        return combined

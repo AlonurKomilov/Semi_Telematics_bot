@@ -25,7 +25,10 @@ Improvements (v2):
 
 import io
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from reportlab.lib import colors
+
+_TZ_ET = ZoneInfo("America/New_York")
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -84,7 +87,8 @@ def _fmt_time(iso_str: str) -> str:
         return "\u2014"
     try:
         dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
-        return dt.strftime("%b %d, %Y  %I:%M %p")
+        et = dt.astimezone(_TZ_ET)
+        return et.strftime("%b %d, %Y  %I:%M %p")
     except Exception:
         return iso_str
 
@@ -297,7 +301,7 @@ def generate_fault_report_pdf(
     )
 
     story = []
-    now = datetime.now(timezone.utc).strftime("%B %d, %Y  %I:%M %p UTC")
+    now = datetime.now(_TZ_ET).strftime("%B %d, %Y  %I:%M %p EST")
     stats = compute_stats(vehicles_with_faults, total_vehicles)
 
     # ── Header Banner ────────────────────────────────────────────
@@ -393,7 +397,7 @@ def generate_critical_report_pdf(
     )
 
     story = []
-    now = datetime.now(timezone.utc).strftime("%B %d, %Y  %I:%M %p UTC")
+    now = datetime.now(_TZ_ET).strftime("%B %d, %Y  %I:%M %p EST")
 
     subtitle = "Critical Fault Report"
     if org_filter:
@@ -465,6 +469,222 @@ def generate_critical_report_pdf(
             story.extend(_build_truck_card(v, styles, show_org=multi_org))
             story.append(Spacer(1, 4))
 
+    _add_footer(story, styles, now)
+
+    doc.build(story, onFirstPage=_page_number, onLaterPages=_page_number)
+    buf.seek(0)
+    return buf
+
+
+# ══════════════════════════════════════════════════════════════════
+# PUBLIC: generate single-truck detail report
+# ══════════════════════════════════════════════════════════════════
+
+def generate_truck_detail_pdf(vehicle: dict) -> io.BytesIO:
+    """Generate a professional PDF for a single truck.
+
+    Includes: vehicle overview, dashboard lights, location & fuel,
+    and a full fault-code table (if any DTCs exist).
+    """
+    buf = io.BytesIO()
+    styles = _build_styles()
+
+    doc = SimpleDocTemplate(
+        buf, pagesize=letter,
+        leftMargin=0.5 * inch, rightMargin=0.5 * inch,
+        topMargin=0.45 * inch, bottomMargin=0.55 * inch,
+    )
+
+    story: list = []
+    now = datetime.now(_TZ_ET).strftime("%B %d, %Y  %I:%M %p EST")
+
+    org_code = vehicle.get("_org", "")
+    org_name = ORG_DISPLAY.get(org_code, org_code)
+    truck_name = vehicle.get("name", "?")
+
+    # ── Header ───────────────────────────────────────────────────
+    subtitle = f"Truck #{truck_name} — Detail Report"
+    if org_code:
+        subtitle = f"Truck #{truck_name} — {org_name} ({org_code})"
+    _add_header(story, styles, "SEMI TELEMATICS", subtitle, now)
+
+    # ── Vehicle info table ───────────────────────────────────────
+    page_w = 7.1 * inch
+    fc = vehicle.get("fault_codes", {})
+    j1939 = fc.get("j1939", {})
+    dtcs = j1939.get("diagnosticTroubleCodes", [])
+    lights = j1939.get("checkEngineLights", {})
+    loc = vehicle.get("location", {})
+    fuel = vehicle.get("fuel", {})
+    fuel_pct = fuel.get("value")
+
+    loc_str = _short_location(loc)
+    fuel_str = f"{fuel_pct}%" if fuel_pct is not None else "\u2014"
+    lights_str = _light_badges_text(lights)
+
+    info_rows = [
+        ("Year / Make / Model",
+         f"{_safe(vehicle.get('year'))}  {_safe(vehicle.get('make'))}  "
+         f"{_safe(vehicle.get('model'))}"),
+        ("VIN", _safe(vehicle.get("vin"), "N/A")),
+        ("License Plate", _safe(vehicle.get("license_plate"), "N/A")),
+        ("Location", loc_str),
+        ("Fuel Level", fuel_str),
+        ("Dashboard Lights", lights_str),
+    ]
+
+    info_table_data = []
+    for label, val in info_rows:
+        info_table_data.append([
+            Paragraph(f"<b>{label}</b>", styles["CellBold"]),
+            Paragraph(val, styles["CellText"]),
+        ])
+
+    t = Table(info_table_data, colWidths=[2.0 * inch, page_w - 2.0 * inch])
+    t.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (0, -1), C_LIGHT_BG),
+        ("GRID",          (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+        ("BOX",           (0, 0), (-1, -1), 0.8, C_ACCENT),
+        ("TOPPADDING",    (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 14))
+
+    # ── Fault summary mini-dashboard ─────────────────────────────
+    total_dtcs = len(dtcs)
+    stop_on = 1 if lights.get("stopIsOn") else 0
+    emis_on = 1 if lights.get("emissionsIsOn") else 0
+    warn_on = 1 if lights.get("warningIsOn") else 0
+    prot_on = 1 if lights.get("protectIsOn") else 0
+
+    if total_dtcs:
+        row1 = [[
+            _mini_stat(styles, str(total_dtcs), "Fault Codes", C_RED),
+            _mini_stat(styles, str(stop_on), "STOP", C_RED),
+            _mini_stat(styles, str(prot_on), "PROTECT", C_ORANGE),
+            _mini_stat(styles, str(emis_on), "EMISSIONS", C_YELLOW),
+            _mini_stat(styles, str(warn_on), "WARNING", C_ORANGE),
+        ]]
+        t1 = Table(row1, colWidths=[page_w / 5] * 5, rowHeights=[52])
+        t1.setStyle(TableStyle([
+            ("BACKGROUND",   (0, 0), (-1, -1), C_LIGHT_BG),
+            ("BOX",          (0, 0), (-1, -1), 0.5, C_GRAY),
+            ("INNERGRID",    (0, 0), (-1, -1), 0.5, C_GRAY),
+            ("ALIGN",        (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING",   (0, 0), (-1, -1), 10),
+            ("BOTTOMPADDING",(0, 0), (-1, -1), 10),
+        ]))
+        story.append(t1)
+        story.append(Spacer(1, 10))
+    else:
+        clean_text = Paragraph(
+            '<font color="#22c55e"><b>\u2705  ALL CLEAR</b></font>'
+            '  \u2014  No active fault codes.  Truck is running clean!',
+            styles["TruckTitle"],
+        )
+        story.append(clean_text)
+        story.append(Spacer(1, 10))
+
+    # ── Fault code detail table ──────────────────────────────────
+    if dtcs:
+        _add_section_header(
+            story, styles,
+            f"FAULT CODES  \u2502  {total_dtcs} active DTC"
+            f"{'s' if total_dtcs != 1 else ''}",
+            C_RED if (stop_on or prot_on or emis_on) else C_ORANGE,
+        )
+
+        col_widths = [
+            0.30 * inch,
+            0.55 * inch,
+            0.40 * inch,
+            2.10 * inch,
+            1.60 * inch,
+            0.45 * inch,
+            1.00 * inch,
+        ]
+        hdr = [
+            Paragraph("<b>#</b>",        styles["CellBold"]),
+            Paragraph("<b>SPN</b>",      styles["CellBold"]),
+            Paragraph("<b>FMI</b>",      styles["CellBold"]),
+            Paragraph("<b>Issue</b>",    styles["CellBold"]),
+            Paragraph("<b>Severity</b>", styles["CellBold"]),
+            Paragraph("<b>Cnt</b>",      styles["CellBold"]),
+            Paragraph("<b>Source</b>",   styles["CellBold"]),
+        ]
+        table_data = [hdr]
+        row_severity_info = []
+
+        for i, dtc in enumerate(dtcs, 1):
+            spn_id   = _safe(dtc.get("spnId"), "?")
+            fmi_id   = _safe(dtc.get("fmiId"), "?")
+            issue    = _spn_display(dtc)
+            severity = _fmi_display(dtc)
+            occ      = _safe(dtc.get("occurrenceCount"), "\u2014")
+            source   = _safe(dtc.get("sourceAddressName"), "\u2014")
+
+            row_bg, dot_hex, dot_sym = _dtc_severity_info(
+                dtc.get("fmiDescription", "")
+            )
+            row_severity_info.append((row_bg, dot_hex, dot_sym))
+
+            if len(issue) > 52:
+                issue = issue[:49] + "\u2026"
+            if len(severity) > 38:
+                severity = severity[:35] + "\u2026"
+            if len(source) > 26:
+                source = source[:23] + "\u2026"
+
+            num_cell = Paragraph(
+                f'<font color="{dot_hex}">{dot_sym}</font> {i}',
+                styles["CellText"],
+            )
+            table_data.append([
+                num_cell,
+                Paragraph(f"<b>{spn_id}</b>", styles["CellBold"]),
+                Paragraph(f"<b>{fmi_id}</b>", styles["CellBold"]),
+                Paragraph(issue,    styles["CellText"]),
+                Paragraph(severity, styles["CellText"]),
+                Paragraph(occ,      styles["CellText"]),
+                Paragraph(source,   styles["CellText"]),
+            ])
+
+        dtc_table = Table(table_data, colWidths=col_widths, repeatRows=1)
+        cmds = [
+            ("BACKGROUND",    (0, 0), (-1, 0), C_ACCENT),
+            ("TEXTCOLOR",     (0, 0), (-1, 0), C_WHITE),
+            ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE",      (0, 0), (-1, 0), 7.5),
+            ("ALIGN",         (0, 0), (0, -1), "CENTER"),
+            ("ALIGN",         (1, 0), (2, -1), "CENTER"),
+            ("ALIGN",         (5, 0), (5, -1), "CENTER"),
+            ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 3),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 3),
+            ("GRID",          (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+            ("BOX",           (0, 0), (-1, -1), 0.8, C_ACCENT),
+        ]
+        for idx, (bg_color, _, _) in enumerate(row_severity_info):
+            row_num = idx + 1
+            cmds.append(("BACKGROUND", (0, row_num), (-1, row_num), bg_color))
+        dtc_table.setStyle(TableStyle(cmds))
+        story.append(dtc_table)
+
+        fc_time = fc.get("time", "")
+        if fc_time:
+            story.append(Spacer(1, 4))
+            story.append(Paragraph(
+                f"Last fault scan: {_fmt_time(fc_time)}", styles["TruckMeta"],
+            ))
+
+    # ── Footer ───────────────────────────────────────────────────
     _add_footer(story, styles, now)
 
     doc.build(story, onFirstPage=_page_number, onLaterPages=_page_number)
@@ -826,3 +1046,228 @@ def _build_truck_card(v: dict, styles, show_org: bool = False) -> list:
         ))
 
     return [KeepTogether(elements)]
+
+
+# ══════════════════════════════════════════════════════════════════
+# PUBLIC: generate engine hours report
+# ══════════════════════════════════════════════════════════════════
+
+# Extra color for engine hours bars
+C_BLUE = colors.HexColor("#3b82f6")
+C_IDLE = colors.HexColor("#f59e0b")
+
+
+def generate_engine_hours_pdf(
+    vehicles: list[dict],
+    days: int = 7,
+    org_filter: str | None = None,
+) -> io.BytesIO:
+    """Generate a professional PDF with weekly engine hours breakdown.
+
+    Each vehicle dict must contain:
+        name, _engine_hours, _driving_hours, _idle_hours,
+        _driving_pct, _idle_pct, _org (optional)
+    """
+    buf = io.BytesIO()
+    styles = _build_styles()
+
+    doc = SimpleDocTemplate(
+        buf, pagesize=letter,
+        leftMargin=0.5 * inch, rightMargin=0.5 * inch,
+        topMargin=0.45 * inch, bottomMargin=0.55 * inch,
+    )
+
+    story: list = []
+    now = datetime.now(_TZ_ET).strftime("%B %d, %Y  %I:%M %p EST")
+    page_w = 7.1 * inch
+
+    # ── Header ───────────────────────────────────────────────────
+    subtitle = f"Engine Hours Report — Past {days} Days"
+    if org_filter:
+        subtitle = (
+            f"{ORG_DISPLAY.get(org_filter, org_filter)} — "
+            f"Engine Hours ({days} Days)"
+        )
+    _add_header(story, styles, "SEMI TELEMATICS", subtitle, now)
+
+    # ── Summary dashboard ────────────────────────────────────────
+    total_eng = sum(v["_engine_hours"] for v in vehicles)
+    total_drv = sum(v["_driving_hours"] for v in vehicles)
+    total_idle = sum(v["_idle_hours"] for v in vehicles)
+    total_miles = sum(v.get("_miles", 0) for v in vehicles)
+    avg_drv_pct = (total_drv / total_eng * 100) if total_eng > 0 else 0
+
+    row1 = [[
+        _mini_stat(styles, str(len(vehicles)), "Trucks", C_ACCENT),
+        _mini_stat(styles, f"{total_eng:,.1f}h", "Engine Time", C_BLUE),
+        _mini_stat(styles, f"{total_miles:,}mi", "Miles", C_ACCENT),
+        _mini_stat(styles, f"{total_drv:,.1f}h", "Driving", C_GREEN),
+        _mini_stat(styles, f"{total_idle:,.1f}h", "Idle", C_IDLE),
+        _mini_stat(styles, f"{avg_drv_pct:.0f}%", "Avg Driving", C_GREEN),
+    ]]
+    t1 = Table(row1, colWidths=[page_w / 6] * 6, rowHeights=[52])
+    t1.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), C_LIGHT_BG),
+        ("BOX",           (0, 0), (-1, -1), 0.5, C_GRAY),
+        ("INNERGRID",     (0, 0), (-1, -1), 0.5, C_GRAY),
+        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING",    (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+    ]))
+    story.append(t1)
+    story.append(Spacer(1, 14))
+
+    # ── Per-org breakdown (if multi-org) ─────────────────────────
+    orgs_seen: list[str] = []
+    for v in vehicles:
+        o = v.get("_org", "")
+        if o and o not in orgs_seen:
+            orgs_seen.append(o)
+
+    if len(orgs_seen) > 1 and not org_filter:
+        col_widths = [2.4 * inch, 1.0 * inch, 1.0 * inch, 1.0 * inch, 1.0 * inch]
+        hdr = [
+            Paragraph("<b>Company</b>",    styles["OrgTableHeader"]),
+            Paragraph("<b>Trucks</b>",     styles["OrgTableHeader"]),
+            Paragraph("<b>Engine h</b>",   styles["OrgTableHeader"]),
+            Paragraph("<b>Driving %</b>",  styles["OrgTableHeader"]),
+            Paragraph("<b>Idle %</b>",     styles["OrgTableHeader"]),
+        ]
+        org_table_data = [hdr]
+        for oc in orgs_seen:
+            ov = [v for v in vehicles if v.get("_org") == oc]
+            o_eng = sum(v["_engine_hours"] for v in ov)
+            o_drv = sum(v["_driving_hours"] for v in ov)
+            o_idle = sum(v["_idle_hours"] for v in ov)
+            o_total = o_drv + o_idle
+            o_pct = (o_drv / o_total * 100) if o_total > 0 else 0
+            o_idle_pct = 100 - o_pct if o_total > 0 else 0
+            org_name = ORG_DISPLAY.get(oc, oc)
+            org_table_data.append([
+                Paragraph(f"{org_name} ({oc})", styles["OrgTableCell"]),
+                Paragraph(str(len(ov)),          styles["OrgTableCell"]),
+                Paragraph(f"{o_eng:,.1f}",       styles["OrgTableCell"]),
+                Paragraph(f"{o_pct:.0f}%",       styles["OrgTableCell"]),
+                Paragraph(f"{o_idle_pct:.0f}%",  styles["OrgTableCell"]),
+            ])
+        ot = Table(org_table_data, colWidths=col_widths)
+        ot.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, 0), C_ACCENT),
+            ("TEXTCOLOR",     (0, 0), (-1, 0), C_WHITE),
+            ("GRID",          (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+            ("BOX",           (0, 0), (-1, -1), 0.8, C_ACCENT),
+            ("TOPPADDING",    (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+            ("ALIGN",         (1, 0), (-1, -1), "CENTER"),
+        ]))
+        story.append(ot)
+        story.append(Spacer(1, 14))
+
+    # ── Per-truck table ──────────────────────────────────────────
+    _add_section_header(
+        story, styles,
+        f"ENGINE HOURS BREAKDOWN  \u2502  {len(vehicles)} trucks",
+        C_BLUE,
+    )
+
+    show_org = len(orgs_seen) > 1 and not org_filter
+    if show_org:
+        col_widths = [
+            0.75 * inch,   # Truck
+            0.75 * inch,   # Company
+            0.80 * inch,   # Engine h
+            0.70 * inch,   # Miles
+            0.80 * inch,   # Driving h
+            0.80 * inch,   # Idle h
+            0.70 * inch,   # Driving %
+            0.70 * inch,   # Idle %
+            1.10 * inch,   # Bar
+        ]
+        hdr = [
+            Paragraph("<b>Truck</b>",    styles["CellBold"]),
+            Paragraph("<b>Company</b>",  styles["CellBold"]),
+            Paragraph("<b>Engine h</b>", styles["CellBold"]),
+            Paragraph("<b>Miles</b>",    styles["CellBold"]),
+            Paragraph("<b>Drive h</b>",  styles["CellBold"]),
+            Paragraph("<b>Idle h</b>",   styles["CellBold"]),
+            Paragraph("<b>Drive %</b>",  styles["CellBold"]),
+            Paragraph("<b>Idle %</b>",   styles["CellBold"]),
+            Paragraph("<b>Split</b>",    styles["CellBold"]),
+        ]
+    else:
+        col_widths = [
+            0.90 * inch,
+            0.90 * inch,
+            0.80 * inch,
+            0.90 * inch,
+            0.90 * inch,
+            0.80 * inch,
+            0.80 * inch,
+            1.10 * inch,
+        ]
+        hdr = [
+            Paragraph("<b>Truck</b>",     styles["CellBold"]),
+            Paragraph("<b>Engine h</b>",  styles["CellBold"]),
+            Paragraph("<b>Miles</b>",     styles["CellBold"]),
+            Paragraph("<b>Driving h</b>", styles["CellBold"]),
+            Paragraph("<b>Idle h</b>",    styles["CellBold"]),
+            Paragraph("<b>Drive %</b>",   styles["CellBold"]),
+            Paragraph("<b>Idle %</b>",    styles["CellBold"]),
+            Paragraph("<b>Split</b>",     styles["CellBold"]),
+        ]
+
+    table_data = [hdr]
+    for v in vehicles:
+        drv_pct = v["_driving_pct"]
+        idle_pct = v["_idle_pct"]
+        # Build a textual bar
+        filled = round(drv_pct / 10)
+        bar_str = "\u2593" * filled + "\u2591" * (10 - filled)
+
+        miles = v.get("_miles", 0)
+        row = [Paragraph(f"<b>#{v['name']}</b>", styles["CellBold"])]
+        if show_org:
+            row.append(Paragraph(v.get("_org", ""), styles["CellText"]))
+        row.extend([
+            Paragraph(f"{v['_engine_hours']}", styles["CellText"]),
+            Paragraph(f"{miles:,}", styles["CellText"]),
+            Paragraph(f"{v['_driving_hours']}", styles["CellText"]),
+            Paragraph(f"{v['_idle_hours']}", styles["CellText"]),
+            Paragraph(f"{drv_pct}%", styles["CellText"]),
+            Paragraph(f"{idle_pct}%", styles["CellText"]),
+            Paragraph(bar_str, styles["CellText"]),
+        ])
+        table_data.append(row)
+
+    t = Table(table_data, colWidths=col_widths, repeatRows=1)
+    num_rows = len(table_data)
+    cmds = [
+        ("BACKGROUND",    (0, 0), (-1, 0), C_ACCENT),
+        ("TEXTCOLOR",     (0, 0), (-1, 0), C_WHITE),
+        ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE",      (0, 0), (-1, 0), 7.5),
+        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 3),
+        ("GRID",          (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+        ("BOX",           (0, 0), (-1, -1), 0.8, C_ACCENT),
+    ]
+    # Alternate row shading
+    for i in range(1, num_rows):
+        if i % 2 == 0:
+            cmds.append(("BACKGROUND", (0, i), (-1, i), C_LIGHT_BG))
+    t.setStyle(TableStyle(cmds))
+    story.append(t)
+
+    # ── Footer ───────────────────────────────────────────────────
+    _add_footer(story, styles, now)
+
+    doc.build(story, onFirstPage=_page_number, onLaterPages=_page_number)
+    buf.seek(0)
+    return buf

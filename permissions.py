@@ -144,7 +144,7 @@ def can(role: Role, feature: str) -> bool:
 ROLE_DISPLAY: dict[Role, str] = {
     Role.OWNER:       "👑 Owner",
     Role.ADMIN:       "🔑 Admin",
-    Role.FLEET_MGR:   "🔧 Fleet Manager",
+    Role.FLEET_MGR:   "🔧 Fleet",
     Role.DISPATCHER:  "📡 Dispatcher",
     Role.DRIVER:      "🚛 Driver",
 }

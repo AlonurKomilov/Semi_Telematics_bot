@@ -3,8 +3,11 @@ Telegram message formatters — clean, rich, easy-to-read fleet reports.
 Uses HTML parse mode.  Multi-org aware.  Role-aware help menus.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from typing import Optional
+
+_TZ_ET = ZoneInfo("America/New_York")
 
 from samsara_client import ORG_DISPLAY
 
@@ -18,7 +21,8 @@ def _fmt_time(iso_str: str) -> str:
         return "—"
     try:
         dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
-        return dt.strftime("%b %d, %Y  %I:%M %p")
+        et = dt.astimezone(_TZ_ET)
+        return et.strftime("%b %d, %Y  %I:%M %p")
     except Exception:
         return iso_str
 
@@ -122,6 +126,7 @@ def format_help(org_codes: list[str] | None = None,
         acct_line = f"\n  🏢 {account.name}\n"
 
     org_line = ""
+    has_api = bool(org_codes)
     if org_codes and len(org_codes) > 1:
         names = [f"{c} ({ORG_DISPLAY.get(c, c)})" for c in org_codes]
         org_line = (
@@ -130,41 +135,11 @@ def format_help(org_codes: list[str] | None = None,
             "  " + "  ·  ".join(names) + "\n"
         )
 
-    # Build command list based on role
-    cmds = ""
-    if user:
-        from permissions import get_permissions
-        p = get_permissions(user.role)
-        lines = []
-        if p.can_faults:
-            lines.append("  /faults    — Fault report (PDF)")
-        if p.can_critical:
-            lines.append("  /critical  — Critical faults (PDF)")
-        if p.can_truck_all:
-            lines.append("  /truck 134 — Single truck detail")
-        elif p.can_truck_own and user.truck_num:
-            lines.append(f"  /truck     — Your truck #{user.truck_num}")
-        if p.can_fuel:
-            lines.append("  /fuel      — Low fuel alert")
-        if p.can_alerts_all or p.can_alerts_own:
-            lines.append("  /alerts    — Auto-notify")
-        if p.can_invite:
-            lines.append("  /invite    — Invite team member")
-        if p.can_manage_users:
-            lines.append("  /users     — Manage users")
-        if p.can_manage_orgs:
-            lines.append("  /addorg    — Connect Samsara org")
-        if p.can_manage_account:
-            lines.append("  /account   — Account settings")
-        cmds = "\n".join(lines) + "\n"
+    # API status hint
+    if has_api:
+        status_line = "  📡 Samsara API connected ✅\n"
     else:
-        cmds = (
-            "  /faults    — Fault report (PDF)\n"
-            "  /critical  — Critical faults (PDF)\n"
-            "  /truck 134 — Single truck detail\n"
-            "  /fuel      — Low fuel alert\n"
-            "  /alerts    — Auto-notify\n"
-        )
+        status_line = "  📡 Samsara API not connected\n"
 
     return (
         "╔══════════════════════════╗\n"
@@ -175,10 +150,9 @@ def format_help(org_codes: list[str] | None = None,
         "powered by Samsara\n"
         f"{role_line}{acct_line}{org_line}"
         "\n"
-        "▸ <b>Use the buttons below</b>\n"
-        "  or type any command:\n"
+        f"{status_line}"
         "\n"
-        f"{cmds}"
+        "▸ <b>Tap a button below to begin</b> ▾\n"
     )
 
 
@@ -186,7 +160,8 @@ def format_help(org_codes: list[str] | None = None,
 #  /truck <number>  —  Single Truck Detail
 # ═══════════════════════════════════════════════════════════════════
 
-def format_truck_detail(v: dict, show_org: bool = False) -> list[str]:
+def format_truck_detail(v: dict, show_org: bool = False,
+                       show_faults: bool = True) -> list[str]:
     fc = v.get("fault_codes", {})
     j1939 = fc.get("j1939", {})
     dtcs = j1939.get("diagnosticTroubleCodes", [])
@@ -213,12 +188,17 @@ def format_truck_detail(v: dict, show_org: bool = False) -> list[str]:
         "",
         f"  📍  {_short_location(loc)}",
         f"  {_fuel_bar(fuel_pct)}",
-        "",
-        f"  💡 Dash:  {_light_badges(lights)}",
     ]
 
+    if show_faults:
+        lines.append("")
+        lines.append(f"  💡 Dash:  {_light_badges(lights)}")
+
     lines.append("")
-    if not dtcs:
+    if not show_faults:
+        # Role doesn't have fault access — hide everything
+        pass
+    elif not dtcs:
         lines.append("  ── ── ── ── ── ── ──")
         lines.append("  ✅  <b>No active fault codes</b>")
         lines.append("  Truck is running clean!")
@@ -254,7 +234,7 @@ def format_truck_detail(v: dict, show_org: bool = False) -> list[str]:
             )
 
     fault_time = fc.get("time", "")
-    if fault_time:
+    if fault_time and show_faults:
         lines.append(f"\n  🕐  Updated:  {_fmt_time(fault_time)}")
 
     return _split_message("\n".join(lines))
@@ -358,7 +338,7 @@ def format_new_fault_alert(vehicle: dict, new_dtcs: list,
             f"       Source: {source}\n"
         )
 
-    lines.append(f"  ▸  /truck {name}  for full details")
+    lines.append(f"  ▸  Tap 🚛 Search Truck for details")
     return "\n".join(lines)
 
 
@@ -384,11 +364,11 @@ def format_welcome_unregistered(support_contact: str = "") -> str:
         "  registered yet.\n"
         "\n"
         "  <b>New company?</b>\n"
-        "  /register Your Company Name\n"
+        "  Tap 📝 Register below\n"
         "\n"
         "  <b>Joining a team?</b>\n"
-        "  /join XXXX-XXXX\n"
-        "  (use the code from your admin)\n"
+        "  Tap 🔑 Join below\n"
+        "  (get the code from your admin)\n"
         f"{support_line}"
     )
 
@@ -403,11 +383,11 @@ def format_register_success(account_name: str) -> str:
         "  👑  You are the Owner\n"
         "\n"
         "  Next steps:\n"
-        "  1️⃣  /addorg CODE:api_key\n"
-        "       Connect your Samsara org\n"
+        "  1️⃣  Tap 📡 <b>Add Company</b> in menu\n"
+        "       to connect your Company\n"
         "\n"
-        "  2️⃣  /invite fleet_manager\n"
-        "       Invite team members\n"
+        "  2️⃣  Tap ✉️ <b>Invite</b> in menu\n"
+        "       to invite team members\n"
     )
 
 
@@ -431,10 +411,9 @@ def format_account_info(account, orgs, users, user) -> str:
         f"  🏢  <b>{account.name}</b>",
         "└─────────────────────────┘",
         "",
-        f"  Plan:   {account.tier.upper()}",
         f"  Your role: {role_display(user.role)}",
         "",
-        f"  📡  <b>{len(orgs)}</b> Samsara organization{'s' if len(orgs) != 1 else ''}",
+        f"  📡  <b>{len(orgs)}</b> Samsara {'companies' if len(orgs) != 1 else 'company'}",
     ]
     for org in orgs:
         lines.append(f"     • {org.code} — {org.display_name or org.code}")
@@ -450,8 +429,9 @@ def format_account_info(account, orgs, users, user) -> str:
     return "\n".join(lines)
 
 
-def format_invite_created(code: str, role_str: str, dept: str) -> str:
-    return (
+def format_invite_created(code: str, role_str: str, dept: str,
+                         invite_link: str | None = None) -> str:
+    text = (
         "┌─────────────────────────┐\n"
         "  🔑  <b>INVITE CREATED</b>\n"
         "└─────────────────────────┘\n"
@@ -460,12 +440,27 @@ def format_invite_created(code: str, role_str: str, dept: str) -> str:
         f"  Role:  {role_str}\n"
         f"  Dept:  {dept}\n"
         "  Expires in 24 hours\n"
-        "\n"
-        "  Share this with your\n"
-        "  team member:\n"
-        "\n"
-        f"  👉  <code>/join {code}</code>\n"
     )
+    if invite_link:
+        text += (
+            "\n"
+            "  📎 <b>Share this link:</b>\n"
+            f"  {invite_link}\n"
+            "\n"
+            "  New member taps the link →\n"
+            "  auto-joins your team instantly.\n"
+        )
+    else:
+        text += (
+            "\n"
+            "  Share this with your\n"
+            "  team member. They should:\n"
+            "\n"
+            "  1. Open this bot\n"
+            "  2. Tap 🔑 Join\n"
+            f"  3. Enter code: <code>{code}</code>\n"
+        )
+    return text
 
 
 def format_users_list(users, account_name: str) -> str:
@@ -488,11 +483,22 @@ def format_users_list(users, account_name: str) -> str:
     return "\n".join(lines)
 
 
-def format_org_added(code: str, display_name: str, truck_count: int | None = None) -> str:
-    truck_info = f"\n  Found {truck_count} active trucks" if truck_count is not None else ""
+def format_org_added(
+    code: str,
+    display_name: str,
+    total_trucks: int | None = None,
+    active_trucks: int | None = None,
+) -> str:
+    truck_info = ""
+    if total_trucks is not None:
+        truck_info += f"\n  🚛  Total trucks:  <b>{total_trucks}</b>"
+        if active_trucks is not None:
+            truck_info += (
+                f"\n  ✅  Active (30 days):  <b>{active_trucks}</b>"
+            )
     return (
         "┌─────────────────────────┐\n"
-        "  ✅  <b>ORG CONNECTED</b>\n"
+        "  ✅  <b>COMPANY CONNECTED</b>\n"
         "└─────────────────────────┘\n"
         "\n"
         f"  Code:  {code}\n"
@@ -513,13 +519,8 @@ def format_system_owner_welcome() -> str:
         "╚══════════════════════════╝\n"
         "\n"
         "  You are the platform owner.\n"
-        "  Use /admin to see analytics.\n"
-        "\n"
-        "  <b>Admin commands:</b>\n"
-        "  /admin       — Dashboard\n"
-        "  /accounts    — All accounts\n"
-        "  /sysaccount  — Account detail\n"
-        "  /broadcast   — Message all\n"
+        "  Use the buttons below to\n"
+        "  manage the platform.\n"
     )
 
 
@@ -553,10 +554,6 @@ def format_admin_dashboard(stats: dict) -> str:
             acct = d["account"]
             users = d["users"]
             orgs = d["orgs"]
-            tier_badge = {"free": "🆓", "pro": "⭐", "enterprise": "🏆"}.get(
-                acct.tier, "📋"
-            )
-
             from permissions import role_emoji
             user_str = ", ".join(
                 f"{role_emoji(u.role)}{u.telegram_id}"
@@ -568,11 +565,10 @@ def format_admin_dashboard(stats: dict) -> str:
             org_str = ", ".join(o.code for o in orgs) if orgs else "none"
 
             lines.append(
-                f"  {tier_badge} <b>{acct.name}</b> (#{acct.id})\n"
+                f"  🏢 <b>{acct.name}</b> (#{acct.id})\n"
                 f"     {len(users)} users: {user_str}\n"
                 f"     {len(orgs)} orgs: {org_str}\n"
-                f"     Tier: {acct.tier.upper()} · "
-                f"Since: {acct.created_at[:10]}\n"
+                f"     Since: {acct.created_at[:10]}\n"
             )
 
     return "\n".join(lines)
@@ -588,11 +584,10 @@ def format_admin_account_detail(acct, orgs, users) -> str:
         "",
         f"  ID:      #{acct.id}",
         f"  Slug:    {acct.slug}",
-        f"  Tier:    {acct.tier.upper()}",
         f"  Active:  {'✅ Yes' if acct.is_active else '❌ No'}",
         f"  Since:   {acct.created_at[:10]}",
         "",
-        f"  📡  <b>{len(orgs)} Organization{'s' if len(orgs) != 1 else ''}</b>",
+        f"  📡  <b>{len(orgs)} {'Companies' if len(orgs) != 1 else 'Company'}</b>",
     ]
     for org in orgs:
         status = "🟢" if org.is_active else "🔴"
@@ -636,15 +631,87 @@ def format_admin_accounts_list(accounts) -> str:
     ]
     for acct in accounts:
         status = "🟢" if acct.is_active else "🔴"
-        tier_badge = {"free": "🆓", "pro": "⭐", "enterprise": "🏆"}.get(
-            acct.tier, "📋"
-        )
         lines.append(
-            f"  {status} {tier_badge}  <b>{acct.name}</b>  (#{acct.id})\n"
-            f"      {acct.tier.upper()} · Since {acct.created_at[:10]}\n"
+            f"  {status} 🏢  <b>{acct.name}</b>  (#{acct.id})\n"
+            f"      Since {acct.created_at[:10]}\n"
         )
 
-    lines.append("  Use /sysaccount <b>ID</b> for details")
+    lines.append("  Tap account name for details.")
 
     return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Engine Hours — Weekly Breakdown
+# ═══════════════════════════════════════════════════════════════════
+
+def _engine_bar(driving_pct: int | float) -> str:
+    """Build a visual bar showing driving vs idle split."""
+    filled = round(driving_pct / 10)
+    bar = "▓" * filled + "░" * (10 - filled)
+    return bar
+
+
+def format_engine_hours(
+    vehicles: list[dict],
+    days: int = 7,
+    show_org: bool = False,
+) -> list[str]:
+    """Format engine hours breakdown for Telegram.
+
+    Each vehicle dict is expected to have:
+        name, _engine_hours, _driving_pct, _idle_pct,
+        _driving_hours, _idle_hours, _org (optional)
+    """
+    if not vehicles:
+        return [
+            "┌─────────────────────────┐\n"
+            "  ℹ️  <b>NO ENGINE DATA</b>\n"
+            "└─────────────────────────┘\n"
+            "\n"
+            f"  No engine hour data found\n"
+            f"  for the past {days} days."
+        ]
+
+    total_eng = sum(v["_engine_hours"] for v in vehicles)
+    total_drive = sum(v["_driving_hours"] for v in vehicles)
+    total_idle = sum(v["_idle_hours"] for v in vehicles)
+    total_miles = sum(v.get("_miles", 0) for v in vehicles)
+    avg_drive_pct = (total_drive / total_eng * 100) if total_eng > 0 else 0
+
+    lines = [
+        "┌─────────────────────────┐",
+        "  ⏱  <b>ENGINE HOURS</b>",
+        "└─────────────────────────┘",
+        "",
+        f"  📊  <b>{len(vehicles)}</b> trucks  ·  Past {days} days",
+        f"  ⏱  <b>{total_eng:,.1f}h</b> total engine time",
+        f"  🛣  <b>{total_miles:,}</b> miles driven",
+        f"  🚗 {total_drive:,.1f}h driving  ·  🅿️ {total_idle:,.1f}h idle",
+        f"  📈 Fleet avg: {avg_drive_pct:.0f}% driving",
+        "",
+        "  ── ── ── ── ── ── ── ──",
+        "",
+    ]
+
+    for v in vehicles:
+        name = v["name"]
+        eng_h = v["_engine_hours"]
+        drv_pct = v["_driving_pct"]
+        idle_pct = v["_idle_pct"]
+        drv_h = v["_driving_hours"]
+        idle_h = v["_idle_hours"]
+        tag = _org_tag(v, show_org)
+
+        miles = v.get("_miles", 0)
+        bar = _engine_bar(drv_pct)
+        lines.append(
+            f"  <b>{tag}#{name}</b>  ⏱ {eng_h}h · 🛣 {miles:,}mi\n"
+            f"  {bar} {drv_pct}% 🚗 · {idle_pct}% 🅿️\n"
+        )
+
+    now_et = datetime.now(_TZ_ET)
+    lines.append(f"  🕐  {now_et.strftime('%b %d, %Y  %I:%M %p')} EST")
+
+    return _split_message("\n".join(lines))
 
