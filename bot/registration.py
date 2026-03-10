@@ -5,7 +5,7 @@ from telegram.ext import ContextTypes
 
 from database import Role
 from permissions import role_display
-from samsara_client import populate_org_display
+from samsara_client import populate_company_display
 from formatters import (
     format_help,
     format_welcome_unregistered,
@@ -14,7 +14,7 @@ from formatters import (
     format_join_success,
 )
 
-from bot.config import db, SUPPORT_CONTACT, logger, get_user_org_codes
+from bot.config import db, SUPPORT_CONTACT, logger, get_user_company_codes
 from bot.keyboards import main_menu_kb, system_owner_kb, unregistered_kb, back_kb
 from bot.helpers import _show
 from bot.auth import _get_user
@@ -40,10 +40,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 account = await db.get_account(new_user.account_id)
                 r_display = role_display(new_user.role)
                 text = format_join_success(account.name, r_display)
-                org_codes = await get_user_org_codes(new_user.account_id)
-                orgs = await db.get_account_orgs(new_user.account_id)
-                populate_org_display(orgs)
-                kb = main_menu_kb(new_user.role, org_codes)
+                company_codes = await get_user_company_codes(new_user.account_id)
+                companies = await db.get_account_companies(new_user.account_id)
+                populate_company_display(companies)
+                kb = main_menu_kb(new_user.role, company_codes)
                 await _show(update, context, [text], keyboard=kb)
                 logger.info(f"Deep-link join: {tid} → '{account.name}' as {new_user.role.value}")
                 return
@@ -68,23 +68,23 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # but with admin hint
     if sys_owner and user:
         account = await db.get_account(user.account_id)
-        org_codes = await get_user_org_codes(user.account_id)
-        orgs = await db.get_account_orgs(user.account_id)
-        populate_org_display(orgs)
-        text = format_help(org_codes, user=user, account=account)
+        company_codes = await get_user_company_codes(user.account_id)
+        companies = await db.get_account_companies(user.account_id)
+        populate_company_display(companies)
+        text = format_help(company_codes, user=user, account=account)
         text += "\n\n  ⚙️ <i>System admin: /admin</i>"
-        kb = main_menu_kb(user.role, org_codes)
+        kb = main_menu_kb(user.role, company_codes)
         await _show(update, context, [text], keyboard=kb)
         return
 
     # ── 2. Existing registered user ────────────────────────────
     if user:
         account = await db.get_account(user.account_id)
-        org_codes = await get_user_org_codes(user.account_id)
-        orgs = await db.get_account_orgs(user.account_id)
-        populate_org_display(orgs)
-        text = format_help(org_codes, user=user, account=account)
-        kb = main_menu_kb(user.role, org_codes)
+        company_codes = await get_user_company_codes(user.account_id)
+        companies = await db.get_account_companies(user.account_id)
+        populate_company_display(companies)
+        text = format_help(company_codes, user=user, account=account)
+        kb = main_menu_kb(user.role, company_codes)
         await _show(update, context, [text], keyboard=kb)
         return
 
@@ -177,10 +177,10 @@ async def cmd_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     r_display = role_display(new_user.role)
     text = format_join_success(account.name, r_display)
 
-    org_codes = await get_user_org_codes(new_user.account_id)
-    orgs = await db.get_account_orgs(new_user.account_id)
-    populate_org_display(orgs)
-    kb = main_menu_kb(new_user.role, org_codes)
+    company_codes = await get_user_company_codes(new_user.account_id)
+    companies = await db.get_account_companies(new_user.account_id)
+    populate_company_display(companies)
+    kb = main_menu_kb(new_user.role, company_codes)
 
     await _show(update, context, [text], keyboard=kb)
     logger.info(f"User {tid} joined '{account.name}' as {new_user.role.value}")

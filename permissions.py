@@ -13,7 +13,7 @@ Two-tier authority model:
                  Identified solely by SYSTEM_OWNER_IDS in .env.
 
   CUSTOMER ROLES (in the database):
-    owner        — full control of their account, manage orgs/users
+    owner        — full control of their account, manage companies/users
     admin        — manage users, all fleet features
     fleet_manager — all fleet features, no user management
     dispatcher   — fuel, truck location, rolling/stopped alerts
@@ -72,7 +72,7 @@ class FeatureSet:
     # Management
     can_invite: bool = False         # /invite
     can_manage_users: bool = False   # /users, /setrole, /remove
-    can_manage_orgs: bool = False    # /addorg, /removeorg
+    can_manage_companies: bool = False    # /addcompany, /removecompany
     can_manage_account: bool = False # /account settings
 
     # Dispatcher extras (future)
@@ -87,7 +87,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_truck_all=True, can_truck_own=True,
         can_alerts_all=True, can_alerts_own=True,
         can_invite=True, can_manage_users=True,
-        can_manage_orgs=True, can_manage_account=True,
+        can_manage_companies=True, can_manage_account=True,
         can_rolling_stopped=True,
     ),
     Role.ADMIN: FeatureSet(
@@ -95,7 +95,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_truck_all=True, can_truck_own=True,
         can_alerts_all=True, can_alerts_own=True,
         can_invite=True, can_manage_users=True,
-        can_manage_orgs=False, can_manage_account=False,
+        can_manage_companies=False, can_manage_account=False,
         can_rolling_stopped=True,
     ),
     Role.FLEET_MGR: FeatureSet(
@@ -103,7 +103,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_truck_all=True, can_truck_own=True,
         can_alerts_all=True, can_alerts_own=True,
         can_invite=False, can_manage_users=False,
-        can_manage_orgs=False, can_manage_account=False,
+        can_manage_companies=False, can_manage_account=False,
         can_rolling_stopped=False,
     ),
     Role.DISPATCHER: FeatureSet(
@@ -111,7 +111,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_truck_all=True, can_truck_own=True,
         can_alerts_all=False, can_alerts_own=False,
         can_invite=False, can_manage_users=False,
-        can_manage_orgs=False, can_manage_account=False,
+        can_manage_companies=False, can_manage_account=False,
         can_rolling_stopped=True,
     ),
     Role.DRIVER: FeatureSet(
@@ -119,7 +119,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_truck_all=False, can_truck_own=True,
         can_alerts_all=False, can_alerts_own=True,
         can_invite=False, can_manage_users=False,
-        can_manage_orgs=False, can_manage_account=False,
+        can_manage_companies=False, can_manage_account=False,
         can_rolling_stopped=False,
     ),
 }
@@ -174,8 +174,6 @@ def visible_main_buttons(role: Role) -> list[str]:
     buttons = []
     if perms.can_faults:
         buttons.append("cmd_faults")
-    if perms.can_critical:
-        buttons.append("cmd_critical")
     if perms.can_fuel:
         buttons.append("cmd_fuel")
     if perms.can_alerts_all or perms.can_alerts_own:
@@ -183,7 +181,7 @@ def visible_main_buttons(role: Role) -> list[str]:
     return buttons
 
 
-def can_access_org_submenu(role: Role) -> bool:
-    """Whether this role can filter by individual org."""
+def can_access_company_submenu(role: Role) -> bool:
+    """Whether this role can filter by individual company."""
     perms = get_permissions(role)
-    return perms.can_faults or perms.can_critical or perms.can_fuel
+    return perms.can_faults or perms.can_fuel

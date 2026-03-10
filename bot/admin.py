@@ -66,9 +66,9 @@ async def cmd_sysaccount(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     keyboard=system_owner_kb())
         return
 
-    orgs = await db.get_account_orgs(acct_id, active_only=False)
+    companies = await db.get_account_companies(acct_id, active_only=False)
     users = await db.list_account_users(acct_id)
-    text = format_admin_account_detail(account, orgs, users)
+    text = format_admin_account_detail(account, companies, users)
     await _show(update, context, [text], keyboard=system_owner_kb())
 
 
@@ -86,9 +86,9 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     message_text = " ".join(context.args)
     broadcast = (
-        "╔══════════════════════════╗\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
         "  📢  <b>SYSTEM NOTICE</b>\n"
-        "╚══════════════════════════╝\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
         "\n"
         f"  {message_text}\n"
     )

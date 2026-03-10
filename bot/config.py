@@ -4,7 +4,7 @@ import os
 import logging
 
 from database import Database
-from samsara_client import MultiOrgClient, build_multi_org_client
+from samsara_client import MultiCompanyClient, build_multi_company_client
 
 # ── Environment ──────────────────────────────────────────────────
 
@@ -29,32 +29,32 @@ db = Database(DATABASE_PATH)
 
 # ── In-memory caches ─────────────────────────────────────────────
 
-_client_cache: dict[int, MultiOrgClient] = {}
+_client_cache: dict[int, MultiCompanyClient] = {}
 _known_faults: dict[str, set[str]] = {}       # "acct:ORG:vid" → set(codes)
-_active_messages: dict[int, list[int]] = {}   # chat_id → [msg_ids]
+_active_messages: dict[tuple[int, int], list[int]] = {}   # (chat_id, user_id) → [msg_ids]
 bot_username: str = ""                         # set in post_init via getMe
 
 
 # ── Client cache helpers ─────────────────────────────────────────
 
-async def get_client(account_id: int) -> MultiOrgClient:
-    """Get or build a MultiOrgClient for an account."""
+async def get_client(account_id: int) -> MultiCompanyClient:
+    """Get or build a MultiCompanyClient for an account."""
     if account_id in _client_cache:
         return _client_cache[account_id]
-    orgs = await db.get_account_orgs(account_id)
-    client = build_multi_org_client(orgs, SAMSARA_BASE_URL)
+    companies = await db.get_account_companies(account_id)
+    client = build_multi_company_client(companies, SAMSARA_BASE_URL)
     _client_cache[account_id] = client
     return client
 
 
 async def invalidate_client(account_id: int):
-    """Drop cached client — call after adding/removing orgs."""
+    """Drop cached client — call after adding/removing companies."""
     old = _client_cache.pop(account_id, None)
     if old:
         await old.close()
 
 
-async def get_user_org_codes(account_id: int) -> list[str]:
-    """Get sorted org codes for an account."""
-    orgs = await db.get_account_orgs(account_id)
-    return [o.code for o in orgs]
+async def get_user_company_codes(account_id: int) -> list[str]:
+    """Get sorted company codes for an account."""
+    companies = await db.get_account_companies(account_id)
+    return [o.code for o in companies]

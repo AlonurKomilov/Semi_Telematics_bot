@@ -11,6 +11,28 @@ from bot.keyboards import system_owner_kb, unregistered_kb, back_kb
 from formatters import format_system_owner_welcome, format_welcome_unregistered
 
 
+async def _is_group_chat(update: Update) -> bool:
+    """Return True if this update comes from a group or supergroup or channel."""
+    chat = update.effective_chat
+    if not chat:
+        return False
+    return chat.type in ("group", "supergroup", "channel")
+
+
+async def _group_chat_guard(update: Update) -> bool:
+    """Return True if the update should be processed, False if it should be silently ignored.
+
+    Rules:
+      - Private chats → always allowed
+      - Group/supergroup/channel → only if the chat is authorized in the DB
+    """
+    if not await _is_group_chat(update):
+        return True  # private chat — always OK
+
+    chat_id = update.effective_chat.id
+    return await db.is_chat_authorized(chat_id)
+
+
 async def _get_user(update: Update):
     """Look up the calling user. Returns (user_or_None, telegram_id, is_sys_owner).
 
@@ -35,8 +57,12 @@ def _require_registered(func):
     """Decorator: registered users only. Unregistered → welcome screen.
     System owners are NOT customers — they get redirected to /admin.
     Also checks that the user's account is still active.
+    Silently ignores unauthorized group chats.
     """
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, **kwargs):
+        if not await _group_chat_guard(update):
+            return  # silently ignore unauthorized group
+
         user, tid, sys_owner = await _get_user(update)
 
         # System owner trying to use customer features → hint to /admin
@@ -70,6 +96,9 @@ def _require_permission(feature: str):
     """Decorator factory: check a specific permission flag."""
     def decorator(func):
         async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, **kwargs):
+            if not await _group_chat_guard(update):
+                return  # silently ignore unauthorized group
+
             user = context.user_data.get("_db_user")
             if not user:
                 user, _, sys_owner = await _get_user(update)
@@ -103,6 +132,9 @@ def _require_permission(feature: str):
 def _require_system_owner(func):
     """Decorator: system owner only (checked via env SYSTEM_OWNER_IDS)."""
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, **kwargs):
+        if not await _group_chat_guard(update):
+            return  # silently ignore unauthorized group
+
         _, tid, sys_owner = await _get_user(update)
         if not sys_owner:
             if update.callback_query:

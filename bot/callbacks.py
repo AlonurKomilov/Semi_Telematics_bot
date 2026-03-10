@@ -5,7 +5,7 @@ from telegram.ext import ContextTypes
 
 from database import Role
 from permissions import can, role_display, is_system_owner
-from samsara_client import ORG_DISPLAY, populate_org_display
+from samsara_client import COMPANY_DISPLAY, populate_company_display
 from formatters import (
     format_help,
     format_welcome_unregistered,
@@ -14,32 +14,41 @@ from formatters import (
 )
 
 import bot.config as _cfg
-from bot.config import db, SUPPORT_CONTACT, get_user_org_codes, invalidate_client, get_client
+from bot.config import db, SUPPORT_CONTACT, get_user_company_codes, invalidate_client, get_client
 from bot.keyboards import (
-    main_menu_kb, org_menu_kb, back_kb, system_owner_kb, unregistered_kb,
+    main_menu_kb, co_menu_kb, back_kb, system_owner_kb, unregistered_kb,
     invite_kb, skip_name_kb, truck_company_picker_kb, vehicle_list_kb,
+    group_picker_kb,
 )
 from bot.helpers import _show, _show_loading, _user_menu_kb
-from bot.auth import _get_user
+from bot.auth import _get_user, _group_chat_guard
 from bot.registration import cmd_start, cmd_register, cmd_join
-from bot.fleet import cmd_faults, cmd_truck, cmd_critical, cmd_fuel, cmd_alerts, cmd_truck_report, cmd_engine_hours
-from bot.management import cmd_account, cmd_users, cmd_addorg
+from bot.fleet import (
+    cmd_faults, cmd_faults_pdf, cmd_faults_csv,
+    cmd_truck, cmd_critical,
+    cmd_fuel, cmd_fuel_pdf, cmd_fuel_csv,
+    cmd_alerts, cmd_truck_report,
+    cmd_health, cmd_health_pdf, cmd_health_csv,
+    cmd_efficiency, cmd_efficiency_pdf, cmd_efficiency_csv,
+    cmd_weather, cmd_api_status,
+)
+from bot.management import cmd_account, cmd_users, cmd_addcompany, cmd_groups
 from bot.admin import cmd_admin, cmd_accounts
 
 
-async def _show_truck_list(update, context, user, org_filter, page=0):
+async def _show_truck_list(update, context, user, company_filter, page=0):
     """Fetch all trucks and show a paginated button list."""
-    orgs_db = await db.get_account_orgs(user.account_id)
-    populate_org_display(orgs_db)
-    org_codes = [o.code for o in orgs_db]
-    show_org = len(org_codes) > 1
+    orgs_db = await db.get_account_companies(user.account_id)
+    populate_company_display(orgs_db)
+    company_codes = [o.code for o in orgs_db]
+    show_org = len(company_codes) > 1
 
     await _show_loading(update, context, "⏳ Loading truck list…")
     try:
         samsara = await get_client(user.account_id)
-        vehicles = await samsara.get_fleet_overview(org=org_filter)
+        vehicles = await samsara.get_fleet_overview(company=company_filter)
         if not vehicles:
-            label = org_filter or "all companies"
+            label = company_filter or "all companies"
             await _show(update, context,
                         [f"ℹ️ No active trucks found for <b>{label}</b>."],
                         keyboard=back_kb())
@@ -49,11 +58,11 @@ async def _show_truck_list(update, context, user, org_filter, page=0):
         header = (
             f"🚛 <b>Trucks</b>  —  {total} active\n"
         )
-        if org_filter:
-            from samsara_client import ORG_DISPLAY
-            header += f"  📡 {ORG_DISPLAY.get(org_filter, org_filter)}\n"
+        if company_filter:
+            from samsara_client import COMPANY_DISPLAY
+            header += f"  📡 {COMPANY_DISPLAY.get(company_filter, company_filter)}\n"
 
-        kb = vehicle_list_kb(vehicles, page=page, org_filter=org_filter)
+        kb = vehicle_list_kb(vehicles, page=page, company_filter=company_filter)
         await _show(update, context, [header + "\nTap a truck for details:"],
                     keyboard=kb)
     except Exception as e:
@@ -63,6 +72,11 @@ async def _show_truck_list(update, context, user, org_filter, page=0):
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
+
+    # Silently ignore unauthorized group chats
+    if not await _group_chat_guard(update):
+        await query.answer()
+        return
 
     # Clear any pending text-input state when user taps a button
     context.user_data.pop("_pending", None)
@@ -132,44 +146,93 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data["_db_user"] = user
 
-    # Populate ORG_DISPLAY for this user's account
-    orgs = await db.get_account_orgs(user.account_id)
-    populate_org_display(orgs)
+    # Populate COMPANY_DISPLAY for this user's account
+    companies = await db.get_account_companies(user.account_id)
+    populate_company_display(companies)
 
     # ── Main menu ───────────────────────────────────────────────
     if data == "cmd_menu":
         await query.answer()
         account = await db.get_account(user.account_id)
-        org_codes = [o.code for o in orgs]
-        text = format_help(org_codes, user=user, account=account)
+        company_codes = [o.code for o in companies]
+        text = format_help(company_codes, user=user, account=account)
         if sys_owner:
             text += "\n\n  ⚙️ <i>System admin: /admin</i>"
-        kb = main_menu_kb(user.role, org_codes)
+        kb = main_menu_kb(user.role, company_codes)
         await _show(update, context, [text], keyboard=kb)
 
     # ── Fleet commands ──────────────────────────────────────────
     elif data == "cmd_faults":
         await cmd_faults(update, context)
+    elif data == "faults_pdf":
+        await cmd_faults_pdf(update, context)
+    elif data == "faults_csv":
+        await cmd_faults_csv(update, context)
+    elif data.startswith("faults_pdf_"):
+        co = data.replace("faults_pdf_", "")
+        await cmd_faults_pdf(update, context, company=co)
+    elif data.startswith("faults_csv_"):
+        co = data.replace("faults_csv_", "")
+        await cmd_faults_csv(update, context, company=co)
     elif data == "cmd_critical":
         await cmd_critical(update, context)
+    elif data.startswith("cmd_critical_"):
+        co = data.replace("cmd_critical_", "")
+        await cmd_critical(update, context, company=co)
     elif data == "cmd_fuel":
         await cmd_fuel(update, context)
+    elif data == "fuel_pdf":
+        await cmd_fuel_pdf(update, context)
+    elif data == "fuel_csv":
+        await cmd_fuel_csv(update, context)
+    elif data.startswith("fuel_pdf_"):
+        co = data.replace("fuel_pdf_", "")
+        await cmd_fuel_pdf(update, context, company=co)
+    elif data.startswith("fuel_csv_"):
+        co = data.replace("fuel_csv_", "")
+        await cmd_fuel_csv(update, context, company=co)
     elif data == "cmd_alerts":
         await cmd_alerts(update, context)
     elif data == "cmd_mytruck":
         await cmd_truck(update, context)
-    elif data == "cmd_engine_hours":
-        await cmd_engine_hours(update, context)
+    elif data == "cmd_health":
+        await cmd_health(update, context)
+    elif data == "health_pdf":
+        await cmd_health_pdf(update, context)
+    elif data == "health_csv":
+        await cmd_health_csv(update, context)
+    elif data.startswith("health_pdf_"):
+        co = data.replace("health_pdf_", "")
+        await cmd_health_pdf(update, context, company=co)
+    elif data.startswith("health_csv_"):
+        co = data.replace("health_csv_", "")
+        await cmd_health_csv(update, context, company=co)
+    elif data == "cmd_efficiency":
+        await cmd_efficiency(update, context)
+    elif data == "eff_pdf":
+        await cmd_efficiency_pdf(update, context)
+    elif data == "eff_csv":
+        await cmd_efficiency_csv(update, context)
+    elif data.startswith("eff_pdf_"):
+        co = data.replace("eff_pdf_", "")
+        await cmd_efficiency_pdf(update, context, company=co)
+    elif data.startswith("eff_csv_"):
+        co = data.replace("eff_csv_", "")
+        await cmd_efficiency_csv(update, context, company=co)
+    elif data == "cmd_weather":
+        await cmd_weather(update, context)
+    elif data == "cmd_api_status":
+        await cmd_api_status(update, context)
 
-    # ── Samsara API integration guide (no orgs yet) ─────────────
+    # ── Samsara API integration guide (no companies yet) ─────────────
     elif data == "cmd_integrate_guide":
         await query.answer()
-        context.user_data["_pending"] = "addorg_code"
-        context.user_data.pop("_addorg", None)
+        context.user_data["_pending"] = "addcompany_code"
+        context.user_data.pop("_addcompany", None)
         guide_text = (
-            "┌─────────────────────────┐\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
             "  📡  <b>CONNECT SAMSARA API</b>\n"
-            "└─────────────────────────┘\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
             "\n"
             "  To unlock fleet monitoring you\n"
             "  need to connect your Samsara\n"
@@ -194,9 +257,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "cmd_no_api_info":
         await query.answer()
         await _show(update, context, [
-            "┌─────────────────────────┐\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
             "  ⏳  <b>API NOT YET CONNECTED</b>\n"
-            "└─────────────────────────┘\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
             "\n"
             "  Your company owner hasn't\n"
             "  connected a Samsara API key yet.\n"
@@ -219,6 +282,77 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await cmd_account(update, context)
     elif data == "cmd_users":
         await cmd_users(update, context)
+
+    # ── Group / Channel management ──────────────────────────────
+    elif data == "cmd_groups":
+        await cmd_groups(update, context)
+
+    elif data.startswith("rmgroup_"):
+        chat_id_str = data[8:]
+        await query.answer()
+        if not user.is_admin_or_above:
+            await query.answer("⛔ No access", show_alert=True)
+            return
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🗑 Yes, remove", callback_data=f"rmgroupconfirm_{chat_id_str}"),
+                InlineKeyboardButton("◀️ Cancel", callback_data="cmd_groups"),
+            ],
+        ])
+        await _show(update, context, [
+            f"⚠️ <b>Remove group <code>{chat_id_str}</code>?</b>\n\n"
+            "The bot will stop responding in this group."
+        ], keyboard=kb)
+
+    elif data.startswith("rmgroupconfirm_"):
+        chat_id_str = data[15:]
+        await query.answer()
+        try:
+            group_chat_id = int(chat_id_str)
+            await db.remove_authorized_chat(user.account_id, group_chat_id)
+        except ValueError:
+            pass
+        await cmd_groups(update, context)
+
+    elif data == "addgroup_pick":
+        await query.answer()
+        if not user.is_admin_or_above:
+            await query.answer("⛔ No access", show_alert=True)
+            return
+        context.user_data["_awaiting_chat_pick"] = True
+        await update.effective_chat.send_message(
+            "👇 <b>Tap a button below</b> to pick a\n"
+            "group or channel from Telegram.\n\n"
+            "Tap ❌ Cancel to go back.",
+            parse_mode="HTML",
+            reply_markup=group_picker_kb(),
+        )
+
+    elif data == "addgroup_confirm":
+        await query.answer()
+        pending = context.user_data.pop("_pending_group", None)
+        if not pending:
+            await _show(update, context,
+                        ["⚠️ Nothing to confirm. Try again."],
+                        keyboard=back_kb())
+            return
+        await db.add_authorized_chat(
+            account_id=user.account_id,
+            chat_id=pending["chat_id"],
+            chat_title=pending["title"],
+            added_by=user.id,
+        )
+        await _show(update, context, [
+            f"✅ Authorized!\n\n"
+            f"  💬 <b>{pending['title']}</b>\n"
+            f"  🆔 <code>{pending['chat_id']}</code>\n\n"
+            f"  The bot will now respond in this chat."
+        ], keyboard=back_kb())
+
+    elif data == "addgroup_cancel":
+        await query.answer()
+        context.user_data.pop("_pending_group", None)
+        await cmd_groups(update, context)
 
     # ── Invite — role picker ────────────────────────────────────
     elif data == "cmd_invite_pick":
@@ -279,14 +413,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await _show(update, context, [f"❌ Error: {e}"], keyboard=back_kb())
 
-    # ── Add Org wizard (step 1: code) ───────────────────────────
-    elif data == "cmd_addorg_prompt":
+    # ── Add Company wizard (step 1: code) ───────────────────────────
+    elif data == "cmd_addcompany_prompt":
         await query.answer()
-        if not can(user.role, "can_manage_orgs"):
+        if not can(user.role, "can_manage_companies"):
             await query.answer("⛔ No access", show_alert=True)
             return
-        context.user_data["_pending"] = "addorg_code"
-        context.user_data.pop("_addorg", None)
+        context.user_data["_pending"] = "addcompany_code"
+        context.user_data.pop("_addcompany", None)
         await _show(update, context, [
             "📡 <b>Add Company</b>\n\n"
             "<b>Step 1/3</b> — Company code\n\n"
@@ -294,16 +428,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "<i>This is your internal label for the company.</i>"
         ], keyboard=back_kb())
 
-    # ── Remove Org (from account view) ──────────────────────────
-    elif data.startswith("rmorg_"):
+    # ── Remove Company (from account view) ──────────────────────────
+    elif data.startswith("rmco_"):
         code = data[6:]
         await query.answer()
-        if not can(user.role, "can_manage_orgs"):
+        if not can(user.role, "can_manage_companies"):
             await query.answer("⛔ No access", show_alert=True)
             return
         kb = InlineKeyboardMarkup([
             [
-                InlineKeyboardButton(f"🗑 Yes, remove {code}", callback_data=f"rmorgconfirm_{code}"),
+                InlineKeyboardButton(f"🗑 Yes, remove {code}", callback_data=f"rmcoconfirm_{code}"),
                 InlineKeyboardButton("◀️ Cancel", callback_data="cmd_account"),
             ],
         ])
@@ -313,22 +447,22 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "All data stays in Samsara — only the bot link is removed."
         ], keyboard=kb)
 
-    elif data.startswith("rmorgconfirm_"):
+    elif data.startswith("rmcoconfirm_"):
         code = data[13:]
         await query.answer()
-        org = await db.get_org_by_code(user.account_id, code)
-        if org:
-            await db.remove_organization(org.id)
+        company = await db.get_company_by_code(user.account_id, code)
+        if company:
+            await db.remove_company(company.id)
             await invalidate_client(user.account_id)
-            orgs = await db.get_account_orgs(user.account_id)
-            populate_org_display(orgs)
+            companies = await db.get_account_companies(user.account_id)
+            populate_company_display(companies)
         kb = await _user_menu_kb(user)
         await _show(update, context, [f"✅ Company <b>{code}</b> removed."], keyboard=kb)
 
-    # ── Add Org wizard: Skip display name ───────────────────────
-    elif data == "addorg_skip_name":
+    # ── Add Company wizard: Skip display name ───────────────────────
+    elif data == "addcompany_skip_name":
         await query.answer()
-        wiz = context.user_data.pop("_addorg", {})
+        wiz = context.user_data.pop("_addcompany", {})
         code = wiz.get("code", "")
         api_key = wiz.get("api_key", "")
         context.user_data.pop("_pending", None)
@@ -336,7 +470,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _show(update, context, ["❌ Wizard state lost. Please start over."], keyboard=back_kb())
             return
         context.args = [f"{code}:{api_key}"]
-        await cmd_addorg(update, context)
+        await cmd_addcompany(update, context)
 
     # ── Truck browser: company picker ───────────────────────────
     elif data == "cmd_truck_prompt":
@@ -344,33 +478,33 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not can(user.role, "can_truck_all"):
             await query.answer("⛔ No access", show_alert=True)
             return
-        org_codes = [o.code for o in orgs]
-        if len(org_codes) == 1:
+        company_codes = [o.code for o in companies]
+        if len(company_codes) == 1:
             # Skip picker, go straight to list
-            await _show_truck_list(update, context, user, org_codes[0])
+            await _show_truck_list(update, context, user, company_codes[0])
         else:
             await _show(update, context, [
                 "🚛 <b>Search Truck</b>\n\n"
                 "Select a company to browse trucks,\n"
                 "or choose <b>All Companies</b>:"
-            ], keyboard=truck_company_picker_kb(org_codes))
+            ], keyboard=truck_company_picker_kb(company_codes))
 
     elif data.startswith("trucks_browse_"):
         await query.answer()
-        org_filter = data[14:]  # "ALL" or org code
-        if org_filter == "ALL":
-            org_filter = None
-        await _show_truck_list(update, context, user, org_filter)
+        company_filter = data[14:]  # "ALL" or company code
+        if company_filter == "ALL":
+            company_filter = None
+        await _show_truck_list(update, context, user, company_filter)
 
     elif data.startswith("trucks_page_"):
         await query.answer()
         # trucks_page_ORG_PAGE  or  trucks_page_ALL_PAGE
         parts = data.split("_")
         page = int(parts[-1])
-        org_filter = "_".join(parts[2:-1])  # reconstruct org code
-        if org_filter == "ALL":
-            org_filter = None
-        await _show_truck_list(update, context, user, org_filter, page=page)
+        company_filter = "_".join(parts[2:-1])  # reconstruct company code
+        if company_filter == "ALL":
+            company_filter = None
+        await _show_truck_list(update, context, user, company_filter, page=page)
 
     elif data == "noop":
         await query.answer()
@@ -480,51 +614,64 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _show(update, context, [f"✅ Removed user {target_tid}."], keyboard=back_kb())
 
     # ── Per-truck fault reports ──────────────────────────────────
-    elif data.startswith("truckfaults_") or data.startswith("truckcritical_"):
+    elif data.startswith("truckfaults_"):
         await query.answer()
-        # truckfaults_ORG_NAME  or  truckcritical_ORG_NAME
-        prefix = "truckfaults_" if data.startswith("truckfaults_") else "truckcritical_"
-        rest = data[len(prefix):]
+        # truckfaults_ORG_NAME
+        rest = data[len("truckfaults_"):]
         parts = rest.split("_", 1)
         t_org = parts[0] if len(parts) >= 1 else ""
         t_name = parts[1] if len(parts) >= 2 else ""
-        await cmd_truck_report(update, context, truck_name=t_name, org=t_org)
+        await cmd_truck_report(update, context, truck_name=t_name, company=t_org)
 
     # ── Truck lookup ────────────────────────────────────────────
-    elif data.startswith("truck_") or data.startswith("orgtruck_"):
+    elif data.startswith("truck_") or data.startswith("cotruck_"):
         await cmd_truck(update, context)
 
-    # ── Org sub-menu ────────────────────────────────────────────
-    elif data.startswith("org_") and not data.startswith("orgfaults_") \
-            and not data.startswith("orgcritical_") \
-            and not data.startswith("orgfuel_") \
-            and not data.startswith("orgtruck_") \
-            and not data.startswith("orgenghrs_"):
-        org = data.replace("org_", "")
+    # ── Company sub-menu ────────────────────────────────────────────
+    elif data.startswith("co_") and not data.startswith("cofaults_") \
+            and not data.startswith("cofuel_") \
+            and not data.startswith("cotruck_") \
+            and not data.startswith("cohealth_") \
+            and not data.startswith("coeff_") \
+            and not data.startswith("coeff_pdf_") \
+            and not data.startswith("coeff_csv_") \
+            and not data.startswith("coweather_"):
+        co = data.replace("co_", "")
         await query.answer()
-        name = ORG_DISPLAY.get(org, org)
+        name = COMPANY_DISPLAY.get(co, co)
         text = (
-            f"┌─────────────────────────┐\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
             f"  🏢  <b>{name}</b>\n"
-            f"└─────────────────────────┘\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
             f"\n"
-            f"  Select a report for {org}:"
+            f"  Select a report for {co}:"
         )
-        await _show(update, context, [text], keyboard=org_menu_kb(org))
+        await _show(update, context, [text], keyboard=co_menu_kb(co))
 
-    # Per-org commands
-    elif data.startswith("orgfaults_"):
-        org = data.replace("orgfaults_", "")
-        await cmd_faults(update, context, org=org)
-    elif data.startswith("orgcritical_"):
-        org = data.replace("orgcritical_", "")
-        await cmd_critical(update, context, org=org)
-    elif data.startswith("orgfuel_"):
-        org = data.replace("orgfuel_", "")
-        await cmd_fuel(update, context, org=org)
-    elif data.startswith("orgenghrs_"):
-        org = data.replace("orgenghrs_", "")
-        await cmd_engine_hours(update, context, org=org)
+    # Per-company commands — format pickers
+    elif data.startswith("cofaults_"):
+        co = data.replace("cofaults_", "")
+        await cmd_faults(update, context, company=co)
+    elif data.startswith("cofuel_"):
+        co = data.replace("cofuel_", "")
+        await cmd_fuel(update, context, company=co)
+    elif data.startswith("cohealth_"):
+        co = data.replace("cohealth_", "")
+        await cmd_health(update, context, company=co)
+
+    # Per-company commands — direct PDF/CSV
+    elif data.startswith("coeff_pdf_"):
+        co = data.replace("coeff_pdf_", "")
+        await cmd_efficiency_pdf(update, context, company=co)
+    elif data.startswith("coeff_csv_"):
+        co = data.replace("coeff_csv_", "")
+        await cmd_efficiency_csv(update, context, company=co)
+    elif data.startswith("coeff_"):
+        co = data.replace("coeff_", "")
+        await cmd_efficiency(update, context, company=co)
+    elif data.startswith("coweather_"):
+        co = data.replace("coweather_", "")
+        await cmd_weather(update, context, company=co)
 
     else:
         await query.answer("Unknown action")
@@ -536,6 +683,21 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle text replies for pending interactive prompts."""
+    # Silently ignore unauthorized group chats
+    if not await _group_chat_guard(update):
+        return
+
+    # Handle cancel from the group picker reply keyboard
+    text_raw = (update.message.text or "").strip()
+    if text_raw == "❌ Cancel" and context.user_data.pop("_awaiting_chat_pick", None):
+        from telegram import ReplyKeyboardRemove
+        await update.message.reply_text(
+            "Cancelled.", reply_markup=ReplyKeyboardRemove()
+        )
+        context.user_data.pop("_pending_group", None)
+        await cmd_groups(update, context)
+        return
+
     pending = context.user_data.pop("_pending", None)
 
     if not pending:
@@ -563,8 +725,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.args = text.split()
         await cmd_truck(update, context)
 
-    # ── Add Org wizard step 1: org code ─────────────────────────
-    elif pending == "addorg_code":
+    # ── Add Company wizard step 1: company code ─────────────────────────
+    elif pending == "addcompany_code":
         code = text.strip().upper()
         if not code or len(code) > 10 or " " in code:
             await _show(update, context, [
@@ -572,8 +734,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Example: <b>PTG</b>, <b>CFT</b>"
             ], keyboard=back_kb())
             return
-        context.user_data["_addorg"] = {"code": code}
-        context.user_data["_pending"] = "addorg_key"
+        context.user_data["_addcompany"] = {"code": code}
+        context.user_data["_pending"] = "addcompany_key"
         await _show(update, context, [
             f"📡 <b>Add Company — {code}</b>\n\n"
             "<b>Step 2/3</b> — Samsara API key\n\n"
@@ -581,8 +743,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "<i>(starts with samsara_api_...)</i>"
         ], keyboard=back_kb())
 
-    # ── Add Org wizard step 2: api key ──────────────────────────
-    elif pending == "addorg_key":
+    # ── Add Company wizard step 2: api key ──────────────────────────
+    elif pending == "addcompany_key":
         api_key = text.strip()
         if not api_key or len(api_key) < 10:
             await _show(update, context, [
@@ -590,10 +752,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "It should start with <code>samsara_api_</code>"
             ], keyboard=back_kb())
             return
-        wiz = context.user_data.get("_addorg", {})
+        wiz = context.user_data.get("_addcompany", {})
         wiz["api_key"] = api_key
-        context.user_data["_addorg"] = wiz
-        context.user_data["_pending"] = "addorg_name"
+        context.user_data["_addcompany"] = wiz
+        context.user_data["_pending"] = "addcompany_name"
         await _show(update, context, [
             f"📡 <b>Add Company — {wiz.get('code', '?')}</b>\n\n"
             "<b>Step 3/3</b> — Display name (optional)\n\n"
@@ -602,18 +764,18 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Example: <i>Premier Trucking Group</i>"
         ], keyboard=skip_name_kb())
 
-    # ── Add Org wizard step 3: display name → create ────────────
-    elif pending == "addorg_name":
-        wiz = context.user_data.pop("_addorg", {})
+    # ── Add Company wizard step 3: display name → create ────────────
+    elif pending == "addcompany_name":
+        wiz = context.user_data.pop("_addcompany", {})
         code = wiz.get("code", "")
         api_key = wiz.get("api_key", "")
         display_name = code if text.lower().strip() == "skip" else text.strip()
         if not code or not api_key:
             await _show(update, context, ["❌ Wizard state lost. Please start over."], keyboard=back_kb())
             return
-        # Delegate to cmd_addorg with synthesized args
+        # Delegate to cmd_addcompany with synthesized args
         context.args = [f"{code}:{api_key}"] + (display_name.split() if display_name != code else [])
-        await cmd_addorg(update, context)
+        await cmd_addcompany(update, context)
 
     # ── Invite driver (truck number) ────────────────────────────
     elif pending == "invite_driver":

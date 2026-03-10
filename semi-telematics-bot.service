@@ -1,0 +1,22 @@
+[Unit]
+Description=Semi Telematics Telegram Bot
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=abcdev
+Group=abcdev
+WorkingDirectory=/home/abcdev/projects/Semi_Telematics_bot
+ExecStart=/usr/bin/python3 /home/abcdev/projects/Semi_Telematics_bot/run.py
+Restart=always
+RestartSec=5
+TimeoutStopSec=10
+StandardOutput=append:/home/abcdev/projects/Semi_Telematics_bot/bot.log
+StandardError=append:/home/abcdev/projects/Semi_Telematics_bot/bot.log
+EnvironmentFile=/home/abcdev/projects/Semi_Telematics_bot/.env
+
+[Install]
+WantedBy=multi-user.target

@@ -6,6 +6,7 @@ from telegram.ext import (
     CommandHandler,
     CallbackQueryHandler,
     MessageHandler,
+    ContextTypes,
     filters,
 )
 from telegram.constants import ParseMode
@@ -13,7 +14,7 @@ from telegram.constants import ParseMode
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from permissions import SYSTEM_OWNER_IDS, role_display
-from samsara_client import populate_org_display
+from samsara_client import populate_company_display
 
 import bot.config as _cfg
 from bot.config import (
@@ -22,10 +23,12 @@ from bot.config import (
 )
 from bot.keyboards import main_menu_kb, system_owner_kb
 from bot.registration import cmd_start, cmd_register, cmd_join
-from bot.fleet import cmd_faults, cmd_truck, cmd_critical, cmd_fuel, cmd_alerts
+from bot.fleet import cmd_faults, cmd_truck, cmd_fuel, cmd_alerts, cmd_health, cmd_efficiency
 from bot.management import (
     cmd_account, cmd_invite, cmd_users, cmd_setrole,
-    cmd_remove, cmd_addorg, cmd_removeorg,
+    cmd_remove, cmd_addcompany, cmd_removecompany,
+    cmd_addgroup, cmd_removegroup, cmd_groups,
+    handle_chat_shared,
 )
 from bot.admin import (
     cmd_admin, cmd_accounts, cmd_sysaccount,
@@ -33,6 +36,24 @@ from bot.admin import (
 )
 from bot.callbacks import handle_callback, handle_text
 from bot.alerts import check_new_faults, initialize_known_faults
+
+
+async def cmd_chatid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show the chat ID — works in any chat (no auth check).
+    This lets users discover a group's ID so they can authorize it."""
+    chat = update.effective_chat
+    chat_type = chat.type if chat else "unknown"
+    chat_id = chat.id if chat else 0
+    title = chat.title if chat and chat.title else "Private Chat"
+    await update.message.reply_text(
+        f"💬 <b>Chat Info</b>\n\n"
+        f"  🆔 ID: <code>{chat_id}</code>\n"
+        f"  📝 Title: {title}\n"
+        f"  📋 Type: {chat_type}\n\n"
+        f"  Use this ID with /addgroup in\n"
+        f"  your private chat with the bot.",
+        parse_mode=ParseMode.HTML,
+    )
 
 
 async def post_init(app: Application):
@@ -51,13 +72,16 @@ async def post_init(app: Application):
         BotCommand("join", "🔑 Join with invite code"),
         BotCommand("faults", "🔧 Fault report (PDF)"),
         BotCommand("truck", "🚛 Truck detail"),
-        BotCommand("critical", "🚨 Critical faults (PDF)"),
         BotCommand("fuel", "⛽ Low fuel"),
         BotCommand("alerts", "🔔 Auto-alerts"),
         BotCommand("invite", "✉️ Invite team member"),
         BotCommand("account", "🏢 Account info"),
         BotCommand("users", "👥 Manage users"),
         BotCommand("addorg", "📡 Connect company"),
+        BotCommand("groups", "💬 Manage group access"),
+        BotCommand("chatid", "🆔 Show chat ID"),
+        BotCommand("health", "🏥 Vehicle health"),
+        BotCommand("efficiency", "📊 Efficiency report"),
         BotCommand("admin", "⚙️ System admin panel"),
         BotCommand("help", "ℹ️ Help"),
     ])
@@ -72,9 +96,9 @@ async def post_init(app: Application):
     for soid in SYSTEM_OWNER_IDS:
         try:
             sys_msg = (
-                "╔══════════════════════════╗\n"
-                "     ⚙️  <b>Bot is Online</b>\n"
-                "╚══════════════════════════╝\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "  ⚙️  <b>Bot is Online</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
                 "\n"
                 f"  System Owner Dashboard\n"
                 f"  🏢 {len(sys_accounts)} accounts\n"
@@ -87,30 +111,30 @@ async def post_init(app: Application):
                 parse_mode=ParseMode.HTML,
                 reply_markup=system_owner_kb(),
             )
-            _active_messages[soid] = [msg.message_id]
+            _active_messages[(soid, soid)] = [msg.message_id]
         except Exception as e:
             logger.warning(f"Startup msg to system owner {soid}: {e}")
 
     # Send startup message to all registered customer users
     accounts = await db.list_accounts()
     for account in accounts:
-        acct_orgs = await db.get_account_orgs(account.id)
-        populate_org_display(acct_orgs)
-        org_codes = [o.code for o in acct_orgs]
-        org_text = ", ".join(org_codes) if org_codes else "No orgs yet"
+        acct_companies = await db.get_account_companies(account.id)
+        populate_company_display(acct_companies)
+        company_codes = [o.code for o in acct_companies]
+        company_text = ", ".join(company_codes) if company_codes else "No companies yet"
 
         users = await db.list_account_users(account.id)
         for user in users:
             try:
-                kb = main_menu_kb(user.role, org_codes)
+                kb = main_menu_kb(user.role, company_codes)
                 startup = (
-                    "╔══════════════════════════╗\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
                     "     🟢  <b>Bot is Online</b>\n"
-                    "╚══════════════════════════╝\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
                     "\n"
                     f"  {role_display(user.role)}\n"
                     f"  🏢 {account.name}\n"
-                    f"  Monitoring: {org_text}\n"
+                    f"  Monitoring: {company_text}\n"
                     "  Tap a button to begin ▾"
                 )
                 msg = await app.bot.send_message(
@@ -119,7 +143,7 @@ async def post_init(app: Application):
                     parse_mode=ParseMode.HTML,
                     reply_markup=kb,
                 )
-                _active_messages[user.telegram_id] = [msg.message_id]
+                _active_messages[(user.telegram_id, user.telegram_id)] = [msg.message_id]
             except Exception as e:
                 logger.warning(f"Startup msg to {user.telegram_id}: {e}")
 
@@ -141,9 +165,10 @@ def main():
     # Fleet commands
     app.add_handler(CommandHandler("faults", cmd_faults))
     app.add_handler(CommandHandler("truck", cmd_truck))
-    app.add_handler(CommandHandler("critical", cmd_critical))
     app.add_handler(CommandHandler("fuel", cmd_fuel))
     app.add_handler(CommandHandler("alerts", cmd_alerts))
+    app.add_handler(CommandHandler("health", cmd_health))
+    app.add_handler(CommandHandler("efficiency", cmd_efficiency))
 
     # Management
     app.add_handler(CommandHandler("invite", cmd_invite))
@@ -151,8 +176,14 @@ def main():
     app.add_handler(CommandHandler("users", cmd_users))
     app.add_handler(CommandHandler("setrole", cmd_setrole))
     app.add_handler(CommandHandler("remove", cmd_remove))
-    app.add_handler(CommandHandler("addorg", cmd_addorg))
-    app.add_handler(CommandHandler("removeorg", cmd_removeorg))
+    app.add_handler(CommandHandler("addorg", cmd_addcompany))
+    app.add_handler(CommandHandler("removeorg", cmd_removecompany))
+
+    # Group / channel authorization
+    app.add_handler(CommandHandler("addgroup", cmd_addgroup))
+    app.add_handler(CommandHandler("removegroup", cmd_removegroup))
+    app.add_handler(CommandHandler("groups", cmd_groups))
+    app.add_handler(CommandHandler("chatid", cmd_chatid))
 
     # System owner admin
     app.add_handler(CommandHandler("admin", cmd_admin))
@@ -163,6 +194,9 @@ def main():
 
     # Callback router
     app.add_handler(CallbackQueryHandler(handle_callback))
+
+    # Native chat picker (ChatShared)
+    app.add_handler(MessageHandler(filters.StatusUpdate.CHAT_SHARED, handle_chat_shared))
 
     # Text input handler (for interactive prompts: register, join, truck, etc.)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))

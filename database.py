@@ -13,7 +13,7 @@ Future-proof design:
 Tables
 ------
 accounts       — one per subscribing company
-organizations  — Samsara org API keys owned by an account
+companies      — Samsara company API keys owned by an account
 users          — Telegram users linked to an account + role
 invites        — one-time join codes (expire 24 h)
 """
@@ -76,7 +76,7 @@ class Account:
     created_at: str
 
 @dataclass
-class Organization:
+class Company:
     id: int
     account_id: int
     code: str
@@ -105,6 +105,16 @@ class User:
     @property
     def is_admin_or_above(self) -> bool:
         return self.role in (Role.OWNER, Role.ADMIN)
+
+@dataclass
+class AuthorizedChat:
+    id: int
+    account_id: int
+    chat_id: int             # Telegram group/channel ID (negative)
+    chat_title: str
+    added_by: int            # user.id who authorized
+    is_active: bool
+    created_at: str
 
 @dataclass
 class Invite:
@@ -163,6 +173,19 @@ class Database:
     # ── Schema ────────────────────────────────────────────────────
 
     async def _create_tables(self):
+        # Migration: rename old 'organizations' table → 'companies'
+        try:
+            cur = await self._db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='organizations'"
+            )
+            if await cur.fetchone():
+                await self._db.execute("ALTER TABLE organizations RENAME TO companies")
+                await self._db.execute("DROP INDEX IF EXISTS idx_orgs_account_id")
+                await self._db.commit()
+                logger.info("Migrated table organizations → companies")
+        except Exception as e:
+            logger.debug(f"Table migration check: {e}")
+
         await self._db.executescript("""
             CREATE TABLE IF NOT EXISTS accounts (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -173,7 +196,7 @@ class Database:
                 created_at  TEXT    NOT NULL
             );
 
-            CREATE TABLE IF NOT EXISTS organizations (
+            CREATE TABLE IF NOT EXISTS companies (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 account_id      INTEGER NOT NULL REFERENCES accounts(id),
                 code            TEXT    NOT NULL,
@@ -210,12 +233,25 @@ class Database:
                 created_at  TEXT    NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS authorized_chats (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id  INTEGER NOT NULL REFERENCES accounts(id),
+                chat_id     INTEGER NOT NULL,
+                chat_title  TEXT    NOT NULL DEFAULT '',
+                added_by    INTEGER NOT NULL REFERENCES users(id),
+                is_active   INTEGER NOT NULL DEFAULT 1,
+                created_at  TEXT    NOT NULL,
+                UNIQUE(account_id, chat_id)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_users_telegram_id
                 ON users(telegram_id);
-            CREATE INDEX IF NOT EXISTS idx_orgs_account_id
-                ON organizations(account_id);
+            CREATE INDEX IF NOT EXISTS idx_companies_account_id
+                ON companies(account_id);
             CREATE INDEX IF NOT EXISTS idx_invites_code
                 ON invites(code);
+            CREATE INDEX IF NOT EXISTS idx_authorized_chats_chat_id
+                ON authorized_chats(chat_id);
         """)
         await self._db.commit()
 
@@ -248,8 +284,8 @@ class Database:
             created_at=row["created_at"],
         )
 
-    def _row_to_org(self, row) -> Organization:
-        return Organization(
+    def _row_to_company(self, row) -> Company:
+        return Company(
             id=row["id"], account_id=row["account_id"],
             code=row["code"], display_name=row["display_name"],
             samsara_api_key=row["samsara_api_key"],
@@ -279,6 +315,15 @@ class Database:
             created_by=row["created_by"],
             expires_at=row["expires_at"],
             used_by=row["used_by"],
+            created_at=row["created_at"],
+        )
+
+    def _row_to_authorized_chat(self, row) -> AuthorizedChat:
+        return AuthorizedChat(
+            id=row["id"], account_id=row["account_id"],
+            chat_id=row["chat_id"], chat_title=row["chat_title"],
+            added_by=row["added_by"],
+            is_active=bool(row["is_active"]),
             created_at=row["created_at"],
         )
 
@@ -336,71 +381,71 @@ class Database:
         return True
 
     # ══════════════════════════════════════════════════════════════
-    # ORGANIZATIONS
+    # COMPANIES
     # ══════════════════════════════════════════════════════════════
 
-    async def add_organization(
+    async def add_company(
         self, account_id: int, code: str,
         samsara_api_key: str, display_name: str = "",
         active_days: int = 30,
-    ) -> Organization:
-        """Add a Samsara org to an account."""
+    ) -> Company:
+        """Add a Samsara company to an account."""
         now = self._now()
         code = code.strip().upper()
         cur = await self._db.execute(
-            """INSERT INTO organizations
+            """INSERT INTO companies
                (account_id, code, display_name, samsara_api_key, active_days, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
             (account_id, code, display_name, samsara_api_key, active_days, now),
         )
         await self._db.commit()
-        return Organization(
+        return Company(
             id=cur.lastrowid, account_id=account_id, code=code,
             display_name=display_name, samsara_api_key=samsara_api_key,
             active_days=active_days, is_active=True, created_at=now,
         )
 
-    async def get_account_orgs(
+    async def get_account_companies(
         self, account_id: int, active_only: bool = True,
-    ) -> list[Organization]:
-        """List all orgs belonging to an account."""
-        q = "SELECT * FROM organizations WHERE account_id = ?"
+    ) -> list[Company]:
+        """List all companies belonging to an account."""
+        q = "SELECT * FROM companies WHERE account_id = ?"
         params: list = [account_id]
         if active_only:
             q += " AND is_active = 1"
         q += " ORDER BY code"
         cur = await self._db.execute(q, params)
         rows = await cur.fetchall()
-        return [self._row_to_org(r) for r in rows]
+        return [self._row_to_company(r) for r in rows]
 
-    async def get_org_by_code(
+    async def get_company_by_code(
         self, account_id: int, code: str,
-    ) -> Optional[Organization]:
+    ) -> Optional[Company]:
         cur = await self._db.execute(
-            "SELECT * FROM organizations WHERE account_id = ? AND code = ?",
+            "SELECT * FROM companies WHERE account_id = ? AND code = ?",
             (account_id, code.upper()),
         )
         row = await cur.fetchone()
-        return self._row_to_org(row) if row else None
+        return self._row_to_company(row) if row else None
 
-    async def remove_organization(self, org_id: int) -> bool:
-        """Soft-delete an organization."""
+    async def remove_company(self, company_id: int) -> bool:
+        """Soft-delete a company."""
         await self._db.execute(
-            "UPDATE organizations SET is_active = 0 WHERE id = ?", (org_id,)
+            "UPDATE companies SET is_active = 0 WHERE id = ?", (company_id,)
         )
         await self._db.commit()
         return True
 
-    async def update_organization(self, org_id: int, **kwargs) -> bool:
-        """Update org fields. Allowed: display_name, samsara_api_key, active_days, is_active."""
+    async def update_company(self, company_id: int, **kwargs) -> bool:
+        """Update company fields. Allowed: display_name, samsara_api_key, active_days, is_active."""
         allowed = {"display_name", "samsara_api_key", "active_days", "is_active"}
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
             return False
         set_clause = ", ".join(f"{k} = ?" for k in updates)
-        values = list(updates.values()) + [org_id]
+        values = list(updates.values()) + [company_id]
         await self._db.execute(
-            f"UPDATE organizations SET {set_clause} WHERE id = ?", values,
+            f"UPDATE companies SET {set_clause} WHERE id = ?", values,
         )
         await self._db.commit()
         return True
@@ -450,6 +495,16 @@ class Database:
     async def list_account_users(self, account_id: int) -> list[User]:
         cur = await self._db.execute(
             "SELECT * FROM users WHERE account_id = ? AND is_active = 1 ORDER BY role, created_at",
+            (account_id,),
+        )
+        rows = await cur.fetchall()
+        return [self._row_to_user(r) for r in rows]
+
+    async def get_account_admins(self, account_id: int) -> list[User]:
+        """Return owners and admins for an account (for error notifications)."""
+        cur = await self._db.execute(
+            "SELECT * FROM users WHERE account_id = ? AND is_active = 1 "
+            "AND role IN ('owner', 'admin') ORDER BY role",
             (account_id,),
         )
         rows = await cur.fetchall()
@@ -510,9 +565,9 @@ class Database:
         row = await cur.fetchone()
         return row[0] if row else 0
 
-    async def count_all_orgs(self, active_only: bool = True) -> int:
-        """Count all orgs across all accounts."""
-        q = "SELECT COUNT(*) FROM organizations"
+    async def count_all_companies(self, active_only: bool = True) -> int:
+        """Count all companies across all accounts."""
+        q = "SELECT COUNT(*) FROM companies"
         if active_only:
             q += " WHERE is_active = 1"
         cur = await self._db.execute(q)
@@ -527,19 +582,19 @@ class Database:
 
         total_users = await self.count_all_users(active_only=False)
         active_users = await self.count_all_users(active_only=True)
-        total_orgs = await self.count_all_orgs(active_only=False)
-        active_orgs = await self.count_all_orgs(active_only=True)
+        total_companies = await self.count_all_companies(active_only=False)
+        active_companies = await self.count_all_companies(active_only=True)
         alert_subs = await self.get_all_alert_subscribers()
 
         # Per-account breakdown
         account_details = []
         for acct in active_accounts:
             users = await self.list_account_users(acct.id)
-            orgs = await self.get_account_orgs(acct.id)
+            companies = await self.get_account_companies(acct.id)
             account_details.append({
                 "account": acct,
                 "users": users,
-                "orgs": orgs,
+                "companies": companies,
             })
 
         return {
@@ -548,8 +603,8 @@ class Database:
             "inactive_accounts": len(inactive_accounts),
             "total_users": total_users,
             "active_users": active_users,
-            "total_orgs": total_orgs,
-            "active_orgs": active_orgs,
+            "total_companies": total_companies,
+            "active_companies": active_companies,
             "alert_subscribers": len(alert_subs),
             "account_details": account_details,
         }
@@ -652,4 +707,70 @@ class Database:
         cur = await self._db.execute(q, params)
         rows = await cur.fetchall()
         return [self._row_to_invite(r) for r in rows]
+
+    # ══════════════════════════════════════════════════════════════
+    # AUTHORIZED CHATS (groups / channels)
+    # ══════════════════════════════════════════════════════════════
+
+    async def add_authorized_chat(
+        self, account_id: int, chat_id: int, chat_title: str, added_by: int,
+    ) -> AuthorizedChat:
+        """Authorize a group/channel for this account."""
+        now = self._now()
+        cur = await self._db.execute(
+            """INSERT INTO authorized_chats
+               (account_id, chat_id, chat_title, added_by, created_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(account_id, chat_id) DO UPDATE
+               SET is_active = 1, chat_title = excluded.chat_title""",
+            (account_id, chat_id, chat_title, added_by, now),
+        )
+        await self._db.commit()
+        return AuthorizedChat(
+            id=cur.lastrowid, account_id=account_id, chat_id=chat_id,
+            chat_title=chat_title, added_by=added_by,
+            is_active=True, created_at=now,
+        )
+
+    async def remove_authorized_chat(self, account_id: int, chat_id: int) -> bool:
+        """Deauthorize a group/channel."""
+        await self._db.execute(
+            "UPDATE authorized_chats SET is_active = 0 WHERE account_id = ? AND chat_id = ?",
+            (account_id, chat_id),
+        )
+        await self._db.commit()
+        return True
+
+    async def get_authorized_chats(self, account_id: int) -> list[AuthorizedChat]:
+        """List all authorized chats for an account."""
+        cur = await self._db.execute(
+            "SELECT * FROM authorized_chats WHERE account_id = ? AND is_active = 1 ORDER BY chat_title",
+            (account_id,),
+        )
+        rows = await cur.fetchall()
+        return [self._row_to_authorized_chat(r) for r in rows]
+
+    async def is_chat_authorized(self, chat_id: int) -> bool:
+        """Check if a group/channel is authorized by any active account."""
+        cur = await self._db.execute(
+            """SELECT 1 FROM authorized_chats ac
+               JOIN accounts a ON a.id = ac.account_id
+               WHERE ac.chat_id = ? AND ac.is_active = 1 AND a.is_active = 1
+               LIMIT 1""",
+            (chat_id,),
+        )
+        row = await cur.fetchone()
+        return row is not None
+
+    async def get_chat_account_id(self, chat_id: int) -> Optional[int]:
+        """Get the account_id that owns an authorized chat."""
+        cur = await self._db.execute(
+            """SELECT ac.account_id FROM authorized_chats ac
+               JOIN accounts a ON a.id = ac.account_id
+               WHERE ac.chat_id = ? AND ac.is_active = 1 AND a.is_active = 1
+               LIMIT 1""",
+            (chat_id,),
+        )
+        row = await cur.fetchone()
+        return row[0] if row else None
 
