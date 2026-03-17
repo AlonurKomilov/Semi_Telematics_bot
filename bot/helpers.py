@@ -1,6 +1,7 @@
 """Single-window engine and utility helpers."""
 
 import html as _html
+import re
 
 from telegram import Update, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -12,6 +13,11 @@ from bot.keyboards import main_menu_kb
 
 MAX_TG_MSG = 4096  # Telegram message character limit
 
+# Pre-compiled regex for allowed Telegram HTML tags (module-level for perf)
+_ALLOWED_RE = re.compile(
+    r'(</?(?:b|i|u|s|code|pre|a(?:\s[^>]*)?)>)', re.IGNORECASE
+)
+
 
 def escape_html(text: str) -> str:
     """Escape HTML special characters while preserving allowed tags.
@@ -19,11 +25,6 @@ def escape_html(text: str) -> str:
     Preserves: <b>, </b>, <i>, </i>, <u>, </u>, <code>, </code>,
     <pre>, </pre>, <a href="...">, </a>, <s>, </s>.
     """
-    import re
-    # Extract allowed tags, replace with placeholders, escape, restore
-    _ALLOWED_RE = re.compile(
-        r'(</?(?:b|i|u|s|code|pre|a(?:\s[^>]*)?)>)', re.IGNORECASE
-    )
     parts = _ALLOWED_RE.split(text)
     result = []
     for i, part in enumerate(parts):

@@ -188,11 +188,14 @@ def probe_model_availability(force: bool = False) -> dict[str, list[str]]:
 
     Returns ``{model_name: [working_regions, …], …}``.
     Skips the probe if cached results are fresh (< TTL) unless *force*.
+    When cache is empty and not forced, returns static registry immediately
+    and schedules background probe to avoid blocking the event loop.
     """
     global _availability_cache, _availability_ts
     import os
     from google.auth.transport.requests import Request
 
+    # Return cached if fresh
     if not force and _availability_cache and (time.time() - _availability_ts < _AVAILABILITY_TTL):
         return _availability_cache
 
@@ -200,6 +203,11 @@ def probe_model_availability(force: bool = False) -> dict[str, list[str]]:
     creds = _get_credentials()
     if not project or not creds:
         # Can't probe — return static registry as fallback
+        return {name: info["locations"] for name, info in MODEL_REGISTRY.items()}
+
+    # Non-forced and no cache yet → return static + schedule background probe
+    if not force and not _availability_cache:
+        _schedule_background_probe()
         return {name: info["locations"] for name, info in MODEL_REGISTRY.items()}
 
     creds.refresh(Request())
@@ -221,6 +229,30 @@ def probe_model_availability(force: bool = False) -> dict[str, list[str]]:
     _availability_ts = time.time()
     logger.info(f"Availability probe complete: {len(result)} models available")
     return result
+
+
+_probe_scheduled = False
+
+
+def _schedule_background_probe():
+    """Run the full probe in a background thread (non-blocking)."""
+    global _probe_scheduled
+    if _probe_scheduled:
+        return
+    _probe_scheduled = True
+
+    import threading
+
+    def _run():
+        global _probe_scheduled
+        try:
+            probe_model_availability(force=True)
+        except Exception as e:
+            logger.warning(f"Background probe failed: {e}")
+        finally:
+            _probe_scheduled = False
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def get_verified_models() -> list[dict]:
@@ -1267,6 +1299,20 @@ async def _execute_tool_call(tool_name: str, tool_args: dict,
         return {"error": str(e)}
 
 
+_cached_tools = None  # Lazy-built Tool objects for function calling
+
+
+def _get_cached_tools():
+    """Return cached Vertex AI Tool objects, building them once on first call."""
+    global _cached_tools
+    if _cached_tools is not None:
+        return _cached_tools
+    from vertexai.generative_models import Tool, FunctionDeclaration
+    func_decls = [FunctionDeclaration(**td) for td in FLEET_TOOLS]
+    _cached_tools = [Tool(function_declarations=func_decls)]
+    return _cached_tools
+
+
 async def ask_fleet_agent(question: str, fleet_context: dict,
                           samsara_client,
                           user_id: int | None = None,
@@ -1305,11 +1351,8 @@ async def ask_fleet_agent(question: str, fleet_context: dict,
                 _store_history(user_id, question, cached)
             return {"text": cached, "tool_results": []}
 
-    # Build tool declarations
-    func_decls = [
-        FunctionDeclaration(**tool_def) for tool_def in FLEET_TOOLS
-    ]
-    tools = [Tool(function_declarations=func_decls)]
+    # Build tool declarations (cached after first build)
+    tools = _get_cached_tools()
 
     # Build the prompt with context
     parts = [FLEET_ASSISTANT_SYSTEM, "\n\n"]
@@ -1337,28 +1380,76 @@ async def ask_fleet_agent(question: str, fleet_context: dict,
     full_prompt = "".join(parts)
     tool_results: list[dict] = []
 
-    try:
-        response = await asyncio.to_thread(
-            model.generate_content, full_prompt, tools=tools,
-        )
+    max_retries = 2
+    last_exc = None
 
-        # Process function calls (up to 3 rounds of tool use)
-        for _round in range(3):
-            if not response.candidates:
-                return {
-                    "text": (
-                        "I couldn't generate a response for that question. "
-                        "Please try rephrasing it."
-                    ),
-                    "tool_results": tool_results,
-                }
+    for attempt in range(max_retries + 1):
+        try:
+            response = await asyncio.to_thread(
+                model.generate_content, full_prompt, tools=tools,
+            )
 
-            candidate = response.candidates[0]
-            part = candidate.content.parts[0]
+            # Process function calls (up to 3 rounds of tool use)
+            for _round in range(3):
+                if not response.candidates:
+                    return {
+                        "text": (
+                            "I couldn't generate a response for that question. "
+                            "Please try rephrasing it."
+                        ),
+                        "tool_results": tool_results,
+                    }
 
-            # If the model returns text, we're done
-            if part.text:
-                text = part.text.strip()
+                candidate = response.candidates[0]
+                part = candidate.content.parts[0]
+
+                # If the model returns text, we're done
+                if part.text:
+                    text = part.text.strip()
+                    text = text.replace("**", "").replace("##", "").replace("# ", "")
+                    _capture_usage(response)
+                    if user_id is not None:
+                        _store_history(user_id, question, text)
+                    if ck and not has_history:
+                        _cache_put(ck, text)
+                    return {"text": text, "tool_results": tool_results}
+
+                # If the model calls a function, execute it
+                if part.function_call:
+                    fc = part.function_call
+                    tool_name = fc.name
+                    tool_args = dict(fc.args) if fc.args else {}
+
+                    logger.info(f"AI agent calling tool: {tool_name}({tool_args})")
+                    result = await _execute_tool_call(
+                        tool_name, tool_args, samsara_client,
+                    )
+                    tool_results.append({"tool": tool_name, "args": tool_args, "data": result})
+
+                    # Feed the result back to the model
+                    fn_response = Part.from_function_response(
+                        name=tool_name,
+                        response={"result": result},
+                    )
+                    response = await asyncio.to_thread(
+                        model.generate_content,
+                        [
+                            Content(parts=[Part.from_text(full_prompt)], role="user"),
+                            candidate.content,
+                            Content(parts=[fn_response], role="function"),
+                        ],
+                        tools=tools,
+                    )
+                else:
+                    break
+
+            # Extract final text after tool-use rounds
+            if response.candidates and response.candidates[0].content.parts:
+                try:
+                    text = response.text.strip()
+                except ValueError:
+                    parts_list = response.candidates[0].content.parts
+                    text = ''.join(getattr(p, 'text', '') for p in parts_list).strip()
                 text = text.replace("**", "").replace("##", "").replace("# ", "")
                 _capture_usage(response)
                 if user_id is not None:
@@ -1367,54 +1458,31 @@ async def ask_fleet_agent(question: str, fleet_context: dict,
                     _cache_put(ck, text)
                 return {"text": text, "tool_results": tool_results}
 
-            # If the model calls a function, execute it
-            if part.function_call:
-                fc = part.function_call
-                tool_name = fc.name
-                tool_args = dict(fc.args) if fc.args else {}
-
-                logger.info(f"AI agent calling tool: {tool_name}({tool_args})")
-                result = await _execute_tool_call(
-                    tool_name, tool_args, samsara_client,
-                )
-                tool_results.append({"tool": tool_name, "args": tool_args, "data": result})
-
-                # Feed the result back to the model
-                fn_response = Part.from_function_response(
-                    name=tool_name,
-                    response={"result": result},
-                )
-                response = await asyncio.to_thread(
-                    model.generate_content,
-                    [
-                        Content(parts=[Part.from_text(full_prompt)], role="user"),
-                        candidate.content,
-                        Content(parts=[fn_response], role="function"),
-                    ],
-                    tools=tools,
-                )
-            else:
-                break
-
-        # Extract final text after tool-use rounds
-        if response.candidates and response.candidates[0].content.parts:
-            try:
-                text = response.text.strip()
-            except ValueError:
-                parts_list = response.candidates[0].content.parts
-                text = ''.join(getattr(p, 'text', '') for p in parts_list).strip()
-            text = text.replace("**", "").replace("##", "").replace("# ", "")
-            _capture_usage(response)
-            if user_id is not None:
-                _store_history(user_id, question, text)
-            if ck and not has_history:
-                _cache_put(ck, text)
+            # No usable text — fall back to simple generate
+            text = await ask_fleet(question, fleet_context, user_id=user_id,
+                                   account_id=account_id)
             return {"text": text, "tool_results": tool_results}
 
-        text = await ask_fleet(question, fleet_context, user_id=user_id)
-        return {"text": text, "tool_results": tool_results}
+        except Exception as e:
+            last_exc = e
+            err_str = str(e).lower()
+            # Retry on 429 rate limit errors with backoff
+            if ('429' in err_str or 'resource exhausted' in err_str) and attempt < max_retries:
+                wait = 2 ** attempt  # 1s, 2s
+                logger.warning(
+                    f"Agent rate limited (attempt {attempt+1}/{max_retries+1}), "
+                    f"retrying in {wait}s"
+                )
+                await asyncio.sleep(wait)
+                continue
+            # Non-retryable error → fall back to simple generate
+            logger.warning(f"Agent mode failed, falling back: {e}")
+            text = await ask_fleet(question, fleet_context, user_id=user_id,
+                                   account_id=account_id)
+            return {"text": text, "tool_results": tool_results}
 
-    except Exception as e:
-        logger.warning(f"Agent mode failed, falling back: {e}")
-        text = await ask_fleet(question, fleet_context, user_id=user_id)
-        return {"text": text, "tool_results": tool_results}
+    # Exhausted retries — fall back
+    logger.warning(f"Agent exhausted retries, falling back: {last_exc}")
+    text = await ask_fleet(question, fleet_context, user_id=user_id,
+                           account_id=account_id)
+    return {"text": text, "tool_results": tool_results}
