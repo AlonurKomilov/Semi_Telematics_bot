@@ -10,11 +10,15 @@ v3 — Database-driven: company display names and API keys come from the
 """
 
 import asyncio
+import copy
+import json
 import re
 import aiohttp
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+
+from cachetools import TTLCache
 
 logger = logging.getLogger(__name__)
 
@@ -125,22 +129,35 @@ class SamsaraClient:
         """Return fuel percent and DEF level for all vehicles.
 
         Non-fatal: if the Samsara endpoint returns an error (e.g. 400
-        for fleets that don't support defLevelMilliPercent), return an
-        empty list so the rest of the data pipeline keeps working.
+        for fleets that don't support defLevelMilliPercent), retry with
+        fuelPercents only so we still get fuel data.
         """
         try:
             data = await self._get("/fleet/vehicles/stats",
                                    params={"types": "fuelPercents,defLevelMilliPercent"})
             return data.get("data", [])
-        except Exception as e:
-            logger.warning(f"Fuel stats unavailable (non-fatal): {e}")
-            return []
+        except Exception:
+            logger.warning("Fuel+DEF stats failed, retrying with fuelPercents only")
+            try:
+                data = await self._get("/fleet/vehicles/stats",
+                                       params={"types": "fuelPercents"})
+                return data.get("data", [])
+            except Exception as e2:
+                logger.warning(f"Fuel stats unavailable (non-fatal): {e2}")
+                return []
 
     # ── Drivers ──────────────────────────────────────────────────
 
     async def get_drivers(self) -> list[dict]:
         """Return list of all fleet drivers."""
         data = await self._get("/fleet/drivers")
+        return data.get("data", [])
+
+    # ── Geofences ────────────────────────────────────────────────
+
+    async def get_geofences(self) -> list[dict]:
+        """Return all geofences defined in the Samsara dashboard."""
+        data = await self._get("/fleet/geofences")
         return data.get("data", [])
 
     # ── Active-vehicle filter ────────────────────────────────────
@@ -403,6 +420,31 @@ class SamsaraClient:
 
     # ── Vehicle Health Diagnostics ───────────────────────────────
 
+    async def _safe_stats(self, types: str) -> dict:
+        """Fetch /fleet/vehicles/stats with per-type fallback on 400.
+
+        If the batched call fails, retries each stat type individually
+        so fleets that don't support certain types still get partial data.
+        """
+        try:
+            return await self._get(
+                "/fleet/vehicles/stats", params={"types": types}
+            )
+        except Exception:
+            # Batch failed — try each type individually
+            logger.debug(f"Stats batch [{types}] failed, trying individually")
+            merged: dict[str, dict] = {}
+            for t in types.split(","):
+                try:
+                    data = await self._get(
+                        "/fleet/vehicles/stats", params={"types": t}
+                    )
+                    for v in data.get("data", []):
+                        merged.setdefault(v["id"], {"id": v["id"]}).update(v)
+                except Exception:
+                    logger.debug(f"Stats type {t} unsupported, skipping")
+            return {"data": list(merged.values())}
+
     async def get_vehicle_health(self) -> list[dict]:
         """Return health diagnostics for all active vehicles.
 
@@ -418,21 +460,10 @@ class SamsaraClient:
         batch1 = "defLevelMilliPercent,engineCoolantTemperatureMilliC,batteryMilliVolts,engineOilPressureKPa"
         batch2 = "engineLoadPercent,seatbeltDriver,engineRpm"
 
-        # batch1 includes defLevelMilliPercent which some fleets don't
-        # support (400 Bad Request). Make it non-fatal.
-        try:
-            data1, data2 = await asyncio.gather(
-                self._get("/fleet/vehicles/stats", params={"types": batch1}),
-                self._get("/fleet/vehicles/stats", params={"types": batch2}),
-            )
-        except Exception:
-            # Retry batch1 without DEF, fetch batch2 normally
-            logger.warning("Health batch1 failed, retrying without defLevelMilliPercent")
-            batch1_no_def = "engineCoolantTemperatureMilliC,batteryMilliVolts,engineOilPressureKPa"
-            data1, data2 = await asyncio.gather(
-                self._get("/fleet/vehicles/stats", params={"types": batch1_no_def}),
-                self._get("/fleet/vehicles/stats", params={"types": batch2}),
-            )
+        data1, data2 = await asyncio.gather(
+            self._safe_stats(batch1),
+            self._safe_stats(batch2),
+        )
 
         stats_by_id: dict[str, dict] = {}
         for v in data1.get("data", []):
@@ -492,15 +523,28 @@ class SamsaraClient:
                 health["rpm"] = rpm_val
                 health["rpm_time"] = rpm_time
 
-            # Engine state (derived from RPM)
-            health["engine_on"] = bool(rpm_val and rpm_val > 0)
+            # Engine state (derived from RPM, with speed fallback)
+            # PTG gateways don't support engineRpm, so use GPS speed
+            # as a secondary signal.
+            loc_speed = v.get("location", {}).get("speed")  # km/h from GPS
+            if rpm_val is not None:
+                engine_on = rpm_val > 0
+            elif loc_speed is not None:
+                engine_on = loc_speed > 3  # >3 km/h ≈ moving = engine on
+            else:
+                engine_on = None  # unknown
+            health["engine_on"] = engine_on
 
-            # Count alerts
+            # Count alerts — only flag pressure/voltage when engine is
+            # confirmed running.  When engine_on is None (unknown) or
+            # False (parked), low oil and low battery are *expected*.
             alerts = []
             if health.get("battery_v") is not None and health["battery_v"] < 12.2:
-                alerts.append("low_battery")
+                if engine_on:
+                    alerts.append("low_battery")
             if health.get("oil_psi") is not None and health["oil_psi"] < 10:
-                alerts.append("low_oil_pressure")
+                if engine_on:
+                    alerts.append("low_oil_pressure")
             if health.get("coolant_c") is not None and health["coolant_c"] > 105:
                 alerts.append("high_coolant_temp")
             if health.get("def_pct") is not None and health["def_pct"] < 10:
@@ -936,23 +980,90 @@ def build_multi_company_client(
     return MultiCompanyClient(clients)
 
 
+# Default TTL values (seconds) for cached API responses
+_CACHE_TTL_SHORT = 120   # fleet overview, faults, health, fuel
+_CACHE_TTL_LONG = 300    # weather, efficiency (historical data)
+
+
 class MultiCompanyClient:
     """Wraps multiple SamsaraClient instances for parallel multi-company queries.
 
     Every vehicle dict returned gets an ``_org`` key with the company code.
+    Includes a TTL cache so repeated queries within the TTL window are instant.
     """
 
     def __init__(self, company_clients: dict[str, SamsaraClient]):
         self.clients = company_clients
         self.company_codes = list(company_clients.keys())
         self._last_skipped: list[str] = []
+        # In-memory TTL cache (fallback when Redis is unavailable)
+        self._mem_cache: TTLCache = TTLCache(maxsize=128, ttl=_CACHE_TTL_SHORT)
+        self._cache_hits = 0
+        self._cache_misses = 0
 
     @property
     def last_skipped(self) -> list[str]:
         """Company codes skipped in the most recent _run_per_company call."""
         return self._last_skipped
 
+    @property
+    def cache_stats(self) -> dict:
+        """Return cache hit/miss counters."""
+        return {
+            "hits": self._cache_hits,
+            "misses": self._cache_misses,
+            "size": len(self._mem_cache),
+        }
+
+    async def _cache_get(self, key: str):
+        """Look up a cached result. Uses Redis if available, else in-memory."""
+        # Try Redis first
+        try:
+            from bot.redis_client import is_available as _redis_ok, get as _redis_get
+            if _redis_ok():
+                raw = await _redis_get(f"samsara:{key}")
+                if raw is not None:
+                    self._cache_hits += 1
+                    self._last_skipped = raw.get("_skipped", [])
+                    return raw.get("data")
+        except Exception:
+            pass
+
+        # Fallback to in-memory
+        entry = self._mem_cache.get(key)
+        if entry is not None:
+            self._cache_hits += 1
+            result, skipped = entry
+            self._last_skipped = skipped
+            return copy.deepcopy(result)
+
+        self._cache_misses += 1
+        return None
+
+    async def _cache_set(self, key: str, result, ttl: int = _CACHE_TTL_SHORT):
+        """Store a result in the cache (with its associated skipped list)."""
+        skipped = list(self._last_skipped)
+
+        # Try Redis first
+        try:
+            from bot.redis_client import is_available as _redis_ok, set as _redis_set
+            if _redis_ok():
+                payload = {"data": result, "_skipped": skipped}
+                await _redis_set(f"samsara:{key}", payload, ttl=ttl)
+                return
+        except Exception:
+            pass
+
+        # Fallback to in-memory
+        self._mem_cache[key] = (copy.deepcopy(result), skipped)
+
+    def invalidate_cache(self):
+        """Clear all in-memory cached API responses."""
+        self._mem_cache.clear()
+        logger.info("MultiCompanyClient cache invalidated")
+
     async def close(self):
+        self._mem_cache.clear()
         await asyncio.gather(*(c.close() for c in self.clients.values()),
                              return_exceptions=True)
 
@@ -993,6 +1104,11 @@ class MultiCompanyClient:
     # ── fleet overview ───────────────────────────────────────────
 
     async def get_fleet_overview(self, company: str | None = None) -> list[dict]:
+        cache_key = f"fleet_overview:{company or 'all'}"
+        cached = await self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         async def _fn(c):
             return await c.get_fleet_overview()
 
@@ -1001,6 +1117,7 @@ class MultiCompanyClient:
         for code, vehicles in per_co.items():
             combined.extend(self._tag(vehicles, code))
         combined.sort(key=lambda x: (x.get("_org", ""), x["name"]))
+        await self._cache_set(cache_key, combined)
         return combined
 
     # ── faults ───────────────────────────────────────────────────
@@ -1012,6 +1129,11 @@ class MultiCompanyClient:
 
         company_breakdown: {code: {"total": int, "faulted": int, "dtcs": int}}
         """
+        cache_key = f"faults:{company or 'all'}"
+        cached = await self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         async def _fn(c):
             return await c.get_vehicles_with_faults()
 
@@ -1032,11 +1154,18 @@ class MultiCompanyClient:
                 "dtcs": dtc_count,
             }
 
-        return all_faulted, grand_total, breakdown
+        result = (all_faulted, grand_total, breakdown)
+        await self._cache_set(cache_key, result)
+        return result
 
     # ── critical faults ──────────────────────────────────────────
 
     async def get_critical_faults(self, company: str | None = None) -> list[dict]:
+        cache_key = f"critical:{company or 'all'}"
+        cached = await self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         async def _fn(c):
             return await c.get_critical_faults()
 
@@ -1044,6 +1173,7 @@ class MultiCompanyClient:
         combined = []
         for code, vehicles in per_co.items():
             combined.extend(self._tag(vehicles, code))
+        await self._cache_set(cache_key, combined)
         return combined
 
     # ── low fuel ─────────────────────────────────────────────────
@@ -1051,6 +1181,11 @@ class MultiCompanyClient:
     async def get_low_fuel_vehicles(
         self, threshold: int = 20, company: str | None = None,
     ) -> list[dict]:
+        cache_key = f"low_fuel:{threshold}:{company or 'all'}"
+        cached = await self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         async def _fn(c, thr):
             return await c.get_low_fuel_vehicles(thr)
 
@@ -1059,6 +1194,7 @@ class MultiCompanyClient:
         for code, vehicles in per_co.items():
             combined.extend(self._tag(vehicles, code))
         combined.sort(key=lambda x: x.get("_fuel_pct", 999))
+        await self._cache_set(cache_key, combined)
         return combined
 
     # ── single truck lookup ──────────────────────────────────────
@@ -1102,6 +1238,11 @@ class MultiCompanyClient:
         self, company: str | None = None,
     ) -> list[dict]:
         """Get vehicle health diagnostics across companies."""
+        cache_key = f"health:{company or 'all'}"
+        cached = await self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         async def _fn(c):
             return await c.get_vehicle_health()
 
@@ -1111,6 +1252,7 @@ class MultiCompanyClient:
             combined.extend(self._tag(vehicles, code))
         combined.sort(key=lambda x: (-len(x.get("_health_alerts", [])),
                                       x.get("_org", ""), x["name"]))
+        await self._cache_set(cache_key, combined)
         return combined
 
     # ── fleet weather ────────────────────────────────────────────
@@ -1119,6 +1261,11 @@ class MultiCompanyClient:
         self, company: str | None = None,
     ) -> list[dict]:
         """Get ambient weather conditions across companies."""
+        cache_key = f"weather:{company or 'all'}"
+        cached = await self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         async def _fn(c):
             return await c.get_fleet_weather()
 
@@ -1128,6 +1275,7 @@ class MultiCompanyClient:
             combined.extend(self._tag(vehicles, code))
         # Sort by temperature ascending (coldest first)
         combined.sort(key=lambda x: x.get("_weather", {}).get("temp_f", 999))
+        await self._cache_set(cache_key, combined)
         return combined
 
     # ── driver efficiency ────────────────────────────────────────
@@ -1154,6 +1302,11 @@ class MultiCompanyClient:
         self, days: int = 7, company: str | None = None,
     ) -> list[dict]:
         """Get merged engine hours + driver efficiency across companies."""
+        cache_key = f"efficiency:{days}:{company or 'all'}"
+        cached = await self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         async def _fn(c):
             return await c.get_fleet_efficiency(days)
 
@@ -1162,4 +1315,28 @@ class MultiCompanyClient:
         for code, vehicles in per_co.items():
             combined.extend(self._tag(vehicles, code))
         combined.sort(key=lambda x: (x.get("_org", ""), x["name"]))
+        await self._cache_set(cache_key, combined)
+        return combined
+
+    # ── geofences ────────────────────────────────────────────────
+
+    async def get_geofences(
+        self, company: str | None = None,
+    ) -> list[dict]:
+        """Get geofences across companies."""
+        cache_key = f"geofences:{company or 'all'}"
+        cached = await self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        async def _fn(c):
+            return await c.get_geofences()
+
+        per_co = await self._run_per_company(_fn, company=company)
+        combined: list[dict] = []
+        for code, fences in per_co.items():
+            for f in fences:
+                f["_org"] = code
+            combined.extend(fences)
+        await self._cache_set(cache_key, combined, ttl=_CACHE_TTL_LONG)
         return combined

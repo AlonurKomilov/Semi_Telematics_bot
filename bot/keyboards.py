@@ -17,6 +17,7 @@ from samsara_client import COMPANY_DISPLAY
 def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKeyboardMarkup:
     """Build role-appropriate main menu.
 
+    Grouped into sub-menus to keep the top-level clean (max ~6 buttons).
     When the account has no connected Samsara companies (company_codes is
     empty), all fleet buttons are hidden and a prominent
     'Integrate Samsara API' button is shown instead.
@@ -26,35 +27,44 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
     rows = []
 
     if has_api:
-        # ── Fleet buttons (only when API is connected) ──────────
+        # ── Grouped sub-menus (only when API is connected) ──────
+        has_reports = (perms.can_faults or perms.can_fuel
+                       or perms.can_truck_all or perms.can_truck_own)
+        has_tools = (perms.can_scorecard_all or perms.can_scorecard_own
+                     or perms.can_location_map or perms.can_location_own
+                     or perms.can_route_all or perms.can_route_own
+                     or perms.can_geofence_all or perms.can_geofence_own)
+        has_costs = (perms.can_fuel_cost or perms.can_cost_per_mile
+                     or perms.can_maintenance_all or perms.can_maintenance_own)
+
         row1 = []
-        row2 = []
-
-        if perms.can_faults:
-            row1.append(InlineKeyboardButton("🔧 Faults", callback_data="cmd_faults"))
-        if perms.can_fuel:
-            row2.append(InlineKeyboardButton("⛽ Fuel", callback_data="cmd_fuel"))
-        if perms.can_alerts_all or perms.can_alerts_own:
-            row2.append(InlineKeyboardButton("🔔 Alerts", callback_data="cmd_alerts"))
-
+        if has_reports:
+            row1.append(InlineKeyboardButton("📊 Fleet Reports", callback_data="submenu_reports"))
+        if has_tools:
+            row1.append(InlineKeyboardButton("🛠 Tools", callback_data="submenu_tools"))
         if row1:
             rows.append(row1)
+
+        row2 = []
+        if has_costs:
+            row2.append(InlineKeyboardButton("💰 Cost & Maint.", callback_data="submenu_costs"))
+        if perms.can_alerts_all or perms.can_alerts_own:
+            row2.append(InlineKeyboardButton("🔔 Alerts", callback_data="cmd_alerts"))
         if row2:
             rows.append(row2)
 
-        # New fleet reports — accessible to fleet_manager+ (same as faults)
-        if perms.can_faults:
-            rows.append([
-                InlineKeyboardButton("🏥 Health", callback_data="cmd_health"),
-                InlineKeyboardButton("📊 Efficiency", callback_data="cmd_efficiency"),
-            ])
-            rows.append([
-                InlineKeyboardButton("🌡 Weather", callback_data="cmd_weather"),
-            ])
+        # Digest — standalone (lightweight)
+        if perms.can_digest:
+            rows.append([InlineKeyboardButton("📬 Digest", callback_data="cmd_digest")])
 
-        # Truck lookup for non-drivers with truck_all access
-        if perms.can_truck_all:
-            rows.append([InlineKeyboardButton("🚛 Search Truck", callback_data="cmd_truck_prompt")])
+        # AI Assistant (visible when API key is configured)
+        import ai_client
+        if ai_client.is_configured():
+            rows.append([InlineKeyboardButton("🤖 AI Assistant", callback_data="cmd_ai")])
+
+        # Driver: show truck shortcut
+        if role == Role.DRIVER:
+            rows.append([InlineKeyboardButton("🚛 My Truck", callback_data="cmd_mytruck")])
 
         # Per-company buttons (only when >1 company and role can filter)
         if len(company_codes) > 1 and can_access_company_submenu(role):
@@ -64,9 +74,6 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
             ]
             rows.append(company_row)
 
-        # Driver: show truck button
-        if role == Role.DRIVER:
-            rows.append([InlineKeyboardButton("🚛 My Truck", callback_data="cmd_mytruck")])
     else:
         # ── No API connected — show integration prompt ──────────
         if perms.can_manage_companies:
@@ -81,6 +88,97 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
             )])
 
     # ── Management buttons (always visible) ─────────────────────
+    has_mgmt = (perms.can_manage_account or perms.can_manage_users
+                or perms.can_invite or perms.can_manage_companies)
+    if has_mgmt:
+        rows.append([InlineKeyboardButton("👥 Team & Settings", callback_data="submenu_mgmt")])
+
+    return InlineKeyboardMarkup(rows)
+
+
+def submenu_reports_kb(role: Role, company_codes: list[str] | None = None) -> InlineKeyboardMarkup:
+    """Fleet Reports sub-menu — faults, fuel, health, efficiency, weather, truck."""
+    perms = get_permissions(role)
+    rows = []
+
+    row1 = []
+    if perms.can_faults:
+        row1.append(InlineKeyboardButton("🔧 Faults", callback_data="cmd_faults"))
+        row1.append(InlineKeyboardButton("🚨 Critical", callback_data="cmd_critical"))
+    if row1:
+        rows.append(row1)
+
+    row2 = []
+    if perms.can_fuel:
+        row2.append(InlineKeyboardButton("⛽ Fuel & DEF", callback_data="cmd_fuel"))
+    if perms.can_faults:
+        row2.append(InlineKeyboardButton("🌡 Weather", callback_data="cmd_weather"))
+    if row2:
+        rows.append(row2)
+
+    if perms.can_faults:
+        rows.append([
+            InlineKeyboardButton("🏥 Health", callback_data="cmd_health"),
+            InlineKeyboardButton("📊 Efficiency", callback_data="cmd_efficiency"),
+        ])
+
+    if perms.can_truck_all:
+        rows.append([InlineKeyboardButton("🚛 Search Truck", callback_data="cmd_truck_prompt")])
+
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")])
+    return InlineKeyboardMarkup(rows)
+
+
+def submenu_tools_kb(role: Role) -> InlineKeyboardMarkup:
+    """Tools sub-menu — scorecards, map, routes, geofences."""
+    perms = get_permissions(role)
+    rows = []
+
+    row1 = []
+    if perms.can_scorecard_all or perms.can_scorecard_own:
+        row1.append(InlineKeyboardButton("🏆 Scorecards", callback_data="cmd_scorecards"))
+    if perms.can_location_map or perms.can_location_own:
+        row1.append(InlineKeyboardButton("🗺 Live Map", callback_data="cmd_livemap"))
+    if row1:
+        rows.append(row1)
+
+    row2 = []
+    if perms.can_route_all or perms.can_route_own:
+        row2.append(InlineKeyboardButton("🛣 Route Replay", callback_data="cmd_route"))
+    if perms.can_geofence_all or perms.can_geofence_own:
+        row2.append(InlineKeyboardButton("📍 Geofences", callback_data="cmd_geofences"))
+    if row2:
+        rows.append(row2)
+
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")])
+    return InlineKeyboardMarkup(rows)
+
+
+def submenu_costs_kb(role: Role) -> InlineKeyboardMarkup:
+    """Cost & Maintenance sub-menu."""
+    perms = get_permissions(role)
+    rows = []
+
+    row1 = []
+    if perms.can_fuel_cost:
+        row1.append(InlineKeyboardButton("💰 Fuel Costs", callback_data="cmd_fuelcost"))
+    if perms.can_cost_per_mile:
+        row1.append(InlineKeyboardButton("📊 Cost/Mile", callback_data="cmd_costmile"))
+    if row1:
+        rows.append(row1)
+
+    if perms.can_maintenance_all or perms.can_maintenance_own:
+        rows.append([InlineKeyboardButton("🔧 Maintenance", callback_data="cmd_maintenance")])
+
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")])
+    return InlineKeyboardMarkup(rows)
+
+
+def submenu_mgmt_kb(role: Role, has_api: bool = False) -> InlineKeyboardMarkup:
+    """Team & Settings sub-menu."""
+    perms = get_permissions(role)
+    rows = []
+
     mgmt = []
     if perms.can_manage_account:
         mgmt.append(InlineKeyboardButton("⚙️ Account", callback_data="cmd_account"))
@@ -89,7 +187,6 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
     if mgmt:
         rows.append(mgmt)
 
-    # Invite & Add Company — always visible for eligible roles
     mgmt2 = []
     if perms.can_invite:
         mgmt2.append(InlineKeyboardButton("✉️ Invite", callback_data="cmd_invite_pick"))
@@ -98,14 +195,19 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
     if mgmt2:
         rows.append(mgmt2)
 
-    # API Status — owner & admin (only when API is connected)
     if has_api and perms.can_manage_account:
         rows.append([InlineKeyboardButton("📡 API Status", callback_data="cmd_api_status")])
 
-    # Group / channel management — owner & admin
     if perms.can_manage_users:
         rows.append([InlineKeyboardButton("💬 Groups", callback_data="cmd_groups")])
 
+    # Settings & audit — available to everyone / admins
+    settings_row = [InlineKeyboardButton("⚙️ Settings", callback_data="cmd_settings")]
+    if perms.can_manage_users:
+        settings_row.append(InlineKeyboardButton("📋 Audit", callback_data="cmd_audit"))
+    rows.append(settings_row)
+
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -114,7 +216,7 @@ def faults_menu_kb(company: str | None = None) -> InlineKeyboardMarkup:
     suffix = f"_{company}" if company else ""
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🚨 Critical Only (PDF)", callback_data=f"cmd_critical{suffix}")],
-        [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
+        [InlineKeyboardButton("◀️ Back", callback_data="submenu_reports")],
     ])
 
 
@@ -150,7 +252,7 @@ def efficiency_format_kb(company: str | None = None) -> InlineKeyboardMarkup:
             InlineKeyboardButton("📄 PDF Report", callback_data=f"eff_pdf{suffix}"),
             InlineKeyboardButton("📊 CSV Export", callback_data=f"eff_csv{suffix}"),
         ],
-        [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
+        [InlineKeyboardButton("◀️ Back", callback_data="submenu_reports")],
     ])
 
 
@@ -162,7 +264,7 @@ def fuel_format_kb(company: str | None = None) -> InlineKeyboardMarkup:
             InlineKeyboardButton("📄 PDF Report", callback_data=f"fuel_pdf{suffix}"),
             InlineKeyboardButton("📊 CSV Export", callback_data=f"fuel_csv{suffix}"),
         ],
-        [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
+        [InlineKeyboardButton("◀️ Back", callback_data="submenu_reports")],
     ])
 
 
@@ -174,7 +276,7 @@ def health_format_kb(company: str | None = None) -> InlineKeyboardMarkup:
             InlineKeyboardButton("📄 PDF Report", callback_data=f"health_pdf{suffix}"),
             InlineKeyboardButton("📊 CSV Export", callback_data=f"health_csv{suffix}"),
         ],
-        [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
+        [InlineKeyboardButton("◀️ Back", callback_data="submenu_reports")],
     ])
 
 
@@ -187,7 +289,7 @@ def faults_format_kb(company: str | None = None) -> InlineKeyboardMarkup:
             InlineKeyboardButton("📊 CSV Export", callback_data=f"faults_csv{suffix}"),
         ],
         [InlineKeyboardButton("🚨 Critical Only", callback_data=f"cmd_critical{suffix}")],
-        [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
+        [InlineKeyboardButton("◀️ Back", callback_data="submenu_reports")],
     ])
 
 
@@ -244,6 +346,12 @@ def truck_kb(
         rows.append([
             InlineKeyboardButton("📄 PDF Report", callback_data=f"truckfaults_{company}_{truck_name}"),
         ])
+    if truck_name and company:
+        import ai_client
+        if ai_client.is_configured():
+            rows.append([
+                InlineKeyboardButton("🔧 AI Diagnose", callback_data=f"ai_diag_{company}_{truck_name}"),
+            ])
     rows.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
 
@@ -351,4 +459,240 @@ def vehicle_list_kb(
     rows.append(nav)
 
     rows.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
+    return InlineKeyboardMarkup(rows)
+
+
+# ── New feature keyboards ─────────────────────────────────────────
+
+def scorecard_format_kb(company: str | None = None) -> InlineKeyboardMarkup:
+    suffix = f"_{company}" if company else ""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("📄 PDF Report", callback_data=f"scorecard_pdf{suffix}"),
+            InlineKeyboardButton("📊 CSV Export", callback_data=f"scorecard_csv{suffix}"),
+        ],
+        [InlineKeyboardButton("◀️ Back", callback_data="submenu_tools")],
+    ])
+
+
+def fuelcost_menu_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("➕ Log Fill-Up", callback_data="fuelcost_add")],
+        [InlineKeyboardButton("📊 Summary", callback_data="fuelcost_summary")],
+        [InlineKeyboardButton("◀️ Back", callback_data="submenu_costs")],
+    ])
+
+
+def costmile_format_kb(company: str | None = None) -> InlineKeyboardMarkup:
+    suffix = f"_{company}" if company else ""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("📄 PDF Report", callback_data=f"costmile_pdf{suffix}"),
+            InlineKeyboardButton("📊 CSV Export", callback_data=f"costmile_csv{suffix}"),
+        ],
+        [InlineKeyboardButton("◀️ Back", callback_data="submenu_costs")],
+    ])
+
+
+def maintenance_menu_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("➕ Add Task", callback_data="maint_add")],
+        [InlineKeyboardButton("📋 View Tasks", callback_data="maint_view")],
+        [InlineKeyboardButton("◀️ Back", callback_data="submenu_costs")],
+    ])
+
+
+def maintenance_task_kb(task_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Mark Done", callback_data=f"maint_done_{task_id}"),
+        ],
+        [InlineKeyboardButton("◀️ Back", callback_data="maint_view")],
+    ])
+
+
+def digest_menu_kb(current_sub: dict | None = None) -> InlineKeyboardMarkup:
+    rows = []
+    if current_sub:
+        freq = current_sub.get("frequency", "daily")
+        hour = current_sub.get("send_hour", 7)
+        tz = current_sub.get("timezone", "America/New_York")
+        tz_short = tz.split("/")[-1].replace("_", " ")
+        rows.append([InlineKeyboardButton(
+            f"📬 {freq.title()} at {hour:02d}:00 ({tz_short})",
+            callback_data="noop",
+        )])
+        rows.append([InlineKeyboardButton("🔕 Unsubscribe", callback_data="digest_unsub")])
+    else:
+        rows.append([
+            InlineKeyboardButton("📅 Daily", callback_data="digest_daily"),
+            InlineKeyboardButton("📆 Weekly", callback_data="digest_weekly"),
+        ])
+    rows.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
+    return InlineKeyboardMarkup(rows)
+
+
+def digest_hour_kb() -> InlineKeyboardMarkup:
+    """Pick a delivery hour for digest."""
+    rows = [
+        [
+            InlineKeyboardButton("5:00 AM", callback_data="digest_hour_5"),
+            InlineKeyboardButton("6:00 AM", callback_data="digest_hour_6"),
+            InlineKeyboardButton("7:00 AM", callback_data="digest_hour_7"),
+        ],
+        [
+            InlineKeyboardButton("8:00 AM", callback_data="digest_hour_8"),
+            InlineKeyboardButton("9:00 AM", callback_data="digest_hour_9"),
+            InlineKeyboardButton("10:00 AM", callback_data="digest_hour_10"),
+        ],
+        [
+            InlineKeyboardButton("12:00 PM", callback_data="digest_hour_12"),
+            InlineKeyboardButton("5:00 PM", callback_data="digest_hour_17"),
+            InlineKeyboardButton("8:00 PM", callback_data="digest_hour_20"),
+        ],
+        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_digest")],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+def digest_tz_kb() -> InlineKeyboardMarkup:
+    """Pick a timezone for digest delivery."""
+    rows = [
+        [InlineKeyboardButton("🇺🇸 Eastern (ET)", callback_data="digest_tz_America/New_York")],
+        [InlineKeyboardButton("🇺🇸 Central (CT)", callback_data="digest_tz_America/Chicago")],
+        [InlineKeyboardButton("🇺🇸 Mountain (MT)", callback_data="digest_tz_America/Denver")],
+        [InlineKeyboardButton("🇺🇸 Pacific (PT)", callback_data="digest_tz_America/Los_Angeles")],
+        [InlineKeyboardButton("🇺🇸 Alaska", callback_data="digest_tz_America/Anchorage")],
+        [InlineKeyboardButton("🌐 UTC", callback_data="digest_tz_UTC")],
+        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_digest")],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+def quiet_hours_kb(user) -> InlineKeyboardMarkup:
+    """DND quiet hours settings keyboard."""
+    if user.quiet_start is not None and user.quiet_end is not None:
+        status = f"🌙 Active: {user.quiet_start:02d}:00 — {user.quiet_end:02d}:00"
+        rows = [
+            [InlineKeyboardButton(status, callback_data="noop")],
+            [InlineKeyboardButton("🔄 Change Hours", callback_data="settings_quiet_set")],
+            [InlineKeyboardButton("❌ Disable DND", callback_data="settings_quiet_off")],
+        ]
+    else:
+        rows = [
+            [InlineKeyboardButton("🌙 Enable Quiet Hours", callback_data="settings_quiet_set")],
+        ]
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_settings")])
+    return InlineKeyboardMarkup(rows)
+
+
+def quiet_hours_picker_kb() -> InlineKeyboardMarkup:
+    """Pick a quiet hours preset."""
+    rows = [
+        [InlineKeyboardButton("🌙 10 PM — 6 AM", callback_data="quiet_set_22_6")],
+        [InlineKeyboardButton("🌙 9 PM — 7 AM", callback_data="quiet_set_21_7")],
+        [InlineKeyboardButton("🌙 11 PM — 5 AM", callback_data="quiet_set_23_5")],
+        [InlineKeyboardButton("🌙 8 PM — 6 AM", callback_data="quiet_set_20_6")],
+        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_settings")],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+def user_settings_kb(user) -> InlineKeyboardMarkup:
+    """User settings menu."""
+    tz_short = user.timezone.split("/")[-1].replace("_", " ") if user.timezone else "Eastern"
+    dnd = "On" if user.quiet_start is not None else "Off"
+    rows = [
+        [InlineKeyboardButton(f"🌙 Quiet Hours: {dnd}", callback_data="settings_quiet")],
+        [InlineKeyboardButton(f"🕐 Timezone: {tz_short}", callback_data="settings_tz")],
+        [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+def settings_tz_kb() -> InlineKeyboardMarkup:
+    """Pick timezone for user settings."""
+    rows = [
+        [InlineKeyboardButton("🇺🇸 Eastern (ET)", callback_data="set_tz_America/New_York")],
+        [InlineKeyboardButton("🇺🇸 Central (CT)", callback_data="set_tz_America/Chicago")],
+        [InlineKeyboardButton("🇺🇸 Mountain (MT)", callback_data="set_tz_America/Denver")],
+        [InlineKeyboardButton("🇺🇸 Pacific (PT)", callback_data="set_tz_America/Los_Angeles")],
+        [InlineKeyboardButton("🇺🇸 Alaska", callback_data="set_tz_America/Anchorage")],
+        [InlineKeyboardButton("🌐 UTC", callback_data="set_tz_UTC")],
+        [InlineKeyboardButton("◀️ Back", callback_data="cmd_settings")],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+def onboarding_kb() -> InlineKeyboardMarkup:
+    """Post-registration onboarding quick-start keyboard."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("1️⃣ Connect Samsara API", callback_data="cmd_integrate_guide")],
+        [InlineKeyboardButton("2️⃣ Set Timezone", callback_data="settings_tz")],
+        [InlineKeyboardButton("3️⃣ Configure Quiet Hours", callback_data="settings_quiet_set")],
+        [InlineKeyboardButton("4️⃣ Subscribe to Digest", callback_data="cmd_digest")],
+        [InlineKeyboardButton("◀️ Skip — Main Menu", callback_data="cmd_menu")],
+    ])
+
+
+def livemap_refresh_kb(company: str | None = None) -> InlineKeyboardMarkup:
+    suffix = f"_{company}" if company else ""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Refresh", callback_data=f"cmd_livemap{suffix}")],
+        [InlineKeyboardButton("◀️ Back", callback_data="submenu_tools")],
+    ])
+
+
+def route_date_kb(vehicle_name: str, company: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("Today", callback_data=f"route_go_{company}_{vehicle_name}_0"),
+            InlineKeyboardButton("Yesterday", callback_data=f"route_go_{company}_{vehicle_name}_1"),
+        ],
+        [
+            InlineKeyboardButton("2 Days Ago", callback_data=f"route_go_{company}_{vehicle_name}_2"),
+        ],
+        [InlineKeyboardButton("◀️ Back", callback_data="submenu_tools")],
+    ])
+
+
+def geofence_list_kb(geofences: list[dict]) -> InlineKeyboardMarkup:
+    rows = []
+    for gf in geofences[:15]:
+        gid = gf.get("id", "")
+        name = gf.get("name", "Unknown")
+        rows.append([InlineKeyboardButton(f"📍 {name}", callback_data=f"gf_detail_{gid}")])
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="submenu_tools")])
+    return InlineKeyboardMarkup(rows)
+
+
+def alert_settings_kb(user) -> InlineKeyboardMarkup:
+    """Per-type alert toggle keyboard.
+
+    Shows a checkmark (✅) or cross (❌) for each alert category.
+    Tapping a row toggles that category on/off.
+    """
+    def _icon(on: bool) -> str:
+        return "✅" if on else "❌"
+
+    rows = [
+        [InlineKeyboardButton(
+            f"{_icon(user.alert_faults)} Fault Alerts",
+            callback_data="alert_toggle_faults",
+        )],
+        [InlineKeyboardButton(
+            f"{_icon(user.alert_health)} Health Alerts",
+            callback_data="alert_toggle_health",
+        )],
+        [InlineKeyboardButton(
+            f"{_icon(user.alert_fuel)} Fuel Alerts",
+            callback_data="alert_toggle_fuel",
+        )],
+        [InlineKeyboardButton(
+            f"{_icon(user.alert_geofence)} Geofence Alerts",
+            callback_data="alert_toggle_geofence",
+        )],
+        [InlineKeyboardButton("🔕 Disable All Alerts", callback_data="alert_disable_all")],
+        [InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")],
+    ]
     return InlineKeyboardMarkup(rows)

@@ -5,7 +5,7 @@ SERVICE  = semi-telematics-bot
 PID_FILE = .bot.pid
 LOG_FILE = bot.log
 
-.PHONY: start stop restart status logs install
+.PHONY: start stop restart status logs install clean
 
 # ── systemd-aware targets (preferred) ────────────────
 
@@ -65,3 +65,13 @@ logs:
 	else \
 		tail -f $(LOG_FILE); \
 	fi
+
+## Remove Python caches, test caches, PID files and other generated junk
+## Does NOT touch the database (data/) or source code.
+clean:
+	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null; true
+	@find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null; true
+	@find . \( -name "*.pyc" -o -name "*.pyo" \) -delete 2>/dev/null; true
+	@rm -f .bot.pid .pid
+	@rm -f "=0.5.7"
+	@echo "✅  Cache cleared (DB and source untouched)"

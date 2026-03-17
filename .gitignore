@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.db
+*.db-shm
+*.db-wal
 *.sqlite3
 data/
 .venv/
@@ -10,3 +12,11 @@ venv/
 env/
 *.log
 .bot.pid
+.pid
+.pytest_cache/
+=*
+
+# Google Cloud service account keys — NEVER commit
+*.json
+!package.json
+!package-lock.json

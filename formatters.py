@@ -346,34 +346,185 @@ def format_new_fault_alert(vehicle: dict, new_dtcs: list,
     return "\n".join(lines)
 
 
+def format_critical_fault_alert(vehicle: dict, new_dtcs: list,
+                                lights: dict,
+                                show_company: bool = False) -> str:
+    """Format a CRITICAL fault alert (STOP/PROTECT light or Most Severe FMI)."""
+    name = vehicle.get("name", "?")
+    loc = vehicle.get("location", {})
+    city = _short_location(loc)
+    co = vehicle.get("_org", "")
+
+    co_label = ""
+    if show_company and co:
+        co_label = f"\n  🏢  {COMPANY_DISPLAY.get(co, co)}  ({co})"
+
+    # Determine which lights are on
+    light_flags = []
+    if lights.get("stopIsOn"):
+        light_flags.append("🛑 STOP")
+    if lights.get("protectIsOn"):
+        light_flags.append("🟡 PROTECT")
+    if lights.get("emissionsIsOn"):
+        light_flags.append("⚠️ EMISSIONS")
+    if lights.get("warningIsOn"):
+        light_flags.append("🔶 WARNING")
+    lights_str = "  ".join(light_flags) if light_flags else ""
+
+    lines = [
+        "━━━━━━━━━━━━━━━━━━━━━",
+        "  🛑  <b>CRITICAL FAULT</b>",
+        "━━━━━━━━━━━━━━━━━━━━━",
+        "",
+        f"  🚛  <b>Truck #{name}</b>",
+        f"  📍  {city}",
+        f"{co_label}",
+    ]
+    if lights_str:
+        lines.append(f"\n  {lights_str}")
+    lines.append("")
+
+    for dtc in new_dtcs[:5]:
+        desc = dtc.get("spnDescription", "Unknown")
+        severity = dtc.get("fmiDescription", "Unknown")
+        source = dtc.get("sourceAddressName", "Unknown")
+        lines.append(
+            f"  🔴  <b>{desc}</b>\n"
+            f"       {severity}\n"
+            f"       Source: {source}\n"
+        )
+
+    lines.append("  ⚠️ <b>Immediate attention required</b>")
+    return "\n".join(lines)
+
+
+def format_health_alert(vehicle: dict, alerts: list[str],
+                        health: dict,
+                        show_company: bool = False) -> str:
+    """Format a vehicle health critical alert (battery, oil, coolant, DEF)."""
+    name = vehicle.get("name", "?")
+    co = vehicle.get("_org", "")
+
+    co_label = ""
+    if show_company and co:
+        co_label = f"\n  🏢  {COMPANY_DISPLAY.get(co, co)}  ({co})"
+
+    # Severity — critical items
+    is_critical = any(a in alerts for a in (
+        "low_battery", "low_oil_pressure", "high_coolant_temp",
+    ))
+    header = "CRITICAL HEALTH" if is_critical else "HEALTH WARNING"
+    icon = "🛑" if is_critical else "⚠️"
+
+    lines = [
+        "━━━━━━━━━━━━━━━━━━━━━",
+        f"  {icon}  <b>{header}</b>",
+        "━━━━━━━━━━━━━━━━━━━━━",
+        "",
+        f"  🚛  <b>Truck #{name}</b>",
+        f"{co_label}",
+        "",
+    ]
+
+    # Show each alert condition with current value
+    alert_details = {
+        "low_battery": (
+            "🔋", "Low Battery",
+            f"{health.get('battery_v', '?')}V (threshold: 12.2V)",
+        ),
+        "low_oil_pressure": (
+            "🛢", "Low Oil Pressure",
+            f"{health.get('oil_psi', '?')} PSI (threshold: 10 PSI)",
+        ),
+        "high_coolant_temp": (
+            "🌡", "High Coolant Temp",
+            f"{health.get('coolant_c', '?')}°C (threshold: 105°C)",
+        ),
+        "low_def": (
+            "💧", "Low DEF Level",
+            f"{health.get('def_pct', '?')}% (threshold: 10%)",
+        ),
+        "coolant_dtc": (
+            "🌡", "Coolant System Fault",
+            "J1939 coolant DTC detected",
+        ),
+    }
+
+    for alert_key in alerts:
+        if alert_key in alert_details:
+            emoji, label, detail = alert_details[alert_key]
+            lines.append(f"  {emoji}  <b>{label}</b>\n       {detail}\n")
+
+    return "\n".join(lines)
+
+
+def format_low_fuel_alert(vehicle: dict, fuel_pct: float,
+                          show_company: bool = False) -> str:
+    """Format a low fuel push alert."""
+    name = vehicle.get("name", "?")
+    co = vehicle.get("_org", "")
+
+    co_label = ""
+    if show_company and co:
+        co_label = f"\n  🏢  {COMPANY_DISPLAY.get(co, co)}  ({co})"
+
+    return (
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "  ⛽  <b>LOW FUEL ALERT</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "\n"
+        f"  🚛  <b>Truck #{name}</b>\n"
+        f"{co_label}\n"
+        "\n"
+        f"  ⛽ Fuel Level: <b>{fuel_pct:.0f}%</b>\n"
+        "\n"
+        f"  Truck needs refueling soon."
+    )
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Registration / Account Management Formatters
 # ═══════════════════════════════════════════════════════════════════
 
 def format_welcome_unregistered(support_contact: str = "") -> str:
     """Shown to users who haven't registered or joined yet."""
-    support_line = ""
-    if support_contact:
-        support_line = (
-            "\n"
-            f"  💬 Questions? Contact\n"
-            f"     {support_contact}\n"
-        )
     return (
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        "  🚛  <b>Semi Telematics</b>\n"
+        "  🚛  <b>Semi Telematics Bot</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         "\n"
-        "  Welcome! You're not\n"
-        "  registered yet.\n"
+        "Your all-in-one fleet management\n"
+        "assistant, right inside Telegram.\n"
         "\n"
-        "  <b>New company?</b>\n"
-        "  Tap 📝 Register below\n"
+        "<b>📊 Fleet Reports</b>\n"
+        "  · Fault codes &amp; diagnostics\n"
+        "  · Fuel levels &amp; consumption\n"
+        "  · Vehicle health monitoring\n"
         "\n"
-        "  <b>Joining a team?</b>\n"
-        "  Tap 🔑 Join below\n"
-        "  (get the code from your admin)\n"
-        f"{support_line}"
+        "<b>🛠 Tools &amp; Tracking</b>\n"
+        "  · Driver safety scorecards\n"
+        "  · Live GPS location &amp; maps\n"
+        "  · Route history &amp; geofences\n"
+        "\n"
+        "<b>💰 Cost Management</b>\n"
+        "  · Fuel cost tracking\n"
+        "  · Cost-per-mile analysis\n"
+        "  · Maintenance records\n"
+        "\n"
+        "<b>🤖 AI Assistant</b>\n"
+        "  · Ask anything about your fleet\n"
+        "  · Instant insights &amp; summaries\n"
+        "  · Smart follow-up suggestions\n"
+        "\n"
+        "<b>🔔 Alerts &amp; Digests</b>\n"
+        "  · Real-time fault alerts\n"
+        "  · Daily/weekly email digests\n"
+        "  · Geofence notifications\n"
+        "\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "  To get access, contact:\n"
+        "  👉 https://t.me/Allen_Klein\n"
+        "━━━━━━━━━━━━━━━━━━━━━"
     )
 
 
@@ -428,7 +579,7 @@ def format_account_info(account, companies, users, user) -> str:
         from permissions import role_emoji
         emoji = role_emoji(u.role)
         truck = f" (truck #{u.truck_num})" if u.truck_num else ""
-        lines.append(f"     {emoji}  ID {u.telegram_id} — {u.role.value}{truck}")
+        lines.append(f"     {emoji}  {u.linked_label} — {u.role.value}{truck}")
 
     return "\n".join(lines)
 
@@ -481,7 +632,7 @@ def format_users_list(users, account_name: str) -> str:
         truck = f"  ·  Truck #{u.truck_num}" if u.truck_num else ""
         lines.append(
             f"  {role_display(u.role)}\n"
-            f"     TG: {u.telegram_id}  ·  {u.department}{truck}\n"
+            f"     {u.linked_label}  ·  {u.department}{truck}\n"
             f"     {alerts}  Alerts {'ON' if u.alerts_on else 'OFF'}\n"
         )
     return "\n".join(lines)
@@ -560,7 +711,7 @@ def format_admin_dashboard(stats: dict) -> str:
             companies = d["companies"]
             from permissions import role_emoji
             user_str = ", ".join(
-                f"{role_emoji(u.role)}{u.telegram_id}"
+                f"{role_emoji(u.role)}{u.linked_label}"
                 for u in users[:5]
             )
             if len(users) > 5:
@@ -609,7 +760,7 @@ def format_admin_account_detail(acct, companies, users) -> str:
         active = "🟢" if u.is_active else "🔴"
         lines.append(
             f"     {active} {role_display(u.role)}\n"
-            f"        TG: {u.telegram_id} · {u.department}{truck}\n"
+            f"        {u.linked_label} · {u.department}{truck}\n"
             f"        {alerts} Alerts · Since: {u.created_at[:10]}"
         )
 

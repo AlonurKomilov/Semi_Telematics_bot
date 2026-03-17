@@ -3,9 +3,10 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from database import Role
 from permissions import is_system_owner, can
 
-from bot.config import db, SUPPORT_CONTACT
+from bot.config import db, SUPPORT_CONTACT, check_rate_limit
 from bot.helpers import _show
 from bot.keyboards import system_owner_kb, unregistered_kb, back_kb
 from formatters import format_system_owner_welcome, format_welcome_unregistered
@@ -50,6 +51,14 @@ async def _get_user(update: Update):
 
     sys_owner = is_system_owner(tid)
     user = await db.get_user_by_telegram_id(tid)
+
+    # Keep display_name in sync with Telegram profile
+    if user and update.effective_user:
+        tg_name = getattr(update.effective_user, "full_name", "") or ""
+        if tg_name and tg_name != user.display_name:
+            await db.update_user(user.id, display_name=tg_name)
+            user.display_name = tg_name
+
     return user, tid, sys_owner
 
 
@@ -73,8 +82,9 @@ def _require_registered(func):
             return
 
         if not user:
+            name = getattr(update.effective_user, "first_name", "") or ""
             await _show(update, context,
-                        [format_welcome_unregistered(SUPPORT_CONTACT)],
+                        [format_welcome_unregistered(SUPPORT_CONTACT, name)],
                         keyboard=unregistered_kb())
             return
 
@@ -108,11 +118,17 @@ def _require_permission(feature: str):
                                 keyboard=system_owner_kb())
                     return
             if not user:
+                name = getattr(update.effective_user, "first_name", "") or ""
                 await _show(update, context,
-                            [format_welcome_unregistered()],
+                            [format_welcome_unregistered(first_name=name)],
                             keyboard=unregistered_kb())
                 return
             if not can(user.role, feature):
+                hint = "⛔ You don't have access to this feature."
+                if user.role == Role.DRIVER:
+                    hint += "\n\nAs a Driver you can:\n  🚛 View your truck\n  🔔 Your alerts\n  📬 Digest"
+                elif user.role == Role.DISPATCHER:
+                    hint += "\n\nAs a Dispatcher you can:\n  ⛽ Fuel levels\n  🚛 Truck lookup\n  📍 Geofences\n  🛣 Routes"
                 if update.callback_query:
                     await update.callback_query.answer(
                         "⛔ You don't have access to this feature.",
@@ -120,7 +136,7 @@ def _require_permission(feature: str):
                     )
                 else:
                     await _show(update, context,
-                                ["⛔ You don't have access to this feature."],
+                                [hint],
                                 keyboard=back_kb())
                 return
             context.user_data["_db_user"] = user
@@ -146,3 +162,36 @@ def _require_system_owner(func):
             return
         return await func(update, context, **kwargs)
     return wrapper
+
+
+def _rate_limited(command_name: str):
+    """Decorator: apply per-user rate limiting to a command.
+
+    Returns a 'please wait' message if the user is sending commands
+    too fast (within RATE_LIMIT_SECONDS).
+    """
+    def decorator(func):
+        async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, **kwargs):
+            tid = 0
+            if update.callback_query:
+                tid = update.callback_query.from_user.id
+            elif update.message:
+                tid = update.message.from_user.id
+            elif update.effective_user:
+                tid = update.effective_user.id
+
+            if tid and not check_rate_limit(tid, command_name):
+                if update.callback_query:
+                    await update.callback_query.answer(
+                        "⏳ Please wait a moment before trying again.",
+                        show_alert=False,
+                    )
+                else:
+                    await _show(update, context, [
+                        "⏳ You're sending commands too quickly.\n"
+                        "Please wait a few seconds."
+                    ])
+                return
+            return await func(update, context, **kwargs)
+        return wrapper
+    return decorator

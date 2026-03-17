@@ -61,19 +61,24 @@ async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not context.args:
+        # Redirect to the interactive button-based invite flow
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🔑 Admin", callback_data="inv_admin"),
+                InlineKeyboardButton("🔧 Fleet", callback_data="inv_fleet_manager"),
+            ],
+            [
+                InlineKeyboardButton("📡 Dispatcher", callback_data="inv_dispatcher"),
+                InlineKeyboardButton("🚛 Driver", callback_data="inv_driver"),
+            ],
+            [InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")],
+        ])
         await _show(update, context, [
-            "ℹ️  <b>Invite Usage:</b>\n\n"
-            "  /invite <b>role</b> [dept] [truck#]\n\n"
-            "  Roles:\n"
-            "  • <code>admin</code>\n"
-            "  • <code>fleet_manager</code>\n"
-            "  • <code>dispatcher</code>\n"
-            "  • <code>driver</code>\n\n"
-            "  Examples:\n"
-            "  /invite fleet_manager\n"
-            "  /invite dispatcher operations\n"
-            "  /invite driver maintenance 134\n"
-        ], keyboard=back_kb())
+            "✉️ <b>Invite Team Member</b>\n\n"
+            "Select the role for the new member:\n\n"
+            "<i>Or use: /invite role [dept] [truck#]</i>"
+        ], keyboard=kb)
         return
 
     role_str = context.args[0].lower()
@@ -143,7 +148,7 @@ async def cmd_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Build interactive user buttons for management
     rows = []
     for u in users:
-        label = f"{role_emoji(u.role)} {u.telegram_id}"
+        label = f"{role_emoji(u.role)} {u.label}"
         if u.department:
             label += f" — {u.department}"
         rows.append([InlineKeyboardButton(label, callback_data=f"usrmenu_{u.telegram_id}")])
@@ -196,7 +201,7 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await db.update_user(target_user.id, role=new_role)
     await _show(update, context, [
-        f"✅ Updated user {target_tid} → {role_display(new_role)}"
+        f"✅ Updated {target_user.label} → {role_display(new_role)}"
     ], keyboard=back_kb())
 
 
@@ -239,7 +244,7 @@ async def cmd_remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await db.remove_user(target_user.id)
     await _show(update, context, [
-        f"✅ Removed user {target_tid} from your account."
+        f"✅ Removed {target_user.label} from your account."
     ], keyboard=back_kb())
 
 

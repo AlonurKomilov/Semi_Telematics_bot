@@ -1,5 +1,6 @@
 """Fleet commands — fault reports, truck lookup, fuel, alerts."""
 
+import asyncio
 from datetime import datetime as _dt
 from zoneinfo import ZoneInfo as _ZI
 
@@ -35,6 +36,7 @@ from bot.config import (
 from bot.keyboards import (
     main_menu_kb, back_kb, truck_kb, truck_picker_kb, faults_menu_kb,
     efficiency_format_kb, fuel_format_kb, health_format_kb, faults_format_kb,
+    alert_settings_kb,
 )
 from bot.helpers import (
     _show, _show_loading, _delete_old_messages, _company_line, _user_menu_kb,
@@ -96,7 +98,8 @@ async def cmd_faults_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
         all_fleet = await samsara.get_fleet_overview(company=company)
         stats = compute_stats(faulted, total)
 
-        pdf_buf = generate_fault_report_pdf(
+        pdf_buf = await asyncio.to_thread(
+            generate_fault_report_pdf,
             faulted, total,
             company_breakdown=breakdown,
             company_filter=company,
@@ -160,7 +163,9 @@ async def cmd_faults_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
             ], keyboard=kb)
             return
 
-        csv_buf = generate_fault_csv(faulted, total, company_filter=company)
+        csv_buf = await asyncio.to_thread(
+            generate_fault_csv, faulted, total, company_filter=company,
+        )
 
         query = update.callback_query
         chat_id = query.message.chat.id if query else update.effective_chat.id
@@ -321,7 +326,7 @@ async def cmd_truck_report(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         vehicle = matches[0]
 
-        pdf_buf = generate_truck_detail_pdf(vehicle)
+        pdf_buf = await asyncio.to_thread(generate_truck_detail_pdf, vehicle)
 
         query = update.callback_query
         chat_id = query.message.chat.id if query else update.effective_chat.id
@@ -411,7 +416,8 @@ async def cmd_critical(update: Update, context: ContextTypes.DEFAULT_TYPE,
             ], keyboard=kb)
             return
 
-        pdf_buf = generate_critical_report_pdf(
+        pdf_buf = await asyncio.to_thread(
+            generate_critical_report_pdf,
             critical, total,
             company_breakdown=breakdown,
             company_filter=company,
@@ -511,7 +517,9 @@ async def cmd_fuel_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
             ], keyboard=back_kb())
             return
 
-        pdf_buf = generate_fuel_report_pdf(all_fleet, company_filter=company)
+        pdf_buf = await asyncio.to_thread(
+            generate_fuel_report_pdf, all_fleet, company_filter=company,
+        )
 
         query = update.callback_query
         chat_id = query.message.chat.id if query else update.effective_chat.id
@@ -565,7 +573,9 @@ async def cmd_fuel_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
             ], keyboard=back_kb())
             return
 
-        csv_buf = generate_fuel_csv(all_fleet, company_filter=company)
+        csv_buf = await asyncio.to_thread(
+            generate_fuel_csv, all_fleet, company_filter=company,
+        )
 
         query = update.callback_query
         chat_id = query.message.chat.id if query else update.effective_chat.id
@@ -624,39 +634,76 @@ def _fuel_caption(all_fleet, company, company_codes, skipped=None):
 
 @_require_registered
 async def cmd_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Toggle fault alerts on/off."""
+    """Show alert settings menu.
+
+    First tap enables alerts_on (if off). Subsequent taps show the
+    per-type settings keyboard so users can fine-tune categories.
+    """
     user = context.user_data["_db_user"]
     if not can(user.role, "can_alerts_all") and not can(user.role, "can_alerts_own"):
         if update.callback_query:
             await update.callback_query.answer("⛔ No access", show_alert=True)
         return
 
-    new_state = await db.toggle_alerts(user.telegram_id)
     company_codes = await get_user_company_codes(user.account_id)
 
-    if new_state:
-        text = (
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "  🔔  <b>ALERTS ON</b>\n"
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "\n"
-            f"  Checking every {ALERT_INTERVAL} min\n"
-            f"  across {len(company_codes)} {'companies' if len(company_codes) != 1 else 'company'}.\n"
-            "  You'll get notified of\n"
-            "  new critical faults.\n"
-            "\n"
-            "  Tap 🔔 Alerts to disable."
-        )
-    else:
-        text = (
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "  🔕  <b>ALERTS OFF</b>\n"
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "\n"
-            "  Auto-notifications disabled.\n"
-            "  Tap 🔔 Alerts to re-enable."
-        )
+    if not user.alerts_on:
+        # Enable alerts and show settings
+        await db.update_user(user.id, alerts_on=True)
+        user = await db.get_user_by_telegram_id(user.telegram_id)
+        context.user_data["_db_user"] = user
 
+    text = (
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "  🔔  <b>ALERT SETTINGS</b>\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "\n"
+        f"  Checking every {ALERT_INTERVAL} min\n"
+        f"  across {len(company_codes)} {'companies' if len(company_codes) != 1 else 'company'}.\n"
+        "\n"
+        "  Tap a category to toggle it:"
+    )
+    kb = alert_settings_kb(user)
+    await _show(update, context, [text], keyboard=kb)
+
+
+@_require_registered
+async def cmd_alert_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                           alert_type: str):
+    """Toggle a specific alert type on/off and refresh the settings menu."""
+    user = context.user_data["_db_user"]
+    if not can(user.role, "can_alerts_all") and not can(user.role, "can_alerts_own"):
+        if update.callback_query:
+            await update.callback_query.answer("⛔ No access", show_alert=True)
+        return
+
+    col = f"alert_{alert_type}"
+    current = getattr(user, col, True)
+    await db.update_user(user.id, **{col: not current})
+    user = await db.get_user_by_telegram_id(user.telegram_id)
+    context.user_data["_db_user"] = user
+
+    # Re-show the settings menu
+    await cmd_alerts(update, context)
+
+
+@_require_registered
+async def cmd_alert_disable_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Turn off all alerts (sets alerts_on = 0)."""
+    user = context.user_data["_db_user"]
+    await db.update_user(user.id, alerts_on=False)
+    user = await db.get_user_by_telegram_id(user.telegram_id)
+    context.user_data["_db_user"] = user
+
+    company_codes = await get_user_company_codes(user.account_id)
+    text = (
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "  🔕  <b>ALERTS OFF</b>\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "\n"
+        "  All auto-notifications disabled.\n"
+        "  Tap 🔔 Alerts to re-enable."
+    )
     kb = main_menu_kb(user.role, company_codes)
     await _show(update, context, [text], keyboard=kb)
 
@@ -716,7 +763,9 @@ async def cmd_efficiency_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
             ], keyboard=kb)
             return
 
-        pdf_buf = generate_fleet_efficiency_pdf(vehicles, days=7, company_filter=company)
+        pdf_buf = await asyncio.to_thread(
+            generate_fleet_efficiency_pdf, vehicles, days=7, company_filter=company,
+        )
 
         query = update.callback_query
         chat_id = query.message.chat.id if query else update.effective_chat.id
@@ -788,7 +837,9 @@ async def cmd_efficiency_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
             ], keyboard=kb)
             return
 
-        csv_buf = generate_efficiency_csv(vehicles, days=7, company_filter=company)
+        csv_buf = await asyncio.to_thread(
+            generate_efficiency_csv, vehicles, days=7, company_filter=company,
+        )
 
         query = update.callback_query
         chat_id = query.message.chat.id if query else update.effective_chat.id
@@ -917,7 +968,9 @@ async def cmd_health_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
             ], keyboard=kb)
             return
 
-        pdf_buf = generate_vehicle_health_pdf(vehicles, company_filter=company)
+        pdf_buf = await asyncio.to_thread(
+            generate_vehicle_health_pdf, vehicles, company_filter=company,
+        )
 
         query = update.callback_query
         chat_id = query.message.chat.id if query else update.effective_chat.id
@@ -988,7 +1041,9 @@ async def cmd_health_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
             ], keyboard=kb)
             return
 
-        csv_buf = generate_health_csv(vehicles, company_filter=company)
+        csv_buf = await asyncio.to_thread(
+            generate_health_csv, vehicles, company_filter=company,
+        )
 
         query = update.callback_query
         chat_id = query.message.chat.id if query else update.effective_chat.id
@@ -1086,7 +1141,9 @@ async def cmd_weather(update: Update, context: ContextTypes.DEFAULT_TYPE,
             ], keyboard=kb)
             return
 
-        pdf_buf = generate_weather_pdf(vehicles, company_filter=company)
+        pdf_buf = await asyncio.to_thread(
+            generate_weather_pdf, vehicles, company_filter=company,
+        )
 
         query = update.callback_query
         chat_id = query.message.chat.id if query else update.effective_chat.id
@@ -1195,6 +1252,17 @@ async def cmd_api_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"\n  ⚠️ {failed} of {len(results)} companies "
                 f"have API issues"
             )
+
+        # Cache performance stats
+        try:
+            samsara = await get_client(user.account_id)
+            cs = samsara.cache_stats
+            lines.append(
+                f"\n  📊 Cache: {cs['hits']} hits / "
+                f"{cs['misses']} misses / {cs['size']} cached"
+            )
+        except Exception:
+            pass
 
         kb = await _user_menu_kb(user)
         await _show(update, context, ["\n".join(lines)], keyboard=kb)

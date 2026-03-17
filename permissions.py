@@ -75,8 +75,23 @@ class FeatureSet:
     can_manage_companies: bool = False    # /addcompany, /removecompany
     can_manage_account: bool = False # /account settings
 
-    # Dispatcher extras (future)
+    # Dispatcher extras
     can_rolling_stopped: bool = False   # rolling/stopped notifications
+
+    # ── New features ──────────────────────────────────────────────
+    can_geofence_all: bool = False      # geofence alerts (all trucks)
+    can_geofence_own: bool = False      # geofence alerts (own truck)
+    can_digest: bool = False            # daily/weekly digest subscription
+    can_maintenance_all: bool = False   # maintenance scheduler (all trucks)
+    can_maintenance_own: bool = False   # maintenance scheduler (own truck)
+    can_scorecard_all: bool = False     # driver scorecards (all drivers)
+    can_scorecard_own: bool = False     # driver scorecards (own only)
+    can_location_map: bool = False      # live location map (all trucks)
+    can_location_own: bool = False      # live location map (own truck)
+    can_fuel_cost: bool = False         # fuel cost tracker
+    can_route_all: bool = False         # route replay (all trucks)
+    can_route_own: bool = False         # route replay (own truck)
+    can_cost_per_mile: bool = False     # cost-per-mile dashboard
 
 
 # ─── Role → Permission Map ───────────────────────────────────────
@@ -89,6 +104,14 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_invite=True, can_manage_users=True,
         can_manage_companies=True, can_manage_account=True,
         can_rolling_stopped=True,
+        can_geofence_all=True, can_geofence_own=True,
+        can_digest=True,
+        can_maintenance_all=True, can_maintenance_own=True,
+        can_scorecard_all=True, can_scorecard_own=True,
+        can_location_map=True, can_location_own=True,
+        can_fuel_cost=True,
+        can_route_all=True, can_route_own=True,
+        can_cost_per_mile=True,
     ),
     Role.ADMIN: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=True,
@@ -97,6 +120,14 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_invite=True, can_manage_users=True,
         can_manage_companies=False, can_manage_account=False,
         can_rolling_stopped=True,
+        can_geofence_all=True, can_geofence_own=True,
+        can_digest=True,
+        can_maintenance_all=True, can_maintenance_own=True,
+        can_scorecard_all=True, can_scorecard_own=True,
+        can_location_map=True, can_location_own=True,
+        can_fuel_cost=True,
+        can_route_all=True, can_route_own=True,
+        can_cost_per_mile=True,
     ),
     Role.FLEET_MGR: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=True,
@@ -105,6 +136,14 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
         can_rolling_stopped=False,
+        can_geofence_all=True, can_geofence_own=True,
+        can_digest=True,
+        can_maintenance_all=True, can_maintenance_own=True,
+        can_scorecard_all=True, can_scorecard_own=True,
+        can_location_map=True, can_location_own=True,
+        can_fuel_cost=True,
+        can_route_all=True, can_route_own=True,
+        can_cost_per_mile=True,
     ),
     Role.DISPATCHER: FeatureSet(
         can_faults=False, can_critical=False, can_fuel=True,
@@ -113,6 +152,14 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
         can_rolling_stopped=True,
+        can_geofence_all=True, can_geofence_own=True,
+        can_digest=True,
+        can_maintenance_all=False, can_maintenance_own=False,
+        can_scorecard_all=True, can_scorecard_own=True,
+        can_location_map=True, can_location_own=True,
+        can_fuel_cost=False,
+        can_route_all=True, can_route_own=True,
+        can_cost_per_mile=False,
     ),
     Role.DRIVER: FeatureSet(
         can_faults=False, can_critical=False, can_fuel=False,
@@ -121,6 +168,14 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
         can_rolling_stopped=False,
+        can_geofence_all=False, can_geofence_own=True,
+        can_digest=True,
+        can_maintenance_all=False, can_maintenance_own=True,
+        can_scorecard_all=False, can_scorecard_own=True,
+        can_location_map=False, can_location_own=True,
+        can_fuel_cost=False,
+        can_route_all=False, can_route_own=True,
+        can_cost_per_mile=False,
     ),
 }
 

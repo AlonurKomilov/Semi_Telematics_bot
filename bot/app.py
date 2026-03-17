@@ -19,10 +19,11 @@ from samsara_client import populate_company_display
 import bot.config as _cfg
 from bot.config import (
     TELEGRAM_TOKEN, ALERT_INTERVAL,
+    WEBHOOK_URL, WEBHOOK_PORT, WEBHOOK_SECRET, USE_WEBHOOK,
     db, logger, _active_messages,
 )
 from bot.keyboards import main_menu_kb, system_owner_kb
-from bot.registration import cmd_start, cmd_register, cmd_join
+from bot.registration import cmd_start, cmd_register, cmd_join, cmd_help
 from bot.fleet import cmd_faults, cmd_truck, cmd_fuel, cmd_alerts, cmd_health, cmd_efficiency
 from bot.management import (
     cmd_account, cmd_invite, cmd_users, cmd_setrole,
@@ -35,7 +36,16 @@ from bot.admin import (
     cmd_broadcast, cmd_sys_disable_account,
 )
 from bot.callbacks import handle_callback, handle_text
-from bot.alerts import check_new_faults, initialize_known_faults
+from bot.alerts import check_new_faults, check_health_alerts, check_low_fuel, initialize_known_faults, check_alert_escalations
+from bot.digest import send_digests
+from bot.maintenance import check_overdue_maintenance
+from bot.geofences import check_geofence_events
+import bot.redis_client as rcache
+import encryption
+from bot.auth import _get_user
+import ai_client
+from bot.helpers import _show
+from bot.keyboards import user_settings_kb, back_kb
 
 
 async def cmd_chatid(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -56,9 +66,60 @@ async def cmd_chatid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show user notification settings menu."""
+    user, _, _ = await _get_user(update)
+    if not user:
+        await update.message.reply_text("Please /start first.")
+        return
+    context.user_data["_db_user"] = user
+    await _show(update, context, [
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "  ⚙️  <b>SETTINGS</b>\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "\nConfigure your notification preferences:"
+    ], keyboard=user_settings_kb(user))
+
+
+async def cmd_audit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show recent audit log entries."""
+    from permissions import can
+    user, _, _ = await _get_user(update)
+    if not user:
+        await update.message.reply_text("Please /start first.")
+        return
+    if not can(user.role, "can_manage_users"):
+        await update.message.reply_text("⛔ No access.")
+        return
+    entries = await db.get_audit_log(user.account_id, limit=15)
+    if not entries:
+        text = "📋 <b>Audit Log</b>\n\nNo recent activity."
+    else:
+        lines = ["📋 <b>Audit Log</b> (last 15)\n"]
+        for e in entries:
+            ts = e["created_at"][:16].replace("T", " ")
+            lines.append(f"  • <code>{ts}</code> — {e['action']}")
+            if e.get("details"):
+                lines.append(f"    {e['details'][:60]}")
+        text = "\n".join(lines)
+    await _show(update, context, [text], keyboard=back_kb())
+
+
 async def post_init(app: Application):
+    # Initialize encryption (must happen before DB reads)
+    encryption.init_encryption()
+
     # Initialize database
     await db.initialize()
+
+    # Give AI client access to DB for per-account model persistence
+    ai_client.set_db(db)
+
+    # Migrate plaintext API keys → encrypted (one-time, idempotent)
+    await db.migrate_encrypt_api_keys()
+
+    # Initialize Redis (optional — graceful fallback if unavailable)
+    await rcache.init_redis()
 
     # Capture bot username for deep-link generation
     me = await app.bot.get_me()
@@ -83,6 +144,8 @@ async def post_init(app: Application):
         BotCommand("health", "🏥 Vehicle health"),
         BotCommand("efficiency", "📊 Efficiency report"),
         BotCommand("admin", "⚙️ System admin panel"),
+        BotCommand("settings", "🔧 Notification settings"),
+        BotCommand("audit", "📋 View audit log"),
         BotCommand("help", "ℹ️ Help"),
     ])
     logger.info("Commands set")
@@ -148,17 +211,23 @@ async def post_init(app: Application):
                 logger.warning(f"Startup msg to {user.telegram_id}: {e}")
 
 
+async def post_shutdown(app: Application):
+    """Clean up resources on bot shutdown."""
+    await rcache.close_redis()
+    logger.info("Redis connection closed")
+
+
 def main():
     if not TELEGRAM_TOKEN:
         raise RuntimeError("TELEGRAM_BOT_TOKEN not set")
 
     logger.info("Starting Semi Telematics Bot — multi-tenant mode")
 
-    app = Application.builder().token(TELEGRAM_TOKEN).post_init(post_init).build()
+    app = Application.builder().token(TELEGRAM_TOKEN).post_init(post_init).post_shutdown(post_shutdown).build()
 
     # Registration
     app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("help", cmd_start))
+    app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("register", cmd_register))
     app.add_handler(CommandHandler("join", cmd_join))
 
@@ -185,6 +254,10 @@ def main():
     app.add_handler(CommandHandler("groups", cmd_groups))
     app.add_handler(CommandHandler("chatid", cmd_chatid))
 
+    # User settings & audit
+    app.add_handler(CommandHandler("settings", cmd_settings))
+    app.add_handler(CommandHandler("audit", cmd_audit))
+
     # System owner admin
     app.add_handler(CommandHandler("admin", cmd_admin))
     app.add_handler(CommandHandler("accounts", cmd_accounts))
@@ -207,6 +280,48 @@ def main():
         check_new_faults, "interval",
         minutes=ALERT_INTERVAL, args=[app], id="fault_check",
     )
+    scheduler.add_job(
+        check_health_alerts, "interval",
+        minutes=15, args=[app], id="health_check",
+    )
+    scheduler.add_job(
+        check_low_fuel, "interval",
+        minutes=ALERT_INTERVAL, args=[app], id="fuel_check",
+    )
+    scheduler.add_job(
+        send_digests, "interval",
+        hours=1, args=[app], id="digest_send",
+    )
+    scheduler.add_job(
+        check_overdue_maintenance, "interval",
+        hours=24, args=[app], id="maintenance_check",
+    )
+    scheduler.add_job(
+        check_geofence_events, "interval",
+        minutes=5, args=[app], id="geofence_check",
+    )
+    scheduler.add_job(
+        check_alert_escalations, "interval",
+        minutes=5, args=[app], id="escalation_check",
+    )
     scheduler.start()
 
-    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+    if USE_WEBHOOK:
+        if not WEBHOOK_SECRET:
+            logger.warning(
+                "WEBHOOK_SECRET is not set! Webhook requests will not be validated. "
+                "Set WEBHOOK_SECRET env var for production security."
+            )
+        logger.info(f"Starting webhook mode on port {WEBHOOK_PORT}")
+        app.run_webhook(
+            listen="127.0.0.1",
+            port=WEBHOOK_PORT,
+            url_path="/webhook",
+            webhook_url=WEBHOOK_URL,
+            secret_token=WEBHOOK_SECRET or None,
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,
+        )
+    else:
+        logger.info("Starting polling mode")
+        app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)

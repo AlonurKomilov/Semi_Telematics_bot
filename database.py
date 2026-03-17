@@ -32,6 +32,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
+from encryption import encrypt as _enc, decrypt as _dec
+
 logger = logging.getLogger(__name__)
 
 # ─── Schema version ──────────────────────────────────────────────
@@ -97,6 +99,15 @@ class User:
     alerts_on: bool
     is_active: bool
     created_at: str
+    # Per-type alert preferences (all default ON when alerts_on is True)
+    display_name: str = ""
+    alert_faults: bool = True
+    alert_health: bool = True
+    alert_fuel: bool = True
+    alert_geofence: bool = True
+    quiet_start: Optional[int] = None   # DND start hour (0-23)
+    quiet_end: Optional[int] = None     # DND end hour (0-23)
+    timezone: str = "America/New_York"
 
     @property
     def is_owner(self) -> bool:
@@ -105,6 +116,46 @@ class User:
     @property
     def is_admin_or_above(self) -> bool:
         return self.role in (Role.OWNER, Role.ADMIN)
+
+    def wants_alert(self, alert_type: str) -> bool:
+        """Check if user wants a specific alert type.
+
+        alert_type: 'faults', 'health', 'fuel', or 'geofence'
+        """
+        if not self.alerts_on:
+            return False
+        return getattr(self, f"alert_{alert_type}", True)
+
+    def is_in_quiet_hours(self) -> bool:
+        """Check if the user is currently in their DND quiet hours.
+
+        Returns False if quiet hours are not configured.
+        """
+        if self.quiet_start is None or self.quiet_end is None:
+            return False
+        try:
+            from zoneinfo import ZoneInfo
+            user_tz = ZoneInfo(self.timezone)
+            local_hour = datetime.now(timezone.utc).astimezone(user_tz).hour
+            start, end = self.quiet_start, self.quiet_end
+            if start <= end:
+                return start <= local_hour < end
+            else:
+                # Wraps midnight, e.g., 22:00 - 06:00
+                return local_hour >= start or local_hour < end
+        except Exception:
+            return False
+
+    @property
+    def label(self) -> str:
+        """Human-readable name for UI display, falls back to telegram_id."""
+        return self.display_name or str(self.telegram_id)
+
+    @property
+    def linked_label(self) -> str:
+        """Clickable name linking to the user's Telegram profile."""
+        name = self.display_name or str(self.telegram_id)
+        return f"<a href='tg://user?id={self.telegram_id}'>{name}</a>"
 
 @dataclass
 class AuthorizedChat:
@@ -244,6 +295,48 @@ class Database:
                 UNIQUE(account_id, chat_id)
             );
 
+            CREATE TABLE IF NOT EXISTS maintenance_tasks (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL REFERENCES accounts(id),
+                company_code    TEXT    NOT NULL DEFAULT '',
+                vehicle_id      TEXT    NOT NULL DEFAULT '',
+                vehicle_name    TEXT    NOT NULL DEFAULT '',
+                task_type       TEXT    NOT NULL DEFAULT 'custom',
+                description     TEXT    NOT NULL DEFAULT '',
+                due_date        TEXT,
+                due_miles       REAL,
+                status          TEXT    NOT NULL DEFAULT 'pending',
+                created_by      INTEGER NOT NULL,
+                created_at      TEXT    NOT NULL,
+                completed_at    TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS fuel_entries (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL REFERENCES accounts(id),
+                company_code    TEXT    NOT NULL DEFAULT '',
+                vehicle_id      TEXT    NOT NULL DEFAULT '',
+                vehicle_name    TEXT    NOT NULL DEFAULT '',
+                gallons         REAL    NOT NULL DEFAULT 0,
+                price_per_gallon REAL   NOT NULL DEFAULT 0,
+                total_cost      REAL    NOT NULL DEFAULT 0,
+                odometer_miles  REAL    NOT NULL DEFAULT 0,
+                date            TEXT    NOT NULL,
+                created_by      INTEGER NOT NULL,
+                created_at      TEXT    NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS digest_subscriptions (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     INTEGER NOT NULL REFERENCES users(id),
+                frequency   TEXT    NOT NULL DEFAULT 'daily',
+                send_hour   INTEGER NOT NULL DEFAULT 7,
+                timezone    TEXT    NOT NULL DEFAULT 'UTC',
+                is_active   INTEGER NOT NULL DEFAULT 1,
+                created_at  TEXT    NOT NULL,
+                UNIQUE(user_id)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_users_telegram_id
                 ON users(telegram_id);
             CREATE INDEX IF NOT EXISTS idx_companies_account_id
@@ -252,8 +345,132 @@ class Database:
                 ON invites(code);
             CREATE INDEX IF NOT EXISTS idx_authorized_chats_chat_id
                 ON authorized_chats(chat_id);
+            CREATE INDEX IF NOT EXISTS idx_maintenance_account
+                ON maintenance_tasks(account_id, status);
+            CREATE INDEX IF NOT EXISTS idx_fuel_entries_account
+                ON fuel_entries(account_id, vehicle_name);
+            CREATE INDEX IF NOT EXISTS idx_digest_subs_active
+                ON digest_subscriptions(is_active, send_hour);
+
+            CREATE TABLE IF NOT EXISTS account_settings (
+                account_id  INTEGER NOT NULL REFERENCES accounts(id),
+                key         TEXT    NOT NULL,
+                value       TEXT    NOT NULL DEFAULT '',
+                updated_at  TEXT    NOT NULL,
+                PRIMARY KEY (account_id, key)
+            );
+
+            CREATE TABLE IF NOT EXISTS alert_acknowledgments (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL REFERENCES accounts(id),
+                alert_type      TEXT    NOT NULL DEFAULT 'fault',
+                vehicle_id      TEXT    NOT NULL DEFAULT '',
+                vehicle_name    TEXT    NOT NULL DEFAULT '',
+                alert_key       TEXT    NOT NULL DEFAULT '',
+                message_id      INTEGER NOT NULL DEFAULT 0,
+                chat_id         INTEGER NOT NULL DEFAULT 0,
+                sent_to         INTEGER NOT NULL DEFAULT 0,
+                acknowledged_by INTEGER,
+                acknowledged_at TEXT,
+                escalation_level INTEGER NOT NULL DEFAULT 0,
+                next_escalation TEXT,
+                created_at      TEXT    NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id  INTEGER NOT NULL REFERENCES accounts(id),
+                user_id     INTEGER,
+                action      TEXT    NOT NULL,
+                target_type TEXT    NOT NULL DEFAULT '',
+                target_id   TEXT    NOT NULL DEFAULT '',
+                details     TEXT    NOT NULL DEFAULT '',
+                created_at  TEXT    NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS ai_usage (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL REFERENCES accounts(id),
+                user_id         INTEGER NOT NULL DEFAULT 0,
+                model           TEXT    NOT NULL DEFAULT '',
+                request_type    TEXT    NOT NULL DEFAULT '',
+                prompt_tokens   INTEGER NOT NULL DEFAULT 0,
+                reply_tokens    INTEGER NOT NULL DEFAULT 0,
+                total_tokens    INTEGER NOT NULL DEFAULT 0,
+                created_at      TEXT    NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_ai_usage_account
+                ON ai_usage(account_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_alert_ack_pending
+                ON alert_acknowledgments(acknowledged_at, next_escalation);
+            CREATE INDEX IF NOT EXISTS idx_audit_account
+                ON audit_log(account_id, created_at);
         """)
         await self._db.commit()
+
+        # ── Migration: add per-type alert preference columns ─────
+        await self._migrate_alert_prefs()
+        await self._migrate_user_quiet_hours()
+        await self._migrate_digest_timezone()
+        await self._migrate_user_display_name()
+
+    async def _migrate_alert_prefs(self):
+        """Add alert_faults/health/fuel/geofence columns if missing."""
+        new_cols = [
+            ("alert_faults", "INTEGER NOT NULL DEFAULT 1"),
+            ("alert_health", "INTEGER NOT NULL DEFAULT 1"),
+            ("alert_fuel", "INTEGER NOT NULL DEFAULT 1"),
+            ("alert_geofence", "INTEGER NOT NULL DEFAULT 1"),
+        ]
+        for col_name, col_def in new_cols:
+            try:
+                await self._db.execute(
+                    f"ALTER TABLE users ADD COLUMN {col_name} {col_def}"
+                )
+                await self._db.commit()
+                logger.info(f"Added column users.{col_name}")
+            except Exception:
+                pass  # column already exists
+
+    async def _migrate_user_quiet_hours(self):
+        """Add quiet_start, quiet_end, timezone columns to users."""
+        new_cols = [
+            ("quiet_start", "INTEGER"),           # hour 0-23, NULL = no DND
+            ("quiet_end", "INTEGER"),             # hour 0-23
+            ("timezone", "TEXT NOT NULL DEFAULT 'America/New_York'"),
+        ]
+        for col_name, col_def in new_cols:
+            try:
+                await self._db.execute(
+                    f"ALTER TABLE users ADD COLUMN {col_name} {col_def}"
+                )
+                await self._db.commit()
+                logger.info(f"Added column users.{col_name}")
+            except Exception:
+                pass
+
+    async def _migrate_digest_timezone(self):
+        """Ensure digest_subscriptions has timezone column."""
+        try:
+            await self._db.execute(
+                "ALTER TABLE digest_subscriptions ADD COLUMN timezone TEXT NOT NULL DEFAULT 'America/New_York'"
+            )
+            await self._db.commit()
+            logger.info("Added column digest_subscriptions.timezone")
+        except Exception:
+            pass
+
+    async def _migrate_user_display_name(self):
+        """Add display_name column to users table."""
+        try:
+            await self._db.execute(
+                "ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''"
+            )
+            await self._db.commit()
+            logger.info("Added column users.display_name")
+        except Exception:
+            pass
 
     # ── Helpers ───────────────────────────────────────────────────
 
@@ -288,7 +505,7 @@ class Database:
         return Company(
             id=row["id"], account_id=row["account_id"],
             code=row["code"], display_name=row["display_name"],
-            samsara_api_key=row["samsara_api_key"],
+            samsara_api_key=_dec(row["samsara_api_key"]),
             active_days=row["active_days"],
             is_active=bool(row["is_active"]),
             created_at=row["created_at"],
@@ -304,6 +521,14 @@ class Database:
             alerts_on=bool(row["alerts_on"]),
             is_active=bool(row["is_active"]),
             created_at=row["created_at"],
+            display_name=row["display_name"] if "display_name" in row.keys() else "",
+            alert_faults=bool(row["alert_faults"]) if "alert_faults" in row.keys() else True,
+            alert_health=bool(row["alert_health"]) if "alert_health" in row.keys() else True,
+            alert_fuel=bool(row["alert_fuel"]) if "alert_fuel" in row.keys() else True,
+            alert_geofence=bool(row["alert_geofence"]) if "alert_geofence" in row.keys() else True,
+            quiet_start=row["quiet_start"] if "quiet_start" in row.keys() else None,
+            quiet_end=row["quiet_end"] if "quiet_end" in row.keys() else None,
+            timezone=row["timezone"] if "timezone" in row.keys() else "America/New_York",
         )
 
     def _row_to_invite(self, row) -> Invite:
@@ -392,11 +617,12 @@ class Database:
         """Add a Samsara company to an account."""
         now = self._now()
         code = code.strip().upper()
+        encrypted_key = _enc(samsara_api_key)
         cur = await self._db.execute(
             """INSERT INTO companies
                (account_id, code, display_name, samsara_api_key, active_days, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            (account_id, code, display_name, samsara_api_key, active_days, now),
+            (account_id, code, display_name, encrypted_key, active_days, now),
         )
         await self._db.commit()
         return Company(
@@ -442,6 +668,8 @@ class Database:
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
             return False
+        if "samsara_api_key" in updates:
+            updates["samsara_api_key"] = _enc(updates["samsara_api_key"])
         set_clause = ", ".join(f"{k} = ?" for k in updates)
         values = list(updates.values()) + [company_id]
         await self._db.execute(
@@ -459,20 +687,22 @@ class Database:
         role: Role = Role.FLEET_MGR,
         department: str = "general",
         truck_num: Optional[str] = None,
+        display_name: str = "",
     ) -> User:
         """Register a Telegram user to an account."""
         now = self._now()
         cur = await self._db.execute(
             """INSERT INTO users
-               (telegram_id, account_id, role, department, truck_num, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (telegram_id, account_id, role.value, department, truck_num, now),
+               (telegram_id, account_id, role, department, truck_num, display_name, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (telegram_id, account_id, role.value, department, truck_num, display_name, now),
         )
         await self._db.commit()
         return User(
             id=cur.lastrowid, telegram_id=telegram_id,
             account_id=account_id, role=role,
             department=department, truck_num=truck_num,
+            display_name=display_name,
             alerts_on=False, is_active=True, created_at=now,
         )
 
@@ -511,8 +741,10 @@ class Database:
         return [self._row_to_user(r) for r in rows]
 
     async def update_user(self, user_id: int, **kwargs) -> bool:
-        """Update user fields. Allowed: role, department, truck_num, alerts_on, is_active."""
-        allowed = {"role", "department", "truck_num", "alerts_on", "is_active"}
+        """Update user fields. Allowed: role, department, truck_num, alerts_on, is_active, alert_*."""
+        allowed = {"role", "department", "truck_num", "alerts_on", "is_active",
+                   "alert_faults", "alert_health", "alert_fuel", "alert_geofence",
+                   "quiet_start", "quiet_end", "timezone", "display_name"}
         updates = {}
         for k, v in kwargs.items():
             if k not in allowed:
@@ -552,6 +784,35 @@ class Database:
         """All users with alerts enabled (across all accounts)."""
         cur = await self._db.execute(
             "SELECT * FROM users WHERE alerts_on = 1 AND is_active = 1",
+        )
+        rows = await cur.fetchall()
+        return [self._row_to_user(r) for r in rows]
+
+    async def get_typed_alert_subscribers(
+        self, account_id: int, alert_type: str,
+    ) -> list[User]:
+        """Users subscribed to a specific alert type for an account.
+
+        alert_type: 'faults', 'health', 'fuel', or 'geofence'
+        """
+        col = f"alert_{alert_type}"
+        if col not in ("alert_faults", "alert_health", "alert_fuel", "alert_geofence"):
+            return []
+        cur = await self._db.execute(
+            f"SELECT * FROM users WHERE account_id = ? AND alerts_on = 1"
+            f" AND {col} = 1 AND is_active = 1",
+            (account_id,),
+        )
+        rows = await cur.fetchall()
+        return [self._row_to_user(r) for r in rows]
+
+    async def get_all_typed_subscribers(self, alert_type: str) -> list[User]:
+        """All users subscribed to a specific alert type (across all accounts)."""
+        col = f"alert_{alert_type}"
+        if col not in ("alert_faults", "alert_health", "alert_fuel", "alert_geofence"):
+            return []
+        cur = await self._db.execute(
+            f"SELECT * FROM users WHERE alerts_on = 1 AND {col} = 1 AND is_active = 1",
         )
         rows = await cur.fetchall()
         return [self._row_to_user(r) for r in rows]
@@ -664,7 +925,8 @@ class Database:
         row = await cur.fetchone()
         return self._row_to_invite(row) if row else None
 
-    async def redeem_invite(self, code: str, telegram_id: int) -> Optional[User]:
+    async def redeem_invite(self, code: str, telegram_id: int,
+                            display_name: str = "") -> Optional[User]:
         """Redeem an invite code → create user and mark invite used.
 
         Returns the new User or None if code is invalid/expired/used.
@@ -685,6 +947,7 @@ class Database:
             role=Role.from_str(invite.role),
             department=invite.department,
             truck_num=invite.truck_num,
+            display_name=display_name,
         )
 
         # Mark invite as used
@@ -774,3 +1037,472 @@ class Database:
         row = await cur.fetchone()
         return row[0] if row else None
 
+    # ══════════════════════════════════════════════════════════════
+    # MAINTENANCE TASKS
+    # ══════════════════════════════════════════════════════════════
+
+    async def add_maintenance_task(
+        self, account_id: int, company_code: str,
+        vehicle_name: str, task_type: str, description: str,
+        due_date: Optional[str] = None, due_miles: Optional[float] = None,
+        created_by: int = 0, vehicle_id: str = "",
+    ) -> int:
+        now = self._now()
+        cur = await self._db.execute(
+            """INSERT INTO maintenance_tasks
+               (account_id, company_code, vehicle_id, vehicle_name,
+                task_type, description, due_date, due_miles, created_by, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (account_id, company_code, vehicle_id, vehicle_name,
+             task_type, description, due_date, due_miles, created_by, now),
+        )
+        await self._db.commit()
+        return cur.lastrowid
+
+    async def get_maintenance_tasks(
+        self, account_id: int, status: Optional[str] = None,
+        vehicle_name: Optional[str] = None,
+    ) -> list[dict]:
+        q = "SELECT * FROM maintenance_tasks WHERE account_id = ?"
+        params: list = [account_id]
+        if status:
+            q += " AND status = ?"
+            params.append(status)
+        if vehicle_name:
+            q += " AND vehicle_name = ?"
+            params.append(vehicle_name)
+        q += " ORDER BY CASE status WHEN 'overdue' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END, created_at DESC"
+        cur = await self._db.execute(q, params)
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def update_maintenance_status(self, task_id: int, status: str) -> bool:
+        completed_at = self._now() if status == "done" else None
+        await self._db.execute(
+            "UPDATE maintenance_tasks SET status = ?, completed_at = ? WHERE id = ?",
+            (status, completed_at, task_id),
+        )
+        await self._db.commit()
+        return True
+
+    async def get_overdue_tasks(self, account_id: int) -> list[dict]:
+        cur = await self._db.execute(
+            "SELECT * FROM maintenance_tasks WHERE account_id = ? AND status = 'overdue'",
+            (account_id,),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def get_pending_tasks_by_date(self) -> list[dict]:
+        """Get all pending tasks with a due_date in the past (across all accounts)."""
+        now = self._now()
+        cur = await self._db.execute(
+            "SELECT * FROM maintenance_tasks WHERE status = 'pending' AND due_date IS NOT NULL AND due_date < ?",
+            (now,),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    # ══════════════════════════════════════════════════════════════
+    # FUEL ENTRIES
+    # ══════════════════════════════════════════════════════════════
+
+    async def add_fuel_entry(
+        self, account_id: int, company_code: str,
+        vehicle_name: str, gallons: float, price_per_gallon: float,
+        odometer_miles: float, date: str,
+        created_by: int = 0, vehicle_id: str = "",
+    ) -> int:
+        now = self._now()
+        total_cost = round(gallons * price_per_gallon, 2)
+        cur = await self._db.execute(
+            """INSERT INTO fuel_entries
+               (account_id, company_code, vehicle_id, vehicle_name,
+                gallons, price_per_gallon, total_cost, odometer_miles,
+                date, created_by, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (account_id, company_code, vehicle_id, vehicle_name,
+             gallons, price_per_gallon, total_cost, odometer_miles,
+             date, created_by, now),
+        )
+        await self._db.commit()
+        return cur.lastrowid
+
+    async def get_fuel_entries(
+        self, account_id: int, vehicle_name: Optional[str] = None,
+        limit: int = 50,
+    ) -> list[dict]:
+        q = "SELECT * FROM fuel_entries WHERE account_id = ?"
+        params: list = [account_id]
+        if vehicle_name:
+            q += " AND vehicle_name = ?"
+            params.append(vehicle_name)
+        q += " ORDER BY date DESC LIMIT ?"
+        params.append(limit)
+        cur = await self._db.execute(q, params)
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def get_fuel_summary(self, account_id: int) -> list[dict]:
+        """Per-vehicle fuel summary: total gallons, total cost, avg price, entry count."""
+        cur = await self._db.execute(
+            """SELECT vehicle_name, company_code,
+                      COUNT(*) as entries,
+                      SUM(gallons) as total_gallons,
+                      SUM(total_cost) as total_cost,
+                      AVG(price_per_gallon) as avg_price,
+                      MIN(odometer_miles) as first_odo,
+                      MAX(odometer_miles) as last_odo
+               FROM fuel_entries
+               WHERE account_id = ?
+               GROUP BY vehicle_name
+               ORDER BY total_cost DESC""",
+            (account_id,),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    # ══════════════════════════════════════════════════════════════
+    # DIGEST SUBSCRIPTIONS
+    # ══════════════════════════════════════════════════════════════
+
+    async def subscribe_digest(
+        self, user_id: int, frequency: str = "daily", send_hour: int = 7,
+    ) -> None:
+        now = self._now()
+        await self._db.execute(
+            """INSERT INTO digest_subscriptions (user_id, frequency, send_hour, created_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(user_id) DO UPDATE
+               SET frequency = excluded.frequency,
+                   send_hour = excluded.send_hour,
+                   is_active = 1""",
+            (user_id, frequency, send_hour, now),
+        )
+        await self._db.commit()
+
+    async def unsubscribe_digest(self, user_id: int) -> None:
+        await self._db.execute(
+            "UPDATE digest_subscriptions SET is_active = 0 WHERE user_id = ?",
+            (user_id,),
+        )
+        await self._db.commit()
+
+    async def get_digest_subscription(self, user_id: int) -> Optional[dict]:
+        cur = await self._db.execute(
+            "SELECT * FROM digest_subscriptions WHERE user_id = ? AND is_active = 1",
+            (user_id,),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def get_digest_subscribers(self, send_hour: int, frequency: str = "daily") -> list[dict]:
+        """Get all active subscribers for a given hour and frequency."""
+        cur = await self._db.execute(
+            """SELECT ds.*, u.telegram_id, u.account_id, u.role, u.truck_num
+               FROM digest_subscriptions ds
+               JOIN users u ON u.id = ds.user_id
+               WHERE ds.is_active = 1 AND ds.send_hour = ? AND ds.frequency = ?
+               AND u.is_active = 1""",
+            (send_hour, frequency),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    # ══════════════════════════════════════════════════════════════
+    # ACCOUNT SETTINGS (key-value per account)
+    # ══════════════════════════════════════════════════════════════
+
+    async def get_account_setting(self, account_id: int, key: str,
+                                  default: str = "") -> str:
+        """Get a single setting value for an account."""
+        cur = await self._db.execute(
+            "SELECT value FROM account_settings "
+            "WHERE account_id = ? AND key = ?",
+            (account_id, key),
+        )
+        row = await cur.fetchone()
+        return row["value"] if row else default
+
+    async def set_account_setting(self, account_id: int, key: str,
+                                  value: str):
+        """Set a single setting value for an account (upsert)."""
+        await self._db.execute(
+            "INSERT INTO account_settings (account_id, key, value, updated_at) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(account_id, key) DO UPDATE SET value = ?, updated_at = ?",
+            (account_id, key, value, self._now(), value, self._now()),
+        )
+        await self._db.commit()
+
+    # ══════════════════════════════════════════════════════════════
+    # ALERT ACKNOWLEDGMENTS
+    # ══════════════════════════════════════════════════════════════
+
+    async def create_alert_ack(
+        self, account_id: int, alert_type: str,
+        vehicle_id: str, vehicle_name: str, alert_key: str,
+        message_id: int, chat_id: int, sent_to: int,
+        next_escalation: Optional[str] = None,
+    ) -> int:
+        """Record a sent alert that needs acknowledgment."""
+        now = self._now()
+        cur = await self._db.execute(
+            """INSERT INTO alert_acknowledgments
+               (account_id, alert_type, vehicle_id, vehicle_name, alert_key,
+                message_id, chat_id, sent_to, next_escalation, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (account_id, alert_type, vehicle_id, vehicle_name, alert_key,
+             message_id, chat_id, sent_to, next_escalation, now),
+        )
+        await self._db.commit()
+        return cur.lastrowid
+
+    async def acknowledge_alert(self, ack_id: int, user_id: int) -> bool:
+        """Mark an alert as acknowledged."""
+        now = self._now()
+        await self._db.execute(
+            "UPDATE alert_acknowledgments SET acknowledged_by = ?, acknowledged_at = ? "
+            "WHERE id = ? AND acknowledged_at IS NULL",
+            (user_id, now, ack_id),
+        )
+        await self._db.commit()
+        return True
+
+    async def get_unacked_alerts(self, before: Optional[str] = None) -> list[dict]:
+        """Get unacknowledged alerts that need escalation.
+
+        If `before` is given, only return alerts with next_escalation < before.
+        """
+        q = ("SELECT * FROM alert_acknowledgments "
+             "WHERE acknowledged_at IS NULL AND next_escalation IS NOT NULL")
+        params: list = []
+        if before:
+            q += " AND next_escalation <= ?"
+            params.append(before)
+        q += " ORDER BY created_at"
+        cur = await self._db.execute(q, params)
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def update_alert_escalation(self, ack_id: int,
+                                       escalation_level: int,
+                                       next_escalation: Optional[str]):
+        """Update escalation level and next escalation time."""
+        await self._db.execute(
+            "UPDATE alert_acknowledgments SET escalation_level = ?, next_escalation = ? WHERE id = ?",
+            (escalation_level, next_escalation, ack_id),
+        )
+        await self._db.commit()
+
+    # ══════════════════════════════════════════════════════════════
+    # AUDIT LOG
+    # ══════════════════════════════════════════════════════════════
+
+    async def add_audit_log(
+        self, account_id: int, user_id: Optional[int],
+        action: str, target_type: str = "", target_id: str = "",
+        details: str = "",
+    ) -> int:
+        """Record an action in the audit log."""
+        now = self._now()
+        cur = await self._db.execute(
+            """INSERT INTO audit_log
+               (account_id, user_id, action, target_type, target_id, details, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (account_id, user_id, action, target_type, target_id, details, now),
+        )
+        await self._db.commit()
+        return cur.lastrowid
+
+    async def get_audit_log(self, account_id: int, limit: int = 50) -> list[dict]:
+        """Get recent audit log entries for an account."""
+        cur = await self._db.execute(
+            "SELECT * FROM audit_log WHERE account_id = ? ORDER BY created_at DESC LIMIT ?",
+            (account_id, limit),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    # ══════════════════════════════════════════════════════════════
+    # AI USAGE TRACKING
+    # ══════════════════════════════════════════════════════════════
+
+    async def log_ai_usage(
+        self, account_id: int, user_id: int, model: str,
+        request_type: str, prompt_tokens: int = 0,
+        reply_tokens: int = 0, total_tokens: int = 0,
+    ) -> int:
+        """Log an AI API call with token counts."""
+        now = self._now()
+        cur = await self._db.execute(
+            """INSERT INTO ai_usage
+               (account_id, user_id, model, request_type,
+                prompt_tokens, reply_tokens, total_tokens, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (account_id, user_id, model, request_type,
+             prompt_tokens, reply_tokens, total_tokens, now),
+        )
+        await self._db.commit()
+        return cur.lastrowid
+
+    async def get_ai_usage_stats(self, account_id: int, days: int = 30) -> dict:
+        """Get AI usage stats for an account over the past N days.
+
+        Returns dict with total_requests, total_tokens, by_type breakdown,
+        and by_model breakdown.
+        """
+        from datetime import timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        cur = await self._db.execute(
+            """SELECT request_type, model,
+                      COUNT(*) as cnt,
+                      SUM(prompt_tokens) as sum_prompt,
+                      SUM(reply_tokens) as sum_reply,
+                      SUM(total_tokens) as sum_total
+               FROM ai_usage
+               WHERE account_id = ? AND created_at >= ?
+               GROUP BY request_type, model""",
+            (account_id, cutoff),
+        )
+        rows = await cur.fetchall()
+        by_type: dict[str, dict] = {}
+        by_model: dict[str, dict] = {}
+        total_requests = 0
+        total_tokens = 0
+        for r in rows:
+            rt = r["request_type"]
+            m = r["model"]
+            cnt = r["cnt"]
+            tok = r["sum_total"] or 0
+            total_requests += cnt
+            total_tokens += tok
+            # Aggregate by type
+            if rt not in by_type:
+                by_type[rt] = {"requests": 0, "tokens": 0}
+            by_type[rt]["requests"] += cnt
+            by_type[rt]["tokens"] += tok
+            # Aggregate by model
+            if m not in by_model:
+                by_model[m] = {"requests": 0, "tokens": 0}
+            by_model[m]["requests"] += cnt
+            by_model[m]["tokens"] += tok
+        return {
+            "total_requests": total_requests,
+            "total_tokens": total_tokens,
+            "by_type": by_type,
+            "by_model": by_model,
+            "days": days,
+        }
+
+    async def get_ai_usage_daily(self, account_id: int, days: int = 7) -> list[dict]:
+        """Get daily AI usage breakdown for the past N days."""
+        from datetime import timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        cur = await self._db.execute(
+            """SELECT DATE(created_at) as day,
+                      COUNT(*) as requests,
+                      SUM(total_tokens) as tokens
+               FROM ai_usage
+               WHERE account_id = ? AND created_at >= ?
+               GROUP BY DATE(created_at)
+               ORDER BY day""",
+            (account_id, cutoff),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    # ══════════════════════════════════════════════════════════════
+    # DIGEST SUBSCRIPTIONS (extended)
+    # ══════════════════════════════════════════════════════════════
+
+    async def subscribe_digest_ext(
+        self, user_id: int, frequency: str = "daily",
+        send_hour: int = 7, timezone: str = "America/New_York",
+    ) -> None:
+        """Subscribe to digest with timezone support."""
+        now = self._now()
+        await self._db.execute(
+            """INSERT INTO digest_subscriptions (user_id, frequency, send_hour, timezone, created_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(user_id) DO UPDATE
+               SET frequency = excluded.frequency,
+                   send_hour = excluded.send_hour,
+                   timezone = excluded.timezone,
+                   is_active = 1""",
+            (user_id, frequency, send_hour, timezone, now),
+        )
+        await self._db.commit()
+
+    async def get_digest_subscribers_by_local_hour(self, utc_hour: int) -> list[dict]:
+        """Get all active digest subscribers whose local send_hour matches now.
+
+        Computes which UTC hour each subscriber's local send_hour maps to,
+        and returns those matching the given utc_hour.
+        """
+        # Fetch all active subscriptions with user info
+        cur = await self._db.execute(
+            """SELECT ds.*, u.telegram_id, u.account_id, u.role, u.truck_num
+               FROM digest_subscriptions ds
+               JOIN users u ON u.id = ds.user_id
+               WHERE ds.is_active = 1 AND u.is_active = 1""",
+        )
+        rows = await cur.fetchall()
+
+        from datetime import datetime as _dt, timezone as _tz
+        from zoneinfo import ZoneInfo
+
+        now_utc = _dt.now(_tz.utc)
+        results = []
+        for r in rows:
+            row = dict(r)
+            tz_name = row.get("timezone", "America/New_York")
+            send_hour = row.get("send_hour", 7)
+            try:
+                user_tz = ZoneInfo(tz_name)
+                # Create a datetime at the user's desired local send_hour today
+                local_now = now_utc.astimezone(user_tz)
+                local_send = local_now.replace(hour=send_hour, minute=0, second=0, microsecond=0)
+                # Convert that to UTC and check if the UTC hour matches
+                utc_send = local_send.astimezone(_tz.utc)
+                if utc_send.hour == utc_hour:
+                    results.append(row)
+            except Exception:
+                # Fallback: treat send_hour as UTC
+                if send_hour == utc_hour:
+                    results.append(row)
+        return results
+
+    # ══════════════════════════════════════════════════════════════
+    # ENCRYPTION MIGRATION
+    # ══════════════════════════════════════════════════════════════
+
+    async def migrate_encrypt_api_keys(self) -> int:
+        """Encrypt all plaintext API keys in the companies table.
+
+        Skips keys that are already encrypted (start with 'enc::').
+        Returns the number of keys that were encrypted.
+        """
+        from encryption import is_enabled, encrypt as _encrypt, _ENC_PREFIX
+
+        if not is_enabled():
+            logger.info("Encryption not enabled — skipping key migration")
+            return 0
+
+        cur = await self._db.execute("SELECT id, samsara_api_key FROM companies")
+        rows = await cur.fetchall()
+        count = 0
+        for row in rows:
+            raw = row["samsara_api_key"]
+            if raw.startswith(_ENC_PREFIX):
+                continue  # already encrypted
+            encrypted = _encrypt(raw)
+            await self._db.execute(
+                "UPDATE companies SET samsara_api_key = ? WHERE id = ?",
+                (encrypted, row["id"]),
+            )
+            count += 1
+        if count:
+            await self._db.commit()
+            logger.info(f"Encrypted {count} plaintext API key(s)")
+        return count

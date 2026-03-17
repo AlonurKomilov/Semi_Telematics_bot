@@ -1,0 +1,513 @@
+"""Tests for new automation features: quiet hours, alert acks, audit log,
+digest timezone, settings keyboards, onboarding keyboard, rate limiting."""
+
+import os
+import pytest
+import pytest_asyncio
+
+os.environ.setdefault("ENCRYPTION_KEY", "")
+
+from database import Database, Role, User
+
+
+# ── Fixtures ──────────────────────────────────────────────────────
+
+@pytest_asyncio.fixture
+async def db(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    database = Database(db_path)
+    await database.initialize()
+    yield database
+    await database.close()
+
+
+@pytest_asyncio.fixture
+async def seeded(db: Database):
+    account = await db.create_account("Test Fleet")
+    owner = await db.create_user(telegram_id=100001, account_id=account.id, role=Role.OWNER)
+    driver = await db.create_user(telegram_id=100002, account_id=account.id, role=Role.DRIVER, truck_num="101")
+    return {"db": db, "account": account, "owner": owner, "driver": driver}
+
+
+# ══════════════════════════════════════════════════════════════════
+# QUIET HOURS
+# ══════════════════════════════════════════════════════════════════
+
+class TestQuietHours:
+    async def test_default_no_quiet_hours(self, seeded):
+        user = seeded["owner"]
+        assert user.quiet_start is None
+        assert user.quiet_end is None
+
+    async def test_set_quiet_hours(self, seeded):
+        db, user = seeded["db"], seeded["owner"]
+        await db.update_user(user.id, quiet_start=22, quiet_end=6)
+        updated = await db.get_user(user.id)
+        assert updated.quiet_start == 22
+        assert updated.quiet_end == 6
+
+    async def test_is_in_quiet_hours_during(self, seeded):
+        from unittest.mock import patch, MagicMock
+        from datetime import datetime as real_dt, timezone as tz
+        from zoneinfo import ZoneInfo
+        db, user = seeded["db"], seeded["owner"]
+        await db.update_user(user.id, quiet_start=22, quiet_end=6, timezone="UTC")
+        updated = await db.get_user(user.id)
+        # Mock datetime.now so that the local hour is 23
+        fake_now = real_dt(2025, 6, 15, 23, 0, 0, tzinfo=tz.utc)
+        original_dt = real_dt
+
+        class FakeDatetime(real_dt):
+            @classmethod
+            def now(cls, tz_val=None):
+                return fake_now.astimezone(tz_val) if tz_val else fake_now
+
+        with patch("database.datetime", FakeDatetime):
+            assert updated.is_in_quiet_hours() is True
+
+    async def test_is_in_quiet_hours_outside(self, seeded):
+        from unittest.mock import patch
+        from datetime import datetime as real_dt, timezone as tz
+        db, user = seeded["db"], seeded["owner"]
+        await db.update_user(user.id, quiet_start=22, quiet_end=6, timezone="UTC")
+        updated = await db.get_user(user.id)
+        # Mock current time to 12:00 UTC
+        fake_now = real_dt(2025, 6, 15, 12, 0, 0, tzinfo=tz.utc)
+
+        class FakeDatetime(real_dt):
+            @classmethod
+            def now(cls, tz_val=None):
+                return fake_now.astimezone(tz_val) if tz_val else fake_now
+
+        with patch("database.datetime", FakeDatetime):
+            assert updated.is_in_quiet_hours() is False
+
+    async def test_is_in_quiet_hours_none(self, seeded):
+        user = seeded["owner"]
+        assert user.is_in_quiet_hours() is False
+
+    async def test_disable_quiet_hours(self, seeded):
+        db, user = seeded["db"], seeded["owner"]
+        await db.update_user(user.id, quiet_start=22, quiet_end=6)
+        await db.update_user(user.id, quiet_start=None, quiet_end=None)
+        updated = await db.get_user(user.id)
+        assert updated.quiet_start is None
+        assert updated.quiet_end is None
+
+
+# ══════════════════════════════════════════════════════════════════
+# TIMEZONE
+# ══════════════════════════════════════════════════════════════════
+
+class TestUserTimezone:
+    async def test_default_timezone(self, seeded):
+        user = seeded["owner"]
+        assert user.timezone == "America/New_York"
+
+    async def test_set_timezone(self, seeded):
+        db, user = seeded["db"], seeded["owner"]
+        await db.update_user(user.id, timezone="America/Chicago")
+        updated = await db.get_user(user.id)
+        assert updated.timezone == "America/Chicago"
+
+
+# ══════════════════════════════════════════════════════════════════
+# ALERT ACKNOWLEDGMENTS
+# ══════════════════════════════════════════════════════════════════
+
+class TestAlertAcknowledgments:
+    async def _make_ack(self, db, account_id, vehicle="Truck 101"):
+        return await db.create_alert_ack(
+            account_id=account_id,
+            alert_type="fault",
+            vehicle_id="v1",
+            vehicle_name=vehicle,
+            alert_key="fault_v1_12345",
+            message_id=1001,
+            chat_id=2001,
+            sent_to=100001,
+            next_escalation="2099-01-01T00:00:00",
+        )
+
+    async def test_create_alert_ack(self, seeded):
+        db, account = seeded["db"], seeded["account"]
+        ack_id = await self._make_ack(db, account.id)
+        assert isinstance(ack_id, int)
+        assert ack_id > 0
+
+    async def test_acknowledge_alert(self, seeded):
+        db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
+        ack_id = await self._make_ack(db, account.id)
+        result = await db.acknowledge_alert(ack_id, owner.telegram_id)
+        assert result is True
+
+    async def test_get_unacked_alerts(self, seeded):
+        db, account = seeded["db"], seeded["account"]
+        await self._make_ack(db, account.id, vehicle="T1")
+        await self._make_ack(db, account.id, vehicle="T2")
+        unacked = await db.get_unacked_alerts()
+        assert len(unacked) == 2
+
+    async def test_acked_not_in_unacked(self, seeded):
+        db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
+        ack_id = await self._make_ack(db, account.id)
+        await db.acknowledge_alert(ack_id, owner.telegram_id)
+        unacked = await db.get_unacked_alerts()
+        assert len(unacked) == 0
+
+
+# ══════════════════════════════════════════════════════════════════
+# AUDIT LOG
+# ══════════════════════════════════════════════════════════════════
+
+class TestAuditLog:
+    async def test_add_audit_entry(self, seeded):
+        db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
+        await db.add_audit_log(
+            account_id=account.id,
+            user_id=owner.id,
+            action="test_action",
+            target_type="user",
+            target_id=str(owner.id),
+            details="Did a thing",
+        )
+        entries = await db.get_audit_log(account.id)
+        assert len(entries) == 1
+        assert entries[0]["action"] == "test_action"
+        assert entries[0]["details"] == "Did a thing"
+
+    async def test_audit_log_ordering(self, seeded):
+        db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
+        await db.add_audit_log(account.id, owner.id, "first")
+        await db.add_audit_log(account.id, owner.id, "second")
+        entries = await db.get_audit_log(account.id)
+        # Most recent first
+        assert entries[0]["action"] == "second"
+        assert entries[1]["action"] == "first"
+
+    async def test_audit_log_limit(self, seeded):
+        db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
+        for i in range(10):
+            await db.add_audit_log(account.id, owner.id, f"action_{i}")
+        entries = await db.get_audit_log(account.id, limit=5)
+        assert len(entries) == 5
+
+
+# ══════════════════════════════════════════════════════════════════
+# DIGEST TIMEZONE SUBSCRIPTIONS
+# ══════════════════════════════════════════════════════════════════
+
+class TestDigestTimezone:
+    async def test_subscribe_with_timezone(self, seeded):
+        db, owner = seeded["db"], seeded["owner"]
+        await db.subscribe_digest_ext(
+            user_id=owner.id,
+            frequency="daily",
+            send_hour=9,
+            timezone="America/Chicago",
+        )
+        sub = await db.get_digest_subscription(owner.id)
+        assert sub is not None
+        assert sub["frequency"] == "daily"
+        assert sub["send_hour"] == 9
+        assert sub["timezone"] == "America/Chicago"
+
+    async def test_get_digest_subscribers_by_local_hour(self, seeded):
+        db, owner, driver = seeded["db"], seeded["owner"], seeded["driver"]
+        await db.subscribe_digest_ext(owner.id, "daily", send_hour=7, timezone="UTC")
+        await db.subscribe_digest_ext(driver.id, "daily", send_hour=9, timezone="UTC")
+        subs_7 = await db.get_digest_subscribers_by_local_hour(7)
+        subs_9 = await db.get_digest_subscribers_by_local_hour(9)
+        assert len(subs_7) == 1
+        assert len(subs_9) == 1
+
+
+# ══════════════════════════════════════════════════════════════════
+# KEYBOARDS
+# ══════════════════════════════════════════════════════════════════
+
+class TestNewKeyboards:
+    def _callbacks(self, kb):
+        return [btn.callback_data for row in kb.inline_keyboard for btn in row]
+
+    def test_digest_hour_kb(self):
+        from bot.keyboards import digest_hour_kb
+        kb = digest_hour_kb()
+        callbacks = self._callbacks(kb)
+        assert "digest_hour_7" in callbacks
+        assert "digest_hour_12" in callbacks
+        assert "cmd_digest" in callbacks  # cancel button
+
+    def test_digest_tz_kb(self):
+        from bot.keyboards import digest_tz_kb
+        kb = digest_tz_kb()
+        callbacks = self._callbacks(kb)
+        assert "digest_tz_America/New_York" in callbacks
+        assert "digest_tz_UTC" in callbacks
+        assert "cmd_digest" in callbacks
+
+    def test_quiet_hours_picker_kb(self):
+        from bot.keyboards import quiet_hours_picker_kb
+        kb = quiet_hours_picker_kb()
+        callbacks = self._callbacks(kb)
+        assert "quiet_set_22_6" in callbacks
+        assert "cmd_settings" in callbacks
+
+    def test_user_settings_kb(self):
+        from bot.keyboards import user_settings_kb
+        user = User(
+            id=1, telegram_id=1, account_id=1, role=Role.OWNER,
+            department="", truck_num=None, alerts_on=True, is_active=True,
+            created_at="", alert_faults=True, alert_health=True,
+            alert_fuel=True, alert_geofence=True,
+            quiet_start=None, quiet_end=None, timezone="America/New_York",
+        )
+        kb = user_settings_kb(user)
+        callbacks = self._callbacks(kb)
+        assert "settings_quiet" in callbacks
+        assert "settings_tz" in callbacks
+        assert "cmd_menu" in callbacks
+
+    def test_onboarding_kb(self):
+        from bot.keyboards import onboarding_kb
+        kb = onboarding_kb()
+        callbacks = self._callbacks(kb)
+        assert "cmd_integrate_guide" in callbacks
+        assert "settings_tz" in callbacks
+        assert "settings_quiet_set" in callbacks
+        assert "cmd_digest" in callbacks
+        assert "cmd_menu" in callbacks
+
+    def test_quiet_hours_kb_active(self):
+        from bot.keyboards import quiet_hours_kb
+        user = User(
+            id=1, telegram_id=1, account_id=1, role=Role.OWNER,
+            department="", truck_num=None, alerts_on=True, is_active=True,
+            created_at="", alert_faults=True, alert_health=True,
+            alert_fuel=True, alert_geofence=True,
+            quiet_start=22, quiet_end=6, timezone="America/New_York",
+        )
+        kb = quiet_hours_kb(user)
+        callbacks = self._callbacks(kb)
+        assert "settings_quiet_set" in callbacks
+        assert "settings_quiet_off" in callbacks
+
+    def test_quiet_hours_kb_inactive(self):
+        from bot.keyboards import quiet_hours_kb
+        user = User(
+            id=1, telegram_id=1, account_id=1, role=Role.OWNER,
+            department="", truck_num=None, alerts_on=True, is_active=True,
+            created_at="", alert_faults=True, alert_health=True,
+            alert_fuel=True, alert_geofence=True,
+            quiet_start=None, quiet_end=None, timezone="America/New_York",
+        )
+        kb = quiet_hours_kb(user)
+        callbacks = self._callbacks(kb)
+        assert "settings_quiet_set" in callbacks
+        assert "settings_quiet_off" not in callbacks
+
+    def test_settings_tz_kb(self):
+        from bot.keyboards import settings_tz_kb
+        kb = settings_tz_kb()
+        callbacks = self._callbacks(kb)
+        assert "set_tz_America/New_York" in callbacks
+        assert "set_tz_UTC" in callbacks
+
+    def test_digest_menu_with_timezone(self):
+        from bot.keyboards import digest_menu_kb
+        sub = {"frequency": "daily", "send_hour": 9, "timezone": "America/Chicago"}
+        kb = digest_menu_kb(sub)
+        labels = [btn.text for row in kb.inline_keyboard for btn in row]
+        assert any("Chicago" in lbl for lbl in labels)
+
+    def test_submenu_mgmt_has_settings(self):
+        from bot.keyboards import submenu_mgmt_kb
+        kb = submenu_mgmt_kb(Role.OWNER, has_api=True)
+        callbacks = self._callbacks(kb)
+        assert "cmd_settings" in callbacks
+        assert "cmd_audit" in callbacks
+
+    def test_submenu_mgmt_driver_has_settings_no_audit(self):
+        from bot.keyboards import submenu_mgmt_kb
+        kb = submenu_mgmt_kb(Role.DRIVER, has_api=False)
+        callbacks = self._callbacks(kb)
+        assert "cmd_settings" in callbacks
+        assert "cmd_audit" not in callbacks
+
+
+# ══════════════════════════════════════════════════════════════════
+# RATE LIMITING
+# ══════════════════════════════════════════════════════════════════
+
+class TestRateLimiting:
+    def test_first_call_allowed(self):
+        from bot.config import check_rate_limit, _rate_limits
+        _rate_limits.clear()
+        assert check_rate_limit(12345, "test_cmd") is True
+
+    def test_second_call_blocked(self):
+        from bot.config import check_rate_limit, _rate_limits
+        _rate_limits.clear()
+        check_rate_limit(99999, "test_cmd")
+        assert check_rate_limit(99999, "test_cmd") is False
+
+    def test_different_users_independent(self):
+        from bot.config import check_rate_limit, _rate_limits
+        _rate_limits.clear()
+        check_rate_limit(1001, "cmd")
+        assert check_rate_limit(1002, "cmd") is True
+
+    def test_different_commands_independent(self):
+        from bot.config import check_rate_limit, _rate_limits
+        _rate_limits.clear()
+        check_rate_limit(5555, "cmd_a")
+        assert check_rate_limit(5555, "cmd_b") is True
+
+
+# ─────────────────────────────────────────────────────────────────
+# AI USAGE TRACKING
+# ─────────────────────────────────────────────────────────────────
+
+class TestAIUsageTracking:
+    """Tests for AI usage logging and stats retrieval."""
+
+    @pytest.mark.asyncio
+    async def test_log_ai_usage(self, seeded_db):
+        db = seeded_db["db"]
+        acct = seeded_db["account"]
+        owner = seeded_db["owner"]
+        row_id = await db.log_ai_usage(
+            account_id=acct.id, user_id=owner.telegram_id,
+            model="gemini-2.0-flash", request_type="chat",
+            prompt_tokens=100, reply_tokens=50, total_tokens=150,
+        )
+        assert isinstance(row_id, int) and row_id > 0
+
+    @pytest.mark.asyncio
+    async def test_get_ai_usage_stats_single(self, seeded_db):
+        db = seeded_db["db"]
+        acct = seeded_db["account"]
+        owner = seeded_db["owner"]
+        await db.log_ai_usage(
+            account_id=acct.id, user_id=owner.telegram_id,
+            model="gemini-2.0-flash", request_type="chat",
+            prompt_tokens=100, reply_tokens=50, total_tokens=150,
+        )
+        stats = await db.get_ai_usage_stats(acct.id, days=30)
+        assert stats["total_requests"] == 1
+        assert stats["total_tokens"] == 150
+        assert "chat" in stats["by_type"]
+        assert stats["by_type"]["chat"]["requests"] == 1
+        assert "gemini-2.0-flash" in stats["by_model"]
+
+    @pytest.mark.asyncio
+    async def test_get_ai_usage_stats_multiple_types(self, seeded_db):
+        db = seeded_db["db"]
+        acct = seeded_db["account"]
+        uid = seeded_db["owner"].telegram_id
+        await db.log_ai_usage(acct.id, uid, "gemini-2.0-flash", "chat", 10, 5, 15)
+        await db.log_ai_usage(acct.id, uid, "gemini-2.0-flash", "summary", 200, 100, 300)
+        await db.log_ai_usage(acct.id, uid, "gemini-2.0-flash", "diagnosis", 50, 30, 80)
+        stats = await db.get_ai_usage_stats(acct.id, days=30)
+        assert stats["total_requests"] == 3
+        assert stats["total_tokens"] == 395
+        assert len(stats["by_type"]) == 3
+
+    @pytest.mark.asyncio
+    async def test_get_ai_usage_stats_empty(self, seeded_db):
+        db = seeded_db["db"]
+        acct = seeded_db["account"]
+        stats = await db.get_ai_usage_stats(acct.id, days=30)
+        assert stats["total_requests"] == 0
+        assert stats["total_tokens"] == 0
+        assert stats["by_type"] == {}
+        assert stats["by_model"] == {}
+        assert stats["days"] == 30
+
+    @pytest.mark.asyncio
+    async def test_get_ai_usage_daily(self, seeded_db):
+        db = seeded_db["db"]
+        acct = seeded_db["account"]
+        uid = seeded_db["owner"].telegram_id
+        await db.log_ai_usage(acct.id, uid, "gemini-2.0-flash", "chat", 10, 5, 15)
+        await db.log_ai_usage(acct.id, uid, "gemini-2.0-flash", "chat", 20, 10, 30)
+        daily = await db.get_ai_usage_daily(acct.id, days=7)
+        assert len(daily) >= 1
+        day_row = daily[0]
+        assert "day" in day_row
+        assert day_row["requests"] == 2
+        assert day_row["tokens"] == 45
+
+    @pytest.mark.asyncio
+    async def test_usage_isolation_between_accounts(self, seeded_db):
+        db = seeded_db["db"]
+        acct = seeded_db["account"]
+        uid = seeded_db["owner"].telegram_id
+        await db.log_ai_usage(acct.id, uid, "gemini-2.0-flash", "chat", 10, 5, 15)
+        # Stats for a different account should be empty
+        stats = await db.get_ai_usage_stats(acct.id + 999, days=30)
+        assert stats["total_requests"] == 0
+
+
+class TestAIClientUsageCapture:
+    """Tests for ai_client._capture_usage and get_last_usage."""
+
+    def test_capture_usage_with_metadata(self):
+        import ai_client
+
+        class FakeMeta:
+            prompt_token_count = 120
+            candidates_token_count = 80
+            total_token_count = 200
+
+        class FakeResponse:
+            usage_metadata = FakeMeta()
+
+        ai_client._capture_usage(FakeResponse())
+        usage = ai_client.get_last_usage()
+        assert usage is not None
+        assert usage["prompt_tokens"] == 120
+        assert usage["reply_tokens"] == 80
+        assert usage["total_tokens"] == 200
+
+    def test_capture_usage_no_metadata(self):
+        import ai_client
+
+        class FakeResponse:
+            pass
+
+        ai_client._capture_usage(FakeResponse())
+        assert ai_client.get_last_usage() is None
+
+    def test_capture_usage_exception_safe(self):
+        import ai_client
+
+        class BadResponse:
+            @property
+            def usage_metadata(self):
+                raise RuntimeError("boom")
+
+        ai_client._capture_usage(BadResponse())
+        assert ai_client.get_last_usage() is None
+
+    def test_get_last_usage_cleared_after_no_meta(self):
+        import ai_client
+
+        # Set some usage first
+        class FakeMeta:
+            prompt_token_count = 10
+            candidates_token_count = 5
+            total_token_count = 15
+
+        class FakeResponse:
+            usage_metadata = FakeMeta()
+
+        ai_client._capture_usage(FakeResponse())
+        assert ai_client.get_last_usage() is not None
+
+        # Now capture with no metadata — should clear
+        class EmptyResponse:
+            pass
+
+        ai_client._capture_usage(EmptyResponse())
+        assert ai_client.get_last_usage() is None

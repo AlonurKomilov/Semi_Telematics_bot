@@ -19,6 +19,8 @@ from bot.keyboards import (
     main_menu_kb, co_menu_kb, back_kb, system_owner_kb, unregistered_kb,
     invite_kb, skip_name_kb, truck_company_picker_kb, vehicle_list_kb,
     group_picker_kb,
+    submenu_reports_kb, submenu_tools_kb, submenu_costs_kb, submenu_mgmt_kb,
+    user_settings_kb, quiet_hours_kb, quiet_hours_picker_kb, settings_tz_kb,
 )
 from bot.helpers import _show, _show_loading, _user_menu_kb
 from bot.auth import _get_user, _group_chat_guard
@@ -27,13 +29,31 @@ from bot.fleet import (
     cmd_faults, cmd_faults_pdf, cmd_faults_csv,
     cmd_truck, cmd_critical,
     cmd_fuel, cmd_fuel_pdf, cmd_fuel_csv,
-    cmd_alerts, cmd_truck_report,
+    cmd_alerts, cmd_alert_toggle, cmd_alert_disable_all,
+    cmd_truck_report,
     cmd_health, cmd_health_pdf, cmd_health_csv,
     cmd_efficiency, cmd_efficiency_pdf, cmd_efficiency_csv,
     cmd_weather, cmd_api_status,
 )
 from bot.management import cmd_account, cmd_users, cmd_addcompany, cmd_groups
 from bot.admin import cmd_admin, cmd_accounts
+from bot.scorecards import cmd_scorecards, cmd_scorecards_pdf, cmd_scorecards_csv
+from bot.fuel_costs import cmd_fuelcost, cmd_fuelcost_add, handle_fuelcost_text, cmd_fuelcost_summary
+from bot.cost_per_mile import cmd_costmile, cmd_costmile_report
+from bot.digest import cmd_digest, cmd_digest_subscribe, cmd_digest_unsubscribe, cmd_digest_set_hour, cmd_digest_set_tz
+from bot.maintenance import (
+    cmd_maintenance, cmd_maint_add, cmd_maint_type,
+    cmd_maint_view, cmd_maint_done, handle_maintenance_text,
+)
+from bot.maps import cmd_livemap
+from bot.routes import cmd_route, cmd_route_go, handle_route_text
+from bot.geofences import cmd_geofences
+from bot.ai import (
+    cmd_ai, cmd_ai_ask_prompt, cmd_ai_answer, cmd_ai_summary,
+    cmd_ai_diagnose, cmd_ai_suggest, cmd_ai_newchat,
+    cmd_ai_models, cmd_ai_set_model, cmd_ai_regions, cmd_ai_set_location,
+)
+from bot.alerts import handle_alert_ack
 
 
 async def _show_truck_list(update, context, user, company_filter, page=0):
@@ -161,6 +181,45 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = main_menu_kb(user.role, company_codes)
         await _show(update, context, [text], keyboard=kb)
 
+    # ── Sub-menus ───────────────────────────────────────────────
+    elif data == "submenu_reports":
+        await query.answer()
+        company_codes = [o.code for o in companies]
+        await _show(update, context, [
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "  📊  <b>FLEET REPORTS</b>\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "\n  Select a report type:"
+        ], keyboard=submenu_reports_kb(user.role, company_codes))
+
+    elif data == "submenu_tools":
+        await query.answer()
+        await _show(update, context, [
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "  🛠  <b>TOOLS</b>\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "\n  Select a tool:"
+        ], keyboard=submenu_tools_kb(user.role))
+
+    elif data == "submenu_costs":
+        await query.answer()
+        await _show(update, context, [
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "  💰  <b>COST & MAINTENANCE</b>\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "\n  Track costs and schedule maintenance:"
+        ], keyboard=submenu_costs_kb(user.role))
+
+    elif data == "submenu_mgmt":
+        await query.answer()
+        has_api = bool(companies)
+        await _show(update, context, [
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "  👥  <b>TEAM & SETTINGS</b>\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "\n  Manage your account and team:"
+        ], keyboard=submenu_mgmt_kb(user.role, has_api))
+
     # ── Fleet commands ──────────────────────────────────────────
     elif data == "cmd_faults":
         await cmd_faults(update, context)
@@ -193,6 +252,43 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await cmd_fuel_csv(update, context, company=co)
     elif data == "cmd_alerts":
         await cmd_alerts(update, context)
+    elif data.startswith("alert_toggle_"):
+        alert_type = data.replace("alert_toggle_", "")
+        await cmd_alert_toggle(update, context, alert_type=alert_type)
+    elif data == "alert_disable_all":
+        await cmd_alert_disable_all(update, context)
+
+    # ── AI ────────────────────────────────────────────────────
+    elif data == "cmd_ai":
+        await cmd_ai(update, context)
+    elif data in ("ai_ask", "ai_chat"):
+        await cmd_ai_ask_prompt(update, context)
+    elif data == "ai_newchat":
+        await cmd_ai_newchat(update, context)
+    elif data == "ai_summary":
+        await cmd_ai_summary(update, context)
+    elif data.startswith("ai_sug_"):
+        try:
+            idx = int(data.replace("ai_sug_", ""))
+        except ValueError:
+            idx = -1
+        await cmd_ai_suggest(update, context, index=idx)
+    elif data.startswith("ai_diag_"):
+        # ai_diag_{company}_{truck_name}
+        parts = data.replace("ai_diag_", "").split("_", 1)
+        if len(parts) == 2:
+            await cmd_ai_diagnose(update, context, truck_name=parts[1], company=parts[0])
+    elif data == "ai_models":
+        await cmd_ai_models(update, context)
+    elif data.startswith("ai_setmodel_"):
+        model = data.replace("ai_setmodel_", "")
+        await cmd_ai_set_model(update, context, model_name=model)
+    elif data == "ai_regions":
+        await cmd_ai_regions(update, context)
+    elif data.startswith("ai_setloc_"):
+        loc = data.replace("ai_setloc_", "")
+        await cmd_ai_set_location(update, context, location=loc)
+
     elif data == "cmd_mytruck":
         await cmd_truck(update, context)
     elif data == "cmd_health":
@@ -315,10 +411,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await cmd_groups(update, context)
 
     elif data == "addgroup_pick":
-        await query.answer()
         if not user.is_admin_or_above:
             await query.answer("⛔ No access", show_alert=True)
             return
+        await query.answer()
         context.user_data["_awaiting_chat_pick"] = True
         await update.effective_chat.send_message(
             "👇 <b>Tap a button below</b> to pick a\n"
@@ -373,6 +469,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
         await _show(update, context, [
             "✉️ <b>Invite Team Member</b>\n\n"
+            "  <b>Step 1/2</b> — Select role\n\n"
             "Select the role for the new member:"
         ], keyboard=kb)
 
@@ -390,6 +487,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data["_pending"] = "invite_driver"
             await _show(update, context, [
                 f"🚛 <b>Invite Driver</b>\n\n"
+                "  <b>Step 2/2</b> — Truck number\n\n"
                 "Type the truck number for this driver\n"
                 "(or type <b>skip</b> to leave blank):"
             ], keyboard=back_kb())
@@ -430,11 +528,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Remove Company (from account view) ──────────────────────────
     elif data.startswith("rmco_"):
-        code = data[6:]
-        await query.answer()
+        code = data[5:]
         if not can(user.role, "can_manage_companies"):
             await query.answer("⛔ No access", show_alert=True)
             return
+        await query.answer()
         kb = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(f"🗑 Yes, remove {code}", callback_data=f"rmcoconfirm_{code}"),
@@ -448,7 +546,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ], keyboard=kb)
 
     elif data.startswith("rmcoconfirm_"):
-        code = data[13:]
+        code = data[12:]
         await query.answer()
         company = await db.get_company_by_code(user.account_id, code)
         if company:
@@ -533,7 +631,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         rows.append([InlineKeyboardButton("◀️ Back to Team", callback_data="cmd_users")])
 
         await _show(update, context, [
-            f"👤 <b>User {target_tid}</b>\n"
+            f"👤 <b>User <a href='tg://user?id={target_tid}'>{target_user.label}</a></b>\n"
             f"Role: {role_display(target_user.role)}\n"
             f"Dept: {target_user.department or '—'}\n"
             f"Truck: {target_user.truck_num or '—'}"
@@ -557,8 +655,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ],
             [InlineKeyboardButton("◀️ Cancel", callback_data=f"usrmenu_{target_tid}")],
         ])
+        target_user = await db.get_user_by_telegram_id(target_tid)
+        target_label = target_user.label if target_user else str(target_tid)
         await _show(update, context, [
-            f"🔄 <b>Change Role for {target_tid}</b>\n\n"
+            f"🔄 <b>Change Role for {target_label}</b>\n\n"
             "Select the new role:"
         ], keyboard=roles_kb)
 
@@ -585,7 +685,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await db.update_user(target_user.id, role=new_role)
         await _show(update, context, [
-            f"✅ Updated user {target_tid} → {role_display(new_role)}"
+            f"✅ Updated {target_user.label} → {role_display(new_role)}"
         ], keyboard=back_kb())
 
     elif data.startswith("usrremove_"):
@@ -597,8 +697,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton("◀️ Cancel", callback_data="cmd_users"),
             ],
         ])
+        target_user = await db.get_user_by_telegram_id(target_tid)
+        target_label = target_user.label if target_user else str(target_tid)
         await _show(update, context, [
-            f"⚠️ <b>Remove user {target_tid}?</b>\n\n"
+            f"⚠️ <b>Remove {target_label}?</b>\n\n"
             "They will lose access to this account."
         ], keyboard=kb)
 
@@ -609,9 +711,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _show(update, context, ["⚠️ You can't remove yourself."], keyboard=back_kb())
             return
         target_user = await db.get_user_by_telegram_id(target_tid)
+        target_label = target_user.label if target_user else str(target_tid)
         if target_user and target_user.account_id == user.account_id:
             await db.remove_user(target_user.id)
-        await _show(update, context, [f"✅ Removed user {target_tid}."], keyboard=back_kb())
+        await _show(update, context, [f"✅ Removed {target_label}."], keyboard=back_kb())
 
     # ── Per-truck fault reports ──────────────────────────────────
     elif data.startswith("truckfaults_"):
@@ -673,6 +776,232 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         co = data.replace("coweather_", "")
         await cmd_weather(update, context, company=co)
 
+    # ── Scorecards ──────────────────────────────────────────────
+    elif data == "cmd_scorecards":
+        await cmd_scorecards(update, context)
+    elif data == "scorecard_pdf":
+        await cmd_scorecards_pdf(update, context)
+    elif data == "scorecard_csv":
+        await cmd_scorecards_csv(update, context)
+    elif data.startswith("scorecard_pdf_"):
+        co = data.replace("scorecard_pdf_", "")
+        await cmd_scorecards_pdf(update, context, company=co)
+    elif data.startswith("scorecard_csv_"):
+        co = data.replace("scorecard_csv_", "")
+        await cmd_scorecards_csv(update, context, company=co)
+
+    # ── Live Map ────────────────────────────────────────────────
+    elif data == "cmd_livemap":
+        await cmd_livemap(update, context)
+    elif data.startswith("cmd_livemap_"):
+        co = data.replace("cmd_livemap_", "")
+        await cmd_livemap(update, context, company=co)
+
+    # ── Route Replay ────────────────────────────────────────────
+    elif data == "cmd_route":
+        await cmd_route(update, context)
+    elif data.startswith("route_go_"):
+        parts = data[len("route_go_"):].rsplit("_", 1)
+        if len(parts) == 2:
+            co_vehicle = parts[0]
+            days_ago = int(parts[1])
+            # co_vehicle = "COMPANY_VEHICLENAME"
+            cv_parts = co_vehicle.split("_", 1)
+            co = cv_parts[0] if len(cv_parts) >= 1 else ""
+            vname = cv_parts[1] if len(cv_parts) >= 2 else ""
+            await cmd_route_go(update, context, company=co, vehicle_name=vname, days_ago=days_ago)
+
+    # ── Geofences ───────────────────────────────────────────────
+    elif data == "cmd_geofences":
+        await cmd_geofences(update, context)
+    elif data.startswith("gf_detail_"):
+        # Individual geofence detail — just acknowledge for now
+        await query.answer("Geofence details coming soon", show_alert=False)
+
+    # ── Fuel Costs ──────────────────────────────────────────────
+    elif data == "cmd_fuelcost":
+        await cmd_fuelcost(update, context)
+    elif data == "fuelcost_add":
+        await cmd_fuelcost_add(update, context)
+    elif data == "fuelcost_summary":
+        await cmd_fuelcost_summary(update, context)
+
+    # ── Cost Per Mile ───────────────────────────────────────────
+    elif data == "cmd_costmile":
+        await cmd_costmile(update, context)
+    elif data == "costmile_pdf":
+        await cmd_costmile_report(update, context, fmt="text")
+    elif data == "costmile_csv":
+        await cmd_costmile_report(update, context, fmt="csv")
+    elif data.startswith("costmile_pdf_"):
+        co = data.replace("costmile_pdf_", "")
+        await cmd_costmile_report(update, context, company=co, fmt="text")
+    elif data.startswith("costmile_csv_"):
+        co = data.replace("costmile_csv_", "")
+        await cmd_costmile_report(update, context, company=co, fmt="csv")
+
+    # ── Maintenance ─────────────────────────────────────────────
+    elif data == "cmd_maintenance":
+        await cmd_maintenance(update, context)
+    elif data == "maint_add":
+        await cmd_maint_add(update, context)
+    elif data.startswith("maint_type_"):
+        task_type = data.replace("maint_type_", "")
+        await cmd_maint_type(update, context, task_type=task_type)
+    elif data == "maint_view":
+        await cmd_maint_view(update, context)
+    elif data.startswith("maint_done_"):
+        task_id = int(data.replace("maint_done_", ""))
+        await cmd_maint_done(update, context, task_id=task_id)
+
+    # ── Digest ──────────────────────────────────────────────────
+    elif data == "cmd_digest":
+        await cmd_digest(update, context)
+    elif data == "digest_daily":
+        await cmd_digest_subscribe(update, context, frequency="daily")
+    elif data == "digest_weekly":
+        await cmd_digest_subscribe(update, context, frequency="weekly")
+    elif data == "digest_unsub":
+        await cmd_digest_unsubscribe(update, context)
+    elif data.startswith("digest_hour_"):
+        hour = int(data.replace("digest_hour_", ""))
+        await cmd_digest_set_hour(update, context, hour=hour)
+    elif data.startswith("digest_tz_"):
+        tz = data.replace("digest_tz_", "")
+        await cmd_digest_set_tz(update, context, tz=tz)
+
+    # ── Alert acknowledgment ────────────────────────────────────
+    elif data.startswith("ack_alert_"):
+        ack_id = int(data.replace("ack_alert_", ""))
+        await handle_alert_ack(update, context, ack_id=ack_id)
+
+    # ── User settings ───────────────────────────────────────────
+    elif data == "cmd_settings":
+        await query.answer()
+        await _show(update, context, [
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "  ⚙️  <b>SETTINGS</b>\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "\nConfigure your notification preferences:"
+        ], keyboard=user_settings_kb(user))
+
+    elif data == "settings_quiet":
+        await query.answer()
+        await _show(update, context, [
+            "🌙 <b>Quiet Hours (DND)</b>\n\n"
+            "During quiet hours, non-critical\nalerts are held until morning."
+        ], keyboard=quiet_hours_kb(user))
+
+    elif data == "settings_quiet_set":
+        await query.answer()
+        await _show(update, context, [
+            "🌙 <b>Select Quiet Hours</b>\n\n"
+            "Choose a preset, or alerts will be\nsilenced during these hours:"
+        ], keyboard=quiet_hours_picker_kb())
+
+    elif data.startswith("quiet_set_"):
+        parts = data.replace("quiet_set_", "").split("_")
+        q_start, q_end = int(parts[0]), int(parts[1])
+        await db.update_user(user.id, quiet_start=q_start, quiet_end=q_end)
+        user = await db.get_user(user.id)
+        await query.answer("✅ Quiet hours updated")
+        await _show(update, context, [
+            f"✅ Quiet hours set: {q_start:02d}:00 — {q_end:02d}:00\n\n"
+            "Non-critical alerts will be held\nduring these hours."
+        ], keyboard=user_settings_kb(user))
+
+    elif data == "settings_quiet_off":
+        await db.update_user(user.id, quiet_start=None, quiet_end=None)
+        user = await db.get_user(user.id)
+        await query.answer("✅ Quiet hours disabled")
+        await _show(update, context, [
+            "✅ Quiet hours disabled.\n\n"
+            "You'll receive all alerts at any time."
+        ], keyboard=user_settings_kb(user))
+
+    elif data == "settings_tz":
+        await query.answer()
+        await _show(update, context, [
+            "🕐 <b>Select Timezone</b>\n\n"
+            "This affects quiet hours and digest delivery:"
+        ], keyboard=settings_tz_kb())
+
+    elif data.startswith("set_tz_"):
+        tz = data.replace("set_tz_", "")
+        await db.update_user(user.id, timezone=tz)
+        user = await db.get_user(user.id)
+        tz_short = tz.split("/")[-1].replace("_", " ")
+        await query.answer(f"✅ Timezone: {tz_short}")
+        await _show(update, context, [
+            f"✅ Timezone updated to <b>{tz_short}</b>"
+        ], keyboard=user_settings_kb(user))
+
+    # ── Audit log ───────────────────────────────────────────────
+    elif data == "cmd_audit":
+        await query.answer()
+        if not can(user.role, "can_manage_users"):
+            await query.answer("⛔ No access", show_alert=True)
+            return
+        entries = await db.get_audit_log(user.account_id, limit=15)
+        if not entries:
+            text = "📋 <b>Audit Log</b>\n\nNo recent activity."
+        else:
+            lines = ["📋 <b>Audit Log</b> (last 15)\n"]
+            for e in entries:
+                ts = e["created_at"][:16].replace("T", " ")
+                lines.append(f"  • <code>{ts}</code> — {e['action']}")
+                if e.get("details"):
+                    lines.append(f"    {e['details'][:60]}")
+            text = "\n".join(lines)
+        await _show(update, context, [text], keyboard=back_kb())
+
+    # ── AI usage stats ──────────────────────────────────────────
+    elif data == "cmd_ai_usage" or data.startswith("ai_usage_"):
+        if not can(user.role, "can_manage_account"):
+            await query.answer("⛔ No access", show_alert=True)
+            return
+        await query.answer()
+        days = 30
+        if data.startswith("ai_usage_"):
+            try:
+                days = int(data.replace("ai_usage_", ""))
+            except ValueError:
+                days = 30
+        stats = await db.get_ai_usage_stats(user.account_id, days=days)
+        daily = await db.get_ai_usage_daily(user.account_id, days=min(days, 7))
+
+        lines = [
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "  🤖  <b>AI USAGE</b>\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
+            f"\n  📅 Last {days} days\n"
+            f"\n  📊 Total requests: <b>{stats['total_requests']}</b>"
+            f"\n  🔤 Total tokens: <b>{stats['total_tokens']:,}</b>\n"
+        ]
+        if stats["by_type"]:
+            lines.append("\n  <b>By Type:</b>")
+            for rt, info in stats["by_type"].items():
+                lines.append(f"  • {rt}: {info['requests']} req ({info['tokens']:,} tok)")
+        if stats["by_model"]:
+            lines.append("\n  <b>By Model:</b>")
+            for m, info in stats["by_model"].items():
+                lines.append(f"  • {m}: {info['requests']} req ({info['tokens']:,} tok)")
+        if daily:
+            lines.append("\n  <b>Daily (last 7d):</b>")
+            for d in daily:
+                lines.append(f"  • {d['day']}: {d['requests']} req ({d['tokens'] or 0:,} tok)")
+
+        text = "\n".join(lines)
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📅 7 days", callback_data="ai_usage_7"),
+                InlineKeyboardButton("📅 30 days", callback_data="ai_usage_30"),
+                InlineKeyboardButton("📅 90 days", callback_data="ai_usage_90"),
+            ],
+            [InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")],
+        ])
+        await _show(update, context, [text], keyboard=kb)
+
     else:
         await query.answer("Unknown action")
 
@@ -701,7 +1030,17 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pending = context.user_data.pop("_pending", None)
 
     if not pending:
-        # No pending prompt — just show /start
+        # No pending prompt — route to AI if user is registered & AI configured
+        text_msg = (update.message.text or "").strip()
+        if text_msg:
+            import ai_client
+            user = context.user_data.get("_db_user")
+            if not user:
+                user, _, _ = await _get_user(update)
+            if user and ai_client.is_configured():
+                context.user_data["_db_user"] = user
+                await cmd_ai_answer(update, context, question=text_msg)
+                return
         await cmd_start(update, context)
         return
 
@@ -809,6 +1148,25 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _show(update, context, [invite_text], keyboard=kb)
         except Exception as e:
             await _show(update, context, [f"❌ Error: {e}"], keyboard=back_kb())
+
+    # ── Fuel cost wizard ────────────────────────────────────────
+    elif pending.startswith("fuelcost_"):
+        context.user_data["_pending"] = pending  # restore for handler
+        await handle_fuelcost_text(update, context)
+
+    # ── Maintenance wizard ──────────────────────────────────────
+    elif pending.startswith("maint_"):
+        context.user_data["_pending"] = pending  # restore for handler
+        await handle_maintenance_text(update, context)
+
+    # ── Route replay truck input ────────────────────────────────
+    elif pending == "route_truck":
+        context.user_data["_pending"] = pending  # restore for handler
+        await handle_route_text(update, context)
+
+    # ── AI question input ───────────────────────────────────────
+    elif pending == "ai_question":
+        await cmd_ai_answer(update, context, question=text)
 
     else:
         await cmd_start(update, context)
