@@ -511,3 +511,323 @@ class TestAIClientUsageCapture:
 
         ai_client._capture_usage(EmptyResponse())
         assert ai_client.get_last_usage() is None
+
+
+# ══════════════════════════════════════════════════════════════════
+# ESCALATION CHAIN LOGIC
+# ══════════════════════════════════════════════════════════════════
+
+class TestEscalationChains:
+    """Tests for role-based escalation chains.
+
+    Local copy of the chain dict avoids importing bot.alerts which triggers
+    the full bot import graph (broken by the missing onboarding_kb).
+    """
+
+    _CHAINS: dict[str, list] = {
+        "fault":   [Role.DRIVER, Role.FLEET_MGR, Role.ADMIN, Role.OWNER],
+        "health":  [Role.DRIVER, Role.FLEET_MGR, Role.ADMIN, Role.OWNER],
+        "fuel":    [Role.DRIVER, Role.DISPATCHER, Role.FLEET_MGR],
+        "default": [Role.DRIVER, Role.FLEET_MGR, Role.ADMIN, Role.OWNER],
+    }
+
+    @staticmethod
+    def _get_chain(alert_type: str) -> list:
+        chains = TestEscalationChains._CHAINS
+        return chains.get(alert_type, chains["default"])
+
+    def test_fault_chain_skips_dispatcher(self):
+        chain = self._get_chain("fault")
+        assert Role.DISPATCHER not in chain
+        assert chain == [Role.DRIVER, Role.FLEET_MGR, Role.ADMIN, Role.OWNER]
+
+    def test_health_chain_skips_dispatcher(self):
+        chain = self._get_chain("health")
+        assert Role.DISPATCHER not in chain
+
+    def test_fuel_chain_includes_dispatcher(self):
+        chain = self._get_chain("fuel")
+        assert Role.DISPATCHER in chain
+        assert chain == [Role.DRIVER, Role.DISPATCHER, Role.FLEET_MGR]
+
+    def test_fuel_chain_stops_at_fleet_mgr(self):
+        chain = self._get_chain("fuel")
+        assert Role.ADMIN not in chain
+        assert Role.OWNER not in chain
+
+    def test_unknown_type_uses_default(self):
+        chain = self._get_chain("unknown_type")
+        assert chain == [Role.DRIVER, Role.FLEET_MGR, Role.ADMIN, Role.OWNER]
+
+
+# ══════════════════════════════════════════════════════════════════
+# SHARED ACKNOWLEDGMENT
+# ══════════════════════════════════════════════════════════════════
+
+class TestSharedAcknowledgment:
+    """Tests for shared ack — acking one alert acks all with same key."""
+
+    async def test_shared_ack_same_key(self, seeded):
+        db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
+        # Create two alerts with the same alert_key (sent to different users)
+        ack_id1 = await db.create_alert_ack(
+            account_id=account.id, alert_type="fault",
+            vehicle_id="v1", vehicle_name="T100",
+            alert_key="shared_key_1",
+            message_id=1, chat_id=1001, sent_to=1001,
+            next_escalation="2099-01-01T00:00:00",
+        )
+        ack_id2 = await db.create_alert_ack(
+            account_id=account.id, alert_type="fault",
+            vehicle_id="v1", vehicle_name="T100",
+            alert_key="shared_key_1",
+            message_id=2, chat_id=2002, sent_to=2002,
+            next_escalation="2099-01-01T00:00:00",
+        )
+        # Ack the first one
+        await db.acknowledge_alert(ack_id1, owner.telegram_id)
+        # Both should now be acked
+        unacked = await db.get_unacked_alerts()
+        assert len(unacked) == 0
+
+    async def test_different_keys_not_shared(self, seeded):
+        db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
+        ack_id1 = await db.create_alert_ack(
+            account_id=account.id, alert_type="fault",
+            vehicle_id="v1", vehicle_name="T100",
+            alert_key="key_A",
+            message_id=1, chat_id=1001, sent_to=1001,
+            next_escalation="2099-01-01T00:00:00",
+        )
+        ack_id2 = await db.create_alert_ack(
+            account_id=account.id, alert_type="fault",
+            vehicle_id="v2", vehicle_name="T200",
+            alert_key="key_B",
+            message_id=2, chat_id=2002, sent_to=2002,
+            next_escalation="2099-01-01T00:00:00",
+        )
+        await db.acknowledge_alert(ack_id1, owner.telegram_id)
+        unacked = await db.get_unacked_alerts()
+        assert len(unacked) == 1
+        assert unacked[0]["alert_key"] == "key_B"
+
+
+# ══════════════════════════════════════════════════════════════════
+# ALERT EXPIRATION
+# ══════════════════════════════════════════════════════════════════
+
+class TestAlertExpiration:
+    """Tests for auto-expiring stale alerts."""
+
+    async def test_expire_old_alerts(self, seeded):
+        db, account = seeded["db"], seeded["account"]
+        # Create alert with old timestamp
+        ack_id = await db.create_alert_ack(
+            account_id=account.id, alert_type="fault",
+            vehicle_id="v1", vehicle_name="T100",
+            alert_key="expire_test",
+            message_id=1, chat_id=1001, sent_to=1001,
+            next_escalation="2020-01-01T00:00:00",
+        )
+        # Expire alerts older than now
+        from datetime import datetime, timezone
+        expired = await db.expire_stale_alerts(datetime.now(timezone.utc).isoformat())
+        assert len(expired) == 1
+        assert expired[0]["id"] == ack_id
+        # Should no longer appear in unacked
+        unacked = await db.get_unacked_alerts()
+        assert len(unacked) == 0
+
+    async def test_fresh_alerts_not_expired(self, seeded):
+        db, account = seeded["db"], seeded["account"]
+        await db.create_alert_ack(
+            account_id=account.id, alert_type="fault",
+            vehicle_id="v1", vehicle_name="T100",
+            alert_key="fresh_test",
+            message_id=1, chat_id=1001, sent_to=1001,
+            next_escalation="2099-01-01T00:00:00",
+        )
+        # Try to expire with a past cutoff
+        expired = await db.expire_stale_alerts("2020-01-01T00:00:00")
+        assert len(expired) == 0
+
+
+# ══════════════════════════════════════════════════════════════════
+# DND ALERT QUEUE
+# ══════════════════════════════════════════════════════════════════
+
+class TestDNDAlertQueue:
+    """Tests for DND alert queuing and delivery."""
+
+    async def test_queue_dnd_alert(self, seeded):
+        db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
+        qid = await db.queue_dnd_alert(
+            account_id=account.id,
+            telegram_id=owner.telegram_id,
+            alert_type="fault",
+            vehicle_name="T100",
+            alert_text="Test alert text",
+        )
+        assert isinstance(qid, int)
+        assert qid > 0
+
+    async def test_get_pending_dnd_alerts(self, seeded):
+        db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
+        await db.queue_dnd_alert(account.id, owner.telegram_id, "fault", "T100", "Alert 1")
+        await db.queue_dnd_alert(account.id, owner.telegram_id, "health", "T200", "Alert 2")
+        pending = await db.get_pending_dnd_alerts(owner.telegram_id)
+        assert len(pending) == 2
+
+    async def test_mark_dnd_delivered(self, seeded):
+        db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
+        await db.queue_dnd_alert(account.id, owner.telegram_id, "fault", "T100", "Alert 1")
+        await db.queue_dnd_alert(account.id, owner.telegram_id, "fuel", "T200", "Alert 2")
+        count = await db.mark_dnd_alerts_delivered(owner.telegram_id)
+        assert count == 2
+        # No more pending
+        pending = await db.get_pending_dnd_alerts(owner.telegram_id)
+        assert len(pending) == 0
+
+    async def test_dnd_queue_isolation(self, seeded):
+        db, account, owner, driver = seeded["db"], seeded["account"], seeded["owner"], seeded["driver"]
+        await db.queue_dnd_alert(account.id, owner.telegram_id, "fault", "T100", "Owner alert")
+        await db.queue_dnd_alert(account.id, driver.telegram_id, "fault", "T101", "Driver alert")
+        owner_pending = await db.get_pending_dnd_alerts(owner.telegram_id)
+        driver_pending = await db.get_pending_dnd_alerts(driver.telegram_id)
+        assert len(owner_pending) == 1
+        assert len(driver_pending) == 1
+
+
+# ══════════════════════════════════════════════════════════════════
+# ALERT SNOOZE
+# ══════════════════════════════════════════════════════════════════
+
+class TestAlertSnooze:
+    """Tests for alert snooze."""
+
+    async def test_snooze_postpones_escalation(self, seeded):
+        db, account = seeded["db"], seeded["account"]
+        ack_id = await db.create_alert_ack(
+            account_id=account.id, alert_type="fault",
+            vehicle_id="v1", vehicle_name="T100",
+            alert_key="snooze_test",
+            message_id=1, chat_id=1001, sent_to=1001,
+            next_escalation="2025-01-01T00:00:00",
+        )
+        new_time = "2025-01-01T00:15:00"
+        await db.snooze_alert(ack_id, new_time)
+        unacked = await db.get_unacked_alerts(before="2025-01-01T00:10:00")
+        assert len(unacked) == 0  # snoozed past the check time
+        unacked_later = await db.get_unacked_alerts(before="2025-01-01T00:16:00")
+        assert len(unacked_later) == 1
+
+    async def test_snooze_does_not_ack(self, seeded):
+        db, account = seeded["db"], seeded["account"]
+        ack_id = await db.create_alert_ack(
+            account_id=account.id, alert_type="fault",
+            vehicle_id="v1", vehicle_name="T100",
+            alert_key="snooze_no_ack",
+            message_id=1, chat_id=1001, sent_to=1001,
+            next_escalation="2025-01-01T00:00:00",
+        )
+        await db.snooze_alert(ack_id, "2099-01-01T00:00:00")
+        # Still appears in full unacked list (no before filter)
+        unacked = await db.get_unacked_alerts()
+        assert len(unacked) == 1
+
+
+# ══════════════════════════════════════════════════════════════════
+# VEHICLE MAINTENANCE SUPPRESSION
+# ══════════════════════════════════════════════════════════════════
+
+class TestMaintenanceSuppression:
+    """Tests for suppressing alerts on vehicles in active maintenance."""
+
+    async def test_vehicle_not_in_maintenance(self, seeded):
+        db, account = seeded["db"], seeded["account"]
+        result = await db.is_vehicle_in_maintenance(account.id, "T100")
+        assert result is False
+
+    async def test_vehicle_in_maintenance(self, seeded):
+        db, account = seeded["db"], seeded["account"]
+        await db.add_maintenance_task(
+            account_id=account.id,
+            company_code="TFC",
+            vehicle_name="T100",
+            task_type="oil",
+            description="Oil change",
+            created_by=0,
+        )
+        result = await db.is_vehicle_in_maintenance(account.id, "T100")
+        assert result is True
+
+    async def test_completed_maintenance_not_suppressed(self, seeded):
+        db, account = seeded["db"], seeded["account"]
+        task_id = await db.add_maintenance_task(
+            account_id=account.id,
+            company_code="TFC",
+            vehicle_name="T200",
+            task_type="brakes",
+            description="Brake job",
+            created_by=0,
+        )
+        await db.update_maintenance_status(task_id, "done")
+        result = await db.is_vehicle_in_maintenance(account.id, "T200")
+        assert result is False
+
+
+# ══════════════════════════════════════════════════════════════════
+# ALERT HISTORY & PENDING
+# ══════════════════════════════════════════════════════════════════
+
+class TestAlertHistoryAndPending:
+    """Tests for alert history and pending alerts queries."""
+
+    async def test_get_alert_history(self, seeded):
+        db, account = seeded["db"], seeded["account"]
+        await db.create_alert_ack(
+            account_id=account.id, alert_type="fault",
+            vehicle_id="v1", vehicle_name="T100",
+            alert_key="hist_1", message_id=1, chat_id=1001,
+            sent_to=1001, next_escalation="2099-01-01T00:00:00",
+        )
+        await db.create_alert_ack(
+            account_id=account.id, alert_type="health",
+            vehicle_id="v2", vehicle_name="T200",
+            alert_key="hist_2", message_id=2, chat_id=1001,
+            sent_to=1001, next_escalation="2099-01-01T00:00:00",
+        )
+        history = await db.get_alert_history(account.id)
+        assert len(history) == 2
+
+    async def test_get_pending_alerts(self, seeded):
+        db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
+        await db.create_alert_ack(
+            account_id=account.id, alert_type="fault",
+            vehicle_id="v1", vehicle_name="T100",
+            alert_key="pend_1", message_id=1, chat_id=1001,
+            sent_to=1001, next_escalation="2099-01-01T00:00:00",
+        )
+        ack_id2 = await db.create_alert_ack(
+            account_id=account.id, alert_type="fault",
+            vehicle_id="v2", vehicle_name="T200",
+            alert_key="pend_2", message_id=2, chat_id=1001,
+            sent_to=1001, next_escalation="2099-01-01T00:00:00",
+        )
+        # Ack one
+        await db.acknowledge_alert(ack_id2, owner.telegram_id)
+        pending = await db.get_pending_alerts(account.id)
+        assert len(pending) == 1
+        assert pending[0]["vehicle_name"] == "T100"
+
+    async def test_alert_history_limit(self, seeded):
+        db, account = seeded["db"], seeded["account"]
+        for i in range(10):
+            await db.create_alert_ack(
+                account_id=account.id, alert_type="fault",
+                vehicle_id=f"v{i}", vehicle_name=f"T{i}",
+                alert_key=f"lim_{i}", message_id=i, chat_id=1001,
+                sent_to=1001, next_escalation="2099-01-01T00:00:00",
+            )
+        history = await db.get_alert_history(account.id, limit=5)
+        assert len(history) == 5

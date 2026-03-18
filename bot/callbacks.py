@@ -30,6 +30,7 @@ from bot.fleet import (
     cmd_truck, cmd_critical,
     cmd_fuel, cmd_fuel_pdf, cmd_fuel_csv,
     cmd_alerts, cmd_alert_toggle, cmd_alert_disable_all,
+    cmd_alert_history, cmd_pending_alerts,
     cmd_truck_report,
     cmd_health, cmd_health_pdf, cmd_health_csv,
     cmd_efficiency, cmd_efficiency_pdf, cmd_efficiency_csv,
@@ -53,7 +54,7 @@ from bot.ai import (
     cmd_ai_diagnose, cmd_ai_suggest, cmd_ai_newchat,
     cmd_ai_models, cmd_ai_set_model, cmd_ai_regions, cmd_ai_set_location,
 )
-from bot.alerts import handle_alert_ack
+from bot.alerts import handle_alert_ack, handle_alert_snooze
 
 
 async def _show_truck_list(update, context, user, company_filter, page=0):
@@ -874,6 +875,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("ack_alert_"):
         ack_id = int(data.replace("ack_alert_", ""))
         await handle_alert_ack(update, context, ack_id=ack_id)
+
+    elif data.startswith("snooze_alert_"):
+        ack_id = int(data.replace("snooze_alert_", ""))
+        await handle_alert_snooze(update, context, ack_id=ack_id)
+
+    elif data == "cmd_alert_history":
+        await cmd_alert_history(update, context)
+
+    elif data == "cmd_pending_alerts":
+        await cmd_pending_alerts(update, context)
 
     # ── User settings ───────────────────────────────────────────
     elif data == "cmd_settings":

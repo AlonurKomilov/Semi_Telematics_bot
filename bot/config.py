@@ -19,6 +19,9 @@ SUPPORT_CONTACT = os.getenv("SUPPORT_CONTACT", "")
 # Alert escalation: minutes before re-sending unacknowledged alert
 ESCALATION_TIMEOUT_MINUTES = int(os.getenv("ESCALATION_TIMEOUT_MINUTES", "30"))
 
+# Alert escalation: max hours before auto-expiring unacknowledged alerts
+ESCALATION_MAX_HOURS = int(os.getenv("ESCALATION_MAX_HOURS", "8"))
+
 # Rate limiting: minimum seconds between same command from same user
 RATE_LIMIT_SECONDS = int(os.getenv("RATE_LIMIT_SECONDS", "10"))
 

@@ -21,7 +21,7 @@ from formatters import (
 
 from bot.config import (
     db, logger, _known_faults, _active_messages, get_client,
-    FUEL_THRESHOLD, ESCALATION_TIMEOUT_MINUTES,
+    FUEL_THRESHOLD, ESCALATION_TIMEOUT_MINUTES, ESCALATION_MAX_HOURS,
 )
 import bot.redis_client as rcache
 
@@ -39,6 +39,9 @@ _known_low_fuel: dict[str, bool] = {}
 
 # J1939 SPNs related to coolant system
 COOLANT_SPNS = {110, 111, 2609, 441, 1691}  # temp, level, low-level, pressure, additive
+
+# Snooze duration for alert postponement
+SNOOZE_MINUTES = 15
 
 
 async def _get_known_faults(vid: str) -> set[str]:
@@ -92,6 +95,11 @@ async def check_new_faults(app: Application):
                 for v in faulted:
                     co = v.get("_org", "?")
                     vid = f"{account_id}:{co}:{v['id']}"
+
+                    # Skip vehicles currently in active maintenance
+                    if await is_vehicle_suppressed(account_id, v["name"]):
+                        continue
+
                     current_codes = set()
                     for dtc in v.get("_dtcs", []):
                         key = f"{dtc.get('spnId', '?')}-{dtc.get('fmiId', '?')}"
@@ -163,8 +171,15 @@ async def check_new_faults(app: Application):
                                 if sub.role == Role.DRIVER and sub.truck_num:
                                     if v["name"].lower() != sub.truck_num.lower():
                                         continue
-                                # DND: skip non-critical alerts during quiet hours
+                                # DND: queue non-critical alerts during quiet hours
                                 if not is_critical and sub.is_in_quiet_hours():
+                                    await db.queue_dnd_alert(
+                                        account_id=account_id,
+                                        telegram_id=sub.telegram_id,
+                                        alert_type="fault",
+                                        vehicle_name=v["name"],
+                                        alert_text=alert_text,
+                                    )
                                     continue
                                 try:
                                     send_text = alert_text
@@ -201,6 +216,10 @@ async def check_new_faults(app: Application):
                                             [InlineKeyboardButton(
                                                 "✅ Acknowledge",
                                                 callback_data=f"ack_alert_{ack_id}"
+                                            )],
+                                            [InlineKeyboardButton(
+                                                f"⏰ Snooze {SNOOZE_MINUTES} min",
+                                                callback_data=f"snooze_alert_{ack_id}"
                                             )],
                                             [InlineKeyboardButton(
                                                 f"📋 View Truck #{v['name']}",
@@ -386,8 +405,15 @@ async def check_health_alerts(app: Application):
                         if sub.role == Role.DRIVER and sub.truck_num:
                             if v["name"].lower() != sub.truck_num.lower():
                                 continue
-                        # DND: skip during quiet hours (health alerts are non-critical)
+                        # DND: queue health alerts during quiet hours
                         if sub.is_in_quiet_hours():
+                            await db.queue_dnd_alert(
+                                account_id=account_id,
+                                telegram_id=sub.telegram_id,
+                                alert_type="health",
+                                vehicle_name=v["name"],
+                                alert_text=alert_text,
+                            )
                             continue
                         try:
                             msg = await app.bot.send_message(
@@ -463,8 +489,15 @@ async def check_low_fuel(app: Application):
                         if sub.role == Role.DRIVER and sub.truck_num:
                             if v["name"].lower() != sub.truck_num.lower():
                                 continue
-                        # DND: skip during quiet hours
+                        # DND: queue fuel alerts during quiet hours
                         if sub.is_in_quiet_hours():
+                            await db.queue_dnd_alert(
+                                account_id=account_id,
+                                telegram_id=sub.telegram_id,
+                                alert_type="fuel",
+                                vehicle_name=v["name"],
+                                alert_text=alert_text,
+                            )
                             continue
                         try:
                             msg = await app.bot.send_message(
@@ -619,17 +652,65 @@ async def handle_alert_ack(update, context, ack_id: int):
 
 # ── Escalation Checker (scheduled job) ───────────────────────────
 
-# Escalation chain: role priority for alert escalation
-_ESCALATION_CHAIN = [Role.DRIVER, Role.DISPATCHER, Role.FLEET_MGR, Role.ADMIN, Role.OWNER]
+# Role-based escalation chains per alert type.
+# Faults/health go to people who handle mechanical issues (skip dispatcher).
+# Fuel goes through dispatcher (routing concern), stops at fleet manager level.
+_ESCALATION_CHAINS: dict[str, list] = {
+    "fault":   [Role.DRIVER, Role.FLEET_MGR, Role.ADMIN, Role.OWNER],
+    "health":  [Role.DRIVER, Role.FLEET_MGR, Role.ADMIN, Role.OWNER],
+    "fuel":    [Role.DRIVER, Role.DISPATCHER, Role.FLEET_MGR],
+    "default": [Role.DRIVER, Role.FLEET_MGR, Role.ADMIN, Role.OWNER],
+}
+
+
+def _get_escalation_chain(alert_type: str) -> list:
+    """Return the role escalation chain for a given alert type."""
+    return _ESCALATION_CHAINS.get(alert_type, _ESCALATION_CHAINS["default"])
+
+
+async def _expire_stale_alerts(app: Application):
+    """Auto-expire unacknowledged alerts older than ESCALATION_MAX_HOURS.
+
+    Expired alerts are logged to the audit trail so business owners
+    can see that an alert was never handled.
+    """
+    cutoff = (
+        datetime.now(timezone.utc) - timedelta(hours=ESCALATION_MAX_HOURS)
+    ).isoformat()
+    expired = await db.expire_stale_alerts(older_than=cutoff)
+    for alert in expired:
+        try:
+            chain = _get_escalation_chain(alert["alert_type"])
+            await db.add_audit_log(
+                account_id=alert["account_id"],
+                user_id=None,
+                action="alert_expired",
+                target_type="alert",
+                target_id=str(alert["id"]),
+                details=(
+                    f"Auto-expired after {ESCALATION_MAX_HOURS}h — "
+                    f"{alert['alert_type']} alert for Truck {alert['vehicle_name']}, "
+                    f"reached escalation level {alert['escalation_level']}/{len(chain) - 1}, "
+                    f"never acknowledged"
+                ),
+            )
+        except Exception as e:
+            logger.error(f"Audit log for expired alert {alert['id']}: {e}")
+    if expired:
+        logger.info(f"Auto-expired {len(expired)} stale alerts (>{ESCALATION_MAX_HOURS}h)")
 
 
 async def check_alert_escalations(app: Application):
     """Check for unacknowledged alerts that need escalation.
 
-    Runs every 5 minutes. If an alert hasn't been acknowledged
-    within ESCALATION_TIMEOUT_MINUTES, re-sends to the next role up.
+    Runs every 5 minutes. Uses role-based escalation chains per alert type.
+    Consolidates multiple pending alerts into a single message per target user
+    to avoid notification spam. Also auto-expires old alerts.
     """
     try:
+        # ── Auto-expire stale alerts first ───────────────────────
+        await _expire_stale_alerts(app)
+
         now = datetime.now(timezone.utc)
         now_str = now.isoformat()
         pending = await db.get_unacked_alerts(before=now_str)
@@ -637,70 +718,155 @@ async def check_alert_escalations(app: Application):
         if not pending:
             return
 
+        # Group alerts that need the same escalation target into
+        # one consolidated message per user to avoid spam.
+        # Key: telegram_id → list of (alert_dict, ack_buttons)
+        consolidated: dict[int, list[dict]] = {}
+        alerts_to_update: list[tuple[int, int, str | None]] = []  # (id, level, next_esc)
+
         for alert in pending:
             try:
                 account_id = alert["account_id"]
                 current_level = alert["escalation_level"]
                 next_level = current_level + 1
+                chain = _get_escalation_chain(alert["alert_type"])
 
-                if next_level >= len(_ESCALATION_CHAIN):
-                    # Max escalation reached — stop
-                    await db.update_alert_escalation(alert["id"], next_level, None)
+                if next_level >= len(chain):
+                    # Max escalation — stop and audit
+                    alerts_to_update.append((alert["id"], next_level, None))
+                    await db.add_audit_log(
+                        account_id=account_id,
+                        user_id=None,
+                        action="alert_max_escalation",
+                        target_type="alert",
+                        target_id=str(alert["id"]),
+                        details=(
+                            f"Max escalation reached for {alert['alert_type']} alert — "
+                            f"Truck {alert['vehicle_name']}, no acknowledgment after "
+                            f"{next_level} escalation levels"
+                        ),
+                    )
                     continue
 
-                target_role = _ESCALATION_CHAIN[next_level]
+                target_role = chain[next_level]
 
-                # Find users with this role or higher
+                # Find users with the target role or higher in the chain
                 all_users = await db.list_account_users(account_id)
                 escalation_targets = [
                     u for u in all_users
                     if u.alerts_on
                     and u.telegram_id != alert["sent_to"]
-                    and _ESCALATION_CHAIN.index(u.role) >= _ESCALATION_CHAIN.index(target_role)
-                    if u.role in _ESCALATION_CHAIN
+                    and u.role in chain
+                    and chain.index(u.role) >= chain.index(target_role)
                 ]
 
                 if not escalation_targets:
-                    await db.update_alert_escalation(alert["id"], next_level, None)
+                    alerts_to_update.append((alert["id"], next_level, None))
                     continue
 
-                escalation_text = (
-                    "━━━━━━━━━━━━━━━━━━━\n"
-                    "  🚨  <b>ESCALATED ALERT</b>\n"
-                    "━━━━━━━━━━━━━━━━━━━\n"
-                    f"\n  ⚠️ Unacknowledged {alert['alert_type']} alert\n"
-                    f"  🚛 Truck: <b>{alert['vehicle_name']}</b>\n"
-                    f"\n  This alert was sent {ESCALATION_TIMEOUT_MINUTES} min ago\n"
-                    f"  and has not been acknowledged.\n"
-                    f"\n  Escalation level: {next_level}\n"
-                )
-
-                for target in escalation_targets[:3]:  # limit re-sends
-                    try:
-                        ack_kb = InlineKeyboardMarkup([
-                            [InlineKeyboardButton(
-                                "✅ Acknowledge",
-                                callback_data=f"ack_alert_{alert['id']}"
-                            )],
-                            [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
-                        ])
-                        await app.bot.send_message(
-                            chat_id=target.telegram_id,
-                            text=escalation_text,
-                            parse_mode=ParseMode.HTML,
-                            reply_markup=ack_kb,
-                        )
-                    except Exception as e:
-                        logger.error(f"Escalation to {target.telegram_id}: {e}")
+                # Add to consolidated map per target user (limit 3 targets)
+                for target in escalation_targets[:3]:
+                    consolidated.setdefault(target.telegram_id, []).append(alert)
 
                 # Schedule next escalation
                 next_esc = (now + timedelta(
                     minutes=ESCALATION_TIMEOUT_MINUTES
                 )).isoformat()
-                await db.update_alert_escalation(alert["id"], next_level, next_esc)
+                alerts_to_update.append((alert["id"], next_level, next_esc))
+
+                # Audit the escalation event
+                target_names = ", ".join(
+                    t.label for t in escalation_targets[:3]
+                )
+                await db.add_audit_log(
+                    account_id=account_id,
+                    user_id=None,
+                    action="alert_escalated",
+                    target_type="alert",
+                    target_id=str(alert["id"]),
+                    details=(
+                        f"{alert['alert_type']} alert for Truck {alert['vehicle_name']} "
+                        f"escalated to level {next_level} ({target_role.value}) — "
+                        f"notified: {target_names}"
+                    ),
+                )
 
             except Exception as e:
                 logger.error(f"Escalation for alert {alert['id']}: {e}")
+
+        # ── Batch-update escalation levels ───────────────────────
+        for ack_id, level, next_esc in alerts_to_update:
+            await db.update_alert_escalation(ack_id, level, next_esc)
+
+        # ── Send consolidated messages per target user ───────────
+        for tid, alerts_for_user in consolidated.items():
+            try:
+                if len(alerts_for_user) == 1:
+                    # Single alert — send specific message with ack button
+                    a = alerts_for_user[0]
+                    chain = _get_escalation_chain(a["alert_type"])
+                    level = min(a["escalation_level"] + 1, len(chain) - 1)
+                    mins_ago = int((now - datetime.fromisoformat(a["created_at"])).total_seconds() / 60)
+                    escalation_text = (
+                        "━━━━━━━━━━━━━━━━━━━\n"
+                        "  🚨  <b>ESCALATED ALERT</b>\n"
+                        "━━━━━━━━━━━━━━━━━━━\n"
+                        f"\n  ⚠️ Unacknowledged {a['alert_type']} alert\n"
+                        f"  🚛 Truck: <b>{a['vehicle_name']}</b>\n"
+                        f"\n  This alert was sent {mins_ago} min ago\n"
+                        f"  and has not been acknowledged.\n"
+                        f"\n  Escalation level: {level}\n"
+                    )
+                    ack_kb = InlineKeyboardMarkup([
+                        [InlineKeyboardButton(
+                            "✅ Acknowledge",
+                            callback_data=f"ack_alert_{a['id']}"
+                        )],
+                        [InlineKeyboardButton(
+                            f"⏰ Snooze {SNOOZE_MINUTES} min",
+                            callback_data=f"snooze_alert_{a['id']}"
+                        )],
+                        [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
+                    ])
+                    await app.bot.send_message(
+                        chat_id=tid,
+                        text=escalation_text,
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=ack_kb,
+                    )
+                else:
+                    # Multiple alerts — send consolidated summary
+                    truck_lines = []
+                    ack_buttons = []
+                    for a in alerts_for_user[:10]:  # cap at 10 in one message
+                        mins_ago = int((now - datetime.fromisoformat(a["created_at"])).total_seconds() / 60)
+                        truck_lines.append(
+                            f"  • 🚛 <b>{a['vehicle_name']}</b> — "
+                            f"{a['alert_type']} ({mins_ago} min ago)"
+                        )
+                        ack_buttons.append([InlineKeyboardButton(
+                            f"✅ Ack Truck {a['vehicle_name']}",
+                            callback_data=f"ack_alert_{a['id']}"
+                        )])
+
+                    summary_text = (
+                        "━━━━━━━━━━━━━━━━━━━\n"
+                        "  🚨  <b>ESCALATED ALERTS</b>\n"
+                        "━━━━━━━━━━━━━━━━━━━\n"
+                        f"\n  ⚠️ {len(alerts_for_user)} unacknowledged alerts:\n\n"
+                        + "\n".join(truck_lines)
+                        + "\n\n  Please acknowledge below:"
+                    )
+                    ack_buttons.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
+                    ack_kb = InlineKeyboardMarkup(ack_buttons)
+                    await app.bot.send_message(
+                        chat_id=tid,
+                        text=summary_text,
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=ack_kb,
+                    )
+            except Exception as e:
+                logger.error(f"Escalation message to {tid}: {e}")
 
     except Exception as e:
         logger.error(f"Escalation check error: {e}")
@@ -864,3 +1030,123 @@ async def check_api_health(account_id: int) -> dict[str, str]:
             await client.close()
 
     return results
+
+
+# ── DND Morning Delivery ─────────────────────────────────────────
+
+async def deliver_dnd_alerts(app: Application):
+    """Deliver queued DND alerts to users who are no longer in quiet hours.
+
+    Runs hourly. Groups all pending alerts into a single morning summary
+    rather than blasting individual messages.
+    """
+    try:
+        subscribers = await db.get_all_alert_subscribers()
+        if not subscribers:
+            return
+
+        for sub in subscribers:
+            if sub.is_in_quiet_hours():
+                continue  # still in DND, wait
+
+            queued = await db.get_pending_dnd_alerts(sub.telegram_id)
+            if not queued:
+                continue
+
+            # Group by alert type for a clean summary
+            by_type: dict[str, list[dict]] = {}
+            for q in queued:
+                by_type.setdefault(q["alert_type"], []).append(q)
+
+            lines = [
+                "━━━━━━━━━━━━━━━━━━━",
+                "  🌅  <b>MORNING ALERT SUMMARY</b>",
+                "━━━━━━━━━━━━━━━━━━━",
+                f"\n  {len(queued)} alert{'s' if len(queued) != 1 else ''} "
+                "received during quiet hours:\n",
+            ]
+
+            for atype, alerts in by_type.items():
+                type_label = {"fault": "⚠️ Faults", "health": "🏥 Health", "fuel": "⛽ Fuel"}.get(atype, f"🔔 {atype}")
+                lines.append(f"  <b>{type_label}</b> ({len(alerts)}):")
+                for a in alerts[:5]:
+                    ts = a["created_at"][11:16]  # HH:MM
+                    lines.append(f"    • {a['vehicle_name']} — {ts}")
+                if len(alerts) > 5:
+                    lines.append(f"    <i>… and {len(alerts) - 5} more</i>")
+                lines.append("")
+
+            summary_text = "\n".join(lines)
+
+            try:
+                kb = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
+                ])
+                await app.bot.send_message(
+                    chat_id=sub.telegram_id,
+                    text=summary_text,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=kb,
+                )
+                await db.mark_dnd_alerts_delivered(sub.telegram_id)
+            except Exception as e:
+                logger.error(f"DND delivery to {sub.telegram_id}: {e}")
+
+    except Exception as e:
+        logger.error(f"DND delivery error: {e}")
+
+
+# ── Alert Snooze Handler ─────────────────────────────────────────
+
+
+async def handle_alert_snooze(update, context, ack_id: int):
+    """Handle the ⏰ Snooze button — postpone escalation without acking."""
+    query = update.callback_query
+    try:
+        snooze_until = (
+            datetime.now(timezone.utc) + timedelta(minutes=SNOOZE_MINUTES)
+        ).isoformat()
+        await db.snooze_alert(ack_id, snooze_until)
+
+        # Update message to show snooze
+        try:
+            original_text = query.message.text_html or query.message.text or ""
+            snooze_text = original_text + (
+                f"\n\n⏰ <b>Snoozed</b> for {SNOOZE_MINUTES} min by "
+                f"<a href='tg://user?id={query.from_user.id}'>"
+                f"{query.from_user.full_name or query.from_user.id}</a>"
+            )
+            await query.edit_message_text(
+                text=snooze_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=query.message.reply_markup,
+            )
+        except Exception:
+            pass
+
+        await query.answer(f"⏰ Snoozed for {SNOOZE_MINUTES} min", show_alert=False)
+
+        # Audit
+        user = context.user_data.get("_db_user")
+        if user:
+            await db.add_audit_log(
+                account_id=user.account_id,
+                user_id=user.id,
+                action="alert_snoozed",
+                target_type="alert",
+                target_id=str(ack_id),
+                details=f"Snoozed for {SNOOZE_MINUTES} min",
+            )
+    except Exception as e:
+        logger.error(f"Snooze alert {ack_id}: {e}")
+        await query.answer("Error snoozing alert", show_alert=True)
+
+
+# ── Maintenance Suppression Check ────────────────────────────────
+
+async def is_vehicle_suppressed(account_id: int, vehicle_name: str) -> bool:
+    """Check if alerts should be suppressed for a vehicle in active maintenance."""
+    try:
+        return await db.is_vehicle_in_maintenance(account_id, vehicle_name)
+    except Exception:
+        return False

@@ -406,6 +406,19 @@ class Database:
                 ON alert_acknowledgments(acknowledged_at, next_escalation);
             CREATE INDEX IF NOT EXISTS idx_audit_account
                 ON audit_log(account_id, created_at);
+
+            CREATE TABLE IF NOT EXISTS dnd_alert_queue (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL REFERENCES accounts(id),
+                telegram_id     INTEGER NOT NULL,
+                alert_type      TEXT    NOT NULL DEFAULT 'fault',
+                vehicle_name    TEXT    NOT NULL DEFAULT '',
+                alert_text      TEXT    NOT NULL DEFAULT '',
+                created_at      TEXT    NOT NULL,
+                delivered        INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_dnd_queue_pending
+                ON dnd_alert_queue(telegram_id, delivered);
         """)
         await self._db.commit()
 
@@ -414,6 +427,7 @@ class Database:
         await self._migrate_user_quiet_hours()
         await self._migrate_digest_timezone()
         await self._migrate_user_display_name()
+        await self._migrate_alert_ack_status()
 
     async def _migrate_alert_prefs(self):
         """Add alert_faults/health/fuel/geofence columns if missing."""
@@ -471,6 +485,17 @@ class Database:
             logger.info("Added column users.display_name")
         except Exception:
             pass
+
+    async def _migrate_alert_ack_status(self):
+        """Add status column to alert_acknowledgments table."""
+        try:
+            await self._db.execute(
+                "ALTER TABLE alert_acknowledgments ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"
+            )
+            await self._db.commit()
+            logger.info("Added column alert_acknowledgments.status")
+        except Exception:
+            pass  # column already exists
 
     # ── Helpers ───────────────────────────────────────────────────
 
@@ -1259,12 +1284,24 @@ class Database:
         return cur.lastrowid
 
     async def acknowledge_alert(self, ack_id: int, user_id: int) -> bool:
-        """Mark an alert as acknowledged."""
+        """Mark an alert as acknowledged — also acks all rows with the same alert_key."""
         now = self._now()
+        # Get the alert_key for this alert
+        cur = await self._db.execute(
+            "SELECT alert_key, account_id FROM alert_acknowledgments WHERE id = ?",
+            (ack_id,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return False
+        alert_key = row["alert_key"]
+        account_id = row["account_id"]
+        # Ack all rows with the same alert_key (shared acknowledgment)
         await self._db.execute(
-            "UPDATE alert_acknowledgments SET acknowledged_by = ?, acknowledged_at = ? "
-            "WHERE id = ? AND acknowledged_at IS NULL",
-            (user_id, now, ack_id),
+            "UPDATE alert_acknowledgments SET acknowledged_by = ?, acknowledged_at = ?, "
+            "status = 'acknowledged', next_escalation = NULL "
+            "WHERE alert_key = ? AND account_id = ? AND acknowledged_at IS NULL",
+            (user_id, now, alert_key, account_id),
         )
         await self._db.commit()
         return True
@@ -1275,7 +1312,8 @@ class Database:
         If `before` is given, only return alerts with next_escalation < before.
         """
         q = ("SELECT * FROM alert_acknowledgments "
-             "WHERE acknowledged_at IS NULL AND next_escalation IS NOT NULL")
+             "WHERE acknowledged_at IS NULL AND next_escalation IS NOT NULL "
+             "AND status = 'active'")
         params: list = []
         if before:
             q += " AND next_escalation <= ?"
@@ -1294,6 +1332,115 @@ class Database:
             (escalation_level, next_escalation, ack_id),
         )
         await self._db.commit()
+
+    async def expire_stale_alerts(self, older_than: str) -> list[dict]:
+        """Auto-expire unacked alerts older than the given ISO timestamp.
+
+        Returns the list of expired alert rows (for audit logging).
+        """
+        cur = await self._db.execute(
+            "SELECT * FROM alert_acknowledgments "
+            "WHERE acknowledged_at IS NULL AND status = 'active' AND created_at <= ?",
+            (older_than,),
+        )
+        rows = await cur.fetchall()
+        expired = [dict(r) for r in rows]
+        if expired:
+            ids = [r["id"] for r in expired]
+            placeholders = ",".join("?" for _ in ids)
+            await self._db.execute(
+                f"UPDATE alert_acknowledgments SET status = 'expired', "
+                f"next_escalation = NULL WHERE id IN ({placeholders})",
+                ids,
+            )
+            await self._db.commit()
+        return expired
+
+    async def get_alert_history(
+        self, account_id: int, limit: int = 50,
+    ) -> list[dict]:
+        """Get alert acknowledgment history for an account (all statuses)."""
+        cur = await self._db.execute(
+            "SELECT * FROM alert_acknowledgments WHERE account_id = ? "
+            "ORDER BY created_at DESC LIMIT ?",
+            (account_id, limit),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def get_pending_alerts(self, account_id: int) -> list[dict]:
+        """Get all active (unacknowledged, not expired) alerts for an account."""
+        cur = await self._db.execute(
+            "SELECT * FROM alert_acknowledgments "
+            "WHERE account_id = ? AND status = 'active' "
+            "ORDER BY created_at DESC",
+            (account_id,),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def snooze_alert(self, ack_id: int, snooze_until: str) -> bool:
+        """Snooze an alert — postpone its next escalation without acking."""
+        await self._db.execute(
+            "UPDATE alert_acknowledgments SET next_escalation = ? "
+            "WHERE id = ? AND acknowledged_at IS NULL AND status = 'active'",
+            (snooze_until, ack_id),
+        )
+        await self._db.commit()
+        return True
+
+    # ══════════════════════════════════════════════════════════════
+    # DND ALERT QUEUE
+    # ══════════════════════════════════════════════════════════════
+
+    async def queue_dnd_alert(
+        self, account_id: int, telegram_id: int,
+        alert_type: str, vehicle_name: str, alert_text: str,
+    ) -> int:
+        """Queue a non-critical alert suppressed by DND for later delivery."""
+        now = self._now()
+        cur = await self._db.execute(
+            "INSERT INTO dnd_alert_queue "
+            "(account_id, telegram_id, alert_type, vehicle_name, alert_text, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (account_id, telegram_id, alert_type, vehicle_name, alert_text, now),
+        )
+        await self._db.commit()
+        return cur.lastrowid
+
+    async def get_pending_dnd_alerts(self, telegram_id: int) -> list[dict]:
+        """Get all undelivered DND-queued alerts for a user."""
+        cur = await self._db.execute(
+            "SELECT * FROM dnd_alert_queue "
+            "WHERE telegram_id = ? AND delivered = 0 "
+            "ORDER BY created_at",
+            (telegram_id,),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def mark_dnd_alerts_delivered(self, telegram_id: int) -> int:
+        """Mark all pending DND alerts as delivered for a user. Returns count."""
+        cur = await self._db.execute(
+            "UPDATE dnd_alert_queue SET delivered = 1 "
+            "WHERE telegram_id = ? AND delivered = 0",
+            (telegram_id,),
+        )
+        await self._db.commit()
+        return cur.rowcount
+
+    async def is_vehicle_in_maintenance(
+        self, account_id: int, vehicle_name: str,
+    ) -> bool:
+        """Check if a vehicle has any pending/overdue maintenance tasks."""
+        cur = await self._db.execute(
+            "SELECT COUNT(*) FROM maintenance_tasks "
+            "WHERE account_id = ? AND vehicle_name = ? "
+            "AND status IN ('pending', 'overdue')",
+            (account_id, vehicle_name),
+        )
+        row = await cur.fetchone()
+        return row[0] > 0
 
     # ══════════════════════════════════════════════════════════════
     # AUDIT LOG

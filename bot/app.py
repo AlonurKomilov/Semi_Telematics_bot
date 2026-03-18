@@ -36,7 +36,7 @@ from bot.admin import (
     cmd_broadcast, cmd_sys_disable_account,
 )
 from bot.callbacks import handle_callback, handle_text
-from bot.alerts import check_new_faults, check_health_alerts, check_low_fuel, initialize_known_faults, check_alert_escalations
+from bot.alerts import check_new_faults, check_health_alerts, check_low_fuel, initialize_known_faults, check_alert_escalations, deliver_dnd_alerts
 from bot.digest import send_digests
 from bot.maintenance import check_overdue_maintenance
 from bot.geofences import check_geofence_events
@@ -303,6 +303,10 @@ def main():
     scheduler.add_job(
         check_alert_escalations, "interval",
         minutes=5, args=[app], id="escalation_check",
+    )
+    scheduler.add_job(
+        deliver_dnd_alerts, "interval",
+        hours=1, args=[app], id="dnd_delivery",
     )
     scheduler.start()
 

@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo as _ZI
 
 _TZ_ET = _ZI("America/New_York")
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
@@ -705,6 +705,117 @@ async def cmd_alert_disable_all(update: Update, context: ContextTypes.DEFAULT_TY
         "  Tap 🔔 Alerts to re-enable."
     )
     kb = main_menu_kb(user.role, company_codes)
+    await _show(update, context, [text], keyboard=kb)
+
+
+@_require_registered
+async def cmd_alert_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show alert acknowledgment history for the account."""
+    user = context.user_data["_db_user"]
+    if not can(user.role, "can_alerts_all") and not can(user.role, "can_alerts_own"):
+        if update.callback_query:
+            await update.callback_query.answer("⛔ No access", show_alert=True)
+        return
+
+    history = await db.get_alert_history(user.account_id, limit=20)
+    if not history:
+        text = (
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "  📜  <b>ALERT HISTORY</b>\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "\n  No alert history yet."
+        )
+    else:
+        lines = [
+            "━━━━━━━━━━━━━━━━━━━",
+            "  📜  <b>ALERT HISTORY</b>",
+            "━━━━━━━━━━━━━━━━━━━",
+            f"\n  Last {len(history)} alerts:\n",
+        ]
+        for a in history:
+            ts = a["created_at"][:16].replace("T", " ")
+            status = a.get("status", "active")
+            status_icon = {"active": "🔴", "acknowledged": "✅", "expired": "⏰"}.get(status, "❓")
+            truck = a.get("vehicle_name", "?")
+            atype = a.get("alert_type", "fault")
+            esc_level = a.get("escalation_level", 0)
+
+            line = f"  {status_icon} <b>{truck}</b> — {atype}"
+            if esc_level > 0:
+                line += f" (esc: {esc_level})"
+            line += f"\n     <code>{ts}</code>"
+
+            if status == "acknowledged" and a.get("acknowledged_at"):
+                ack_ts = a["acknowledged_at"][:16].replace("T", " ")
+                line += f" → acked {ack_ts}"
+            elif status == "expired":
+                line += " → expired"
+
+            lines.append(line)
+
+        text = "\n".join(lines)
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔔 Alert Settings", callback_data="cmd_alerts")],
+        [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
+    ])
+    await _show(update, context, [text], keyboard=kb)
+
+
+@_require_registered
+async def cmd_pending_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show currently active (unacknowledged) alerts for the account."""
+    user = context.user_data["_db_user"]
+    if not can(user.role, "can_alerts_all") and not can(user.role, "can_alerts_own"):
+        if update.callback_query:
+            await update.callback_query.answer("⛔ No access", show_alert=True)
+        return
+
+    pending = await db.get_pending_alerts(user.account_id)
+    if not pending:
+        text = (
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "  ✅  <b>NO PENDING ALERTS</b>\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "\n  All alerts have been acknowledged\n"
+            "  or expired. No action needed."
+        )
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📜 Alert History", callback_data="cmd_alert_history")],
+            [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
+        ])
+    else:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        lines = [
+            "━━━━━━━━━━━━━━━━━━━",
+            "  🔴  <b>PENDING ALERTS</b>",
+            "━━━━━━━━━━━━━━━━━━━",
+            f"\n  {len(pending)} unacknowledged alert{'s' if len(pending) != 1 else ''}:\n",
+        ]
+        ack_buttons = []
+        for a in pending[:10]:
+            mins_ago = int((now - datetime.fromisoformat(a["created_at"])).total_seconds() / 60)
+            esc = a.get("escalation_level", 0)
+            truck = a.get("vehicle_name", "?")
+            atype = a.get("alert_type", "fault")
+            lines.append(
+                f"  🚛 <b>{truck}</b> — {atype}\n"
+                f"     {mins_ago} min ago • escalation: {esc}"
+            )
+            ack_buttons.append([InlineKeyboardButton(
+                f"✅ Ack {truck}",
+                callback_data=f"ack_alert_{a['id']}"
+            )])
+
+        if len(pending) > 10:
+            lines.append(f"\n  <i>… and {len(pending) - 10} more</i>")
+
+        text = "\n".join(lines)
+        ack_buttons.append([InlineKeyboardButton("📜 Alert History", callback_data="cmd_alert_history")])
+        ack_buttons.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
+        kb = InlineKeyboardMarkup(ack_buttons)
+
     await _show(update, context, [text], keyboard=kb)
 
 
