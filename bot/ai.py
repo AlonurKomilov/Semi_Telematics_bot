@@ -23,6 +23,21 @@ import ai_client
 
 # ── Helpers ──────────────────────────────────────────────────────
 
+
+async def _log_ai_usage(account_id: int, telegram_user_id: int, action: str):
+    """Log AI token usage for the last AI call."""
+    usage = ai_client.get_last_usage()
+    model_name = ai_client.get_account_model_name(account_id) or ai_client.get_current_model_name()
+    if usage:
+        await db.log_ai_usage(
+            account_id, telegram_user_id,
+            model_name, action,
+            usage.get("prompt_tokens", 0),
+            usage.get("reply_tokens", 0),
+            usage.get("total_tokens", 0),
+        )
+
+
 async def _gather_fleet_snapshot(account_id: int,
                                  truck_num: str | None = None) -> dict:
     """Build a compact fleet data snapshot for AI context.
@@ -112,13 +127,22 @@ async def _gather_fleet_snapshot(account_id: int,
     return snapshot
 
 
-def _ai_menu_kb() -> InlineKeyboardMarkup:
+def _ai_menu_kb(user_role=None, account_id=None) -> InlineKeyboardMarkup:
     """AI feature menu keyboard."""
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💬 Ask a Question", callback_data="ai_ask")],
+    rows = [
+        [InlineKeyboardButton("💬 Ask a Question", callback_data="ai_chat")],
         [InlineKeyboardButton("📊 Fleet Summary", callback_data="ai_summary")],
-        [InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")],
-    ])
+    ]
+    if user_role in (Role.OWNER, Role.ADMIN):
+        model_name = ai_client.get_account_model_name(account_id) if account_id is not None else None
+        if not model_name:
+            model_name = ai_client.get_current_model_name()
+        display = ai_client.MODEL_REGISTRY.get(model_name, {}).get("display", model_name)
+        rows.append([InlineKeyboardButton(
+            f"⚙️ Model: {display}", callback_data="ai_models"
+        )])
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")])
+    return InlineKeyboardMarkup(rows)
 
 
 def _ai_back_kb() -> InlineKeyboardMarkup:
@@ -127,6 +151,9 @@ def _ai_back_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🤖 AI Menu", callback_data="cmd_ai")],
         [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
     ])
+
+
+
 
 
 # ── Commands ─────────────────────────────────────────────────────
@@ -167,7 +194,7 @@ async def cmd_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "  AI-generated morning briefing\n"
         "  with key stats and action items."
     )
-    await _show(update, context, [text], keyboard=_ai_menu_kb())
+    await _show(update, context, [text], keyboard=_ai_menu_kb(user_role=user.role, account_id=user.account_id))
 
 
 @_require_registered
@@ -214,10 +241,16 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
         if user.role == Role.DRIVER and user.truck_num:
             truck_filter = user.truck_num
 
+        await ai_client.ensure_account_model(user.account_id)
         snapshot = await _gather_fleet_snapshot(
             user.account_id, truck_num=truck_filter,
         )
-        answer = await ai_client.ask_fleet(question, snapshot)
+        answer = await ai_client.ask_fleet(
+            question, snapshot, user_id=update.effective_user.id,
+            account_id=user.account_id,
+        )
+
+        await _log_ai_usage(user.account_id, update.effective_user.id, "question")
 
         text = (
             "━━━━━━━━━━━━━━━━━━━\n"
@@ -252,6 +285,7 @@ async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _show_loading(update, context, "📊  <i>Generating fleet briefing...</i>")
 
     try:
+        await ai_client.ensure_account_model(user.account_id)
         truck_filter = None
         if user.role == Role.DRIVER and user.truck_num:
             truck_filter = user.truck_num
@@ -259,7 +293,11 @@ async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         snapshot = await _gather_fleet_snapshot(
             user.account_id, truck_num=truck_filter,
         )
-        summary = await ai_client.fleet_summary(snapshot)
+        summary = await ai_client.fleet_summary(
+            snapshot, account_id=user.account_id,
+        )
+
+        await _log_ai_usage(user.account_id, update.effective_user.id, "summary")
 
         text = (
             "━━━━━━━━━━━━━━━━━━━\n"
@@ -306,8 +344,11 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
             return
 
         v = matches[0]
-        dtcs = v.get("_dtcs", [])
-        lights = v.get("_lights", {})
+        # Extract DTCs from raw fault_codes (same logic as get_vehicles_with_faults)
+        fc = v.get("fault_codes", {})
+        j1939 = fc.get("j1939", {})
+        dtcs = v.get("_dtcs") or j1939.get("diagnosticTroubleCodes", [])
+        lights = v.get("_lights") or j1939.get("checkEngineLights", {})
 
         if not dtcs:
             text = (
@@ -353,3 +394,112 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
         kb = _ai_back_kb()
 
     await _show(update, context, [text], keyboard=kb)
+
+
+# ── Model Selection ──────────────────────────────────────────────
+
+@_require_registered
+async def cmd_ai_models(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show available AI models for the user to choose from."""
+    if not ai_client.is_configured():
+        if update.callback_query:
+            await update.callback_query.answer("AI not configured", show_alert=True)
+        return
+
+    user = context.user_data["_db_user"]
+    acct_id = user.account_id
+
+    # Determine current model for this account
+    cur_model = ai_client.get_current_model_name()
+    cur_loc = ai_client.get_current_location()
+    acct_info = ai_client.get_account_model_info(acct_id)
+    if acct_info:
+        cur_model, cur_loc, _ = acct_info
+
+    models = ai_client.get_available_models()
+    cur_info = ai_client.MODEL_REGISTRY.get(cur_model, {})
+
+    lines = [
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "  ⚙️  <b>AI MODEL</b>\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        f"\n  Current: <b>{cur_info.get('display', cur_model)}</b>"
+    ]
+    lines.append("\n  Select a model:")
+
+    text = "\n".join(lines)
+
+    buttons = []
+    for m in models:
+        name = m["name"]
+        disp = m["display"]
+        est = m.get("est_cost", 0)
+        price_tag = f"~${est:.3f}" if est < 0.01 else f"~${est:.2f}"
+        prefix = "✅ " if name == cur_model else ""
+        label = f"{prefix}{disp} · {price_tag}"
+        buttons.append([InlineKeyboardButton(
+            label, callback_data=f"ai_setmodel_{name}",
+        )])
+    buttons.append([InlineKeyboardButton("📊 AI Usage", callback_data="cmd_ai_usage")])
+    buttons.append([InlineKeyboardButton("◀️ AI Menu", callback_data="cmd_ai")])
+    kb = InlineKeyboardMarkup(buttons)
+    await _show(update, context, [text], keyboard=kb)
+
+
+@_require_registered
+async def cmd_ai_set_model(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                           model_name: str):
+    """Switch to a different AI model (auto-selects best region)."""
+    user = context.user_data["_db_user"]
+    acct_id = user.account_id
+
+    try:
+        ai_client.switch_model(model_name, account_id=acct_id)
+        loc = ai_client.MODEL_REGISTRY[model_name]["locations"][0]
+        await ai_client.save_account_model(acct_id, model_name, loc)
+
+        info = ai_client.MODEL_REGISTRY[model_name]
+        text = (
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "  ✅  <b>MODEL CHANGED</b>\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
+            f"\n  🤖 <b>{info['display']}</b>"
+            f"\n  {info['description']}"
+        )
+    except ValueError as e:
+        text = (
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "  ❌  <b>ERROR</b>\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
+            f"\n  {e}"
+        )
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⚙️ Models", callback_data="ai_models")],
+        [InlineKeyboardButton("🤖 AI Menu", callback_data="cmd_ai")],
+    ])
+    await _show(update, context, [text], keyboard=kb)
+
+
+# ── Suggest / New Chat ───────────────────────────────────────────
+
+@_require_registered
+async def cmd_ai_suggest(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                         index: int = -1):
+    """Handle follow-up suggestion tap (>> lines in AI responses)."""
+    suggestions = context.user_data.get("_ai_suggestions", [])
+    if 0 <= index < len(suggestions):
+        question = suggestions[index]
+        await cmd_ai_answer(update, context, question=question)
+    else:
+        await cmd_ai_ask_prompt(update, context)
+
+
+@_require_registered
+async def cmd_ai_newchat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Clear conversation history and start fresh."""
+    uid = update.effective_user.id
+    ai_client.clear_history(uid)
+    if update.callback_query:
+        await update.callback_query.answer("Chat history cleared")
+    await cmd_ai_ask_prompt(update, context)

@@ -3,6 +3,16 @@
 Uses the ``google-cloud-aiplatform`` (Vertex AI) SDK so all charges
 go through your Google Cloud billing account (= Cloud credits).
 
+Sections:
+    1. Config & State
+    2. Response Cache
+    3. Model Registry & Pricing
+    4. Model Availability & Selection
+    5. System Prompts
+    6. Generation (core AI calls)
+    7. Chat History & Usage Tracking
+    8. Fleet Intelligence (diagnose, summary, agent)
+
 Environment:
     GOOGLE_APPLICATION_CREDENTIALS — path to service-account JSON
     GOOGLE_CLOUD_PROJECT           — GCP project ID (e.g. "semi-telematics")
@@ -24,8 +34,9 @@ logger = logging.getLogger("bot.ai")
 _model = None
 _current_model_name: str = ""
 _current_location: str = ""
-_chat_histories: dict[int, list[dict]] = {}  # user_id → last N exchanges
+_chat_histories: dict[int, list[dict]] = {}  # user_id → last N exchanges (bounded by _MAX_HISTORY per user, max 1000 users)
 _MAX_HISTORY = 10  # keep last 10 exchanges (5 user + 5 assistant)
+_MAX_CHAT_USERS = 1000  # max users to keep history for
 
 # Usage tracking for the last API call
 _last_usage: dict | None = None
@@ -35,6 +46,17 @@ _account_models: dict[int, tuple[str, str, Any]] = {}
 
 # Database reference (set by init_account_models)
 _db = None
+
+
+def get_account_model_name(account_id: int) -> str | None:
+    """Return the model name for an account, or None if not set."""
+    entry = _account_models.get(account_id)
+    return entry[0] if entry else None
+
+
+def get_account_model_info(account_id: int) -> tuple[str, str, Any] | None:
+    """Return (model_name, location, model_obj) for an account, or None."""
+    return _account_models.get(account_id)
 
 
 def set_db(db_instance):
@@ -88,6 +110,25 @@ def _cache_put(key: str, text: str):
     _response_cache[key] = (time.time(), text)
 
 
+# ── Endpoint URL builder ──────────────────────────────────────────
+
+def _maas_base_url(location: str, project: str) -> str:
+    """Build the OpenAI-compat chat/completions URL.
+
+    For ``global`` the host is ``aiplatform.googleapis.com``;
+    for regional locations it is ``{region}-aiplatform.googleapis.com``.
+    """
+    if location == "global":
+        host = "aiplatform.googleapis.com"
+    else:
+        host = f"{location}-aiplatform.googleapis.com"
+    return (
+        f"https://{host}/v1/"
+        f"projects/{project}/locations/{location}/"
+        f"endpoints/openapi/chat/completions"
+    )
+
+
 # ── Model Registry ───────────────────────────────────────────────
 #
 # Static catalog of models with ALL known Vertex AI regions.  The
@@ -96,10 +137,12 @@ def _cache_put(key: str, text: str):
 # shows the verified subset to users.
 
 MODEL_REGISTRY: dict[str, dict] = {
+    # ── Gemini (native Vertex AI SDK) ─────────────────────────
     "gemini-2.5-flash": {
         "display": "Gemini 2.5 Flash",
         "description": "Smart & fast, great balance of speed/quality",
-        "category": "gemini-2.5",
+        "category": "gemini",
+        "api_type": "gemini",
         "locations": [
             "us-central1", "us-east4", "us-west1", "us-west4", "us-south1",
             "europe-west1", "europe-west2", "europe-west3", "europe-west4",
@@ -113,7 +156,8 @@ MODEL_REGISTRY: dict[str, dict] = {
     "gemini-2.5-pro": {
         "display": "Gemini 2.5 Pro",
         "description": "Most capable, best for complex reasoning",
-        "category": "gemini-2.5",
+        "category": "gemini",
+        "api_type": "gemini",
         "locations": [
             "us-central1", "us-east4", "us-west1", "us-west4", "us-south1",
             "europe-west1", "europe-west4",
@@ -123,7 +167,234 @@ MODEL_REGISTRY: dict[str, dict] = {
         ],
         "max_output_tokens": 16384,
     },
+    # ── MaaS models (OpenAI-compatible endpoint, serverless) ─
+    "deepseek-r1": {
+        "display": "DeepSeek R1",
+        "description": "Deep reasoning model, strong on analysis",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "deepseek-ai/deepseek-r1-0528-maas",
+        "locations": ["us-central1"],
+        "max_output_tokens": 8192,
+    },
+    "deepseek-v3.2": {
+        "display": "DeepSeek V3.2",
+        "description": "Fast general-purpose, hybrid thinking mode",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "deepseek-ai/deepseek-v3.2-maas",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    "deepseek-v3.1": {
+        "display": "DeepSeek V3.1",
+        "description": "Hybrid inference — thinking + non-thinking modes",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "deepseek-ai/deepseek-v3.1-maas",
+        "locations": ["us-west2"],
+        "max_output_tokens": 8192,
+    },
+    "deepseek-ocr": {
+        "display": "DeepSeek OCR",
+        "description": "DeepSeek OCR — vision-text compression & analysis",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "deepseek-ai/deepseek-ocr-maas",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    "kimi-k2": {
+        "display": "Kimi K2",
+        "description": "Moonshot Kimi K2 — strong reasoning & tool use",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "moonshotai/kimi-k2-thinking-maas",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    "qwen3-next": {
+        "display": "Qwen3-Next 80B",
+        "description": "Alibaba Qwen3-Next instruct — efficient 80B MoE",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "qwen/qwen3-next-80b-a3b-instruct-maas",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    "minimax-m2": {
+        "display": "MiniMax M2",
+        "description": "MiniMax M2 — versatile general model",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "minimaxai/minimax-m2-maas",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    "glm-5": {
+        "display": "GLM 5",
+        "description": "Zhipu GLM 5 — large-scale general model",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "zai-org/glm-5-maas",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    "glm-4.7": {
+        "display": "GLM 4.7",
+        "description": "Zhipu GLM 4.7 — efficient general model",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "zai-org/glm-4.7-maas",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    "gpt-oss-120b": {
+        "display": "GPT OSS 120B",
+        "description": "OpenAI open-source 120B model",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "openai/gpt-oss-120b-maas",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    "gpt-oss-20b": {
+        "display": "GPT OSS 20B",
+        "description": "OpenAI open-source 20B — fast & cheap",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "openai/gpt-oss-20b-maas",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    "llama-4-scout": {
+        "display": "Llama 4 Scout",
+        "description": "Meta Llama 4 Scout — fast 17B MoE model",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "meta/llama-4-scout-17b-16e-instruct-maas",
+        "locations": ["us-east5"],
+        "max_output_tokens": 8192,
+    },
+    "llama-4-maverick": {
+        "display": "Llama 4 Maverick",
+        "description": "Meta Llama 4 Maverick — powerful 17B x 128E MoE",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "meta/llama-4-maverick-17b-128e-instruct-maas",
+        "locations": ["us-east5"],
+        "max_output_tokens": 8192,
+    },
+    "llama-3.3": {
+        "display": "Llama 3.3 70B",
+        "description": "Meta Llama 3.3 70B — proven & reliable",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "meta/llama-3.3-70b-instruct-maas",
+        "locations": ["us-central1"],
+        "max_output_tokens": 8192,
+    },
+    # ── Gemini 3.x (native Vertex AI SDK, global only) ───────
+    "gemini-3.1-flash-lite-preview": {
+        "display": "Gemini 3.1 Flash-Lite",
+        "description": "Next-gen Gemini — ultra fast & cheap (preview)",
+        "category": "gemini",
+        "api_type": "gemini",
+        "locations": ["global"],
+        "max_output_tokens": 16384,
+    },
+    "gemini-3.1-pro-preview": {
+        "display": "Gemini 3.1 Pro",
+        "description": "Next-gen Gemini Pro — most capable (preview)",
+        "category": "gemini",
+        "api_type": "gemini",
+        "locations": ["global"],
+        "max_output_tokens": 16384,
+    },
+    # ── Claude (Anthropic rawPredict on Vertex AI) ───────────
+    "claude-sonnet-4.6": {
+        "display": "Claude Sonnet 4.6",
+        "description": "Anthropic Claude Sonnet 4.6 — top-tier reasoning",
+        "category": "anthropic",
+        "api_type": "anthropic",
+        "anthropic_model_id": "claude-sonnet-4-6",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    # ── Codestral (Mistral rawPredict on Vertex AI) ──────────
+    "codestral-2": {
+        "display": "Codestral 2",
+        "description": "Mistral Codestral 2 — code-focused model",
+        "category": "mistral",
+        "api_type": "mistral_raw",
+        "mistral_model_id": "codestral-2",
+        "mistral_publisher": "mistralai",
+        "locations": ["europe-west4", "us-central1"],
+        "max_output_tokens": 4096,
+    },
 }
+
+# ── Pricing (USD per 1M tokens) ─────────────────────────────────
+#
+# Vertex AI pricing for each model.  Used to display estimated
+# cost to users.  Prices are per 1 million tokens.
+# Internal cost calculations apply _COST_MARGIN on top of these.
+
+MODEL_PRICING: dict[str, dict[str, float]] = {
+    "gemini-2.5-flash": {"input": 0.15, "output": 0.60},
+    "gemini-2.5-pro":   {"input": 1.25, "output": 5.00},
+    "gemini-3.1-flash-lite-preview": {"input": 0.10, "output": 0.40},
+    "gemini-3.1-pro-preview":   {"input": 1.25, "output": 5.00},
+    "deepseek-r1":      {"input": 0.80, "output": 2.17},
+    "deepseek-v3.2":    {"input": 0.30, "output": 0.88},
+    "deepseek-v3.1":    {"input": 0.30, "output": 0.88},
+    "deepseek-ocr":     {"input": 0.30, "output": 0.88},
+    "kimi-k2":          {"input": 0.60, "output": 2.40},
+    "qwen3-next":       {"input": 0.14, "output": 0.27},
+    "minimax-m2":       {"input": 0.36, "output": 1.10},
+    "glm-5":            {"input": 0.50, "output": 2.00},
+    "glm-4.7":          {"input": 0.14, "output": 0.55},
+    "gpt-oss-120b":     {"input": 0.30, "output": 0.50},
+    "gpt-oss-20b":      {"input": 0.10, "output": 0.30},
+    "llama-4-scout":    {"input": 0.14, "output": 0.27},
+    "llama-4-maverick": {"input": 0.30, "output": 0.50},
+    "llama-3.3":        {"input": 0.20, "output": 0.20},
+    "claude-sonnet-4.6": {"input": 3.00, "output": 15.00},
+    "codestral-2":      {"input": 0.30, "output": 0.90},
+}
+
+# Safety margin applied to cost estimates to compensate for
+# possible pricing inaccuracies.  Frontend displays base prices;
+# estimate_cost() uses base × (1 + margin).
+_COST_MARGIN = 0.30
+
+
+def estimate_cost(model: str, prompt_tokens: int,
+                  reply_tokens: int) -> float:
+    """Return estimated cost in USD for a given token count.
+
+    Applies ``_COST_MARGIN`` on top of the base price to compensate
+    for potential pricing deviations.
+    """
+    pricing = MODEL_PRICING.get(model, {"input": 1.0, "output": 2.0})
+    factor = 1.0 + _COST_MARGIN
+    cost = (
+        prompt_tokens * pricing["input"] * factor / 1_000_000
+        + reply_tokens * pricing["output"] * factor / 1_000_000
+    )
+    return round(cost, 6)
+
+
+# Typical request size for estimating per-request cost shown in
+# the model selector.  Based on average fleet query usage.
+_TYPICAL_INPUT_TOKENS = 2000
+_TYPICAL_OUTPUT_TOKENS = 1000
+
+
+def estimate_request_cost(model: str) -> float:
+    """Estimate cost of a typical request for display in the model selector."""
+    return estimate_cost(model, _TYPICAL_INPUT_TOKENS, _TYPICAL_OUTPUT_TOKENS)
+
 
 # Default model when nothing is stored
 DEFAULT_MODEL = "gemini-2.5-flash"
@@ -157,10 +428,14 @@ def _get_credentials():
 
 
 def _probe_single(model: str, region: str, token: str, project: str) -> bool:
-    """Send a tiny generateContent request; return True if 200."""
+    """Send a tiny generateContent request; return True if reachable."""
     import requests
+    if region == "global":
+        host = "aiplatform.googleapis.com"
+    else:
+        host = f"{region}-aiplatform.googleapis.com"
     url = (
-        f"https://{region}-aiplatform.googleapis.com/v1/"
+        f"https://{host}/v1/"
         f"projects/{project}/locations/{region}/"
         f"publishers/google/models/{model}:generateContent"
     )
@@ -178,9 +453,301 @@ def _probe_single(model: str, region: str, token: str, project: str) -> bool:
             json=body,
             timeout=10,
         )
-        return r.status_code == 200
+        return r.status_code in (200, 429)
     except Exception:
         return False
+
+
+def _probe_openai_compat(model_id: str, region: str, token: str,
+                         project: str) -> bool:
+    """Send a tiny chat/completions request to the MaaS endpoint."""
+    import requests
+    url = _maas_base_url(region, project)
+    body = {
+        "model": model_id,
+        "messages": [{"role": "user", "content": "OK"}],
+        "max_tokens": 5,
+    }
+    try:
+        r = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            json=body,
+            timeout=15,
+        )
+        return r.status_code in (200, 429)
+    except Exception:
+        return False
+
+
+async def _generate_openai_compat(
+    model_id: str, location: str, system: str, prompt: str,
+    max_tokens: int = 4096,
+) -> tuple[str, dict | None]:
+    """Generate via the Vertex AI OpenAI-compatible endpoint.
+
+    Returns (text, usage_dict_or_None).
+    """
+    import asyncio
+    import os
+    import requests
+    from google.auth.transport.requests import Request
+
+    project = os.getenv("GOOGLE_CLOUD_PROJECT", "")
+    creds = _get_credentials()
+    if not project or not creds:
+        raise RuntimeError("GOOGLE_CLOUD_PROJECT or credentials not set.")
+    creds.refresh(Request())
+
+    url = _maas_base_url(location, project)
+    body = {
+        "model": model_id,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ],
+        "max_tokens": max_tokens,
+        "temperature": 0.3,
+        "top_p": 0.8,
+    }
+
+    def _call():
+        r = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {creds.token}",
+                "Content-Type": "application/json",
+            },
+            json=body,
+            timeout=120,
+        )
+        r.raise_for_status()
+        return r.json()
+
+    data = await asyncio.to_thread(_call)
+    text = ""
+    usage = None
+    if "choices" in data and data["choices"]:
+        msg = data["choices"][0].get("message", {})
+        text = msg.get("content", "")
+        # Some models (DeepSeek R1) put thinking in reasoning_content
+        # — we only return the final answer
+    if "usage" in data:
+        u = data["usage"]
+        usage = {
+            "prompt_tokens": u.get("prompt_tokens", 0),
+            "reply_tokens": u.get("completion_tokens", 0),
+            "total_tokens": u.get("total_tokens", 0),
+        }
+    return text.strip(), usage
+
+
+# ── Anthropic (Claude) rawPredict helpers ────────────────────────
+
+def _anthropic_url(location: str, project: str, model_id: str) -> str:
+    """Build the Anthropic rawPredict URL on Vertex AI."""
+    if location == "global":
+        host = "aiplatform.googleapis.com"
+    else:
+        host = f"{location}-aiplatform.googleapis.com"
+    return (
+        f"https://{host}/v1/projects/{project}/locations/{location}/"
+        f"publishers/anthropic/models/{model_id}:rawPredict"
+    )
+
+
+def _probe_anthropic(model_id: str, region: str, token: str,
+                     project: str) -> bool:
+    """Send a tiny Anthropic rawPredict request; return True if reachable."""
+    import requests
+    url = _anthropic_url(region, project, model_id)
+    body = {
+        "anthropic_version": "vertex-2023-10-16",
+        "messages": [{"role": "user", "content": "OK"}],
+        "max_tokens": 5,
+    }
+    try:
+        r = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            json=body,
+            timeout=15,
+        )
+        return r.status_code in (200, 429)
+    except Exception:
+        return False
+
+
+async def _generate_anthropic(
+    model_id: str, location: str, system: str, prompt: str,
+    max_tokens: int = 4096,
+) -> tuple[str, dict | None]:
+    """Generate via Anthropic rawPredict on Vertex AI.
+
+    Returns (text, usage_dict_or_None).
+    """
+    import asyncio
+    import os
+    import requests
+    from google.auth.transport.requests import Request
+
+    project = os.getenv("GOOGLE_CLOUD_PROJECT", "")
+    creds = _get_credentials()
+    if not project or not creds:
+        raise RuntimeError("GOOGLE_CLOUD_PROJECT or credentials not set.")
+    creds.refresh(Request())
+
+    url = _anthropic_url(location, project, model_id)
+    body = {
+        "anthropic_version": "vertex-2023-10-16",
+        "system": system,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+        "temperature": 0.3,
+        "top_p": 0.8,
+    }
+
+    def _call():
+        r = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {creds.token}",
+                "Content-Type": "application/json",
+            },
+            json=body,
+            timeout=120,
+        )
+        r.raise_for_status()
+        return r.json()
+
+    data = await asyncio.to_thread(_call)
+    text = ""
+    usage = None
+    if "content" in data and data["content"]:
+        text = data["content"][0].get("text", "")
+    if "usage" in data:
+        u = data["usage"]
+        inp = u.get("input_tokens", 0)
+        out = u.get("output_tokens", 0)
+        usage = {
+            "prompt_tokens": inp,
+            "reply_tokens": out,
+            "total_tokens": inp + out,
+        }
+    return text.strip(), usage
+
+
+# ── Mistral rawPredict helpers ───────────────────────────────────
+
+def _mistral_url(location: str, project: str,
+                 publisher: str, model_id: str) -> str:
+    """Build the Mistral rawPredict URL on Vertex AI."""
+    host = f"{location}-aiplatform.googleapis.com"
+    return (
+        f"https://{host}/v1/projects/{project}/locations/{location}/"
+        f"publishers/{publisher}/models/{model_id}:rawPredict"
+    )
+
+
+def _probe_mistral(model_id: str, publisher: str, region: str,
+                   token: str, project: str) -> bool:
+    """Send a tiny Mistral rawPredict request; return True if reachable."""
+    import requests
+    url = _mistral_url(region, project, publisher, model_id)
+    body = {
+        "model": model_id,
+        "messages": [{"role": "user", "content": "OK"}],
+        "max_tokens": 5,
+    }
+    try:
+        r = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            json=body,
+            timeout=15,
+        )
+        return r.status_code in (200, 429)
+    except Exception:
+        return False
+
+
+async def _generate_mistral_raw(
+    model_id: str, publisher: str, location: str,
+    system: str, prompt: str, max_tokens: int = 4096,
+) -> tuple[str, dict | None]:
+    """Generate via Mistral rawPredict on Vertex AI.
+
+    Returns (text, usage_dict_or_None).
+    """
+    import asyncio
+    import os
+    import requests
+    from google.auth.transport.requests import Request
+
+    project = os.getenv("GOOGLE_CLOUD_PROJECT", "")
+    creds = _get_credentials()
+    if not project or not creds:
+        raise RuntimeError("GOOGLE_CLOUD_PROJECT or credentials not set.")
+    creds.refresh(Request())
+
+    url = _mistral_url(location, project, publisher, model_id)
+    body = {
+        "model": model_id,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ],
+        "max_tokens": max_tokens,
+        "temperature": 0.3,
+        "top_p": 0.8,
+    }
+
+    def _call():
+        r = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {creds.token}",
+                "Content-Type": "application/json",
+            },
+            json=body,
+            timeout=120,
+        )
+        r.raise_for_status()
+        return r.json()
+
+    data = await asyncio.to_thread(_call)
+    text = ""
+    usage = None
+    if "choices" in data and data["choices"]:
+        msg = data["choices"][0].get("message", {})
+        text = msg.get("content", "")
+    if "usage" in data:
+        u = data["usage"]
+        usage = {
+            "prompt_tokens": u.get("prompt_tokens", 0),
+            "reply_tokens": u.get("completion_tokens", 0),
+            "total_tokens": u.get("total_tokens", 0),
+        }
+    return text.strip(), usage
+
+
+def _is_openai_compat(model_name: str) -> bool:
+    """Check if a model does NOT use the native Gemini SDK.
+
+    Returns True for all non-Gemini API types (openai_compat, anthropic,
+    mistral_raw) — these models don't need a GenerativeModel object.
+    """
+    info = MODEL_REGISTRY.get(model_name, {})
+    return info.get("api_type") != "gemini"
 
 
 def probe_model_availability(force: bool = False) -> dict[str, list[str]]:
@@ -213,16 +780,44 @@ def probe_model_availability(force: bool = False) -> dict[str, list[str]]:
     creds.refresh(Request())
     token = creds.token
 
+    # Probe all model×region combinations concurrently
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _do_probe(model_name, info, region):
+        api_type = info.get("api_type", "gemini")
+        if api_type == "openai_compat":
+            ok = _probe_openai_compat(
+                info["maas_model_id"], region, token, project,
+            )
+        elif api_type == "anthropic":
+            ok = _probe_anthropic(
+                info["anthropic_model_id"], region, token, project,
+            )
+        elif api_type == "mistral_raw":
+            ok = _probe_mistral(
+                info["mistral_model_id"],
+                info.get("mistral_publisher", "mistralai"),
+                region, token, project,
+            )
+        else:
+            ok = _probe_single(model_name, region, token, project)
+        return (model_name, region, ok)
+
     result: dict[str, list[str]] = {}
-    for model_name, info in MODEL_REGISTRY.items():
-        ok_regions: list[str] = []
-        for region in info["locations"]:
-            if _probe_single(model_name, region, token, project):
-                ok_regions.append(region)
-        if ok_regions:
-            result[model_name] = ok_regions
+    futures = []
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        for model_name, info in MODEL_REGISTRY.items():
+            for region in info["locations"]:
+                futures.append(pool.submit(_do_probe, model_name, info, region))
+        for fut in as_completed(futures):
+            mname, region, ok = fut.result()
+            if ok:
+                result.setdefault(mname, []).append(region)
+    for mname in result:
+        info = MODEL_REGISTRY.get(mname, {})
+        total = len(info.get("locations", []))
         logger.info(
-            f"Probe {model_name}: {len(ok_regions)}/{len(info['locations'])} regions OK"
+            f"Probe {mname}: {len(result[mname])}/{total} regions OK"
         )
 
     _availability_cache = result
@@ -255,51 +850,26 @@ def _schedule_background_probe():
     threading.Thread(target=_run, daemon=True).start()
 
 
-def get_verified_models() -> list[dict]:
-    """Return only models that passed the live probe, sorted by category."""
-    avail = probe_model_availability()
-    result = []
-    for name, regions in avail.items():
-        info = MODEL_REGISTRY.get(name, {})
-        if info:
-            result.append({
-                "name": name,
-                "display": info["display"],
-                "description": info["description"],
-                "category": info["category"],
-                "locations": regions,
-                "max_output_tokens": info["max_output_tokens"],
-            })
-    result.sort(key=lambda m: (m["category"], m["name"]))
-    return result
-
-
-def get_verified_locations(model_name: str) -> list[str]:
-    """Return verified (live-probed) locations for a model."""
-    avail = probe_model_availability()
-    return avail.get(model_name, [DEFAULT_LOCATION])
-
-
-# ── Backward-compatible helpers (used by bot/ai.py, tests) ───────
-
 def get_model_info(model_name: str) -> dict | None:
     """Get registry info for a model, or None if unknown."""
     return MODEL_REGISTRY.get(model_name)
 
 
 def get_available_models() -> list[dict]:
-    """Return all models with their display info, sorted by category.
-
-    Prefers verified (probed) data when available, otherwise static.
-    """
-    return get_verified_models() or [
-        {"name": n, **info} for n, info in MODEL_REGISTRY.items()
-    ]
-
-
-def get_locations_for_model(model_name: str) -> list[str]:
-    """Return available locations for a model (probed if available)."""
-    return get_verified_locations(model_name)
+    """Return all registered models with display info, sorted by category."""
+    result = []
+    for name, info in MODEL_REGISTRY.items():
+        result.append({
+            "name": name,
+            "display": info["display"],
+            "description": info["description"],
+            "category": info["category"],
+            "locations": info["locations"],
+            "max_output_tokens": info["max_output_tokens"],
+            "est_cost": estimate_request_cost(name),
+        })
+    result.sort(key=lambda m: (m["category"], m["name"]))
+    return result
 
 
 def get_current_model_name() -> str:
@@ -413,12 +983,11 @@ def switch_model(model_name: str, location: str | None = None,
     if model_name not in MODEL_REGISTRY:
         raise ValueError(
             f"Unknown model: {model_name}. "
-            f"Available: {', '.join(MODEL_REGISTRY.keys())}"
+            f"Use the model selector to pick a valid model."
         )
     info = MODEL_REGISTRY[model_name]
-    # Use verified locations if probed, otherwise fall back to static
-    verified_locs = get_verified_locations(model_name)
-    target_loc = location or (verified_locs[0] if verified_locs else info["locations"][0])
+    # Auto-select best region: use provided location, or first from registry
+    target_loc = location or info["locations"][0]
     if target_loc not in info["locations"]:
         raise ValueError(
             f"Location {target_loc} not available for {model_name}. "
@@ -427,13 +996,21 @@ def switch_model(model_name: str, location: str | None = None,
 
     if account_id is not None:
         # Per-account: build model and cache it
-        model_obj = _build_model(model_name, target_loc, info)
-        _account_models[account_id] = (model_name, target_loc, model_obj)
+        if _is_openai_compat(model_name):
+            # MaaS models don't need a GenerativeModel object
+            _account_models[account_id] = (model_name, target_loc, None)
+        else:
+            model_obj = _build_model(model_name, target_loc, info)
+            _account_models[account_id] = (model_name, target_loc, model_obj)
     else:
         # Global: force re-init on next call
         global _model
         _model = None
-        _ensure_model(model_name=model_name, location=target_loc)
+        if not _is_openai_compat(model_name):
+            _ensure_model(model_name=model_name, location=target_loc)
+        global _current_model_name, _current_location
+        _current_model_name = model_name
+        _current_location = target_loc
 
 
 async def save_account_model(account_id: int, model_name: str,
@@ -519,8 +1096,11 @@ async def ensure_account_model(account_id: int):
         info = MODEL_REGISTRY.get(model_name)
         if info:
             try:
-                model_obj = _build_model(model_name, location, info)
-                _account_models[account_id] = (model_name, location, model_obj)
+                if _is_openai_compat(model_name):
+                    _account_models[account_id] = (model_name, location, None)
+                else:
+                    model_obj = _build_model(model_name, location, info)
+                    _account_models[account_id] = (model_name, location, model_obj)
             except Exception as e:
                 logger.warning(f"Failed to build model for account {account_id}: {e}")
 
@@ -640,7 +1220,7 @@ async def generate(prompt: str, system: str = FLEET_ASSISTANT_SYSTEM,
                    context_data: dict | str | None = None,
                    user_id: int | None = None,
                    account_id: int | None = None) -> str:
-    """Generate a response from Vertex AI Gemini.
+    """Generate a response from Vertex AI (Gemini or MaaS models).
 
     Args:
         prompt: The user's question or instruction.
@@ -654,7 +1234,13 @@ async def generate(prompt: str, system: str = FLEET_ASSISTANT_SYSTEM,
     """
     import asyncio
 
-    model, cur_model_name, _ = get_model_for_account(account_id)
+    # Resolve which model + location to use
+    if account_id is not None and account_id in _account_models:
+        cur_model_name, cur_location, model_obj = _account_models[account_id]
+    else:
+        cur_model_name = get_current_model_name()
+        cur_location = get_current_location()
+        model_obj = None  # loaded lazily below for Gemini
 
     # Cache check — skip for follow-up questions (with history)
     has_history = bool(user_id and user_id in _chat_histories)
@@ -668,7 +1254,8 @@ async def generate(prompt: str, system: str = FLEET_ASSISTANT_SYSTEM,
                 _store_history(user_id, prompt, cached)
             return cached
 
-    parts = [system, "\n\n"]
+    # Build the user content (data + history + question)
+    user_parts = []
     if context_data:
         if isinstance(context_data, dict):
             data_str = json.dumps(context_data, separators=(',', ':'), default=str)
@@ -676,26 +1263,87 @@ async def generate(prompt: str, system: str = FLEET_ASSISTANT_SYSTEM,
             data_str = str(context_data)
         if len(data_str) > 30000:
             data_str = data_str[:30000] + "\n... (truncated)"
-        parts.append(f"Fleet data:\n```\n{data_str}\n```\n\n")
+        user_parts.append(f"Fleet data:\n```\n{data_str}\n```\n\n")
 
     # Include conversation history for follow-up context
     if user_id and user_id in _chat_histories:
         history = _chat_histories[user_id]
-        parts.append("Previous conversation:\n")
+        user_parts.append("Previous conversation:\n")
         for entry in history:
             role = entry["role"]
-            parts.append(f"{role}: {entry['text']}\n")
-        parts.append("\n")
+            user_parts.append(f"{role}: {entry['text']}\n")
+        user_parts.append("\n")
 
-    parts.append(f"User question: {prompt}")
-    full_prompt = "".join(parts)
+    user_parts.append(f"User question: {prompt}")
+    user_content = "".join(user_parts)
+
+    # ── Non-Gemini API paths (MaaS / Anthropic / Mistral) ───────
+    if _is_openai_compat(cur_model_name):
+        info = MODEL_REGISTRY[cur_model_name]
+        api_type = info.get("api_type", "openai_compat")
+        location = cur_location or info["locations"][0]
+        max_tokens = min(info.get("max_output_tokens", 4096), 8192)
+
+        max_retries = 2
+        last_exc = None
+        for attempt in range(max_retries + 1):
+            try:
+                if api_type == "anthropic":
+                    text, usage = await _generate_anthropic(
+                        info["anthropic_model_id"], location,
+                        system, user_content, max_tokens,
+                    )
+                elif api_type == "mistral_raw":
+                    text, usage = await _generate_mistral_raw(
+                        info["mistral_model_id"],
+                        info.get("mistral_publisher", "mistralai"),
+                        location, system, user_content, max_tokens,
+                    )
+                else:
+                    text, usage = await _generate_openai_compat(
+                        info["maas_model_id"], location,
+                        system, user_content, max_tokens,
+                    )
+                if usage:
+                    global _last_usage
+                    _last_usage = usage
+                if not text:
+                    return (
+                        "The AI generated an empty response. "
+                        "Try rephrasing or asking a more specific question."
+                    )
+                text = text.replace("**", "").replace("##", "").replace("# ", "")
+                # Strip <think>...</think> blocks from reasoning models
+                import re
+                text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
+                if user_id is not None:
+                    _store_history(user_id, prompt, text)
+                if ck and not has_history:
+                    _cache_put(ck, text)
+                return text
+            except Exception as e:
+                last_exc = e
+                err_str = str(e).lower()
+                if ('429' in err_str or 'resource exhausted' in err_str) and attempt < max_retries:
+                    wait = 2 ** attempt
+                    logger.warning(f"Rate limited (attempt {attempt+1}/{max_retries+1}), retrying in {wait}s")
+                    await asyncio.sleep(wait)
+                    continue
+                logger.error(f"MaaS generation failed: {e}")
+                raise
+        raise last_exc  # type: ignore[misc]
+
+    # ── Gemini SDK path (existing) ───────────────────────────────
+    if model_obj is None:
+        model_obj = _model if _model is not None else _ensure_model(cur_model_name, cur_location)
+    full_prompt = system + "\n\n" + user_content
 
     max_retries = 2
     last_exc = None
     for attempt in range(max_retries + 1):
         try:
             response = await asyncio.to_thread(
-                model.generate_content, full_prompt
+                model_obj.generate_content, full_prompt
             )
 
             # Handle safety blocks — check if response was blocked
@@ -806,6 +1454,10 @@ def get_last_usage() -> dict | None:
 def _store_history(user_id: int, question: str, answer: str):
     """Store the last N exchanges for conversation context."""
     if user_id not in _chat_histories:
+        # Evict oldest user if at capacity
+        if len(_chat_histories) >= _MAX_CHAT_USERS:
+            oldest = next(iter(_chat_histories))
+            del _chat_histories[oldest]
         _chat_histories[user_id] = []
     history = _chat_histories[user_id]
     # Truncate question/answer to keep history compact
@@ -1333,6 +1985,15 @@ async def ask_fleet_agent(question: str, fleet_context: dict,
             Part, Content,
         )
     except ImportError:
+        text = await ask_fleet(question, fleet_context, user_id=user_id,
+                               account_id=account_id)
+        return {"text": text, "tool_results": []}
+
+    # MaaS models don't support Gemini function calling — fall back
+    cur_model_name = get_current_model_name()
+    if account_id is not None and account_id in _account_models:
+        cur_model_name = _account_models[account_id][0]
+    if _is_openai_compat(cur_model_name):
         text = await ask_fleet(question, fleet_context, user_id=user_id,
                                account_id=account_id)
         return {"text": text, "tool_results": []}

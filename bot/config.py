@@ -4,6 +4,8 @@ import os
 import logging
 import time
 
+from cachetools import LRUCache
+
 from database import Database
 from samsara_client import MultiCompanyClient, build_multi_company_client
 
@@ -21,6 +23,18 @@ ESCALATION_TIMEOUT_MINUTES = int(os.getenv("ESCALATION_TIMEOUT_MINUTES", "30"))
 
 # Alert escalation: max hours before auto-expiring unacknowledged alerts
 ESCALATION_MAX_HOURS = int(os.getenv("ESCALATION_MAX_HOURS", "8"))
+
+# Health alert cooldown: don't re-alert same vehicle within this many hours
+# even if the alert set changes (e.g. engine on/off cycling)
+HEALTH_ALERT_COOLDOWN_HOURS = int(os.getenv("HEALTH_ALERT_COOLDOWN_HOURS", "4"))
+
+# Fuel hysteresis: clear low-fuel flag only when fuel rises this many %
+# above the threshold (prevents oscillation spam around the threshold)
+FUEL_HYSTERESIS_PERCENT = int(os.getenv("FUEL_HYSTERESIS_PERCENT", "5"))
+
+# Fault alert cooldown: don't re-alert same vehicle within this many hours
+# even if fault codes clear and reappear (e.g. intermittent faults)
+FAULT_ALERT_COOLDOWN_HOURS = int(os.getenv("FAULT_ALERT_COOLDOWN_HOURS", "2"))
 
 # Rate limiting: minimum seconds between same command from same user
 RATE_LIMIT_SECONDS = int(os.getenv("RATE_LIMIT_SECONDS", "10"))
@@ -48,11 +62,11 @@ logger = logging.getLogger("bot")
 
 db = Database(DATABASE_PATH)
 
-# ── In-memory caches ─────────────────────────────────────────────
+# ── In-memory caches (bounded to prevent unbounded growth) ───────
 
 _client_cache: dict[int, MultiCompanyClient] = {}
-_known_faults: dict[str, set[str]] = {}       # "acct:ORG:vid" → set(codes)
-_active_messages: dict[tuple[int, int], list[int]] = {}   # (chat_id, user_id) → [msg_ids]
+_known_faults = LRUCache(maxsize=10_000)      # "acct:ORG:vid" → set(codes)
+_active_messages = LRUCache(maxsize=5_000)     # (chat_id, user_id) → [msg_ids]
 bot_username: str = ""                         # set in post_init via getMe
 
 # Rate limiter: (user_id, command) → last_use_timestamp

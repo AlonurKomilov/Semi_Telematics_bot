@@ -22,7 +22,7 @@ from bot.keyboards import (
     submenu_reports_kb, submenu_tools_kb, submenu_costs_kb, submenu_mgmt_kb,
     user_settings_kb, quiet_hours_kb, quiet_hours_picker_kb, settings_tz_kb,
 )
-from bot.helpers import _show, _show_loading, _user_menu_kb
+from bot.helpers import _show, _show_loading, _user_menu_kb, _render_audit_log, _safe_error
 from bot.auth import _get_user, _group_chat_guard
 from bot.registration import cmd_start, cmd_register, cmd_join
 from bot.fleet import (
@@ -52,7 +52,7 @@ from bot.geofences import cmd_geofences
 from bot.ai import (
     cmd_ai, cmd_ai_ask_prompt, cmd_ai_answer, cmd_ai_summary,
     cmd_ai_diagnose, cmd_ai_suggest, cmd_ai_newchat,
-    cmd_ai_models, cmd_ai_set_model, cmd_ai_regions, cmd_ai_set_location,
+    cmd_ai_models, cmd_ai_set_model,
 )
 from bot.alerts import handle_alert_ack, handle_alert_snooze
 
@@ -87,7 +87,323 @@ async def _show_truck_list(update, context, user, company_filter, page=0):
         await _show(update, context, [header + "\nTap a truck for details:"],
                     keyboard=kb)
     except Exception as e:
-        await _show(update, context, [f"❌ Error: {e}"], keyboard=back_kb())
+        await _show(update, context, [_safe_error(e)], keyboard=back_kb())
+
+
+# ── Extracted callback handlers ──────────────────────────────────
+
+async def _handle_ai_usage(update, context, user, data):
+    """Handle AI usage statistics display (cmd_ai_usage, ai_usage_*)."""
+    query = update.callback_query
+    if not can(user.role, "can_manage_account"):
+        await query.answer("⛔ No access", show_alert=True)
+        return
+    await query.answer()
+    days = 30
+    if data.startswith("ai_usage_"):
+        try:
+            days = int(data.replace("ai_usage_", ""))
+        except ValueError:
+            days = 30
+    stats = await db.get_ai_usage_stats(user.account_id, days=days)
+    daily = await db.get_ai_usage_daily(user.account_id, days=min(days, 7))
+
+    import ai_client as _aic
+    total_cost = 0.0
+    model_costs: dict[str, float] = {}
+    if stats["by_model"]:
+        for m, minfo in stats["by_model"].items():
+            prompt_tok = minfo.get("prompt_tokens", 0)
+            reply_tok = minfo.get("reply_tokens", 0)
+            c = _aic.estimate_cost(m, prompt_tok, reply_tok)
+            model_costs[m] = c
+            total_cost += c
+
+    lines = [
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "  🤖  <b>AI USAGE</b>\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        f"\n  📅 Last {days} days\n"
+        f"\n  📊 Total requests: <b>{stats['total_requests']}</b>"
+        f"\n  🔤 Total tokens: <b>{stats['total_tokens']:,}</b>"
+        f"\n  💰 Est. cost: <b>${total_cost:.4f}</b>\n"
+    ]
+    if stats["by_type"]:
+        lines.append("\n  <b>By Type:</b>")
+        for rt, info in stats["by_type"].items():
+            lines.append(f"  • {rt}: {info['requests']} req ({info['tokens']:,} tok)")
+    if stats["by_model"]:
+        lines.append("\n  <b>By Model:</b>")
+        for m, info in stats["by_model"].items():
+            disp = _aic.MODEL_REGISTRY.get(m, {}).get("display", m)
+            mc = model_costs.get(m, 0)
+            pt = info.get("prompt_tokens", 0)
+            rt = info.get("reply_tokens", 0)
+            lines.append(
+                f"  • {disp}: {info['requests']} req\n"
+                f"    {pt:,} in / {rt:,} out · ${mc:.4f}"
+            )
+    if daily:
+        lines.append("\n  <b>Daily (last 7d):</b>")
+        for d in daily:
+            lines.append(f"  • {d['day']}: {d['requests']} req ({d['tokens'] or 0:,} tok)")
+
+    text = "\n".join(lines)
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("📅 7 days", callback_data="ai_usage_7"),
+            InlineKeyboardButton("📅 30 days", callback_data="ai_usage_30"),
+            InlineKeyboardButton("📅 90 days", callback_data="ai_usage_90"),
+        ],
+        [InlineKeyboardButton("⚙️ Models", callback_data="ai_models")],
+        [InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")],
+    ])
+    await _show(update, context, [text], keyboard=kb)
+
+
+async def _handle_user_menu(update, context, user, target_tid):
+    """Show action buttons for a specific team member."""
+    query = update.callback_query
+    await query.answer()
+    target_user = await db.get_user_by_telegram_id(target_tid)
+    if not target_user or target_user.account_id != user.account_id:
+        await _show(update, context, ["❌ User not found."], keyboard=back_kb())
+        return
+
+    alerts_icon = "🔔" if target_user.alerts_on else "🔕"
+    alerts_label = "ON" if target_user.alerts_on else "OFF"
+
+    rows = [
+        [InlineKeyboardButton(
+            f"🔄 Change Role ({role_display(target_user.role)})",
+            callback_data=f"usrrole_{target_tid}",
+        )],
+        [InlineKeyboardButton(
+            f"📂 Change Department ({target_user.department or '—'})",
+            callback_data=f"usrdept_{target_tid}",
+        )],
+        [InlineKeyboardButton(
+            f"{alerts_icon} Alerts {alerts_label}",
+            callback_data=f"usralerts_{target_tid}",
+        )],
+    ]
+    if target_tid != user.telegram_id:
+        rows.append([InlineKeyboardButton(
+            "🗑 Remove User",
+            callback_data=f"usrremove_{target_tid}",
+        )])
+    rows.append([InlineKeyboardButton("◀️ Back to Team", callback_data="cmd_users")])
+
+    await _show(update, context, [
+        f"👤 <b>User <a href='tg://user?id={target_tid}'>{target_user.label}</a></b>\n"
+        f"Role: {role_display(target_user.role)}\n"
+        f"Dept: {target_user.department or '—'}\n"
+        f"Truck: {target_user.truck_num or '—'}\n"
+        f"Alerts: {alerts_icon} {alerts_label}"
+    ], keyboard=InlineKeyboardMarkup(rows))
+
+
+async def _handle_user_role_picker(update, context, user, target_tid):
+    """Show role selection grid for changing a user's role."""
+    query = update.callback_query
+    await query.answer()
+    roles_kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("👑 Owner", callback_data=f"setrole_{target_tid}_owner"),
+            InlineKeyboardButton("🔑 Admin", callback_data=f"setrole_{target_tid}_admin"),
+        ],
+        [
+            InlineKeyboardButton("🔧 Fleet", callback_data=f"setrole_{target_tid}_fleet_manager"),
+            InlineKeyboardButton("📡 Dispatcher", callback_data=f"setrole_{target_tid}_dispatcher"),
+        ],
+        [
+            InlineKeyboardButton("🚛 Driver", callback_data=f"setrole_{target_tid}_driver"),
+        ],
+        [InlineKeyboardButton("◀️ Cancel", callback_data=f"usrmenu_{target_tid}")],
+    ])
+    target_user = await db.get_user_by_telegram_id(target_tid)
+    target_label = target_user.label if target_user else str(target_tid)
+    await _show(update, context, [
+        f"🔄 <b>Change Role for {target_label}</b>\n\n"
+        "Select the new role:"
+    ], keyboard=roles_kb)
+
+
+async def _handle_set_role(update, context, user, data):
+    """Apply a role change to a user."""
+    query = update.callback_query
+    parts = data.split("_")  # setrole_{tid}_{role}
+    target_tid = int(parts[1])
+    new_role_str = "_".join(parts[2:])  # handles fleet_manager
+    await query.answer()
+
+    try:
+        new_role = Role.from_str(new_role_str)
+    except ValueError:
+        await _show(update, context, ["❌ Invalid role."], keyboard=back_kb())
+        return
+
+    target_user = await db.get_user_by_telegram_id(target_tid)
+    if not target_user or target_user.account_id != user.account_id:
+        await _show(update, context, ["❌ User not found."], keyboard=back_kb())
+        return
+
+    if new_role == Role.OWNER and user.role != Role.OWNER:
+        await _show(update, context, ["⛔ Only owners can promote to owner."], keyboard=back_kb())
+        return
+
+    old_role = target_user.role
+    await db.update_user(target_user.id, role=new_role)
+    await db.add_audit_log(
+        account_id=user.account_id, user_id=user.id,
+        action="role_changed", target_type="user",
+        target_id=str(target_user.id),
+        details=f"{user.label} changed {target_user.label}: {role_display(old_role)} → {role_display(new_role)}",
+    )
+    await _show(update, context, [
+        f"✅ Updated {target_user.label} → {role_display(new_role)}"
+    ], keyboard=back_kb())
+
+
+async def _handle_company_menu(update, context, user, code):
+    """Show detail view for a specific company with actions."""
+    query = update.callback_query
+    await query.answer()
+
+    company = await db.get_company_by_code(user.account_id, code)
+    if not company:
+        await _show(update, context, ["❌ Company not found."], keyboard=back_kb())
+        return
+
+    lines = [
+        f"🏢 <b>{company.display_name or company.code}</b>\n",
+        f"  📌 Code: <b>{company.code}</b>",
+        f"  🔑 API Key: <code>{'•' * 8}…{company.samsara_api_key[-4:]}</code>" if len(company.samsara_api_key) > 4 else "  🔑 API Key: configured",
+        f"  📅 Active Days: <b>{company.active_days}</b>",
+        f"  📋 Added: {company.created_at[:10] if company.created_at else '—'}",
+    ]
+
+    rows = []
+    if can(user.role, "can_manage_account"):
+        rows.append([InlineKeyboardButton(
+            "🔌 API Status", callback_data=f"co_api_status_{code}",
+        )])
+    if can(user.role, "can_manage_companies"):
+        rows.append([InlineKeyboardButton(
+            "🔑 Change API Key", callback_data=f"co_chkey_{code}",
+        )])
+        rows.append([InlineKeyboardButton(
+            "✏️ Rename Company", callback_data=f"co_rename_{code}",
+        )])
+        rows.append([InlineKeyboardButton(
+            "🗑 Remove Company", callback_data=f"rmco_{code}",
+        )])
+    rows.append([InlineKeyboardButton("◀️ Back to Companies", callback_data="cmd_account")])
+
+    await _show(update, context, ["\n".join(lines)],
+                keyboard=InlineKeyboardMarkup(rows))
+
+
+async def _handle_co_api_status(update, context, user, code):
+    """Check API connectivity for a single company."""
+    query = update.callback_query
+    await query.answer()
+
+    company = await db.get_company_by_code(user.account_id, code)
+    if not company:
+        await _show(update, context, ["❌ Company not found."], keyboard=back_kb())
+        return
+
+    from samsara_client import SamsaraClient
+    client = SamsaraClient(
+        api_key=company.samsara_api_key,
+        base_url="https://api.samsara.com",
+    )
+    try:
+        vehicles = await client.get_vehicles()
+        status_line = f"  🟢  <b>{code}</b>: {len(vehicles)} vehicles"
+    except Exception as e:
+        err = str(e)
+        if len(err) > 80:
+            err = err[:77] + "…"
+        status_line = f"  🔴  <b>{code}</b>: {err}"
+    finally:
+        await client.close()
+
+    text = (
+        "━━━━━━━━━━━━━━━━━━━\n"
+        f"  📡  <b>API STATUS — {code}</b>\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        f"\n{status_line}"
+    )
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("◀️ Back", callback_data=f"comenu_{code}")],
+    ])
+    await _show(update, context, [text], keyboard=kb)
+
+
+async def _handle_invite_pick(update, context, user):
+    """Show role picker for creating an invite."""
+    query = update.callback_query
+    await query.answer()
+    if not can(user.role, "can_invite"):
+        await query.answer("⛔ No access", show_alert=True)
+        return
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🔑 Admin", callback_data="inv_admin"),
+            InlineKeyboardButton("🔧 Fleet", callback_data="inv_fleet_manager"),
+        ],
+        [
+            InlineKeyboardButton("📡 Dispatcher", callback_data="inv_dispatcher"),
+            InlineKeyboardButton("🚛 Driver", callback_data="inv_driver"),
+        ],
+        [InlineKeyboardButton("◀️ Back", callback_data="cmd_users")],
+    ])
+    await _show(update, context, [
+        "✉️ <b>Invite Team Member</b>\n\n"
+        "  <b>Step 1/2</b> — Select role\n\n"
+        "Select the role for the new member:"
+    ], keyboard=kb)
+
+
+async def _handle_invite_create(update, context, user, data):
+    """Create an invite for the selected role."""
+    query = update.callback_query
+    await query.answer()
+    role_str = data[4:]  # admin, fleet_manager, dispatcher, driver
+    try:
+        invite_role = Role.from_str(role_str)
+    except ValueError:
+        await _show(update, context, ["❌ Invalid role."], keyboard=back_kb())
+        return
+
+    if invite_role == Role.DRIVER:
+        context.user_data["_pending"] = "invite_driver"
+        await _show(update, context, [
+            f"🚛 <b>Invite Driver</b>\n\n"
+            "  <b>Step 2/2</b> — Truck number\n\n"
+            "Type the truck number for this driver\n"
+            "(or type <b>skip</b> to leave blank):"
+        ], keyboard=back_kb())
+        return
+
+    try:
+        invite = await db.create_invite(
+            account_id=user.account_id,
+            created_by=user.id,
+            role=invite_role,
+            department="general",
+        )
+        link = f"https://t.me/{_cfg.bot_username}?start=join_{invite.code}" if _cfg.bot_username else None
+        text = format_invite_created(
+            invite.code, role_display(invite_role), "general",
+            invite_link=link,
+        )
+        kb = invite_kb(link)
+        await _show(update, context, [text], keyboard=kb)
+    except Exception as e:
+        await _show(update, context, [_safe_error(e)], keyboard=back_kb())
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -217,8 +533,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _show(update, context, [
             "━━━━━━━━━━━━━━━━━━━\n"
             "  👥  <b>TEAM & SETTINGS</b>\n"
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "\n  Manage your account and team:"
+            "━━━━━━━━━━━━━━━━━━━"
         ], keyboard=submenu_mgmt_kb(user.role, has_api))
 
     # ── Fleet commands ──────────────────────────────────────────
@@ -284,11 +599,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("ai_setmodel_"):
         model = data.replace("ai_setmodel_", "")
         await cmd_ai_set_model(update, context, model_name=model)
-    elif data == "ai_regions":
-        await cmd_ai_regions(update, context)
-    elif data.startswith("ai_setloc_"):
-        loc = data.replace("ai_setloc_", "")
-        await cmd_ai_set_location(update, context, location=loc)
 
     elif data == "cmd_mytruck":
         await cmd_truck(update, context)
@@ -377,6 +687,53 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ── Account / Users ─────────────────────────────────────────
     elif data == "cmd_account":
         await cmd_account(update, context)
+
+    # ── Company detail drill-down ───────────────────────────────
+    elif data.startswith("comenu_"):
+        code = data[7:]
+        if not can(user.role, "can_manage_account"):
+            await query.answer("⛔ No access", show_alert=True)
+            return
+        await _handle_company_menu(update, context, user, code)
+
+    elif data.startswith("co_api_status_"):
+        code = data[14:]
+        if not can(user.role, "can_manage_account"):
+            await query.answer("⛔ No access", show_alert=True)
+            return
+        await _handle_co_api_status(update, context, user, code)
+
+    elif data.startswith("co_chkey_"):
+        code = data[9:]
+        if not can(user.role, "can_manage_companies"):
+            await query.answer("⛔ No access", show_alert=True)
+            return
+        await query.answer()
+        context.user_data["_pending"] = "change_api_key"
+        context.user_data["_chkey_code"] = code
+        await _show(update, context, [
+            f"🔑 <b>Change API Key — {code}</b>\n\n"
+            "Paste the new Samsara API token below:\n"
+            "<i>(starts with samsara_api_…)</i>"
+        ], keyboard=InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Cancel", callback_data=f"comenu_{code}")],
+        ]))
+
+    elif data.startswith("co_rename_"):
+        code = data[10:]
+        if not can(user.role, "can_manage_companies"):
+            await query.answer("⛔ No access", show_alert=True)
+            return
+        await query.answer()
+        context.user_data["_pending"] = "rename_company"
+        context.user_data["_rename_code"] = code
+        await _show(update, context, [
+            f"✏️ <b>Rename Company — {code}</b>\n\n"
+            "Type the new display name:"
+        ], keyboard=InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Cancel", callback_data=f"comenu_{code}")],
+        ]))
+
     elif data == "cmd_users":
         await cmd_users(update, context)
 
@@ -453,64 +810,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Invite — role picker ────────────────────────────────────
     elif data == "cmd_invite_pick":
-        await query.answer()
-        if not can(user.role, "can_invite"):
-            await query.answer("⛔ No access", show_alert=True)
-            return
-        kb = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("🔑 Admin", callback_data="inv_admin"),
-                InlineKeyboardButton("🔧 Fleet", callback_data="inv_fleet_manager"),
-            ],
-            [
-                InlineKeyboardButton("📡 Dispatcher", callback_data="inv_dispatcher"),
-                InlineKeyboardButton("🚛 Driver", callback_data="inv_driver"),
-            ],
-            [InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")],
-        ])
-        await _show(update, context, [
-            "✉️ <b>Invite Team Member</b>\n\n"
-            "  <b>Step 1/2</b> — Select role\n\n"
-            "Select the role for the new member:"
-        ], keyboard=kb)
+        await _handle_invite_pick(update, context, user)
 
     elif data.startswith("inv_"):
-        await query.answer()
-        role_str = data[4:]  # admin, fleet_manager, dispatcher, driver
-        try:
-            invite_role = Role.from_str(role_str)
-        except ValueError:
-            await _show(update, context, ["❌ Invalid role."], keyboard=back_kb())
-            return
-
-        if invite_role == Role.DRIVER:
-            # Ask for truck number
-            context.user_data["_pending"] = "invite_driver"
-            await _show(update, context, [
-                f"🚛 <b>Invite Driver</b>\n\n"
-                "  <b>Step 2/2</b> — Truck number\n\n"
-                "Type the truck number for this driver\n"
-                "(or type <b>skip</b> to leave blank):"
-            ], keyboard=back_kb())
-            return
-
-        # Create invite immediately for non-driver roles
-        try:
-            invite = await db.create_invite(
-                account_id=user.account_id,
-                created_by=user.id,
-                role=invite_role,
-                department="general",
-            )
-            link = f"https://t.me/{_cfg.bot_username}?start=join_{invite.code}" if _cfg.bot_username else None
-            text = format_invite_created(
-                invite.code, role_display(invite_role), "general",
-                invite_link=link,
-            )
-            kb = invite_kb(link)
-            await _show(update, context, [text], keyboard=kb)
-        except Exception as e:
-            await _show(update, context, [f"❌ Error: {e}"], keyboard=back_kb())
+        await _handle_invite_create(update, context, user, data)
 
     # ── Add Company wizard (step 1: code) ───────────────────────────
     elif data == "cmd_addcompany_prompt":
@@ -534,29 +837,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("⛔ No access", show_alert=True)
             return
         await query.answer()
-        kb = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(f"🗑 Yes, remove {code}", callback_data=f"rmcoconfirm_{code}"),
-                InlineKeyboardButton("◀️ Cancel", callback_data="cmd_account"),
-            ],
-        ])
+        context.user_data["_pending"] = "confirm_remove_company"
+        context.user_data["_rmco_code"] = code
         await _show(update, context, [
             f"⚠️ <b>Remove Company {code}?</b>\n\n"
             "This will disconnect this company from your account.\n"
-            "All data stays in Samsara — only the bot link is removed."
-        ], keyboard=kb)
-
-    elif data.startswith("rmcoconfirm_"):
-        code = data[12:]
-        await query.answer()
-        company = await db.get_company_by_code(user.account_id, code)
-        if company:
-            await db.remove_company(company.id)
-            await invalidate_client(user.account_id)
-            companies = await db.get_account_companies(user.account_id)
-            populate_company_display(companies)
-        kb = await _user_menu_kb(user)
-        await _show(update, context, [f"✅ Company <b>{code}</b> removed."], keyboard=kb)
+            "All data stays in Samsara — only the bot link is removed.\n\n"
+            f"To confirm, type the company code <b>{code}</b> below:"
+        ], keyboard=InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Cancel", callback_data=f"comenu_{code}")],
+        ]))
 
     # ── Add Company wizard: Skip display name ───────────────────────
     elif data == "addcompany_skip_name":
@@ -610,84 +900,53 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── User management (from users view) ───────────────────────
     elif data.startswith("usrmenu_"):
-        # Show actions for a specific user
         target_tid = int(data[8:])
-        await query.answer()
-        target_user = await db.get_user_by_telegram_id(target_tid)
-        if not target_user or target_user.account_id != user.account_id:
-            await _show(update, context, ["❌ User not found."], keyboard=back_kb())
-            return
-
-        rows = [
-            [InlineKeyboardButton(
-                f"🔄 Change Role ({role_display(target_user.role)})",
-                callback_data=f"usrrole_{target_tid}",
-            )],
-        ]
-        if target_tid != user.telegram_id:
-            rows.append([InlineKeyboardButton(
-                "🗑 Remove User",
-                callback_data=f"usrremove_{target_tid}",
-            )])
-        rows.append([InlineKeyboardButton("◀️ Back to Team", callback_data="cmd_users")])
-
-        await _show(update, context, [
-            f"👤 <b>User <a href='tg://user?id={target_tid}'>{target_user.label}</a></b>\n"
-            f"Role: {role_display(target_user.role)}\n"
-            f"Dept: {target_user.department or '—'}\n"
-            f"Truck: {target_user.truck_num or '—'}"
-        ], keyboard=InlineKeyboardMarkup(rows))
+        await _handle_user_menu(update, context, user, target_tid)
 
     elif data.startswith("usrrole_"):
-        # Show role selection for a user
+        target_tid = int(data[8:])
+        await _handle_user_role_picker(update, context, user, target_tid)
+
+    elif data.startswith("setrole_"):
+        await _handle_set_role(update, context, user, data)
+
+    elif data.startswith("usrdept_"):
         target_tid = int(data[8:])
         await query.answer()
-        roles_kb = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("👑 Owner", callback_data=f"setrole_{target_tid}_owner"),
-                InlineKeyboardButton("🔑 Admin", callback_data=f"setrole_{target_tid}_admin"),
-            ],
-            [
-                InlineKeyboardButton("🔧 Fleet", callback_data=f"setrole_{target_tid}_fleet_manager"),
-                InlineKeyboardButton("📡 Dispatcher", callback_data=f"setrole_{target_tid}_dispatcher"),
-            ],
-            [
-                InlineKeyboardButton("🚛 Driver", callback_data=f"setrole_{target_tid}_driver"),
-            ],
-            [InlineKeyboardButton("◀️ Cancel", callback_data=f"usrmenu_{target_tid}")],
-        ])
+        if not can(user.role, "can_manage_users"):
+            await query.answer("⛔ No access", show_alert=True)
+            return
+        context.user_data["_pending"] = "change_dept"
+        context.user_data["_dept_tid"] = target_tid
         target_user = await db.get_user_by_telegram_id(target_tid)
         target_label = target_user.label if target_user else str(target_tid)
         await _show(update, context, [
-            f"🔄 <b>Change Role for {target_label}</b>\n\n"
-            "Select the new role:"
-        ], keyboard=roles_kb)
+            f"📂 <b>Change Department — {target_label}</b>\n\n"
+            f"Current: <b>{target_user.department if target_user else '—'}</b>\n\n"
+            "Type the new department name:"
+        ], keyboard=InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Cancel", callback_data=f"usrmenu_{target_tid}")],
+        ]))
 
-    elif data.startswith("setrole_"):
-        parts = data.split("_")  # setrole_{tid}_{role}
-        target_tid = int(parts[1])
-        new_role_str = "_".join(parts[2:])  # handles fleet_manager
+    elif data.startswith("usralerts_"):
+        target_tid = int(data[10:])
         await query.answer()
-
-        try:
-            new_role = Role.from_str(new_role_str)
-        except ValueError:
-            await _show(update, context, ["❌ Invalid role."], keyboard=back_kb())
+        if not can(user.role, "can_manage_users"):
+            await query.answer("⛔ No access", show_alert=True)
             return
-
         target_user = await db.get_user_by_telegram_id(target_tid)
-        if not target_user or target_user.account_id != user.account_id:
+        if target_user and target_user.account_id == user.account_id:
+            new_state = not target_user.alerts_on
+            await db.update_user(target_user.id, alerts_on=new_state)
+            icon = "🔔" if new_state else "🔕"
+            label = "ON" if new_state else "OFF"
+            await _show(update, context, [
+                f"✅ Alerts for {target_user.label} → {icon} {label}"
+            ], keyboard=InlineKeyboardMarkup([
+                [InlineKeyboardButton("◀️ Back", callback_data=f"usrmenu_{target_tid}")],
+            ]))
+        else:
             await _show(update, context, ["❌ User not found."], keyboard=back_kb())
-            return
-
-        if new_role == Role.OWNER and user.role != Role.OWNER:
-            await _show(update, context, ["⛔ Only owners can promote to owner."], keyboard=back_kb())
-            return
-
-        await db.update_user(target_user.id, role=new_role)
-        await _show(update, context, [
-            f"✅ Updated {target_user.label} → {role_display(new_role)}"
-        ], keyboard=back_kb())
 
     elif data.startswith("usrremove_"):
         target_tid = int(data[10:])
@@ -715,6 +974,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_label = target_user.label if target_user else str(target_tid)
         if target_user and target_user.account_id == user.account_id:
             await db.remove_user(target_user.id)
+            await db.add_audit_log(
+                account_id=user.account_id, user_id=user.id,
+                action="user_removed", target_type="user",
+                target_id=str(target_user.id),
+                details=f"{user.label} removed user {target_label}",
+            )
         await _show(update, context, [f"✅ Removed {target_label}."], keyboard=back_kb())
 
     # ── Per-truck fault reports ──────────────────────────────────
@@ -731,7 +996,53 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("truck_") or data.startswith("cotruck_"):
         await cmd_truck(update, context)
 
-    # ── Company sub-menu ────────────────────────────────────────────
+    # ── Company detail drill-down ───────────────────────────────
+    elif data.startswith("comenu_"):
+        code = data[7:]
+        await _handle_company_menu(update, context, user, code)
+
+    elif data.startswith("co_api_status_"):
+        code = data[14:]
+        if not can(user.role, "can_manage_account"):
+            await query.answer("⛔ No access", show_alert=True)
+            return
+        await _handle_co_api_status(update, context, user, code)
+
+    elif data.startswith("co_chkey_"):
+        code = data[9:]
+        if not can(user.role, "can_manage_companies"):
+            await query.answer("⛔ No access", show_alert=True)
+            return
+        await query.answer()
+        context.user_data["_pending"] = "change_api_key"
+        context.user_data["_chkey_code"] = code
+        await _show(update, context, [
+            f"🔑 <b>Change API Key — {code}</b>\n\n"
+            "Paste the new Samsara API token below:\n"
+            "<i>(starts with samsara_api_...)</i>"
+        ], keyboard=InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Cancel", callback_data=f"comenu_{code}")],
+        ]))
+
+    elif data.startswith("co_rename_"):
+        code = data[10:]
+        if not can(user.role, "can_manage_companies"):
+            await query.answer("⛔ No access", show_alert=True)
+            return
+        await query.answer()
+        context.user_data["_pending"] = "rename_company"
+        context.user_data["_rename_code"] = code
+        company = await db.get_company_by_code(user.account_id, code)
+        current_name = company.display_name if company else code
+        await _show(update, context, [
+            f"✏️ <b>Rename Company — {code}</b>\n\n"
+            f"Current name: <b>{current_name}</b>\n\n"
+            "Type the new display name:"
+        ], keyboard=InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Cancel", callback_data=f"comenu_{code}")],
+        ]))
+
+    # ── Company sub-menu (per-company reports) ──────────────────────
     elif data.startswith("co_") and not data.startswith("cofaults_") \
             and not data.startswith("cofuel_") \
             and not data.startswith("cotruck_") \
@@ -739,7 +1050,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             and not data.startswith("coeff_") \
             and not data.startswith("coeff_pdf_") \
             and not data.startswith("coeff_csv_") \
-            and not data.startswith("coweather_"):
+            and not data.startswith("coweather_") \
+            and not data.startswith("co_api_status_") \
+            and not data.startswith("co_chkey_") \
+            and not data.startswith("co_rename_"):
         co = data.replace("co_", "")
         await query.answer()
         name = COMPANY_DISPLAY.get(co, co)
@@ -953,65 +1267,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not can(user.role, "can_manage_users"):
             await query.answer("⛔ No access", show_alert=True)
             return
-        entries = await db.get_audit_log(user.account_id, limit=15)
-        if not entries:
-            text = "📋 <b>Audit Log</b>\n\nNo recent activity."
-        else:
-            lines = ["📋 <b>Audit Log</b> (last 15)\n"]
-            for e in entries:
-                ts = e["created_at"][:16].replace("T", " ")
-                lines.append(f"  • <code>{ts}</code> — {e['action']}")
-                if e.get("details"):
-                    lines.append(f"    {e['details'][:60]}")
-            text = "\n".join(lines)
+        text = await _render_audit_log(user.account_id, db)
         await _show(update, context, [text], keyboard=back_kb())
 
     # ── AI usage stats ──────────────────────────────────────────
     elif data == "cmd_ai_usage" or data.startswith("ai_usage_"):
-        if not can(user.role, "can_manage_account"):
-            await query.answer("⛔ No access", show_alert=True)
-            return
-        await query.answer()
-        days = 30
-        if data.startswith("ai_usage_"):
-            try:
-                days = int(data.replace("ai_usage_", ""))
-            except ValueError:
-                days = 30
-        stats = await db.get_ai_usage_stats(user.account_id, days=days)
-        daily = await db.get_ai_usage_daily(user.account_id, days=min(days, 7))
-
-        lines = [
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "  🤖  <b>AI USAGE</b>\n"
-            "━━━━━━━━━━━━━━━━━━━\n"
-            f"\n  📅 Last {days} days\n"
-            f"\n  📊 Total requests: <b>{stats['total_requests']}</b>"
-            f"\n  🔤 Total tokens: <b>{stats['total_tokens']:,}</b>\n"
-        ]
-        if stats["by_type"]:
-            lines.append("\n  <b>By Type:</b>")
-            for rt, info in stats["by_type"].items():
-                lines.append(f"  • {rt}: {info['requests']} req ({info['tokens']:,} tok)")
-        if stats["by_model"]:
-            lines.append("\n  <b>By Model:</b>")
-            for m, info in stats["by_model"].items():
-                lines.append(f"  • {m}: {info['requests']} req ({info['tokens']:,} tok)")
-        if daily:
-            lines.append("\n  <b>Daily (last 7d):</b>")
-            for d in daily:
-                lines.append(f"  • {d['day']}: {d['requests']} req ({d['tokens'] or 0:,} tok)")
-
-        text = "\n".join(lines)
-        kb = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("📅 7 days", callback_data="ai_usage_7"),
-                InlineKeyboardButton("📅 30 days", callback_data="ai_usage_30"),
-                InlineKeyboardButton("📅 90 days", callback_data="ai_usage_90"),
-            ],
-            [InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")],
-        ])
-        await _show(update, context, [text], keyboard=kb)
+        await _handle_ai_usage(update, context, user, data)
 
     else:
         await query.answer("Unknown action")
@@ -1127,6 +1388,175 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.args = [f"{code}:{api_key}"] + (display_name.split() if display_name != code else [])
         await cmd_addcompany(update, context)
 
+    # ── Change department for a user ──────────────────────────────
+    elif pending == "change_dept":
+        user = context.user_data.get("_db_user")
+        if not user:
+            user, _, _ = await _get_user(update)
+        if not user:
+            await cmd_start(update, context)
+            return
+        target_tid = context.user_data.pop("_dept_tid", None)
+        if not target_tid:
+            await _show(update, context, ["❌ Session expired. Try again."], keyboard=back_kb())
+            return
+
+        new_dept = text.strip()
+        if not new_dept or len(new_dept) > 50:
+            await _show(update, context, [
+                "❌ Department must be 1–50 characters."
+            ], keyboard=InlineKeyboardMarkup([
+                [InlineKeyboardButton("◀️ Back", callback_data=f"usrmenu_{target_tid}")],
+            ]))
+            return
+
+        target_user = await db.get_user_by_telegram_id(target_tid)
+        if not target_user or target_user.account_id != user.account_id:
+            await _show(update, context, ["❌ User not found."], keyboard=back_kb())
+            return
+
+        await db.update_user(target_user.id, department=new_dept)
+        await _show(update, context, [
+            f"✅ Department for {target_user.label} → <b>{new_dept}</b>"
+        ], keyboard=InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Back", callback_data=f"usrmenu_{target_tid}")],
+        ]))
+
+    # ── Confirm remove company (type code to confirm) ───────────
+    elif pending == "confirm_remove_company":
+        user = context.user_data.get("_db_user")
+        if not user:
+            user, _, _ = await _get_user(update)
+        if not user:
+            await cmd_start(update, context)
+            return
+        code = context.user_data.pop("_rmco_code", None)
+        if not code:
+            await _show(update, context, ["❌ Session expired. Try again."], keyboard=back_kb())
+            return
+
+        typed = text.strip().upper()
+        if typed != code:
+            await _show(update, context, [
+                f"❌ Code doesn't match. You typed <b>{typed}</b>, expected <b>{code}</b>.\n\n"
+                "Company was <b>NOT</b> removed."
+            ], keyboard=InlineKeyboardMarkup([
+                [InlineKeyboardButton("◀️ Back", callback_data=f"comenu_{code}")],
+            ]))
+            return
+
+        company = await db.get_company_by_code(user.account_id, code)
+        if company:
+            await db.remove_company(company.id)
+            await invalidate_client(user.account_id)
+            companies = await db.get_account_companies(user.account_id)
+            populate_company_display(companies)
+            # Audit log
+            await db.add_audit_log(
+                account_id=user.account_id,
+                user_id=user.id,
+                action="company_removed",
+                target_type="company",
+                target_id=str(company.id),
+                details=f"{user.label} removed company {code} ({company.display_name})",
+            )
+            await _show(update, context, [
+                f"✅ Company <b>{code}</b> has been removed."
+            ], keyboard=InlineKeyboardMarkup([
+                [InlineKeyboardButton("◀️ Back to Companies", callback_data="cmd_account")],
+            ]))
+        else:
+            await _show(update, context, [
+                f"❌ Company <b>{code}</b> not found."
+            ], keyboard=back_kb())
+
+    # ── Change API key for a company ──────────────────────────────
+    elif pending == "change_api_key":
+        user = context.user_data.get("_db_user")
+        if not user:
+            user, _, _ = await _get_user(update)
+        if not user:
+            await cmd_start(update, context)
+            return
+        code = context.user_data.pop("_chkey_code", None)
+        if not code:
+            await _show(update, context, ["❌ Session expired. Try again."], keyboard=back_kb())
+            return
+
+        api_key = text.strip()
+        if not api_key or len(api_key) < 10:
+            await _show(update, context, [
+                "❌ That doesn't look like a valid API key.\n"
+                "It should start with <code>samsara_api_</code>"
+            ], keyboard=InlineKeyboardMarkup([
+                [InlineKeyboardButton("◀️ Back", callback_data=f"comenu_{code}")],
+            ]))
+            return
+
+        company = await db.get_company_by_code(user.account_id, code)
+        if not company:
+            await _show(update, context, ["❌ Company not found."], keyboard=back_kb())
+            return
+
+        await db.update_company(company.id, samsara_api_key=api_key)
+        await invalidate_client(user.account_id)
+        await db.add_audit_log(
+            account_id=user.account_id, user_id=user.id,
+            action="api_key_changed", target_type="company",
+            target_id=str(company.id),
+            details=f"{user.label} changed API key for {code}",
+        )
+        await _show(update, context, [
+            f"✅ API key updated for <b>{code}</b>.\n\n"
+            "The bot will use the new key for all future requests."
+        ], keyboard=InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Back", callback_data=f"comenu_{code}")],
+        ]))
+
+    # ── Rename company display name ─────────────────────────────
+    elif pending == "rename_company":
+        user = context.user_data.get("_db_user")
+        if not user:
+            user, _, _ = await _get_user(update)
+        if not user:
+            await cmd_start(update, context)
+            return
+        code = context.user_data.pop("_rename_code", None)
+        if not code:
+            await _show(update, context, ["❌ Session expired. Try again."], keyboard=back_kb())
+            return
+
+        new_name = text.strip()
+        if not new_name or len(new_name) > 100:
+            await _show(update, context, [
+                "❌ Display name must be 1–100 characters."
+            ], keyboard=InlineKeyboardMarkup([
+                [InlineKeyboardButton("◀️ Back", callback_data=f"comenu_{code}")],
+            ]))
+            return
+
+        company = await db.get_company_by_code(user.account_id, code)
+        if not company:
+            await _show(update, context, ["❌ Company not found."], keyboard=back_kb())
+            return
+
+        old_name = company.display_name
+        await db.update_company(company.id, display_name=new_name)
+        # Refresh display cache
+        companies = await db.get_account_companies(user.account_id)
+        populate_company_display(companies)
+        await db.add_audit_log(
+            account_id=user.account_id, user_id=user.id,
+            action="company_renamed", target_type="company",
+            target_id=str(company.id),
+            details=f"{user.label} renamed {code}: {old_name} → {new_name}",
+        )
+        await _show(update, context, [
+            f"✅ Company <b>{code}</b> renamed to <b>{new_name}</b>."
+        ], keyboard=InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Back", callback_data=f"comenu_{code}")],
+        ]))
+
     # ── Invite driver (truck number) ────────────────────────────
     elif pending == "invite_driver":
         user = context.user_data.get("_db_user")
@@ -1158,7 +1588,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             kb = invite_kb(link)
             await _show(update, context, [invite_text], keyboard=kb)
         except Exception as e:
-            await _show(update, context, [f"❌ Error: {e}"], keyboard=back_kb())
+            await _show(update, context, [_safe_error(e)], keyboard=back_kb())
 
     # ── Fuel cost wizard ────────────────────────────────────────
     elif pending.startswith("fuelcost_"):

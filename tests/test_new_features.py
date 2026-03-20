@@ -517,47 +517,77 @@ class TestAIClientUsageCapture:
 # ESCALATION CHAIN LOGIC
 # ══════════════════════════════════════════════════════════════════
 
-class TestEscalationChains:
-    """Tests for role-based escalation chains.
+class TestReAlertConfig:
+    """Tests for the unified alert architecture configuration.
 
-    Local copy of the chain dict avoids importing bot.alerts which triggers
-    the full bot import graph (broken by the missing onboarding_kb).
+    Verifies AlertSeverity enum, re-alert constants, and build_alert_keyboard.
     """
 
-    _CHAINS: dict[str, list] = {
-        "fault":   [Role.DRIVER, Role.FLEET_MGR, Role.ADMIN, Role.OWNER],
-        "health":  [Role.DRIVER, Role.FLEET_MGR, Role.ADMIN, Role.OWNER],
-        "fuel":    [Role.DRIVER, Role.DISPATCHER, Role.FLEET_MGR],
-        "default": [Role.DRIVER, Role.FLEET_MGR, Role.ADMIN, Role.OWNER],
-    }
+    def test_alert_severity_values(self):
+        from bot.alerts import AlertSeverity
+        assert AlertSeverity.CRITICAL.value == "critical"
+        assert AlertSeverity.WARNING.value == "warning"
+        assert AlertSeverity.INFO.value == "info"
 
-    @staticmethod
-    def _get_chain(alert_type: str) -> list:
-        chains = TestEscalationChains._CHAINS
-        return chains.get(alert_type, chains["default"])
+    def test_realert_constants(self):
+        from bot.alerts import ACK_WINDOW_MINUTES, MAX_REALERTS, SNOOZE_MINUTES
+        assert ACK_WINDOW_MINUTES > 0
+        assert MAX_REALERTS >= 1
+        assert SNOOZE_MINUTES > 0
 
-    def test_fault_chain_skips_dispatcher(self):
-        chain = self._get_chain("fault")
-        assert Role.DISPATCHER not in chain
-        assert chain == [Role.DRIVER, Role.FLEET_MGR, Role.ADMIN, Role.OWNER]
+    def test_build_keyboard_critical_with_ack(self):
+        from bot.alerts import build_alert_keyboard, AlertSeverity, SNOOZE_MINUTES
+        kb = build_alert_keyboard(AlertSeverity.CRITICAL, "CO1", "101", ack_id=42)
+        labels = [b.text for r in kb.inline_keyboard for b in r]
+        callbacks = [b.callback_data for r in kb.inline_keyboard for b in r]
+        assert "✅ Acknowledge" in labels
+        assert f"⏰ Snooze {SNOOZE_MINUTES} min" in labels
+        assert "🤖 AI Diagnose" in labels
+        assert "📋 View Truck #101" in labels
+        assert "ack_alert_42" in callbacks
 
-    def test_health_chain_skips_dispatcher(self):
-        chain = self._get_chain("health")
-        assert Role.DISPATCHER not in chain
+    def test_build_keyboard_warning_with_ack(self):
+        from bot.alerts import build_alert_keyboard, AlertSeverity
+        kb = build_alert_keyboard(AlertSeverity.WARNING, "CO1", "202", ack_id=99)
+        labels = [b.text for r in kb.inline_keyboard for b in r]
+        assert "✅ Acknowledge" in labels
+        assert "🤖 AI Diagnose" in labels
 
-    def test_fuel_chain_includes_dispatcher(self):
-        chain = self._get_chain("fuel")
-        assert Role.DISPATCHER in chain
-        assert chain == [Role.DRIVER, Role.DISPATCHER, Role.FLEET_MGR]
+    def test_build_keyboard_critical_no_ack(self):
+        from bot.alerts import build_alert_keyboard, AlertSeverity
+        kb = build_alert_keyboard(AlertSeverity.CRITICAL, "CO1", "101")
+        labels = [b.text for r in kb.inline_keyboard for b in r]
+        assert "✅ Acknowledge" not in labels
+        assert "🤖 AI Diagnose" in labels
+        assert "📋 View Truck #101" in labels
 
-    def test_fuel_chain_stops_at_fleet_mgr(self):
-        chain = self._get_chain("fuel")
-        assert Role.ADMIN not in chain
-        assert Role.OWNER not in chain
+    def test_build_keyboard_info_no_ack_no_ai(self):
+        from bot.alerts import build_alert_keyboard, AlertSeverity
+        kb = build_alert_keyboard(AlertSeverity.INFO, "CO1", "303")
+        labels = [b.text for r in kb.inline_keyboard for b in r]
+        assert "✅ Acknowledge" not in labels
+        assert "🤖 AI Diagnose" not in labels
+        assert "📋 View Truck #303" in labels
+        assert "◀️ Main Menu" in labels
 
-    def test_unknown_type_uses_default(self):
-        chain = self._get_chain("unknown_type")
-        assert chain == [Role.DRIVER, Role.FLEET_MGR, Role.ADMIN, Role.OWNER]
+    def test_cooldown_hours_per_type(self):
+        from bot.alerts import _COOLDOWN_HOURS
+        assert _COOLDOWN_HOURS["fault"] > 0
+        assert _COOLDOWN_HOURS["health"] > 0
+        assert _COOLDOWN_HOURS["fuel"] == 0   # uses hysteresis
+        assert _COOLDOWN_HOURS["geofence"] == 0  # event-based
+
+    def test_fuel_critical_threshold(self):
+        from bot.alerts import FUEL_CRITICAL_PCT
+        assert FUEL_CRITICAL_PCT == 10
+
+    def test_health_severity_sets(self):
+        from bot.alerts import _CRITICAL_HEALTH, _WARNING_HEALTH
+        assert "low_oil_pressure" in _CRITICAL_HEALTH
+        assert "high_coolant_temp" in _CRITICAL_HEALTH
+        assert "low_battery" in _WARNING_HEALTH
+        assert "low_def" in _WARNING_HEALTH
+        assert "coolant_dtc" in _WARNING_HEALTH
 
 
 # ══════════════════════════════════════════════════════════════════

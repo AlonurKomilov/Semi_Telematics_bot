@@ -3,10 +3,9 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from database import Role
-from permissions import is_system_owner, can
+from permissions import is_system_owner
 
-from bot.config import db, SUPPORT_CONTACT, check_rate_limit
+from bot.config import db, SUPPORT_CONTACT
 from bot.helpers import _show
 from bot.keyboards import system_owner_kb, unregistered_kb, back_kb
 from formatters import format_system_owner_welcome, format_welcome_unregistered
@@ -102,49 +101,6 @@ def _require_registered(func):
     return wrapper
 
 
-def _require_permission(feature: str):
-    """Decorator factory: check a specific permission flag."""
-    def decorator(func):
-        async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, **kwargs):
-            if not await _group_chat_guard(update):
-                return  # silently ignore unauthorized group
-
-            user = context.user_data.get("_db_user")
-            if not user:
-                user, _, sys_owner = await _get_user(update)
-                if sys_owner and not user:
-                    await _show(update, context,
-                                [format_system_owner_welcome()],
-                                keyboard=system_owner_kb())
-                    return
-            if not user:
-                name = getattr(update.effective_user, "first_name", "") or ""
-                await _show(update, context,
-                            [format_welcome_unregistered(first_name=name)],
-                            keyboard=unregistered_kb())
-                return
-            if not can(user.role, feature):
-                hint = "⛔ You don't have access to this feature."
-                if user.role == Role.DRIVER:
-                    hint += "\n\nAs a Driver you can:\n  🚛 View your truck\n  🔔 Your alerts\n  📬 Digest"
-                elif user.role == Role.DISPATCHER:
-                    hint += "\n\nAs a Dispatcher you can:\n  ⛽ Fuel levels\n  🚛 Truck lookup\n  📍 Geofences\n  🛣 Routes"
-                if update.callback_query:
-                    await update.callback_query.answer(
-                        "⛔ You don't have access to this feature.",
-                        show_alert=True,
-                    )
-                else:
-                    await _show(update, context,
-                                [hint],
-                                keyboard=back_kb())
-                return
-            context.user_data["_db_user"] = user
-            return await func(update, context, **kwargs)
-        return wrapper
-    return decorator
-
-
 def _require_system_owner(func):
     """Decorator: system owner only (checked via env SYSTEM_OWNER_IDS)."""
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, **kwargs):
@@ -164,34 +120,4 @@ def _require_system_owner(func):
     return wrapper
 
 
-def _rate_limited(command_name: str):
-    """Decorator: apply per-user rate limiting to a command.
 
-    Returns a 'please wait' message if the user is sending commands
-    too fast (within RATE_LIMIT_SECONDS).
-    """
-    def decorator(func):
-        async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, **kwargs):
-            tid = 0
-            if update.callback_query:
-                tid = update.callback_query.from_user.id
-            elif update.message:
-                tid = update.message.from_user.id
-            elif update.effective_user:
-                tid = update.effective_user.id
-
-            if tid and not check_rate_limit(tid, command_name):
-                if update.callback_query:
-                    await update.callback_query.answer(
-                        "⏳ Please wait a moment before trying again.",
-                        show_alert=False,
-                    )
-                else:
-                    await _show(update, context, [
-                        "⏳ You're sending commands too quickly.\n"
-                        "Please wait a few seconds."
-                    ])
-                return
-            return await func(update, context, **kwargs)
-        return wrapper
-    return decorator

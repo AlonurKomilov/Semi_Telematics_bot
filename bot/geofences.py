@@ -8,15 +8,13 @@ _TZ_ET = _ZI("America/New_York")
 
 from telegram import Update
 from telegram.ext import ContextTypes, Application
-from telegram.constants import ParseMode
 
-from database import Role
 from permissions import can
-from samsara_client import COMPANY_DISPLAY, populate_company_display
+from samsara_client import populate_company_display
 
 from bot.config import db, logger, get_client
 from bot.keyboards import back_kb, geofence_list_kb
-from bot.helpers import _show, _show_loading
+from bot.helpers import _show, _show_loading, _safe_error
 from bot.auth import _require_registered
 
 try:
@@ -125,14 +123,15 @@ async def cmd_geofences(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
     except Exception as e:
         logger.error(f"Geofences error: {e}")
-        await _show(update, context, [f"❌ Error: {e}"], keyboard=back_kb())
+        await _show(update, context, [_safe_error(e)], keyboard=back_kb())
 
 
 async def check_geofence_events(app: Application):
     """Scheduled job: poll vehicle locations against geofences.
 
     Runs every 5 minutes. Compares current positions to geofence boundaries.
-    On state change (enter/exit), sends alert to subscribed users.
+    On state change (enter/exit), sends alert via the universal pipeline
+    with INFO severity (no ACK required).
     """
     try:
         accounts = await db.list_accounts()
@@ -189,25 +188,50 @@ async def check_geofence_events(app: Application):
                         event = "entered" if inside else "exited"
                         emoji = "📍" if inside else "📤"
 
-                        # Notify subscribers (all alert subscribers for this account)
-                        subscribers = await db.get_alert_subscribers(account.id)
-                        for sub in subscribers:
-                            # Driver: only notify about own truck
-                            if sub.role == Role.DRIVER and sub.truck_num:
-                                if sub.truck_num.lower() not in vname.lower():
-                                    continue
-                            try:
-                                await app.bot.send_message(
-                                    chat_id=sub.telegram_id,
-                                    text=(
-                                        f"{emoji} <b>Geofence Alert</b>\n\n"
-                                        f"  🚛 <b>{vname}</b> {event}\n"
-                                        f"  📍 <b>{gfname}</b>\n"
-                                    ),
-                                    parse_mode=ParseMode.HTML,
-                                )
-                            except Exception as e:
-                                logger.debug(f"Geofence notify {sub.telegram_id}: {e}")
+                        from bot.alerts import is_vehicle_suppressed
+                        if await is_vehicle_suppressed(account.id, vname):
+                            continue
+
+                        # Auto-resolve: on exit, clear geofence alert history
+                        if event == "exited":
+                            cleared = await db.clear_alert_history(
+                                account.id, "geofence", vid,
+                            )
+                            for rec in cleared:
+                                if rec.get("message_id") and rec.get("chat_id"):
+                                    try:
+                                        await app.bot.delete_message(
+                                            chat_id=rec["chat_id"],
+                                            message_id=rec["message_id"],
+                                        )
+                                    except Exception:
+                                        pass
+
+                        alert_text = (
+                            f"{emoji} <b>Geofence Alert</b>\n\n"
+                            f"  🚛 <b>{vname}</b> {event}\n"
+                            f"  📍 <b>{gfname}</b>\n"
+                        )
+
+                        # Use universal alert pipeline
+                        from bot.alerts import send_alert, AlertSeverity
+                        subscribers = await db.get_typed_alert_subscribers(
+                            account.id, "geofence"
+                        )
+                        co = v.get("_org", "?")
+                        vehicle_dict = {"id": vid, "name": vname, "_org": co}
+
+                        await send_alert(
+                            app,
+                            account_id=account.id,
+                            alert_type="geofence",
+                            severity=AlertSeverity.INFO,
+                            vehicle=vehicle_dict,
+                            alert_text=alert_text,
+                            subscribers=subscribers,
+                            co=co,
+                            alert_key_detail=f"{event} {gfname}",
+                        )
 
     except Exception as e:
         logger.error(f"Geofence check error: {e}")

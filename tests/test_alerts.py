@@ -350,3 +350,75 @@ class TestAlertPrefMigration:
         user = await db.get_user_by_telegram_id(100)
         assert user.alert_faults is False
         assert user.alert_health is True  # unchanged
+
+
+# ══════════════════════════════════════════════════════════════════
+# CRITICAL ALERT DEDUP — DB METHODS
+# ══════════════════════════════════════════════════════════════════
+
+class TestCriticalAlertDedup:
+    """get_active_vehicle_acks and supersede_alert_ack prevent duplicate escalations."""
+
+    @pytest.mark.asyncio
+    async def test_get_active_vehicle_acks_returns_active(self, seeded_db):
+        db, account, _, owner, _, _ = seeded_db
+        ack_id = await db.create_alert_ack(
+            account_id=account.id, alert_type="fault",
+            vehicle_id="V1", vehicle_name="Truck 136",
+            alert_key="CO:V1:100-4", message_id=111, chat_id=100,
+            sent_to=100, next_escalation="2026-01-01T00:30:00",
+        )
+        result = await db.get_active_vehicle_acks(account.id, "V1", 100)
+        assert len(result) == 1
+        assert result[0]["id"] == ack_id
+
+    @pytest.mark.asyncio
+    async def test_get_active_vehicle_acks_excludes_acked(self, seeded_db):
+        db, account, _, owner, _, _ = seeded_db
+        ack_id = await db.create_alert_ack(
+            account_id=account.id, alert_type="fault",
+            vehicle_id="V1", vehicle_name="Truck 136",
+            alert_key="CO:V1:100-4", message_id=111, chat_id=100,
+            sent_to=100, next_escalation="2026-01-01T00:30:00",
+        )
+        await db.acknowledge_alert(ack_id, 100)
+        result = await db.get_active_vehicle_acks(account.id, "V1", 100)
+        assert len(result) == 0
+
+    @pytest.mark.asyncio
+    async def test_supersede_closes_old_ack(self, seeded_db):
+        db, account, _, owner, _, _ = seeded_db
+        ack1 = await db.create_alert_ack(
+            account_id=account.id, alert_type="fault",
+            vehicle_id="V1", vehicle_name="Truck 136",
+            alert_key="CO:V1:100-4", message_id=111, chat_id=100,
+            sent_to=100, next_escalation="2026-01-01T00:30:00",
+        )
+        await db.supersede_alert_ack(ack1)
+        # Superseded ack should not appear in active list
+        result = await db.get_active_vehicle_acks(account.id, "V1", 100)
+        assert len(result) == 0
+        # Superseded ack should not appear in unacked query
+        unacked = await db.get_unacked_alerts()
+        assert all(r["id"] != ack1 for r in unacked)
+
+    @pytest.mark.asyncio
+    async def test_supersede_then_new_ack(self, seeded_db):
+        """Old ack superseded, new one created — only new one active."""
+        db, account, _, owner, _, _ = seeded_db
+        ack1 = await db.create_alert_ack(
+            account_id=account.id, alert_type="fault",
+            vehicle_id="V1", vehicle_name="Truck 136",
+            alert_key="CO:V1:100-4", message_id=111, chat_id=100,
+            sent_to=100, next_escalation="2026-01-01T00:30:00",
+        )
+        await db.supersede_alert_ack(ack1)
+        ack2 = await db.create_alert_ack(
+            account_id=account.id, alert_type="fault",
+            vehicle_id="V1", vehicle_name="Truck 136",
+            alert_key="CO:V1:200-3", message_id=222, chat_id=100,
+            sent_to=100, next_escalation="2026-01-01T01:00:00",
+        )
+        result = await db.get_active_vehicle_acks(account.id, "V1", 100)
+        assert len(result) == 1
+        assert result[0]["id"] == ack2

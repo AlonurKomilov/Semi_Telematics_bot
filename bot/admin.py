@@ -12,7 +12,7 @@ from formatters import (
 
 from bot.config import db, logger, invalidate_client
 from bot.keyboards import system_owner_kb
-from bot.helpers import _show, _show_loading
+from bot.helpers import _show, _show_loading, _safe_error
 from bot.auth import _require_system_owner
 
 
@@ -26,7 +26,7 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _show(update, context, [text], keyboard=system_owner_kb())
     except Exception as e:
         logger.error(f"Admin dashboard error: {e}", exc_info=True)
-        await _show(update, context, [f"❌ Error: {e}"])
+        await _show(update, context, [_safe_error(e)])
 
 
 @_require_system_owner
@@ -38,7 +38,7 @@ async def cmd_accounts(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _show(update, context, [text], keyboard=system_owner_kb())
     except Exception as e:
         logger.error(f"Accounts list error: {e}", exc_info=True)
-        await _show(update, context, [f"❌ Error: {e}"])
+        await _show(update, context, [_safe_error(e)])
 
 
 @_require_system_owner

@@ -19,33 +19,31 @@ from bot.config import (
     get_client, invalidate_client, get_user_company_codes,
 )
 from bot.keyboards import back_kb, invite_kb
-from bot.helpers import _show, _show_loading, _user_menu_kb
+from bot.helpers import _show, _show_loading, _user_menu_kb, _safe_error
 from bot.auth import _require_registered
 
 
 @_require_registered
 async def cmd_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show account overview — with company management buttons for owners."""
+    """Show companies overview — clickable company buttons for drill-down."""
     user = context.user_data["_db_user"]
-    if not can(user.role, "can_manage_account") and not can(user.role, "can_manage_users"):
-        pass
 
     account = await db.get_account(user.account_id)
     companies = await db.get_account_companies(user.account_id)
-    users = await db.list_account_users(user.account_id)
 
-    text = format_account_info(account, companies, users, user)
+    text = format_account_info(account, companies, user)
 
     rows = []
-    # Company management buttons for owners
+    # Clickable company buttons — each opens a detail view
+    for co in companies:
+        label = f"🏢 {co.code}"
+        if co.display_name and co.display_name != co.code:
+            label += f" — {co.display_name}"
+        rows.append([InlineKeyboardButton(label, callback_data=f"comenu_{co.code}")])
+    # General actions
     if can(user.role, "can_manage_companies"):
-        for co in companies:
-            rows.append([InlineKeyboardButton(
-                f"🗑 Remove {co.code} ({co.display_name})",
-                callback_data=f"rmco_{co.code}",
-            )])
-        rows.append([InlineKeyboardButton("📡 Add Company", callback_data="cmd_addcompany_prompt")])
-    rows.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
+        rows.append([InlineKeyboardButton("➕ Add Company", callback_data="cmd_addcompany_prompt")])
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="submenu_mgmt")])
 
     await _show(update, context, [text], keyboard=InlineKeyboardMarkup(rows))
 
@@ -128,7 +126,7 @@ async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"Invite error: {e}", exc_info=True)
-        await _show(update, context, [f"❌ Error: {e}"], keyboard=back_kb())
+        await _show(update, context, [_safe_error(e)], keyboard=back_kb())
 
 
 @_require_registered
@@ -152,7 +150,15 @@ async def cmd_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if u.department:
             label += f" — {u.department}"
         rows.append([InlineKeyboardButton(label, callback_data=f"usrmenu_{u.telegram_id}")])
-    rows.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
+    # Team actions — Invite and Groups
+    actions = []
+    if can(user.role, "can_invite"):
+        actions.append(InlineKeyboardButton("✉️ Invite", callback_data="cmd_invite_pick"))
+    if can(user.role, "can_manage_users"):
+        actions.append(InlineKeyboardButton("💬 Groups", callback_data="cmd_groups"))
+    if actions:
+        rows.append(actions)
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="submenu_mgmt")])
 
     await _show(update, context, [text], keyboard=InlineKeyboardMarkup(rows))
 
@@ -336,7 +342,7 @@ async def cmd_addcompany(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"Add company error: {e}", exc_info=True)
-        await _show(update, context, [f"❌ Error: {e}"], keyboard=back_kb())
+        await _show(update, context, [_safe_error(e)], keyboard=back_kb())
 
 
 @_require_registered
@@ -480,7 +486,7 @@ async def cmd_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "  should respond to commands."
         ], keyboard=InlineKeyboardMarkup([
             [InlineKeyboardButton("➕ Add Group / Channel", callback_data="addgroup_pick")],
-            [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
+            [InlineKeyboardButton("◀️ Back", callback_data="cmd_users")],
         ]))
         return
 
@@ -498,7 +504,7 @@ async def cmd_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
             callback_data=f"rmgroup_{c.chat_id}",
         )])
     rows.append([InlineKeyboardButton("➕ Add Group / Channel", callback_data="addgroup_pick")])
-    rows.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_users")])
 
     await _show(update, context, ["\n".join(lines)],
                 keyboard=InlineKeyboardMarkup(rows))

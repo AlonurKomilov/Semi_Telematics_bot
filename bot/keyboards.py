@@ -175,32 +175,25 @@ def submenu_costs_kb(role: Role) -> InlineKeyboardMarkup:
 
 
 def submenu_mgmt_kb(role: Role, has_api: bool = False) -> InlineKeyboardMarkup:
-    """Team & Settings sub-menu."""
+    """Team & Settings sub-menu — top-level navigation."""
     perms = get_permissions(role)
     rows = []
 
-    mgmt = []
+    # ── Main sections ───────────────────────────────────
+    top_row = []
     if perms.can_manage_account:
-        mgmt.append(InlineKeyboardButton("⚙️ Account", callback_data="cmd_account"))
+        top_row.append(InlineKeyboardButton("🏢 Companies", callback_data="cmd_account"))
     if perms.can_manage_users:
-        mgmt.append(InlineKeyboardButton("👥 Team", callback_data="cmd_users"))
-    if mgmt:
-        rows.append(mgmt)
+        top_row.append(InlineKeyboardButton("👥 Team", callback_data="cmd_users"))
+    if top_row:
+        rows.append(top_row)
 
-    mgmt2 = []
-    if perms.can_invite:
-        mgmt2.append(InlineKeyboardButton("✉️ Invite", callback_data="cmd_invite_pick"))
-    if perms.can_manage_companies and has_api:
-        mgmt2.append(InlineKeyboardButton("📡 Add Company", callback_data="cmd_addcompany_prompt"))
-    if mgmt2:
-        rows.append(mgmt2)
-
-    if has_api and perms.can_manage_account:
-        rows.append([InlineKeyboardButton("📡 API Status", callback_data="cmd_api_status")])
-
+    # ── Activity ────────────────────────────────────────
     if perms.can_manage_users:
-        rows.append([InlineKeyboardButton("💬 Groups", callback_data="cmd_groups")])
+        rows.append([InlineKeyboardButton("📜 Audit Log", callback_data="cmd_audit")])
 
+    # ── Personal ────────────────────────────────────────
+    rows.append([InlineKeyboardButton("⚙️ Settings", callback_data="cmd_settings")])
     rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
 
@@ -364,7 +357,7 @@ def truck_picker_kb(matches: list[dict]) -> InlineKeyboardMarkup:
 def unregistered_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(
-            "� Request Private Access",
+            "🔒 Request Access",
             url="https://t.me/Allen_Klein",
         )],
     ])
@@ -380,6 +373,17 @@ def system_owner_kb() -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton("🔄 Refresh", callback_data="sys_dashboard"),
         ],
+    ])
+
+
+def onboarding_kb() -> InlineKeyboardMarkup:
+    """Quick-start onboarding keyboard."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📋 Integration Guide", callback_data="cmd_integrate_guide")],
+        [InlineKeyboardButton("🕐 Set Timezone", callback_data="settings_tz")],
+        [InlineKeyboardButton("🌙 Set Quiet Hours", callback_data="settings_quiet_set")],
+        [InlineKeyboardButton("📬 Digest Settings", callback_data="cmd_digest")],
+        [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
     ])
 
 
@@ -404,7 +408,7 @@ def invite_kb(invite_link: str | None = None) -> InlineKeyboardMarkup:
             f"&url={quote(invite_link)}"
         )
         rows.append([InlineKeyboardButton("📤 Send to Team Member", url=share_url)])
-    rows.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
+    rows.append([InlineKeyboardButton("◀️ Back to Team", callback_data="cmd_users")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -512,8 +516,10 @@ def digest_menu_kb(current_sub: dict | None = None) -> InlineKeyboardMarkup:
     if current_sub:
         freq = current_sub.get("frequency", "daily")
         hour = current_sub.get("send_hour", 7)
+        tz = current_sub.get("timezone", "UTC")
+        tz_short = tz.split("/")[-1].replace("_", " ") if "/" in tz else tz
         rows.append([InlineKeyboardButton(
-            f"📬 Active: {freq.title()} at {hour:02d}:00 UTC",
+            f"📬 Active: {freq.title()} at {hour:02d}:00 {tz_short}",
             callback_data="noop",
         )])
         rows.append([InlineKeyboardButton("🔕 Unsubscribe", callback_data="digest_unsub")])
@@ -523,6 +529,41 @@ def digest_menu_kb(current_sub: dict | None = None) -> InlineKeyboardMarkup:
             InlineKeyboardButton("📆 Weekly", callback_data="digest_weekly"),
         ])
     rows.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
+    return InlineKeyboardMarkup(rows)
+
+
+def digest_hour_kb() -> InlineKeyboardMarkup:
+    """Hour picker for digest delivery time."""
+    rows = [
+        [
+            InlineKeyboardButton("6 AM", callback_data="digest_hour_6"),
+            InlineKeyboardButton("7 AM", callback_data="digest_hour_7"),
+            InlineKeyboardButton("8 AM", callback_data="digest_hour_8"),
+        ],
+        [
+            InlineKeyboardButton("9 AM", callback_data="digest_hour_9"),
+            InlineKeyboardButton("12 PM", callback_data="digest_hour_12"),
+            InlineKeyboardButton("6 PM", callback_data="digest_hour_18"),
+        ],
+        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_digest")],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+def digest_tz_kb() -> InlineKeyboardMarkup:
+    """Timezone picker for digest delivery."""
+    timezones = [
+        ("Eastern", "America/New_York"),
+        ("Central", "America/Chicago"),
+        ("Mountain", "America/Denver"),
+        ("Pacific", "America/Los_Angeles"),
+        ("UTC", "UTC"),
+    ]
+    rows = [
+        [InlineKeyboardButton(f"🕐 {label}", callback_data=f"digest_tz_{tz}")]
+        for label, tz in timezones
+    ]
+    rows.append([InlineKeyboardButton("◀️ Cancel", callback_data="cmd_digest")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -588,4 +629,66 @@ def alert_settings_kb(user) -> InlineKeyboardMarkup:
         [InlineKeyboardButton("�🔕 Disable All Alerts", callback_data="alert_disable_all")],
         [InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")],
     ]
+    return InlineKeyboardMarkup(rows)
+
+
+def user_settings_kb(user) -> InlineKeyboardMarkup:
+    """User settings menu with quiet hours and timezone."""
+    quiet = ""
+    if getattr(user, "quiet_start", None) is not None and getattr(user, "quiet_end", None) is not None:
+        quiet = f" ({user.quiet_start:02d}:00–{user.quiet_end:02d}:00)"
+    tz = getattr(user, "timezone", None) or "Not set"
+    tz_short = tz.split("/")[-1].replace("_", " ") if "/" in tz else tz
+    rows = [
+        [InlineKeyboardButton(f"🌙 Quiet Hours{quiet}", callback_data="settings_quiet")],
+        [InlineKeyboardButton(f"🕐 Timezone: {tz_short}", callback_data="settings_tz")],
+        [InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+def quiet_hours_kb(user) -> InlineKeyboardMarkup:
+    """DND quiet hours settings."""
+    active = getattr(user, "quiet_start", None) is not None
+    rows = []
+    if active:
+        rows.append([InlineKeyboardButton(
+            f"🌙 Active: {user.quiet_start:02d}:00–{user.quiet_end:02d}:00",
+            callback_data="settings_quiet_set",
+        )])
+        rows.append([InlineKeyboardButton("❌ Disable Quiet Hours", callback_data="settings_quiet_off")])
+    else:
+        rows.append([InlineKeyboardButton("🌙 Enable Quiet Hours", callback_data="settings_quiet_set")])
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_settings")])
+    return InlineKeyboardMarkup(rows)
+
+
+def quiet_hours_picker_kb() -> InlineKeyboardMarkup:
+    """Time preset picker for quiet hours."""
+    rows = [
+        [InlineKeyboardButton("🌙 10 PM – 6 AM", callback_data="quiet_set_22_6")],
+        [InlineKeyboardButton("🌙 9 PM – 6 AM", callback_data="quiet_set_21_6")],
+        [InlineKeyboardButton("🌙 11 PM – 7 AM", callback_data="quiet_set_23_7")],
+        [InlineKeyboardButton("🌙 8 PM – 5 AM", callback_data="quiet_set_20_5")],
+        [InlineKeyboardButton("◀️ Back", callback_data="cmd_settings")],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+def settings_tz_kb() -> InlineKeyboardMarkup:
+    """Timezone selection keyboard."""
+    timezones = [
+        ("Eastern", "America/New_York"),
+        ("Central", "America/Chicago"),
+        ("Mountain", "America/Denver"),
+        ("Pacific", "America/Los_Angeles"),
+        ("Alaska", "America/Anchorage"),
+        ("Hawaii", "Pacific/Honolulu"),
+        ("UTC", "UTC"),
+    ]
+    rows = [
+        [InlineKeyboardButton(f"🕐 {label}", callback_data=f"set_tz_{tz}")]
+        for label, tz in timezones
+    ]
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_settings")])
     return InlineKeyboardMarkup(rows)

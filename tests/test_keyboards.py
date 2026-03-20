@@ -193,18 +193,17 @@ class TestSubMenuMgmt:
         callbacks = _all_callbacks(kb)
         assert "cmd_account" in callbacks
         assert "cmd_users" in callbacks
-        assert "cmd_invite_pick" in callbacks
-        assert "cmd_addcompany_prompt" in callbacks
-        assert "cmd_api_status" in callbacks
+        # Invite, Groups, Add Company, API Status are now inside sub-views
+        assert "cmd_invite_pick" not in callbacks
+        assert "cmd_addcompany_prompt" not in callbacks
+        assert "cmd_api_status" not in callbacks
 
     def test_admin_no_company_management(self):
         kb = submenu_mgmt_kb(Role.ADMIN, has_api=True)
         callbacks = _all_callbacks(kb)
-        assert "cmd_addcompany_prompt" not in callbacks
         assert "cmd_account" not in callbacks
         # But can manage users
         assert "cmd_users" in callbacks
-        assert "cmd_invite_pick" in callbacks
 
     def test_has_back_button(self):
         kb = submenu_mgmt_kb(Role.OWNER)
@@ -276,7 +275,7 @@ class TestSpecialKeyboards:
 
     def test_invite_kb_without_link(self):
         kb = invite_kb()
-        assert _has_callback(kb, "cmd_menu")
+        assert _has_callback(kb, "cmd_users")
         # No share button
         assert not _has_label_containing(kb, "Send to Team Member")
 

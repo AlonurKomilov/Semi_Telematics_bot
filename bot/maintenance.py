@@ -15,7 +15,7 @@ from samsara_client import populate_company_display
 
 from bot.config import db, logger, get_client
 from bot.keyboards import back_kb, maintenance_menu_kb, maintenance_task_kb
-from bot.helpers import _show, _show_loading
+from bot.helpers import _show, _show_loading, _safe_error
 from bot.auth import _require_registered
 
 TASK_TYPES = {
@@ -250,7 +250,7 @@ async def handle_maintenance_text(update: Update, context: ContextTypes.DEFAULT_
             ], keyboard=maintenance_menu_kb())
         except Exception as e:
             logger.error(f"Maintenance task save error: {e}")
-            await _show(update, context, [f"❌ Error: {e}"], keyboard=back_kb())
+            await _show(update, context, [_safe_error(e)], keyboard=back_kb())
         return True
 
     return False

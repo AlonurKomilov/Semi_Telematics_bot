@@ -159,6 +159,7 @@ class TestAIClientGenerate:
     async def test_generate_handles_safety_block(self):
         """Should return a friendly message when response is blocked."""
         import ai_client
+        ai_client._response_cache.clear()
 
         mock_response = MagicMock()
         mock_response.candidates = []
@@ -319,45 +320,7 @@ class TestAIKeyboard:
         assert "cmd_ai" in callbacks
         assert "cmd_menu" in callbacks
 
-    def test_ai_chat_kb(self):
-        from bot.ai import _ai_chat_kb
-        kb = _ai_chat_kb()
-        callbacks = self._all_callbacks(kb)
-        assert "ai_newchat" in callbacks
-        assert "cmd_menu" in callbacks
 
-    def test_build_chat_kb_with_suggestions(self):
-        from bot.ai import _build_chat_kb
-        kb = _build_chat_kb(["Which truck needs fuel?", "Show faults"])
-        callbacks = self._all_callbacks(kb)
-        assert any(c.startswith("ai_q:") for c in callbacks)
-        assert "ai_newchat" in callbacks
-        assert "cmd_menu" in callbacks
-        labels = self._all_labels(kb)
-        assert any("Which truck needs fuel?" in l for l in labels)
-
-    def test_build_chat_kb_no_suggestions(self):
-        from bot.ai import _build_chat_kb
-        kb = _build_chat_kb()
-        callbacks = self._all_callbacks(kb)
-        assert not any(c.startswith("ai_q:") for c in callbacks)
-        assert "ai_newchat" in callbacks
-
-    def test_parse_suggestions(self):
-        from bot.ai import _parse_suggestions
-        text = "Here are 3 trucks.\n>> Check truck 101\n>> Show fuel levels"
-        clean, suggestions = _parse_suggestions(text)
-        assert ">> Check truck 101" not in clean
-        assert len(suggestions) == 2
-        assert suggestions[0] == "Check truck 101"
-        assert suggestions[1] == "Show fuel levels"
-
-    def test_parse_suggestions_no_suggestions(self):
-        from bot.ai import _parse_suggestions
-        text = "Here are 3 trucks with low fuel."
-        clean, suggestions = _parse_suggestions(text)
-        assert clean == text
-        assert suggestions == []
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -463,8 +426,8 @@ class TestModelRegistry:
         import ai_client
         for name, info in ai_client.MODEL_REGISTRY.items():
             for loc in info["locations"]:
-                # GCP regions follow pattern: area-direction-number
-                assert "-" in loc, f"{name}: invalid location {loc}"
+                # GCP regions follow pattern: area-direction-number, or "global"
+                assert "-" in loc or loc == "global", f"{name}: invalid location {loc}"
 
     def test_default_model_in_registry(self):
         import ai_client
@@ -492,16 +455,6 @@ class TestModelRegistry:
         # Should be sorted by category
         cats = [m["category"] for m in models]
         assert cats == sorted(cats)
-
-    def test_get_locations_for_model(self):
-        import ai_client
-        locs = ai_client.get_locations_for_model("gemini-2.5-flash")
-        assert "us-central1" in locs
-
-    def test_get_locations_for_unknown_model(self):
-        import ai_client
-        locs = ai_client.get_locations_for_model("nonexistent")
-        assert locs == [ai_client.DEFAULT_LOCATION]
 
     def test_switch_model_validates(self):
         import ai_client

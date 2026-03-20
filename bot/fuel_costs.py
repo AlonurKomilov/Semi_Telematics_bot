@@ -14,7 +14,7 @@ from samsara_client import COMPANY_DISPLAY, populate_company_display
 
 from bot.config import db, logger, get_client, get_user_company_codes
 from bot.keyboards import back_kb, fuelcost_menu_kb
-from bot.helpers import _show, _show_loading, _user_menu_kb
+from bot.helpers import _show, _show_loading, _user_menu_kb, _safe_error
 from bot.auth import _require_registered
 
 
@@ -141,7 +141,7 @@ async def handle_fuelcost_text(update: Update, context: ContextTypes.DEFAULT_TYP
             ], keyboard=fuelcost_menu_kb())
         except Exception as e:
             logger.error(f"Fuel entry save error: {e}")
-            await _show(update, context, [f"❌ Error: {e}"], keyboard=back_kb())
+            await _show(update, context, [_safe_error(e)], keyboard=back_kb())
         return True
 
     return False
@@ -203,4 +203,4 @@ async def cmd_fuelcost_summary(update: Update, context: ContextTypes.DEFAULT_TYP
         await _show(update, context, [full], keyboard=fuelcost_menu_kb())
     except Exception as e:
         logger.error(f"Fuel summary error: {e}")
-        await _show(update, context, [f"❌ Error: {e}"], keyboard=back_kb())
+        await _show(update, context, [_safe_error(e)], keyboard=back_kb())

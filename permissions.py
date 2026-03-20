@@ -62,6 +62,8 @@ class FeatureSet:
     can_faults: bool = False         # /faults  PDF
     can_critical: bool = False       # /critical PDF
     can_fuel: bool = False           # /fuel
+    can_efficiency: bool = False     # /efficiency
+    can_health: bool = False         # /health
     can_truck_all: bool = False      # /truck <any>
     can_truck_own: bool = False      # /truck <own> (driver)
 
@@ -99,6 +101,7 @@ class FeatureSet:
 ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
     Role.OWNER: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=True,
+        can_efficiency=True, can_health=True,
         can_truck_all=True, can_truck_own=True,
         can_alerts_all=True, can_alerts_own=True,
         can_invite=True, can_manage_users=True,
@@ -115,6 +118,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
     ),
     Role.ADMIN: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=True,
+        can_efficiency=True, can_health=True,
         can_truck_all=True, can_truck_own=True,
         can_alerts_all=True, can_alerts_own=True,
         can_invite=True, can_manage_users=True,
@@ -131,6 +135,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
     ),
     Role.FLEET_MGR: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=True,
+        can_efficiency=True, can_health=True,
         can_truck_all=True, can_truck_own=True,
         can_alerts_all=True, can_alerts_own=True,
         can_invite=False, can_manage_users=False,
@@ -147,6 +152,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
     ),
     Role.DISPATCHER: FeatureSet(
         can_faults=False, can_critical=False, can_fuel=True,
+        can_efficiency=False, can_health=False,
         can_truck_all=True, can_truck_own=True,
         can_alerts_all=False, can_alerts_own=False,
         can_invite=False, can_manage_users=False,
@@ -163,6 +169,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
     ),
     Role.DRIVER: FeatureSet(
         can_faults=False, can_critical=False, can_fuel=False,
+        can_efficiency=False, can_health=False,
         can_truck_all=False, can_truck_own=True,
         can_alerts_all=False, can_alerts_own=True,
         can_invite=False, can_manage_users=False,

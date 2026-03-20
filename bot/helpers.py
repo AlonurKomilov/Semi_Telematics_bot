@@ -18,6 +18,24 @@ _ALLOWED_RE = re.compile(
     r'(</?(?:b|i|u|s|code|pre|a(?:\s[^>]*)?)>)', re.IGNORECASE
 )
 
+# Patterns that may leak sensitive info in error messages
+_SENSITIVE_RE = re.compile(
+    r'samsara_api_\S+|'          # Samsara API keys
+    r'AIza\S+|'                  # Google API keys
+    r'/home/\S+|/tmp/\S+|'      # filesystem paths
+    r'https?://\S*token\S*',    # URLs with tokens
+    re.IGNORECASE,
+)
+
+
+def _safe_error(e: Exception) -> str:
+    """Return a user-safe error message with sensitive info redacted."""
+    msg = str(e)
+    msg = _SENSITIVE_RE.sub("[REDACTED]", msg)
+    if len(msg) > 200:
+        msg = msg[:197] + "…"
+    return f"❌ Error: {msg}"
+
 
 def escape_html(text: str) -> str:
     """Escape HTML special characters while preserving allowed tags.
@@ -147,3 +165,17 @@ async def _user_menu_kb(user) -> InlineKeyboardMarkup:
     """Build the role-aware main menu for this user."""
     company_codes = await get_user_company_codes(user.account_id)
     return main_menu_kb(user.role, company_codes)
+
+
+async def _render_audit_log(account_id: int, db) -> str:
+    """Render the audit log text for an account (shared by command and callback)."""
+    entries = await db.get_audit_log(account_id, limit=15)
+    if not entries:
+        return "📋 <b>Audit Log</b>\n\nNo recent activity."
+    lines = ["📋 <b>Audit Log</b> (last 15)\n"]
+    for e in entries:
+        ts = e["created_at"][:16].replace("T", " ")
+        lines.append(f"  • <code>{ts}</code> — {e['action']}")
+        if e.get("details"):
+            lines.append(f"    {e['details'][:60]}")
+    return "\n".join(lines)

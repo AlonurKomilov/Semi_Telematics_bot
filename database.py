@@ -21,7 +21,6 @@ invites        — one-time join codes (expire 24 h)
 from __future__ import annotations
 
 import aiosqlite
-import hashlib
 import logging
 import os
 import secrets
@@ -56,14 +55,6 @@ class Role(str, Enum):
             if r.value == s:
                 return r
         raise ValueError(f"Unknown role: {s}")
-
-
-# ─── Tier (for future billing) ───────────────────────────────────
-
-class Tier(str, Enum):
-    FREE  = "free"
-    PRO   = "pro"
-    ENTERPRISE = "enterprise"
 
 
 # ─── Data classes ─────────────────────────────────────────────────
@@ -419,6 +410,23 @@ class Database:
             );
             CREATE INDEX IF NOT EXISTS idx_dnd_queue_pending
                 ON dnd_alert_queue(telegram_id, delivered);
+
+            CREATE TABLE IF NOT EXISTS alert_history (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id        INTEGER NOT NULL REFERENCES accounts(id),
+                alert_type        TEXT    NOT NULL,
+                vehicle_id        TEXT    NOT NULL,
+                vehicle_name      TEXT    NOT NULL DEFAULT '',
+                chat_id           INTEGER NOT NULL,
+                message_id        INTEGER NOT NULL DEFAULT 0,
+                occurrence_count  INTEGER NOT NULL DEFAULT 1,
+                first_seen        TEXT    NOT NULL,
+                last_seen         TEXT    NOT NULL,
+                last_detail       TEXT    NOT NULL DEFAULT '',
+                status            TEXT    NOT NULL DEFAULT 'active'
+            );
+            CREATE INDEX IF NOT EXISTS idx_alert_history_active
+                ON alert_history(account_id, alert_type, vehicle_id, chat_id, status);
         """)
         await self._db.commit()
 
@@ -509,8 +517,8 @@ class Database:
         slug = name.lower().strip()
         slug = "".join(c if c.isalnum() or c == " " else "" for c in slug)
         slug = slug.replace(" ", "-")
-        # append short hash to avoid collisions
-        h = hashlib.md5(f"{slug}{time.time()}".encode()).hexdigest()[:6]
+        # append short random suffix to avoid collisions
+        h = secrets.token_hex(3)
         return f"{slug}-{h}"
 
     @staticmethod
@@ -1283,6 +1291,28 @@ class Database:
         await self._db.commit()
         return cur.lastrowid
 
+    async def get_active_vehicle_acks(
+        self, account_id: int, vehicle_id: str, sent_to: int,
+    ) -> list[dict]:
+        """Get active (unacked) alert acks for a vehicle/subscriber pair."""
+        cur = await self._db.execute(
+            "SELECT * FROM alert_acknowledgments "
+            "WHERE account_id = ? AND vehicle_id = ? AND sent_to = ? "
+            "AND acknowledged_at IS NULL AND status = 'active'",
+            (account_id, vehicle_id, sent_to),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def supersede_alert_ack(self, ack_id: int):
+        """Mark an alert ack as superseded (replaced by a newer alert)."""
+        await self._db.execute(
+            "UPDATE alert_acknowledgments SET status = 'superseded', "
+            "next_escalation = NULL WHERE id = ?",
+            (ack_id,),
+        )
+        await self._db.commit()
+
     async def acknowledge_alert(self, ack_id: int, user_id: int) -> bool:
         """Mark an alert as acknowledged — also acks all rows with the same alert_key."""
         now = self._now()
@@ -1442,6 +1472,104 @@ class Database:
         row = await cur.fetchone()
         return row[0] > 0
 
+    # ── Alert History (consolidation) ────────────────────────────
+
+    async def get_active_alert_history(
+        self, account_id: int, alert_type: str,
+        vehicle_id: str, chat_id: int,
+    ) -> Optional[dict]:
+        """Get the active alert history record for a vehicle+type+chat."""
+        cur = await self._db.execute(
+            "SELECT * FROM alert_history "
+            "WHERE account_id = ? AND alert_type = ? "
+            "AND vehicle_id = ? AND chat_id = ? AND status = 'active'",
+            (account_id, alert_type, vehicle_id, chat_id),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def upsert_alert_history(
+        self, account_id: int, alert_type: str,
+        vehicle_id: str, vehicle_name: str,
+        chat_id: int, message_id: int,
+        last_detail: str = "",
+    ) -> dict:
+        """Create or update an alert history record.
+
+        If an active record exists: increment count, update last_seen
+        and message_id. Otherwise create a new record.
+        Returns the record dict.
+        """
+        now = self._now()
+        existing = await self.get_active_alert_history(
+            account_id, alert_type, vehicle_id, chat_id,
+        )
+        if existing:
+            await self._db.execute(
+                "UPDATE alert_history SET "
+                "occurrence_count = occurrence_count + 1, "
+                "last_seen = ?, message_id = ?, last_detail = ? "
+                "WHERE id = ?",
+                (now, message_id, last_detail, existing["id"]),
+            )
+            await self._db.commit()
+            existing["occurrence_count"] += 1
+            existing["last_seen"] = now
+            existing["message_id"] = message_id
+            existing["last_detail"] = last_detail
+            return existing
+        else:
+            cur = await self._db.execute(
+                "INSERT INTO alert_history "
+                "(account_id, alert_type, vehicle_id, vehicle_name, "
+                "chat_id, message_id, occurrence_count, "
+                "first_seen, last_seen, last_detail, status) "
+                "VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 'active')",
+                (account_id, alert_type, vehicle_id, vehicle_name,
+                 chat_id, message_id, now, now, last_detail),
+            )
+            await self._db.commit()
+            return {
+                "id": cur.lastrowid,
+                "account_id": account_id,
+                "alert_type": alert_type,
+                "vehicle_id": vehicle_id,
+                "vehicle_name": vehicle_name,
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "occurrence_count": 1,
+                "first_seen": now,
+                "last_seen": now,
+                "last_detail": last_detail,
+                "status": "active",
+            }
+
+    async def clear_alert_history(
+        self, account_id: int, alert_type: str,
+        vehicle_id: str,
+    ) -> list[dict]:
+        """Mark active alert history records as cleared for a vehicle.
+
+        Returns the cleared records (with message_id/chat_id for deletion).
+        """
+        now = self._now()
+        cur = await self._db.execute(
+            "SELECT * FROM alert_history "
+            "WHERE account_id = ? AND alert_type = ? "
+            "AND vehicle_id = ? AND status = 'active'",
+            (account_id, alert_type, vehicle_id),
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+        if rows:
+            await self._db.execute(
+                "UPDATE alert_history SET status = 'cleared' "
+                "WHERE account_id = ? AND alert_type = ? "
+                "AND vehicle_id = ? AND status = 'active'",
+                (account_id, alert_type, vehicle_id),
+            )
+            await self._db.commit()
+        return rows
+
     # ══════════════════════════════════════════════════════════════
     # AUDIT LOG
     # ══════════════════════════════════════════════════════════════
@@ -1531,9 +1659,12 @@ class Database:
             by_type[rt]["tokens"] += tok
             # Aggregate by model
             if m not in by_model:
-                by_model[m] = {"requests": 0, "tokens": 0}
+                by_model[m] = {"requests": 0, "tokens": 0,
+                               "prompt_tokens": 0, "reply_tokens": 0}
             by_model[m]["requests"] += cnt
             by_model[m]["tokens"] += tok
+            by_model[m]["prompt_tokens"] += r["sum_prompt"] or 0
+            by_model[m]["reply_tokens"] += r["sum_reply"] or 0
         return {
             "total_requests": total_requests,
             "total_tokens": total_tokens,

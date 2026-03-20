@@ -16,7 +16,7 @@ from samsara_client import COMPANY_DISPLAY, populate_company_display
 
 from bot.config import db, logger, get_client
 from bot.keyboards import back_kb, costmile_format_kb
-from bot.helpers import _show, _show_loading
+from bot.helpers import _show, _show_loading, _safe_error
 from bot.auth import _require_registered
 
 
@@ -139,4 +139,4 @@ async def cmd_costmile_report(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     except Exception as e:
         logger.error(f"Cost/mile error: {e}")
-        await _show(update, context, [f"❌ Error: {e}"], keyboard=back_kb())
+        await _show(update, context, [_safe_error(e)], keyboard=back_kb())

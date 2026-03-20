@@ -36,7 +36,7 @@ from bot.admin import (
     cmd_broadcast, cmd_sys_disable_account,
 )
 from bot.callbacks import handle_callback, handle_text
-from bot.alerts import check_new_faults, check_health_alerts, check_low_fuel, initialize_known_faults, check_alert_escalations, deliver_dnd_alerts
+from bot.alerts import check_new_faults, check_health_alerts, check_low_fuel, initialize_known_faults, check_alert_realerts, deliver_dnd_alerts
 from bot.digest import send_digests
 from bot.maintenance import check_overdue_maintenance
 from bot.geofences import check_geofence_events
@@ -44,7 +44,7 @@ import bot.redis_client as rcache
 import encryption
 from bot.auth import _get_user
 import ai_client
-from bot.helpers import _show
+from bot.helpers import _show, _render_audit_log
 from bot.keyboards import user_settings_kb, back_kb
 
 
@@ -91,17 +91,7 @@ async def cmd_audit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not can(user.role, "can_manage_users"):
         await update.message.reply_text("⛔ No access.")
         return
-    entries = await db.get_audit_log(user.account_id, limit=15)
-    if not entries:
-        text = "📋 <b>Audit Log</b>\n\nNo recent activity."
-    else:
-        lines = ["📋 <b>Audit Log</b> (last 15)\n"]
-        for e in entries:
-            ts = e["created_at"][:16].replace("T", " ")
-            lines.append(f"  • <code>{ts}</code> — {e['action']}")
-            if e.get("details"):
-                lines.append(f"    {e['details'][:60]}")
-        text = "\n".join(lines)
+    text = await _render_audit_log(user.account_id, db)
     await _show(update, context, [text], keyboard=back_kb())
 
 
@@ -301,8 +291,8 @@ def main():
         minutes=5, args=[app], id="geofence_check",
     )
     scheduler.add_job(
-        check_alert_escalations, "interval",
-        minutes=5, args=[app], id="escalation_check",
+        check_alert_realerts, "interval",
+        minutes=5, args=[app], id="realert_check",
     )
     scheduler.add_job(
         deliver_dnd_alerts, "interval",

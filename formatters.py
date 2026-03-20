@@ -482,6 +482,29 @@ def format_low_fuel_alert(vehicle: dict, fuel_pct: float,
     )
 
 
+def format_alert_history_footer(occurrence_count: int,
+                                first_seen: str,
+                                last_seen: str) -> str:
+    """Format a history footer for consolidated alerts.
+
+    Shows occurrence count and time range when count > 1.
+    """
+    if occurrence_count <= 1:
+        return ""
+
+    # Parse first/last timestamps for human display
+    first_short = first_seen[5:16].replace("T", " ") if len(first_seen) > 16 else first_seen
+    last_short = last_seen[5:16].replace("T", " ") if len(last_seen) > 16 else last_seen
+
+    return (
+        "\n━━━━━━━━━━━━━━━━━━━━━\n"
+        f"  📊 <b>Alert History</b>\n"
+        f"  Occurrences: <b>{occurrence_count}</b>\n"
+        f"  Since: {first_short}\n"
+        f"  Latest: {last_short}\n"
+    )
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Registration / Account Management Formatters
 # ═══════════════════════════════════════════════════════════════════
@@ -558,12 +581,12 @@ def format_join_success(account_name: str, role_str: str) -> str:
     )
 
 
-def format_account_info(account, companies, users, user) -> str:
-    """Account overview for /account command."""
+def format_account_info(account, companies, user) -> str:
+    """Companies overview for the Companies sub-menu."""
     from permissions import role_display
     lines = [
         "━━━━━━━━━━━━━━━━━━━",
-        f"  🏢  <b>{account.name}</b>",
+        f"  🏢  <b>{account.name} — COMPANIES</b>",
         "━━━━━━━━━━━━━━━━━━━",
         "",
         f"  Your role: {role_display(user.role)}",
@@ -572,14 +595,6 @@ def format_account_info(account, companies, users, user) -> str:
     ]
     for co in companies:
         lines.append(f"     • {co.code} — {co.display_name or co.code}")
-
-    lines.append("")
-    lines.append(f"  👥  <b>{len(users)}</b> team member{'s' if len(users) != 1 else ''}")
-    for u in users:
-        from permissions import role_emoji
-        emoji = role_emoji(u.role)
-        truck = f" (truck #{u.truck_num})" if u.truck_num else ""
-        lines.append(f"     {emoji}  {u.linked_label} — {u.role.value}{truck}")
 
     return "\n".join(lines)
 

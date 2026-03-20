@@ -25,7 +25,7 @@ start:
 		echo "✅ Bot started (PID $$(cat $(PID_FILE))) — logs: $(LOG_FILE)"; \
 	fi
 
-## Stop bot
+## Stop bot (also kills any orphan run.py processes for this project)
 stop:
 	@if systemctl is-enabled $(SERVICE) >/dev/null 2>&1; then \
 		sudo systemctl stop $(SERVICE); \
@@ -37,6 +37,11 @@ stop:
 		echo "⚠️  Bot is not running"; \
 		rm -f $(PID_FILE); \
 	fi
+	@# Kill any orphan run.py processes for this project
+	@ps aux | grep "[p]ython.*$(CURDIR)/run.py" | awk '{print $$2}' | while read pid; do \
+		echo "🧹 Killing orphan bot process $$pid"; \
+		kill $$pid 2>/dev/null || kill -9 $$pid 2>/dev/null; \
+	done; true
 
 ## Restart bot
 restart:

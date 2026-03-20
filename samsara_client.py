@@ -30,18 +30,22 @@ class SamsaraPermissionError(Exception):
 
 # ── Legacy compat shim — populated at runtime by bot.py ──────────
 # pdf_generator.py and formatters.py still read COMPANY_DISPLAY.
-# bot.py calls `populate_company_display(companies)` once at startup for display names.
+# bot.py calls `populate_company_display(companies)` for display names.
 COMPANY_DISPLAY: dict[str, str] = {}
 
 
-def populate_company_display(companies: list) -> None:
+def populate_company_display(companies: list) -> dict[str, str]:
     """Populate COMPANY_DISPLAY from a list of database Company objects.
 
-    Called once at bot startup so formatters / pdf_generator see the names.
+    Additive: updates/overwrites entries without clearing existing ones,
+    preventing race conditions in multi-tenant async contexts where
+    concurrent calls would wipe each other's data.
+
+    Returns the current display dict for callers that want a local reference.
     """
-    COMPANY_DISPLAY.clear()
     for co in companies:
         COMPANY_DISPLAY[co.code] = co.display_name or co.code
+    return COMPANY_DISPLAY
 
 
 # Names that indicate ghost / deactivated records (case-insensitive)
@@ -523,30 +527,97 @@ class SamsaraClient:
                 health["rpm"] = rpm_val
                 health["rpm_time"] = rpm_time
 
-            # Engine state (derived from RPM, with speed fallback)
-            # PTG gateways don't support engineRpm, so use GPS speed
-            # as a secondary signal.
+            # Engine state — multi-signal detection with fallback chain:
+            #   1. engineRpm > 0 (CAN bus, most reliable)
+            #   2. engineLoadPercent > 0 (CAN bus, secondary)
+            #   3. batteryMilliVolts > 13200 (alternator charging = engine on)
+            #   4. GPS speed > 3 km/h (moving = engine on)
+            #   5. None — unknown
+            # PTG gateways and some older units don't report RPM, so the
+            # additional fallback signals prevent false health alerts for
+            # companies without full CAN bus support.
+            #
+            # Staleness: if the most-trusted signal is >15 min old, the
+            # truck likely turned off since that reading → treat engine_on
+            # as False to avoid alerting on stale data.
+            _STALE_MINUTES = 15
+            _stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=_STALE_MINUTES)
+
+            def _is_fresh(ts: str) -> bool:
+                """Return True if the ISO timestamp is within the staleness window."""
+                if not ts:
+                    return False
+                try:
+                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    return dt >= _stale_cutoff
+                except (ValueError, TypeError):
+                    return False
+
+            def _parse_ts(ts: str):
+                """Parse ISO timestamp to datetime, or None."""
+                if not ts:
+                    return None
+                try:
+                    return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                except (ValueError, TypeError):
+                    return None
+
+            def _timestamps_close(ts1: str, ts2: str, max_gap_seconds: int = 180) -> bool:
+                """Return True if two timestamps are within max_gap_seconds of each other.
+
+                This prevents false alerts when the engine-on signal (RPM)
+                and a health reading (oil/battery/coolant) are from different
+                engine states — e.g. RPM is fresh (engine just started) but
+                oil pressure is from minutes ago (post-shutdown, naturally low).
+                """
+                dt1, dt2 = _parse_ts(ts1), _parse_ts(ts2)
+                if dt1 is None or dt2 is None:
+                    return False
+                return abs((dt1 - dt2).total_seconds()) <= max_gap_seconds
+
             loc_speed = v.get("location", {}).get("speed")  # km/h from GPS
-            if rpm_val is not None:
+            load_val_raw = health.get("load_pct")
+            engine_on_time = None  # timestamp of the signal that determined engine_on
+            if rpm_val is not None and _is_fresh(rpm_time):
                 engine_on = rpm_val > 0
+                engine_on_time = rpm_time
+            elif load_val_raw is not None and _is_fresh(load_time):
+                engine_on = load_val_raw > 0
+                engine_on_time = load_time
+            elif batt_val is not None and batt_val > 13200 and _is_fresh(batt_time):
+                # >13.2V means alternator is charging = engine running
+                engine_on = True
+                engine_on_time = batt_time
             elif loc_speed is not None:
                 engine_on = loc_speed > 3  # >3 km/h ≈ moving = engine on
+                engine_on_time = None  # GPS doesn't give a comparable timestamp
             else:
                 engine_on = None  # unknown
             health["engine_on"] = engine_on
 
-            # Count alerts — only flag pressure/voltage when engine is
-            # confirmed running.  When engine_on is None (unknown) or
-            # False (parked), low oil and low battery are *expected*.
+            # Count alerts — only flag pressure/voltage/temp when engine is
+            # confirmed running AND the reading is fresh AND the reading
+            # timestamp is close to the engine-on signal.
+            #
+            # The timestamp-closeness check (_timestamps_close) is critical:
+            # Samsara CAN bus sensors report at different frequencies. RPM
+            # may update every few seconds while oil pressure updates every
+            # 2-5 minutes. Without this check, a stale low oil pressure
+            # reading from post-shutdown (normal) can trigger a false alert
+            # when RPM reports the engine just restarted.
             alerts = []
             if health.get("battery_v") is not None and health["battery_v"] < 12.2:
-                if engine_on:
+                if engine_on and _is_fresh(health.get("battery_time", "")) \
+                        and _timestamps_close(health.get("battery_time", ""), engine_on_time or ""):
                     alerts.append("low_battery")
             if health.get("oil_psi") is not None and health["oil_psi"] < 10:
-                if engine_on:
+                if engine_on and _is_fresh(health.get("oil_time", "")) \
+                        and _timestamps_close(health.get("oil_time", ""), engine_on_time or ""):
                     alerts.append("low_oil_pressure")
             if health.get("coolant_c") is not None and health["coolant_c"] > 105:
-                alerts.append("high_coolant_temp")
+                if engine_on and _is_fresh(health.get("coolant_time", "")) \
+                        and _timestamps_close(health.get("coolant_time", ""), engine_on_time or ""):
+                    alerts.append("high_coolant_temp")
             if health.get("def_pct") is not None and health["def_pct"] < 10:
                 alerts.append("low_def")
             if health.get("seatbelt") == "Unbuckled":

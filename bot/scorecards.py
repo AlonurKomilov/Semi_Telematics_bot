@@ -18,7 +18,7 @@ from samsara_client import COMPANY_DISPLAY, populate_company_display
 
 from bot.config import db, logger, get_client, get_user_company_codes
 from bot.keyboards import back_kb, scorecard_format_kb
-from bot.helpers import _show, _show_loading, _user_menu_kb
+from bot.helpers import _show, _show_loading, _user_menu_kb, _safe_error
 from bot.auth import _require_registered
 
 
@@ -141,7 +141,7 @@ async def cmd_scorecards_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
         await _show(update, context, texts, keyboard=back_kb())
     except Exception as e:
         logger.error(f"Scorecards error: {e}")
-        await _show(update, context, [f"❌ Error: {e}"], keyboard=back_kb())
+        await _show(update, context, [_safe_error(e)], keyboard=back_kb())
 
 
 @_require_registered
@@ -174,4 +174,4 @@ async def cmd_scorecards_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
         await _show(update, context, ["✅ CSV exported."], keyboard=back_kb())
     except Exception as e:
         logger.error(f"Scorecards CSV error: {e}")
-        await _show(update, context, [f"❌ Error: {e}"], keyboard=back_kb())
+        await _show(update, context, [_safe_error(e)], keyboard=back_kb())
