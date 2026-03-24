@@ -17,7 +17,7 @@ from bot.fleet_reports import (  # noqa: F401
 
 # Re-export alerts
 from bot.fleet_alerts import (  # noqa: F401
-    cmd_alerts, cmd_alert_toggle, cmd_alert_disable_all,
+    cmd_alerts, cmd_alert_toggle, cmd_ai_alert_toggle, cmd_alert_disable_all,
     cmd_alert_history, cmd_pending_alerts,
 )
 

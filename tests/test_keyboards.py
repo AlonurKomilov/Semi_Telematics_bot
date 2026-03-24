@@ -122,10 +122,10 @@ class TestSubMenuReports:
         kb = submenu_reports_kb(Role.OWNER)
         callbacks = _all_callbacks(kb)
         assert "cmd_faults" in callbacks
-        assert "cmd_critical" in callbacks
         assert "cmd_fuel" in callbacks
         assert "cmd_health" in callbacks
         assert "cmd_efficiency" in callbacks
+        assert "cmd_events" in callbacks
         assert "cmd_truck_prompt" in callbacks
         assert "cmd_auto_reports" in callbacks
 
@@ -133,11 +133,11 @@ class TestSubMenuReports:
         kb = submenu_reports_kb(Role.OWNER)
         assert _has_callback(kb, "cmd_menu")
 
-    def test_driver_sees_auto_reports(self):
-        """Drivers can see auto reports (can_digest=True)."""
+    def test_driver_sees_only_events_and_back(self):
+        """Drivers can see events (can_events_own) + back."""
         kb = submenu_reports_kb(Role.DRIVER)
         callbacks = _all_callbacks(kb)
-        assert "cmd_auto_reports" in callbacks
+        assert "cmd_events" in callbacks
         assert "cmd_menu" in callbacks
 
 

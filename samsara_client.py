@@ -33,6 +33,9 @@ class SamsaraPermissionError(Exception):
 # bot.py calls `populate_company_display(companies)` for display names.
 COMPANY_DISPLAY: dict[str, str] = {}
 
+# company_code → Samsara org ID (populated lazily at first alert check)
+ORG_IDS: dict[str, str] = {}
+
 
 def populate_company_display(companies: list) -> dict[str, str]:
     """Populate COMPANY_DISPLAY from a list of database Company objects.
@@ -46,6 +49,35 @@ def populate_company_display(companies: list) -> dict[str, str]:
     for co in companies:
         COMPANY_DISPLAY[co.code] = co.display_name or co.code
     return COMPANY_DISPLAY
+
+
+# ── Samsara Dashboard URL helpers ────────────────────────────────
+
+# Page slug per alert type
+_ALERT_PAGE: dict[str, str] = {
+    "fault": "diagnostics",
+    "health": "diagnostics",
+    "fuel": "vehicle-details",
+    "events": "safety",
+}
+
+
+def samsara_vehicle_url(
+    org_id: str,
+    vehicle_id: str,
+    alert_type: str = "fault",
+    dashboard_base: str = "",
+) -> str | None:
+    """Build a Samsara Cloud deep-link for a vehicle page.
+
+    Returns None when *org_id* is unavailable (button should be omitted).
+    """
+    if not org_id:
+        return None
+    if not dashboard_base:
+        from bot.config import SAMSARA_DASHBOARD_URL
+        dashboard_base = SAMSARA_DASHBOARD_URL
+    return f"{dashboard_base}/o/{org_id}/devices/{vehicle_id}/vehicle"
 
 
 # Names that indicate ghost / deactivated records (case-insensitive)
@@ -125,6 +157,15 @@ class SamsaraClient:
 
     # ── Vehicle List ─────────────────────────────────────────────
 
+    async def get_org_id(self) -> str | None:
+        """Fetch the Samsara organization ID for this API token."""
+        try:
+            data = await self._get("/me")
+            # Response: {"id": "...", "name": "...", ...}
+            return str(data.get("id") or "")
+        except Exception:
+            return None
+
     async def get_vehicles(self) -> list[dict]:
         """Return list of all vehicles in the fleet."""
         data = await self._get("/fleet/vehicles")
@@ -189,98 +230,57 @@ class SamsaraClient:
     # ── Safety Events ────────────────────────────────────────────
 
     async def get_events(self, days: int = 7) -> list[dict]:
-        """Fetch safety events from the Samsara API.
+        """Get safety events (harsh brake, crash, etc.) for the time range.
 
-        Uses /v1/fleet/safety-events (or /fleet/safety/events for v2).
-        Returns normalized event dicts.
+        Uses cursor pagination. Returns normalized event dicts sorted by
+        time descending (newest first).
         """
         now = datetime.now(timezone.utc)
         start = now - timedelta(days=days)
-
-        try:
-            data = await self._get("/fleet/safety/events", params={
-                "startTime": start.isoformat(),
-                "endTime": now.isoformat(),
-            })
-        except Exception:
-            # Fallback: try the v1 style endpoint
-            logger.debug("v2 safety events failed, trying v1 endpoint")
-            try:
-                data = await self._get("/v1/fleet/safety-events", params={
-                    "startMs": int(start.timestamp() * 1000),
-                    "endMs": int(now.timestamp() * 1000),
-                })
-            except Exception as e:
-                logger.error(f"Safety events API unavailable: {e}")
-                return []
-
-        raw_events = data.get("data", [])
-        if not raw_events and isinstance(data, list):
-            raw_events = data
-
-        results: list[dict] = []
-        for e in raw_events:
-            # Normalize to a consistent schema
-            behavior = e.get("behaviorLabel", {})
-            behavior_label = behavior.get("label", "") if isinstance(behavior, dict) else str(behavior)
-            event_type = self._normalize_event_type(behavior_label)
-
-            vehicle = e.get("vehicle", {}) or {}
-            driver = e.get("driver", {}) or {}
-            location = e.get("location", {}) or {}
-
-            # Get video URL from media if available
-            video_url = None
-            for media in (e.get("downloadForwardVideoUrl", None),
-                          e.get("downloadInwardVideoUrl", None),
-                          e.get("downloadTrackedInwardVideoUrl", None)):
-                if media:
-                    video_url = media
-                    break
-
-            results.append({
-                "event_id": e.get("id", ""),
-                "event_type": event_type,
-                "event_name": behavior_label or event_type,
-                "driver_id": driver.get("id", ""),
-                "driver_name": driver.get("name", "Unassigned"),
-                "vehicle_id": vehicle.get("id", ""),
-                "vehicle_name": vehicle.get("name", "Unknown"),
-                "vehicle_vin": vehicle.get("vin", ""),
-                "time": e.get("time", e.get("happenedAtTime", "")),
-                "g_force": e.get("maxAccelerationGForce", 0) or 0,
-                "latitude": location.get("latitude"),
-                "longitude": location.get("longitude"),
-                "coaching_state": e.get("coachingState", ""),
-                "video_url": video_url,
-            })
-
-        results.sort(key=lambda x: x.get("time", ""), reverse=True)
-        return results
-
-    @staticmethod
-    def _normalize_event_type(label: str) -> str:
-        """Map Samsara behavior label to a normalized event type key."""
-        label_lower = label.lower()
-        mapping = {
-            "crash": "crash",
-            "harsh brake": "braking",
-            "hard brake": "braking",
-            "braking": "braking",
-            "rolling stop": "rollingStop",
-            "following distance": "followingDistance",
-            "tailgating": "followingDistance",
-            "harsh turn": "harshTurn",
-            "hard turn": "harshTurn",
-            "lane departure": "laneDeparture",
-            "harsh accel": "acceleration",
-            "hard accel": "acceleration",
-            "acceleration": "acceleration",
+        params: dict = {
+            "startTime": start.isoformat(),
+            "endTime": now.isoformat(),
         }
-        for key, val in mapping.items():
-            if key in label_lower:
-                return val
-        return "other"
+
+        all_events: list[dict] = []
+        try:
+            for _ in range(200):  # safety limit
+                resp = await self._get("/fleet/safety-events", params=params)
+                for evt in resp.get("data", []):
+                    labels = evt.get("behaviorLabels", [])
+                    if not labels:
+                        continue
+                    driver = evt.get("driver") or {}
+                    vehicle = evt.get("vehicle") or {}
+                    loc = evt.get("location") or {}
+                    ext_ids = vehicle.get("externalIds") or {}
+                    all_events.append({
+                        "event_id": evt.get("id", ""),
+                        "event_type": labels[0].get("label", "unknown"),
+                        "event_name": labels[0].get("name", "Unknown"),
+                        "driver_id": driver.get("id", ""),
+                        "driver_name": driver.get("name", "Unassigned"),
+                        "vehicle_id": vehicle.get("id", ""),
+                        "vehicle_name": vehicle.get("name", "?"),
+                        "vehicle_vin": ext_ids.get("samsara.vin", ""),
+                        "time": evt.get("time", ""),
+                        "g_force": evt.get("maxAccelerationGForce", 0.0),
+                        "latitude": loc.get("latitude"),
+                        "longitude": loc.get("longitude"),
+                        "coaching_state": evt.get("coachingState", ""),
+                        "video_url": evt.get("downloadForwardVideoUrl"),
+                    })
+                pag = resp.get("pagination", {})
+                if not pag.get("hasNextPage"):
+                    break
+                params["after"] = pag.get("endCursor")
+
+        except SamsaraPermissionError:
+            logger.info("Events API: token lacks permission — returning []")
+            return []
+
+        all_events.sort(key=lambda x: x.get("time", ""), reverse=True)
+        return all_events
 
     # ── Active-vehicle filter ────────────────────────────────────
 
@@ -1256,6 +1256,26 @@ class MultiCompanyClient:
         await asyncio.gather(*(c.close() for c in self.clients.values()),
                              return_exceptions=True)
 
+    async def ensure_org_ids(self):
+        """Fetch and cache Samsara org IDs for all companies (idempotent).
+
+        Populates the module-level ORG_IDS dict. Skips companies whose
+        org ID is already known. Errors are logged and silently ignored
+        so alerts still fire even if the dashboard link is unavailable.
+        """
+        tasks = {}
+        for code, client in self.clients.items():
+            if code not in ORG_IDS:
+                tasks[code] = client.get_org_id()
+        if not tasks:
+            return
+        results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+        for code, result in zip(tasks, results):
+            if isinstance(result, str) and result:
+                ORG_IDS[code] = result
+            elif isinstance(result, Exception):
+                logger.warning("Could not fetch org ID for %s: %s", code, result)
+
     # ── helpers ──────────────────────────────────────────────────
 
     async def prefetch_org_ids(self):
@@ -1554,7 +1574,7 @@ class MultiCompanyClient:
         await self._cache_set(cache_key, combined, ttl=_CACHE_TTL_LONG)
         return combined
 
-    # ── safety events ────────────────────────────────────────────
+    # ── events ───────────────────────────────────────────────────
 
     async def get_events(
         self, days: int = 7, company: str | None = None,
@@ -1571,12 +1591,8 @@ class MultiCompanyClient:
         per_co = await self._run_per_company(_fn, company=company)
         combined: list[dict] = []
         for code, events in per_co.items():
-            client = self.clients.get(code)
-            org_id = client._org_id if client else None
             for e in events:
                 e["_org"] = code
-                if org_id:
-                    e["_org_id"] = org_id
             combined.extend(events)
         combined.sort(key=lambda x: x.get("time", ""), reverse=True)
         await self._cache_set(cache_key, combined)

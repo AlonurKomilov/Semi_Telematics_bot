@@ -17,6 +17,7 @@ from bot.config import db, logger, get_client, get_user_company_codes
 from bot.helpers import _show, _show_loading, _msg_key
 from bot.keyboards import back_kb
 from bot.auth import _require_registered
+from bot.i18n import t
 
 import ai_client
 
@@ -130,27 +131,69 @@ async def _gather_fleet_snapshot(account_id: int,
 def _ai_menu_kb(user_role=None, account_id=None) -> InlineKeyboardMarkup:
     """AI feature menu keyboard."""
     rows = [
-        [InlineKeyboardButton("💬 Ask a Question", callback_data="ai_chat")],
-        [InlineKeyboardButton("📊 Fleet Summary", callback_data="ai_summary")],
+        [InlineKeyboardButton(t('ai.btn_ask'), callback_data="ai_chat")],
+        [InlineKeyboardButton(t('ai.btn_summary'), callback_data="ai_summary")],
     ]
+    rows.append([InlineKeyboardButton(t('ai.btn_alerts'), callback_data="cmd_ai_alerts")])
     if user_role in (Role.OWNER, Role.ADMIN):
         model_name = ai_client.get_account_model_name(account_id) if account_id is not None else None
         if not model_name:
             model_name = ai_client.get_current_model_name()
         display = ai_client.MODEL_REGISTRY.get(model_name, {}).get("display", model_name)
         rows.append([InlineKeyboardButton(
-            f"⚙️ Model: {display}", callback_data="ai_models"
+            f"{t('ai.btn_model')}: {display}", callback_data="ai_models"
         )])
-    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")])
+    rows.append([InlineKeyboardButton(t('common.back'), callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
 
 
 def _ai_back_kb() -> InlineKeyboardMarkup:
     """Back to AI menu."""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🤖 AI Menu", callback_data="cmd_ai")],
-        [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
+        [InlineKeyboardButton(t('ai.btn_ai_menu'), callback_data="cmd_ai")],
+        [InlineKeyboardButton(t('common.main_menu'), callback_data="cmd_menu")],
     ])
+
+
+def _ai_alerts_kb(user) -> InlineKeyboardMarkup:
+    """AI proactive alerts toggle keyboard."""
+    def _icon(on: bool) -> str:
+        return "✅" if on else "❌"
+
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            f"{_icon(user.ai_fault)} {t('ai_alerts.fault_label')}",
+            callback_data="ai_toggle_fault",
+        )],
+        [InlineKeyboardButton(
+            f"{_icon(user.ai_health)} {t('ai_alerts.health_label')}",
+            callback_data="ai_toggle_health",
+        )],
+        [InlineKeyboardButton(
+            f"{_icon(user.ai_fuel)} {t('ai_alerts.fuel_label')}",
+            callback_data="ai_toggle_fuel",
+        )],
+        [InlineKeyboardButton(
+            f"{_icon(user.ai_events)} {t('ai_alerts.events_label')}",
+            callback_data="ai_toggle_events",
+        )],
+        [InlineKeyboardButton(t('common.back'), callback_data="cmd_ai")],
+    ])
+
+
+async def cmd_ai_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show AI proactive alert settings."""
+    user = context.user_data["_db_user"]
+    text = (
+        "━━━━━━━━━━━━━━━━━━━\n"
+        f"  🔔  <b>{t('ai_alerts.title')}</b>\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "\n"
+        f"  {t('ai_alerts.description')}\n"
+        "\n"
+        f"  {t('ai_alerts.tap_toggle')}"
+    )
+    await _show(update, context, [text], keyboard=_ai_alerts_kb(user))
 
 
 
@@ -164,36 +207,34 @@ async def cmd_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ai_client.is_configured():
         text = (
             "━━━━━━━━━━━━━━━━━━━\n"
-            "  🤖  <b>AI ASSISTANT</b>\n"
+            f"  🤖  <b>{t('ai.menu_title')}</b>\n"
             "━━━━━━━━━━━━━━━━━━━\n"
             "\n"
-            "  AI features are not configured.\n"
+            f"  {t('ai.not_configured')}\n"
             "\n"
-            "  Set <code>GOOGLE_AI_API_KEY</code> in\n"
-            "  your environment to enable."
+            f"  {t('ai.set_api_key')}"
         )
         await _show(update, context, [text], keyboard=back_kb())
         return
 
     user = context.user_data["_db_user"]
     await ai_client.ensure_account_model(user.account_id)
-    role_desc = "your truck" if user.role == Role.DRIVER else "your fleet"
+    role_desc = t('ai.your_truck') if user.role == Role.DRIVER else t('ai.your_fleet')
 
     text = (
         "━━━━━━━━━━━━━━━━━━━\n"
-        "  🤖  <b>AI ASSISTANT</b>\n"
+        f"  🤖  <b>{t('ai.menu_title')}</b>\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         "\n"
-        f"  Ask me anything about {role_desc}!\n"
+        f"  {t('ai.ask_about').replace('{scope}', role_desc)}\n"
         "\n"
-        "  <b>💬 Ask a Question</b>\n"
-        "  Natural language queries — e.g.\n"
-        "  <i>\"which trucks have low fuel?\"</i>\n"
-        "  <i>\"what faults does truck 101 have?\"</i>\n"
+        f"  {t('ai.ask_label')}\n"
+        f"  {t('ai.ask_hint')}\n"
+        f"  <i>\"{t('ai.ask_hint_q1')}\"</i>\n"
+        f"  <i>\"{t('ai.ask_hint_q2')}\"</i>\n"
         "\n"
-        "  <b>📊 Fleet Summary</b>\n"
-        "  AI-generated morning briefing\n"
-        "  with key stats and action items."
+        f"  {t('ai.summary_label')}\n"
+        f"  {t('ai.summary_hint')}"
     )
     await _show(update, context, [text], keyboard=_ai_menu_kb(user_role=user.role, account_id=user.account_id))
 
@@ -203,27 +244,27 @@ async def cmd_ai_ask_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Prompt the user to type their question."""
     if not ai_client.is_configured():
         if update.callback_query:
-            await update.callback_query.answer("AI not configured", show_alert=True)
+            await update.callback_query.answer(t('ai.not_configured_popup'), show_alert=True)
         return
 
     context.user_data["_pending"] = "ai_question"
     text = (
         "━━━━━━━━━━━━━━━━━━━\n"
-        "  💬  <b>ASK AI</b>\n"
+        f"  💬  <b>{t('ai.ask_title')}</b>\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         "\n"
-        "  Type your question about the fleet.\n"
+        f"  {t('ai.ask_prompt')}\n"
         "\n"
-        "  <b>Examples:</b>\n"
-        "  • Which trucks need attention?\n"
-        "  • What does fault SPN 110 mean?\n"
-        "  • How many trucks are running right now?\n"
-        "  • What's the fleet fuel status?\n"
+        f"  {t('ai.ask_examples')}\n"
+        f"  • {t('ai.ask_example_1')}\n"
+        f"  • {t('ai.ask_example_2')}\n"
+        f"  • {t('ai.ask_example_3')}\n"
+        f"  • {t('ai.ask_example_4')}\n"
         "\n"
-        "  ✍️ Type below:"
+        f"  {t('ai.ask_type_below')}"
     )
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("❌ Cancel", callback_data="cmd_ai")],
+        [InlineKeyboardButton(t('ai.cancel'), callback_data="cmd_ai")],
     ])
     await _show(update, context, [text], keyboard=kb)
 
@@ -234,7 +275,7 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
     """Process the user's AI question and return the answer."""
     user = context.user_data["_db_user"]
 
-    await _show_loading(update, context, "🤖  <i>Thinking...</i>")
+    await _show_loading(update, context, t('ai.thinking'))
 
     try:
         # Driver: only sees their own truck
@@ -249,13 +290,14 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
         answer = await ai_client.ask_fleet(
             question, snapshot, user_id=update.effective_user.id,
             account_id=user.account_id,
+            language=getattr(user, "language", "en"),
         )
 
         await _log_ai_usage(user.account_id, update.effective_user.id, "question")
 
         text = (
             "━━━━━━━━━━━━━━━━━━━\n"
-            "  🤖  <b>AI ANSWER</b>\n"
+            f"  🤖  <b>{t('ai.answer_title')}</b>\n"
             "━━━━━━━━━━━━━━━━━━━\n"
             f"\n{answer}"
         )
@@ -263,11 +305,10 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
         logger.error(f"AI answer failed: {e}")
         text = (
             "━━━━━━━━━━━━━━━━━━━\n"
-            "  ❌  <b>AI ERROR</b>\n"
+            f"  ❌  <b>{t('ai.error_title')}</b>\n"
             "━━━━━━━━━━━━━━━━━━━\n"
             "\n"
-            "  Sorry, the AI couldn't process\n"
-            "  your question right now.\n"
+            f"  {t('ai.error_msg')}\n"
             f"\n  <i>{type(e).__name__}</i>"
         )
 
@@ -279,11 +320,11 @@ async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Generate an AI fleet summary/briefing."""
     if not ai_client.is_configured():
         if update.callback_query:
-            await update.callback_query.answer("AI not configured", show_alert=True)
+            await update.callback_query.answer(t('ai.not_configured_popup'), show_alert=True)
         return
 
     user = context.user_data["_db_user"]
-    await _show_loading(update, context, "📊  <i>Generating fleet briefing...</i>")
+    await _show_loading(update, context, t('ai.summary_thinking'))
 
     try:
         await ai_client.ensure_account_model(user.account_id)
@@ -296,13 +337,14 @@ async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         summary = await ai_client.fleet_summary(
             snapshot, account_id=user.account_id,
+            language=getattr(user, "language", "en"),
         )
 
         await _log_ai_usage(user.account_id, update.effective_user.id, "summary")
 
         text = (
             "━━━━━━━━━━━━━━━━━━━\n"
-            "  📊  <b>AI FLEET BRIEFING</b>\n"
+            f"  📊  <b>{t('ai.summary_title')}</b>\n"
             "━━━━━━━━━━━━━━━━━━━\n"
             f"\n{summary}"
         )
@@ -310,10 +352,10 @@ async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"AI summary failed: {e}")
         text = (
             "━━━━━━━━━━━━━━━━━━━\n"
-            "  ❌  <b>AI ERROR</b>\n"
+            f"  ❌  <b>{t('ai.error_title')}</b>\n"
             "━━━━━━━━━━━━━━━━━━━\n"
             "\n"
-            "  Couldn't generate the fleet briefing.\n"
+            f"  {t('ai.summary_error')}\n"
             f"\n  <i>{type(e).__name__}</i>"
         )
 
@@ -322,74 +364,199 @@ async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @_require_registered
 async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                          truck_name: str, company: str | None = None):
-    """AI-diagnose faults for a specific truck.
+                          truck_name: str, company: str | None = None,
+                          alert_context: str = "fault",
+                          ack_id: int | None = None):
+    """AI-diagnose a truck from the alert context.
 
-    Called from the truck detail view (callback: ai_diag_{company}_{truck}).
+    alert_context controls what data is fetched and how the prompt is built:
+      - "fault" (default): diagnose active DTCs / fault codes
+      - "health": diagnose health readings (oil, coolant, battery, DEF) + any faults
+      - "fuel": diagnose fuel situation + any faults
+
+    Called from alert keyboards (callback: ai_diag_{alert_type}_{company}_{truck}).
     """
     if not ai_client.is_configured():
         if update.callback_query:
-            await update.callback_query.answer("AI not configured", show_alert=True)
+            await update.callback_query.answer(t('ai.not_configured_popup'), show_alert=True)
         return
 
     user = context.user_data["_db_user"]
-    await _show_loading(update, context, "🔧  <i>Analyzing faults...</i>")
+    await _show_loading(update, context, t('ai.diagnose_thinking'))
 
     try:
         samsara = await get_client(user.account_id)
         matches = await samsara.get_vehicle_detail(truck_name, company=company)
 
         if not matches:
-            text = f"  Truck #{truck_name} not found."
+            text = f"  {t('ai.truck_not_found').replace('{name}', truck_name)}"
             await _show(update, context, [text], keyboard=_ai_back_kb())
             return
 
         v = matches[0]
-        # Extract DTCs from raw fault_codes (same logic as get_vehicles_with_faults)
+        co = v.get("_org", company or "?")
+
+        # Extract DTCs (always — used as bonus info for non-fault contexts)
         fc = v.get("fault_codes", {})
         j1939 = fc.get("j1939", {})
         dtcs = v.get("_dtcs") or j1939.get("diagnosticTroubleCodes", [])
         lights = v.get("_lights") or j1939.get("checkEngineLights", {})
 
-        if not dtcs:
+        # ── Build context-aware prompt and fetch extra data ──────
+        context_data: dict = {"truck": truck_name}
+        prompt_parts: list[str] = []
+        header_lines: list[str] = []
+
+        if alert_context == "health":
+            # Fetch live health readings
+            health_vehicles = await samsara.get_vehicle_health(company=company)
+            health = {}
+            for hv in health_vehicles:
+                if hv.get("name", "").lower() == truck_name.lower():
+                    health = hv.get("_health", {})
+                    break
+
+            readings = {}
+            if health.get("oil_psi") is not None:
+                readings["Oil Pressure"] = f"{health['oil_psi']} PSI"
+            if health.get("coolant_c") is not None:
+                readings["Coolant Temp"] = f"{health['coolant_c']}°C"
+            if health.get("battery_v") is not None:
+                readings["Battery"] = f"{health['battery_v']}V"
+            if health.get("def_pct") is not None:
+                readings["DEF Level"] = f"{health['def_pct']}%"
+            if health.get("rpm") is not None:
+                readings["Engine RPM"] = str(int(health["rpm"]))
+            if health.get("load_pct") is not None:
+                readings["Engine Load"] = f"{health['load_pct']}%"
+
+            context_data["health_readings"] = readings
+            context_data["thresholds"] = {
+                "Oil Pressure": "< 10 PSI is critical",
+                "Coolant Temp": "> 105°C is critical",
+                "Battery": "< 12.2V is low",
+                "DEF Level": "< 10% is low",
+            }
+            prompt_parts.append(
+                f"Diagnose the health condition of Truck #{truck_name}. "
+                f"Current readings: {', '.join(f'{k}: {v}' for k, v in readings.items())}. "
+                "Are any readings abnormal? What should the driver do?"
+            )
+            header_lines.append(f"  📊 {len(readings)} health reading(s)")
+
+        elif alert_context == "fuel":
+            # Fuel data is already in vehicle detail
+            fuel = v.get("fuel", {})
+            fuel_pct = fuel.get("value")
+            def_info = v.get("def_level", {})
+            def_pct = def_info.get("value")
+
+            fuel_data: dict[str, str] = {}
+            if fuel_pct is not None:
+                fuel_data["Fuel Level"] = f"{fuel_pct:.0f}%"
+            if def_pct is not None:
+                fuel_data["DEF Level"] = f"{def_pct}%"
+
+            context_data["fuel_data"] = fuel_data
+            prompt_parts.append(
+                f"Assess the fuel situation on Truck #{truck_name}. "
+                f"Fuel level: {fuel_pct:.0f}% "
+                + (f", DEF level: {def_pct}%" if def_pct is not None else "")
+                + ". How urgent is this? Estimate remaining range. "
+                "What should the driver do?"
+            )
+            header_lines.append(f"  ⛽ Fuel: {fuel_pct:.0f}%" if fuel_pct is not None else "  ⛽ Fuel data unavailable")
+
+        # Default / fallback: fault diagnosis
+        if alert_context == "fault" or not prompt_parts:
+            if dtcs:
+                context_data["active_faults"] = [
+                    {
+                        "spn": dtc.get("spnId"),
+                        "fmi": dtc.get("fmiId"),
+                        "description": dtc.get("spnDescription", "Unknown"),
+                        "severity": dtc.get("fmiDescription", "Unknown"),
+                    }
+                    for dtc in dtcs[:10]
+                ]
+                context_data["check_engine_lights"] = lights or {}
+                prompt_parts.insert(0, (
+                    f"Diagnose the active faults on Truck #{truck_name}. "
+                    f"There are {len(dtcs)} active fault code(s)."
+                ))
+                header_lines.insert(0, f"  ⚙️ {len(dtcs)} active fault(s)")
+
+        # For health/fuel context, also mention faults as bonus if present
+        if alert_context != "fault" and dtcs:
+            context_data["active_faults"] = [
+                {
+                    "spn": dtc.get("spnId"),
+                    "fmi": dtc.get("fmiId"),
+                    "description": dtc.get("spnDescription", "Unknown"),
+                }
+                for dtc in dtcs[:5]
+            ]
+            prompt_parts.append(
+                f"Also note: truck has {len(dtcs)} active fault code(s) — "
+                "mention if any relate to the main issue."
+            )
+            header_lines.append(f"  ⚙️ + {len(dtcs)} active fault(s)")
+
+        # If we have nothing to analyze at all
+        if not prompt_parts:
             text = (
                 "━━━━━━━━━━━━━━━━━━━\n"
-                "  ✅  <b>NO ACTIVE FAULTS</b>\n"
+                f"  ✅  <b>{t('ai.diagnose_no_issues_title')}</b>\n"
                 "━━━━━━━━━━━━━━━━━━━\n"
-                f"\n  Truck #{truck_name} has no active\n"
-                "  fault codes to diagnose."
+                f"\n  {t('ai.diagnose_no_issues_msg').replace('{truck}', f'Truck #{truck_name}')}"
             )
             await _show(update, context, [text], keyboard=_ai_back_kb())
             return
 
-        diagnosis = await ai_client.diagnose_faults(truck_name, dtcs, lights)
+        prompt = " ".join(prompt_parts)
+        diagnosis = await ai_client.generate(
+            prompt,
+            system=ai_client.FAULT_DIAGNOSIS_SYSTEM,
+            context_data=context_data,
+            account_id=user.account_id,
+            language=getattr(user, "language", "en"),
+        )
 
-        co = v.get("_org", company or "?")
+        header_info = "\n".join(header_lines)
         text = (
             "━━━━━━━━━━━━━━━━━━━\n"
-            "  🔧  <b>AI DIAGNOSIS</b>\n"
+            f"  🔧  <b>{t('ai.diagnose_title')}</b>\n"
             "━━━━━━━━━━━━━━━━━━━\n"
             f"\n  🚛  <b>Truck #{truck_name}</b>\n"
-            f"  {len(dtcs)} active fault(s)\n"
+            f"{header_info}\n"
             f"\n{diagnosis}"
         )
 
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton(
-                f"📋 View Truck #{truck_name}",
-                callback_data=f"cotruck_{co}_{truck_name}",
-            )],
-            [InlineKeyboardButton("🤖 AI Menu", callback_data="cmd_ai")],
-            [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
-        ])
+        kb_rows = []
+        # If called from an alert, keep alert action buttons
+        if ack_id is not None:
+            kb_rows.append([InlineKeyboardButton(
+                t('alert_actions.acknowledge'), callback_data=f"ack_alert_{ack_id}",
+            )])
+            kb_rows.append([InlineKeyboardButton(
+                t('alert_actions.snooze'), callback_data=f"snooze_pick_{ack_id}",
+            )])
+        kb_rows.append([InlineKeyboardButton(
+            t('truck.view_truck').replace('{name}', truck_name),
+            callback_data=f"cotruck_{co}_{truck_name}",
+        )])
+        if ack_id is None:
+            kb_rows.append([InlineKeyboardButton(t('ai.btn_ai_menu'), callback_data="cmd_ai")])
+        kb_rows.append([InlineKeyboardButton(t('common.main_menu'), callback_data="cmd_menu")])
+        kb = InlineKeyboardMarkup(kb_rows)
     except Exception as e:
         logger.error(f"AI diagnosis failed for {truck_name}: {e}")
         text = (
             "━━━━━━━━━━━━━━━━━━━\n"
-            "  ❌  <b>AI ERROR</b>\n"
+            f"  ❌  <b>{t('ai.error_title')}</b>\n"
             "━━━━━━━━━━━━━━━━━━━\n"
             "\n"
-            f"  Couldn't diagnose Truck #{truck_name}.\n"
+            f"  {t('ai.diagnose_error_msg').replace('{name}', truck_name)}\n"
             f"\n  <i>{type(e).__name__}</i>"
         )
         kb = _ai_back_kb()
@@ -404,7 +571,7 @@ async def cmd_ai_models(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show available AI models for the user to choose from."""
     if not ai_client.is_configured():
         if update.callback_query:
-            await update.callback_query.answer("AI not configured", show_alert=True)
+            await update.callback_query.answer(t('ai.not_configured_popup'), show_alert=True)
         return
 
     user = context.user_data["_db_user"]
@@ -423,11 +590,11 @@ async def cmd_ai_models(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     lines = [
         "━━━━━━━━━━━━━━━━━━━\n"
-        "  ⚙️  <b>AI MODEL</b>\n"
+        f"  ⚙️  <b>{t('ai.model_title')}</b>\n"
         "━━━━━━━━━━━━━━━━━━━\n"
-        f"\n  Current: <b>{cur_info.get('display', cur_model)}</b>"
+        f"\n  {t('ai.model_current').replace('{model}', cur_info.get('display', cur_model))}"
     ]
-    lines.append("\n  Select a model:")
+    lines.append(f"\n  {t('ai.model_select')}")
 
     text = "\n".join(lines)
 
@@ -442,8 +609,8 @@ async def cmd_ai_models(update: Update, context: ContextTypes.DEFAULT_TYPE):
         buttons.append([InlineKeyboardButton(
             label, callback_data=f"ai_setmodel_{name}",
         )])
-    buttons.append([InlineKeyboardButton("📊 AI Usage", callback_data="cmd_ai_usage")])
-    buttons.append([InlineKeyboardButton("◀️ AI Menu", callback_data="cmd_ai")])
+    buttons.append([InlineKeyboardButton(t('ai.btn_usage'), callback_data="cmd_ai_usage")])
+    buttons.append([InlineKeyboardButton(t('ai.btn_ai_menu'), callback_data="cmd_ai")])
     kb = InlineKeyboardMarkup(buttons)
     await _show(update, context, [text], keyboard=kb)
 
@@ -463,7 +630,7 @@ async def cmd_ai_set_model(update: Update, context: ContextTypes.DEFAULT_TYPE,
         info = ai_client.MODEL_REGISTRY[model_name]
         text = (
             "━━━━━━━━━━━━━━━━━━━\n"
-            "  ✅  <b>MODEL CHANGED</b>\n"
+            f"  ✅  <b>{t('ai.model_changed')}</b>\n"
             "━━━━━━━━━━━━━━━━━━━\n"
             f"\n  🤖 <b>{info['display']}</b>"
             f"\n  {info['description']}"
@@ -471,14 +638,14 @@ async def cmd_ai_set_model(update: Update, context: ContextTypes.DEFAULT_TYPE,
     except ValueError as e:
         text = (
             "━━━━━━━━━━━━━━━━━━━\n"
-            "  ❌  <b>ERROR</b>\n"
+            f"  ❌  <b>{t('ai.error_generic')}</b>\n"
             "━━━━━━━━━━━━━━━━━━━\n"
             f"\n  {e}"
         )
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚙️ Models", callback_data="ai_models")],
-        [InlineKeyboardButton("🤖 AI Menu", callback_data="cmd_ai")],
+        [InlineKeyboardButton(t('ai.btn_models'), callback_data="ai_models")],
+        [InlineKeyboardButton(t('ai.btn_ai_menu'), callback_data="cmd_ai")],
     ])
     await _show(update, context, [text], keyboard=kb)
 
@@ -503,5 +670,5 @@ async def cmd_ai_newchat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     ai_client.clear_history(uid)
     if update.callback_query:
-        await update.callback_query.answer("Chat history cleared")
+        await update.callback_query.answer(t('ai.chat_cleared'))
     await cmd_ai_ask_prompt(update, context)

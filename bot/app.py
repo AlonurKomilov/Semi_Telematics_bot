@@ -15,6 +15,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from permissions import SYSTEM_OWNER_IDS, role_display
 from samsara_client import populate_company_display
+from bot.i18n import t
 
 import bot.config as _cfg
 from bot.config import (
@@ -36,10 +37,11 @@ from bot.admin import (
     cmd_broadcast, cmd_sys_disable_account,
 )
 from bot.callbacks import handle_callback, handle_text
-from bot.alerts import check_new_faults, check_health_alerts, check_low_fuel, initialize_known_faults, check_alert_realerts, deliver_dnd_alerts, check_safety_events
+from bot.alerts import check_new_faults, check_health_alerts, check_low_fuel, initialize_known_faults, check_alert_realerts, deliver_dnd_alerts, check_events
 from bot.auto_reports import send_auto_reports
 from bot.maintenance import check_overdue_maintenance
 from bot.geofences import check_geofence_events
+from bot.events import cmd_events
 import bot.redis_client as rcache
 import encryption
 from bot.auth import _get_user
@@ -89,7 +91,7 @@ async def cmd_audit(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please /start first.")
         return
     if not can(user.role, "can_manage_users"):
-        await update.message.reply_text("⛔ No access.")
+        await update.message.reply_text(t("access.no_access"))
         return
     text = await _render_audit_log(user.account_id, db)
     await _show(update, context, [text], keyboard=back_kb())
@@ -229,6 +231,9 @@ def main():
     app.add_handler(CommandHandler("health", cmd_health))
     app.add_handler(CommandHandler("efficiency", cmd_efficiency))
 
+    # Events
+    app.add_handler(CommandHandler("events", cmd_events))
+
     # Management
     app.add_handler(CommandHandler("invite", cmd_invite))
     app.add_handler(CommandHandler("account", cmd_account))
@@ -291,8 +296,8 @@ def main():
         minutes=5, args=[app], id="geofence_check",
     )
     scheduler.add_job(
-        check_safety_events, "interval",
-        minutes=5, args=[app], id="safety_events_check",
+        check_events, "interval",
+        minutes=5, args=[app], id="events_check",
     )
     scheduler.add_job(
         check_alert_realerts, "interval",

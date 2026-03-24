@@ -2,6 +2,7 @@
 
 from telegram import Update
 from telegram.ext import ContextTypes
+from bot.i18n import t
 
 from database import Role
 from permissions import role_display
@@ -28,23 +29,21 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if sys_owner and not user:
         await _show(update, context, [
             "━━━━━━━━━━━━━━━━━━━\n"
-            "  ℹ️  <b>HELP — System Admin</b>\n"
+            f"  {t('help.sysadmin_title')}\n"
             "━━━━━━━━━━━━━━━━━━━\n"
-            "\n  /admin — Dashboard & analytics\n"
-            "  /accounts — List all accounts\n"
-            "  /broadcast — Message all users\n"
+            f"\n  {t('help.cmd_admin')}\n"
+            f"  {t('help.cmd_accounts')}\n"
+            f"  {t('help.cmd_broadcast')}\n"
         ], keyboard=system_owner_kb())
         return
 
     if not user:
         await _show(update, context, [
             "━━━━━━━━━━━━━━━━━━━\n"
-            "  ℹ️  <b>HELP</b>\n"
+            f"  {t('help.unreg_title')}\n"
             "━━━━━━━━━━━━━━━━━━━\n"
-            "\n  /register <b>Company Name</b>\n"
-            "  Create a new account.\n"
-            "\n  /join <b>XXXX-XXXX</b>\n"
-            "  Join with an invite code.\n"
+            f"\n  {t('help.unreg_register')}\n"
+            f"\n  {t('help.unreg_join')}\n"
         ], keyboard=unregistered_kb())
         return
 
@@ -52,9 +51,9 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     r_display = role_display(user.role)
     lines = [
         "━━━━━━━━━━━━━━━━━━━\n"
-        f"  ℹ️  <b>HELP</b> — {r_display}\n"
+        f"  {t('help.user_title').replace('{account}', r_display)}\n"
         "━━━━━━━━━━━━━━━━━━━\n"
-        "\n  <b>Your available features:</b>\n"
+        f"\n  {t('help.features_label')}\n"
     ]
 
     # Fleet Reports
@@ -68,7 +67,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif perms.can_truck_own:
         report_items.append("🚛 View your truck")
     if report_items:
-        lines.append("\n  <b>📊 Fleet Reports</b>")
+        lines.append(f"\n  {t('help.reports_label')}")
         for item in report_items:
             lines.append(f"  · {item}")
 
@@ -83,7 +82,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if perms.can_geofence_all or perms.can_geofence_own:
         tool_items.append("📍 Geofences")
     if tool_items:
-        lines.append("\n  <b>🛠 Tools</b>")
+        lines.append(f"\n  {t('help.tools_label')}")
         for item in tool_items:
             lines.append(f"  · {item}")
 
@@ -96,7 +95,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if perms.can_maintenance_all or perms.can_maintenance_own:
         cost_items.append("🔧 Maintenance scheduler")
     if cost_items:
-        lines.append("\n  <b>💰 Costs & Maintenance</b>")
+        lines.append(f"\n  {t('help.costs_label')}")
         for item in cost_items:
             lines.append(f"  · {item}")
 
@@ -117,11 +116,11 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if perms.can_manage_account:
         mgmt_items.append("⚙️ Account settings")
     if mgmt_items:
-        lines.append("\n  <b>👥 Management</b>")
+        lines.append(f"\n  {t('help.mgmt_label')}")
         for item in mgmt_items:
             lines.append(f"  · {item}")
 
-    lines.append("\n  Tap a button below or use /start")
+    lines.append(f"\n  {t('help.tap_or_start')}")
 
     company_codes = await get_user_company_codes(user.account_id)
     companies = await db.get_account_companies(user.account_id)
@@ -160,8 +159,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             else:
                 await _show(update, context, [
-                    "❌  Invalid, expired, or already-used invite link.\n"
-                    "Ask your admin for a new one."
+                    f"{t('join.invalid_link')}\n"
+                    f"{t('join.ask_admin')}"
                 ], keyboard=unregistered_kb())
                 return
         elif user:
@@ -183,7 +182,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         companies = await db.get_account_companies(user.account_id)
         populate_company_display(companies)
         text = format_help(company_codes, user=user, account=account)
-        text += "\n\n  ⚙️ <i>System admin: /admin</i>"
+        text += f"\n\n  {t('start.sysadmin_hint')}"
         kb = main_menu_kb(user.role, company_codes)
         await _show(update, context, [text], keyboard=kb)
         return
@@ -211,31 +210,30 @@ async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user, tid, sys_owner = await _get_user(update)
     if user:
         await _show(update, context,
-                    ["⚠️ You're already registered. Use /start to see your menu."],
+                    [t('register.already_registered')],
                     keyboard=back_kb())
         return
 
     # System owner can't register as a customer to keep data clean.
     if sys_owner:
         await _show(update, context, [
-            "⚠️ System owners use /admin to manage the platform.\n"
-            "Customer registration is for business accounts only."
+            t('register.sysadmin_use_admin')
         ], keyboard=system_owner_kb())
         return
 
     if not context.args:
         await _show(update, context, [
-            "ℹ️  Usage:\n\n"
-            "  /register <b>Your Company Name</b>\n\n"
-            "  Example:\n"
-            "  /register Acme Logistics LLC"
+            f"{t('register.usage')}\n\n"
+            f"  {t('register.usage_example_cmd')}\n\n"
+            f"  {t('register.usage_example_label')}\n"
+            f"  {t('register.usage_example_value')}"
         ])
         return
 
     company_name = " ".join(context.args)
     if len(company_name) < 2 or len(company_name) > 100:
         await _show(update, context,
-                    ["⚠️ Company name must be 2–100 characters."])
+                    [t('register.name_invalid')])
         return
 
     try:
@@ -261,7 +259,7 @@ async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"Registration error: {e}", exc_info=True)
-        await _show(update, context, [f"❌ Registration failed: {e}"])
+        await _show(update, context, [f"{t('register.failed').replace('{error}', str(e))}"])
 
 
 async def cmd_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -270,16 +268,15 @@ async def cmd_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user:
         account = await db.get_account(user.account_id)
         await _show(update, context, [
-            f"⚠️ You're already a member of <b>{account.name}</b>.\n"
-            f"Use /start to see your menu."
+            t('join.already_member').replace('{account}', account.name)
         ], keyboard=back_kb())
         return
 
     if not context.args:
         await _show(update, context, [
-            "ℹ️  Usage:\n\n"
-            "  /join <b>XXXX-XXXX</b>\n\n"
-            "  Get the code from your admin."
+            f"{t('join.usage')}\n\n"
+            f"  {t('join.usage_cmd')}\n\n"
+            f"  {t('join.usage_note')}"
         ])
         return
 
@@ -289,8 +286,8 @@ async def cmd_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not new_user:
         await _show(update, context, [
-            "❌  Invalid, expired, or already-used invite code.\n"
-            "Ask your admin for a new one."
+            f"{t('join.invalid_code')}\n"
+            f"{t('join.ask_admin')}"
         ])
         return
 

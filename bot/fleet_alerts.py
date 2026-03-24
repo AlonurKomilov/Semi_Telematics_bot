@@ -1,6 +1,7 @@
 """Fleet alert commands — alert settings, toggle, disable, history, pending."""
 
 from datetime import datetime, timezone
+from bot.i18n import t
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -22,7 +23,7 @@ async def cmd_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = context.user_data["_db_user"]
     if not can(user.role, "can_alerts_all") and not can(user.role, "can_alerts_own"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     company_codes = await get_user_company_codes(user.account_id)
@@ -33,15 +34,16 @@ async def cmd_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = await db.get_user_by_telegram_id(user.telegram_id)
         context.user_data["_db_user"] = user
 
+    sep = t("alert_format.separator")
     text = (
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "  🔔  <b>ALERT SETTINGS</b>\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
+        f"{sep}\n"
+        f"  {t('alert_settings.header')}\n"
+        f"{sep}\n"
         "\n"
-        f"  Checking every {ALERT_INTERVAL} min\n"
-        f"  across {len(company_codes)} {'companies' if len(company_codes) != 1 else 'company'}.\n"
+        f"  {t('alert_settings.check_interval').format(minutes=ALERT_INTERVAL)}\n"
+        f"  {t('alert_settings.company_count').format(count=len(company_codes))}\n"
         "\n"
-        "  Tap a category to toggle it:"
+        f"  {t('alert_settings.tap_toggle')}"
     )
     kb = alert_settings_kb(user)
     await _show(update, context, [text], keyboard=kb)
@@ -54,7 +56,7 @@ async def cmd_alert_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not can(user.role, "can_alerts_all") and not can(user.role, "can_alerts_own"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     col = f"alert_{alert_type}"
@@ -68,6 +70,27 @@ async def cmd_alert_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
 
 @_require_registered
+async def cmd_ai_alert_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                              ai_type: str):
+    """Toggle proactive AI for a specific alert type and refresh settings."""
+    user = context.user_data["_db_user"]
+    if not can(user.role, "can_alerts_all") and not can(user.role, "can_alerts_own"):
+        if update.callback_query:
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
+        return
+
+    col = f"ai_{ai_type}"
+    current = getattr(user, col, False)
+    await db.update_user(user.id, **{col: not current})
+    user = await db.get_user_by_telegram_id(user.telegram_id)
+    context.user_data["_db_user"] = user
+
+    # Re-show the AI onalerts screen
+    from bot.ai import cmd_ai_alerts
+    await cmd_ai_alerts(update, context)
+
+
+@_require_registered
 async def cmd_alert_disable_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Turn off all alerts (sets alerts_on = 0)."""
     user = context.user_data["_db_user"]
@@ -76,13 +99,14 @@ async def cmd_alert_disable_all(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data["_db_user"] = user
 
     company_codes = await get_user_company_codes(user.account_id)
+    sep = t("alert_format.separator")
     text = (
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "  🔕  <b>ALERTS OFF</b>\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
+        f"{sep}\n"
+        f"  {t('alerts.disabled_title')}\n"
+        f"{sep}\n"
         "\n"
-        "  All auto-notifications disabled.\n"
-        "  Tap 🔔 Alerts to re-enable."
+        f"  {t('alerts.disabled_msg')}\n"
+        f"  {t('alerts.disabled_hint')}"
     )
     kb = main_menu_kb(user.role, company_codes)
     await _show(update, context, [text], keyboard=kb)
@@ -94,23 +118,25 @@ async def cmd_alert_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = context.user_data["_db_user"]
     if not can(user.role, "can_alerts_all") and not can(user.role, "can_alerts_own"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     history = await db.get_alert_history(user.account_id, limit=20)
     if not history:
+        sep = t("alert_format.separator")
         text = (
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "  📜  <b>ALERT HISTORY</b>\n"
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "\n  No alert history yet."
+            f"{sep}\n"
+            f"  {t('alerts.history_title')}\n"
+            f"{sep}\n"
+            f"\n  {t('alerts.history_empty')}"
         )
     else:
+        sep = t("alert_format.separator")
         lines = [
-            "━━━━━━━━━━━━━━━━━━━",
-            "  📜  <b>ALERT HISTORY</b>",
-            "━━━━━━━━━━━━━━━━━━━",
-            f"\n  Last {len(history)} alerts:\n",
+            sep,
+            f"  {t('alerts.history_title')}",
+            sep,
+            f"\n  {t('alerts.history_last').format(count=len(history))}\n",
         ]
         for a in history:
             ts = a["created_at"][:16].replace("T", " ")
@@ -122,22 +148,22 @@ async def cmd_alert_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             line = f"  {status_icon} <b>{truck}</b> — {atype}"
             if esc_level > 0:
-                line += f" (esc: {esc_level})"
+                line += f" {t('alerts.history_escalation').format(level=esc_level)}"
             line += f"\n     <code>{ts}</code>"
 
             if status == "acknowledged" and a.get("acknowledged_at"):
                 ack_ts = a["acknowledged_at"][:16].replace("T", " ")
-                line += f" → acked {ack_ts}"
+                line += f" {t('alerts.history_acked').format(time=ack_ts)}"
             elif status == "expired":
-                line += " → expired"
+                line += f" {t('alerts.history_expired_label')}"
 
             lines.append(line)
 
         text = "\n".join(lines)
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔔 Alert Settings", callback_data="cmd_alerts")],
-        [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
+        [InlineKeyboardButton(t("alerts.history_btn_settings"), callback_data="cmd_alerts")],
+        [InlineKeyboardButton(t("menu.back_main"), callback_data="cmd_menu")],
     ])
     await _show(update, context, [text], keyboard=kb)
 
@@ -148,29 +174,30 @@ async def cmd_pending_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user = context.user_data["_db_user"]
     if not can(user.role, "can_alerts_all") and not can(user.role, "can_alerts_own"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     pending = await db.get_pending_alerts(user.account_id)
     if not pending:
+        sep = t("alert_format.separator")
         text = (
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "  ✅  <b>NO PENDING ALERTS</b>\n"
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "\n  All alerts have been acknowledged\n"
-            "  or expired. No action needed."
+            f"{sep}\n"
+            f"  {t('alerts.no_pending_title')}\n"
+            f"{sep}\n"
+            f"\n  {t('alerts.no_pending_msg')}"
         )
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📜 Alert History", callback_data="cmd_alert_history")],
-            [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
+            [InlineKeyboardButton(t("alerts.history_btn"), callback_data="cmd_alert_history")],
+            [InlineKeyboardButton(t("menu.back_main"), callback_data="cmd_menu")],
         ])
     else:
         now = datetime.now(timezone.utc)
+        sep = t("alert_format.separator")
         lines = [
-            "━━━━━━━━━━━━━━━━━━━",
-            "  🔴  <b>PENDING ALERTS</b>",
-            "━━━━━━━━━━━━━━━━━━━",
-            f"\n  {len(pending)} unacknowledged alert{'s' if len(pending) != 1 else ''}:\n",
+            sep,
+            f"  {t('alerts.pending_title')}",
+            sep,
+            f"\n  {t('alerts.pending_count').format(count=len(pending))}\n",
         ]
         ack_buttons = []
         for a in pending[:10]:
@@ -180,19 +207,19 @@ async def cmd_pending_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE)
             atype = a.get("alert_type", "fault")
             lines.append(
                 f"  🚛 <b>{truck}</b> — {atype}\n"
-                f"     {mins_ago} min ago • escalation: {esc}"
+                f"     {t('alerts.pending_detail').format(mins=mins_ago, level=esc)}"
             )
             ack_buttons.append([InlineKeyboardButton(
-                f"✅ Ack {truck}",
+                t("alerts.ack_btn").format(label=truck),
                 callback_data=f"ack_alert_{a['id']}"
             )])
 
         if len(pending) > 10:
-            lines.append(f"\n  <i>… and {len(pending) - 10} more</i>")
+            lines.append(f"\n  <i>{t('alerts.pending_more').format(count=len(pending) - 10)}</i>")
 
         text = "\n".join(lines)
-        ack_buttons.append([InlineKeyboardButton("📜 Alert History", callback_data="cmd_alert_history")])
-        ack_buttons.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
+        ack_buttons.append([InlineKeyboardButton(t("alerts.history_btn"), callback_data="cmd_alert_history")])
+        ack_buttons.append([InlineKeyboardButton(t("menu.back_main"), callback_data="cmd_menu")])
         kb = InlineKeyboardMarkup(ack_buttons)
 
     await _show(update, context, [text], keyboard=kb)

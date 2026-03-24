@@ -400,6 +400,24 @@ def estimate_request_cost(model: str) -> float:
 DEFAULT_MODEL = "gemini-2.5-flash"
 DEFAULT_LOCATION = "us-central1"
 
+# ── Fallback Model Chain ─────────────────────────────────────────
+#
+# Ranked by quality (best first). When the primary model fails with
+# 429/ResourceExhausted, we walk down this list trying each one.
+# Uses diverse API backends to maximize chance that at least one
+# has available quota.  The chain intentionally spans Gemini, MaaS,
+# and Anthropic endpoints.
+_FALLBACK_CHAIN: list[str] = [
+    "gemini-2.5-flash",          # Gemini (primary default)
+    "gemini-2.5-pro",            # Gemini (different quota pool)
+    "deepseek-v3.2",             # MaaS — fast, different backend
+    "llama-4-maverick",          # MaaS — strong, different region
+    "qwen3-next",                # MaaS — cheap, global
+    "llama-3.3",                 # MaaS — reliable fallback
+    "glm-4.7",                   # MaaS — cheap global fallback
+    "gemini-3.1-flash-lite-preview",  # Gemini preview — last resort
+]
+
 
 # ── Live Availability Cache ──────────────────────────────────────
 #
@@ -1216,10 +1234,86 @@ Rules:
 
 # ── Core Generation ──────────────────────────────────────────────
 
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """Return True if the exception is a 429 / ResourceExhausted error."""
+    s = str(exc).lower()
+    return '429' in s or 'resource exhausted' in s
+
+
+async def _generate_with_model(
+    model_name: str,
+    location: str,
+    system: str,
+    user_content: str,
+) -> str:
+    """Run a single generation attempt with a specific model (no retries).
+
+    Returns the response text on success, raises on failure.
+    Used by the fallback chain — each model gets exactly one shot.
+    """
+    info = MODEL_REGISTRY.get(model_name)
+    if not info:
+        raise ValueError(f"Unknown model: {model_name}")
+
+    if _is_openai_compat(model_name):
+        api_type = info.get("api_type", "openai_compat")
+        loc = location or info["locations"][0]
+        max_tokens = min(info.get("max_output_tokens", 4096), 8192)
+
+        if api_type == "anthropic":
+            text, usage = await _generate_anthropic(
+                info["anthropic_model_id"], loc,
+                system, user_content, max_tokens,
+            )
+        elif api_type == "mistral_raw":
+            text, usage = await _generate_mistral_raw(
+                info["mistral_model_id"],
+                info.get("mistral_publisher", "mistralai"),
+                loc, system, user_content, max_tokens,
+            )
+        else:
+            text, usage = await _generate_openai_compat(
+                info["maas_model_id"], loc,
+                system, user_content, max_tokens,
+            )
+        if usage:
+            global _last_usage
+            _last_usage = usage
+    else:
+        # Gemini SDK
+        loc = location or info["locations"][0]
+        model_obj = _build_model(model_name, loc, info)
+        full_prompt = system + "\n\n" + user_content
+        response = await asyncio.to_thread(
+            model_obj.generate_content, full_prompt
+        )
+        if not response.candidates:
+            raise RuntimeError("Gemini response blocked")
+        candidate = response.candidates[0]
+        if candidate.finish_reason and candidate.finish_reason.name == "SAFETY":
+            raise RuntimeError("Gemini safety filter blocked")
+        try:
+            text = response.text.strip()
+        except ValueError:
+            parts = getattr(getattr(candidate, 'content', None), 'parts', [])
+            text = ''.join(getattr(p, 'text', '') for p in parts).strip()
+        _capture_usage(response)
+
+    if not text:
+        raise RuntimeError("Empty response from model")
+
+    # Clean up markdown
+    text = text.replace("**", "").replace("##", "").replace("# ", "")
+    import re
+    text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
+    return text
+
+
 async def generate(prompt: str, system: str = FLEET_ASSISTANT_SYSTEM,
                    context_data: dict | str | None = None,
                    user_id: int | None = None,
-                   account_id: int | None = None) -> str:
+                   account_id: int | None = None,
+                   language: str = "en") -> str:
     """Generate a response from Vertex AI (Gemini or MaaS models).
 
     Args:
@@ -1228,11 +1322,18 @@ async def generate(prompt: str, system: str = FLEET_ASSISTANT_SYSTEM,
         context_data: Fleet data to include as context (dict → JSON).
         user_id: Telegram user ID for conversation memory.
         account_id: Account ID for per-account model selection.
+        language: Target response language code (e.g. "es", "ru").
 
     Returns:
         The AI-generated text.
     """
     import asyncio
+
+    # Inject language instruction if not English
+    if language and language != "en":
+        from bot.i18n import LANGUAGE_NAMES
+        lang_name = LANGUAGE_NAMES.get(language, language)
+        system = system + f"\n\nIMPORTANT: You MUST respond in {lang_name}. All your output text must be in {lang_name}."
 
     # Resolve which model + location to use
     if account_id is not None and account_id in _account_models:
@@ -1429,6 +1530,94 @@ async def generate(prompt: str, system: str = FLEET_ASSISTANT_SYSTEM,
     raise last_exc  # type: ignore[misc]
 
 
+# Wrap the core generate() with fallback — the callers (bot/ai.py etc.)
+# call generate() which now handles fallback internally.
+_original_generate = generate
+
+
+async def generate(prompt: str, system: str = FLEET_ASSISTANT_SYSTEM,
+                   context_data: dict | str | None = None,
+                   user_id: int | None = None,
+                   account_id: int | None = None,
+                   language: str = "en") -> str:
+    """Generate with automatic fallback to alternative models on 429.
+
+    Tries the user's selected model first (via _original_generate).
+    If it fails with 429/ResourceExhausted, walks the _FALLBACK_CHAIN
+    trying each model once until one succeeds.
+    """
+    import asyncio
+
+    _saved_exc: Exception | None = None
+    try:
+        return await _original_generate(
+            prompt, system=system, context_data=context_data,
+            user_id=user_id, account_id=account_id,
+            language=language,
+        )
+    except Exception as primary_exc:
+        if not _is_rate_limit_error(primary_exc):
+            raise  # Not a quota issue — don't fallback
+        _saved_exc = primary_exc  # Save before Python deletes the as-variable
+
+    # Primary model exhausted — try fallback chain
+    # Determine which model just failed so we skip it
+    if account_id is not None and account_id in _account_models:
+        failed_model = _account_models[account_id][0]
+    else:
+        failed_model = get_current_model_name()
+
+    # Build user_content the same way generate() does
+    user_parts = []
+    if context_data:
+        if isinstance(context_data, dict):
+            data_str = json.dumps(context_data, separators=(',', ':'), default=str)
+        else:
+            data_str = str(context_data)
+        if len(data_str) > 30000:
+            data_str = data_str[:30000] + "\n... (truncated)"
+        user_parts.append(f"Fleet data:\n```\n{data_str}\n```\n\n")
+    if user_id and user_id in _chat_histories:
+        history = _chat_histories[user_id]
+        user_parts.append("Previous conversation:\n")
+        for entry in history:
+            user_parts.append(f"{entry['role']}: {entry['text']}\n")
+        user_parts.append("\n")
+    user_parts.append(f"User question: {prompt}")
+    user_content = "".join(user_parts)
+
+    last_exc = _saved_exc
+    for fb_model in _FALLBACK_CHAIN:
+        if fb_model == failed_model:
+            continue  # Skip the model that just failed
+        info = MODEL_REGISTRY.get(fb_model)
+        if not info:
+            continue
+        fb_location = info["locations"][0]
+        try:
+            logger.info(f"Fallback: trying {fb_model} after {failed_model} quota exceeded")
+            text = await _generate_with_model(
+                fb_model, fb_location, system, user_content,
+            )
+            # Success — store history/cache and return
+            if user_id is not None:
+                _store_history(user_id, prompt, text)
+            logger.info(f"Fallback succeeded with {fb_model}")
+            return text
+        except Exception as fb_exc:
+            last_exc = fb_exc
+            if _is_rate_limit_error(fb_exc):
+                logger.warning(f"Fallback {fb_model} also rate-limited, trying next")
+                continue
+            else:
+                logger.error(f"Fallback {fb_model} failed (non-429): {fb_exc}")
+                continue  # Try next model even for non-429 errors
+
+    # All fallbacks exhausted
+    logger.error(f"All fallback models exhausted after {failed_model} failed")
+    raise last_exc
+
+
 def _capture_usage(response):
     """Extract token usage metadata from a Vertex AI response."""
     global _last_usage
@@ -1476,7 +1665,8 @@ def clear_history(user_id: int):
 async def diagnose_faults(vehicle_name: str,
                           dtcs: list[dict],
                           lights: dict | None = None,
-                          account_id: int | None = None) -> str:
+                          account_id: int | None = None,
+                          language: str = "en") -> str:
     """AI-powered fault code diagnosis for a specific vehicle.
 
     Args:
@@ -1509,11 +1699,13 @@ async def diagnose_faults(vehicle_name: str,
         f"There are {len(dtcs)} active fault code(s)."
     )
     return await generate(prompt, system=FAULT_DIAGNOSIS_SYSTEM,
-                          context_data=context, account_id=account_id)
+                          context_data=context, account_id=account_id,
+                          language=language)
 
 
 async def fleet_summary(fleet_data: dict,
-                        account_id: int | None = None) -> str:
+                        account_id: int | None = None,
+                        language: str = "en") -> str:
     """Generate an AI executive summary of fleet status.
 
     Args:
@@ -1525,12 +1717,14 @@ async def fleet_summary(fleet_data: dict,
     """
     prompt = "Generate a morning fleet status briefing from this data."
     return await generate(prompt, system=FLEET_SUMMARY_SYSTEM,
-                          context_data=fleet_data, account_id=account_id)
+                          context_data=fleet_data, account_id=account_id,
+                          language=language)
 
 
 async def ask_fleet(question: str, fleet_context: dict,
                     user_id: int | None = None,
-                    account_id: int | None = None) -> str:
+                    account_id: int | None = None,
+                    language: str = "en") -> str:
     """Answer a natural-language question about the fleet.
 
     Args:
@@ -1544,7 +1738,7 @@ async def ask_fleet(question: str, fleet_context: dict,
     """
     return await generate(question, system=FLEET_ASSISTANT_SYSTEM,
                           context_data=fleet_context, user_id=user_id,
-                          account_id=account_id)
+                          account_id=account_id, language=language)
 
 
 # ── Function-Calling Agent ───────────────────────────────────────

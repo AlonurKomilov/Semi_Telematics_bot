@@ -551,10 +551,13 @@ class TestReAlertConfig:
         labels = [b.text for r in kb.inline_keyboard for b in r]
         callbacks = [b.callback_data for r in kb.inline_keyboard for b in r]
         assert "✅ Acknowledge" in labels
-        assert f"⏰ Snooze {SNOOZE_MINUTES} min" in labels
+        assert "⏰ Snooze" in labels
         assert "🤖 AI Diagnose" in labels
         assert "📋 View Truck #101" in labels
         assert "ack_alert_42" in callbacks
+        assert "snooze_pick_42" in callbacks
+        # Default alert_type is "fault", ack_id appended
+        assert "ai_diag_fault_CO1_101:42" in callbacks
 
     def test_build_keyboard_warning_with_ack(self):
         from bot.alerts import build_alert_keyboard, AlertSeverity
@@ -562,6 +565,24 @@ class TestReAlertConfig:
         labels = [b.text for r in kb.inline_keyboard for b in r]
         assert "✅ Acknowledge" in labels
         assert "🤖 AI Diagnose" in labels
+
+    def test_build_keyboard_health_type(self):
+        from bot.alerts import build_alert_keyboard, AlertSeverity
+        kb = build_alert_keyboard(
+            AlertSeverity.WARNING, "CO1", "303", ack_id=10,
+            alert_type="health",
+        )
+        callbacks = [b.callback_data for r in kb.inline_keyboard for b in r]
+        assert "ai_diag_health_CO1_303:10" in callbacks
+
+    def test_build_keyboard_fuel_type(self):
+        from bot.alerts import build_alert_keyboard, AlertSeverity
+        kb = build_alert_keyboard(
+            AlertSeverity.CRITICAL, "CO1", "404", ack_id=20,
+            alert_type="fuel",
+        )
+        callbacks = [b.callback_data for r in kb.inline_keyboard for b in r]
+        assert "ai_diag_fuel_CO1_404:20" in callbacks
 
     def test_build_keyboard_critical_no_ack(self):
         from bot.alerts import build_alert_keyboard, AlertSeverity
@@ -582,12 +603,15 @@ class TestReAlertConfig:
 
     def test_build_keyboard_has_samsara_link(self):
         from bot.alerts import build_alert_keyboard, AlertSeverity
-        kb = build_alert_keyboard(AlertSeverity.CRITICAL, "CO1", "101", ack_id=1,
-                                  samsara_url="https://cloud.samsara.com/o/123/devices/12345/vehicle")
-        urls = [b.url for r in kb.inline_keyboard for b in r if b.url]
-        labels = [b.text for r in kb.inline_keyboard for b in r if b.url]
-        assert any("cloud.samsara.com" in u for u in urls)
-        assert "🔗 Open in Samsara" in labels
+        from samsara_client import ORG_IDS
+        ORG_IDS["CO1"] = "123"
+        try:
+            kb = build_alert_keyboard(AlertSeverity.CRITICAL, "CO1", "101", ack_id=1,
+                                      vehicle_id="12345")
+            urls = [b.url for r in kb.inline_keyboard for b in r if b.url]
+            assert any("cloud.samsara.com" in u for u in urls)
+        finally:
+            ORG_IDS.pop("CO1", None)
 
     def test_build_keyboard_no_samsara_link_without_id(self):
         from bot.alerts import build_alert_keyboard, AlertSeverity
@@ -613,6 +637,104 @@ class TestReAlertConfig:
         assert "low_battery" in _WARNING_HEALTH
         assert "low_def" in _WARNING_HEALTH
         assert "coolant_dtc" in _WARNING_HEALTH
+
+
+# ══════════════════════════════════════════════════════════════════
+# OPEN IN SAMSARA — deep-link buttons on alerts
+# ══════════════════════════════════════════════════════════════════
+
+class TestSamsaraDeepLinks:
+    """Tests for samsara_vehicle_url helper and alert keyboard URL button."""
+
+    def test_url_builder_fault(self):
+        from samsara_client import samsara_vehicle_url
+        url = samsara_vehicle_url("12345", "v999", "fault",
+                                  dashboard_base="https://cloud.samsara.com")
+        assert url == "https://cloud.samsara.com/o/12345/devices/v999/vehicle"
+
+    def test_url_builder_health(self):
+        from samsara_client import samsara_vehicle_url
+        url = samsara_vehicle_url("12345", "v999", "health",
+                                  dashboard_base="https://cloud.samsara.com")
+        assert url == "https://cloud.samsara.com/o/12345/devices/v999/vehicle"
+
+    def test_url_builder_fuel(self):
+        from samsara_client import samsara_vehicle_url
+        url = samsara_vehicle_url("12345", "v999", "fuel",
+                                  dashboard_base="https://cloud.samsara.com")
+        assert url == "https://cloud.samsara.com/o/12345/devices/v999/vehicle"
+
+    def test_url_builder_events(self):
+        from samsara_client import samsara_vehicle_url
+        url = samsara_vehicle_url("12345", "v999", "events",
+                                  dashboard_base="https://cloud.samsara.com")
+        assert url == "https://cloud.samsara.com/o/12345/devices/v999/vehicle"
+
+    def test_url_builder_unknown_type_fallback(self):
+        from samsara_client import samsara_vehicle_url
+        url = samsara_vehicle_url("12345", "v999", "unknown_type",
+                                  dashboard_base="https://cloud.samsara.com")
+        assert url == "https://cloud.samsara.com/o/12345/devices/v999/vehicle"
+
+    def test_url_builder_no_org_returns_none(self):
+        from samsara_client import samsara_vehicle_url
+        assert samsara_vehicle_url("", "v999", "fault") is None
+        assert samsara_vehicle_url("", "v999", "health") is None
+
+    def test_keyboard_includes_url_button_when_org_known(self):
+        from bot.alerts import build_alert_keyboard, AlertSeverity
+        import samsara_client
+        samsara_client.ORG_IDS["TEST"] = "org123"
+        try:
+            kb = build_alert_keyboard(
+                AlertSeverity.CRITICAL, "TEST", "T100",
+                ack_id=1, alert_type="fault", vehicle_id="v555",
+            )
+            urls = [b.url for r in kb.inline_keyboard for b in r if b.url]
+            assert any("org123" in u and "v555" in u for u in urls)
+            labels = [b.text for r in kb.inline_keyboard for b in r]
+            assert any("Samsara" in lbl for lbl in labels)
+        finally:
+            samsara_client.ORG_IDS.pop("TEST", None)
+
+    def test_keyboard_no_url_button_when_org_unknown(self):
+        from bot.alerts import build_alert_keyboard, AlertSeverity
+        import samsara_client
+        samsara_client.ORG_IDS.pop("NOPE", None)
+        kb = build_alert_keyboard(
+            AlertSeverity.CRITICAL, "NOPE", "T100",
+            ack_id=1, alert_type="fault", vehicle_id="v555",
+        )
+        urls = [b.url for r in kb.inline_keyboard for b in r if b.url]
+        assert len(urls) == 0
+
+    def test_keyboard_info_severity_with_url(self):
+        from bot.alerts import build_alert_keyboard, AlertSeverity
+        import samsara_client
+        samsara_client.ORG_IDS["CO2"] = "org456"
+        try:
+            kb = build_alert_keyboard(
+                AlertSeverity.INFO, "CO2", "T200",
+                alert_type="events", vehicle_id="v777",
+            )
+            urls = [b.url for r in kb.inline_keyboard for b in r if b.url]
+            assert len(urls) == 1
+            assert "/devices/" in urls[0]
+            labels = [b.text for r in kb.inline_keyboard for b in r]
+            # INFO → no ACK, no AI Diagnose, but should have URL + View Truck + Menu
+            assert "✅ Acknowledge" not in labels
+            assert "🤖 AI Diagnose" not in labels
+        finally:
+            samsara_client.ORG_IDS.pop("CO2", None)
+
+    def test_org_ids_dict_exists(self):
+        from samsara_client import ORG_IDS
+        assert isinstance(ORG_IDS, dict)
+
+    def test_dashboard_url_config(self):
+        from bot.config import SAMSARA_DASHBOARD_URL
+        assert "cloud" in SAMSARA_DASHBOARD_URL
+        assert "samsara.com" in SAMSARA_DASHBOARD_URL
 
 
 # ══════════════════════════════════════════════════════════════════

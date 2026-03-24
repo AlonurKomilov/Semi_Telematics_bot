@@ -2,6 +2,7 @@
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
+from bot.i18n import t
 
 from database import Role
 from permissions import can, role_display, role_emoji
@@ -42,7 +43,7 @@ async def cmd_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
         rows.append([InlineKeyboardButton(label, callback_data=f"comenu_{co.code}")])
     # General actions
     if can(user.role, "can_manage_companies"):
-        rows.append([InlineKeyboardButton("➕ Add Company", callback_data="cmd_addcompany_prompt")])
+        rows.append([InlineKeyboardButton(t('company.add_btn'), callback_data="cmd_addcompany_prompt")])
     rows.append([InlineKeyboardButton("◀️ Back", callback_data="submenu_mgmt")])
 
     await _show(update, context, [text], keyboard=InlineKeyboardMarkup(rows))
@@ -54,7 +55,7 @@ async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = context.user_data["_db_user"]
     if not can(user.role, "can_invite"):
         await _show(update, context,
-                    ["⛔ Only owners and admins can invite users."],
+                    [t('access.admin_only')],
                     keyboard=back_kb())
         return
 
@@ -73,9 +74,9 @@ async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")],
         ])
         await _show(update, context, [
-            "✉️ <b>Invite Team Member</b>\n\n"
-            "Select the role for the new member:\n\n"
-            "<i>Or use: /invite role [dept] [truck#]</i>"
+            f"{t('invite.title')}\n\n"
+            f"{t('invite.select_role')}\n\n"
+            f"{t('invite.or_use_cmd')}"
         ], keyboard=kb)
         return
 
@@ -88,7 +89,7 @@ async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
         invite_role = Role.from_str(role_str)
     except ValueError:
         await _show(update, context, [
-            f"❌ Unknown role: <code>{role_str}</code>\n\n"
+            f"{t('invite.unknown_role').replace('{role}', role_str)}\n\n"
             "Valid roles: admin, fleet_manager, dispatcher, driver"
         ], keyboard=back_kb())
         return
@@ -97,14 +98,14 @@ async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
     role_order = [Role.OWNER, Role.ADMIN, Role.FLEET_MGR, Role.DISPATCHER, Role.DRIVER]
     if role_order.index(invite_role) < role_order.index(user.role):
         await _show(update, context,
-                    ["⛔ You can't invite someone with a higher role than yours."],
+                    [t('access.cant_invite_higher')],
                     keyboard=back_kb())
         return
 
     # Owner can only be set, not invited
     if invite_role == Role.OWNER:
         await _show(update, context,
-                    ["⛔ Owner role can't be assigned via invite. Use /setrole instead."],
+                    [t('access.owner_via_invite')],
                     keyboard=back_kb())
         return
 
@@ -135,7 +136,7 @@ async def cmd_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = context.user_data["_db_user"]
     if not can(user.role, "can_manage_users"):
         await _show(update, context,
-                    ["⛔ Only owners and admins can manage users."],
+                    [t('access.admin_only')],
                     keyboard=back_kb())
         return
 
@@ -169,13 +170,13 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = context.user_data["_db_user"]
     if not can(user.role, "can_manage_users"):
         await _show(update, context,
-                    ["⛔ Only owners and admins can change roles."],
+                    [t('access.admin_only')],
                     keyboard=back_kb())
         return
 
     if len(context.args or []) < 2:
         await _show(update, context, [
-            "ℹ️  Usage:\n"
+            f"{t('user_mgmt.setrole_usage')}\n"
             "  /setrole <b>telegram_id</b> <b>role</b>\n\n"
             "  Example:\n"
             "  /setrole 123456789 fleet_manager"
@@ -187,27 +188,27 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_role = Role.from_str(context.args[1])
     except (ValueError, IndexError):
         await _show(update, context,
-                    ["❌ Invalid telegram ID or role."],
+                    [t('user_mgmt.role_invalid')],
                     keyboard=back_kb())
         return
 
     target_user = await db.get_user_by_telegram_id(target_tid)
     if not target_user or target_user.account_id != user.account_id:
         await _show(update, context,
-                    ["❌ User not found in your account."],
+                    [t('user_mgmt.user_not_found')],
                     keyboard=back_kb())
         return
 
     # Only owner can promote to owner
     if new_role == Role.OWNER and user.role != Role.OWNER:
         await _show(update, context,
-                    ["⛔ Only owners can promote to owner."],
+                    [t('access.cant_promote_owner')],
                     keyboard=back_kb())
         return
 
     await db.update_user(target_user.id, role=new_role)
     await _show(update, context, [
-        f"✅ Updated {target_user.label} → {role_display(new_role)}"
+        t('user_mgmt.role_updated').replace('{user}', target_user.label).replace('{role}', role_display(new_role))
     ], keyboard=back_kb())
 
 
@@ -217,13 +218,13 @@ async def cmd_remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = context.user_data["_db_user"]
     if not can(user.role, "can_manage_users"):
         await _show(update, context,
-                    ["⛔ Only owners and admins can remove users."],
+                    [t('access.admin_remove')],
                     keyboard=back_kb())
         return
 
     if not context.args:
         await _show(update, context, [
-            "ℹ️  Usage:  /remove <b>telegram_id</b>"
+            t('user_mgmt.remove_usage')
         ], keyboard=back_kb())
         return
 
@@ -231,26 +232,26 @@ async def cmd_remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_tid = int(context.args[0])
     except ValueError:
         await _show(update, context,
-                    ["❌ Invalid telegram ID."],
+                    [t('user_mgmt.invalid_id')],
                     keyboard=back_kb())
         return
 
     if target_tid == user.telegram_id:
         await _show(update, context,
-                    ["⚠️ You can't remove yourself."],
+                    [t('access.cant_self_remove')],
                     keyboard=back_kb())
         return
 
     target_user = await db.get_user_by_telegram_id(target_tid)
     if not target_user or target_user.account_id != user.account_id:
         await _show(update, context,
-                    ["❌ User not found in your account."],
+                    [t('user_mgmt.user_not_found')],
                     keyboard=back_kb())
         return
 
     await db.remove_user(target_user.id)
     await _show(update, context, [
-        f"✅ Removed {target_user.label} from your account."
+        t('user_mgmt.user_removed').replace('{user}', target_user.label)
     ], keyboard=back_kb())
 
 
@@ -260,13 +261,13 @@ async def cmd_addcompany(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = context.user_data["_db_user"]
     if not can(user.role, "can_manage_companies"):
         await _show(update, context,
-                    ["⛔ Only owners can manage companies."],
+                    [t('access.owner_only')],
                     keyboard=back_kb())
         return
 
     if not context.args:
         await _show(update, context, [
-            "ℹ️  <b>Add Company:</b>\n\n"
+            f"{t('company.add_prompt')}\n\n"
             "  /addcompany <b>CODE:samsara_api_key</b>\n\n"
             "  Example:\n"
             "  /addcompany PTG:samsara_api_Cuuvx5LCti...\n\n"
@@ -279,7 +280,7 @@ async def cmd_addcompany(update: Update, context: ContextTypes.DEFAULT_TYPE):
     first_arg = context.args[0]
     if ":" not in first_arg:
         await _show(update, context,
-                    ["❌ Format: CODE:api_key\nExample: PTG:samsara_api_xxx"],
+                    [t('company.format_error')],
                     keyboard=back_kb())
         return
 
@@ -291,14 +292,14 @@ async def cmd_addcompany(update: Update, context: ContextTypes.DEFAULT_TYPE):
     existing = await db.get_company_by_code(user.account_id, code)
     if existing:
         await _show(update, context,
-                    [f"⚠️ Company <b>{code}</b> already exists in your account."],
+                    [t('company.already_exists').replace('{name}', code)],
                     keyboard=back_kb())
         return
 
     try:
         # Test the API key — fetch total vehicles, then active (30-day filter)
         test_client = SamsaraClient(api_key, SAMSARA_BASE_URL, active_days=0)
-        await _show_loading(update, context, f"⏳ Testing connection to {code}…")
+        await _show_loading(update, context, t('company.testing').replace('{code}', code))
         total_trucks = None
         active_trucks = None
         try:
@@ -351,7 +352,7 @@ async def cmd_removecompany(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = context.user_data["_db_user"]
     if not can(user.role, "can_manage_companies"):
         await _show(update, context,
-                    ["⛔ Only owners can manage companies."],
+                    [t('access.owner_only')],
                     keyboard=back_kb())
         return
 
@@ -365,7 +366,7 @@ async def cmd_removecompany(update: Update, context: ContextTypes.DEFAULT_TYPE):
     company = await db.get_company_by_code(user.account_id, code)
     if not company:
         await _show(update, context,
-                    [f"❌ Company <b>{code}</b> not found."],
+                    [t('company.not_found_code').replace('{code}', code)],
                     keyboard=back_kb())
         return
 
@@ -376,7 +377,7 @@ async def cmd_removecompany(update: Update, context: ContextTypes.DEFAULT_TYPE):
     populate_company_display(companies)
 
     await _show(update, context,
-                [f"✅ Company <b>{code}</b> removed."],
+                [t('company.removed').replace('{name}', code)],
                 keyboard=back_kb())
 
 
@@ -390,13 +391,13 @@ async def cmd_addgroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = context.user_data["_db_user"]
     if not user.is_admin_or_above:
         await _show(update, context,
-                    ["⛔ Only owners and admins can manage group access."],
+                    [t('access.admin_groups')],
                     keyboard=back_kb())
         return
 
     if not context.args:
         await _show(update, context, [
-            "ℹ️  <b>Authorize Group / Channel</b>\n\n"
+            f"{t('groups.add_prompt')}\n\n"
             "  /addgroup <b>chat_id</b> [title]\n\n"
             "  <b>How to get the chat ID:</b>\n"
             "  1. Add the bot to the group\n"
@@ -411,7 +412,7 @@ async def cmd_addgroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = int(context.args[0])
     except ValueError:
         await _show(update, context,
-                    ["❌ Invalid chat ID. Must be a number (usually negative for groups)."],
+                    [t('groups.invalid_id')],
                     keyboard=back_kb())
         return
 
@@ -425,10 +426,10 @@ async def cmd_addgroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await _show(update, context, [
-        f"✅ Group/channel authorized!\n\n"
+        f"{t('groups.added')}\n\n"
         f"  💬  <b>{title}</b>\n"
         f"  🆔  <code>{chat_id}</code>\n\n"
-        f"  The bot will now respond in this chat."
+        f"  {t('groups.bot_responds')}"
     ], keyboard=back_kb())
 
     logger.info(f"Group {chat_id} authorized for account {user.account_id}")
@@ -440,7 +441,7 @@ async def cmd_removegroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = context.user_data["_db_user"]
     if not user.is_admin_or_above:
         await _show(update, context,
-                    ["⛔ Only owners and admins can manage group access."],
+                    [t('access.admin_groups')],
                     keyboard=back_kb())
         return
 
@@ -454,14 +455,13 @@ async def cmd_removegroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = int(context.args[0])
     except ValueError:
         await _show(update, context,
-                    ["❌ Invalid chat ID."],
+                    [t('groups.invalid_id')],
                     keyboard=back_kb())
         return
 
     await db.remove_authorized_chat(user.account_id, chat_id)
     await _show(update, context, [
-        f"✅ Group/channel <code>{chat_id}</code> removed.\n"
-        "  The bot will no longer respond there."
+        t('groups.removed').replace('{id}', str(chat_id))
     ], keyboard=back_kb())
 
 
@@ -471,7 +471,7 @@ async def cmd_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = context.user_data["_db_user"]
     if not user.is_admin_or_above:
         await _show(update, context,
-                    ["⛔ Only owners and admins can manage group access."],
+                    [t('access.admin_groups')],
                     keyboard=back_kb())
         return
 
@@ -479,18 +479,18 @@ async def cmd_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not chats:
         await _show(update, context, [
-            "💬 <b>Authorized Groups</b>\n\n"
-            "  No groups authorized yet.\n\n"
-            "  Tap <b>➕ Add</b> below to authorize\n"
-            "  a group or channel where the bot\n"
-            "  should respond to commands."
+            f"{t('groups.title')}\n\n"
+            f"  {t('groups.empty')}\n\n"
+            f"  Tap <b>➕ Add</b> below to authorize\n"
+            f"  a group or channel where the bot\n"
+            f"  should respond to commands."
         ], keyboard=InlineKeyboardMarkup([
-            [InlineKeyboardButton("➕ Add Group / Channel", callback_data="addgroup_pick")],
+            [InlineKeyboardButton(t('groups.add_btn'), callback_data="addgroup_pick")],
             [InlineKeyboardButton("◀️ Back", callback_data="cmd_users")],
         ]))
         return
 
-    lines = ["💬 <b>Authorized Groups</b>\n"]
+    lines = [f"{t('groups.title')}\n"]
     for c in chats:
         lines.append(f"  • <b>{c.chat_title}</b>")
         lines.append(f"    🆔 <code>{c.chat_id}</code>")
@@ -503,7 +503,7 @@ async def cmd_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🗑 Remove {c.chat_title}",
             callback_data=f"rmgroup_{c.chat_id}",
         )])
-    rows.append([InlineKeyboardButton("➕ Add Group / Channel", callback_data="addgroup_pick")])
+    rows.append([InlineKeyboardButton(t('groups.add_btn'), callback_data="addgroup_pick")])
     rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_users")])
 
     await _show(update, context, ["\n".join(lines)],

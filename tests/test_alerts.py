@@ -422,3 +422,171 @@ class TestCriticalAlertDedup:
         result = await db.get_active_vehicle_acks(account.id, "V1", 100)
         assert len(result) == 1
         assert result[0]["id"] == ack2
+
+
+class TestAutoResolve:
+    """Tests for DB auto-resolve and alert system auto-resolve logic."""
+
+    @pytest.fixture
+    def seeded_db(self, seeded_db):
+        return seeded_db
+
+    async def test_auto_resolve_by_vehicle_resolves_active(self, seeded_db):
+        """auto_resolve_alerts_by_vehicle acks all active alerts for vehicle/type."""
+        db, account, _, owner, _, _ = seeded_db
+        ack1 = await db.create_alert_ack(
+            account_id=account.id, alert_type="health",
+            vehicle_id="V1", vehicle_name="Truck 100",
+            alert_key="CO:V1:low_oil_pressure", message_id=10, chat_id=100,
+            sent_to=100, next_escalation="2026-01-01T00:30:00",
+        )
+        ack2 = await db.create_alert_ack(
+            account_id=account.id, alert_type="health",
+            vehicle_id="V1", vehicle_name="Truck 100",
+            alert_key="CO:V1:low_oil_pressure", message_id=11, chat_id=200,
+            sent_to=200, next_escalation="2026-01-01T00:30:00",
+        )
+        resolved = await db.auto_resolve_alerts_by_vehicle(
+            account.id, "health", "V1",
+        )
+        assert len(resolved) == 2
+        # Both should now be acknowledged
+        remaining = await db.get_unacked_alerts()
+        assert len(remaining) == 0
+
+    async def test_auto_resolve_skips_other_types(self, seeded_db):
+        """auto_resolve only resolves matching alert_type."""
+        db, account, _, _, _, _ = seeded_db
+        await db.create_alert_ack(
+            account_id=account.id, alert_type="fault",
+            vehicle_id="V1", vehicle_name="Truck 100",
+            alert_key="CO:V1:100-4:desc", message_id=10, chat_id=100,
+            sent_to=100, next_escalation="2026-01-01T00:30:00",
+        )
+        resolved = await db.auto_resolve_alerts_by_vehicle(
+            account.id, "health", "V1",
+        )
+        assert len(resolved) == 0
+        # Fault alert should still be active
+        remaining = await db.get_unacked_alerts(before="2026-01-02T00:00:00")
+        assert len(remaining) == 1
+
+    async def test_auto_resolve_skips_already_acked(self, seeded_db):
+        """auto_resolve skips already acknowledged alerts."""
+        db, account, _, _, _, _ = seeded_db
+        ack_id = await db.create_alert_ack(
+            account_id=account.id, alert_type="health",
+            vehicle_id="V1", vehicle_name="Truck 100",
+            alert_key="CO:V1:low_def", message_id=10, chat_id=100,
+            sent_to=100, next_escalation="2026-01-01T00:30:00",
+        )
+        await db.acknowledge_alert(ack_id, user_id=100)
+        resolved = await db.auto_resolve_alerts_by_vehicle(
+            account.id, "health", "V1",
+        )
+        assert len(resolved) == 0
+
+    async def test_auto_resolve_returns_records_for_cleanup(self, seeded_db):
+        """Resolved records contain message_id/chat_id for message deletion."""
+        db, account, _, _, _, _ = seeded_db
+        await db.create_alert_ack(
+            account_id=account.id, alert_type="fuel",
+            vehicle_id="V2", vehicle_name="Truck 200",
+            alert_key="CO:V2:fuel:15", message_id=999, chat_id=100,
+            sent_to=100, next_escalation="2026-01-01T00:30:00",
+        )
+        resolved = await db.auto_resolve_alerts_by_vehicle(
+            account.id, "fuel", "V2",
+        )
+        assert len(resolved) == 1
+        assert resolved[0]["message_id"] == 999
+        assert resolved[0]["chat_id"] == 100
+        assert resolved[0]["vehicle_name"] == "Truck 200"
+
+
+class TestIsAlertResolved:
+    """Tests for _is_alert_resolved logic."""
+
+    def test_health_resolved_when_no_active_alerts(self):
+        from bot.alerts import _is_alert_resolved
+        result = _is_alert_resolved(
+            "health", "low_oil_pressure", "Truck 100",
+            live_health_alerts=[],
+        )
+        assert result  # Non-empty = resolved
+        assert "Oil pressure normal" in result
+
+    def test_health_not_resolved_when_still_active(self):
+        from bot.alerts import _is_alert_resolved
+        result = _is_alert_resolved(
+            "health", "low_oil_pressure", "Truck 100",
+            live_health_alerts=["low_oil_pressure"],
+        )
+        assert result == ""  # Empty = not resolved
+
+    def test_health_partial_resolve(self):
+        from bot.alerts import _is_alert_resolved
+        result = _is_alert_resolved(
+            "health", "low_oil_pressure-low_def", "Truck 100",
+            live_health_alerts=["low_def"],
+        )
+        assert result == ""  # One code still active
+
+    def test_health_no_data_fails_safe(self):
+        from bot.alerts import _is_alert_resolved
+        result = _is_alert_resolved(
+            "health", "low_oil_pressure", "Truck 100",
+            live_health_alerts=None,
+        )
+        assert result == ""  # No data = don't resolve
+
+    def test_fuel_resolved_above_hysteresis(self):
+        from bot.alerts import _is_alert_resolved
+        result = _is_alert_resolved(
+            "fuel", "fuel:15", "Truck 100",
+            live_fuel_pct=30.0,
+        )
+        assert result  # 30% > 25% threshold
+        assert "Fuel now at 30%" in result
+
+    def test_fuel_not_resolved_below_hysteresis(self):
+        from bot.alerts import _is_alert_resolved
+        result = _is_alert_resolved(
+            "fuel", "fuel:15", "Truck 100",
+            live_fuel_pct=22.0,
+        )
+        assert result == ""  # 22% < 25% threshold
+
+    def test_fault_resolved_when_cleared(self):
+        from bot.alerts import _is_alert_resolved
+        result = _is_alert_resolved(
+            "fault", "100-4:Engine Coolant|200-3:Oil Pressure", "Truck 100",
+            live_dtcs=[],
+        )
+        assert result
+        assert "cleared" in result.lower()
+
+    def test_fault_not_resolved_when_still_present(self):
+        from bot.alerts import _is_alert_resolved
+        result = _is_alert_resolved(
+            "fault", "100-4:Engine Coolant", "Truck 100",
+            live_dtcs=[{"spnId": 100, "fmiId": 4}],
+        )
+        assert result == ""
+
+
+class TestAlertConstants:
+    """Verify alert tuning constants are reasonable."""
+
+    def test_max_realerts_reduced(self):
+        from bot.alerts import MAX_REALERTS
+        assert MAX_REALERTS == 2
+
+    def test_ack_window_at_least_60(self):
+        from bot.alerts import ACK_WINDOW_MINUTES
+        assert ACK_WINDOW_MINUTES >= 60
+
+    def test_warmup_flag_exists(self):
+        from bot.alerts import _warmup_done
+        assert "health" in _warmup_done
+        assert "fuel" in _warmup_done

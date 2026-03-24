@@ -414,23 +414,25 @@ def generate_events_csv(
     sio = io.StringIO()
     writer = csv.writer(sio)
 
+    # Metadata rows
     writer.writerow(["Report", "Safety Events"])
     writer.writerow(["Generated", _now_et()])
     writer.writerow(["Period", f"Past {days} Days"])
     writer.writerow(["Company", company_filter or "All Companies"])
-    writer.writerow([])
+    writer.writerow(["Total Events", len(events)])
+    writer.writerow([])  # blank separator
 
     header = [
         "Date/Time",
+        "Company",
         "Vehicle",
+        "VIN",
         "Driver",
         "Event Type",
-        "Event Name",
         "G-Force",
         "Latitude",
         "Longitude",
-        "Coaching State",
-        "Company",
+        "Coaching Status",
         "Video URL",
     ]
     writer.writerow(header)
@@ -438,29 +440,27 @@ def generate_events_csv(
     for e in events:
         writer.writerow([
             _fmt_iso_et(e.get("time")),
+            e.get("_org", _NA),
             e.get("vehicle_name", _NA),
+            e.get("vehicle_vin") or _NA,
             e.get("driver_name", _NA),
-            e.get("event_type", _NA),
             e.get("event_name", _NA),
             e.get("g_force", _NA),
-            _val(e.get("latitude")),
-            _val(e.get("longitude")),
+            e.get("latitude", _NA),
+            e.get("longitude", _NA),
             e.get("coaching_state", _NA),
-            e.get("_org", _NA),
             e.get("video_url") or _NA,
         ])
 
-    # Summary
-    type_counts: dict[str, int] = {}
-    for e in events:
-        etype = e.get("event_type", "other")
-        type_counts[etype] = type_counts.get(etype, 0) + 1
-
+    # Summary row
+    from collections import Counter
+    type_counts = Counter(e.get("event_name", "?") for e in events)
+    summary_parts = [f"{name}: {cnt}" for name, cnt in type_counts.most_common()]
     writer.writerow([])
-    writer.writerow(["SUMMARY", f"{len(events)} total events"])
-    for etype, count in sorted(type_counts.items(), key=lambda x: -x[1]):
-        writer.writerow(["", f"{etype}: {count}"])
+    writer.writerow(["SUMMARY", f"{len(events)} events", " | ".join(summary_parts)])
 
     buf = _to_buf(sio)
-    buf.name = f"events_{days}d_{_now_et().replace(' ', '_').replace(',', '')}.csv"
+    from datetime import datetime as _dt
+    ts = _dt.now(_TZ_ET).strftime("%Y%m%d_%H%M%S")
+    buf.name = f"events_{ts}.csv"
     return buf

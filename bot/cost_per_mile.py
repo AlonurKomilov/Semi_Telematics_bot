@@ -5,6 +5,7 @@ import io
 import csv
 from datetime import datetime as _dt
 from zoneinfo import ZoneInfo as _ZI
+from bot.i18n import t
 
 _TZ_ET = _ZI("America/New_York")
 
@@ -27,16 +28,17 @@ async def cmd_costmile(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not can(user.role, "can_cost_per_mile"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
+    sep = t("alert_format.separator")
     text = (
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "  📊  <b>COST PER MILE</b>\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
+        f"{sep}\n"
+        f"  {t('cost_per_mile.header')}\n"
+        f"{sep}\n"
         f"\n  {company_label}\n"
-        "\n  Choose export format:"
+        f"\n  {t('cost_per_mile.choose_format')}"
     )
     await _show(update, context, [text], keyboard=costmile_format_kb(company))
 
@@ -48,20 +50,19 @@ async def cmd_costmile_report(update: Update, context: ContextTypes.DEFAULT_TYPE
     user = context.user_data["_db_user"]
     if not can(user.role, "can_cost_per_mile"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     companies = await db.get_account_companies(user.account_id)
     populate_company_display(companies)
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
 
-    await _show_loading(update, context, f"⏳ Calculating cost/mile ({company_label})…")
+    await _show_loading(update, context, t('cost_per_mile.loading').format(company=company_label))
     try:
         fuel_summary = await db.get_fuel_summary(user.account_id)
         if not fuel_summary:
             await _show(update, context, [
-                "ℹ️ No fuel entries yet.\n\n"
-                "Use 💰 Fuel Costs → ➕ Log Fill-Up to start tracking."
+                t('cost_per_mile.no_fuel_data')
             ], keyboard=back_kb())
             return
 
@@ -101,16 +102,17 @@ async def cmd_costmile_report(update: Update, context: ContextTypes.DEFAULT_TYPE
             out.name = "cost_per_mile.csv"
             chat_id = update.effective_chat.id
             await context.bot.send_document(chat_id=chat_id, document=out,
-                                            caption=f"📊 Cost Per Mile — {company_label}")
-            await _show(update, context, ["✅ CSV exported."], keyboard=back_kb())
+                                            caption=t('cost_per_mile.csv_caption').format(company=company_label))
+            await _show(update, context, [t('cost_per_mile.csv_exported')], keyboard=back_kb())
             return
 
         # Text format
         now_et = _dt.now(_TZ_ET)
+        sep = t("alert_format.separator")
         lines = [
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "  📊  <b>COST PER MILE</b>\n"
-            "━━━━━━━━━━━━━━━━━━━\n"
+            f"{sep}\n"
+            f"  {t('cost_per_mile.header')}\n"
+            f"{sep}\n"
             f"\n  {company_label}\n"
             f"  {now_et:%b %d, %Y %I:%M %p ET}\n"
         ]
@@ -130,8 +132,8 @@ async def cmd_costmile_report(update: Update, context: ContextTypes.DEFAULT_TYPE
         avg_cpm = grand_cost / grand_miles if grand_miles > 0 else 0
         lines.append(
             f"\n{'━' * 28}\n"
-            f"  <b>Fleet Avg: ${avg_cpm:.2f}/mi</b>\n"
-            f"  Total: ${grand_cost:,.2f} / {grand_miles:,} mi"
+            f"  {t('cost_per_mile.fleet_avg').format(avg=f'${avg_cpm:.2f}')}\n"
+            f"  {t('cost_per_mile.total_summary').format(cost=f'${grand_cost:,.2f}', miles=f'{grand_miles:,}')}"
         )
 
         full = "\n".join(lines)

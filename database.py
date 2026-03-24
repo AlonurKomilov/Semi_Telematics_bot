@@ -96,11 +96,15 @@ class User:
     alert_health: bool = True
     alert_fuel: bool = True
     alert_geofence: bool = True
-    alert_events: bool = True
+    ai_fault: bool = False      # Proactive AI on fault alerts
+    ai_health: bool = False     # Proactive AI on health alerts
+    ai_fuel: bool = False       # Proactive AI on fuel alerts
+    alert_events: bool = True   # Safety event alerts
+    ai_events: bool = False     # Proactive AI on event alerts
     quiet_start: Optional[int] = None   # DND start hour (0-23)
     quiet_end: Optional[int] = None     # DND end hour (0-23)
     timezone: str = "America/New_York"
-    ai_events: bool = False
+    language: str = "en"                # UI language (en/es/ru/uk/fr)
 
     @property
     def is_owner(self) -> bool:
@@ -113,7 +117,7 @@ class User:
     def wants_alert(self, alert_type: str) -> bool:
         """Check if user wants a specific alert type.
 
-        alert_type: 'faults', 'health', 'fuel', or 'geofence'
+        alert_type: 'faults', 'health', 'fuel', 'geofence', or 'events'
         """
         if not self.alerts_on:
             return False
@@ -440,7 +444,7 @@ class Database:
         await self._migrate_digest_report_type()
         await self._migrate_user_display_name()
         await self._migrate_alert_ack_status()
-        await self._migrate_alert_events()
+        await self._migrate_user_language()
 
     async def _migrate_alert_prefs(self):
         """Add alert_faults/health/fuel/geofence columns if missing."""
@@ -449,6 +453,11 @@ class Database:
             ("alert_health", "INTEGER NOT NULL DEFAULT 1"),
             ("alert_fuel", "INTEGER NOT NULL DEFAULT 1"),
             ("alert_geofence", "INTEGER NOT NULL DEFAULT 1"),
+            ("ai_fault", "INTEGER NOT NULL DEFAULT 0"),
+            ("ai_health", "INTEGER NOT NULL DEFAULT 0"),
+            ("ai_fuel", "INTEGER NOT NULL DEFAULT 0"),
+            ("alert_events", "INTEGER NOT NULL DEFAULT 1"),
+            ("ai_events", "INTEGER NOT NULL DEFAULT 0"),
         ]
         for col_name, col_def in new_cols:
             try:
@@ -521,21 +530,16 @@ class Database:
         except Exception:
             pass  # column already exists
 
-    async def _migrate_alert_events(self):
-        """Add alert_events and ai_events columns to users table."""
-        new_cols = [
-            ("alert_events", "INTEGER NOT NULL DEFAULT 1"),
-            ("ai_events", "INTEGER NOT NULL DEFAULT 0"),
-        ]
-        for col_name, col_def in new_cols:
-            try:
-                await self._db.execute(
-                    f"ALTER TABLE users ADD COLUMN {col_name} {col_def}"
-                )
-                await self._db.commit()
-                logger.info(f"Added column users.{col_name}")
-            except Exception:
-                pass  # column already exists
+    async def _migrate_user_language(self):
+        """Add language column to users table."""
+        try:
+            await self._db.execute(
+                "ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'en'"
+            )
+            await self._db.commit()
+            logger.info("Added column users.language")
+        except Exception:
+            pass  # column already exists
 
     # ── Helpers ───────────────────────────────────────────────────
 
@@ -591,11 +595,15 @@ class Database:
             alert_health=bool(row["alert_health"]) if "alert_health" in row.keys() else True,
             alert_fuel=bool(row["alert_fuel"]) if "alert_fuel" in row.keys() else True,
             alert_geofence=bool(row["alert_geofence"]) if "alert_geofence" in row.keys() else True,
+            ai_fault=bool(row["ai_fault"]) if "ai_fault" in row.keys() else False,
+            ai_health=bool(row["ai_health"]) if "ai_health" in row.keys() else False,
+            ai_fuel=bool(row["ai_fuel"]) if "ai_fuel" in row.keys() else False,
             alert_events=bool(row["alert_events"]) if "alert_events" in row.keys() else True,
+            ai_events=bool(row["ai_events"]) if "ai_events" in row.keys() else False,
             quiet_start=row["quiet_start"] if "quiet_start" in row.keys() else None,
             quiet_end=row["quiet_end"] if "quiet_end" in row.keys() else None,
             timezone=row["timezone"] if "timezone" in row.keys() else "America/New_York",
-            ai_events=bool(row["ai_events"]) if "ai_events" in row.keys() else False,
+            language=row["language"] if "language" in row.keys() else "en",
         )
 
     def _row_to_invite(self, row) -> Invite:
@@ -811,8 +819,9 @@ class Database:
         """Update user fields. Allowed: role, department, truck_num, alerts_on, is_active, alert_*."""
         allowed = {"role", "department", "truck_num", "alerts_on", "is_active",
                    "alert_faults", "alert_health", "alert_fuel", "alert_geofence",
-                   "alert_events", "ai_events",
-                   "quiet_start", "quiet_end", "timezone", "display_name"}
+                   "alert_events",
+                   "quiet_start", "quiet_end", "timezone", "display_name",
+                   "language"}
         updates = {}
         for k, v in kwargs.items():
             if k not in allowed:
@@ -1390,12 +1399,21 @@ class Database:
 
     async def update_alert_escalation(self, ack_id: int,
                                        escalation_level: int,
-                                       next_escalation: Optional[str]):
-        """Update escalation level and next escalation time."""
-        await self._db.execute(
-            "UPDATE alert_acknowledgments SET escalation_level = ?, next_escalation = ? WHERE id = ?",
-            (escalation_level, next_escalation, ack_id),
-        )
+                                       next_escalation: Optional[str],
+                                       message_id: Optional[int] = None):
+        """Update escalation level, next escalation time, and optionally message_id."""
+        if message_id is not None:
+            await self._db.execute(
+                "UPDATE alert_acknowledgments SET escalation_level = ?, "
+                "next_escalation = ?, message_id = ? WHERE id = ?",
+                (escalation_level, next_escalation, message_id, ack_id),
+            )
+        else:
+            await self._db.execute(
+                "UPDATE alert_acknowledgments SET escalation_level = ?, "
+                "next_escalation = ? WHERE id = ?",
+                (escalation_level, next_escalation, ack_id),
+            )
         await self._db.commit()
 
     async def expire_stale_alerts(self, older_than: str) -> list[dict]:
@@ -1453,6 +1471,17 @@ class Database:
         )
         await self._db.commit()
         return True
+
+    async def get_alert_ack_by_id(self, ack_id: int) -> dict | None:
+        """Fetch an alert acknowledgment row by its ID."""
+        cur = await self._db.execute(
+            "SELECT * FROM alert_acknowledgments WHERE id = ?", (ack_id,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        cols = [d[0] for d in cur.description]
+        return dict(zip(cols, row))
 
     # ══════════════════════════════════════════════════════════════
     # DND ALERT QUEUE
@@ -1578,6 +1607,35 @@ class Database:
                 "last_detail": last_detail,
                 "status": "active",
             }
+
+    async def auto_resolve_alerts_by_vehicle(
+        self, account_id: int, alert_type: str, vehicle_id: str,
+    ) -> list[dict]:
+        """Auto-resolve all active unacked alerts for a vehicle/type.
+
+        Called from check loops when a vehicle's condition clears.
+        Returns resolved rows (with message_id/chat_id for cleanup).
+        """
+        cur = await self._db.execute(
+            "SELECT * FROM alert_acknowledgments "
+            "WHERE account_id = ? AND alert_type = ? AND vehicle_id = ? "
+            "AND acknowledged_at IS NULL AND status = 'active'",
+            (account_id, alert_type, vehicle_id),
+        )
+        rows = await cur.fetchall()
+        resolved = [dict(r) for r in rows]
+        if resolved:
+            now = self._now()
+            ids = [r["id"] for r in resolved]
+            placeholders = ",".join("?" for _ in ids)
+            await self._db.execute(
+                f"UPDATE alert_acknowledgments SET acknowledged_by = 0, "
+                f"acknowledged_at = ?, status = 'acknowledged', "
+                f"next_escalation = NULL WHERE id IN ({placeholders})",
+                [now] + ids,
+            )
+            await self._db.commit()
+        return resolved
 
     async def clear_alert_history(
         self, account_id: int, alert_type: str,

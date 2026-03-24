@@ -13,6 +13,11 @@ from samsara_client import MultiCompanyClient, build_multi_company_client
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 SAMSARA_BASE_URL = os.getenv("SAMSARA_BASE_URL", "https://api.samsara.com")
+# Dashboard base — derived from API URL (api.→cloud.) unless overridden
+SAMSARA_DASHBOARD_URL = os.getenv(
+    "SAMSARA_DASHBOARD_URL",
+    SAMSARA_BASE_URL.replace("://api.", "://cloud.").rstrip("/"),
+)
 ALERT_INTERVAL = int(os.getenv("ALERT_CHECK_INTERVAL_MINUTES", "30"))
 FUEL_THRESHOLD = int(os.getenv("FUEL_LOW_THRESHOLD_PERCENT", "20"))
 DATABASE_PATH = os.getenv("DATABASE_PATH", "data/bot.db")

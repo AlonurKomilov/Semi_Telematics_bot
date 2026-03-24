@@ -16,6 +16,7 @@ Features:
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone, timedelta
 from enum import Enum
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -23,12 +24,11 @@ from telegram.ext import Application
 from telegram.constants import ParseMode
 
 from database import Role
-from samsara_client import populate_company_display
+from samsara_client import populate_company_display, ORG_IDS, samsara_vehicle_url
 from formatters import (
     format_new_fault_alert, format_critical_fault_alert,
     format_health_alert, format_low_fuel_alert,
-    format_alert_history_footer,
-    format_event_alert,
+    format_alert_history_footer, format_event_alert,
 )
 
 from bot.config import (
@@ -52,9 +52,10 @@ class AlertSeverity(str, Enum):
 
 
 # Re-alert configuration (replaces old escalation chains)
-ACK_WINDOW_MINUTES = ESCALATION_TIMEOUT_MINUTES   # minutes before re-alert
-MAX_REALERTS = 3                                    # max re-alerts before auto-expire
-SNOOZE_MINUTES = 15                                 # snooze postponement
+ACK_WINDOW_MINUTES = max(ESCALATION_TIMEOUT_MINUTES, 60)   # minutes before re-alert (min 60)
+MAX_REALERTS = 2                                    # max re-alerts before auto-expire
+SNOOZE_MINUTES = 15                                 # default snooze
+SNOOZE_OPTIONS = [15, 30, 60, 120, 240]              # snooze choices (minutes)
 
 # Per-type cooldowns (prevent spam from sensor oscillation)
 _COOLDOWN_HOURS = {
@@ -67,6 +68,10 @@ _COOLDOWN_HOURS = {
 # Cooldown: don't re-alert the same company API failure within 6 hours
 _API_ALERT_COOLDOWN_S = 6 * 3600
 _api_alert_sent: dict[str, float] = {}   # "acctID:CODE" → timestamp
+
+# Startup warm-up: first cycle of each check only populates caches
+# without sending alerts. Prevents alert bursts on server restart.
+_warmup_done: dict[str, bool] = {"health": False, "fuel": False}
 
 # ── Dedup state dicts (in-memory fallback when Redis unavailable) ─
 
@@ -81,6 +86,9 @@ _known_low_fuel: dict[str, bool] = {}
 
 # Fault alert cooldown — track when each vehicle last had a fault alert sent
 _fault_last_sent: dict[str, float] = {}
+
+# Events dedup — track which event IDs have already been alerted
+_known_event_ids: dict[int, set[str]] = {}  # account_id → set of event IDs
 
 # J1939 SPNs related to coolant system
 COOLANT_SPNS = {110, 111, 2609, 441, 1691}  # temp, level, low-level, pressure, additive
@@ -127,6 +135,7 @@ async def check_new_faults(app: Application):
 
                 acct_companies = await db.get_account_companies(account_id)
                 populate_company_display(acct_companies)
+                await samsara.ensure_org_ids()
                 company_codes = [o.code for o in acct_companies]
 
                 for v in faulted:
@@ -196,10 +205,19 @@ async def check_new_faults(app: Application):
                                     "\n  Check coolant level and temp"
                                 )
 
-                            # Proactive AI for critical faults
+                            # Proactive AI — only if any subscriber enabled it
                             ai_note = ""
-                            if severity == AlertSeverity.CRITICAL:
+                            if any(getattr(s, 'ai_fault', False) for s in subs):
                                 ai_note = await _get_ai_diagnosis_note(v, new_dtcs)
+
+                            # Build fault detail with descriptions
+                            fault_details = []
+                            for dtc in new_dtcs:
+                                spn = dtc.get('spnId', '?')
+                                fmi = dtc.get('fmiId', '?')
+                                desc = dtc.get('spnDescription', '')
+                                fault_details.append(f"{spn}-{fmi}:{desc}")
+                            fault_detail_str = "|".join(sorted(fault_details))
 
                             # ── Universal pipeline ───────────────
                             await send_alert(
@@ -212,7 +230,7 @@ async def check_new_faults(app: Application):
                                 subscribers=subs,
                                 co=co,
                                 ai_note=ai_note,
-                                alert_key_detail="-".join(sorted(new_codes)),
+                                alert_key_detail=fault_detail_str,
                             )
 
                             if severity == AlertSeverity.CRITICAL:
@@ -238,6 +256,7 @@ async def check_new_faults(app: Application):
                 for k in stale_fault_keys:
                     parts = k.split(":", 2)
                     if len(parts) == 3:
+                        co = parts[1]
                         v_id = parts[2]
                         cleared = await db.clear_alert_history(
                             account_id, "fault", v_id,
@@ -251,6 +270,10 @@ async def check_new_faults(app: Application):
                                     )
                                 except Exception:
                                     pass
+                        # Auto-resolve unacked fault alerts for this vehicle
+                        await _auto_resolve_vehicle_alerts(
+                            app, account_id, "fault", v_id, "", co,
+                        )
                     await _set_known_faults(k, set())
 
             except Exception as e:
@@ -385,14 +408,19 @@ def build_alert_keyboard(
     co: str,
     vehicle_name: str,
     ack_id: int | None = None,
-    samsara_url: str | None = None,
+    alert_type: str = "fault",
+    vehicle_id: str = "",
 ) -> InlineKeyboardMarkup:
     """Build keyboard for an alert message based on severity.
 
-    CRITICAL/WARNING with ack_id → ACK + Snooze + AI Diagnose + View Truck + Open in Samsara
-    CRITICAL/WARNING without ack_id → AI Diagnose + View Truck + Open in Samsara (pre-ACK send)
-    INFO → View Truck + Open in Samsara only
+    CRITICAL/WARNING with ack_id → ACK + Snooze + AI Diagnose + Open in Samsara + View Truck
+    CRITICAL/WARNING without ack_id → AI Diagnose + Open in Samsara + View Truck (pre-ACK send)
+    INFO → Open in Samsara + View Truck only
+
+    alert_type is encoded in the AI Diagnose callback so the AI knows
+    the context (fault / health / fuel).
     """
+    from bot.i18n import t
     rows: list[list[InlineKeyboardButton]] = []
 
     if severity in (AlertSeverity.CRITICAL, AlertSeverity.WARNING):
@@ -401,30 +429,34 @@ def build_alert_keyboard(
                 "✅ Acknowledge", callback_data=f"ack_alert_{ack_id}",
             )])
             rows.append([InlineKeyboardButton(
-                f"⏰ Snooze {SNOOZE_MINUTES} min",
-                callback_data=f"snooze_alert_{ack_id}",
+                "⏰ Snooze",
+                callback_data=f"snooze_pick_{ack_id}",
             )])
+        # Encode ack_id in AI Diagnose callback so diagnosis can show alert actions
+        ai_diag_cb = f"ai_diag_{alert_type}_{co}_{vehicle_name}"
+        if ack_id is not None:
+            ai_diag_cb += f":{ack_id}"
         rows.append([InlineKeyboardButton(
-            "🤖 AI Diagnose", callback_data=f"ai_diag_{co}_{vehicle_name}",
+            "🤖 AI Diagnose",
+            callback_data=ai_diag_cb,
+        )])
+
+    # "Open in Samsara" deep-link (URL button — opens browser)
+    org_id = ORG_IDS.get(co, "")
+    samsara_url = samsara_vehicle_url(org_id, vehicle_id, alert_type)
+    if samsara_url:
+        rows.append([InlineKeyboardButton(
+            t("alert_actions.open_in_samsara"),
+            url=samsara_url,
         )])
 
     rows.append([InlineKeyboardButton(
         f"📋 View Truck #{vehicle_name}",
         callback_data=f"cotruck_{co}_{vehicle_name}",
     )])
-    _url = samsara_url
-    if _url:
-        rows.append([InlineKeyboardButton("🔗 Open in Samsara", url=_url)])
     rows.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
 
     return InlineKeyboardMarkup(rows)
-
-
-def _build_samsara_url(org_id: str | None, vehicle_id: str | None) -> str | None:
-    """Build a Samsara dashboard URL for a vehicle."""
-    if org_id and vehicle_id:
-        return f"https://cloud.samsara.com/o/{org_id}/devices/{vehicle_id}/vehicle"
-    return None
 
 
 async def send_alert(
@@ -439,6 +471,7 @@ async def send_alert(
     co: str,
     ai_note: str = "",
     alert_key_detail: str = "",
+    video_url: str = "",
 ):
     """Universal alert delivery pipeline.
 
@@ -512,7 +545,10 @@ async def send_alert(
                                 pass
 
                 # Send with basic keyboard (no ack_id yet)
-                basic_kb = build_alert_keyboard(severity, co, vname, samsara_url=samsara_url)
+                basic_kb = build_alert_keyboard(
+                    severity, co, vname, alert_type=alert_type,
+                    vehicle_id=vid,
+                )
                 msg = await app.bot.send_message(
                     chat_id=sub.telegram_id,
                     text=send_text,
@@ -538,7 +574,10 @@ async def send_alert(
                 )
 
                 # Update keyboard with ACK/Snooze buttons
-                ack_kb = build_alert_keyboard(severity, co, vname, ack_id=ack_id, samsara_url=samsara_url)
+                ack_kb = build_alert_keyboard(
+                    severity, co, vname, ack_id=ack_id, alert_type=alert_type,
+                    vehicle_id=vid,
+                )
                 await app.bot.edit_message_reply_markup(
                     chat_id=sub.telegram_id,
                     message_id=msg.message_id,
@@ -546,13 +585,29 @@ async def send_alert(
                 )
             else:
                 # INFO — no ACK tracking needed
-                basic_kb = build_alert_keyboard(severity, co, vname, samsara_url=samsara_url)
+                basic_kb = build_alert_keyboard(
+                    severity, co, vname, alert_type=alert_type,
+                    vehicle_id=vid,
+                )
                 msg = await app.bot.send_message(
                     chat_id=sub.telegram_id,
                     text=send_text,
                     parse_mode=ParseMode.HTML,
                     reply_markup=basic_kb,
                 )
+
+            # Send dashcam video as media when available (events)
+            if video_url:
+                try:
+                    await app.bot.send_video(
+                        chat_id=sub.telegram_id,
+                        video=video_url,
+                        caption=f"🎥 {vname}",
+                        read_timeout=30,
+                        write_timeout=30,
+                    )
+                except Exception as ve:
+                    logger.debug(f"Video send failed for {vname}: {ve}")
 
             # Update alert history
             await db.upsert_alert_history(
@@ -598,13 +653,34 @@ async def check_health_alerts(app: Application):
         for sub in subscribers:
             acct_subs.setdefault(sub.account_id, []).append(sub)
 
+        # Startup warm-up: first cycle only populates caches, no alerts.
+        # Prevents burst of alerts on server restart when all dedup state
+        # is empty (every existing issue looks "new").
+        is_warmup = not _warmup_done.get("health", False)
+
         for account_id, subs in acct_subs.items():
             try:
                 samsara = await get_client(account_id)
                 vehicles = await samsara.get_vehicle_health()
 
+                if is_warmup:
+                    # Warm-up: populate dedup caches without sending alerts
+                    for v in vehicles:
+                        co = v.get("_org", "?")
+                        vid = f"{account_id}:{co}:{v['id']}"
+                        health_alerts = [
+                            a for a in v.get("_health_alerts", [])
+                            if a in ("low_battery", "low_oil_pressure",
+                                     "high_coolant_temp", "low_def")
+                        ]
+                        if health_alerts:
+                            await _set_known_health(vid, set(health_alerts))
+                            await _set_health_last_sent(vid)
+                    continue  # Next account — skip alerting
+
                 acct_companies = await db.get_account_companies(account_id)
                 populate_company_display(acct_companies)
+                await samsara.ensure_org_ids()
                 company_codes = [o.code for o in acct_companies]
 
                 try:
@@ -634,6 +710,8 @@ async def check_health_alerts(app: Application):
                             push_alerts.append("coolant_dtc")
 
                     if not push_alerts:
+                        co = v.get("_org", "?")
+                        vid = f"{account_id}:{co}:{v['id']}"
                         cleared = await db.clear_alert_history(
                             account_id, "health", v["id"],
                         )
@@ -646,6 +724,13 @@ async def check_health_alerts(app: Application):
                                     )
                                 except Exception:
                                     pass
+                        # Auto-resolve any unacked health alerts for this vehicle
+                        await _auto_resolve_vehicle_alerts(
+                            app, account_id, "health", v["id"],
+                            v.get("name", "?"), co,
+                        )
+                        # Clear dedup so returning issues are detected as new
+                        await _set_known_health(vid, set())
                         continue
 
                     co = v.get("_org", "?")
@@ -657,16 +742,20 @@ async def check_health_alerts(app: Application):
                         await _set_known_health(vid, set(push_alerts))
                         continue
 
-                    last_sent = await _get_health_last_sent(vid)
-                    if _is_health_on_cooldown(last_sent):
-                        await _set_known_health(vid, set(push_alerts))
-                        continue
-
                     # ── Classify severity ────────────────────
                     if new_alerts & _CRITICAL_HEALTH:
                         severity = AlertSeverity.CRITICAL
                     else:
                         severity = AlertSeverity.WARNING
+
+                    # Cooldown: skip WARNING if recently alerted.
+                    # CRITICAL always bypasses cooldown (safety-first).
+                    if severity != AlertSeverity.CRITICAL:
+                        last_sent = await _get_health_last_sent(vid)
+                        if _is_health_on_cooldown(last_sent):
+                            # Don't update _known_health here — preserves
+                            # new codes so they alert after cooldown expires
+                            continue
 
                     show_co = len(company_codes) > 1
                     health = v.get("_health", {})
@@ -675,7 +764,10 @@ async def check_health_alerts(app: Application):
                         show_company=show_co,
                     )
 
-                    ai_note = await _get_ai_health_note(v, list(new_alerts), health)
+                    # Proactive AI — only if any subscriber enabled it
+                    ai_note = ""
+                    if any(getattr(s, 'ai_health', False) for s in subs):
+                        ai_note = await _get_ai_health_note(v, list(new_alerts), health)
 
                     # ── Universal pipeline ───────────────────
                     await send_alert(
@@ -696,6 +788,10 @@ async def check_health_alerts(app: Application):
 
             except Exception as e:
                 logger.error(f"Health check for account {account_id}: {e}")
+
+        if is_warmup:
+            _warmup_done["health"] = True
+            logger.info("Health alert warm-up complete — caches populated, no alerts sent")
 
     except Exception as e:
         logger.error(f"Health check error: {e}")
@@ -729,13 +825,24 @@ async def check_low_fuel(app: Application):
         for sub in subscribers:
             acct_subs.setdefault(sub.account_id, []).append(sub)
 
+        # Startup warm-up for fuel (same as health)
+        is_warmup = not _warmup_done.get("fuel", False)
+
         for account_id, subs in acct_subs.items():
             try:
                 samsara = await get_client(account_id)
                 low_fuel = await samsara.get_low_fuel_vehicles(FUEL_THRESHOLD)
 
+                if is_warmup:
+                    for v in low_fuel:
+                        co = v.get("_org", "?")
+                        vid = f"{account_id}:{co}:{v['id']}"
+                        await _set_low_fuel_flag(vid, True)
+                    continue
+
                 acct_companies = await db.get_account_companies(account_id)
                 populate_company_display(acct_companies)
+                await samsara.ensure_org_ids()
                 company_codes = [o.code for o in acct_companies]
 
                 low_fuel_ids = set()
@@ -799,6 +906,7 @@ async def check_low_fuel(app: Application):
                             await _set_low_fuel_flag(k, False)
                             parts = k.split(":", 2)
                             if len(parts) == 3:
+                                co = parts[1]
                                 v_id = parts[2]
                                 cleared = await db.clear_alert_history(
                                     account_id, "fuel", v_id,
@@ -812,9 +920,17 @@ async def check_low_fuel(app: Application):
                                             )
                                         except Exception:
                                             pass
+                                # Auto-resolve unacked fuel alerts
+                                await _auto_resolve_vehicle_alerts(
+                                    app, account_id, "fuel", v_id, "", co,
+                                )
 
             except Exception as e:
                 logger.error(f"Fuel check for account {account_id}: {e}")
+
+        if is_warmup:
+            _warmup_done["fuel"] = True
+            logger.info("Fuel alert warm-up complete — caches populated, no alerts sent")
 
     except Exception as e:
         logger.error(f"Fuel check error: {e}")
@@ -969,12 +1085,255 @@ async def _expire_stale_alerts(app: Application):
         logger.info(f"Auto-expired {len(expired)} stale alerts (>{ESCALATION_MAX_HOURS}h)")
 
 
+# Health-alert severity thresholds for display in re-alerts
+_HEALTH_REALERT_LABELS: dict[str, tuple[str, str, str]] = {
+    "low_oil_pressure": ("🛢", "Low Oil Pressure", "oil_psi"),
+    "high_coolant_temp": ("🌡", "High Coolant Temp", "coolant_c"),
+    "low_battery": ("🔋", "Low Battery", "battery_v"),
+    "low_def": ("💧", "Low DEF Level", "def_pct"),
+    "coolant_dtc": ("🌡", "Coolant System Fault", ""),
+}
+_HEALTH_THRESHOLDS: dict[str, str] = {
+    "low_oil_pressure": "threshold: 10 PSI",
+    "high_coolant_temp": "threshold: 105°C",
+    "low_battery": "threshold: 12.2V",
+    "low_def": "threshold: 10%",
+}
+_HEALTH_UNITS: dict[str, str] = {
+    "oil_psi": "PSI",
+    "coolant_c": "°C",
+    "battery_v": "V",
+    "def_pct": "%",
+}
+
+
+def _build_realert_detail(
+    alert_type: str,
+    alert_key: str,
+    live_health: dict | None = None,
+    live_fuel_pct: float | None = None,
+    live_dtcs: list[dict] | None = None,
+) -> str:
+    """Build human-readable detail lines from the stored alert_key.
+
+    alert_key format: {co}:{vid}:{detail}
+    - health detail: 'low_oil_pressure-high_coolant_temp'
+    - fault detail:  'SPN123-SPN456'
+    - fuel detail:   'fuel:15'
+
+    When live data is available, shows current readings alongside thresholds.
+    """
+    parts = alert_key.split(":", 2)
+    detail = parts[2] if len(parts) > 2 else ""
+    if not detail:
+        return ""
+
+    lines: list[str] = []
+    if alert_type == "health":
+        for code in detail.split("-"):
+            info = _HEALTH_REALERT_LABELS.get(code)
+            if info:
+                emoji, label, health_key = info
+                value_str = ""
+                if live_health and health_key:
+                    val = live_health.get(health_key)
+                    if val is not None:
+                        unit = _HEALTH_UNITS.get(health_key, "")
+                        threshold = _HEALTH_THRESHOLDS.get(code, "")
+                        value_str = f"\n       Currently: <b>{val}{unit}</b>"
+                        if threshold:
+                            value_str += f" ({threshold})"
+                lines.append(f"  {emoji}  <b>{label}</b>{value_str}")
+            else:
+                lines.append(f"  ⚠️  <b>{code.replace('_', ' ').title()}</b>")
+    elif alert_type == "fault":
+        if live_dtcs:
+            for dtc in live_dtcs[:5]:
+                spn = dtc.get("spnId", "?")
+                fmi = dtc.get("fmiId", "?")
+                desc = dtc.get("spnDescription", "Unknown")
+                lines.append(f"  ⚙️  <b>SPN {spn} / FMI {fmi}</b>\n       {desc}")
+        else:
+            # Parse stored fault detail: "SPN-FMI:description|SPN-FMI:description"
+            # Also handles legacy format without descriptions
+            for entry in detail.split("|"):
+                if ":" in entry:
+                    code_part, desc = entry.split(":", 1)
+                    spn_fmi = code_part.split("-", 1)
+                    if len(spn_fmi) == 2:
+                        lines.append(
+                            f"  ⚙️  <b>SPN {spn_fmi[0]} / FMI {spn_fmi[1]}</b>"
+                            f"\n       {desc or 'Unknown'}")
+                    else:
+                        lines.append(f"  ⚙️  <b>{code_part}</b>\n       {desc}")
+                else:
+                    # Legacy format: "SPN-FMI" without description
+                    spn_fmi = entry.split("-", 1)
+                    if len(spn_fmi) == 2:
+                        lines.append(f"  ⚙️  <b>SPN {spn_fmi[0]} / FMI {spn_fmi[1]}</b>")
+                    elif entry:
+                        lines.append(f"  ⚙️  <b>{entry}</b>")
+    elif alert_type == "fuel":
+        if live_fuel_pct is not None:
+            lines.append(f"  ⛽  <b>Fuel Level: {live_fuel_pct:.0f}%</b>")
+        else:
+            fuel_val = detail.split(":")[-1] if ":" in detail else detail
+            lines.append(f"  ⛽  <b>Low Fuel: {fuel_val}%</b>")
+    else:
+        lines.append(f"  ⚠️  {detail}")
+
+    return "\n".join(lines)
+
+
+async def _auto_resolve_vehicle_alerts(
+    app: Application,
+    account_id: int,
+    alert_type: str,
+    vehicle_id: str,
+    vehicle_name: str,
+    co: str,
+):
+    """Auto-resolve all unacked alerts for a vehicle when the source check
+    detects the condition has cleared.
+
+    This is the fast path — called directly from check_health_alerts /
+    check_new_faults / check_low_fuel when they see a vehicle is clear.
+    Eliminates waiting for the re-alert cycle to auto-resolve.
+    """
+    resolved = await db.auto_resolve_alerts_by_vehicle(
+        account_id, alert_type, vehicle_id,
+    )
+    if not resolved:
+        return
+
+    for alert in resolved:
+        vname = vehicle_name or alert.get("vehicle_name", "?")
+
+        # Delete old alert message from chat
+        if alert.get("message_id") and alert.get("chat_id"):
+            try:
+                await app.bot.delete_message(
+                    chat_id=alert["chat_id"],
+                    message_id=alert["message_id"],
+                )
+            except Exception:
+                pass
+
+        # Send brief auto-resolved notification
+        atype_label = alert_type.replace("_", " ").title()
+        alert_co = co or "?"
+        resolve_text = (
+            "━━━━━━━━━━━━━━━━━━━\n"
+            f"  ✅  <b>AUTO-RESOLVED</b>\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
+            f"\n  🚛 Truck: <b>{vname}</b>\n"
+            f"\n  {atype_label} alert resolved — condition cleared.\n"
+        )
+        try:
+            await app.bot.send_message(
+                chat_id=alert["sent_to"],
+                text=resolve_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton(
+                        f"📋 View Truck #{vname}",
+                        callback_data=f"cotruck_{alert_co}_{vname}",
+                    )],
+                ]),
+            )
+        except Exception:
+            pass
+
+    # Single audit log entry for all resolved records
+    log_name = vehicle_name or resolved[0].get("vehicle_name", "?")
+    await db.add_audit_log(
+        account_id=account_id,
+        user_id=None,
+        action="alert_auto_resolved",
+        target_type="alert",
+        target_id=str(resolved[0]["id"]),
+        details=(
+            f"{alert_type} alert for Truck {log_name} "
+            f"auto-resolved (source check, {len(resolved)} records)"
+        ),
+    )
+    logger.info(
+        f"Auto-resolved {len(resolved)} {alert_type} alert(s) "
+        f"for Truck {log_name} (source check)"
+    )
+
+
+def _is_alert_resolved(
+    alert_type: str,
+    detail: str,
+    vehicle_name: str,
+    *,
+    live_health_alerts: list[str] | None = None,
+    live_fuel_pct: float | None = None,
+    live_dtcs: list[dict] | None = None,
+) -> str:
+    """Check if an alert's underlying condition has cleared.
+
+    Returns a human-readable reason string if resolved, empty string if not.
+    Only resolves when live data is available — if we can't check, we
+    don't auto-resolve (fail-safe).
+    """
+    if alert_type == "health" and live_health_alerts is not None:
+        # detail contains health codes separated by "-"
+        alerted_codes = set(detail.split("-")) if detail else set()
+        still_active = alerted_codes & set(live_health_alerts)
+        if not still_active:
+            label_map = {
+                "low_oil_pressure": "Oil pressure normal",
+                "high_coolant_temp": "Coolant temp normal",
+                "low_battery": "Battery voltage normal",
+                "low_def": "DEF level normal",
+                "coolant_dtc": "Coolant DTC cleared",
+            }
+            resolved_items = [
+                label_map.get(c, c.replace("_", " ").title())
+                for c in alerted_codes
+            ]
+            return "  ✅ " + "\n  ✅ ".join(resolved_items)
+        return ""
+
+    if alert_type == "fuel" and live_fuel_pct is not None:
+        clear_threshold = FUEL_THRESHOLD + FUEL_HYSTERESIS_PERCENT
+        if live_fuel_pct > clear_threshold:
+            return f"  ⛽ Fuel now at {live_fuel_pct:.0f}% (above {clear_threshold}% threshold)"
+        return ""
+
+    if alert_type == "fault" and live_dtcs is not None:
+        # detail: "SPN-FMI:desc|SPN-FMI:desc" or legacy "SPN-FMI"
+        alerted_spn_fmi: set[str] = set()
+        for entry in detail.split("|"):
+            code_part = entry.split(":", 1)[0] if ":" in entry else entry
+            if code_part:
+                alerted_spn_fmi.add(code_part)
+
+        # Build set of currently active SPN-FMI pairs
+        current_spn_fmi = {
+            f"{dtc.get('spnId', '?')}-{dtc.get('fmiId', '?')}"
+            for dtc in live_dtcs
+        }
+
+        still_active = alerted_spn_fmi & current_spn_fmi
+        if not still_active:
+            return "  ⚙️ All alerted fault codes have cleared"
+        return ""
+
+    # No live data available — don't auto-resolve
+    return ""
+
+
 async def check_alert_realerts(app: Application):
     """Check for unacknowledged alerts that need re-alerting.
 
     Runs every 5 minutes. If an alert hasn't been acknowledged within
     ACK_WINDOW_MINUTES, re-sends a reminder to the SAME user (no role
     escalation). After MAX_REALERTS attempts, auto-expires the alert.
+
+    Fetches live vehicle data so re-alerts show current readings.
     """
     try:
         await _expire_stale_alerts(app)
@@ -986,105 +1345,222 @@ async def check_alert_realerts(app: Application):
         if not pending:
             return
 
+        # Group by account_id to fetch live data once per account
+        by_account: dict[int, list[dict]] = {}
         for alert in pending:
-            try:
-                account_id = alert["account_id"]
-                realert_count = alert["escalation_level"]  # repurposed field
+            by_account.setdefault(alert["account_id"], []).append(alert)
 
-                if realert_count >= MAX_REALERTS:
-                    await db.update_alert_escalation(alert["id"], realert_count, None)
+        for account_id, alerts in by_account.items():
+            # Fetch live data for this account (cached by samsara client)
+            live_health_by_name: dict[str, dict] = {}
+            live_health_alerts_by_name: dict[str, list[str]] = {}
+            live_fuel_by_name: dict[str, float] = {}
+            live_faults_by_name: dict[str, list[dict]] = {}
+            try:
+                samsara = await get_client(account_id)
+
+                # Determine what data we need based on alert types
+                alert_types = {a["alert_type"] for a in alerts}
+                if "health" in alert_types:
+                    health_vehicles = await samsara.get_vehicle_health()
+                    for hv in health_vehicles:
+                        live_health_by_name[hv["name"]] = hv.get("_health", {})
+                        live_health_alerts_by_name[hv["name"]] = hv.get("_health_alerts", [])
+
+                if "fuel" in alert_types:
+                    fuel_vehicles = await samsara.get_low_fuel_vehicles(threshold=100)
+                    for fv in fuel_vehicles:
+                        pct = fv.get("_fuel_pct")
+                        if pct is not None:
+                            live_fuel_by_name[fv["name"]] = pct
+
+                if "fault" in alert_types:
+                    faulted, _ = await samsara.get_vehicles_with_faults()
+                    for fv in faulted:
+                        live_faults_by_name[fv["name"]] = fv.get("_dtcs", [])
+
+            except Exception as e:
+                logger.debug(f"Live data fetch for re-alerts (account {account_id}): {e}")
+
+            for alert in alerts:
+                try:
+                    realert_count = alert["escalation_level"]  # repurposed field
+
+                    if realert_count >= MAX_REALERTS:
+                        await db.update_alert_escalation(alert["id"], realert_count, None)
+                        await db.add_audit_log(
+                            account_id=account_id,
+                            user_id=None,
+                            action="alert_max_realerts",
+                            target_type="alert",
+                            target_id=str(alert["id"]),
+                            details=(
+                                f"Max re-alerts ({MAX_REALERTS}) reached — "
+                                f"{alert['alert_type']} alert for Truck {alert['vehicle_name']}"
+                            ),
+                        )
+                        continue
+
+                    # ── Auto-resolve: skip re-alert if live data shows issue cleared ──
+                    vname = alert["vehicle_name"]
+                    alert_key = alert.get("alert_key", "")
+                    key_parts = alert_key.split(":", 2)
+                    co = key_parts[0] if key_parts else "?"
+                    detail = key_parts[2] if len(key_parts) > 2 else ""
+                    atype = alert["alert_type"]
+
+                    resolved = _is_alert_resolved(
+                        atype, detail, vname,
+                        live_health_alerts=live_health_alerts_by_name.get(vname),
+                        live_fuel_pct=live_fuel_by_name.get(vname),
+                        live_dtcs=live_faults_by_name.get(vname),
+                    )
+
+                    if resolved:
+                        # Auto-resolve: mark acknowledged, delete old message, notify user
+                        await db.acknowledge_alert(alert["id"], user_id=0)
+                        if alert.get("message_id") and alert.get("chat_id"):
+                            try:
+                                await app.bot.delete_message(
+                                    chat_id=alert["chat_id"],
+                                    message_id=alert["message_id"],
+                                )
+                            except Exception:
+                                pass
+
+                        # Also clear alert history so the normal alert cycle
+                        # doesn't keep a stale entry
+                        vid = key_parts[1] if len(key_parts) > 1 else ""
+                        await db.clear_alert_history(account_id, atype, vid)
+
+                        # Send auto-resolved notification
+                        resolve_text = (
+                            "━━━━━━━━━━━━━━━━━━━\n"
+                            f"  ✅  <b>AUTO-RESOLVED</b>\n"
+                            "━━━━━━━━━━━━━━━━━━━\n"
+                            f"\n  🚛 Truck: <b>{vname}</b>\n"
+                            f"\n  The <b>{atype.replace('_', ' ').title()}</b> alert "
+                            "has been automatically resolved.\n"
+                            f"\n  {resolved}\n"
+                        )
+                        try:
+                            await app.bot.send_message(
+                                chat_id=alert["sent_to"],
+                                text=resolve_text,
+                                parse_mode=ParseMode.HTML,
+                                reply_markup=InlineKeyboardMarkup([
+                                    [InlineKeyboardButton(
+                                        f"📋 View Truck #{vname}",
+                                        callback_data=f"cotruck_{co}_{vname}",
+                                    )],
+                                    [InlineKeyboardButton(
+                                        "◀️ Main Menu", callback_data="cmd_menu",
+                                    )],
+                                ]),
+                            )
+                        except Exception:
+                            pass
+
+                        await db.add_audit_log(
+                            account_id=account_id,
+                            user_id=None,
+                            action="alert_auto_resolved",
+                            target_type="alert",
+                            target_id=str(alert["id"]),
+                            details=(
+                                f"{atype} alert for Truck {vname} auto-resolved — "
+                                f"{resolved}"
+                            ),
+                        )
+                        logger.info(
+                            f"Auto-resolved {atype} alert #{alert['id']} "
+                            f"for Truck {vname}: {resolved}"
+                        )
+                        continue
+
+                    new_count = realert_count + 1
+                    next_realert = (now + timedelta(
+                        minutes=ACK_WINDOW_MINUTES,
+                    )).isoformat()
+
+                    # Re-alert the SAME user
+                    tid = alert["sent_to"]
+                    mins_ago = int(
+                        (now - datetime.fromisoformat(alert["created_at"])).total_seconds() / 60
+                    )
+
+                    # ── Delete previous message to keep chat clean ────
+                    if alert.get("message_id") and alert.get("chat_id"):
+                        try:
+                            await app.bot.delete_message(
+                                chat_id=alert["chat_id"],
+                                message_id=alert["message_id"],
+                            )
+                        except Exception:
+                            pass
+
+                    # Build detail lines with live data when available
+                    detail_lines = _build_realert_detail(
+                        atype,
+                        alert_key,
+                        live_health=live_health_by_name.get(vname),
+                        live_fuel_pct=live_fuel_by_name.get(vname),
+                        live_dtcs=live_faults_by_name.get(vname),
+                    )
+
+                    atype_label = atype.replace("_", " ").title()
+                    realert_text = (
+                        "━━━━━━━━━━━━━━━━━━━\n"
+                        f"  🔔  <b>RE-ALERT ({new_count}/{MAX_REALERTS})</b>\n"
+                        "━━━━━━━━━━━━━━━━━━━\n"
+                        f"\n  🚛 Truck: <b>{vname}</b>\n"
+                        f"\n  ⚠️  Unacknowledged <b>{atype_label}</b> alert\n"
+                    )
+
+                    if detail_lines:
+                        realert_text += f"\n{detail_lines}\n"
+
+                    realert_text += (
+                        f"\n  🕐 Sent {mins_ago} min ago — not yet acknowledged.\n"
+                    )
+
+                    # Re-use build_alert_keyboard for consistent buttons + correct AI callback
+                    ack_kb = build_alert_keyboard(
+                        AlertSeverity.WARNING,  # re-alerts always show ACK buttons
+                        co,
+                        vname,
+                        ack_id=alert["id"],
+                        alert_type=atype,
+                        vehicle_id=alert.get("vehicle_id", ""),
+                    )
+
+                    msg = await app.bot.send_message(
+                        chat_id=tid,
+                        text=realert_text,
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=ack_kb,
+                    )
+
+                    # Update DB with new message_id so next cycle can delete it
+                    await db.update_alert_escalation(
+                        alert["id"], new_count, next_realert,
+                        message_id=msg.message_id,
+                    )
+
                     await db.add_audit_log(
                         account_id=account_id,
                         user_id=None,
-                        action="alert_max_realerts",
+                        action="alert_realerted",
                         target_type="alert",
                         target_id=str(alert["id"]),
                         details=(
-                            f"Max re-alerts ({MAX_REALERTS}) reached — "
-                            f"{alert['alert_type']} alert for Truck {alert['vehicle_name']}"
+                            f"{atype} re-alert {new_count}/{MAX_REALERTS} "
+                            f"for Truck {vname} — sent to {tid}"
                         ),
                     )
-                    continue
 
-                new_count = realert_count + 1
-                next_realert = (now + timedelta(
-                    minutes=ACK_WINDOW_MINUTES,
-                )).isoformat()
-                await db.update_alert_escalation(alert["id"], new_count, next_realert)
-
-                # Re-alert the SAME user
-                tid = alert["sent_to"]
-                mins_ago = int(
-                    (now - datetime.fromisoformat(alert["created_at"])).total_seconds() / 60
-                )
-
-                realert_text = (
-                    "━━━━━━━━━━━━━━━━━━━\n"
-                    f"  🔔  <b>RE-ALERT ({new_count}/{MAX_REALERTS})</b>\n"
-                    "━━━━━━━━━━━━━━━━━━━\n"
-                    f"\n  ⚠️ Unacknowledged {alert['alert_type']} alert\n"
-                    f"  🚛 Truck: <b>{alert['vehicle_name']}</b>\n"
-                    f"\n  Sent {mins_ago} min ago — not yet acknowledged.\n"
-                )
-
-                # Extract Samsara vehicle ID from composite vehicle_id
-                # Format: "account_id:co:samsara_vehicle_id"
-                _parts = alert.get("vehicle_id", "").split(":")
-                _samsara_vid = _parts[2] if len(_parts) >= 3 else None
-                _co_code = _parts[1] if len(_parts) >= 2 else None
-
-                # Build Samsara dashboard URL
-                _realert_url = None
-                if _samsara_vid and _co_code:
-                    try:
-                        _client = await get_client(account_id)
-                        _realert_url = _client.vehicle_url(_co_code, _samsara_vid)
-                    except Exception:
-                        pass
-
-                ack_kb = InlineKeyboardMarkup([
-                    [InlineKeyboardButton(
-                        "✅ Acknowledge",
-                        callback_data=f"ack_alert_{alert['id']}",
-                    )],
-                    [InlineKeyboardButton(
-                        f"⏰ Snooze {SNOOZE_MINUTES} min",
-                        callback_data=f"snooze_alert_{alert['id']}",
-                    )],
-                    [InlineKeyboardButton(
-                        "🤖 AI Diagnose",
-                        callback_data=f"ai_diag__{alert['vehicle_name']}",
-                    )],
-                    *([
-                        [InlineKeyboardButton(
-                            "🔗 Open in Samsara",
-                            url=_realert_url,
-                        )]
-                    ] if _realert_url else []),
-                    [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
-                ])
-
-                await app.bot.send_message(
-                    chat_id=tid,
-                    text=realert_text,
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=ack_kb,
-                )
-
-                await db.add_audit_log(
-                    account_id=account_id,
-                    user_id=None,
-                    action="alert_realerted",
-                    target_type="alert",
-                    target_id=str(alert["id"]),
-                    details=(
-                        f"{alert['alert_type']} re-alert {new_count}/{MAX_REALERTS} "
-                        f"for Truck {alert['vehicle_name']} — sent to {tid}"
-                    ),
-                )
-
-            except Exception as e:
-                logger.error(f"Re-alert for alert {alert['id']}: {e}")
+                except Exception as e:
+                    logger.error(f"Re-alert for alert {alert['id']}: {e}")
 
     except Exception as e:
         logger.error(f"Re-alert check error: {e}")
@@ -1382,20 +1858,57 @@ async def deliver_dnd_alerts(app: Application):
 # ── Alert Snooze Handler ─────────────────────────────────────────
 
 
-async def handle_alert_snooze(update, context, ack_id: int):
+async def handle_snooze_pick(update, context, ack_id: int):
+    """Show snooze duration options for an alert."""
+    query = update.callback_query
+    await query.answer()
+
+    def _label(m: int) -> str:
+        if m < 60:
+            return f"{m} min"
+        h = m // 60
+        return f"{h} hour" if h == 1 else f"{h} hours"
+
+    rows = [
+        [InlineKeyboardButton(
+            f"⏰ {_label(m)}",
+            callback_data=f"snooze_set_{ack_id}_{m}",
+        )]
+        for m in SNOOZE_OPTIONS
+    ]
+    # Back button restores the original alert keyboard
+    rows.append([InlineKeyboardButton("↩️ Back", callback_data=f"snooze_back_{ack_id}")])
+
+    try:
+        await query.edit_message_reply_markup(
+            reply_markup=InlineKeyboardMarkup(rows),
+        )
+    except Exception:
+        pass
+
+
+async def handle_alert_snooze(update, context, ack_id: int, minutes: int = SNOOZE_MINUTES):
     """Handle the ⏰ Snooze button — postpone escalation without acking."""
     query = update.callback_query
     try:
         snooze_until = (
-            datetime.now(timezone.utc) + timedelta(minutes=SNOOZE_MINUTES)
+            datetime.now(timezone.utc) + timedelta(minutes=minutes)
         ).isoformat()
         await db.snooze_alert(ack_id, snooze_until)
+
+        def _label(m: int) -> str:
+            if m < 60:
+                return f"{m} min"
+            h = m // 60
+            return f"{h} hour" if h == 1 else f"{h} hours"
+
+        label = _label(minutes)
 
         # Update message to show snooze
         try:
             original_text = query.message.text_html or query.message.text or ""
             snooze_text = original_text + (
-                f"\n\n⏰ <b>Snoozed</b> for {SNOOZE_MINUTES} min by "
+                f"\n\n⏰ <b>Snoozed</b> for {label} by "
                 f"<a href='tg://user?id={query.from_user.id}'>"
                 f"{query.from_user.full_name or query.from_user.id}</a>"
             )
@@ -1407,7 +1920,7 @@ async def handle_alert_snooze(update, context, ack_id: int):
         except Exception:
             pass
 
-        await query.answer(f"⏰ Snoozed for {SNOOZE_MINUTES} min", show_alert=False)
+        await query.answer(f"⏰ Snoozed for {label}", show_alert=False)
 
         # Audit
         user = context.user_data.get("_db_user")
@@ -1418,11 +1931,34 @@ async def handle_alert_snooze(update, context, ack_id: int):
                 action="alert_snoozed",
                 target_type="alert",
                 target_id=str(ack_id),
-                details=f"Snoozed for {SNOOZE_MINUTES} min",
+                details=f"Snoozed for {label}",
             )
     except Exception as e:
         logger.error(f"Snooze alert {ack_id}: {e}")
         await query.answer("Error snoozing alert", show_alert=True)
+
+
+async def _restore_alert_keyboard(update, context, ack_id: int):
+    """Restore the original alert keyboard (e.g. after snooze picker or AI diagnose)."""
+    query = update.callback_query
+    await query.answer()
+    try:
+        row = await db.get_alert_ack_by_id(ack_id)
+        if not row:
+            return
+        alert_key = row.get("alert_key", "")
+        parts = alert_key.split(":", 2)
+        co = parts[0] if parts else "?"
+        vname = row.get("vehicle_name", "?")
+        alert_type = row.get("alert_type", "fault")
+        severity = (AlertSeverity.CRITICAL if alert_type == "health"
+                     else AlertSeverity.WARNING)
+        kb = build_alert_keyboard(severity, co, vname, ack_id=ack_id,
+                                  alert_type=alert_type,
+                                  vehicle_id=row.get("vehicle_id", ""))
+        await query.edit_message_reply_markup(reply_markup=kb)
+    except Exception as e:
+        logger.error(f"Restore alert keyboard {ack_id}: {e}")
 
 
 # ── Maintenance Suppression Check ────────────────────────────────
@@ -1436,139 +1972,127 @@ async def is_vehicle_suppressed(account_id: int, vehicle_name: str) -> bool:
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  Safety Events — Scheduled Alert Check
+#  Events Alert Check
 # ═══════════════════════════════════════════════════════════════════
 
-# Dedup: track event IDs already alerted (in-memory fallback)
-_known_events: set[str] = set()
+# Warmup flag — first cycle only populates known IDs without sending.
+_events_warmup_done: dict[int, bool] = {}  # account_id → bool
 
 
 def _event_severity(event: dict) -> AlertSeverity:
-    """Classify a safety event into a severity tier.
-
-    - crash → CRITICAL
-    - braking with g > 0.8 → WARNING
-    - everything else → INFO
-    """
+    """Map event type + g-force to severity tier."""
     etype = event.get("event_type", "")
-    g_force = event.get("g_force", 0)
-
+    gf = event.get("g_force", 0.0)
     if etype == "crash":
         return AlertSeverity.CRITICAL
-    if etype == "braking" and g_force > 0.8:
+    if etype == "braking" and gf > 0.8:
         return AlertSeverity.WARNING
     return AlertSeverity.INFO
 
 
-async def check_safety_events(app: Application):
-    """Scheduled job: poll Samsara safety events and push alerts.
+async def _get_known_event_ids(account_id: int) -> set[str]:
+    """Get already-alerted event IDs (Redis → in-memory)."""
+    rkey = f"events_seen:{account_id}"
+    if rcache.is_available():
+        return await rcache.smembers(rkey)
+    return _known_event_ids.get(account_id, set())
 
-    Sends text alert with video URL as combined message when dashcam
-    footage is available.
+
+async def _add_known_event_ids(account_id: int, ids: set[str]):
+    """Mark event IDs as alerted (Redis → in-memory)."""
+    if not ids:
+        return
+    rkey = f"events_seen:{account_id}"
+    if rcache.is_available():
+        existing = await rcache.smembers(rkey)
+        await rcache.sset(rkey, existing | ids, ttl=86400)
+    else:
+        _known_event_ids.setdefault(account_id, set()).update(ids)
+
+
+async def check_events(app: Application):
+    """Scheduled job: poll Samsara safety events and send alerts for new ones.
+
+    Runs every 5 minutes. Short time window (1 day) to catch recent events.
+    Deduplicates by event_id so each event is only alerted once.
+    First cycle per account is a warm-up (populate known IDs, don't send).
     """
     try:
-        subscribers = await db.get_all_typed_subscribers("events")
-        if not subscribers:
-            return
+        accounts = await db.list_accounts()
+        for account in accounts:
+            companies = await db.get_account_companies(account.id)
+            if not companies:
+                continue
 
-        acct_subs: dict[int, list] = {}
-        for sub in subscribers:
-            acct_subs.setdefault(sub.account_id, []).append(sub)
-
-        for account_id, subs in acct_subs.items():
             try:
-                samsara = await get_client(account_id)
+                samsara = await get_client(account.id)
+            except Exception:
+                continue
+
+            await samsara.ensure_org_ids()
+
+            try:
                 events = await samsara.get_events(days=1)
-
-                acct_companies = await db.get_account_companies(account_id)
-                populate_company_display(acct_companies)
-                company_codes = [o.code for o in acct_companies]
-                show_co = len(company_codes) > 1
-
-                for event in events:
-                    eid = event.get("event_id", "")
-                    if not eid or eid in _known_events:
-                        continue
-
-                    # Check Redis dedup
-                    if rcache.is_available():
-                        already = await rcache.get(f"event_seen:{eid}")
-                        if already:
-                            _known_events.add(eid)
-                            continue
-
-                    co = event.get("_org", "?")
-                    vname = event.get("vehicle_name", "?")
-                    vid = event.get("vehicle_id", "")
-                    severity = _event_severity(event)
-
-                    if await is_vehicle_suppressed(account_id, vname):
-                        _known_events.add(eid)
-                        continue
-
-                    alert_text = format_event_alert(event, show_company=show_co)
-                    video_url = event.get("video_url")
-
-                    # Send alert (with video if available)
-                    for sub in subs:
-                        if sub.role == Role.DRIVER and sub.truck_num:
-                            if vname.lower() != sub.truck_num.lower():
-                                continue
-
-                        if not severity == AlertSeverity.CRITICAL and sub.is_in_quiet_hours():
-                            await db.queue_dnd_alert(
-                                account_id=account_id,
-                                telegram_id=sub.telegram_id,
-                                alert_type="events",
-                                vehicle_name=vname,
-                                alert_text=alert_text,
-                            )
-                            continue
-
-                        try:
-                            _evt_url = _build_samsara_url(event.get("_org_id"), vid)
-                            kb = build_alert_keyboard(
-                                severity, co, vname,
-                                samsara_url=_evt_url,
-                            )
-
-                            if video_url:
-                                # Combined: video with text caption
-                                # Telegram caption max is 1024 chars
-                                caption = alert_text[:1024]
-                                try:
-                                    await app.bot.send_video(
-                                        chat_id=sub.telegram_id,
-                                        video=video_url,
-                                        caption=caption,
-                                        parse_mode=ParseMode.HTML,
-                                        reply_markup=kb,
-                                    )
-                                except Exception:
-                                    # Fallback: send text + link if video fails
-                                    alert_text += f"\n\n  🎥 <a href=\"{video_url}\">View Dashcam</a>"
-                                    await app.bot.send_message(
-                                        chat_id=sub.telegram_id,
-                                        text=alert_text,
-                                        parse_mode=ParseMode.HTML,
-                                        reply_markup=kb,
-                                    )
-                            else:
-                                await app.bot.send_message(
-                                    chat_id=sub.telegram_id,
-                                    text=alert_text,
-                                    parse_mode=ParseMode.HTML,
-                                    reply_markup=kb,
-                                )
-                        except Exception as e:
-                            logger.error(f"Event alert to {sub.telegram_id}: {e}")
-
-                    # Mark as seen
-                    _known_events.add(eid)
-                    if rcache.is_available():
-                        await rcache.set(f"event_seen:{eid}", "1", ttl=86400 * 3)
-
             except Exception as e:
-                logger.error(f"Safety events check for account {account_id}: {e}")
+                logger.debug(f"Events check for account {account.id}: {e}")
+                continue
+
+            if not events:
+                if account.id not in _events_warmup_done:
+                    _events_warmup_done[account.id] = True
+                continue
+
+            known = await _get_known_event_ids(account.id)
+            new_events = [e for e in events if e.get("event_id") not in known]
+
+            # Mark all current event IDs as known
+            all_ids = {e.get("event_id") for e in events if e.get("event_id")}
+            await _add_known_event_ids(account.id, all_ids)
+
+            # Warmup: first cycle populates known set without sending
+            if not _events_warmup_done.get(account.id):
+                _events_warmup_done[account.id] = True
+                logger.info(
+                    f"Events warmup for account {account.id}: "
+                    f"populated {len(all_ids)} known event IDs"
+                )
+                continue
+
+            if not new_events:
+                continue
+
+            # Get event-alert subscribers
+            subscribers = await db.get_typed_alert_subscribers(
+                account.id, "events"
+            )
+            if not subscribers:
+                continue
+
+            for event in new_events:
+                vname = event.get("vehicle_name", "?")
+
+                if await is_vehicle_suppressed(account.id, vname):
+                    continue
+
+                severity = _event_severity(event)
+                alert_text = format_event_alert(event)
+                vid = event.get("vehicle_id", vname)
+                co = event.get("_org", "?")
+                vehicle_dict = {"id": vid, "name": vname, "_org": co}
+                eid = event.get("event_id", "")
+
+                await send_alert(
+                    app,
+                    account_id=account.id,
+                    alert_type="events",
+                    severity=severity,
+                    vehicle=vehicle_dict,
+                    alert_text=alert_text,
+                    subscribers=subscribers,
+                    co=co,
+                    alert_key_detail=f"{event.get('event_type', '')}:{eid}",
+                    video_url=event.get("video_url") or "",
+                )
+
     except Exception as e:
-        logger.error(f"check_safety_events top-level: {e}")
+        logger.error(f"Events check error: {e}")

@@ -4,6 +4,7 @@ import asyncio
 import io
 from datetime import datetime as _dt
 from zoneinfo import ZoneInfo as _ZI
+from bot.i18n import t
 
 _TZ_ET = _ZI("America/New_York")
 
@@ -66,15 +67,15 @@ async def cmd_livemap(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not (can(user.role, "can_location_map") or can(user.role, "can_location_own")):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     companies = await db.get_account_companies(user.account_id)
     populate_company_display(companies)
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
 
-    await _show_loading(update, context, f"⏳ Generating map ({company_label})…")
+    await _show_loading(update, context, t('live_map.loading').format(company=company_label))
 
     try:
         vehicles = await samsara.get_fleet_overview(company=company)
@@ -86,14 +87,14 @@ async def cmd_livemap(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         if not vehicles:
             await _show(update, context, [
-                f"ℹ️ No vehicles found for <b>{company_label}</b>."
+                t('live_map.no_vehicles').format(company=company_label)
             ], keyboard=back_kb())
             return
 
         map_buf = await asyncio.to_thread(_render_map, vehicles)
         if map_buf is None:
             await _show(update, context, [
-                "ℹ️ No GPS data available for map rendering."
+                t('live_map.no_gps_data')
             ], keyboard=back_kb())
             return
 
@@ -101,9 +102,9 @@ async def cmd_livemap(update: Update, context: ContextTypes.DEFAULT_TYPE,
         moving = sum(1 for v in vehicles
                      if (v.get("location", {}).get("speedMilesPerHour", 0) or 0) > 2)
         caption = (
-            f"🗺 Fleet Map — {company_label}\n"
-            f"🚛 {len(vehicles)} trucks  ·  🟢 {moving} moving\n"
-            f"📅 {now_et:%b %d, %I:%M %p ET}"
+            f"{t('live_map.caption_title').format(company=company_label)}\n"
+            f"{t('live_map.caption_stats').format(total=len(vehicles), moving=moving)}\n"
+            f"{t('live_map.caption_date').format(date=now_et.strftime('%b %d, %I:%M %p ET'))}"
         )
 
         chat_id = update.effective_chat.id
@@ -114,8 +115,7 @@ async def cmd_livemap(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
     except ImportError:
         await _show(update, context, [
-            "❌ Map rendering unavailable.\n"
-            "Install: <code>pip install staticmap</code>"
+            t('live_map.install_required')
         ], keyboard=back_kb())
     except Exception as e:
         logger.error(f"Live map error: {e}")

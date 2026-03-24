@@ -3,6 +3,7 @@
 from datetime import datetime as _dt
 from zoneinfo import ZoneInfo as _ZI
 from math import radians, sin, cos, sqrt, atan2
+from bot.i18n import t
 
 _TZ_ET = _ZI("America/New_York")
 
@@ -80,40 +81,39 @@ async def cmd_geofences(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not (can(user.role, "can_geofence_all") or can(user.role, "can_geofence_own")):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     companies = await db.get_account_companies(user.account_id)
     populate_company_display(companies)
     samsara = await get_client(user.account_id)
 
-    await _show_loading(update, context, "⏳ Loading geofences…")
+    await _show_loading(update, context, t('geofence.loading'))
 
     try:
         geofences = await samsara.get_geofences(company=company)
         if not geofences:
             await _show(update, context, [
-                "ℹ️ No geofences defined.\n\n"
-                "Create geofences in the Samsara dashboard\n"
-                "to see them here."
+                t('geofence.empty')
             ], keyboard=back_kb())
             return
 
         now_et = _dt.now(_TZ_ET)
         total = len(geofences)
         shown = min(total, 15)
+        sep = t("alert_format.separator")
         text = (
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "  📍  <b>GEOFENCES</b>\n"
-            "━━━━━━━━━━━━━━━━━━━\n"
-            f"\n  Showing {shown} of {total} geofence(s)\n"
+            f"{sep}\n"
+            f"  {t('geofence.header')}\n"
+            f"{sep}\n"
+            f"\n  {t('geofence.showing').format(shown=shown, total=total)}\n"
             f"  {now_et:%b %d, %Y %I:%M %p ET}\n"
         )
 
         for gf in geofences[:15]:
             name = gf.get("name", "Unknown")
             org = gf.get("_org", "")
-            gf_type = "🔵 Circle" if gf.get("circularGeofence") else "🟣 Polygon"
+            gf_type = t('geofence.type_circle') if gf.get("circularGeofence") else t('geofence.type_polygon')
             text += f"\n  {gf_type} <b>{name}</b>"
             if org:
                 text += f" [{org}]"
@@ -185,7 +185,7 @@ async def check_geofence_events(app: Application):
 
                     # Detect state change
                     if prev_state is not None and prev_state != current_state:
-                        event = "entered" if inside else "exited"
+                        event = t('geofence.event_entered') if inside else t('geofence.event_exited')
                         emoji = "📍" if inside else "📤"
 
                         from bot.alerts import is_vehicle_suppressed
@@ -208,7 +208,7 @@ async def check_geofence_events(app: Application):
                                         pass
 
                         alert_text = (
-                            f"{emoji} <b>Geofence Alert</b>\n\n"
+                            f"{emoji} {t('geofence.alert_title')}\n\n"
                             f"  🚛 <b>{vname}</b> {event}\n"
                             f"  📍 <b>{gfname}</b>\n"
                         )

@@ -58,6 +58,11 @@ async def _get_user(update: Update):
             await db.update_user(user.id, display_name=tg_name)
             user.display_name = tg_name
 
+    # Set i18n language for this request
+    if user:
+        from bot.i18n import set_lang
+        set_lang(getattr(user, "language", "en") or "en")
+
     return user, tid, sys_owner
 
 

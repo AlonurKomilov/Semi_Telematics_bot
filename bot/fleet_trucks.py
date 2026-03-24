@@ -3,6 +3,7 @@
 import asyncio
 from datetime import datetime as _dt
 from zoneinfo import ZoneInfo as _ZI
+from bot.i18n import t
 
 _TZ_ET = _ZI("America/New_York")
 
@@ -50,18 +51,18 @@ async def cmd_truck(update: Update, context: ContextTypes.DEFAULT_TYPE,
     if user.role == Role.DRIVER:
         if not user.truck_num:
             await _show(update, context,
-                        ["⚠️ No truck assigned. Ask your admin to set your truck number."],
+                        [t('truck.no_truck_assigned')],
                         keyboard=back_kb())
             return
         truck_name = user.truck_num
     elif not can(user.role, "can_truck_all"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     if not truck_name:
         await _show(update, context,
-                    ["ℹ️  Type  /truck <b>NUMBER</b>\n\nExample:  /truck 134"],
+                    [t('truck.usage_prompt')],
                     keyboard=back_kb())
         return
 
@@ -70,7 +71,7 @@ async def cmd_truck(update: Update, context: ContextTypes.DEFAULT_TYPE,
     populate_company_display(companies)
     company_codes = [o.code for o in companies]
 
-    await _show_loading(update, context, f"⏳ Looking up #{truck_name}…")
+    await _show_loading(update, context, t('truck.loading_lookup').format(name=truck_name))
 
     try:
         samsara = await get_client(user.account_id)
@@ -78,7 +79,7 @@ async def cmd_truck(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         if not matches:
             await _show(update, context,
-                        [f"❌  Truck <b>#{truck_name}</b> not found."],
+                        [t('truck.not_found').format(name=truck_name)],
                         keyboard=back_kb())
             return
 
@@ -111,7 +112,7 @@ async def cmd_truck_report(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not can(user.role, "can_faults"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     # Populate COMPANY_DISPLAY
@@ -119,13 +120,13 @@ async def cmd_truck_report(update: Update, context: ContextTypes.DEFAULT_TYPE,
     populate_company_display(companies)
 
     await _show_loading(update, context,
-                        f"⏳ Generating report for #{truck_name}…")
+                        t('truck.loading_report').format(name=truck_name))
     try:
         samsara = await get_client(user.account_id)
         matches = await samsara.get_vehicle_detail(truck_name, company=company)
         if not matches:
             await _show(update, context,
-                        [f"❌ Truck <b>#{truck_name}</b> not found."],
+                        [t('truck.not_found').format(name=truck_name)],
                         keyboard=back_kb())
             return
 
@@ -147,27 +148,25 @@ async def cmd_truck_report(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         if dtcs:
             sev_parts = []
-            if lights.get("stopIsOn"):    sev_parts.append("🛑 STOP")
-            if lights.get("protectIsOn"): sev_parts.append("🛡 PROTECT")
-            if lights.get("emissionsIsOn"): sev_parts.append("♨️ EMISSIONS")
-            if lights.get("warningIsOn"): sev_parts.append("⚠️ WARNING")
-            sev_line = "  ".join(sev_parts) if sev_parts else "🔧 MINOR"
+            if lights.get("stopIsOn"):    sev_parts.append(t('truck.severity_stop'))
+            if lights.get("protectIsOn"): sev_parts.append(t('truck.severity_protect'))
+            if lights.get("emissionsIsOn"): sev_parts.append(t('truck.severity_emissions'))
+            if lights.get("warningIsOn"): sev_parts.append(t('truck.severity_warning'))
+            sev_line = "  ".join(sev_parts) if sev_parts else t('truck.severity_minor')
 
             caption = (
                 f"━━━━━━━━━━━━━━━━━━━\n"
-                f"  🚛  <b>TRUCK #{truck_name}</b>\n"
+                f"  {t('truck.detail_header').format(name=truck_name)}\n"
                 f"━━━━━━━━━━━━━━━━━━━\n"
-                f"\n  📄  <b>{len(dtcs)}</b> active fault code"
-                f"{'s' if len(dtcs) != 1 else ''}\n"
+                f"\n  {t('truck.active_fault_count').format(count=len(dtcs))}\n"
                 f"  {sev_line}"
             )
         else:
             caption = (
                 f"━━━━━━━━━━━━━━━━━━━\n"
-                f"  🚛  <b>TRUCK #{truck_name}</b>\n"
+                f"  {t('truck.detail_header').format(name=truck_name)}\n"
                 f"━━━━━━━━━━━━━━━━━━━\n"
-                f"\n  ✅  No active fault codes\n"
-                f"  Truck is running clean!"
+                f"\n  {t('truck.no_active_faults_caption')}"
             )
 
         kb = truck_kb(truck_name, company, show_faults=can(user.role, "can_faults"))
@@ -193,16 +192,16 @@ async def cmd_critical(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not can(user.role, "can_faults"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     companies = await db.get_account_companies(user.account_id)
     populate_company_display(companies)
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
-                        f"⏳ Checking critical faults ({company_label})…")
+                        t('truck.loading_critical').format(company=company_label))
     try:
         critical = await samsara.get_critical_faults(company=company)
         _, total, breakdown = await samsara.get_vehicles_with_faults(company=company)
@@ -210,14 +209,11 @@ async def cmd_critical(update: Update, context: ContextTypes.DEFAULT_TYPE,
         if not critical:
             kb = await _user_menu_kb(user)
             await _show(update, context, [
-                "━━━━━━━━━━━━━━━━━━━\n"
-                "  ✅  <b>ALL CLEAR</b>\n"
-                "━━━━━━━━━━━━━━━━━━━\n"
-                "\n"
-                "  No STOP, PROTECT, or\n"
-                "  EMISSIONS lights active.\n"
-                "\n"
-                "  All trucks running clean 👍"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"  ✅  <b>{t('truck.all_clear_title')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"\n"
+                f"  {t('truck.all_clear_msg')}"
             ], keyboard=kb)
             return
 
@@ -247,13 +243,13 @@ async def cmd_critical(update: Update, context: ContextTypes.DEFAULT_TYPE,
             company_info = f"\n  🏢  {_company_line(breakdown)}"
 
         caption = (
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "  🚨  <b>CRITICAL FAULTS</b>\n"
-            "━━━━━━━━━━━━━━━━━━━\n"
-            f"\n  🚛  <b>{len(critical)}</b> of {total} trucks need attention\n"
-            f"  📄  <b>{total_dtcs}</b> fault codes\n"
-            f"  📊  Fleet health: <b>{health_pct}%</b>\n"
-            f"\n  🛑 {stop} STOP  ·  🛡 {protect} PROT  ·  ♨️ {emis} EMIS"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"  🚨  <b>{t('truck.critical_title')}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"\n  {t('truck.critical_trucks').format(affected=len(critical), total=total)}\n"
+            f"  {t('truck.critical_codes').format(count=total_dtcs)}\n"
+            f"  {t('truck.critical_health').format(pct=health_pct)}\n"
+            f"\n  {t('truck.critical_severity').format(stop=stop, protect=protect, emis=emis)}"
             f"{company_info}"
             f"{_skipped_warning(samsara.last_skipped)}"
         )

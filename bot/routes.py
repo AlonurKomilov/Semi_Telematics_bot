@@ -4,6 +4,7 @@ import asyncio
 import io
 from datetime import datetime as _dt, timedelta, timezone
 from zoneinfo import ZoneInfo as _ZI
+from bot.i18n import t
 
 _TZ_ET = _ZI("America/New_York")
 
@@ -84,7 +85,7 @@ async def cmd_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = context.user_data["_db_user"]
     if not (can(user.role, "can_route_all") or can(user.role, "can_route_own")):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     # Driver with truck_num: auto-select
@@ -93,17 +94,17 @@ async def cmd_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
         co_code = companies[0].code if companies else ""
         kb = route_date_kb(user.truck_num, co_code)
         await _show(update, context, [
-            f"🛣 <b>Route Replay</b>\n\n"
+            f"{t('route.title')}\n\n"
             f"  🚛 {user.truck_num}\n\n"
-            "  Select a date:"
+            f"  {t('route.select_date')}"
         ], keyboard=kb)
         return
 
     # Non-driver: ask for truck name
     context.user_data["_pending"] = "route_truck"
     await _show(update, context, [
-        "🛣 <b>Route Replay</b>\n\n"
-        "Type the truck number/name:"
+        f"{t('route.title')}\n\n"
+        f"{t('route.type_truck')}"
     ], keyboard=back_kb())
 
 
@@ -114,7 +115,7 @@ async def cmd_route_go(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not (can(user.role, "can_route_all") or can(user.role, "can_route_own")):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     companies = await db.get_account_companies(user.account_id)
@@ -129,7 +130,7 @@ async def cmd_route_go(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
     date_label = (now - timedelta(days=days_ago)).strftime("%b %d, %Y")
     await _show_loading(update, context,
-                        f"⏳ Fetching route for {vehicle_name} ({date_label})…")
+                        t('route.loading').format(vehicle=vehicle_name, date=date_label))
 
     try:
         # Get GPS history using the per-company client
@@ -139,7 +140,7 @@ async def cmd_route_go(update: Update, context: ContextTypes.DEFAULT_TYPE,
             company = samsara.company_codes[0] if samsara.company_codes else ""
             client = samsara.clients.get(company)
         if not client:
-            await _show(update, context, ["❌ No Samsara client available."], keyboard=back_kb())
+            await _show(update, context, [t('route.no_client')], keyboard=back_kb())
             return
 
         gps_data = await client._get_paginated_history("gps", start, end)
@@ -158,21 +159,21 @@ async def cmd_route_go(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         if not points:
             await _show(update, context, [
-                f"ℹ️ No GPS data for <b>{vehicle_name}</b> on {date_label}."
+                t('route.no_gps_data').format(vehicle=vehicle_name, date=date_label)
             ], keyboard=back_kb())
             return
 
         map_buf, miles = await asyncio.to_thread(_render_route, points)
         if map_buf is None:
             await _show(update, context, [
-                "ℹ️ Not enough GPS points to render a route."
+                t('route.not_enough_points')
             ], keyboard=back_kb())
             return
 
         caption = (
-            f"🛣 Route — {vehicle_name}\n"
-            f"📅 {date_label}  ·  📏 {miles} mi\n"
-            f"🟢 Start → 🔴 End"
+            f"{t('route.caption_title').format(vehicle=vehicle_name)}\n"
+            f"{t('route.caption_date').format(date=date_label, miles=miles)}\n"
+            f"{t('route.caption_markers')}"
         )
 
         chat_id = update.effective_chat.id
@@ -183,8 +184,7 @@ async def cmd_route_go(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
     except ImportError:
         await _show(update, context, [
-            "❌ Map rendering unavailable.\n"
-            "Install: <code>pip install staticmap</code>"
+            t('route.map_unavailable')
         ], keyboard=back_kb())
     except Exception as e:
         logger.error(f"Route replay error: {e}")
@@ -208,8 +208,8 @@ async def handle_route_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     co_code = companies[0].code if companies else ""
     kb = route_date_kb(text, co_code)
     await _show(update, context, [
-        f"🛣 <b>Route Replay</b>\n\n"
+        f"{t('route.title')}\n\n"
         f"  🚛 {text}\n\n"
-        "  Select a date:"
+        f"  {t('route.select_date')}"
     ], keyboard=kb)
     return True

@@ -2,6 +2,7 @@
 
 from datetime import datetime as _dt
 from zoneinfo import ZoneInfo as _ZI
+from bot.i18n import t
 
 _TZ_ET = _ZI("America/New_York")
 
@@ -24,14 +25,15 @@ async def cmd_fuelcost(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = context.user_data["_db_user"]
     if not can(user.role, "can_fuel_cost"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
+    sep = t("alert_format.separator")
     text = (
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "  💰  <b>FUEL COST TRACKER</b>\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "\n  Track fuel expenses per truck.\n"
+        f"{sep}\n"
+        f"  {t('fuel_costs.header')}\n"
+        f"{sep}\n"
+        f"\n  {t('fuel_costs.description')}\n"
     )
     await _show(update, context, [text], keyboard=fuelcost_menu_kb())
 
@@ -42,15 +44,14 @@ async def cmd_fuelcost_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = context.user_data["_db_user"]
     if not can(user.role, "can_fuel_cost"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     context.user_data["_pending"] = "fuelcost_truck"
     context.user_data["_fuelcost"] = {}
     await _show(update, context, [
-        "➕ <b>Log Fill-Up</b>\n\n"
-        "<b>Step 1/4</b> — Truck name\n"
-        "Type the truck number/name:"
+        f"{t('fuel_costs.add_title')}\n\n"
+        f"{t('fuel_costs.step1_truck')}"
     ], keyboard=back_kb())
 
 
@@ -68,9 +69,8 @@ async def handle_fuelcost_text(update: Update, context: ContextTypes.DEFAULT_TYP
         wiz["truck"] = text
         context.user_data["_pending"] = "fuelcost_gallons"
         await _show(update, context, [
-            f"🚛 Truck: <b>{text}</b>\n\n"
-            "<b>Step 2/4</b> — Gallons\n"
-            "How many gallons filled?"
+            f"{t('fuel_costs.step2_confirm').format(truck=text)}\n\n"
+            f"{t('fuel_costs.step2_gallons')}"
         ], keyboard=back_kb())
         return True
 
@@ -78,14 +78,13 @@ async def handle_fuelcost_text(update: Update, context: ContextTypes.DEFAULT_TYP
         try:
             gallons = float(text)
         except ValueError:
-            await _show(update, context, ["❌ Enter a number (e.g. 150.5)"], keyboard=back_kb())
+            await _show(update, context, [t('fuel_costs.error_number').format(example="150.5")], keyboard=back_kb())
             return True
         wiz["gallons"] = gallons
         context.user_data["_pending"] = "fuelcost_price"
         await _show(update, context, [
-            f"⛽ Gallons: <b>{gallons}</b>\n\n"
-            "<b>Step 3/4</b> — Price per gallon ($)\n"
-            "How much per gallon?"
+            f"{t('fuel_costs.step3_confirm').format(gallons=gallons)}\n\n"
+            f"{t('fuel_costs.step3_price')}"
         ], keyboard=back_kb())
         return True
 
@@ -93,14 +92,13 @@ async def handle_fuelcost_text(update: Update, context: ContextTypes.DEFAULT_TYP
         try:
             price = float(text.replace("$", ""))
         except ValueError:
-            await _show(update, context, ["❌ Enter a number (e.g. 3.89)"], keyboard=back_kb())
+            await _show(update, context, [t('fuel_costs.error_number').format(example="3.89")], keyboard=back_kb())
             return True
         wiz["price"] = price
         context.user_data["_pending"] = "fuelcost_odo"
         await _show(update, context, [
-            f"💲 Price: <b>${price:.2f}/gal</b>\n\n"
-            "<b>Step 4/4</b> — Odometer (miles)\n"
-            "Current odometer reading:"
+            f"{t('fuel_costs.step4_confirm').format(price=f'{price:.2f}')}\n\n"
+            f"{t('fuel_costs.step4_odo')}"
         ], keyboard=back_kb())
         return True
 
@@ -108,7 +106,7 @@ async def handle_fuelcost_text(update: Update, context: ContextTypes.DEFAULT_TYP
         try:
             odo = float(text.replace(",", ""))
         except ValueError:
-            await _show(update, context, ["❌ Enter a number (e.g. 125000)"], keyboard=back_kb())
+            await _show(update, context, [t('fuel_costs.error_number').format(example="125000")], keyboard=back_kb())
             return True
 
         # Save entry
@@ -133,7 +131,7 @@ async def handle_fuelcost_text(update: Update, context: ContextTypes.DEFAULT_TYP
             context.user_data.pop("_fuelcost", None)
 
             await _show(update, context, [
-                "✅ <b>Fill-Up Logged!</b>\n\n"
+                f"{t('fuel_costs.logged_title')}\n\n"
                 f"  🚛 {truck}\n"
                 f"  ⛽ {gallons} gal × ${price:.2f} = <b>${total:.2f}</b>\n"
                 f"  📏 Odometer: {odo:,.0f} mi\n"
@@ -153,22 +151,23 @@ async def cmd_fuelcost_summary(update: Update, context: ContextTypes.DEFAULT_TYP
     user = context.user_data["_db_user"]
     if not can(user.role, "can_fuel_cost"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    await _show_loading(update, context, "⏳ Loading fuel summary…")
+    await _show_loading(update, context, t('fuel_costs.loading_summary'))
     try:
         summary = await db.get_fuel_summary(user.account_id)
         if not summary:
             await _show(update, context, [
-                "ℹ️ No fuel entries yet.\n\nUse ➕ Log Fill-Up to start tracking."
+                t('fuel_costs.no_entries')
             ], keyboard=fuelcost_menu_kb())
             return
 
+        sep = t("alert_format.separator")
         lines = [
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "  💰  <b>FUEL COST SUMMARY</b>\n"
-            "━━━━━━━━━━━━━━━━━━━\n"
+            f"{sep}\n"
+            f"  {t('fuel_costs.summary_header')}\n"
+            f"{sep}\n"
         ]
         grand_cost = 0
         grand_gal = 0
@@ -196,7 +195,7 @@ async def cmd_fuelcost_summary(update: Update, context: ContextTypes.DEFAULT_TYP
 
         lines.append(
             f"\n{'━' * 28}\n"
-            f"  <b>TOTAL: ${grand_cost:,.2f}  ·  {grand_gal:,.1f} gal</b>"
+            f"  {t('fuel_costs.grand_total').format(cost=f'${grand_cost:,.2f}', gallons=f'{grand_gal:,.1f}')}"
         )
 
         full = "\n".join(lines)

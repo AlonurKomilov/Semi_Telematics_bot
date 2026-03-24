@@ -9,14 +9,14 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 
 from database import Database, Role, User
 from permissions import get_permissions
-from formatters import format_event_alert, format_events_dashboard, _EVENT_EMOJI, _EVENT_TYPE_KEYS
+from formatters import format_event_alert, format_events_dashboard
 from csv_generator import generate_events_csv
 
 
 # ── Fixtures ──────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture
-async def test_db(tmp_path):
+async def db(tmp_path):
     db_path = str(tmp_path / "test.db")
     database = Database(db_path)
     await database.initialize()
@@ -25,12 +25,12 @@ async def test_db(tmp_path):
 
 
 @pytest_asyncio.fixture
-async def seeded(test_db: Database):
-    account = await test_db.create_account("Events Test Co")
-    owner = await test_db.create_user(telegram_id=100, account_id=account.id, role=Role.OWNER)
-    driver = await test_db.create_user(telegram_id=200, account_id=account.id, role=Role.DRIVER, truck_num="101")
-    dispatcher = await test_db.create_user(telegram_id=300, account_id=account.id, role=Role.DISPATCHER)
-    return {"db": test_db, "account": account, "owner": owner, "driver": driver, "dispatcher": dispatcher}
+async def seeded(db: Database):
+    account = await db.create_account("Events Test Co")
+    owner = await db.create_user(telegram_id=100, account_id=account.id, role=Role.OWNER)
+    driver = await db.create_user(telegram_id=200, account_id=account.id, role=Role.DRIVER, truck_num="101")
+    dispatcher = await db.create_user(telegram_id=300, account_id=account.id, role=Role.DISPATCHER)
+    return {"db": db, "account": account, "owner": owner, "driver": driver, "dispatcher": dispatcher}
 
 
 def _sample_event(**overrides):
@@ -159,7 +159,7 @@ class TestEventsDatabase:
         await db.update_user(owner.id, alerts_on=True)
         subs = await db.get_typed_alert_subscribers(seeded["account"].id, "events")
         tids = [s.telegram_id for s in subs]
-        assert 100 in tids
+        assert 100 in tids  # owner with alerts_on
 
     @pytest.mark.asyncio
     async def test_typed_subscribers_events_excludes_disabled(self, seeded):
@@ -210,6 +210,7 @@ class TestEventFormatters:
     def test_format_event_alert_no_video(self):
         event = _sample_event(video_url=None)
         result = format_event_alert(event)
+        # Should still format successfully without video
         assert "Harsh Brake" in result
 
     def test_format_event_alert_unassigned_driver(self):
@@ -233,23 +234,27 @@ class TestEventFormatters:
         events = _sample_events()
         result = format_events_dashboard(events, 7)
         text = "\n".join(result)
-        assert "💥" in text
-        assert "🛑" in text
+        # Should show event type counts
+        assert "💥" in text  # crash emoji
+        assert "🛑" in text  # braking emoji
 
     def test_format_events_dashboard_top_drivers(self):
         events = _sample_events()
         result = format_events_dashboard(events, 7)
         text = "\n".join(result)
+        # John Smith has 3 events, should appear in top drivers
         assert "John Smith" in text
 
     def test_format_events_dashboard_gforce_distribution(self):
         events = _sample_events()
         result = format_events_dashboard(events, 7)
         text = "\n".join(result)
+        # Should have G-force distribution section
         assert "⚡" in text
 
     def test_format_events_dashboard_empty(self):
         result = format_events_dashboard([], 7)
+        # Empty events should still return something
         assert isinstance(result, list)
 
 
@@ -314,7 +319,7 @@ class TestEventSeverity:
 class TestEventsCsv:
     """generate_events_csv output."""
 
-    def test_csv_returns_buffer(self):
+    def test_csv_returns_tuple(self):
         events = _sample_events()
         buf = generate_events_csv(events, 7)
         assert hasattr(buf, "read")
@@ -348,6 +353,7 @@ class TestEventsCsv:
     def test_csv_empty_events(self):
         buf = generate_events_csv([], 7)
         content = buf.read().decode("utf-8-sig")
+        # Should still have headers
         assert "Date/Time" in content
 
     def test_csv_company_filter(self):
@@ -362,9 +368,10 @@ class TestEventsCsv:
 # ══════════════════════════════════════════════════════════════════
 
 class TestEventNormalization:
-    """Verify event structure and mappings."""
+    """Verify SamsaraClient.get_events() event normalization."""
 
     def test_sample_event_has_required_keys(self):
+        """Verify our sample event fixture has all expected keys."""
         event = _sample_event()
         required = [
             "event_id", "event_type", "event_name",
@@ -378,6 +385,7 @@ class TestEventNormalization:
 
     def test_event_type_recognized(self):
         """All 7 event types should have emoji mappings."""
+        from formatters import _EVENT_EMOJI
         types = ["crash", "braking", "rollingStop", "followingDistance",
                  "harshTurn", "laneDeparture", "acceleration"]
         for t in types:
@@ -385,6 +393,7 @@ class TestEventNormalization:
 
     def test_event_type_has_i18n_key(self):
         """All 7 event types should have i18n key mappings."""
+        from formatters import _EVENT_TYPE_KEYS
         types = ["crash", "braking", "rollingStop", "followingDistance",
                  "harshTurn", "laneDeparture", "acceleration"]
         for t in types:

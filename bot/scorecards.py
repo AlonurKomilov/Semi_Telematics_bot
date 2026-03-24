@@ -5,6 +5,7 @@ import io
 import csv
 from datetime import datetime as _dt
 from zoneinfo import ZoneInfo as _ZI
+from bot.i18n import t
 
 _TZ_ET = _ZI("America/New_York")
 
@@ -25,16 +26,16 @@ from bot.auth import _require_registered
 def _format_scorecard_text(drivers: list[dict], company_label: str) -> list[str]:
     """Build Telegram messages for driver scorecards."""
     if not drivers:
-        return [f"ℹ️ No driver data available for <b>{company_label}</b>."]
+        return [t("scorecards.no_data", company=company_label)]
 
     now_et = _dt.now(_TZ_ET)
     header = (
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "  🏆  <b>DRIVER SCORECARDS</b>\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"  🏆  <b>{t('scorecards.title')}</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
         f"\n  {company_label}\n"
         f"  {now_et:%b %d, %Y %I:%M %p ET}\n"
-        f"  {len(drivers)} driver(s)\n"
+        f"  {t('scorecards.driver_count', count=len(drivers))}\n"
     )
 
     lines = [header]
@@ -44,11 +45,10 @@ def _format_scorecard_text(drivers: list[dict], company_label: str) -> list[str]
         card = (
             f"\n{'─' * 30}\n"
             f"  👤 <b>{d['driver_name']}</b>{org_tag}\n"
-            f"  🛣  {d['_miles']} mi  ·  ⛽ {d['_mpg']} MPG\n"
-            f"  🚗 Drive {d['_drive_h']}h ({d['_drive_pct']}%)"
-            f"  ·  💤 Idle {d['_idle_h']}h ({d['_idle_pct']}%)\n"
-            f"  🌿 Eco: {d['_green_pct']}%  ·  🏎 Overspeed: {d['_overspeed_min']}m\n"
-            f"  🛞 Brakes: {d['_antic_pct']}% anticipation"
+            f"  {t('scorecards.miles_mpg', miles=d['_miles'], mpg=d['_mpg'])}\n"
+            f"  {t('scorecards.drive_idle', drive_h=d['_drive_h'], drive_pct=d['_drive_pct'], idle_h=d['_idle_h'], idle_pct=d['_idle_pct'])}\n"
+            f"  {t('scorecards.eco_overspeed', green_pct=d['_green_pct'], overspeed_min=d['_overspeed_min'])}\n"
+            f"  {t('scorecards.brakes_antic', antic_pct=d['_antic_pct'])}"
         )
         lines.append(card)
 
@@ -98,16 +98,16 @@ async def cmd_scorecards(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not (can(user.role, "can_scorecard_all") or can(user.role, "can_scorecard_own")):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t("common.all_companies")) if company else t("common.all_companies")
     text = (
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "  🏆  <b>DRIVER SCORECARDS</b>\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"  🏆  <b>{t('scorecards.title')}</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
         f"\n  {company_label}\n"
-        "\n  Choose export format:"
+        f"\n  {t('scorecards.choose_format')}"
     )
     kb = scorecard_format_kb(company)
     await _show(update, context, [text], keyboard=kb)
@@ -120,15 +120,15 @@ async def cmd_scorecards_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not (can(user.role, "can_scorecard_all") or can(user.role, "can_scorecard_own")):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     companies = await db.get_account_companies(user.account_id)
     populate_company_display(companies)
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t("common.all_companies")) if company else t("common.all_companies")
 
-    await _show_loading(update, context, f"⏳ Loading scorecards ({company_label})…")
+    await _show_loading(update, context, t("scorecards.loading", company=company_label))
     try:
         drivers = await samsara.get_driver_efficiency(company=company)
 
@@ -151,15 +151,15 @@ async def cmd_scorecards_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not (can(user.role, "can_scorecard_all") or can(user.role, "can_scorecard_own")):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     companies = await db.get_account_companies(user.account_id)
     populate_company_display(companies)
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t("common.all_companies")) if company else t("common.all_companies")
 
-    await _show_loading(update, context, f"⏳ Generating CSV ({company_label})…")
+    await _show_loading(update, context, t("scorecards.loading_csv", company=company_label))
     try:
         drivers = await samsara.get_driver_efficiency(company=company)
 
@@ -170,8 +170,8 @@ async def cmd_scorecards_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
         csv_buf = await asyncio.to_thread(_generate_scorecard_csv, drivers)
         chat_id = update.effective_chat.id
         await context.bot.send_document(chat_id=chat_id, document=csv_buf,
-                                        caption=f"🏆 Driver Scorecards — {company_label}")
-        await _show(update, context, ["✅ CSV exported."], keyboard=back_kb())
+                                        caption=t("scorecards.csv_caption", company=company_label))
+        await _show(update, context, [t("scorecards.csv_exported")], keyboard=back_kb())
     except Exception as e:
         logger.error(f"Scorecards CSV error: {e}")
         await _show(update, context, [_safe_error(e)], keyboard=back_kb())

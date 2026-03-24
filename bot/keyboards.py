@@ -9,6 +9,7 @@ from telegram import (
 )
 
 
+from bot.i18n import SUPPORTED_LANGUAGES, LANGUAGE_NAMES, LANGUAGE_FLAGS, t
 from database import Role
 from permissions import get_permissions, can_access_company_submenu
 from samsara_client import COMPANY_DISPLAY
@@ -29,7 +30,8 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
     if has_api:
         # ── Grouped sub-menus (only when API is connected) ──────
         has_reports = (perms.can_faults or perms.can_fuel
-                       or perms.can_truck_all or perms.can_truck_own)
+                       or perms.can_truck_all or perms.can_truck_own
+                       or perms.can_events_all or perms.can_events_own)
         has_tools = (perms.can_scorecard_all or perms.can_scorecard_own
                      or perms.can_location_map or perms.can_location_own
                      or perms.can_route_all or perms.can_route_own
@@ -39,24 +41,28 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
 
         row1 = []
         if has_reports:
-            row1.append(InlineKeyboardButton("📊 Fleet Reports", callback_data="submenu_reports"))
+            row1.append(InlineKeyboardButton(t("menu.reports"), callback_data="submenu_reports"))
         if has_tools:
-            row1.append(InlineKeyboardButton("🛠 Tools", callback_data="submenu_tools"))
+            row1.append(InlineKeyboardButton(t("menu.tools"), callback_data="submenu_tools"))
         if row1:
             rows.append(row1)
 
         row2 = []
         if has_costs:
-            row2.append(InlineKeyboardButton("💰 Cost & Maint.", callback_data="submenu_costs"))
+            row2.append(InlineKeyboardButton(t("menu.costs"), callback_data="submenu_costs"))
         if perms.can_alerts_all or perms.can_alerts_own:
-            row2.append(InlineKeyboardButton("🔔 Alerts", callback_data="cmd_alerts"))
+            row2.append(InlineKeyboardButton(t("menu.alerts"), callback_data="cmd_alerts"))
         if row2:
             rows.append(row2)
+
+        # Digest — standalone (lightweight)
+        if perms.can_digest:
+            rows.append([InlineKeyboardButton(t("menu.digest"), callback_data="cmd_digest")])
 
         # AI Assistant (visible when API key is configured)
         import ai_client
         if ai_client.is_configured():
-            rows.append([InlineKeyboardButton("🤖 AI Assistant", callback_data="cmd_ai")])
+            rows.append([InlineKeyboardButton(t("menu.ai_assistant"), callback_data="cmd_ai")])
 
         # Driver: show truck shortcut
         if role == Role.DRIVER:
@@ -87,7 +93,7 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
     has_mgmt = (perms.can_manage_account or perms.can_manage_users
                 or perms.can_invite or perms.can_manage_companies)
     if has_mgmt:
-        rows.append([InlineKeyboardButton("👥 Team & Settings", callback_data="submenu_mgmt")])
+        rows.append([InlineKeyboardButton(t("menu.management"), callback_data="submenu_mgmt")])
 
     return InlineKeyboardMarkup(rows)
 
@@ -99,14 +105,13 @@ def submenu_reports_kb(role: Role, company_codes: list[str] | None = None) -> In
 
     row1 = []
     if perms.can_faults:
-        row1.append(InlineKeyboardButton("🔧 Faults", callback_data="cmd_faults"))
-        row1.append(InlineKeyboardButton("🚨 Critical", callback_data="cmd_critical"))
+        row1.append(InlineKeyboardButton(t("reports_menu.faults"), callback_data="cmd_faults"))
     if row1:
         rows.append(row1)
 
     row2 = []
     if perms.can_fuel:
-        row2.append(InlineKeyboardButton("⛽ Fuel & DEF", callback_data="cmd_fuel"))
+        row2.append(InlineKeyboardButton(t("reports_menu.fuel_def"), callback_data="cmd_fuel"))
     if perms.can_faults:
         row2.append(InlineKeyboardButton("🌡 Weather", callback_data="cmd_weather"))
     if row2:
@@ -114,21 +119,20 @@ def submenu_reports_kb(role: Role, company_codes: list[str] | None = None) -> In
 
     if perms.can_faults:
         rows.append([
-            InlineKeyboardButton("🏥 Health", callback_data="cmd_health"),
-            InlineKeyboardButton("📊 Efficiency", callback_data="cmd_efficiency"),
+            InlineKeyboardButton(t("reports_menu.vehicle_health"), callback_data="cmd_health"),
+            InlineKeyboardButton(t("reports_menu.efficiency"), callback_data="cmd_efficiency"),
         ])
 
-    if perms.can_truck_all:
-        rows.append([InlineKeyboardButton("🚛 Search Truck", callback_data="cmd_truck_prompt")])
-
-    # Auto Reports — scheduled delivery
-    if perms.can_digest:
-        rows.append([InlineKeyboardButton("📋 Auto Reports", callback_data="cmd_auto_reports")])
-
     if perms.can_events_all or perms.can_events_own:
-        rows.append([InlineKeyboardButton("🚨 Events", callback_data="cmd_events")])
+        rows.append([InlineKeyboardButton(t("tools_menu.events"), callback_data="cmd_events")])
 
-    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")])
+    if perms.can_truck_all:
+        rows.append([InlineKeyboardButton(t("reports_menu.search_truck"), callback_data="cmd_truck_prompt")])
+
+    if perms.can_digest:
+        rows.append([InlineKeyboardButton(t("menu.digest"), callback_data="cmd_auto_reports")])
+
+    rows.append([InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -139,9 +143,9 @@ def submenu_tools_kb(role: Role) -> InlineKeyboardMarkup:
 
     row1 = []
     if perms.can_scorecard_all or perms.can_scorecard_own:
-        row1.append(InlineKeyboardButton("🏆 Scorecards", callback_data="cmd_scorecards"))
+        row1.append(InlineKeyboardButton(t("reports_menu.scorecards"), callback_data="cmd_scorecards"))
     if perms.can_location_map or perms.can_location_own:
-        row1.append(InlineKeyboardButton("🗺 Live Map", callback_data="cmd_livemap"))
+        row1.append(InlineKeyboardButton(t("reports_menu.live_map"), callback_data="cmd_livemap"))
     if row1:
         rows.append(row1)
 
@@ -153,7 +157,7 @@ def submenu_tools_kb(role: Role) -> InlineKeyboardMarkup:
     if row2:
         rows.append(row2)
 
-    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")])
+    rows.append([InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -164,16 +168,16 @@ def submenu_costs_kb(role: Role) -> InlineKeyboardMarkup:
 
     row1 = []
     if perms.can_fuel_cost:
-        row1.append(InlineKeyboardButton("💰 Fuel Costs", callback_data="cmd_fuelcost"))
+        row1.append(InlineKeyboardButton(t("costs_menu.fuel_costs"), callback_data="cmd_fuelcost"))
     if perms.can_cost_per_mile:
         row1.append(InlineKeyboardButton("📊 Cost/Mile", callback_data="cmd_costmile"))
     if row1:
         rows.append(row1)
 
     if perms.can_maintenance_all or perms.can_maintenance_own:
-        rows.append([InlineKeyboardButton("🔧 Maintenance", callback_data="cmd_maintenance")])
+        rows.append([InlineKeyboardButton(t("costs_menu.maintenance"), callback_data="cmd_maintenance")])
 
-    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")])
+    rows.append([InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -185,19 +189,19 @@ def submenu_mgmt_kb(role: Role, has_api: bool = False) -> InlineKeyboardMarkup:
     # ── Main sections ───────────────────────────────────
     top_row = []
     if perms.can_manage_account:
-        top_row.append(InlineKeyboardButton("🏢 Companies", callback_data="cmd_account"))
+        top_row.append(InlineKeyboardButton(t("mgmt_menu.account_info"), callback_data="cmd_account"))
     if perms.can_manage_users:
-        top_row.append(InlineKeyboardButton("👥 Team", callback_data="cmd_users"))
+        top_row.append(InlineKeyboardButton(t("mgmt_menu.team"), callback_data="cmd_users"))
     if top_row:
         rows.append(top_row)
 
-    # ── Activity ────────────────────────────────────────
+    # ── Activity ────────────────────────────────────────────
     if perms.can_manage_users:
         rows.append([InlineKeyboardButton("📜 Audit Log", callback_data="cmd_audit")])
 
-    # ── Personal ────────────────────────────────────────
-    rows.append([InlineKeyboardButton("⚙️ Settings", callback_data="cmd_settings")])
-    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")])
+    # ── Personal ────────────────────────────────────────────
+    rows.append([InlineKeyboardButton(t("menu.settings"), callback_data="cmd_settings")])
+    rows.append([InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -230,7 +234,7 @@ def co_menu_kb(company: str) -> InlineKeyboardMarkup:
 
 def back_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
+        [InlineKeyboardButton(t("menu.back_main"), callback_data="cmd_menu")],
     ])
 
 
@@ -477,6 +481,23 @@ def scorecard_format_kb(company: str | None = None) -> InlineKeyboardMarkup:
     ])
 
 
+def events_format_kb() -> InlineKeyboardMarkup:
+    """Period + format picker for Events dashboard."""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("7 Days", callback_data="events_text_7"),
+            InlineKeyboardButton("14 Days", callback_data="events_text_14"),
+            InlineKeyboardButton("30 Days", callback_data="events_text_30"),
+        ],
+        [
+            InlineKeyboardButton("📊 CSV 7d", callback_data="events_csv_7"),
+            InlineKeyboardButton("📊 CSV 14d", callback_data="events_csv_14"),
+            InlineKeyboardButton("📊 CSV 30d", callback_data="events_csv_30"),
+        ],
+        [InlineKeyboardButton("◀️ Back", callback_data="submenu_reports")],
+    ])
+
+
 def fuelcost_menu_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("➕ Log Fill-Up", callback_data="fuelcost_add")],
@@ -639,29 +660,29 @@ def alert_settings_kb(user) -> InlineKeyboardMarkup:
 
     rows = [
         [InlineKeyboardButton(
-            f"{_icon(user.alert_faults)} Fault Alerts",
+            f"{_icon(user.alert_faults)} {t('alert_settings.faults')}",
             callback_data="alert_toggle_faults",
         )],
         [InlineKeyboardButton(
-            f"{_icon(user.alert_health)} Health Alerts",
+            f"{_icon(user.alert_health)} {t('alert_settings.health')}",
             callback_data="alert_toggle_health",
         )],
         [InlineKeyboardButton(
-            f"{_icon(user.alert_fuel)} Fuel Alerts",
+            f"{_icon(user.alert_fuel)} {t('alert_settings.fuel')}",
             callback_data="alert_toggle_fuel",
         )],
         [InlineKeyboardButton(
-            f"{_icon(user.alert_geofence)} Geofence Alerts",
+            f"{_icon(user.alert_geofence)} {t('alert_settings.geofence')}",
             callback_data="alert_toggle_geofence",
         )],
         [InlineKeyboardButton(
-            f"{_icon(user.alert_events)} Event Alerts",
+            f"{_icon(user.alert_events)} {t('alert_settings.events')}",
             callback_data="alert_toggle_events",
         )],
-        [InlineKeyboardButton("📋 Pending Alerts", callback_data="cmd_pending_alerts"),
-         InlineKeyboardButton("📜 History", callback_data="cmd_alert_history")],
-        [InlineKeyboardButton("�🔕 Disable All Alerts", callback_data="alert_disable_all")],
-        [InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")],
+        [InlineKeyboardButton(t("alert_settings.pending"), callback_data="cmd_pending_alerts"),
+         InlineKeyboardButton(t("alert_settings.history"), callback_data="cmd_alert_history")],
+        [InlineKeyboardButton(t("alert_settings.disable_all"), callback_data="alert_disable_all")],
+        [InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")],
     ]
     return InlineKeyboardMarkup(rows)
 
@@ -681,17 +702,58 @@ def events_format_kb() -> InlineKeyboardMarkup:
 
 
 def user_settings_kb(user) -> InlineKeyboardMarkup:
-    """User settings menu with quiet hours and timezone."""
+    """User settings menu with quiet hours, timezone, and language."""
     quiet = ""
     if getattr(user, "quiet_start", None) is not None and getattr(user, "quiet_end", None) is not None:
         quiet = f" ({user.quiet_start:02d}:00–{user.quiet_end:02d}:00)"
     tz = getattr(user, "timezone", None) or "Not set"
     tz_short = tz.split("/")[-1].replace("_", " ") if "/" in tz else tz
+    lang_code = getattr(user, "language", "en") or "en"
+    lang_flag = LANGUAGE_FLAGS.get(lang_code, "🌐")
+    lang_name = LANGUAGE_NAMES.get(lang_code, lang_code)
     rows = [
-        [InlineKeyboardButton(f"🌙 Quiet Hours{quiet}", callback_data="settings_quiet")],
-        [InlineKeyboardButton(f"🕐 Timezone: {tz_short}", callback_data="settings_tz")],
-        [InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")],
+        [InlineKeyboardButton(f"🌙 {t('user_settings.notifications')}{quiet}", callback_data="settings_quiet")],
+        [InlineKeyboardButton(f"🕐 {t('user_settings.timezone')}: {tz_short}", callback_data="settings_tz")],
+        [InlineKeyboardButton(f"{lang_flag} {t('user_settings.language')}: {lang_name}", callback_data="settings_lang")],
+        [InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")],
     ]
+    return InlineKeyboardMarkup(rows)
+
+
+def language_kb(current: str = "en", region: str | None = None) -> InlineKeyboardMarkup:
+    """Language picker keyboard with sub-menus for layout compactness."""
+    rows = []
+    
+    if region == "africa":
+        langs = ["so", "am"]
+        for code in langs:
+            flag = LANGUAGE_FLAGS[code]
+            name = LANGUAGE_NAMES[code]
+            check = " ✓" if code == current else ""
+            rows.append([InlineKeyboardButton(f"{flag} {name}{check}", callback_data=f"set_lang_{code}")])
+        rows.append([InlineKeyboardButton(t("common.back"), callback_data="settings_lang")])
+    elif region == "eurasia":
+        langs = ["ru", "uk", "uz", "pa"]
+        for code in langs:
+            flag = LANGUAGE_FLAGS[code]
+            name = LANGUAGE_NAMES[code]
+            check = " ✓" if code == current else ""
+            rows.append([InlineKeyboardButton(f"{flag} {name}{check}", callback_data=f"set_lang_{code}")])
+        rows.append([InlineKeyboardButton(t("common.back"), callback_data="settings_lang")])
+    else:
+        # Top level
+        langs = ["en", "es", "fr"]
+        for code in langs:
+            flag = LANGUAGE_FLAGS[code]
+            name = LANGUAGE_NAMES[code]
+            check = " ✓" if code == current else ""
+            rows.append([InlineKeyboardButton(f"{flag} {name}{check}", callback_data=f"set_lang_{code}")])
+        
+        # Sub-menus
+        rows.append([InlineKeyboardButton("🌍 East African...", callback_data="lang_region_africa")])
+        rows.append([InlineKeyboardButton("🌏 Eastern Europe & Asia...", callback_data="lang_region_eurasia")])
+        rows.append([InlineKeyboardButton(t("menu.back"), callback_data="cmd_settings")])
+
     return InlineKeyboardMarkup(rows)
 
 

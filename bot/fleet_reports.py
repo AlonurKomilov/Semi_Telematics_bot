@@ -3,6 +3,7 @@
 import asyncio
 from datetime import datetime as _dt
 from zoneinfo import ZoneInfo as _ZI
+from bot.i18n import t
 
 _TZ_ET = _ZI("America/New_York")
 
@@ -83,16 +84,16 @@ async def cmd_faults(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not can(user.role, "can_faults"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
     text = (
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "  🔧  <b>FAULT CODE REPORT</b>\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"  {t('reports.faults_title')}\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
         f"\n  {company_label}\n"
-        "\n  Choose export format:"
+        f"\n  {t('report_format.choose_format')}"
     )
     kb = faults_format_kb(company)
     await _show(update, context, [text], keyboard=kb)
@@ -105,7 +106,7 @@ async def cmd_faults_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not can(user.role, "can_faults"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     # Populate COMPANY_DISPLAY for this account
@@ -113,9 +114,9 @@ async def cmd_faults_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
     populate_company_display(companies)
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
-                        f"⏳ Generating fault report ({company_label})…")
+                        t('reports.loading_faults_pdf').format(company=company_label))
     try:
         faulted, total, breakdown = await samsara.get_vehicles_with_faults(company=company)
         all_fleet = await samsara.get_fleet_overview(company=company)
@@ -147,16 +148,16 @@ async def cmd_faults_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not can(user.role, "can_faults"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     companies = await db.get_account_companies(user.account_id)
     populate_company_display(companies)
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
-                        f"⏳ Generating fault CSV ({company_label})…")
+                        t('reports.loading_faults_csv').format(company=company_label))
     try:
         faulted, total, breakdown = await samsara.get_vehicles_with_faults(company=company)
         stats = compute_stats(faulted, total)
@@ -164,10 +165,10 @@ async def cmd_faults_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
         if not faulted:
             kb = await _user_menu_kb(user)
             await _show(update, context, [
-                "━━━━━━━━━━━━━━━━━━━\n"
-                "  ✅  <b>NO FAULTS</b>\n"
-                "━━━━━━━━━━━━━━━━━━━\n"
-                f"\n  All {total} trucks are clean!"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"  {t('reports.faults_none_title')}\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"\n  {t('reports.faults_none_msg').format(count=total)}"
             ], keyboard=kb)
             return
 
@@ -195,20 +196,15 @@ def _faults_caption(stats, breakdown, company, companies, skipped=None):
     health_pct = round((1 - stats['faulted'] / stats['total']) * 100) if stats['total'] else 0
 
     return (
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "  🔧  <b>FAULT CODE REPORT</b>\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        f"\n  📚  <b>{stats['total']}</b> trucks scanned"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"  {t('reports.faults_title')}\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"\n  {t('report_captions.faults_trucks_scanned').format(count=stats['total'])}"
         f"{f' ({len(breakdown)} companies)' if len(breakdown) > 1 and not company else ''}\n"
-        f"  🔴  <b>{stats['faulted']}</b> with faults  ·  "
-        f"✅ {stats['clean']} clean\n"
-        f"  📄  <b>{stats['total_dtcs']}</b> total fault codes\n"
-        f"  📊  Fleet health: <b>{health_pct}%</b>\n"
-        f"\n  🛑 {stats['stop']} STOP  ·  "
-        f"🛡 {stats['protect']} PROT  ·  "
-        f"♨️ {stats['emissions']} EMIS  ·  "
-        f"⚠️ {stats['warning']} WARN  ·  "
-        f"🔧 {stats['minor']} MINOR"
+        f"  {t('report_captions.faults_with_faults').format(faulted=stats['faulted'], clean=stats['clean'])}\n"
+        f"  {t('report_captions.faults_total_codes').format(count=stats['total_dtcs'])}\n"
+        f"  {t('report_captions.faults_fleet_health').format(pct=f'{health_pct}%')}\n"
+        f"\n  {t('report_captions.faults_severity').format(stop=stats['stop'], protect=stats['protect'], emissions=stats['emissions'], warning=stats['warning'], minor=stats['minor'])}"
         f"{company_info}"
         f"{_skipped_warning(skipped or [])}"
     )
@@ -225,16 +221,16 @@ async def cmd_fuel(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not can(user.role, "can_fuel"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
     text = (
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "  ⛽  <b>FUEL &amp; DEF REPORT</b>\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"  {t('reports.fuel_title')}\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
         f"\n  {company_label}\n"
-        "\n  Choose export format:"
+        f"\n  {t('report_format.choose_format')}"
     )
     kb = fuel_format_kb(company)
     await _show(update, context, [text], keyboard=kb)
@@ -247,21 +243,21 @@ async def cmd_fuel_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not can(user.role, "can_fuel"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     companies = await db.get_account_companies(user.account_id)
     populate_company_display(companies)
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
-                        f"⏳ Generating fuel report ({company_label})…")
+                        t('reports.loading_fuel_pdf').format(company=company_label))
     try:
         all_fleet = await samsara.get_fleet_overview(company=company)
         if not all_fleet:
             await _show(update, context, [
-                "ℹ️  No active trucks found."
+                t('reports.no_trucks')
             ], keyboard=back_kb())
             return
 
@@ -288,21 +284,21 @@ async def cmd_fuel_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not can(user.role, "can_fuel"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     companies = await db.get_account_companies(user.account_id)
     populate_company_display(companies)
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
-                        f"⏳ Generating fuel CSV ({company_label})…")
+                        t('reports.loading_fuel_csv').format(company=company_label))
     try:
         all_fleet = await samsara.get_fleet_overview(company=company)
         if not all_fleet:
             await _show(update, context, [
-                "ℹ️  No active trucks found."
+                t('reports.no_trucks')
             ], keyboard=back_kb())
             return
 
@@ -335,17 +331,16 @@ def _fuel_caption(all_fleet, company, company_codes, skipped=None):
 
     company_info = ""
     if not company and len(company_codes) > 1:
-        company_info = f"\n  🏢  {len(company_codes)} companies"
+        company_info = f"\n  {t('report_captions.companies_count').format(count=len(company_codes))}"
 
     return (
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "  ⛽  <b>FUEL &amp; DEF REPORT</b>\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        f"\n  🚛  <b>{len(all_fleet)}</b> trucks scanned\n"
-        f"  📊  Average fuel: <b>{avg_fuel:.0f}%</b>\n"
-        f"  🔴 {crit} critical  ·  🟡 {low} low  ·  🟢 {good} good\n"
-        f"  💧  Avg DEF: <b>{avg_def:.0f}%</b>  ·  "
-        f"⚠️ {low_def} low DEF"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"  {t('reports.fuel_title')}\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"\n  {t('report_captions.fuel_trucks_scanned').format(count=len(all_fleet))}\n"
+        f"  {t('report_captions.fuel_average').format(pct=f'{avg_fuel:.0f}%')}\n"
+        f"  {t('report_captions.fuel_breakdown').format(critical=crit, low=low, good=good)}\n"
+        f"  {t('report_captions.fuel_def').format(pct=f'{avg_def:.0f}%', count=low_def)}"
         f"{company_info}"
         f"{_skipped_warning(skipped or [])}"
     )
@@ -362,16 +357,16 @@ async def cmd_efficiency(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not can(user.role, "can_efficiency"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
     text = (
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "  📊  <b>EFFICIENCY REPORT</b>\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        f"\n  {company_label} — Past 7 Days\n"
-        "\n  Choose export format:"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"  {t('reports.efficiency_title')}\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"\n  {t('reports.efficiency_subtitle').format(company=company_label)}\n"
+        f"\n  {t('report_format.choose_format')}"
     )
     kb = efficiency_format_kb(company)
     await _show(update, context, [text], keyboard=kb)
@@ -384,7 +379,7 @@ async def cmd_efficiency_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not can(user.role, "can_efficiency"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     companies = await db.get_account_companies(user.account_id)
@@ -392,21 +387,20 @@ async def cmd_efficiency_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
     company_codes = [o.code for o in companies]
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
-                        f"⏳ Generating efficiency PDF ({company_label})…")
+                        t('reports.loading_efficiency_pdf').format(company=company_label))
     try:
         vehicles = await samsara.get_fleet_efficiency(days=7, company=company)
 
         if not vehicles:
             kb = await _user_menu_kb(user)
             await _show(update, context, [
-                "━━━━━━━━━━━━━━━━━━━\n"
-                "  ℹ️  <b>NO EFFICIENCY DATA</b>\n"
-                "━━━━━━━━━━━━━━━━━━━\n"
-                "\n"
-                "  No efficiency data available\n"
-                "  for the past 7 days."
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"  {t('reports.efficiency_none_title')}\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"\n"
+                f"  {t('reports.efficiency_none_msg')}"
             ], keyboard=kb)
             return
 
@@ -422,13 +416,11 @@ async def cmd_efficiency_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
     except SamsaraPermissionError as e:
         kb = await _user_menu_kb(user)
         await _show(update, context, [
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "  🔒  <b>PERMISSION REQUIRED</b>\n"
-            "━━━━━━━━━━━━━━━━━━━\n\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"  {t('access.permission_required_title')}\n"
+            f"━━━━━━━━━━━━━━━━━━━\n\n"
             f"  {e}\n\n"
-            "  Ask your Samsara admin to enable\n"
-            "  the required permission on the\n"
-            "  API token."
+            f"  {t('access.permission_samsara')}"
         ], keyboard=kb)
     except Exception as e:
         logger.error(f"Error in efficiency PDF: {e}", exc_info=True)
@@ -442,7 +434,7 @@ async def cmd_efficiency_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not can(user.role, "can_efficiency"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     companies = await db.get_account_companies(user.account_id)
@@ -450,21 +442,20 @@ async def cmd_efficiency_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
     company_codes = [o.code for o in companies]
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
-                        f"⏳ Generating efficiency CSV ({company_label})…")
+                        t('reports.loading_efficiency_csv').format(company=company_label))
     try:
         vehicles = await samsara.get_fleet_efficiency(days=7, company=company)
 
         if not vehicles:
             kb = await _user_menu_kb(user)
             await _show(update, context, [
-                "━━━━━━━━━━━━━━━━━━━\n"
-                "  ℹ️  <b>NO EFFICIENCY DATA</b>\n"
-                "━━━━━━━━━━━━━━━━━━━\n"
-                "\n"
-                "  No efficiency data available\n"
-                "  for the past 7 days."
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"  {t('reports.efficiency_none_title')}\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"\n"
+                f"  {t('reports.efficiency_none_msg')}"
             ], keyboard=kb)
             return
 
@@ -480,13 +471,11 @@ async def cmd_efficiency_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
     except SamsaraPermissionError as e:
         kb = await _user_menu_kb(user)
         await _show(update, context, [
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "  🔒  <b>PERMISSION REQUIRED</b>\n"
-            "━━━━━━━━━━━━━━━━━━━\n\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"  {t('access.permission_required_title')}\n"
+            f"━━━━━━━━━━━━━━━━━━━\n\n"
             f"  {e}\n\n"
-            "  Ask your Samsara admin to enable\n"
-            "  the required permission on the\n"
-            "  API token."
+            f"  {t('access.permission_samsara')}"
         ], keyboard=kb)
     except Exception as e:
         logger.error(f"Error in efficiency CSV: {e}", exc_info=True)
@@ -510,20 +499,16 @@ def _efficiency_caption(vehicles, company, company_codes):
 
     company_info = ""
     if not company and len(company_codes) > 1:
-        company_info = f"\n  🏢  {len(company_codes)} companies"
+        company_info = f"\n  {t('report_captions.companies_count').format(count=len(company_codes))}"
 
     now_str = _dt.now(_TZ_ET).strftime("%b %d, %Y  %I:%M %p EST")
     return (
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "  📊  <b>EFFICIENCY REPORT</b>\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        f"\n  🚛  <b>{len(vehicles)}</b> trucks  ·  "
-        f"👤 <b>{len(with_driver)}</b> drivers (7 days)\n"
-        f"  ⏱  <b>{total_eng:,.1f}h</b> engine  ·  "
-        f"🚗 {total_drv:,.1f}h drive  ·  🅿️ {total_idle:,.1f}h idle\n"
-        f"  🛣  <b>{total_miles:,}</b> mi  ·  "
-        f"📈 <b>{avg_drv_pct:.0f}%</b> driving  ·  "
-        f"⛽ <b>{fleet_mpg:.1f}</b> MPG"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"  {t('reports.efficiency_title')}\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"\n  {t('report_captions.efficiency_trucks').format(trucks=len(vehicles), drivers=len(with_driver))}\n"
+        f"  {t('report_captions.efficiency_hours').format(engine=f'{total_eng:,.1f}h', drive=f'{total_drv:,.1f}h', idle=f'{total_idle:,.1f}h')}\n"
+        f"  {t('report_captions.efficiency_miles').format(miles=f'{total_miles:,}', driving_pct=f'{avg_drv_pct:.0f}%', mpg=f'{fleet_mpg:.1f}')}"
         f"{company_info}\n"
         f"\n  🕐  <i>{now_str}</i>"
     )
@@ -540,16 +525,16 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not can(user.role, "can_health"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
     text = (
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "  🏥  <b>VEHICLE HEALTH</b>\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"  {t('reports.health_title')}\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
         f"\n  {company_label}\n"
-        "\n  Choose export format:"
+        f"\n  {t('report_format.choose_format')}"
     )
     kb = health_format_kb(company)
     await _show(update, context, [text], keyboard=kb)
@@ -562,7 +547,7 @@ async def cmd_health_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not can(user.role, "can_health"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     companies = await db.get_account_companies(user.account_id)
@@ -570,20 +555,20 @@ async def cmd_health_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
     company_codes = [o.code for o in companies]
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
-                        f"⏳ Checking vehicle health ({company_label})…")
+                        t('reports.loading_health_pdf').format(company=company_label))
     try:
         vehicles = await samsara.get_vehicle_health(company=company)
 
         if not vehicles:
             kb = await _user_menu_kb(user)
             await _show(update, context, [
-                "━━━━━━━━━━━━━━━━━━━\n"
-                "  ℹ️  <b>NO HEALTH DATA</b>\n"
-                "━━━━━━━━━━━━━━━━━━━\n"
-                "\n"
-                "  No vehicle health data available."
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"  {t('reports.health_none_title')}\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"\n"
+                f"  {t('reports.health_none_msg')}"
             ], keyboard=kb)
             return
 
@@ -600,13 +585,11 @@ async def cmd_health_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
     except SamsaraPermissionError as e:
         kb = await _user_menu_kb(user)
         await _show(update, context, [
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "  🔒  <b>PERMISSION REQUIRED</b>\n"
-            "━━━━━━━━━━━━━━━━━━━\n\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"  {t('access.permission_required_title')}\n"
+            f"━━━━━━━━━━━━━━━━━━━\n\n"
             f"  {e}\n\n"
-            "  Ask your Samsara admin to enable\n"
-            "  the required permission on the\n"
-            "  API token."
+            f"  {t('access.permission_samsara')}"
         ], keyboard=kb)
     except Exception as e:
         logger.error(f"Error in health PDF: {e}", exc_info=True)
@@ -620,7 +603,7 @@ async def cmd_health_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not can(user.role, "can_health"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     companies = await db.get_account_companies(user.account_id)
@@ -628,20 +611,20 @@ async def cmd_health_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
     company_codes = [o.code for o in companies]
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
-                        f"⏳ Generating health CSV ({company_label})…")
+                        t('reports.loading_health_csv').format(company=company_label))
     try:
         vehicles = await samsara.get_vehicle_health(company=company)
 
         if not vehicles:
             kb = await _user_menu_kb(user)
             await _show(update, context, [
-                "━━━━━━━━━━━━━━━━━━━\n"
-                "  ℹ️  <b>NO HEALTH DATA</b>\n"
-                "━━━━━━━━━━━━━━━━━━━\n"
-                "\n"
-                "  No vehicle health data available."
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"  {t('reports.health_none_title')}\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"\n"
+                f"  {t('reports.health_none_msg')}"
             ], keyboard=kb)
             return
 
@@ -658,13 +641,11 @@ async def cmd_health_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
     except SamsaraPermissionError as e:
         kb = await _user_menu_kb(user)
         await _show(update, context, [
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "  🔒  <b>PERMISSION REQUIRED</b>\n"
-            "━━━━━━━━━━━━━━━━━━━\n\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"  {t('access.permission_required_title')}\n"
+            f"━━━━━━━━━━━━━━━━━━━\n\n"
             f"  {e}\n\n"
-            "  Ask your Samsara admin to enable\n"
-            "  the required permission on the\n"
-            "  API token."
+            f"  {t('access.permission_samsara')}"
         ], keyboard=kb)
     except Exception as e:
         logger.error(f"Error in health CSV: {e}", exc_info=True)
@@ -680,18 +661,16 @@ def _health_caption(vehicles, company, company_codes, skipped=None):
 
     company_info = ""
     if not company and len(company_codes) > 1:
-        company_info = f"\n  🏢  {len(company_codes)} companies"
+        company_info = f"\n  {t('report_captions.companies_count').format(count=len(company_codes))}"
 
     now_str = _dt.now(_TZ_ET).strftime("%b %d, %Y  %I:%M %p EST")
     return (
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "  🏥  <b>VEHICLE HEALTH</b>\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        f"\n  🚛  <b>{len(vehicles)}</b> trucks scanned\n"
-        f"  🟢  <b>{eng_on}</b> engine ON  ·  "
-        f"⚫ <b>{eng_off}</b> OFF\n"
-        f"  ⚠️ <b>{alert_vehicles}</b> with alerts  ·  "
-        f"🔔 <b>{alerts_count}</b> total"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"  {t('reports.health_title')}\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"\n  {t('report_captions.health_trucks_scanned').format(count=len(vehicles))}\n"
+        f"  {t('report_captions.health_engine_status').format(on=eng_on, off=eng_off)}\n"
+        f"  {t('report_captions.health_alerts').format(vehicles=alert_vehicles, total=alerts_count)}"
         f"{company_info}\n"
         f"{_skipped_warning(skipped or [])}"
         f"\n  🕐  <i>{now_str}</i>"
@@ -709,7 +688,7 @@ async def cmd_weather(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not can(user.role, "can_fuel"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
     companies = await db.get_account_companies(user.account_id)
@@ -717,20 +696,20 @@ async def cmd_weather(update: Update, context: ContextTypes.DEFAULT_TYPE,
     company_codes = [o.code for o in companies]
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, "All Companies") if company else "All Companies"
+    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
-                        f"⏳ Checking fleet weather ({company_label})…")
+                        t('reports.loading_weather').format(company=company_label))
     try:
         vehicles = await samsara.get_fleet_weather(company=company)
 
         if not vehicles:
             kb = await _user_menu_kb(user)
             await _show(update, context, [
-                "━━━━━━━━━━━━━━━━━━━\n"
-                "  ℹ️  <b>NO WEATHER DATA</b>\n"
-                "━━━━━━━━━━━━━━━━━━━\n"
-                "\n"
-                "  No ambient temperature data available."
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"  {t('reports.weather_none')}\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"\n"
+                f"  {t('reports.weather_none_msg')}"
             ], keyboard=kb)
             return
 
@@ -757,19 +736,17 @@ async def cmd_weather(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         company_info = ""
         if not company and len(company_codes) > 1:
-            company_info = f"\n  🏢  {len(company_codes)} companies"
+            company_info = f"\n  {t('report_captions.companies_count').format(count=len(company_codes))}"
 
         now_str = _dt.now(_TZ_ET).strftime("%b %d, %Y  %I:%M %p EST")
-        freeze_line = f"\n  ❄️ <b>{freezing}</b> below freezing" if freezing else ""
-        heat_line = f"\n  🔥 <b>{hot}</b> extreme heat" if hot else ""
+        freeze_line = f"\n  {t('report_captions.weather_freezing').format(count=freezing)}" if freezing else ""
+        heat_line = f"\n  {t('report_captions.weather_hot').format(count=hot)}" if hot else ""
         caption = (
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "  🌡  <b>FLEET WEATHER</b>\n"
-            "━━━━━━━━━━━━━━━━━━━\n"
-            f"\n  🚛  <b>{len(vehicles)}</b> trucks reporting\n"
-            f"  🌡  Avg: <b>{avg_temp:.0f}°F</b>  ·  "
-            f"Low: <b>{min_temp:.0f}°F</b>  ·  "
-            f"High: <b>{max_temp:.0f}°F</b>"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"  {t('reports.weather_title')}\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"\n  {t('report_captions.weather_trucks').format(count=len(vehicles))}\n"
+            f"  {t('report_captions.weather_temp').format(avg=f'{avg_temp:.0f}', low=f'{min_temp:.0f}', high=f'{max_temp:.0f}')}"
             f"{freeze_line}{heat_line}"
             f"{company_info}\n"
             f"\n  🕐  <i>{now_str}</i>"
@@ -789,12 +766,11 @@ async def cmd_weather(update: Update, context: ContextTypes.DEFAULT_TYPE,
     except SamsaraPermissionError as e:
         kb = await _user_menu_kb(user)
         await _show(update, context, [
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "  🔒  <b>PERMISSION REQUIRED</b>\n"
-            "━━━━━━━━━━━━━━━━━━━\n\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"  {t('access.permission_required_title')}\n"
+            f"━━━━━━━━━━━━━━━━━━━\n\n"
             f"  {e}\n\n"
-            "  Ask your Samsara admin to enable\n"
-            "  the required permission."
+            f"  {t('access.permission_samsara')}"
         ], keyboard=kb)
     except Exception as e:
         logger.error(f"Error in weather: {e}", exc_info=True)
@@ -811,18 +787,18 @@ async def cmd_api_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = context.user_data["_db_user"]
     if not can(user.role, "can_manage_account"):
         if update.callback_query:
-            await update.callback_query.answer("⛔ No access", show_alert=True)
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    await _show_loading(update, context, "⏳ Testing API connections…")
+    await _show_loading(update, context, t('reports.loading_api'))
     try:
         from bot.alerts import check_api_health
         results = await check_api_health(user.account_id)
 
         lines = [
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "  📡  <b>API STATUS</b>\n"
-            "━━━━━━━━━━━━━━━━━━━\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"  {t('reports.api_status_title')}\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
         ]
         for code, status in sorted(results.items()):
             if status.startswith("ok"):
@@ -838,12 +814,11 @@ async def cmd_api_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         all_ok = all(s.startswith("ok") for s in results.values())
         if all_ok:
-            lines.append(f"\n  ✅ All {len(results)} companies connected")
+            lines.append(f"\n  {t('reports.api_all_ok').format(count=len(results))}")
         else:
             failed = sum(1 for s in results.values() if not s.startswith("ok"))
             lines.append(
-                f"\n  ⚠️ {failed} of {len(results)} companies "
-                f"have API issues"
+                f"\n  {t('reports.api_issues').format(failed=failed, total=len(results))}"
             )
 
         # Cache performance stats
@@ -851,8 +826,7 @@ async def cmd_api_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             samsara = await get_client(user.account_id)
             cs = samsara.cache_stats
             lines.append(
-                f"\n  📊 Cache: {cs['hits']} hits / "
-                f"{cs['misses']} misses / {cs['size']} cached"
+                f"\n  {t('reports.cache_stats').format(hits=cs['hits'], misses=cs['misses'], size=cs['size'])}"
             )
         except Exception:
             pass

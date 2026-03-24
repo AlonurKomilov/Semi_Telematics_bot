@@ -94,8 +94,8 @@ class FeatureSet:
     can_route_all: bool = False         # route replay (all trucks)
     can_route_own: bool = False         # route replay (own truck)
     can_cost_per_mile: bool = False     # cost-per-mile dashboard
-    can_events_all: bool = False        # safety event alerts (all trucks)
-    can_events_own: bool = False        # safety event alerts (own truck)
+    can_events_all: bool = False        # safety events (all trucks)
+    can_events_own: bool = False        # safety events (own truck)
 
 
 # ─── Role → Permission Map ───────────────────────────────────────

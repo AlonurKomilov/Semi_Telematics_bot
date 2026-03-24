@@ -8,8 +8,17 @@ from zoneinfo import ZoneInfo
 from typing import Optional
 
 _TZ_ET = ZoneInfo("America/New_York")
+_TZ_CT = ZoneInfo("America/Chicago")
+_TZ_MT = ZoneInfo("America/Denver")
+_TZ_PT = ZoneInfo("America/Los_Angeles")
 
 from samsara_client import COMPANY_DISPLAY
+
+
+def _t(key: str, lang: str | None = None) -> str:
+    """Lazy wrapper for bot.i18n.t() to avoid circular imports."""
+    from bot.i18n import t
+    return t(key, lang)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -37,7 +46,7 @@ def _light_badges(lights: dict) -> str:
         badges.append("♨️ EMIS")
     if lights.get("warningIsOn"):
         badges.append("⚠️ WARN")
-    return "  ".join(badges) if badges else "✅ All Clear"
+    return "  ".join(badges) if badges else _t('common.all_clear')
 
 
 def _severity_rank(vehicle: dict) -> int:
@@ -137,22 +146,21 @@ def format_help(company_codes: list[str] | None = None,
 
     # API status hint
     if has_api:
-        status_line = "  📡 Samsara API connected ✅\n"
+        status_line = f"  {_t('welcome.api_connected')}\n"
     else:
-        status_line = "  📡 Samsara API not connected\n"
+        status_line = f"  {_t('welcome.api_not_connected')}\n"
 
     return (
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        "  🚛  <b>Semi Telematics</b>\n"
+        f"  {_t('welcome.title')}\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         "\n"
-        "Real-time fleet monitoring\n"
-        "powered by Samsara\n"
+        f"{_t('welcome.subtitle')}\n"
         f"{role_line}{acct_line}{company_line}"
         "\n"
         f"{status_line}"
         "\n"
-        "▸ <b>Tap a button below to begin</b> ▾\n"
+        f"{_t('welcome.tap_begin')}\n"
     )
 
 
@@ -177,7 +185,7 @@ def format_truck_detail(v: dict, show_company: bool = False,
 
     no_device = ""
     if not v.get("has_gateway", True):
-        no_device = "\n  ⚠️  <i>No Samsara device — live data limited</i>"
+        no_device = f"\n  ⚠️  <i>{_t('truck.no_device')}</i>"
 
     lines = [
         "━━━━━━━━━━━━━━━━━━━",
@@ -204,11 +212,11 @@ def format_truck_detail(v: dict, show_company: bool = False,
         pass
     elif not dtcs:
         lines.append("  ── ── ── ── ── ── ──")
-        lines.append("  ✅  <b>No active fault codes</b>")
-        lines.append("  Truck is running clean!")
+        lines.append(f"  ✅  <b>{_t('truck.no_faults')}</b>")
+        lines.append(f"  {_t('truck.no_faults_note')}")
     else:
         lines.append(f"  ── ── ── ── ── ── ──")
-        lines.append(f"  🔧  <b>{len(dtcs)} Active Fault{'s' if len(dtcs) != 1 else ''}</b>")
+        lines.append(f"  🔧  <b>{len(dtcs)} {_t('truck.active_faults')}</b>")
 
         for i, dtc in enumerate(dtcs, 1):
             spn = dtc.get("spnId", "?")
@@ -229,12 +237,12 @@ def format_truck_detail(v: dict, show_company: bool = False,
                 sev = "⚪"
 
             lines.append(
-                f"\n  {sev}  <b>Fault #{i}</b>\n"
-                f"     Code    SPN {spn} / FMI {fmi}\n"
-                f"     Issue   {spn_desc}\n"
-                f"     Level   {fmi_desc}\n"
-                f"     Count   ×{occ}\n"
-                f"     From    {source}"
+                f"\n  {sev}  <b>{_t('truck.fault_label')} #{i}</b>\n"
+                f"     {_t('truck.code_label')}    SPN {spn} / FMI {fmi}\n"
+                f"     {_t('truck.issue_label')}   {spn_desc}\n"
+                f"     {_t('truck.level_label')}   {fmi_desc}\n"
+                f"     {_t('truck.count_label')}   ×{occ}\n"
+                f"     {_t('truck.from_label')}    {source}"
             )
 
     fault_time = fc.get("time", "")
@@ -252,11 +260,11 @@ def format_truck_picker(truck_name: str, matches: list[dict]) -> str:
     """Show disambiguation when a truck name exists in multiple companies."""
     lines = [
         "━━━━━━━━━━━━━━━━━━━",
-        f"  🔍  <b>#{truck_name}</b>  found in",
-        f"       {len(matches)} companies",
+        f"  🔍  <b>#{truck_name}</b>  {_t('truck.found_in')}",
+        f"       {len(matches)} {_t('common.companies')}",
         "━━━━━━━━━━━━━━━━━━━",
         "",
-        "  Select which one:",
+        f"  {_t('truck.select_which')}",
         "",
     ]
     for v in matches:
@@ -276,17 +284,17 @@ def format_low_fuel(low_fuel_vehicles: list, threshold: int,
     if not low_fuel_vehicles:
         return (
             "━━━━━━━━━━━━━━━━━━━\n"
-            "  ✅  <b>FUEL OK</b>\n"
+            f"  {_t('alert_format.fuel_ok_title')}\n"
             "━━━━━━━━━━━━━━━━━━━\n"
-            f"\n  All trucks above {threshold}% fuel."
+            f"\n  {_t('alert_format.fuel_ok_msg').replace('{pct}', str(threshold))}"
         )
 
     lines = [
         "━━━━━━━━━━━━━━━━━━━",
-        "  ⛽  <b>LOW FUEL ALERT</b>",
+        f"  {_t('alert_format.low_fuel_title')}",
         "━━━━━━━━━━━━━━━━━━━",
         "",
-        f"  {len(low_fuel_vehicles)} truck{'s' if len(low_fuel_vehicles) != 1 else ''} below {threshold}%",
+        f"  {len(low_fuel_vehicles)} {_t('common.trucks')} < {threshold}%",
         "",
     ]
 
@@ -323,7 +331,7 @@ def format_new_fault_alert(vehicle: dict, new_dtcs: list,
 
     lines = [
         "━━━━━━━━━━━━━━━━━━━━━",
-        "  🚨  <b>NEW FAULT DETECTED</b>",
+        f"  {_t('alert_format.new_fault_title')}",
         "━━━━━━━━━━━━━━━━━━━━━",
         "",
         f"  🚛  <b>Truck #{name}</b>",
@@ -339,10 +347,10 @@ def format_new_fault_alert(vehicle: dict, new_dtcs: list,
         lines.append(
             f"  🔸  <b>{desc}</b>\n"
             f"       {severity}\n"
-            f"       Source: {source}\n"
+            f"       {_t('alert_format.new_fault_source')} {source}\n"
         )
 
-    lines.append(f"  ▸  Tap 🚛 Search Truck for details")
+    lines.append(f"  {_t('alert_format.new_fault_hint')}")
     return "\n".join(lines)
 
 
@@ -373,7 +381,7 @@ def format_critical_fault_alert(vehicle: dict, new_dtcs: list,
 
     lines = [
         "━━━━━━━━━━━━━━━━━━━━━",
-        "  🛑  <b>CRITICAL FAULT</b>",
+        f"  {_t('alert_format.critical_fault_title')}",
         "━━━━━━━━━━━━━━━━━━━━━",
         "",
         f"  🚛  <b>Truck #{name}</b>",
@@ -391,10 +399,10 @@ def format_critical_fault_alert(vehicle: dict, new_dtcs: list,
         lines.append(
             f"  🔴  <b>{desc}</b>\n"
             f"       {severity}\n"
-            f"       Source: {source}\n"
+            f"       {_t('alert_format.new_fault_source')} {source}\n"
         )
 
-    lines.append("  ⚠️ <b>Immediate attention required</b>")
+    lines.append(f"  {_t('alert_format.critical_fault_action')}")
     return "\n".join(lines)
 
 
@@ -413,12 +421,12 @@ def format_health_alert(vehicle: dict, alerts: list[str],
     is_critical = any(a in alerts for a in (
         "low_battery", "low_oil_pressure", "high_coolant_temp",
     ))
-    header = "CRITICAL HEALTH" if is_critical else "HEALTH WARNING"
+    header = _t('alert_format.health_critical') if is_critical else _t('alert_format.health_warning')
     icon = "🛑" if is_critical else "⚠️"
 
     lines = [
         "━━━━━━━━━━━━━━━━━━━━━",
-        f"  {icon}  <b>{header}</b>",
+        f"  {icon}  {header}",
         "━━━━━━━━━━━━━━━━━━━━━",
         "",
         f"  🚛  <b>Truck #{name}</b>",
@@ -429,24 +437,24 @@ def format_health_alert(vehicle: dict, alerts: list[str],
     # Show each alert condition with current value
     alert_details = {
         "low_battery": (
-            "🔋", "Low Battery",
+            "🔋", _t('alert_format.health_low_battery'),
             f"{health.get('battery_v', '?')}V (threshold: 12.2V)",
         ),
         "low_oil_pressure": (
-            "🛢", "Low Oil Pressure",
+            "🛢", _t('alert_format.health_low_oil'),
             f"{health.get('oil_psi', '?')} PSI (threshold: 10 PSI)",
         ),
         "high_coolant_temp": (
-            "🌡", "High Coolant Temp",
+            "🌡", _t('alert_format.health_high_coolant'),
             f"{health.get('coolant_c', '?')}°C (threshold: 105°C)",
         ),
         "low_def": (
-            "💧", "Low DEF Level",
+            "💧", _t('alert_format.health_low_def'),
             f"{health.get('def_pct', '?')}% (threshold: 10%)",
         ),
         "coolant_dtc": (
-            "🌡", "Coolant System Fault",
-            "J1939 coolant DTC detected",
+            "🌡", _t('alert_format.health_coolant_fault'),
+            _t('alert_format.health_coolant_dtc'),
         ),
     }
 
@@ -470,16 +478,39 @@ def format_low_fuel_alert(vehicle: dict, fuel_pct: float,
 
     return (
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        "  ⛽  <b>LOW FUEL ALERT</b>\n"
+        f"  {_t('alert_format.low_fuel_push_title')}\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         "\n"
         f"  🚛  <b>Truck #{name}</b>\n"
         f"{co_label}\n"
         "\n"
-        f"  ⛽ Fuel Level: <b>{fuel_pct:.0f}%</b>\n"
+        f"  {_t('alert_format.fuel_level').replace('{pct}', f'{fuel_pct:.0f}')}\n"
         "\n"
-        f"  Truck needs refueling soon."
+        f"  {_t('alert_format.low_fuel_refuel')}"
     )
+
+
+def _fmt_us_times(iso_str: str) -> str:
+    """Convert an ISO timestamp to a compact multi-zone US display.
+
+    Returns e.g. '03-20 06:01 ET / 05:01 CT / 04:01 MT / 03:01 PT'
+    """
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        et = dt.astimezone(_TZ_ET)
+        ct = dt.astimezone(_TZ_CT)
+        mt = dt.astimezone(_TZ_MT)
+        pt = dt.astimezone(_TZ_PT)
+        # Date from ET, then times for each zone
+        date_prefix = et.strftime("%m-%d")
+        return (
+            f"{date_prefix} {et.strftime('%I:%M%p')} ET / "
+            f"{ct.strftime('%I:%M%p')} CT / "
+            f"{mt.strftime('%I:%M%p')} MT / "
+            f"{pt.strftime('%I:%M%p')} PT"
+        )
+    except Exception:
+        return iso_str[:16].replace("T", " ") if len(iso_str) > 16 else iso_str
 
 
 def format_alert_history_footer(occurrence_count: int,
@@ -488,20 +519,20 @@ def format_alert_history_footer(occurrence_count: int,
     """Format a history footer for consolidated alerts.
 
     Shows occurrence count and time range when count > 1.
+    Timestamps displayed in all 4 major US time zones.
     """
     if occurrence_count <= 1:
         return ""
 
-    # Parse first/last timestamps for human display
-    first_short = first_seen[5:16].replace("T", " ") if len(first_seen) > 16 else first_seen
-    last_short = last_seen[5:16].replace("T", " ") if len(last_seen) > 16 else last_seen
+    first_display = _fmt_us_times(first_seen)
+    last_display = _fmt_us_times(last_seen)
 
     return (
         "\n━━━━━━━━━━━━━━━━━━━━━\n"
-        f"  📊 <b>Alert History</b>\n"
-        f"  Occurrences: <b>{occurrence_count}</b>\n"
-        f"  Since: {first_short}\n"
-        f"  Latest: {last_short}\n"
+        f"  {_t('alert_format.history_footer_title')}\n"
+        f"  {_t('alert_format.history_occurrences').replace('{count}', str(occurrence_count))}\n"
+        f"  {_t('alert_format.history_since').replace('{date}', first_display)}\n"
+        f"  {_t('alert_format.history_latest').replace('{date}', last_display)}\n"
     )
 
 
@@ -509,43 +540,42 @@ def format_alert_history_footer(occurrence_count: int,
 #  Registration / Account Management Formatters
 # ═══════════════════════════════════════════════════════════════════
 
-def format_welcome_unregistered(support_contact: str = "") -> str:
+def format_welcome_unregistered(support_contact: str = "", name: str = "") -> str:
     """Shown to users who haven't registered or joined yet."""
     return (
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        "  🚛  <b>Semi Telematics Bot</b>\n"
+        f"  {_t('welcome_unreg.title')}\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         "\n"
-        "Your all-in-one fleet management\n"
-        "assistant, right inside Telegram.\n"
+        f"{_t('welcome_unreg.subtitle')}\n"
         "\n"
-        "<b>📊 Fleet Reports</b>\n"
+        f"{_t('welcome_unreg.reports_title')}\n"
         "  · Fault codes &amp; diagnostics\n"
         "  · Fuel levels &amp; consumption\n"
         "  · Vehicle health monitoring\n"
         "\n"
-        "<b>🛠 Tools &amp; Tracking</b>\n"
+        f"{_t('welcome_unreg.tools_title')}\n"
         "  · Driver safety scorecards\n"
         "  · Live GPS location &amp; maps\n"
         "  · Route history &amp; geofences\n"
         "\n"
-        "<b>💰 Cost Management</b>\n"
+        f"{_t('welcome_unreg.costs_title')}\n"
         "  · Fuel cost tracking\n"
         "  · Cost-per-mile analysis\n"
         "  · Maintenance records\n"
         "\n"
-        "<b>🤖 AI Assistant</b>\n"
+        f"{_t('welcome_unreg.ai_title')}\n"
         "  · Ask anything about your fleet\n"
         "  · Instant insights &amp; summaries\n"
         "  · Smart follow-up suggestions\n"
         "\n"
-        "<b>🔔 Alerts &amp; Auto Reports</b>\n"
+        f"{_t('welcome_unreg.alerts_title')}\n"
         "  · Real-time fault alerts\n"
         "  · Scheduled PDF report delivery\n"
         "  · Geofence notifications\n"
         "\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        "  To get access, contact:\n"
+        f"  {_t('welcome_unreg.contact_admin')}\n"
         "  👉 https://t.me/Allen_Klein\n"
         "━━━━━━━━━━━━━━━━━━━━━"
     )
@@ -554,17 +584,17 @@ def format_welcome_unregistered(support_contact: str = "") -> str:
 def format_register_success(account_name: str) -> str:
     return (
         "━━━━━━━━━━━━━━━━━━━\n"
-        "  ✅  <b>ACCOUNT CREATED</b>\n"
+        f"  {_t('register.success_title')}\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         "\n"
         f"  🏢  <b>{account_name}</b>\n"
-        "  👑  You are the Owner\n"
+        f"  {_t('register.you_are_owner')}\n"
         "\n"
-        "  Next steps:\n"
-        "  1️⃣  Tap 📡 <b>Add Company</b> in menu\n"
+        f"  {_t('register.next_steps')}\n"
+        f"  {_t('register.step_add_company')}\n"
         "       to connect your Company\n"
         "\n"
-        "  2️⃣  Tap ✉️ <b>Invite</b> in menu\n"
+        f"  {_t('register.step_invite')}\n"
         "       to invite team members\n"
     )
 
@@ -572,12 +602,12 @@ def format_register_success(account_name: str) -> str:
 def format_join_success(account_name: str, role_str: str) -> str:
     return (
         "━━━━━━━━━━━━━━━━━━━\n"
-        f"  ✅  <b>JOINED {account_name.upper()}</b>\n"
+        f"  {_t('join.success_title').replace('{account}', account_name.upper())}\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         "\n"
-        f"  Role: {role_str}\n"
+        f"  {_t('join.role_label').replace('{role}', role_str)}\n"
         "\n"
-        "  Tap a button to get started ▾\n"
+        f"  {_t('join.tap_begin')}\n"
     )
 
 
@@ -586,12 +616,12 @@ def format_account_info(account, companies, user) -> str:
     from permissions import role_display
     lines = [
         "━━━━━━━━━━━━━━━━━━━",
-        f"  🏢  <b>{account.name} — COMPANIES</b>",
+        f"  {_t('company.header').replace('{account}', account.name)}",
         "━━━━━━━━━━━━━━━━━━━",
         "",
-        f"  Your role: {role_display(user.role)}",
+        f"  {_t('company.your_role').replace('{role}', role_display(user.role))}",
         "",
-        f"  📡  <b>{len(companies)}</b> Samsara {'companies' if len(companies) != 1 else 'company'}",
+        f"  📡  <b>{len(companies)}</b> Samsara {_t('common.companies') if len(companies) != 1 else _t('common.company_singular')}",
     ]
     for co in companies:
         lines.append(f"     • {co.code} — {co.display_name or co.code}")
@@ -603,32 +633,30 @@ def format_invite_created(code: str, role_str: str, dept: str,
                          invite_link: str | None = None) -> str:
     text = (
         "━━━━━━━━━━━━━━━━━━━\n"
-        "  🔑  <b>INVITE CREATED</b>\n"
+        f"  {_t('invite.created_title')}\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         "\n"
-        f"  Code:  <code>{code}</code>\n"
-        f"  Role:  {role_str}\n"
-        f"  Dept:  {dept}\n"
-        "  Expires in 24 hours\n"
+        f"  {_t('invite.code_label')}  <code>{code}</code>\n"
+        f"  {_t('invite.role_label')}  {role_str}\n"
+        f"  {_t('invite.dept_label')}  {dept}\n"
+        f"  {_t('invite.expires')}\n"
     )
     if invite_link:
         text += (
             "\n"
-            "  📎 <b>Share this link:</b>\n"
+            f"  {_t('invite.share_label')}\n"
             f"  {invite_link}\n"
             "\n"
-            "  New member taps the link →\n"
-            "  auto-joins your team instantly.\n"
+            f"  {_t('invite.share_note')}\n"
         )
     else:
         text += (
             "\n"
-            "  Share this with your\n"
-            "  team member. They should:\n"
+            f"  {_t('invite.share_instructions')}\n"
             "\n"
-            "  1. Open this bot\n"
-            "  2. Tap 🔑 Join\n"
-            f"  3. Enter code: <code>{code}</code>\n"
+            f"  {_t('invite.share_step1')}\n"
+            f"  {_t('invite.share_step2')}\n"
+            f"  {_t('invite.share_step3')} <code>{code}</code>\n"
         )
     return text
 
@@ -638,17 +666,18 @@ def format_users_list(users, account_name: str) -> str:
     from permissions import role_display
     lines = [
         "━━━━━━━━━━━━━━━━━━━",
-        f"  👥  <b>{account_name} — TEAM</b>",
+        f"  {_t('team.header').replace('{account}', account_name)}",
         "━━━━━━━━━━━━━━━━━━━",
         "",
     ]
     for u in users:
         alerts = "🔔" if u.alerts_on else "🔕"
         truck = f"  ·  Truck #{u.truck_num}" if u.truck_num else ""
+        alerts_label = _t('team.alerts_on') if u.alerts_on else _t('team.alerts_off')
         lines.append(
             f"  {role_display(u.role)}\n"
             f"     {u.linked_label}  ·  {u.department}{truck}\n"
-            f"     {alerts}  Alerts {'ON' if u.alerts_on else 'OFF'}\n"
+            f"     {alerts}  {alerts_label}\n"
         )
     return "\n".join(lines)
 
@@ -661,14 +690,14 @@ def format_org_added(
 ) -> str:
     truck_info = ""
     if total_trucks is not None:
-        truck_info += f"\n  🚛  Total trucks:  <b>{total_trucks}</b>"
+        truck_info += f"\n  {_t('company.trucks_total').replace('{count}', str(total_trucks))}"
         if active_trucks is not None:
             truck_info += (
-                f"\n  ✅  Active (30 days):  <b>{active_trucks}</b>"
+                f"\n  {_t('company.trucks_active').replace('{count}', str(active_trucks))}"
             )
     return (
         "━━━━━━━━━━━━━━━━━━━\n"
-        "  ✅  <b>COMPANY CONNECTED</b>\n"
+        f"  {_t('company.added_title')}\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         "\n"
         f"  Code:  {code}\n"
@@ -685,12 +714,11 @@ def format_system_owner_welcome() -> str:
     """Shown when system owner types /start — they're not a customer."""
     return (
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        "  ⚙️  <b>SYSTEM ADMIN</b>\n"
+        f"  {_t('admin.sysowner_title')}\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         "\n"
-        "  You are the platform owner.\n"
-        "  Use the buttons below to\n"
-        "  manage the platform.\n"
+        f"  {_t('admin.sysowner_msg')}\n"
+        f"  {_t('admin.sysowner_manage')}\n"
     )
 
 
@@ -698,18 +726,18 @@ def format_admin_dashboard(stats: dict) -> str:
     """System owner admin dashboard with bot-wide analytics."""
     lines = [
         "━━━━━━━━━━━━━━━━━━━━━",
-        "  ⚙️  <b>ADMIN DASHBOARD</b>",
+        f"  {_t('admin.dashboard_title')}",
         "━━━━━━━━━━━━━━━━━━━━━",
         "",
-        f"  📊  <b>Platform Overview</b>",
+        f"  {_t('admin.platform_overview')}",
         "",
-        f"  🏢  Accounts:   <b>{stats['active_accounts']}</b> active"
+        f"  {_t('admin.accounts_count').replace('{count}', str(stats['active_accounts']))}"
         f"  ({stats['inactive_accounts']} disabled)",
-        f"  👥  Users:      <b>{stats['active_users']}</b> active"
+        f"  {_t('admin.users_count').replace('{count}', str(stats['active_users']))}"
         f"  (of {stats['total_users']} total)",
-        f"  📡  Samsara:    <b>{stats['active_companies']}</b> companies connected"
+        f"  {_t('admin.samsara_count').replace('{count}', str(stats['active_companies']))}"
         f"  (of {stats['total_companies']} total)",
-        f"  🔔  Alerts:     <b>{stats['alert_subscribers']}</b> subscribers",
+        f"  {_t('admin.alerts_count').replace('{count}', str(stats['alert_subscribers']))}",
         "",
     ]
 
@@ -787,15 +815,15 @@ def format_admin_accounts_list(accounts) -> str:
     if not accounts:
         return (
             "━━━━━━━━━━━━━━━━━━━\n"
-            "  📋  <b>NO ACCOUNTS</b>\n"
+            f"  {_t('admin.no_accounts_title')}\n"
             "━━━━━━━━━━━━━━━━━━━\n"
             "\n"
-            "  No accounts registered yet."
+            f"  {_t('admin.no_accounts_msg')}"
         )
 
     lines = [
         "━━━━━━━━━━━━━━━━━━━",
-        f"  📋  <b>ALL ACCOUNTS ({len(accounts)})</b>",
+        f"  {_t('admin.all_accounts_title').replace('{count}', str(len(accounts)))}",
         "━━━━━━━━━━━━━━━━━━━",
         "",
     ]
@@ -806,7 +834,7 @@ def format_admin_accounts_list(accounts) -> str:
             f"      Since {acct.created_at[:10]}\n"
         )
 
-    lines.append("  Tap account name for details.")
+    lines.append(f"  {_t('admin.tap_for_details')}")
 
     return "\n".join(lines)
 
@@ -836,11 +864,10 @@ def format_fleet_efficiency(
     if not vehicles:
         return [
             "━━━━━━━━━━━━━━━━━━━\n"
-            "  ℹ️  <b>NO EFFICIENCY DATA</b>\n"
+            f"  {_t('reports.efficiency_fmt_none')}\n"
             "━━━━━━━━━━━━━━━━━━━\n"
             "\n"
-            f"  No efficiency data found\n"
-            f"  for the past {days} days."
+            f"  {_t('reports.efficiency_fmt_no_data').replace('{days}', str(days))}"
         ]
 
     total_eng_s = sum(v.get("_engine_s", v["_engine_hours"] * 3600) for v in vehicles)
@@ -859,7 +886,7 @@ def format_fleet_efficiency(
 
     lines = [
         "━━━━━━━━━━━━━━━━━━━",
-        "  📊  <b>EFFICIENCY</b>",
+        f"  {_t('reports.efficiency_fmt_title')}",
         "━━━━━━━━━━━━━━━━━━━",
         "",
         f"  🚛  <b>{len(vehicles)}</b> trucks  ·  "
@@ -933,10 +960,10 @@ def format_vehicle_health(
     if not vehicles:
         return [
             "━━━━━━━━━━━━━━━━━━━\n"
-            "  ℹ️  <b>NO HEALTH DATA</b>\n"
+            f"  {_t('reports.health_fmt_none')}\n"
             "━━━━━━━━━━━━━━━━━━━\n"
             "\n"
-            "  No vehicle health data available."
+            f"  {_t('reports.health_fmt_no_data')}"
         ]
 
     alert_count = sum(len(v.get("_health_alerts", [])) for v in vehicles)
@@ -946,12 +973,12 @@ def format_vehicle_health(
 
     lines = [
         "━━━━━━━━━━━━━━━━━━━",
-        "  🏥  <b>VEHICLE HEALTH</b>",
+        f"  {_t('reports.health_fmt_title')}",
         "━━━━━━━━━━━━━━━━━━━",
         "",
-        f"  📊  <b>{len(vehicles)}</b> trucks scanned",
-        f"  🟢  <b>{eng_on}</b> engine ON  ·  ⚫ <b>{eng_off}</b> OFF",
-        f"  ⚠️  <b>{crit_count}</b> with alerts  ·  <b>{alert_count}</b> total issues",
+        f"  {_t('reports.health_scanned').replace('{count}', str(len(vehicles)))}",
+        f"  {_t('reports.health_engine_on').replace('{on}', str(eng_on)).replace('{off}', str(eng_off))}",
+        f"  {_t('reports.health_alerts_summary').replace('{crit}', str(crit_count)).replace('{total}', str(alert_count))}",
         "",
         "  ── ── ── ── ── ── ── ──",
         "",
@@ -983,7 +1010,7 @@ def format_vehicle_health(
             flag = " ⚠️" if dp < 10 else ""
             parts.append(f"💧DEF {dp:.0f}%{flag}")
 
-        detail = "  ·  ".join(parts) if parts else "No data"
+        detail = "  ·  ".join(parts) if parts else _t('common.no_data')
 
         # Compute freshness from most recent sensor timestamp
         fresh = ""
@@ -1032,10 +1059,10 @@ def format_fleet_weather(
     if not vehicles:
         return [
             "━━━━━━━━━━━━━━━━━━━\n"
-            "  ℹ️  <b>NO WEATHER DATA</b>\n"
+            f"  {_t('reports.weather_none')}\n"
             "━━━━━━━━━━━━━━━━━━━\n"
             "\n"
-            "  No ambient temperature data available."
+            f"  {_t('reports.weather_none_msg')}"
         ]
 
     temps = [v["_weather"]["temp_f"] for v in vehicles
@@ -1046,16 +1073,16 @@ def format_fleet_weather(
 
     lines = [
         "━━━━━━━━━━━━━━━━━━━",
-        "  🌡  <b>FLEET WEATHER</b>",
+        f"  {_t('reports.weather_title')}",
         "━━━━━━━━━━━━━━━━━━━",
         "",
-        f"  📊  <b>{len(vehicles)}</b> trucks reporting",
-        f"  🌡  Avg temp: <b>{avg_temp:.0f}°F</b>",
+        f"  {_t('reports.weather_reporting').replace('{count}', str(len(vehicles)))}",
+        f"  {_t('reports.weather_avg').replace('{temp}', f'{avg_temp:.0f}')}",
     ]
     if freezing:
-        lines.append(f"  ❄️  <b>{freezing}</b> below freezing (≤32°F)")
+        lines.append(f"  {_t('reports.weather_freezing').replace('{count}', str(freezing))}")
     if hot:
-        lines.append(f"  🔥  <b>{hot}</b> extreme heat (≥100°F)")
+        lines.append(f"  {_t('reports.weather_hot').replace('{count}', str(hot))}")
     lines.extend(["", "  ── ── ── ── ── ── ── ──", ""])
 
     for v in vehicles:
@@ -1088,7 +1115,7 @@ def format_fleet_weather(
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  SAFETY EVENTS — Alert + Dashboard formatters
+#  EVENTS
 # ═══════════════════════════════════════════════════════════════════
 
 _EVENT_EMOJI: dict[str, str] = {
@@ -1099,7 +1126,6 @@ _EVENT_EMOJI: dict[str, str] = {
     "harshTurn": "🔄",
     "laneDeparture": "↔️",
     "acceleration": "🏎️",
-    "other": "⚠️",
 }
 
 _EVENT_TYPE_KEYS: dict[str, str] = {
@@ -1113,106 +1139,92 @@ _EVENT_TYPE_KEYS: dict[str, str] = {
 }
 
 
-def format_event_alert(event: dict, show_company: bool = False) -> str:
-    """Format a single safety event for an alert message (HTML)."""
-    etype = event.get("event_type", "other")
-    emoji = _EVENT_EMOJI.get(etype, "⚠️")
-    ename = event.get("event_name", etype)
+def format_event_alert(event: dict) -> str:
+    """Format a single event for push notification (HTML)."""
+    etype = event.get("event_type", "unknown")
+    emoji = _EVENT_EMOJI.get(etype, "🚨")
+    ename = event.get("event_name", "Event")
     vname = event.get("vehicle_name", "?")
-    driver = event.get("driver_name", "Unassigned")
-    g_force = event.get("g_force", 0)
+    dname = event.get("driver_name", "Unassigned")
+    gf = event.get("g_force", 0.0)
     lat = event.get("latitude")
-    lon = event.get("longitude")
+    lng = event.get("longitude")
     time_str = _fmt_time(event.get("time", ""))
 
-    co = event.get("_org", "")
-    co_label = f"[{co}] " if show_company and co else ""
+    loc_str = f"{lat:.4f}, {lng:.4f}" if lat is not None and lng is not None else "—"
 
-    loc_str = "—"
-    if lat is not None and lon is not None:
-        loc_str = f"{lat:.4f}, {lon:.4f}"
-
-    lines = [
-        "━━━━━━━━━━━━━━━━━━━",
-        f"  {emoji}  <b>{co_label}{ename}</b>",
-        "━━━━━━━━━━━━━━━━━━━",
-        "",
-        f"  🚛  Truck #{vname}",
-        f"  👤  {driver}",
-        f"  ⚡  {g_force:.2f}g",
-        f"  📍  {loc_str}",
-        f"  🕐  {time_str}",
-    ]
-    return "\n".join(lines)
+    return (
+        f"{emoji} <b>{ename}</b>\n\n"
+        f"  🚛 {_t('events.vehicle_label')}: <b>{vname}</b>\n"
+        f"  👤 {_t('events.driver_label')}: <b>{dname}</b>\n"
+        f"  ⚡ {_t('events.gforce_label')}: <b>{gf:.2f}g</b>\n"
+        f"  📍 {_t('events.location_label')}: {loc_str}\n"
+        f"  🕐 {_t('events.time_label')}: {time_str}\n"
+    )
 
 
 def format_events_dashboard(
-    events: list[dict],
-    days: int = 7,
-    company_label: str | None = None,
+    events: list[dict], days: int, company_label: str = "",
 ) -> list[str]:
-    """Format a summary dashboard of safety events (HTML, multi-message)."""
-    if not events:
-        return [f"✅ No events in the last {days} days."]
+    """Format multi-event dashboard for Telegram text output."""
+    now_et = datetime.now(_TZ_ET)
 
-    label = company_label or "All Companies"
+    header = (
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"  🚨  <b>{_t('events.title')}</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"\n  {company_label}\n"
+        f"  {_t('events.period_label').format(days=days)}\n"
+        f"  {now_et:%b %d, %Y %I:%M %p ET}\n"
+    )
 
-    # Count by type
-    type_counts: dict[str, int] = {}
-    driver_counts: dict[str, int] = {}
-    g_mild = g_moderate = g_harsh = g_severe = 0
+    # Event type summary
+    from collections import Counter
+    type_counts = Counter(e.get("event_type", "unknown") for e in events)
+    type_order = ["crash", "braking", "rollingStop", "followingDistance",
+                  "harshTurn", "laneDeparture", "acceleration"]
 
-    for e in events:
-        etype = e.get("event_type", "other")
-        type_counts[etype] = type_counts.get(etype, 0) + 1
+    summary_lines = [f"\n  {_t('events.summary_header')}"]
+    for etype in type_order:
+        cnt = type_counts.get(etype, 0)
+        if cnt > 0:
+            emoji = _EVENT_EMOJI.get(etype, "🚨")
+            key = _EVENT_TYPE_KEYS.get(etype, "events.type_crash")
+            summary_lines.append(f"  {_t(key)}: {cnt}")
+    summary_lines.append(f"  ─────────────")
+    summary_lines.append(f"  {_t('events.total').format(count=len(events))}")
 
-        dname = e.get("driver_name", "Unassigned")
-        driver_counts[dname] = driver_counts.get(dname, 0) + 1
-
-        g = e.get("g_force", 0)
-        if g < 0.4:
-            g_mild += 1
-        elif g < 0.6:
-            g_moderate += 1
-        elif g < 0.8:
-            g_harsh += 1
-        else:
-            g_severe += 1
-
-    lines = [
-        "━━━━━━━━━━━━━━━━━━━",
-        f"  🚨  <b>SAFETY EVENTS</b>",
-        "━━━━━━━━━━━━━━━━━━━",
-        f"  📅  Last {days} days  ·  {label}",
-        f"  📊  Total: <b>{len(events)}</b> events",
-        "",
-    ]
-
-    # By type
-    for etype in ["crash", "braking", "rollingStop", "followingDistance",
-                  "harshTurn", "laneDeparture", "acceleration", "other"]:
-        count = type_counts.get(etype, 0)
-        if count > 0:
-            emoji = _EVENT_EMOJI.get(etype, "⚠️")
-            lines.append(f"  {emoji}  {etype}: <b>{count}</b>")
-
-    # Top drivers
-    lines.append("")
-    lines.append("  👤 <b>Top Drivers by Events</b>")
-    sorted_drivers = sorted(driver_counts.items(), key=lambda x: -x[1])[:5]
-    for name, count in sorted_drivers:
-        lines.append(f"    {name}: {count} events")
+    # Top 5 drivers by event count
+    driver_counts = Counter(e.get("driver_name", "Unassigned") for e in events)
+    top_5 = driver_counts.most_common(5)
+    driver_lines = [f"\n  {_t('events.top_drivers')}"]
+    for dname, cnt in top_5:
+        # Find most common event type for this driver
+        driver_events = [e.get("event_type", "") for e in events if e.get("driver_name") == dname]
+        top_type = Counter(driver_events).most_common(1)[0][0] if driver_events else ""
+        type_label = _EVENT_EMOJI.get(top_type, "")
+        driver_lines.append(f"  👤 {dname}: {cnt} events {type_label}")
 
     # G-force distribution
-    lines.append("")
-    lines.append("  ⚡ <b>G-Force Distribution</b>")
-    lines.append(f"    Mild (&lt;0.4g): {g_mild}")
-    lines.append(f"    Moderate (0.4-0.6g): {g_moderate}")
-    lines.append(f"    Harsh (0.6-0.8g): {g_harsh}")
-    lines.append(f"    Severe (&gt;0.8g): {g_severe}")
+    gforce_lines = [f"\n  {_t('events.gforce_header')}"]
+    mild = sum(1 for e in events if e.get("g_force", 0) < 0.4)
+    moderate = sum(1 for e in events if 0.4 <= e.get("g_force", 0) < 0.6)
+    harsh = sum(1 for e in events if 0.6 <= e.get("g_force", 0) < 0.8)
+    severe = sum(1 for e in events if e.get("g_force", 0) >= 0.8)
+    gforce_lines.append(f"  {_t('events.gforce_mild').format(count=mild)}")
+    gforce_lines.append(f"  {_t('events.gforce_moderate').format(count=moderate)}")
+    gforce_lines.append(f"  {_t('events.gforce_harsh').format(count=harsh)}")
+    gforce_lines.append(f"  {_t('events.gforce_severe').format(count=severe)}")
 
-    now_et = datetime.now(_TZ_ET)
-    lines.append(f"\n  🕐  {now_et.strftime('%b %d, %Y  %I:%M %p')} EST")
+    # Company breakdown (if multi-org)
+    org_counts = Counter(e.get("_org", "") for e in events)
+    company_lines = []
+    if len(org_counts) > 1:
+        company_lines.append(f"\n  {_t('events.company_header')}")
+        for org, cnt in org_counts.most_common():
+            display = COMPANY_DISPLAY.get(org, org)
+            company_lines.append(f"  {_t('events.company_line').format(company=display, count=cnt)}")
 
-    return _split_message("\n".join(lines))
+    full = "\n".join([header] + summary_lines + driver_lines + gforce_lines + company_lines)
+    return _split_message(full)
 
