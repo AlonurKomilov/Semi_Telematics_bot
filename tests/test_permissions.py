@@ -102,7 +102,7 @@ class TestRolePermissions:
                       "can_manage_account"):
             assert not can(Role.DRIVER, feat)
 
-    def test_driver_has_digest(self):
+    def test_driver_has_auto_reports(self):
         assert can(Role.DRIVER, "can_digest")
 
     def test_driver_own_geofence(self):

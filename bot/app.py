@@ -36,8 +36,8 @@ from bot.admin import (
     cmd_broadcast, cmd_sys_disable_account,
 )
 from bot.callbacks import handle_callback, handle_text
-from bot.alerts import check_new_faults, check_health_alerts, check_low_fuel, initialize_known_faults, check_alert_realerts, deliver_dnd_alerts
-from bot.digest import send_digests
+from bot.alerts import check_new_faults, check_health_alerts, check_low_fuel, initialize_known_faults, check_alert_realerts, deliver_dnd_alerts, check_safety_events
+from bot.auto_reports import send_auto_reports
 from bot.maintenance import check_overdue_maintenance
 from bot.geofences import check_geofence_events
 import bot.redis_client as rcache
@@ -279,8 +279,8 @@ def main():
         minutes=ALERT_INTERVAL, args=[app], id="fuel_check",
     )
     scheduler.add_job(
-        send_digests, "interval",
-        hours=1, args=[app], id="digest_send",
+        send_auto_reports, "interval",
+        hours=1, args=[app], id="auto_reports_send",
     )
     scheduler.add_job(
         check_overdue_maintenance, "interval",
@@ -289,6 +289,10 @@ def main():
     scheduler.add_job(
         check_geofence_events, "interval",
         minutes=5, args=[app], id="geofence_check",
+    )
+    scheduler.add_job(
+        check_safety_events, "interval",
+        minutes=5, args=[app], id="safety_events_check",
     )
     scheduler.add_job(
         check_alert_realerts, "interval",

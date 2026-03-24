@@ -96,9 +96,11 @@ class User:
     alert_health: bool = True
     alert_fuel: bool = True
     alert_geofence: bool = True
+    alert_events: bool = True
     quiet_start: Optional[int] = None   # DND start hour (0-23)
     quiet_end: Optional[int] = None     # DND end hour (0-23)
     timezone: str = "America/New_York"
+    ai_events: bool = False
 
     @property
     def is_owner(self) -> bool:
@@ -323,6 +325,7 @@ class Database:
                 frequency   TEXT    NOT NULL DEFAULT 'daily',
                 send_hour   INTEGER NOT NULL DEFAULT 7,
                 timezone    TEXT    NOT NULL DEFAULT 'UTC',
+                report_type TEXT    NOT NULL DEFAULT 'faults',
                 is_active   INTEGER NOT NULL DEFAULT 1,
                 created_at  TEXT    NOT NULL,
                 UNIQUE(user_id)
@@ -434,8 +437,10 @@ class Database:
         await self._migrate_alert_prefs()
         await self._migrate_user_quiet_hours()
         await self._migrate_digest_timezone()
+        await self._migrate_digest_report_type()
         await self._migrate_user_display_name()
         await self._migrate_alert_ack_status()
+        await self._migrate_alert_events()
 
     async def _migrate_alert_prefs(self):
         """Add alert_faults/health/fuel/geofence columns if missing."""
@@ -483,6 +488,17 @@ class Database:
         except Exception:
             pass
 
+    async def _migrate_digest_report_type(self):
+        """Ensure digest_subscriptions has report_type column."""
+        try:
+            await self._db.execute(
+                "ALTER TABLE digest_subscriptions ADD COLUMN report_type TEXT NOT NULL DEFAULT 'faults'"
+            )
+            await self._db.commit()
+            logger.info("Added column digest_subscriptions.report_type")
+        except Exception:
+            pass
+
     async def _migrate_user_display_name(self):
         """Add display_name column to users table."""
         try:
@@ -504,6 +520,22 @@ class Database:
             logger.info("Added column alert_acknowledgments.status")
         except Exception:
             pass  # column already exists
+
+    async def _migrate_alert_events(self):
+        """Add alert_events and ai_events columns to users table."""
+        new_cols = [
+            ("alert_events", "INTEGER NOT NULL DEFAULT 1"),
+            ("ai_events", "INTEGER NOT NULL DEFAULT 0"),
+        ]
+        for col_name, col_def in new_cols:
+            try:
+                await self._db.execute(
+                    f"ALTER TABLE users ADD COLUMN {col_name} {col_def}"
+                )
+                await self._db.commit()
+                logger.info(f"Added column users.{col_name}")
+            except Exception:
+                pass  # column already exists
 
     # ── Helpers ───────────────────────────────────────────────────
 
@@ -559,9 +591,11 @@ class Database:
             alert_health=bool(row["alert_health"]) if "alert_health" in row.keys() else True,
             alert_fuel=bool(row["alert_fuel"]) if "alert_fuel" in row.keys() else True,
             alert_geofence=bool(row["alert_geofence"]) if "alert_geofence" in row.keys() else True,
+            alert_events=bool(row["alert_events"]) if "alert_events" in row.keys() else True,
             quiet_start=row["quiet_start"] if "quiet_start" in row.keys() else None,
             quiet_end=row["quiet_end"] if "quiet_end" in row.keys() else None,
             timezone=row["timezone"] if "timezone" in row.keys() else "America/New_York",
+            ai_events=bool(row["ai_events"]) if "ai_events" in row.keys() else False,
         )
 
     def _row_to_invite(self, row) -> Invite:
@@ -777,6 +811,7 @@ class Database:
         """Update user fields. Allowed: role, department, truck_num, alerts_on, is_active, alert_*."""
         allowed = {"role", "department", "truck_num", "alerts_on", "is_active",
                    "alert_faults", "alert_health", "alert_fuel", "alert_geofence",
+                   "alert_events", "ai_events",
                    "quiet_start", "quiet_end", "timezone", "display_name"}
         updates = {}
         for k, v in kwargs.items():
@@ -826,10 +861,10 @@ class Database:
     ) -> list[User]:
         """Users subscribed to a specific alert type for an account.
 
-        alert_type: 'faults', 'health', 'fuel', or 'geofence'
+        alert_type: 'faults', 'health', 'fuel', 'geofence', or 'events'
         """
         col = f"alert_{alert_type}"
-        if col not in ("alert_faults", "alert_health", "alert_fuel", "alert_geofence"):
+        if col not in ("alert_faults", "alert_health", "alert_fuel", "alert_geofence", "alert_events"):
             return []
         cur = await self._db.execute(
             f"SELECT * FROM users WHERE account_id = ? AND alerts_on = 1"
@@ -842,7 +877,7 @@ class Database:
     async def get_all_typed_subscribers(self, alert_type: str) -> list[User]:
         """All users subscribed to a specific alert type (across all accounts)."""
         col = f"alert_{alert_type}"
-        if col not in ("alert_faults", "alert_health", "alert_fuel", "alert_geofence"):
+        if col not in ("alert_faults", "alert_health", "alert_fuel", "alert_geofence", "alert_events"):
             return []
         cur = await self._db.execute(
             f"SELECT * FROM users WHERE alerts_on = 1 AND {col} = 1 AND is_active = 1",
@@ -1697,18 +1732,21 @@ class Database:
     async def subscribe_digest_ext(
         self, user_id: int, frequency: str = "daily",
         send_hour: int = 7, timezone: str = "America/New_York",
+        report_type: str = "faults",
     ) -> None:
-        """Subscribe to digest with timezone support."""
+        """Subscribe to auto reports with timezone and report type support."""
         now = self._now()
         await self._db.execute(
-            """INSERT INTO digest_subscriptions (user_id, frequency, send_hour, timezone, created_at)
-               VALUES (?, ?, ?, ?, ?)
+            """INSERT INTO digest_subscriptions
+               (user_id, frequency, send_hour, timezone, report_type, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)
                ON CONFLICT(user_id) DO UPDATE
                SET frequency = excluded.frequency,
                    send_hour = excluded.send_hour,
                    timezone = excluded.timezone,
+                   report_type = excluded.report_type,
                    is_active = 1""",
-            (user_id, frequency, send_hour, timezone, now),
+            (user_id, frequency, send_hour, timezone, report_type, now),
         )
         await self._db.commit()
 

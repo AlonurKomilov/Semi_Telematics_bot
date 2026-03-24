@@ -53,10 +53,6 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
         if row2:
             rows.append(row2)
 
-        # Digest — standalone (lightweight)
-        if perms.can_digest:
-            rows.append([InlineKeyboardButton("📬 Digest", callback_data="cmd_digest")])
-
         # AI Assistant (visible when API key is configured)
         import ai_client
         if ai_client.is_configured():
@@ -124,6 +120,13 @@ def submenu_reports_kb(role: Role, company_codes: list[str] | None = None) -> In
 
     if perms.can_truck_all:
         rows.append([InlineKeyboardButton("🚛 Search Truck", callback_data="cmd_truck_prompt")])
+
+    # Auto Reports — scheduled delivery
+    if perms.can_digest:
+        rows.append([InlineKeyboardButton("📋 Auto Reports", callback_data="cmd_auto_reports")])
+
+    if perms.can_events_all or perms.can_events_own:
+        rows.append([InlineKeyboardButton("🚨 Events", callback_data="cmd_events")])
 
     rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
@@ -382,7 +385,6 @@ def onboarding_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("📋 Integration Guide", callback_data="cmd_integrate_guide")],
         [InlineKeyboardButton("🕐 Set Timezone", callback_data="settings_tz")],
         [InlineKeyboardButton("🌙 Set Quiet Hours", callback_data="settings_quiet_set")],
-        [InlineKeyboardButton("📬 Digest Settings", callback_data="cmd_digest")],
         [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
     ])
 
@@ -511,47 +513,75 @@ def maintenance_task_kb(task_id: int) -> InlineKeyboardMarkup:
     ])
 
 
-def digest_menu_kb(current_sub: dict | None = None) -> InlineKeyboardMarkup:
+def auto_reports_menu_kb(current_sub: dict | None = None) -> InlineKeyboardMarkup:
+    """Auto Reports subscription menu."""
     rows = []
     if current_sub:
+        rtype = current_sub.get("report_type", "faults")
         freq = current_sub.get("frequency", "daily")
         hour = current_sub.get("send_hour", 7)
         tz = current_sub.get("timezone", "UTC")
         tz_short = tz.split("/")[-1].replace("_", " ") if "/" in tz else tz
+        type_labels = {
+            "faults": "🔧 Faults",
+            "fuel": "⛽ Fuel & DEF",
+            "health": "🏥 Vehicle Health",
+            "efficiency": "📊 Efficiency",
+        }
+        label = type_labels.get(rtype, rtype.title())
         rows.append([InlineKeyboardButton(
-            f"📬 Active: {freq.title()} at {hour:02d}:00 {tz_short}",
+            f"📋 Active: {label} · {freq.title()} at {hour:02d}:00 {tz_short}",
             callback_data="noop",
         )])
-        rows.append([InlineKeyboardButton("🔕 Unsubscribe", callback_data="digest_unsub")])
+        rows.append([InlineKeyboardButton("🔕 Unsubscribe", callback_data="ar_unsub")])
     else:
         rows.append([
-            InlineKeyboardButton("📅 Daily", callback_data="digest_daily"),
-            InlineKeyboardButton("📆 Weekly", callback_data="digest_weekly"),
+            InlineKeyboardButton("📅 Daily", callback_data="ar_freq_daily"),
+            InlineKeyboardButton("📆 Weekly", callback_data="ar_freq_weekly"),
         ])
-    rows.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
+        rows.append([
+            InlineKeyboardButton("📅 Monthly", callback_data="ar_freq_monthly"),
+        ])
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="submenu_reports")])
     return InlineKeyboardMarkup(rows)
 
 
-def digest_hour_kb() -> InlineKeyboardMarkup:
-    """Hour picker for digest delivery time."""
+def auto_reports_type_kb() -> InlineKeyboardMarkup:
+    """Report type picker for Auto Reports."""
     rows = [
         [
-            InlineKeyboardButton("6 AM", callback_data="digest_hour_6"),
-            InlineKeyboardButton("7 AM", callback_data="digest_hour_7"),
-            InlineKeyboardButton("8 AM", callback_data="digest_hour_8"),
+            InlineKeyboardButton("🔧 Faults", callback_data="ar_type_faults"),
+            InlineKeyboardButton("⛽ Fuel & DEF", callback_data="ar_type_fuel"),
         ],
         [
-            InlineKeyboardButton("9 AM", callback_data="digest_hour_9"),
-            InlineKeyboardButton("12 PM", callback_data="digest_hour_12"),
-            InlineKeyboardButton("6 PM", callback_data="digest_hour_18"),
+            InlineKeyboardButton("🏥 Health", callback_data="ar_type_health"),
+            InlineKeyboardButton("📊 Efficiency", callback_data="ar_type_efficiency"),
         ],
-        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_digest")],
+        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_auto_reports")],
     ]
     return InlineKeyboardMarkup(rows)
 
 
-def digest_tz_kb() -> InlineKeyboardMarkup:
-    """Timezone picker for digest delivery."""
+def auto_reports_hour_kb() -> InlineKeyboardMarkup:
+    """Hour picker for Auto Reports delivery time."""
+    rows = [
+        [
+            InlineKeyboardButton("6 AM", callback_data="ar_hour_6"),
+            InlineKeyboardButton("7 AM", callback_data="ar_hour_7"),
+            InlineKeyboardButton("8 AM", callback_data="ar_hour_8"),
+        ],
+        [
+            InlineKeyboardButton("9 AM", callback_data="ar_hour_9"),
+            InlineKeyboardButton("12 PM", callback_data="ar_hour_12"),
+            InlineKeyboardButton("6 PM", callback_data="ar_hour_18"),
+        ],
+        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_auto_reports")],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+def auto_reports_tz_kb() -> InlineKeyboardMarkup:
+    """Timezone picker for Auto Reports delivery."""
     timezones = [
         ("Eastern", "America/New_York"),
         ("Central", "America/Chicago"),
@@ -560,10 +590,10 @@ def digest_tz_kb() -> InlineKeyboardMarkup:
         ("UTC", "UTC"),
     ]
     rows = [
-        [InlineKeyboardButton(f"🕐 {label}", callback_data=f"digest_tz_{tz}")]
+        [InlineKeyboardButton(f"🕐 {label}", callback_data=f"ar_tz_{tz}")]
         for label, tz in timezones
     ]
-    rows.append([InlineKeyboardButton("◀️ Cancel", callback_data="cmd_digest")])
+    rows.append([InlineKeyboardButton("◀️ Cancel", callback_data="cmd_auto_reports")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -624,10 +654,28 @@ def alert_settings_kb(user) -> InlineKeyboardMarkup:
             f"{_icon(user.alert_geofence)} Geofence Alerts",
             callback_data="alert_toggle_geofence",
         )],
-        [InlineKeyboardButton("� Pending Alerts", callback_data="cmd_pending_alerts"),
+        [InlineKeyboardButton(
+            f"{_icon(user.alert_events)} Event Alerts",
+            callback_data="alert_toggle_events",
+        )],
+        [InlineKeyboardButton("📋 Pending Alerts", callback_data="cmd_pending_alerts"),
          InlineKeyboardButton("📜 History", callback_data="cmd_alert_history")],
         [InlineKeyboardButton("�🔕 Disable All Alerts", callback_data="alert_disable_all")],
         [InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+def events_format_kb() -> InlineKeyboardMarkup:
+    """Events period/format picker keyboard."""
+    rows = [
+        [InlineKeyboardButton("📊 7 Days", callback_data="events_text_7"),
+         InlineKeyboardButton("📊 14 Days", callback_data="events_text_14"),
+         InlineKeyboardButton("📊 30 Days", callback_data="events_text_30")],
+        [InlineKeyboardButton("📄 CSV 7d", callback_data="events_csv_7"),
+         InlineKeyboardButton("📄 CSV 14d", callback_data="events_csv_14"),
+         InlineKeyboardButton("📄 CSV 30d", callback_data="events_csv_30")],
+        [InlineKeyboardButton("◀️ Back", callback_data="submenu_reports")],
     ]
     return InlineKeyboardMarkup(rows)
 

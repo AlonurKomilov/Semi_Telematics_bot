@@ -23,7 +23,7 @@ from bot.keyboards import (
     geofence_list_kb,
     unregistered_kb,
     invite_kb,
-    digest_menu_kb,
+    auto_reports_menu_kb,
 )
 
 
@@ -70,7 +70,6 @@ class TestMainMenu:
         assert "submenu_tools" in callbacks
         assert "submenu_costs" in callbacks
         assert "cmd_alerts" in callbacks
-        assert "cmd_digest" in callbacks
         assert "submenu_mgmt" in callbacks
 
     def test_driver_sees_my_truck(self):
@@ -128,17 +127,18 @@ class TestSubMenuReports:
         assert "cmd_health" in callbacks
         assert "cmd_efficiency" in callbacks
         assert "cmd_truck_prompt" in callbacks
+        assert "cmd_auto_reports" in callbacks
 
     def test_has_back_button(self):
         kb = submenu_reports_kb(Role.OWNER)
         assert _has_callback(kb, "cmd_menu")
 
-    def test_driver_sees_nothing(self):
-        """Drivers have no fleet report permissions."""
+    def test_driver_sees_auto_reports(self):
+        """Drivers can see auto reports (can_digest=True)."""
         kb = submenu_reports_kb(Role.DRIVER)
         callbacks = _all_callbacks(kb)
-        # Only the back button
-        assert callbacks == ["cmd_menu"]
+        assert "cmd_auto_reports" in callbacks
+        assert "cmd_menu" in callbacks
 
 
 class TestSubMenuTools:
@@ -279,17 +279,18 @@ class TestSpecialKeyboards:
         # No share button
         assert not _has_label_containing(kb, "Send to Team Member")
 
-    def test_digest_menu_without_subscription(self):
-        kb = digest_menu_kb(current_sub=None)
+    def test_auto_reports_menu_without_subscription(self):
+        kb = auto_reports_menu_kb(current_sub=None)
         callbacks = _all_callbacks(kb)
-        assert "digest_daily" in callbacks
-        assert "digest_weekly" in callbacks
+        assert "ar_freq_daily" in callbacks
+        assert "ar_freq_weekly" in callbacks
+        assert "ar_freq_monthly" in callbacks
 
-    def test_digest_menu_with_subscription(self):
-        kb = digest_menu_kb(current_sub={"frequency": "daily", "send_hour": 7})
+    def test_auto_reports_menu_with_subscription(self):
+        kb = auto_reports_menu_kb(current_sub={"frequency": "daily", "send_hour": 7, "report_type": "faults"})
         callbacks = _all_callbacks(kb)
-        assert "digest_unsub" in callbacks
-        assert "digest_daily" not in callbacks
+        assert "ar_unsub" in callbacks
+        assert "ar_freq_daily" not in callbacks
 
     def test_geofence_list_max_15(self):
         """geofence_list_kb should cap at 15 items."""

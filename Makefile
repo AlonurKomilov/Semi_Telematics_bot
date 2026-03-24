@@ -80,3 +80,21 @@ clean:
 	@rm -f .bot.pid .pid
 	@rm -f "=0.5.7"
 	@echo "✅  Cache cleared (DB and source untouched)"
+
+# ── testing targets ──────────────────────────────────
+
+## Run tests
+test:
+	python3 -m pytest tests/
+
+## Run tests with coverage report
+test-cov:
+	python3 -m pytest tests/ --cov=bot --cov-report=term-missing
+
+## Run tests in parallel (uses all available CPU cores)
+test-fast:
+	python3 -m pytest tests/ -n auto
+
+## Watch mode — re-runs tests on file changes
+test-watch:
+	ptw -- tests/ -v --tb=short

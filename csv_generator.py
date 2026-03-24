@@ -399,3 +399,68 @@ def generate_fault_csv(
     ])
 
     return _to_buf(sio)
+
+
+# ══════════════════════════════════════════════════════════════════
+# EVENTS CSV
+# ══════════════════════════════════════════════════════════════════
+
+def generate_events_csv(
+    events: list[dict],
+    days: int = 7,
+    company_filter: str | None = None,
+) -> io.BytesIO:
+    """Return a BytesIO containing CSV data for the Events report."""
+    sio = io.StringIO()
+    writer = csv.writer(sio)
+
+    writer.writerow(["Report", "Safety Events"])
+    writer.writerow(["Generated", _now_et()])
+    writer.writerow(["Period", f"Past {days} Days"])
+    writer.writerow(["Company", company_filter or "All Companies"])
+    writer.writerow([])
+
+    header = [
+        "Date/Time",
+        "Vehicle",
+        "Driver",
+        "Event Type",
+        "Event Name",
+        "G-Force",
+        "Latitude",
+        "Longitude",
+        "Coaching State",
+        "Company",
+        "Video URL",
+    ]
+    writer.writerow(header)
+
+    for e in events:
+        writer.writerow([
+            _fmt_iso_et(e.get("time")),
+            e.get("vehicle_name", _NA),
+            e.get("driver_name", _NA),
+            e.get("event_type", _NA),
+            e.get("event_name", _NA),
+            e.get("g_force", _NA),
+            _val(e.get("latitude")),
+            _val(e.get("longitude")),
+            e.get("coaching_state", _NA),
+            e.get("_org", _NA),
+            e.get("video_url") or _NA,
+        ])
+
+    # Summary
+    type_counts: dict[str, int] = {}
+    for e in events:
+        etype = e.get("event_type", "other")
+        type_counts[etype] = type_counts.get(etype, 0) + 1
+
+    writer.writerow([])
+    writer.writerow(["SUMMARY", f"{len(events)} total events"])
+    for etype, count in sorted(type_counts.items(), key=lambda x: -x[1]):
+        writer.writerow(["", f"{etype}: {count}"])
+
+    buf = _to_buf(sio)
+    buf.name = f"events_{days}d_{_now_et().replace(' ', '_').replace(',', '')}.csv"
+    return buf

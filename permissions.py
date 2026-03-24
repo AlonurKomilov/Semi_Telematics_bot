@@ -83,7 +83,7 @@ class FeatureSet:
     # ── New features ──────────────────────────────────────────────
     can_geofence_all: bool = False      # geofence alerts (all trucks)
     can_geofence_own: bool = False      # geofence alerts (own truck)
-    can_digest: bool = False            # daily/weekly digest subscription
+    can_digest: bool = False            # auto reports subscription
     can_maintenance_all: bool = False   # maintenance scheduler (all trucks)
     can_maintenance_own: bool = False   # maintenance scheduler (own truck)
     can_scorecard_all: bool = False     # driver scorecards (all drivers)
@@ -94,6 +94,8 @@ class FeatureSet:
     can_route_all: bool = False         # route replay (all trucks)
     can_route_own: bool = False         # route replay (own truck)
     can_cost_per_mile: bool = False     # cost-per-mile dashboard
+    can_events_all: bool = False        # safety event alerts (all trucks)
+    can_events_own: bool = False        # safety event alerts (own truck)
 
 
 # ─── Role → Permission Map ───────────────────────────────────────
@@ -115,6 +117,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_fuel_cost=True,
         can_route_all=True, can_route_own=True,
         can_cost_per_mile=True,
+        can_events_all=True, can_events_own=True,
     ),
     Role.ADMIN: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=True,
@@ -132,6 +135,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_fuel_cost=True,
         can_route_all=True, can_route_own=True,
         can_cost_per_mile=True,
+        can_events_all=True, can_events_own=True,
     ),
     Role.FLEET_MGR: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=True,
@@ -149,6 +153,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_fuel_cost=True,
         can_route_all=True, can_route_own=True,
         can_cost_per_mile=True,
+        can_events_all=True, can_events_own=True,
     ),
     Role.DISPATCHER: FeatureSet(
         can_faults=False, can_critical=False, can_fuel=True,
@@ -166,6 +171,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_fuel_cost=False,
         can_route_all=True, can_route_own=True,
         can_cost_per_mile=False,
+        can_events_all=False, can_events_own=False,
     ),
     Role.DRIVER: FeatureSet(
         can_faults=False, can_critical=False, can_fuel=False,
@@ -183,6 +189,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_fuel_cost=False,
         can_route_all=False, can_route_own=True,
         can_cost_per_mile=False,
+        can_events_all=False, can_events_own=True,
     ),
 }
 

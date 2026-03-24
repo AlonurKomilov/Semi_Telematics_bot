@@ -467,24 +467,25 @@ class TestFuelEntries:
 
 
 # ══════════════════════════════════════════════════════════════════
-# DIGEST SUBSCRIPTIONS
+# AUTO REPORTS SUBSCRIPTIONS
 # ══════════════════════════════════════════════════════════════════
 
-class TestDigestSubscriptions:
+class TestAutoReportsSubscriptions:
 
     @pytest.mark.asyncio
-    async def test_subscribe_digest(self, seeded_db):
+    async def test_subscribe_auto_report(self, seeded_db):
         db, _, _, owner = seeded_db
-        await db.subscribe_digest(owner.id, "daily", 7)
+        await db.subscribe_digest_ext(owner.id, "daily", 7, "UTC", "faults")
         sub = await db.get_digest_subscription(owner.id)
         assert sub is not None
         assert sub["frequency"] == "daily"
         assert sub["send_hour"] == 7
+        assert sub["report_type"] == "faults"
 
     @pytest.mark.asyncio
-    async def test_unsubscribe_digest(self, seeded_db):
+    async def test_unsubscribe_auto_report(self, seeded_db):
         db, _, _, owner = seeded_db
-        await db.subscribe_digest(owner.id, "weekly", 9)
+        await db.subscribe_digest_ext(owner.id, "weekly", 9, "UTC", "fuel")
         await db.unsubscribe_digest(owner.id)
         sub = await db.get_digest_subscription(owner.id)
         assert sub is None
@@ -492,11 +493,12 @@ class TestDigestSubscriptions:
     @pytest.mark.asyncio
     async def test_resubscribe_updates(self, seeded_db):
         db, _, _, owner = seeded_db
-        await db.subscribe_digest(owner.id, "daily", 7)
-        await db.subscribe_digest(owner.id, "weekly", 12)
+        await db.subscribe_digest_ext(owner.id, "daily", 7, "UTC", "faults")
+        await db.subscribe_digest_ext(owner.id, "weekly", 12, "America/Chicago", "health")
         sub = await db.get_digest_subscription(owner.id)
         assert sub["frequency"] == "weekly"
         assert sub["send_hour"] == 12
+        assert sub["report_type"] == "health"
 
 
 # ══════════════════════════════════════════════════════════════════

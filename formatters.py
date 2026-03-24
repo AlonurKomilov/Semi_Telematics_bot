@@ -539,9 +539,9 @@ def format_welcome_unregistered(support_contact: str = "") -> str:
         "  · Instant insights &amp; summaries\n"
         "  · Smart follow-up suggestions\n"
         "\n"
-        "<b>🔔 Alerts &amp; Digests</b>\n"
+        "<b>🔔 Alerts &amp; Auto Reports</b>\n"
         "  · Real-time fault alerts\n"
-        "  · Daily/weekly email digests\n"
+        "  · Scheduled PDF report delivery\n"
         "  · Geofence notifications\n"
         "\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
@@ -1080,6 +1080,136 @@ def format_fleet_weather(
             warn = ""
 
         lines.append(f"  {icon} <b>{tag}#{name}</b>  {temp_str}{warn}  ·  📍 {city}")
+
+    now_et = datetime.now(_TZ_ET)
+    lines.append(f"\n  🕐  {now_et.strftime('%b %d, %Y  %I:%M %p')} EST")
+
+    return _split_message("\n".join(lines))
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  SAFETY EVENTS — Alert + Dashboard formatters
+# ═══════════════════════════════════════════════════════════════════
+
+_EVENT_EMOJI: dict[str, str] = {
+    "crash": "💥",
+    "braking": "🛑",
+    "rollingStop": "↩️",
+    "followingDistance": "🚗",
+    "harshTurn": "🔄",
+    "laneDeparture": "↔️",
+    "acceleration": "🏎️",
+    "other": "⚠️",
+}
+
+_EVENT_TYPE_KEYS: dict[str, str] = {
+    "crash": "events.type_crash",
+    "braking": "events.type_braking",
+    "rollingStop": "events.type_rolling_stop",
+    "followingDistance": "events.type_following",
+    "harshTurn": "events.type_harsh_turn",
+    "laneDeparture": "events.type_lane_departure",
+    "acceleration": "events.type_acceleration",
+}
+
+
+def format_event_alert(event: dict, show_company: bool = False) -> str:
+    """Format a single safety event for an alert message (HTML)."""
+    etype = event.get("event_type", "other")
+    emoji = _EVENT_EMOJI.get(etype, "⚠️")
+    ename = event.get("event_name", etype)
+    vname = event.get("vehicle_name", "?")
+    driver = event.get("driver_name", "Unassigned")
+    g_force = event.get("g_force", 0)
+    lat = event.get("latitude")
+    lon = event.get("longitude")
+    time_str = _fmt_time(event.get("time", ""))
+
+    co = event.get("_org", "")
+    co_label = f"[{co}] " if show_company and co else ""
+
+    loc_str = "—"
+    if lat is not None and lon is not None:
+        loc_str = f"{lat:.4f}, {lon:.4f}"
+
+    lines = [
+        "━━━━━━━━━━━━━━━━━━━",
+        f"  {emoji}  <b>{co_label}{ename}</b>",
+        "━━━━━━━━━━━━━━━━━━━",
+        "",
+        f"  🚛  Truck #{vname}",
+        f"  👤  {driver}",
+        f"  ⚡  {g_force:.2f}g",
+        f"  📍  {loc_str}",
+        f"  🕐  {time_str}",
+    ]
+    return "\n".join(lines)
+
+
+def format_events_dashboard(
+    events: list[dict],
+    days: int = 7,
+    company_label: str | None = None,
+) -> list[str]:
+    """Format a summary dashboard of safety events (HTML, multi-message)."""
+    if not events:
+        return [f"✅ No events in the last {days} days."]
+
+    label = company_label or "All Companies"
+
+    # Count by type
+    type_counts: dict[str, int] = {}
+    driver_counts: dict[str, int] = {}
+    g_mild = g_moderate = g_harsh = g_severe = 0
+
+    for e in events:
+        etype = e.get("event_type", "other")
+        type_counts[etype] = type_counts.get(etype, 0) + 1
+
+        dname = e.get("driver_name", "Unassigned")
+        driver_counts[dname] = driver_counts.get(dname, 0) + 1
+
+        g = e.get("g_force", 0)
+        if g < 0.4:
+            g_mild += 1
+        elif g < 0.6:
+            g_moderate += 1
+        elif g < 0.8:
+            g_harsh += 1
+        else:
+            g_severe += 1
+
+    lines = [
+        "━━━━━━━━━━━━━━━━━━━",
+        f"  🚨  <b>SAFETY EVENTS</b>",
+        "━━━━━━━━━━━━━━━━━━━",
+        f"  📅  Last {days} days  ·  {label}",
+        f"  📊  Total: <b>{len(events)}</b> events",
+        "",
+    ]
+
+    # By type
+    for etype in ["crash", "braking", "rollingStop", "followingDistance",
+                  "harshTurn", "laneDeparture", "acceleration", "other"]:
+        count = type_counts.get(etype, 0)
+        if count > 0:
+            emoji = _EVENT_EMOJI.get(etype, "⚠️")
+            lines.append(f"  {emoji}  {etype}: <b>{count}</b>")
+
+    # Top drivers
+    lines.append("")
+    lines.append("  👤 <b>Top Drivers by Events</b>")
+    sorted_drivers = sorted(driver_counts.items(), key=lambda x: -x[1])[:5]
+    for name, count in sorted_drivers:
+        lines.append(f"    {name}: {count} events")
+
+    # G-force distribution
+    lines.append("")
+    lines.append("  ⚡ <b>G-Force Distribution</b>")
+    lines.append(f"    Mild (&lt;0.4g): {g_mild}")
+    lines.append(f"    Moderate (0.4-0.6g): {g_moderate}")
+    lines.append(f"    Harsh (0.6-0.8g): {g_harsh}")
+    lines.append(f"    Severe (&gt;0.8g): {g_severe}")
 
     now_et = datetime.now(_TZ_ET)
     lines.append(f"\n  🕐  {now_et.strftime('%b %d, %Y  %I:%M %p')} EST")

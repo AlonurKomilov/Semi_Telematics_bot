@@ -1,5 +1,5 @@
 """Tests for new automation features: quiet hours, alert acks, audit log,
-digest timezone, settings keyboards, onboarding keyboard, rate limiting."""
+auto reports, settings keyboards, onboarding keyboard, rate limiting."""
 
 import os
 import pytest
@@ -194,28 +194,30 @@ class TestAuditLog:
 
 
 # ══════════════════════════════════════════════════════════════════
-# DIGEST TIMEZONE SUBSCRIPTIONS
+# AUTO REPORTS SUBSCRIPTIONS
 # ══════════════════════════════════════════════════════════════════
 
-class TestDigestTimezone:
-    async def test_subscribe_with_timezone(self, seeded):
+class TestAutoReportsSubscription:
+    async def test_subscribe_with_timezone_and_type(self, seeded):
         db, owner = seeded["db"], seeded["owner"]
         await db.subscribe_digest_ext(
             user_id=owner.id,
             frequency="daily",
             send_hour=9,
             timezone="America/Chicago",
+            report_type="faults",
         )
         sub = await db.get_digest_subscription(owner.id)
         assert sub is not None
         assert sub["frequency"] == "daily"
         assert sub["send_hour"] == 9
         assert sub["timezone"] == "America/Chicago"
+        assert sub["report_type"] == "faults"
 
     async def test_get_digest_subscribers_by_local_hour(self, seeded):
         db, owner, driver = seeded["db"], seeded["owner"], seeded["driver"]
-        await db.subscribe_digest_ext(owner.id, "daily", send_hour=7, timezone="UTC")
-        await db.subscribe_digest_ext(driver.id, "daily", send_hour=9, timezone="UTC")
+        await db.subscribe_digest_ext(owner.id, "daily", send_hour=7, timezone="UTC", report_type="faults")
+        await db.subscribe_digest_ext(driver.id, "daily", send_hour=9, timezone="UTC", report_type="fuel")
         subs_7 = await db.get_digest_subscribers_by_local_hour(7)
         subs_9 = await db.get_digest_subscribers_by_local_hour(9)
         assert len(subs_7) == 1
@@ -230,21 +232,30 @@ class TestNewKeyboards:
     def _callbacks(self, kb):
         return [btn.callback_data for row in kb.inline_keyboard for btn in row]
 
-    def test_digest_hour_kb(self):
-        from bot.keyboards import digest_hour_kb
-        kb = digest_hour_kb()
+    def test_auto_reports_hour_kb(self):
+        from bot.keyboards import auto_reports_hour_kb
+        kb = auto_reports_hour_kb()
         callbacks = self._callbacks(kb)
-        assert "digest_hour_7" in callbacks
-        assert "digest_hour_12" in callbacks
-        assert "cmd_digest" in callbacks  # cancel button
+        assert "ar_hour_7" in callbacks
+        assert "ar_hour_12" in callbacks
+        assert "cmd_auto_reports" in callbacks  # cancel button
 
-    def test_digest_tz_kb(self):
-        from bot.keyboards import digest_tz_kb
-        kb = digest_tz_kb()
+    def test_auto_reports_tz_kb(self):
+        from bot.keyboards import auto_reports_tz_kb
+        kb = auto_reports_tz_kb()
         callbacks = self._callbacks(kb)
-        assert "digest_tz_America/New_York" in callbacks
-        assert "digest_tz_UTC" in callbacks
-        assert "cmd_digest" in callbacks
+        assert "ar_tz_America/New_York" in callbacks
+        assert "ar_tz_UTC" in callbacks
+        assert "cmd_auto_reports" in callbacks
+
+    def test_auto_reports_type_kb(self):
+        from bot.keyboards import auto_reports_type_kb
+        kb = auto_reports_type_kb()
+        callbacks = self._callbacks(kb)
+        assert "ar_type_faults" in callbacks
+        assert "ar_type_fuel" in callbacks
+        assert "ar_type_health" in callbacks
+        assert "ar_type_efficiency" in callbacks
 
     def test_quiet_hours_picker_kb(self):
         from bot.keyboards import quiet_hours_picker_kb
@@ -275,7 +286,6 @@ class TestNewKeyboards:
         assert "cmd_integrate_guide" in callbacks
         assert "settings_tz" in callbacks
         assert "settings_quiet_set" in callbacks
-        assert "cmd_digest" in callbacks
         assert "cmd_menu" in callbacks
 
     def test_quiet_hours_kb_active(self):
@@ -313,12 +323,12 @@ class TestNewKeyboards:
         assert "set_tz_America/New_York" in callbacks
         assert "set_tz_UTC" in callbacks
 
-    def test_digest_menu_with_timezone(self):
-        from bot.keyboards import digest_menu_kb
-        sub = {"frequency": "daily", "send_hour": 9, "timezone": "America/Chicago"}
-        kb = digest_menu_kb(sub)
-        labels = [btn.text for row in kb.inline_keyboard for btn in row]
-        assert any("Chicago" in lbl for lbl in labels)
+    def test_auto_reports_menu_with_subscription(self):
+        from bot.keyboards import auto_reports_menu_kb
+        sub = {"frequency": "daily", "send_hour": 9, "timezone": "America/Chicago", "report_type": "faults"}
+        kb = auto_reports_menu_kb(sub)
+        callbacks = self._callbacks(kb)
+        assert "ar_unsub" in callbacks
 
     def test_submenu_mgmt_has_settings(self):
         from bot.keyboards import submenu_mgmt_kb
@@ -569,6 +579,21 @@ class TestReAlertConfig:
         assert "🤖 AI Diagnose" not in labels
         assert "📋 View Truck #303" in labels
         assert "◀️ Main Menu" in labels
+
+    def test_build_keyboard_has_samsara_link(self):
+        from bot.alerts import build_alert_keyboard, AlertSeverity
+        kb = build_alert_keyboard(AlertSeverity.CRITICAL, "CO1", "101", ack_id=1,
+                                  samsara_url="https://cloud.samsara.com/o/123/devices/12345/vehicle")
+        urls = [b.url for r in kb.inline_keyboard for b in r if b.url]
+        labels = [b.text for r in kb.inline_keyboard for b in r if b.url]
+        assert any("cloud.samsara.com" in u for u in urls)
+        assert "🔗 Open in Samsara" in labels
+
+    def test_build_keyboard_no_samsara_link_without_id(self):
+        from bot.alerts import build_alert_keyboard, AlertSeverity
+        kb = build_alert_keyboard(AlertSeverity.CRITICAL, "CO1", "101", ack_id=1)
+        urls = [b.url for r in kb.inline_keyboard for b in r if b.url]
+        assert not urls
 
     def test_cooldown_hours_per_type(self):
         from bot.alerts import _COOLDOWN_HOURS

@@ -95,6 +95,7 @@ async def get_client(account_id: int) -> MultiCompanyClient:
         return _client_cache[account_id]
     companies = await db.get_account_companies(account_id)
     client = build_multi_company_client(companies, SAMSARA_BASE_URL)
+    await client.prefetch_org_ids()
     _client_cache[account_id] = client
     return client
 

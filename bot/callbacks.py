@@ -41,7 +41,7 @@ from bot.admin import cmd_admin, cmd_accounts
 from bot.scorecards import cmd_scorecards, cmd_scorecards_pdf, cmd_scorecards_csv
 from bot.fuel_costs import cmd_fuelcost, cmd_fuelcost_add, handle_fuelcost_text, cmd_fuelcost_summary
 from bot.cost_per_mile import cmd_costmile, cmd_costmile_report
-from bot.digest import cmd_digest, cmd_digest_subscribe, cmd_digest_unsubscribe, cmd_digest_set_hour, cmd_digest_set_tz
+from bot.auto_reports import cmd_auto_reports, cmd_auto_reports_subscribe, cmd_auto_reports_unsubscribe, cmd_auto_reports_set_hour, cmd_auto_reports_set_tz, cmd_auto_reports_set_type
 from bot.maintenance import (
     cmd_maintenance, cmd_maint_add, cmd_maint_type,
     cmd_maint_view, cmd_maint_done, handle_maintenance_text,
@@ -49,6 +49,7 @@ from bot.maintenance import (
 from bot.maps import cmd_livemap
 from bot.routes import cmd_route, cmd_route_go, handle_route_text
 from bot.geofences import cmd_geofences
+from bot.events import cmd_events, cmd_events_text, cmd_events_csv
 from bot.ai import (
     cmd_ai, cmd_ai_ask_prompt, cmd_ai_answer, cmd_ai_summary,
     cmd_ai_diagnose, cmd_ai_suggest, cmd_ai_newchat,
@@ -1133,6 +1134,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Individual geofence detail — just acknowledge for now
         await query.answer("Geofence details coming soon", show_alert=False)
 
+    # ── Events ──────────────────────────────────────────────────
+    elif data == "cmd_events":
+        await cmd_events(update, context)
+    elif data.startswith("events_text_"):
+        days = int(data.replace("events_text_", ""))
+        await cmd_events_text(update, context, days=days)
+    elif data.startswith("events_csv_"):
+        days = int(data.replace("events_csv_", ""))
+        await cmd_events_csv(update, context, days=days)
+
     # ── Fuel Costs ──────────────────────────────────────────────
     elif data == "cmd_fuelcost":
         await cmd_fuelcost(update, context)
@@ -1169,21 +1180,23 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         task_id = int(data.replace("maint_done_", ""))
         await cmd_maint_done(update, context, task_id=task_id)
 
-    # ── Digest ──────────────────────────────────────────────────
-    elif data == "cmd_digest":
-        await cmd_digest(update, context)
-    elif data == "digest_daily":
-        await cmd_digest_subscribe(update, context, frequency="daily")
-    elif data == "digest_weekly":
-        await cmd_digest_subscribe(update, context, frequency="weekly")
-    elif data == "digest_unsub":
-        await cmd_digest_unsubscribe(update, context)
-    elif data.startswith("digest_hour_"):
-        hour = int(data.replace("digest_hour_", ""))
-        await cmd_digest_set_hour(update, context, hour=hour)
-    elif data.startswith("digest_tz_"):
-        tz = data.replace("digest_tz_", "")
-        await cmd_digest_set_tz(update, context, tz=tz)
+    # ── Auto Reports ────────────────────────────────────────────
+    elif data == "cmd_auto_reports":
+        await cmd_auto_reports(update, context)
+    elif data.startswith("ar_freq_"):
+        freq = data.replace("ar_freq_", "")
+        await cmd_auto_reports_subscribe(update, context, frequency=freq)
+    elif data.startswith("ar_type_"):
+        rtype = data.replace("ar_type_", "")
+        await cmd_auto_reports_set_type(update, context, report_type=rtype)
+    elif data == "ar_unsub":
+        await cmd_auto_reports_unsubscribe(update, context)
+    elif data.startswith("ar_hour_"):
+        hour = int(data.replace("ar_hour_", ""))
+        await cmd_auto_reports_set_hour(update, context, hour=hour)
+    elif data.startswith("ar_tz_"):
+        tz = data.replace("ar_tz_", "")
+        await cmd_auto_reports_set_tz(update, context, tz=tz)
 
     # ── Alert acknowledgment ────────────────────────────────────
     elif data.startswith("ack_alert_"):

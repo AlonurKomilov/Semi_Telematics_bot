@@ -176,6 +176,7 @@ async def cmd_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user = context.user_data["_db_user"]
+    await ai_client.ensure_account_model(user.account_id)
     role_desc = "your truck" if user.role == Role.DRIVER else "your fleet"
 
     text = (
@@ -408,6 +409,7 @@ async def cmd_ai_models(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = context.user_data["_db_user"]
     acct_id = user.account_id
+    await ai_client.ensure_account_model(acct_id)
 
     # Determine current model for this account
     cur_model = ai_client.get_current_model_name()

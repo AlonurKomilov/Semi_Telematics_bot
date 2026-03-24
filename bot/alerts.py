@@ -28,6 +28,7 @@ from formatters import (
     format_new_fault_alert, format_critical_fault_alert,
     format_health_alert, format_low_fuel_alert,
     format_alert_history_footer,
+    format_event_alert,
 )
 
 from bot.config import (
@@ -384,12 +385,13 @@ def build_alert_keyboard(
     co: str,
     vehicle_name: str,
     ack_id: int | None = None,
+    samsara_url: str | None = None,
 ) -> InlineKeyboardMarkup:
     """Build keyboard for an alert message based on severity.
 
-    CRITICAL/WARNING with ack_id → ACK + Snooze + AI Diagnose + View Truck
-    CRITICAL/WARNING without ack_id → AI Diagnose + View Truck (pre-ACK send)
-    INFO → View Truck only
+    CRITICAL/WARNING with ack_id → ACK + Snooze + AI Diagnose + View Truck + Open in Samsara
+    CRITICAL/WARNING without ack_id → AI Diagnose + View Truck + Open in Samsara (pre-ACK send)
+    INFO → View Truck + Open in Samsara only
     """
     rows: list[list[InlineKeyboardButton]] = []
 
@@ -410,9 +412,19 @@ def build_alert_keyboard(
         f"📋 View Truck #{vehicle_name}",
         callback_data=f"cotruck_{co}_{vehicle_name}",
     )])
+    _url = samsara_url
+    if _url:
+        rows.append([InlineKeyboardButton("🔗 Open in Samsara", url=_url)])
     rows.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
 
     return InlineKeyboardMarkup(rows)
+
+
+def _build_samsara_url(org_id: str | None, vehicle_id: str | None) -> str | None:
+    """Build a Samsara dashboard URL for a vehicle."""
+    if org_id and vehicle_id:
+        return f"https://cloud.samsara.com/o/{org_id}/devices/{vehicle_id}/vehicle"
+    return None
 
 
 async def send_alert(
@@ -436,6 +448,7 @@ async def send_alert(
     """
     vid = vehicle["id"]
     vname = vehicle.get("name", "?")
+    samsara_url = _build_samsara_url(vehicle.get("_org_id"), vid)
     needs_ack = severity in (AlertSeverity.CRITICAL, AlertSeverity.WARNING)
     bypasses_dnd = severity == AlertSeverity.CRITICAL
 
@@ -499,7 +512,7 @@ async def send_alert(
                                 pass
 
                 # Send with basic keyboard (no ack_id yet)
-                basic_kb = build_alert_keyboard(severity, co, vname)
+                basic_kb = build_alert_keyboard(severity, co, vname, samsara_url=samsara_url)
                 msg = await app.bot.send_message(
                     chat_id=sub.telegram_id,
                     text=send_text,
@@ -525,7 +538,7 @@ async def send_alert(
                 )
 
                 # Update keyboard with ACK/Snooze buttons
-                ack_kb = build_alert_keyboard(severity, co, vname, ack_id=ack_id)
+                ack_kb = build_alert_keyboard(severity, co, vname, ack_id=ack_id, samsara_url=samsara_url)
                 await app.bot.edit_message_reply_markup(
                     chat_id=sub.telegram_id,
                     message_id=msg.message_id,
@@ -533,7 +546,7 @@ async def send_alert(
                 )
             else:
                 # INFO — no ACK tracking needed
-                basic_kb = build_alert_keyboard(severity, co, vname)
+                basic_kb = build_alert_keyboard(severity, co, vname, samsara_url=samsara_url)
                 msg = await app.bot.send_message(
                     chat_id=sub.telegram_id,
                     text=send_text,
@@ -1014,6 +1027,21 @@ async def check_alert_realerts(app: Application):
                     f"\n  Sent {mins_ago} min ago — not yet acknowledged.\n"
                 )
 
+                # Extract Samsara vehicle ID from composite vehicle_id
+                # Format: "account_id:co:samsara_vehicle_id"
+                _parts = alert.get("vehicle_id", "").split(":")
+                _samsara_vid = _parts[2] if len(_parts) >= 3 else None
+                _co_code = _parts[1] if len(_parts) >= 2 else None
+
+                # Build Samsara dashboard URL
+                _realert_url = None
+                if _samsara_vid and _co_code:
+                    try:
+                        _client = await get_client(account_id)
+                        _realert_url = _client.vehicle_url(_co_code, _samsara_vid)
+                    except Exception:
+                        pass
+
                 ack_kb = InlineKeyboardMarkup([
                     [InlineKeyboardButton(
                         "✅ Acknowledge",
@@ -1027,6 +1055,12 @@ async def check_alert_realerts(app: Application):
                         "🤖 AI Diagnose",
                         callback_data=f"ai_diag__{alert['vehicle_name']}",
                     )],
+                    *([
+                        [InlineKeyboardButton(
+                            "🔗 Open in Samsara",
+                            url=_realert_url,
+                        )]
+                    ] if _realert_url else []),
                     [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
                 ])
 
@@ -1399,3 +1433,142 @@ async def is_vehicle_suppressed(account_id: int, vehicle_name: str) -> bool:
         return await db.is_vehicle_in_maintenance(account_id, vehicle_name)
     except Exception:
         return False
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Safety Events — Scheduled Alert Check
+# ═══════════════════════════════════════════════════════════════════
+
+# Dedup: track event IDs already alerted (in-memory fallback)
+_known_events: set[str] = set()
+
+
+def _event_severity(event: dict) -> AlertSeverity:
+    """Classify a safety event into a severity tier.
+
+    - crash → CRITICAL
+    - braking with g > 0.8 → WARNING
+    - everything else → INFO
+    """
+    etype = event.get("event_type", "")
+    g_force = event.get("g_force", 0)
+
+    if etype == "crash":
+        return AlertSeverity.CRITICAL
+    if etype == "braking" and g_force > 0.8:
+        return AlertSeverity.WARNING
+    return AlertSeverity.INFO
+
+
+async def check_safety_events(app: Application):
+    """Scheduled job: poll Samsara safety events and push alerts.
+
+    Sends text alert with video URL as combined message when dashcam
+    footage is available.
+    """
+    try:
+        subscribers = await db.get_all_typed_subscribers("events")
+        if not subscribers:
+            return
+
+        acct_subs: dict[int, list] = {}
+        for sub in subscribers:
+            acct_subs.setdefault(sub.account_id, []).append(sub)
+
+        for account_id, subs in acct_subs.items():
+            try:
+                samsara = await get_client(account_id)
+                events = await samsara.get_events(days=1)
+
+                acct_companies = await db.get_account_companies(account_id)
+                populate_company_display(acct_companies)
+                company_codes = [o.code for o in acct_companies]
+                show_co = len(company_codes) > 1
+
+                for event in events:
+                    eid = event.get("event_id", "")
+                    if not eid or eid in _known_events:
+                        continue
+
+                    # Check Redis dedup
+                    if rcache.is_available():
+                        already = await rcache.get(f"event_seen:{eid}")
+                        if already:
+                            _known_events.add(eid)
+                            continue
+
+                    co = event.get("_org", "?")
+                    vname = event.get("vehicle_name", "?")
+                    vid = event.get("vehicle_id", "")
+                    severity = _event_severity(event)
+
+                    if await is_vehicle_suppressed(account_id, vname):
+                        _known_events.add(eid)
+                        continue
+
+                    alert_text = format_event_alert(event, show_company=show_co)
+                    video_url = event.get("video_url")
+
+                    # Send alert (with video if available)
+                    for sub in subs:
+                        if sub.role == Role.DRIVER and sub.truck_num:
+                            if vname.lower() != sub.truck_num.lower():
+                                continue
+
+                        if not severity == AlertSeverity.CRITICAL and sub.is_in_quiet_hours():
+                            await db.queue_dnd_alert(
+                                account_id=account_id,
+                                telegram_id=sub.telegram_id,
+                                alert_type="events",
+                                vehicle_name=vname,
+                                alert_text=alert_text,
+                            )
+                            continue
+
+                        try:
+                            _evt_url = _build_samsara_url(event.get("_org_id"), vid)
+                            kb = build_alert_keyboard(
+                                severity, co, vname,
+                                samsara_url=_evt_url,
+                            )
+
+                            if video_url:
+                                # Combined: video with text caption
+                                # Telegram caption max is 1024 chars
+                                caption = alert_text[:1024]
+                                try:
+                                    await app.bot.send_video(
+                                        chat_id=sub.telegram_id,
+                                        video=video_url,
+                                        caption=caption,
+                                        parse_mode=ParseMode.HTML,
+                                        reply_markup=kb,
+                                    )
+                                except Exception:
+                                    # Fallback: send text + link if video fails
+                                    alert_text += f"\n\n  🎥 <a href=\"{video_url}\">View Dashcam</a>"
+                                    await app.bot.send_message(
+                                        chat_id=sub.telegram_id,
+                                        text=alert_text,
+                                        parse_mode=ParseMode.HTML,
+                                        reply_markup=kb,
+                                    )
+                            else:
+                                await app.bot.send_message(
+                                    chat_id=sub.telegram_id,
+                                    text=alert_text,
+                                    parse_mode=ParseMode.HTML,
+                                    reply_markup=kb,
+                                )
+                        except Exception as e:
+                            logger.error(f"Event alert to {sub.telegram_id}: {e}")
+
+                    # Mark as seen
+                    _known_events.add(eid)
+                    if rcache.is_available():
+                        await rcache.set(f"event_seen:{eid}", "1", ttl=86400 * 3)
+
+            except Exception as e:
+                logger.error(f"Safety events check for account {account_id}: {e}")
+    except Exception as e:
+        logger.error(f"check_safety_events top-level: {e}")
