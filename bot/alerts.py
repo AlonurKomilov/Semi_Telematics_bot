@@ -1358,6 +1358,7 @@ async def check_alert_realerts(app: Application):
             live_faults_by_name: dict[str, list[dict]] = {}
             try:
                 samsara = await get_client(account_id)
+                await samsara.ensure_org_ids()
 
                 # Determine what data we need based on alert types
                 alert_types = {a["alert_type"] for a in alerts}

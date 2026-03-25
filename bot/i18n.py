@@ -92,11 +92,14 @@ def _resolve(data: dict, key: str) -> str | None:
     return node if isinstance(node, str) else None
 
 
-def t(key: str, lang: str | None = None) -> str:
+def t(key: str, lang: str | None = None, **kwargs) -> str:
     """Return translated string for *key*.
 
     If *lang* is ``None``, uses the per-request context variable
     set by ``set_lang()``.
+
+    Keyword arguments are substituted into ``{placeholder}`` tokens
+    in the translated string (e.g. ``t('greeting', name='Alice')``).
 
     Falls back to English, then returns the raw key so the UI is never blank.
     """
@@ -106,16 +109,22 @@ def t(key: str, lang: str | None = None) -> str:
         lang = "en"
 
     # Try requested language
+    value: str | None = None
     if lang != "en":
         value = _resolve(_load_locale(lang), key)
-        if value is not None:
-            return value
 
     # Fallback to English
-    value = _resolve(_load_locale("en"), key)
-    if value is not None:
-        return value
+    if value is None:
+        value = _resolve(_load_locale("en"), key)
 
-    # Last resort — return the key itself (should never happen in production)
-    logger.warning("Missing i18n key: %s (lang=%s)", key, lang)
-    return key
+    if value is None:
+        # Last resort — return the key itself (should never happen in production)
+        logger.warning("Missing i18n key: %s (lang=%s)", key, lang)
+        return key
+
+    if kwargs:
+        try:
+            value = value.format(**kwargs)
+        except (KeyError, IndexError):
+            pass
+    return value

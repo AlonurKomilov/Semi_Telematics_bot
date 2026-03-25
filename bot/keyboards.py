@@ -55,10 +55,6 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
         if row2:
             rows.append(row2)
 
-        # Digest — standalone (lightweight)
-        if perms.can_digest:
-            rows.append([InlineKeyboardButton(t("menu.digest"), callback_data="cmd_digest")])
-
         # AI Assistant (visible when API key is configured)
         import ai_client
         if ai_client.is_configured():
