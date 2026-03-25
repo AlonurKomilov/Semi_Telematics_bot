@@ -1194,28 +1194,48 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Alert acknowledgment ────────────────────────────────────
     elif data.startswith("ack_alert_"):
-        ack_id = int(data.replace("ack_alert_", ""))
+        try:
+            ack_id = int(data.replace("ack_alert_", ""))
+        except (ValueError, IndexError):
+            await query.answer("Invalid alert", show_alert=True)
+            return
         await handle_alert_ack(update, context, ack_id=ack_id)
 
     elif data.startswith("snooze_pick_"):
-        ack_id = int(data.replace("snooze_pick_", ""))
+        try:
+            ack_id = int(data.replace("snooze_pick_", ""))
+        except (ValueError, IndexError):
+            await query.answer("Invalid alert", show_alert=True)
+            return
         await handle_snooze_pick(update, context, ack_id=ack_id)
 
     elif data.startswith("snooze_set_"):
         # snooze_set_{ack_id}_{minutes}
-        parts = data.replace("snooze_set_", "").rsplit("_", 1)
-        ack_id = int(parts[0])
-        minutes = int(parts[1])
+        try:
+            parts = data.replace("snooze_set_", "").rsplit("_", 1)
+            ack_id = int(parts[0])
+            minutes = int(parts[1])
+        except (ValueError, IndexError):
+            await query.answer("Invalid snooze", show_alert=True)
+            return
         await handle_alert_snooze(update, context, ack_id=ack_id, minutes=minutes)
 
     elif data.startswith("snooze_back_"):
         # Restore original alert keyboard — re-fetch alert to rebuild
-        ack_id = int(data.replace("snooze_back_", ""))
+        try:
+            ack_id = int(data.replace("snooze_back_", ""))
+        except (ValueError, IndexError):
+            await query.answer("Invalid alert", show_alert=True)
+            return
         from bot.alerts import _restore_alert_keyboard
         await _restore_alert_keyboard(update, context, ack_id=ack_id)
 
     elif data.startswith("snooze_alert_"):
-        ack_id = int(data.replace("snooze_alert_", ""))
+        try:
+            ack_id = int(data.replace("snooze_alert_", ""))
+        except (ValueError, IndexError):
+            await query.answer("Invalid alert", show_alert=True)
+            return
         await handle_alert_snooze(update, context, ack_id=ack_id)
 
     elif data == "cmd_alert_history":

@@ -57,6 +57,9 @@ MAX_REALERTS = 2                                    # max re-alerts before auto-
 SNOOZE_MINUTES = 15                                 # default snooze
 SNOOZE_OPTIONS = [15, 30, 60, 120, 240]              # snooze choices (minutes)
 
+# Sentinel user ID for system-initiated actions (auto-resolve, AI usage logging)
+SYSTEM_USER_ID = -1
+
 # Per-type cooldowns (prevent spam from sensor oscillation)
 _COOLDOWN_HOURS = {
     "fault": FAULT_ALERT_COOLDOWN_HOURS,    # default 2h
@@ -1419,7 +1422,7 @@ async def check_alert_realerts(app: Application):
 
                     if resolved:
                         # Auto-resolve: mark acknowledged, delete old message, notify user
-                        await db.acknowledge_alert(alert["id"], user_id=0)
+                        await db.acknowledge_alert(alert["id"], user_id=SYSTEM_USER_ID)
                         if alert.get("message_id") and alert.get("chat_id"):
                             try:
                                 await app.bot.delete_message(
@@ -1604,10 +1607,10 @@ async def _get_ai_diagnosis_note(vehicle: dict, dtcs: list[dict]) -> str:
         if usage:
             try:
                 from bot.config import db as _db
-                # account_id 0 signals system-triggered usage
+                # system-triggered usage
                 await _db.log_ai_usage(
-                    account_id=0,
-                    user_id=0,
+                    account_id=SYSTEM_USER_ID,
+                    user_id=SYSTEM_USER_ID,
                     model=ai_client.get_current_model_name(),
                     request_type="proactive_diagnosis",
                     prompt_tokens=usage.get("prompt_tokens", 0),
@@ -1671,8 +1674,8 @@ async def _get_ai_health_note(
             try:
                 from bot.config import db as _db
                 await _db.log_ai_usage(
-                    account_id=0,
-                    user_id=0,
+                    account_id=SYSTEM_USER_ID,
+                    user_id=SYSTEM_USER_ID,
                     model=ai_client.get_current_model_name(),
                     request_type="proactive_health_diagnosis",
                     prompt_tokens=usage.get("prompt_tokens", 0),
@@ -1830,7 +1833,11 @@ async def deliver_dnd_alerts(app: Application):
                 type_label = {"fault": "⚠️ Faults", "health": "🏥 Health", "fuel": "⛽ Fuel"}.get(atype, f"🔔 {atype}")
                 lines.append(f"  <b>{type_label}</b> ({len(alerts)}):")
                 for a in alerts[:5]:
-                    ts = a["created_at"][11:16]  # HH:MM
+                    try:
+                        dt = datetime.fromisoformat(a["created_at"])
+                        ts = dt.strftime("%H:%M")
+                    except (ValueError, TypeError):
+                        ts = str(a.get("created_at", "?"))[:5]
                     lines.append(f"    • {a['vehicle_name']} — {ts}")
                 if len(alerts) > 5:
                     lines.append(f"    <i>… and {len(alerts) - 5} more</i>")
@@ -1842,13 +1849,13 @@ async def deliver_dnd_alerts(app: Application):
                 kb = InlineKeyboardMarkup([
                     [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
                 ])
+                await db.mark_dnd_alerts_delivered(sub.telegram_id)
                 await app.bot.send_message(
                     chat_id=sub.telegram_id,
                     text=summary_text,
                     parse_mode=ParseMode.HTML,
                     reply_markup=kb,
                 )
-                await db.mark_dnd_alerts_delivered(sub.telegram_id)
             except Exception as e:
                 logger.error(f"DND delivery to {sub.telegram_id}: {e}")
 

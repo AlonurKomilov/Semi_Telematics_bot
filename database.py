@@ -1464,13 +1464,13 @@ class Database:
 
     async def snooze_alert(self, ack_id: int, snooze_until: str) -> bool:
         """Snooze an alert — postpone its next escalation without acking."""
-        await self._db.execute(
+        cur = await self._db.execute(
             "UPDATE alert_acknowledgments SET next_escalation = ? "
             "WHERE id = ? AND acknowledged_at IS NULL AND status = 'active'",
             (snooze_until, ack_id),
         )
         await self._db.commit()
-        return True
+        return cur.rowcount > 0
 
     async def get_alert_ack_by_id(self, ack_id: int) -> dict | None:
         """Fetch an alert acknowledgment row by its ID."""
