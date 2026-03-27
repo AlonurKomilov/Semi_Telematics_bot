@@ -464,3 +464,51 @@ def generate_events_csv(
     ts = _dt.now(_TZ_ET).strftime("%Y%m%d_%H%M%S")
     buf.name = f"events_{ts}.csv"
     return buf
+
+
+# ══════════════════════════════════════════════════════════════════
+# CAMERA CHECK CSV
+# ══════════════════════════════════════════════════════════════════
+
+def generate_camera_check_csv(results: list[dict]) -> io.BytesIO:
+    """Return a BytesIO containing CSV data for the Camera Check report."""
+    sio = io.StringIO()
+    writer = csv.writer(sio)
+
+    writer.writerow(["Semi Telematics — Camera Check Report"])
+    writer.writerow([f"Generated: {_now_et()}"])
+    writer.writerow([f"Vehicles Checked: {len(results)}"])
+    writer.writerow([])
+
+    # Stats
+    problems = sum(1 for r in results if r.get("status") == "PROBLEM")
+    warnings = sum(1 for r in results if r.get("status") == "WARNING")
+    ok_count = sum(1 for r in results if r.get("status") == "OK")
+    errors = sum(1 for r in results if r.get("status") == "ERROR")
+    writer.writerow(["Problems", problems, "Warnings", warnings, "OK", ok_count, "Errors", errors])
+    writer.writerow([])
+
+    # Header
+    writer.writerow([
+        "Vehicle", "Company", "Driver", "Camera", "Status",
+        "Obstruction", "Alignment", "Quality", "Summary", "Event Time",
+    ])
+
+    for r in results:
+        event_time = ""
+        if r.get("event_time"):
+            event_time = _fmt_iso_et(r["event_time"])
+        writer.writerow([
+            r.get("vehicle", "?"),
+            r.get("company", "?"),
+            r.get("driver", ""),
+            r.get("camera_type", "forward"),
+            r.get("status", "?"),
+            r.get("obstruction", "?"),
+            r.get("alignment", "?"),
+            r.get("quality", "?"),
+            r.get("summary", ""),
+            event_time,
+        ])
+
+    return _to_buf(sio)

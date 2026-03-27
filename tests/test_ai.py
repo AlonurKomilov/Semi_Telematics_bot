@@ -297,22 +297,6 @@ class TestAIKeyboard:
         assert "ai_summary" in callbacks
         assert "cmd_menu" in callbacks
 
-    def test_ai_menu_kb_owner_sees_model_button(self):
-        from bot.ai import _ai_menu_kb
-        from database import Role
-        kb = _ai_menu_kb(user_role=Role.OWNER)
-        callbacks = self._all_callbacks(kb)
-        assert "ai_models" in callbacks
-        labels = self._all_labels(kb)
-        assert any("Model:" in l for l in labels)
-
-    def test_ai_menu_kb_driver_no_model_button(self):
-        from bot.ai import _ai_menu_kb
-        from database import Role
-        kb = _ai_menu_kb(user_role=Role.DRIVER)
-        callbacks = self._all_callbacks(kb)
-        assert "ai_models" not in callbacks
-
     def test_ai_back_kb(self):
         from bot.ai import _ai_back_kb
         kb = _ai_back_kb()

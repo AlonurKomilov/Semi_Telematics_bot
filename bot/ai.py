@@ -136,12 +136,21 @@ def _ai_menu_kb(user_role=None, account_id=None) -> InlineKeyboardMarkup:
     ]
     rows.append([InlineKeyboardButton(t('ai.btn_alerts'), callback_data="cmd_ai_alerts")])
     if user_role in (Role.OWNER, Role.ADMIN):
-        model_name = ai_client.get_account_model_name(account_id) if account_id is not None else None
-        if not model_name:
-            model_name = ai_client.get_current_model_name()
-        display = ai_client.MODEL_REGISTRY.get(model_name, {}).get("display", model_name)
+        # Text model button
+        text_model = ai_client.get_account_model_name(account_id) if account_id is not None else None
+        if not text_model:
+            text_model = ai_client.get_current_model_name()
+        text_disp = ai_client.MODEL_REGISTRY.get(text_model, {}).get("display", text_model)
         rows.append([InlineKeyboardButton(
-            f"{t('ai.btn_model')}: {display}", callback_data="ai_models"
+            f"💬 Text: {text_disp}", callback_data="ai_models_text"
+        )])
+        # Vision model button
+        vision_model = ai_client.get_account_vision_model_name(account_id) if account_id is not None else None
+        if not vision_model:
+            vision_model = ai_client.DEFAULT_VISION_MODEL
+        vision_disp = ai_client.MODEL_REGISTRY.get(vision_model, {}).get("display", vision_model)
+        rows.append([InlineKeyboardButton(
+            f"👁 Vision: {vision_disp}", callback_data="ai_models_vision"
         )])
     rows.append([InlineKeyboardButton(t('common.back'), callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
@@ -567,8 +576,12 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
 # ── Model Selection ──────────────────────────────────────────────
 
 @_require_registered
-async def cmd_ai_models(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show available AI models for the user to choose from."""
+async def cmd_ai_models(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                        mode: str = "text"):
+    """Show available AI models for the user to choose from.
+
+    mode: "text" for chat/diagnose models, "vision" for camera/image models.
+    """
     if not ai_client.is_configured():
         if update.callback_query:
             await update.callback_query.answer(t('ai.not_configured_popup'), show_alert=True)
@@ -578,25 +591,47 @@ async def cmd_ai_models(update: Update, context: ContextTypes.DEFAULT_TYPE):
     acct_id = user.account_id
     await ai_client.ensure_account_model(acct_id)
 
-    # Determine current model for this account
-    cur_model = ai_client.get_current_model_name()
-    cur_loc = ai_client.get_current_location()
-    acct_info = ai_client.get_account_model_info(acct_id)
-    if acct_info:
-        cur_model, cur_loc, _ = acct_info
+    if mode == "vision":
+        # Vision model selector
+        cur_model = ai_client.DEFAULT_VISION_MODEL
+        acct_info = ai_client.get_account_vision_model_info(acct_id)
+        if acct_info:
+            cur_model = acct_info[0]
+        models = ai_client.get_vision_models()
+        title = "👁  Vision Models"
+        subtitle = (
+            "  Used for camera check, image\n"
+            "  analysis, and visual inspection."
+        )
+        cb_prefix = "ai_setvision_"
+        back_label = "ai_models_text"
+        back_text = "💬 Text Models"
+    else:
+        # Text model selector
+        cur_model = ai_client.get_current_model_name()
+        acct_info = ai_client.get_account_model_info(acct_id)
+        if acct_info:
+            cur_model = acct_info[0]
+        models = ai_client.get_text_models()
+        title = f"💬  {t('ai.model_title')}"
+        subtitle = (
+            "  Used for AI chat, fleet summary,\n"
+            "  diagnostics, and AI alerts."
+        )
+        cb_prefix = "ai_setmodel_"
+        back_label = "ai_models_vision"
+        back_text = "👁 Vision Models"
 
-    models = ai_client.get_available_models()
     cur_info = ai_client.MODEL_REGISTRY.get(cur_model, {})
 
-    lines = [
+    text = (
         "━━━━━━━━━━━━━━━━━━━\n"
-        f"  ⚙️  <b>{t('ai.model_title')}</b>\n"
+        f"  <b>{title}</b>\n"
         "━━━━━━━━━━━━━━━━━━━\n"
-        f"\n  {t('ai.model_current').replace('{model}', cur_info.get('display', cur_model))}"
-    ]
-    lines.append(f"\n  {t('ai.model_select')}")
-
-    text = "\n".join(lines)
+        f"\n  Current: <b>{cur_info.get('display', cur_model)}</b>\n"
+        f"\n{subtitle}\n"
+        f"\n  {t('ai.model_select')}"
+    )
 
     buttons = []
     for m in models:
@@ -607,8 +642,9 @@ async def cmd_ai_models(update: Update, context: ContextTypes.DEFAULT_TYPE):
         prefix = "✅ " if name == cur_model else ""
         label = f"{prefix}{disp} · {price_tag}"
         buttons.append([InlineKeyboardButton(
-            label, callback_data=f"ai_setmodel_{name}",
+            label, callback_data=f"{cb_prefix}{name}",
         )])
+    buttons.append([InlineKeyboardButton(back_text, callback_data=back_label)])
     buttons.append([InlineKeyboardButton(t('ai.btn_usage'), callback_data="cmd_ai_usage")])
     buttons.append([InlineKeyboardButton(t('ai.btn_ai_menu'), callback_data="cmd_ai")])
     kb = InlineKeyboardMarkup(buttons)
@@ -618,7 +654,7 @@ async def cmd_ai_models(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @_require_registered
 async def cmd_ai_set_model(update: Update, context: ContextTypes.DEFAULT_TYPE,
                            model_name: str):
-    """Switch to a different AI model (auto-selects best region)."""
+    """Switch to a different AI text model (auto-selects best region)."""
     user = context.user_data["_db_user"]
     acct_id = user.account_id
 
@@ -632,7 +668,7 @@ async def cmd_ai_set_model(update: Update, context: ContextTypes.DEFAULT_TYPE,
             "━━━━━━━━━━━━━━━━━━━\n"
             f"  ✅  <b>{t('ai.model_changed')}</b>\n"
             "━━━━━━━━━━━━━━━━━━━\n"
-            f"\n  🤖 <b>{info['display']}</b>"
+            f"\n  💬 <b>{info['display']}</b>"
             f"\n  {info['description']}"
         )
     except ValueError as e:
@@ -644,7 +680,42 @@ async def cmd_ai_set_model(update: Update, context: ContextTypes.DEFAULT_TYPE,
         )
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton(t('ai.btn_models'), callback_data="ai_models")],
+        [InlineKeyboardButton("💬 Text Models", callback_data="ai_models_text")],
+        [InlineKeyboardButton(t('ai.btn_ai_menu'), callback_data="cmd_ai")],
+    ])
+    await _show(update, context, [text], keyboard=kb)
+
+
+@_require_registered
+async def cmd_ai_set_vision_model(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                  model_name: str):
+    """Switch to a different AI vision model."""
+    user = context.user_data["_db_user"]
+    acct_id = user.account_id
+
+    try:
+        ai_client.switch_vision_model(model_name, account_id=acct_id)
+        loc = ai_client.MODEL_REGISTRY[model_name]["locations"][0]
+        await ai_client.save_account_vision_model(acct_id, model_name, loc)
+
+        info = ai_client.MODEL_REGISTRY[model_name]
+        text = (
+            "━━━━━━━━━━━━━━━━━━━\n"
+            f"  ✅  <b>Vision Model Changed</b>\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
+            f"\n  👁 <b>{info['display']}</b>"
+            f"\n  {info['description']}"
+        )
+    except ValueError as e:
+        text = (
+            "━━━━━━━━━━━━━━━━━━━\n"
+            f"  ❌  <b>{t('ai.error_generic')}</b>\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
+            f"\n  {e}"
+        )
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("👁 Vision Models", callback_data="ai_models_vision")],
         [InlineKeyboardButton(t('ai.btn_ai_menu'), callback_data="cmd_ai")],
     ])
     await _show(update, context, [text], keyboard=kb)

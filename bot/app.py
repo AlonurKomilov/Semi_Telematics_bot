@@ -37,7 +37,7 @@ from bot.admin import (
     cmd_broadcast, cmd_sys_disable_account,
 )
 from bot.callbacks import handle_callback, handle_text
-from bot.alerts import check_new_faults, check_health_alerts, check_low_fuel, initialize_known_faults, check_alert_realerts, deliver_dnd_alerts, check_events
+from bot.alerts import check_new_faults, check_health_alerts, check_low_fuel, check_camera_alerts, initialize_known_faults, check_alert_realerts, deliver_dnd_alerts, check_events
 from bot.auto_reports import send_auto_reports
 from bot.maintenance import check_overdue_maintenance
 from bot.geofences import check_geofence_events
@@ -215,7 +215,7 @@ def main():
 
     logger.info("Starting Semi Telematics Bot — multi-tenant mode")
 
-    app = Application.builder().token(TELEGRAM_TOKEN).post_init(post_init).post_shutdown(post_shutdown).build()
+    app = Application.builder().token(TELEGRAM_TOKEN).concurrent_updates(True).post_init(post_init).post_shutdown(post_shutdown).build()
 
     # Registration
     app.add_handler(CommandHandler("start", cmd_start))
@@ -274,38 +274,52 @@ def main():
     scheduler.add_job(
         check_new_faults, "interval",
         minutes=ALERT_INTERVAL, args=[app], id="fault_check",
+        max_instances=1, coalesce=True,
     )
     scheduler.add_job(
         check_health_alerts, "interval",
         minutes=15, args=[app], id="health_check",
+        max_instances=1, coalesce=True,
     )
     scheduler.add_job(
         check_low_fuel, "interval",
         minutes=ALERT_INTERVAL, args=[app], id="fuel_check",
+        max_instances=1, coalesce=True,
     )
     scheduler.add_job(
         send_auto_reports, "interval",
         hours=1, args=[app], id="auto_reports_send",
+        max_instances=1, coalesce=True,
     )
     scheduler.add_job(
         check_overdue_maintenance, "interval",
         hours=24, args=[app], id="maintenance_check",
+        max_instances=1, coalesce=True,
     )
     scheduler.add_job(
         check_geofence_events, "interval",
         minutes=5, args=[app], id="geofence_check",
+        max_instances=1, coalesce=True,
     )
     scheduler.add_job(
         check_events, "interval",
         minutes=5, args=[app], id="events_check",
+        max_instances=1, coalesce=True,
+    )
+    scheduler.add_job(
+        check_camera_alerts, "interval",
+        hours=6, args=[app], id="camera_check",
+        max_instances=1, coalesce=True,
     )
     scheduler.add_job(
         check_alert_realerts, "interval",
         minutes=5, args=[app], id="realert_check",
+        max_instances=1, coalesce=True,
     )
     scheduler.add_job(
         deliver_dnd_alerts, "interval",
         hours=1, args=[app], id="dnd_delivery",
+        max_instances=1, coalesce=True,
     )
     scheduler.start()
 

@@ -53,15 +53,6 @@ def populate_company_display(companies: list) -> dict[str, str]:
 
 # ── Samsara Dashboard URL helpers ────────────────────────────────
 
-# Page slug per alert type
-_ALERT_PAGE: dict[str, str] = {
-    "fault": "diagnostics",
-    "health": "diagnostics",
-    "fuel": "vehicle-details",
-    "events": "safety",
-}
-
-
 def samsara_vehicle_url(
     org_id: str,
     vehicle_id: str,
@@ -77,7 +68,7 @@ def samsara_vehicle_url(
     if not dashboard_base:
         from bot.config import SAMSARA_DASHBOARD_URL
         dashboard_base = SAMSARA_DASHBOARD_URL
-    return f"{dashboard_base}/o/{org_id}/devices/{vehicle_id}/vehicle"
+    return f"{dashboard_base}/o/{org_id}/fleet/vehicles/{vehicle_id}"
 
 
 # Names that indicate ghost / deactivated records (case-insensitive)
@@ -114,18 +105,6 @@ class SamsaraClient:
         if self._session and not self._session.closed:
             await self._session.close()
 
-    async def get_org_id(self) -> str | None:
-        """Fetch and cache the Samsara organization ID via /me endpoint."""
-        if self._org_id is not None:
-            return self._org_id
-        try:
-            data = await self._get("/me")
-            self._org_id = str(data.get("data", {}).get("id", ""))
-            return self._org_id or None
-        except Exception as e:
-            logger.warning(f"Failed to fetch Samsara org ID: {e}")
-            return None
-
     def vehicle_url(self, vehicle_id: str) -> str | None:
         """Build a Samsara dashboard URL for a vehicle.
 
@@ -133,7 +112,7 @@ class SamsaraClient:
         """
         if not self._org_id or not vehicle_id:
             return None
-        return f"https://cloud.samsara.com/o/{self._org_id}/devices/{vehicle_id}/vehicle"
+        return f"https://cloud.samsara.com/o/{self._org_id}/fleet/vehicles/{vehicle_id}"
 
     async def _get(self, endpoint: str, params: Optional[dict] = None) -> dict:
         session = await self._get_session()
@@ -155,14 +134,41 @@ class SamsaraClient:
             logger.error(f"Samsara API error on {endpoint}: {e}")
             raise
 
+    async def _post(self, endpoint: str, payload: dict) -> dict:
+        """POST JSON to a Samsara API endpoint and return the response dict."""
+        session = await self._get_session()
+        url = f"{self.base_url}{endpoint}"
+        try:
+            async with session.post(url, json=payload) as resp:
+                if resp.status in (401, 403):
+                    try:
+                        body = await resp.json()
+                        msg = body.get("message", "Permission denied")
+                    except Exception:
+                        msg = f"HTTP {resp.status} — permission denied"
+                    raise SamsaraPermissionError(msg)
+                resp.raise_for_status()
+                return await resp.json()
+        except SamsaraPermissionError:
+            raise
+        except aiohttp.ClientError as e:
+            logger.error(f"Samsara API POST error on {endpoint}: {e}")
+            raise
+
     # ── Vehicle List ─────────────────────────────────────────────
 
     async def get_org_id(self) -> str | None:
-        """Fetch the Samsara organization ID for this API token."""
+        """Fetch and cache the Samsara organization ID for this API token."""
+        if self._org_id:
+            return self._org_id
         try:
             data = await self._get("/me")
-            # Response: {"id": "...", "name": "...", ...}
-            return str(data.get("id") or "")
+            # Response: {"data": {"id": "5009472", "name": "...", ...}}
+            org_id = str(data.get("data", {}).get("id", "") or "")
+            if org_id:
+                self._org_id = org_id
+                return org_id
+            return None
         except Exception:
             return None
 
@@ -269,6 +275,7 @@ class SamsaraClient:
                         "longitude": loc.get("longitude"),
                         "coaching_state": evt.get("coachingState", ""),
                         "video_url": evt.get("downloadForwardVideoUrl"),
+                        "inward_video_url": evt.get("downloadInwardVideoUrl"),
                     })
                 pag = resp.get("pagination", {})
                 if not pag.get("hasNextPage"):
@@ -326,10 +333,13 @@ class SamsaraClient:
         Vehicles are filtered by GPS recency (active_days) and
         ghost-name patterns.
         """
-        vehicles_raw = await self.get_vehicles()
-        fault_raw = await self.get_fault_codes()
-        location_raw = await self.get_locations()
-        fuel_raw = await self.get_fuel_levels()
+        import asyncio
+        vehicles_raw, fault_raw, location_raw, fuel_raw = await asyncio.gather(
+            self.get_vehicles(),
+            self.get_fault_codes(),
+            self.get_locations(),
+            self.get_fuel_levels(),
+        )
 
         # Index by vehicle ID
         vehicles = {v["id"]: v for v in vehicles_raw}
@@ -384,10 +394,13 @@ class SamsaraClient:
         Unlike get_fleet_overview(), this searches ALL vehicles (including
         those without a gateway) so direct truck lookups always work.
         """
-        vehicles_raw = await self.get_vehicles()
-        fault_raw = await self.get_fault_codes()
-        location_raw = await self.get_locations()
-        fuel_raw = await self.get_fuel_levels()
+        import asyncio
+        vehicles_raw, fault_raw, location_raw, fuel_raw = await asyncio.gather(
+            self.get_vehicles(),
+            self.get_fault_codes(),
+            self.get_locations(),
+            self.get_fuel_levels(),
+        )
 
         faults_by_id = {v["id"]: v.get("faultCodes", {}) for v in fault_raw}
         loc_by_id = {v["id"]: v.get("location", {}) for v in location_raw}
@@ -985,11 +998,11 @@ class SamsaraClient:
         engineStates values: "On" (driving), "Idle", "Off".
         Miles come from a parallel obdOdometerMeters fetch.
         """
-        odo_raw = await self._get_paginated_history(
-            "obdOdometerMeters", start, end=end,
+        import asyncio as _aio
+        odo_raw, fleet = await _aio.gather(
+            self._get_paginated_history("obdOdometerMeters", start, end=end),
+            self.get_fleet_overview(),
         )
-
-        fleet = await self.get_fleet_overview()
         active_names = {v["name"].lower() for v in fleet}
 
         odo_by_id: dict[str, list] = {}
@@ -1065,11 +1078,13 @@ class SamsaraClient:
         Uses ``obdEngineSeconds`` (cumulative engine counter) and
         ``obdOdometerMeters`` (odometer delta → driving detection).
         """
-        raw = await self._get_paginated_history(
-            "obdEngineSeconds,obdOdometerMeters", start, end=end,
+        import asyncio as _aio
+        raw, fleet = await _aio.gather(
+            self._get_paginated_history(
+                "obdEngineSeconds,obdOdometerMeters", start, end=end,
+            ),
+            self.get_fleet_overview(),
         )
-
-        fleet = await self.get_fleet_overview()
         active_names = {v["name"].lower() for v in fleet}
 
         results: list[dict] = []
@@ -1140,6 +1155,283 @@ class SamsaraClient:
             })
 
         results.sort(key=lambda x: x["name"])
+        return results
+
+    # ── Dashcam Snapshots ─────────────────────────────────────────
+
+    _MAX_VIDEO_BYTES = 10 * 1024 * 1024  # 10 MB download cap
+    _MAX_IMAGE_BYTES = 5 * 1024 * 1024   # 5 MB image cap
+
+    async def _get_camera_media(self) -> list[dict]:
+        """Fetch camera media (images) via GET /cameras/media.
+
+        Uses a 24-hour window (API max is 1 day).  Returns one result per
+        vehicle — the most recent image available.  Only ``image`` media
+        type items are used; video items are skipped.
+
+        Each result dict: {vehicle_id, image_url, event_time, trigger}.
+
+        Returns an empty list if the API token lacks "Media Retrieval read"
+        permissions or if the endpoint is otherwise unavailable.
+        """
+        now = datetime.now(timezone.utc)
+        end = now.isoformat()
+        start = (now - timedelta(hours=23, minutes=59)).isoformat()
+
+        # Build vehicle ID list for batched queries
+        try:
+            vehicles_data = await self._get("/fleet/vehicles", {"limit": "512"})
+            vids = [str(v["id"]) for v in vehicles_data.get("data", [])]
+        except Exception as e:
+            logger.warning(f"Camera media: failed to fetch vehicles: {e}")
+            return []
+
+        if not vids:
+            return []
+
+        all_media: list[dict] = []
+        for i in range(0, len(vids), 20):
+            batch = vids[i:i+20]
+            vid_str = ",".join(batch)
+            params: dict = {
+                "vehicleIds": vid_str,
+                "startTime": start,
+                "endTime": end,
+                "limit": "512",
+            }
+            try:
+                # Paginate within this batch
+                for _ in range(50):  # safety limit
+                    resp = await self._get("/cameras/media", params)
+                    media = resp.get("data", {}).get("media", [])
+                    all_media.extend(media)
+                    pag = resp.get("pagination", {})
+                    if pag.get("hasNextPage") and pag.get("endCursor"):
+                        params["after"] = pag["endCursor"]
+                    else:
+                        break
+                params.pop("after", None)
+            except SamsaraPermissionError:
+                logger.info("Camera media API: token lacks Media Retrieval permission")
+                return []
+            except Exception as e:
+                logger.warning(f"Camera media batch {i//20+1} error: {e}")
+                continue
+
+        # Keep only images, pick latest per vehicle
+        latest: dict[str, dict] = {}
+        for m in all_media:
+            if m.get("mediaType") != "image":
+                continue
+            vid = m.get("vehicleId", "")
+            if not vid:
+                continue
+            ts = m.get("startTime", "")
+            if vid not in latest or ts > latest[vid]["startTime"]:
+                latest[vid] = m
+
+        logger.info(
+            f"Camera media: {len(all_media)} items in 24h, "
+            f"{len(latest)} unique vehicles with images"
+        )
+
+        results = []
+        for vid, m in latest.items():
+            url = (m.get("urlInfo") or {}).get("url", "")
+            if not url:
+                continue
+            results.append({
+                "vehicle_id": vid,
+                "image_url": url,
+                "event_time": m.get("startTime", ""),
+                "trigger": m.get("triggerReason", ""),
+            })
+        return results
+
+    async def get_dashcam_snapshots(self, days: int = 10) -> list[dict]:
+        """Get one dashcam frame per vehicle from camera media + safety events.
+
+        Two-tier approach:
+        1. Primary: GET /cameras/media (24h) — direct JPEG URLs for periodic
+           snapshots, trip start/end stills. Covers ~51/62 active trucks.
+           No video download or ffmpeg needed.
+        2. Fallback: Safety events (``days`` window) — for any truck that
+           wasn't covered by the media API (e.g. token lacks permission,
+           or truck only has safety-event video, not periodic stills).
+
+        Returns a list of dicts:
+            {vehicle_name, vehicle_id, image_bytes, event_time,
+             camera_type, driver_name}
+        """
+        import subprocess
+        import tempfile
+        import os
+
+        sem = asyncio.Semaphore(8)
+        timeout = aiohttp.ClientTimeout(total=60)
+        session = self._session or aiohttp.ClientSession(timeout=timeout)
+
+        # ── Tier 1: Camera media API (direct JPEG) ──────────────
+        media_items = await self._get_camera_media()
+
+        # Build vehicle name map
+        vname_map: dict[str, str] = {}
+        try:
+            vehicles_data = await self._get("/fleet/vehicles", {"limit": "512"})
+            for v in vehicles_data.get("data", []):
+                vname_map[str(v["id"])] = v.get("name", "?")
+        except Exception:
+            pass
+
+        covered_vehicle_ids: set[str] = set()
+        results: list[dict] = []
+
+        async def _download_image(item: dict) -> dict | None:
+            """Download a JPEG directly from the media URL."""
+            async with sem:
+                try:
+                    url = item["image_url"]
+                    async with session.get(url, timeout=timeout) as resp:
+                        if resp.status != 200:
+                            return None
+                        cl = resp.content_length
+                        if cl is not None and cl > self._MAX_IMAGE_BYTES:
+                            return None
+                        image_bytes = await resp.read()
+                        if len(image_bytes) > self._MAX_IMAGE_BYTES:
+                            return None
+                        if not image_bytes:
+                            return None
+                        vid = item["vehicle_id"]
+                        return {
+                            "vehicle_name": vname_map.get(vid, vid),
+                            "vehicle_id": vid,
+                            "driver_name": "",
+                            "event_time": item.get("event_time", ""),
+                            "image_bytes": image_bytes,
+                            "camera_type": "forward",
+                        }
+                except Exception as e:
+                    logger.debug(f"Media image download failed: {e}")
+                return None
+
+        if media_items:
+            raw = await asyncio.gather(
+                *[_download_image(item) for item in media_items],
+                return_exceptions=True,
+            )
+            for r in raw:
+                if isinstance(r, dict):
+                    results.append(r)
+                    covered_vehicle_ids.add(r["vehicle_id"])
+
+            logger.info(
+                f"Camera media: downloaded {len(results)} images "
+                f"for {len(covered_vehicle_ids)} vehicles"
+            )
+
+        # ── Tier 2: Safety events fallback (video + ffmpeg) ─────
+        events = await self.get_events(days=days)
+        latest: dict[str, dict] = {}
+        for ev in events:
+            vid = ev.get("vehicle_id", "")
+            if not vid or vid in covered_vehicle_ids:
+                continue
+            for cam_type, url_key in [
+                ("forward", "video_url"),
+                ("inward", "inward_video_url"),
+            ]:
+                url = ev.get(url_key)
+                if not url:
+                    continue
+                cam_key = f"{vid}_{cam_type}"
+                if cam_key not in latest:
+                    latest[cam_key] = {**ev, "_cam_type": cam_type, "_cam_url": url}
+
+        if latest:
+            logger.info(
+                f"Camera check fallback: {len(latest)} vehicle/camera combos "
+                f"from safety events (not covered by media API)"
+            )
+
+            def _extract_frame(video_bytes: bytes) -> bytes | None:
+                """Extract middle frame from video bytes (runs in thread)."""
+                with tempfile.TemporaryDirectory() as tmp:
+                    vid_path = os.path.join(tmp, "clip.mp4")
+                    img_path = os.path.join(tmp, "frame.jpg")
+                    with open(vid_path, "wb") as f:
+                        f.write(video_bytes)
+
+                    dur_proc = subprocess.run(
+                        ["ffprobe", "-v", "error",
+                         "-show_entries", "format=duration",
+                         "-of", "csv=p=0", vid_path],
+                        capture_output=True, text=True, timeout=10,
+                    )
+                    try:
+                        duration = float(dur_proc.stdout.strip())
+                    except (ValueError, AttributeError):
+                        duration = 2.0
+                    seek = max(0, duration / 2)
+
+                    subprocess.run(
+                        ["ffmpeg", "-y", "-ss", str(seek),
+                         "-i", vid_path, "-frames:v", "1",
+                         "-q:v", "2", img_path],
+                        capture_output=True, timeout=15,
+                    )
+
+                    if os.path.exists(img_path):
+                        with open(img_path, "rb") as f:
+                            return f.read()
+                return None
+
+            async def _process_video(ev: dict) -> dict | None:
+                """Download one video and extract frame."""
+                async with sem:
+                    try:
+                        url = ev["_cam_url"]
+                        async with session.get(url, timeout=timeout) as resp:
+                            if resp.status != 200:
+                                return None
+                            cl = resp.content_length
+                            if cl is not None and cl > self._MAX_VIDEO_BYTES:
+                                return None
+                            video_bytes = await resp.read()
+                            if len(video_bytes) > self._MAX_VIDEO_BYTES:
+                                return None
+
+                        image_bytes = await asyncio.to_thread(
+                            _extract_frame, video_bytes
+                        )
+                        if image_bytes:
+                            return {
+                                "vehicle_name": ev.get("vehicle_name", "?"),
+                                "vehicle_id": ev.get("vehicle_id", ""),
+                                "driver_name": ev.get("driver_name", ""),
+                                "event_time": ev.get("time", ""),
+                                "image_bytes": image_bytes,
+                                "camera_type": ev.get("_cam_type", "forward"),
+                            }
+                    except Exception as e:
+                        logger.warning(
+                            f"Dashcam snapshot failed for "
+                            f"{ev.get('vehicle_name', '?')}: {e}"
+                        )
+                    return None
+
+            fallback_raw = await asyncio.gather(
+                *[_process_video(ev) for ev in latest.values()],
+                return_exceptions=True,
+            )
+            for r in fallback_raw:
+                if isinstance(r, dict):
+                    results.append(r)
+
+        if not self._session:
+            await session.close()
+
+        results.sort(key=lambda x: (x["vehicle_name"], x.get("camera_type", "")))
         return results
 
 

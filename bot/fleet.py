@@ -25,3 +25,11 @@ from bot.fleet_alerts import (  # noqa: F401
 from bot.fleet_trucks import (  # noqa: F401
     cmd_truck, cmd_truck_report, cmd_critical,
 )
+
+# Re-export cameras
+from bot.cameras import (  # noqa: F401
+    cmd_camera_check, cmd_camera_check_truck,
+    cmd_camera_history, cmd_camera_check_pdf, cmd_camera_check_csv,
+    cmd_camera_report,
+    cmd_cam_tool, _show_cam_truck_list,
+)

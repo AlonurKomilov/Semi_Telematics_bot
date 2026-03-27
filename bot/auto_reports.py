@@ -22,6 +22,7 @@ from pdf_generator import (
     generate_fuel_report_pdf,
     generate_vehicle_health_pdf,
     generate_fleet_efficiency_pdf,
+    generate_camera_check_pdf,
     compute_stats,
 )
 
@@ -39,6 +40,7 @@ REPORT_TYPES = {
     "fuel": "⛽ Fuel & DEF",
     "health": "🏥 Vehicle Health",
     "efficiency": "📊 Efficiency",
+    "camera": "📷 Camera Check",
 }
 
 
@@ -214,6 +216,38 @@ async def _generate_report_pdf(account_id: int, report_type: str):
             )
             caption = f"📊 <b>Efficiency Report</b>\n📚 {len(vehicles)} trucks"
             return pdf_buf, caption, "Efficiency_Report"
+
+        elif report_type == "camera":
+            from bot.cameras import _gather_snapshots, _analyze_snapshot, _save_camera_results
+            import ai_client as _ai
+
+            snapshots, _ = await _gather_snapshots(account_id)
+            if not snapshots:
+                return None, "📷 No dashcam footage found for camera check.", None
+
+            sem = asyncio.Semaphore(5)
+            tasks = [_analyze_snapshot(s, account_id, sem) for s in snapshots]
+            results = await asyncio.gather(*tasks)
+
+            priority = {"PROBLEM": 0, "WARNING": 1, "ERROR": 2, "OK": 3}
+            results = sorted(
+                results,
+                key=lambda r: (priority.get(r.get("status", "OK"), 9), r["vehicle"]),
+            )
+            await _save_camera_results(account_id, results)
+
+            pdf_buf = await asyncio.to_thread(generate_camera_check_pdf, results)
+            problems = sum(1 for r in results if r.get("status") == "PROBLEM")
+            warnings = sum(1 for r in results if r.get("status") == "WARNING")
+            caption = (
+                f"📷 <b>Camera Check Report</b>\n"
+                f"📚 {len(results)} camera(s)"
+            )
+            if problems:
+                caption += f" · 🚨 {problems} problem(s)"
+            if warnings:
+                caption += f" · ⚠️ {warnings} warning(s)"
+            return pdf_buf, caption, "Camera_Check_Report"
 
         else:
             return None, f"Unknown report type: {report_type}", None

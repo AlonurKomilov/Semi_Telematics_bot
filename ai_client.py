@@ -34,6 +34,7 @@ logger = logging.getLogger("bot.ai")
 _model = None
 _current_model_name: str = ""
 _current_location: str = ""
+_vertexai_inited: dict[str, bool] = {}  # location → True if vertexai.init() done
 _chat_histories: dict[int, list[dict]] = {}  # user_id → last N exchanges (bounded by _MAX_HISTORY per user, max 1000 users)
 _MAX_HISTORY = 10  # keep last 10 exchanges (5 user + 5 assistant)
 _MAX_CHAT_USERS = 1000  # max users to keep history for
@@ -44,12 +45,15 @@ _last_usage: dict | None = None
 # Per-account model cache: account_id → (model_name, location, model_obj)
 _account_models: dict[int, tuple[str, str, Any]] = {}
 
+# Per-account *vision* model cache: account_id → (model_name, location, model_obj)
+_account_vision_models: dict[int, tuple[str, str, Any]] = {}
+
 # Database reference (set by init_account_models)
 _db = None
 
 
 def get_account_model_name(account_id: int) -> str | None:
-    """Return the model name for an account, or None if not set."""
+    """Return the text model name for an account, or None if not set."""
     entry = _account_models.get(account_id)
     return entry[0] if entry else None
 
@@ -57,6 +61,17 @@ def get_account_model_name(account_id: int) -> str | None:
 def get_account_model_info(account_id: int) -> tuple[str, str, Any] | None:
     """Return (model_name, location, model_obj) for an account, or None."""
     return _account_models.get(account_id)
+
+
+def get_account_vision_model_name(account_id: int) -> str | None:
+    """Return the vision model name for an account, or None."""
+    entry = _account_vision_models.get(account_id)
+    return entry[0] if entry else None
+
+
+def get_account_vision_model_info(account_id: int) -> tuple[str, str, Any] | None:
+    """Return (model_name, location, model_obj) for account vision model."""
+    return _account_vision_models.get(account_id)
 
 
 def set_db(db_instance):
@@ -399,6 +414,43 @@ def estimate_request_cost(model: str) -> float:
 # Default model when nothing is stored
 DEFAULT_MODEL = "gemini-2.5-flash"
 DEFAULT_LOCATION = "us-central1"
+
+# Default vision model (must be a Gemini model — only they support Part.from_image)
+DEFAULT_VISION_MODEL = "gemini-2.5-flash"
+DEFAULT_VISION_LOCATION = "us-central1"
+
+
+def is_vision_capable(model_name: str) -> bool:
+    """Check whether a model supports multimodal vision (image input).
+
+    Only native Gemini models support Part.from_image() on Vertex AI.
+    """
+    info = MODEL_REGISTRY.get(model_name, {})
+    return info.get("api_type") == "gemini"
+
+
+def get_vision_models() -> list[dict]:
+    """Return only vision-capable models with display info."""
+    result = []
+    for name, info in MODEL_REGISTRY.items():
+        if info.get("api_type") != "gemini":
+            continue
+        result.append({
+            "name": name,
+            "display": info["display"],
+            "description": info["description"],
+            "category": info["category"],
+            "locations": info["locations"],
+            "max_output_tokens": info["max_output_tokens"],
+            "est_cost": estimate_request_cost(name),
+        })
+    result.sort(key=lambda m: m["name"])
+    return result
+
+
+def get_text_models() -> list[dict]:
+    """Return all models (for text/chat tasks), sorted by category."""
+    return get_available_models()
 
 # ── Fallback Model Chain ─────────────────────────────────────────
 #
@@ -955,7 +1007,9 @@ def _ensure_model(model_name: str | None = None,
             "Run: pip install google-cloud-aiplatform"
         )
 
-    vertexai.init(project=project, location=target_location)
+    if target_location not in _vertexai_inited:
+        vertexai.init(project=project, location=target_location)
+        _vertexai_inited[target_location] = True
 
     max_tokens = 4096
     if info:
@@ -1053,6 +1107,68 @@ async def load_account_model(account_id: int) -> tuple[str, str]:
     return get_current_model_name(), get_current_location()
 
 
+# ── Vision model persistence ────────────────────────────────────
+
+def switch_vision_model(model_name: str, location: str | None = None,
+                        account_id: int | None = None):
+    """Switch the vision model for an account.
+
+    Only accepts vision-capable (Gemini) models.
+    """
+    if model_name not in MODEL_REGISTRY:
+        raise ValueError(f"Unknown model: {model_name}")
+    if not is_vision_capable(model_name):
+        raise ValueError(
+            f"{model_name} does not support vision. "
+            f"Only Gemini models can be used for vision tasks."
+        )
+    info = MODEL_REGISTRY[model_name]
+    target_loc = location or info["locations"][0]
+    if target_loc not in info["locations"]:
+        raise ValueError(
+            f"Location {target_loc} not available for {model_name}."
+        )
+    if account_id is not None:
+        model_obj = _build_model(model_name, target_loc, info)
+        _account_vision_models[account_id] = (model_name, target_loc, model_obj)
+
+
+async def save_account_vision_model(account_id: int, model_name: str,
+                                    location: str):
+    """Persist the vision model preference for an account."""
+    if _db:
+        await _db.set_account_setting(account_id, "ai_vision_model", model_name)
+        await _db.set_account_setting(account_id, "ai_vision_location", location)
+
+
+async def load_account_vision_model(account_id: int) -> tuple[str, str]:
+    """Load persisted vision model preference for an account.
+
+    Returns (model_name, location). Falls back to DEFAULT_VISION_MODEL.
+    """
+    if _db:
+        model = await _db.get_account_setting(account_id, "ai_vision_model", "")
+        loc = await _db.get_account_setting(account_id, "ai_vision_location", "")
+        if model and model in MODEL_REGISTRY and is_vision_capable(model):
+            loc = loc or DEFAULT_VISION_LOCATION
+            return model, loc
+    return DEFAULT_VISION_MODEL, DEFAULT_VISION_LOCATION
+
+
+async def ensure_account_vision_model(account_id: int):
+    """Load account's vision model preference from DB and cache it."""
+    if account_id in _account_vision_models:
+        return
+    model_name, location = await load_account_vision_model(account_id)
+    info = MODEL_REGISTRY.get(model_name)
+    if info:
+        try:
+            model_obj = _build_model(model_name, location, info)
+            _account_vision_models[account_id] = (model_name, location, model_obj)
+        except Exception as e:
+            logger.warning(f"Failed to build vision model for account {account_id}: {e}")
+
+
 def _build_model(model_name: str, location: str, info: dict | None = None):
     """Create a GenerativeModel instance (does not touch globals)."""
     import os
@@ -1064,7 +1180,9 @@ def _build_model(model_name: str, location: str, info: dict | None = None):
         raise RuntimeError("google-cloud-aiplatform package not installed.")
 
     project = os.getenv("GOOGLE_CLOUD_PROJECT", "")
-    vertexai.init(project=project, location=location)
+    if location not in _vertexai_inited:
+        vertexai.init(project=project, location=location)
+        _vertexai_inited[location] = True
 
     if info is None:
         info = MODEL_REGISTRY.get(model_name, {})
@@ -1105,22 +1223,24 @@ async def ensure_account_model(account_id: int):
     """Load account's model preference from DB and cache the model.
 
     Call this before making AI requests to ensure the right model is used.
+    Also loads the vision model preference if not already cached.
     """
-    if account_id in _account_models:
-        return  # Already cached
-    model_name, location = await load_account_model(account_id)
-    # Only cache if different from global default
-    if model_name != get_current_model_name() or location != get_current_location():
-        info = MODEL_REGISTRY.get(model_name)
-        if info:
-            try:
-                if _is_openai_compat(model_name):
-                    _account_models[account_id] = (model_name, location, None)
-                else:
-                    model_obj = _build_model(model_name, location, info)
-                    _account_models[account_id] = (model_name, location, model_obj)
-            except Exception as e:
-                logger.warning(f"Failed to build model for account {account_id}: {e}")
+    if account_id not in _account_models:
+        model_name, location = await load_account_model(account_id)
+        # Only cache if different from global default
+        if model_name != get_current_model_name() or location != get_current_location():
+            info = MODEL_REGISTRY.get(model_name)
+            if info:
+                try:
+                    if _is_openai_compat(model_name):
+                        _account_models[account_id] = (model_name, location, None)
+                    else:
+                        model_obj = _build_model(model_name, location, info)
+                        _account_models[account_id] = (model_name, location, model_obj)
+                except Exception as e:
+                    logger.warning(f"Failed to build model for account {account_id}: {e}")
+    # Also ensure vision model is loaded
+    await ensure_account_vision_model(account_id)
 
 
 def is_configured() -> bool:
@@ -2341,3 +2461,151 @@ async def ask_fleet_agent(question: str, fleet_context: dict,
     text = await ask_fleet(question, fleet_context, user_id=user_id,
                            account_id=account_id)
     return {"text": text, "tool_results": tool_results}
+
+
+# ══════════════════════════════════════════════════════════════════
+# Camera Position / Obstruction Analysis (Vision)
+# ══════════════════════════════════════════════════════════════════
+
+CAMERA_CHECK_SYSTEM = (
+    "You are a fleet dashcam quality inspector. Analyze the provided dashcam "
+    "frame and evaluate:\n"
+    "1. OBSTRUCTION: Is the camera view blocked or partially obstructed "
+    "(e.g. sticker, dirt, object, hand, sun visor, phone mount)?\n"
+    "2. ALIGNMENT: Is the camera centered on the road ahead? Or is it "
+    "tilted too far up (showing mostly sky), too far down (showing mostly "
+    "hood/dashboard), or angled left/right?\n"
+    "3. IMAGE QUALITY: Is the image too dark, too bright/washed out, or blurry?\n\n"
+    "Respond in EXACTLY this format (no extra text):\n"
+    "STATUS: OK | WARNING | PROBLEM\n"
+    "OBSTRUCTION: none | partial | full — brief description\n"
+    "ALIGNMENT: centered | too_high | too_low | tilted_left | tilted_right — brief note\n"
+    "QUALITY: good | dark | bright | blurry — brief note\n"
+    "SUMMARY: One-sentence plain-language summary for the fleet manager."
+)
+
+
+async def analyze_camera_image(
+    image_bytes: bytes,
+    vehicle_name: str = "",
+    account_id: int | None = None,
+) -> dict:
+    """Analyze a dashcam image for obstruction and alignment issues.
+
+    Returns dict with keys: status, obstruction, alignment, quality, summary.
+    On 429/ResourceExhausted, retries with fallback vision-capable models.
+    """
+    import asyncio
+
+    if not image_bytes:
+        return {
+            "status": "ERROR",
+            "obstruction": "unknown",
+            "alignment": "unknown",
+            "quality": "unknown",
+            "summary": "No image data available",
+            "raw": "",
+        }
+
+    # Use the account's vision model preference (always Gemini-based).
+    # Falls back to DEFAULT_VISION_MODEL if no preference is set.
+    model_name = DEFAULT_VISION_MODEL
+    location = DEFAULT_VISION_LOCATION
+
+    if account_id is not None and account_id in _account_vision_models:
+        model_name, location, _ = _account_vision_models[account_id]
+
+    # Vision fallback chain — only Gemini models support image input
+    _VISION_FALLBACK = [
+        ("gemini-2.5-flash", "us-central1"),
+        ("gemini-2.5-pro", "us-central1"),
+        ("gemini-3.1-flash-lite-preview", "global"),
+        ("gemini-3.1-pro-preview", "global"),
+    ]
+
+    # Build ordered attempt list: primary first, then fallbacks (skip dupes)
+    attempts = [(model_name, location)]
+    for fb_name, fb_loc in _VISION_FALLBACK:
+        if fb_name != model_name:
+            attempts.append((fb_name, fb_loc))
+
+    from vertexai.generative_models import Part, Image
+
+    image_part = Part.from_image(Image.from_bytes(image_bytes))
+    prompt_part = Part.from_text(
+        CAMERA_CHECK_SYSTEM
+        + (f"\n\nVehicle: {vehicle_name}" if vehicle_name else "")
+    )
+
+    last_exc: Exception | None = None
+    text = ""
+    for attempt_model, attempt_loc in attempts:
+        try:
+            model_obj = _ensure_model(attempt_model, attempt_loc)
+            response = await asyncio.to_thread(
+                model_obj.generate_content, [prompt_part, image_part]
+            )
+            text = response.text.strip() if response.text else ""
+            if attempt_model != model_name:
+                logger.info(
+                    f"Vision fallback succeeded with {attempt_model} "
+                    f"after {model_name} failed"
+                )
+            break  # success
+        except Exception as e:
+            last_exc = e
+            if _is_rate_limit_error(e):
+                logger.warning(
+                    f"Vision {attempt_model} rate-limited, trying next"
+                )
+                continue
+            else:
+                logger.error(f"Camera vision analysis failed ({attempt_model}): {e}")
+                break  # non-429 error — don't retry
+    else:
+        # All attempts exhausted (rate-limited)
+        logger.error(f"All vision models rate-limited: {last_exc}")
+        return {
+            "status": "ERROR",
+            "obstruction": "unknown",
+            "alignment": "unknown",
+            "quality": "unknown",
+            "summary": f"Analysis failed (rate limited): {last_exc}",
+            "raw": "",
+        }
+
+    if last_exc and not text:
+        return {
+            "status": "ERROR",
+            "obstruction": "unknown",
+            "alignment": "unknown",
+            "quality": "unknown",
+            "summary": f"Analysis failed: {last_exc}",
+            "raw": "",
+        }
+
+    # Parse structured response
+    result = {
+        "status": "OK",
+        "obstruction": "none",
+        "alignment": "centered",
+        "quality": "good",
+        "summary": text,
+        "raw": text,
+    }
+    for line in text.splitlines():
+        line = line.strip()
+        if line.upper().startswith("STATUS:"):
+            val = line.split(":", 1)[1].strip().upper()
+            if val in ("OK", "WARNING", "PROBLEM"):
+                result["status"] = val
+        elif line.upper().startswith("OBSTRUCTION:"):
+            result["obstruction"] = line.split(":", 1)[1].strip()
+        elif line.upper().startswith("ALIGNMENT:"):
+            result["alignment"] = line.split(":", 1)[1].strip()
+        elif line.upper().startswith("QUALITY:"):
+            result["quality"] = line.split(":", 1)[1].strip()
+        elif line.upper().startswith("SUMMARY:"):
+            result["summary"] = line.split(":", 1)[1].strip()
+
+    return result

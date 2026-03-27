@@ -37,6 +37,10 @@ from bot.fleet import (
     cmd_health, cmd_health_pdf, cmd_health_csv,
     cmd_efficiency, cmd_efficiency_pdf, cmd_efficiency_csv,
     cmd_weather, cmd_api_status,
+    cmd_camera_check_truck,
+    cmd_camera_history,
+    cmd_camera_report,
+    cmd_cam_tool, _show_cam_truck_list,
 )
 from bot.management import cmd_account, cmd_users, cmd_addcompany, cmd_groups
 from bot.admin import cmd_admin, cmd_accounts
@@ -55,7 +59,7 @@ from bot.events import cmd_events, cmd_events_text, cmd_events_csv
 from bot.ai import (
     cmd_ai, cmd_ai_ask_prompt, cmd_ai_answer, cmd_ai_summary,
     cmd_ai_diagnose, cmd_ai_suggest, cmd_ai_newchat,
-    cmd_ai_models, cmd_ai_set_model, cmd_ai_alerts,
+    cmd_ai_models, cmd_ai_set_model, cmd_ai_set_vision_model, cmd_ai_alerts,
 )
 from bot.alerts import handle_alert_ack, handle_alert_snooze, handle_snooze_pick
 
@@ -624,10 +628,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif len(parts) == 2:
             await cmd_ai_diagnose(update, context, truck_name=parts[1], company=parts[0])
     elif data == "ai_models":
-        await cmd_ai_models(update, context)
+        await cmd_ai_models(update, context, mode="text")
+    elif data == "ai_models_text":
+        await cmd_ai_models(update, context, mode="text")
+    elif data == "ai_models_vision":
+        await cmd_ai_models(update, context, mode="vision")
     elif data.startswith("ai_setmodel_"):
         model = data.replace("ai_setmodel_", "")
         await cmd_ai_set_model(update, context, model_name=model)
+    elif data.startswith("ai_setvision_"):
+        model = data.replace("ai_setvision_", "")
+        await cmd_ai_set_vision_model(update, context, model_name=model)
 
     elif data == "cmd_mytruck":
         await cmd_truck(update, context)
@@ -659,6 +670,25 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await cmd_weather(update, context)
     elif data == "cmd_api_status":
         await cmd_api_status(update, context)
+    elif data == "cmd_camera_report":
+        await cmd_camera_report(update, context)
+    elif data == "cmd_cam_tool":
+        await cmd_cam_tool(update, context)
+    elif data.startswith("camco_"):
+        co = data[6:]
+        await _show_cam_truck_list(update, context, user, co)
+    elif data.startswith("cam_page_"):
+        parts = data.split("_")
+        page = int(parts[-1])
+        co_filter = "_".join(parts[2:-1])
+        if co_filter == "ALL":
+            co_filter = None
+        await _show_cam_truck_list(update, context, user, co_filter, page=page)
+    elif data == "cam_check_history":
+        await cmd_camera_history(update, context)
+    elif data.startswith("cam_truck_"):
+        truck = data.replace("cam_truck_", "")
+        await cmd_camera_check_truck(update, context, truck_name=truck)
 
     # ── Samsara API integration guide (no companies yet) ─────────────
     elif data == "cmd_integrate_guide":

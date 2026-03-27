@@ -101,6 +101,7 @@ class User:
     ai_fuel: bool = False       # Proactive AI on fuel alerts
     alert_events: bool = True   # Safety event alerts
     ai_events: bool = False     # Proactive AI on event alerts
+    alert_camera: bool = True   # Camera check alerts
     quiet_start: Optional[int] = None   # DND start hour (0-23)
     quiet_end: Optional[int] = None     # DND end hour (0-23)
     timezone: str = "America/New_York"
@@ -210,6 +211,8 @@ class Database:
         self._db.row_factory = aiosqlite.Row
         await self._db.execute("PRAGMA journal_mode=WAL")
         await self._db.execute("PRAGMA foreign_keys=ON")
+        await self._db.execute("PRAGMA busy_timeout=5000")
+        await self._db.execute("PRAGMA synchronous=NORMAL")
         await self._create_tables()
         logger.info(f"Database ready at {self.path}")
 
@@ -445,6 +448,7 @@ class Database:
         await self._migrate_user_display_name()
         await self._migrate_alert_ack_status()
         await self._migrate_user_language()
+        await self._migrate_camera_checks_table()
 
     async def _migrate_alert_prefs(self):
         """Add alert_faults/health/fuel/geofence columns if missing."""
@@ -458,6 +462,7 @@ class Database:
             ("ai_fuel", "INTEGER NOT NULL DEFAULT 0"),
             ("alert_events", "INTEGER NOT NULL DEFAULT 1"),
             ("ai_events", "INTEGER NOT NULL DEFAULT 0"),
+            ("alert_camera", "INTEGER NOT NULL DEFAULT 1"),
         ]
         for col_name, col_def in new_cols:
             try:
@@ -541,6 +546,36 @@ class Database:
         except Exception:
             pass  # column already exists
 
+    async def _migrate_camera_checks_table(self):
+        """Create camera_checks table for history tracking."""
+        try:
+            await self._db.execute("""
+                CREATE TABLE IF NOT EXISTS camera_checks (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id    INTEGER NOT NULL REFERENCES accounts(id),
+                    vehicle_id    TEXT    NOT NULL DEFAULT '',
+                    vehicle_name  TEXT    NOT NULL DEFAULT '',
+                    camera_type   TEXT    NOT NULL DEFAULT 'forward',
+                    status        TEXT    NOT NULL DEFAULT 'OK',
+                    obstruction   TEXT    NOT NULL DEFAULT 'none',
+                    alignment     TEXT    NOT NULL DEFAULT 'centered',
+                    quality       TEXT    NOT NULL DEFAULT 'good',
+                    summary       TEXT    NOT NULL DEFAULT '',
+                    checked_at    TEXT    NOT NULL
+                )
+            """)
+            await self._db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_camera_checks_account
+                    ON camera_checks(account_id, checked_at DESC)
+            """)
+            await self._db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_camera_checks_vehicle
+                    ON camera_checks(account_id, vehicle_id, checked_at DESC)
+            """)
+            await self._db.commit()
+        except Exception:
+            pass  # already exists
+
     # ── Helpers ───────────────────────────────────────────────────
 
     @staticmethod
@@ -600,6 +635,7 @@ class Database:
             ai_fuel=bool(row["ai_fuel"]) if "ai_fuel" in row.keys() else False,
             alert_events=bool(row["alert_events"]) if "alert_events" in row.keys() else True,
             ai_events=bool(row["ai_events"]) if "ai_events" in row.keys() else False,
+            alert_camera=bool(row["alert_camera"]) if "alert_camera" in row.keys() else True,
             quiet_start=row["quiet_start"] if "quiet_start" in row.keys() else None,
             quiet_end=row["quiet_end"] if "quiet_end" in row.keys() else None,
             timezone=row["timezone"] if "timezone" in row.keys() else "America/New_York",
@@ -886,7 +922,7 @@ class Database:
     async def get_all_typed_subscribers(self, alert_type: str) -> list[User]:
         """All users subscribed to a specific alert type (across all accounts)."""
         col = f"alert_{alert_type}"
-        if col not in ("alert_faults", "alert_health", "alert_fuel", "alert_geofence", "alert_events"):
+        if col not in ("alert_faults", "alert_health", "alert_fuel", "alert_geofence", "alert_events", "alert_camera"):
             return []
         cur = await self._db.execute(
             f"SELECT * FROM users WHERE alerts_on = 1 AND {col} = 1 AND is_active = 1",
@@ -1880,3 +1916,46 @@ class Database:
             await self._db.commit()
             logger.info(f"Encrypted {count} plaintext API key(s)")
         return count
+
+    # ── Camera Check History ─────────────────────────────────────
+
+    async def save_camera_check(
+        self, account_id: int, vehicle_id: str, vehicle_name: str,
+        camera_type: str, status: str, obstruction: str,
+        alignment: str, quality: str, summary: str,
+    ):
+        """Insert a single camera check result."""
+        await self._db.execute(
+            "INSERT INTO camera_checks "
+            "(account_id, vehicle_id, vehicle_name, camera_type, "
+            "status, obstruction, alignment, quality, summary, checked_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (account_id, vehicle_id, vehicle_name, camera_type,
+             status, obstruction, alignment, quality, summary, self._now()),
+        )
+        await self._db.commit()
+
+    async def get_camera_check_history(
+        self, account_id: int, limit: int = 30,
+        vehicle_name: str | None = None,
+    ) -> list[dict]:
+        """Get recent camera check history, newest first.
+
+        Optionally filter by vehicle_name.
+        """
+        if vehicle_name:
+            cur = await self._db.execute(
+                "SELECT * FROM camera_checks "
+                "WHERE account_id = ? AND vehicle_name = ? "
+                "ORDER BY checked_at DESC LIMIT ?",
+                (account_id, vehicle_name, limit),
+            )
+        else:
+            cur = await self._db.execute(
+                "SELECT * FROM camera_checks "
+                "WHERE account_id = ? "
+                "ORDER BY checked_at DESC LIMIT ?",
+                (account_id, limit),
+            )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]

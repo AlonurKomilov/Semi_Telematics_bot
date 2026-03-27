@@ -122,6 +122,10 @@ def submenu_reports_kb(role: Role, company_codes: list[str] | None = None) -> In
     if perms.can_events_all or perms.can_events_own:
         rows.append([InlineKeyboardButton(t("tools_menu.events"), callback_data="cmd_events")])
 
+    # Camera check report (visible to anyone who can view faults)
+    if perms.can_faults:
+        rows.append([InlineKeyboardButton("📷 Camera Check", callback_data="cmd_camera_report")])
+
     if perms.can_truck_all:
         rows.append([InlineKeyboardButton(t("reports_menu.search_truck"), callback_data="cmd_truck_prompt")])
 
@@ -152,6 +156,10 @@ def submenu_tools_kb(role: Role) -> InlineKeyboardMarkup:
         row2.append(InlineKeyboardButton("📍 Geofences", callback_data="cmd_geofences"))
     if row2:
         rows.append(row2)
+
+    # Camera check — single-truck check (pick company → truck → result)
+    if perms.can_faults:
+        rows.append([InlineKeyboardButton("📷 Camera Check", callback_data="cmd_cam_tool")])
 
     rows.append([InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
@@ -342,6 +350,9 @@ def truck_kb(
             rows.append([
                 InlineKeyboardButton("🔧 AI Diagnose", callback_data=f"ai_diag_{company}_{truck_name}"),
             ])
+        rows.append([
+            InlineKeyboardButton("📷 Camera Check", callback_data=f"cam_truck_{truck_name}"),
+        ])
     rows.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
 
@@ -411,6 +422,52 @@ def invite_kb(invite_link: str | None = None) -> InlineKeyboardMarkup:
         )
         rows.append([InlineKeyboardButton("📤 Send to Team Member", url=share_url)])
     rows.append([InlineKeyboardButton("◀️ Back to Team", callback_data="cmd_users")])
+    return InlineKeyboardMarkup(rows)
+
+
+def cam_company_picker_kb(company_codes: list[str]) -> InlineKeyboardMarkup:
+    """Company picker for the Camera Check tool."""
+    rows = []
+    for code in company_codes:
+        display = COMPANY_DISPLAY.get(code, code)
+        rows.append([InlineKeyboardButton(
+            f"📷 {display} ({code})", callback_data=f"camco_{code}",
+        )])
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="submenu_tools")])
+    return InlineKeyboardMarkup(rows)
+
+
+def cam_vehicle_list_kb(
+    vehicles: list[dict],
+    page: int = 0,
+    page_size: int = 8,
+    company_filter: str | None = None,
+) -> InlineKeyboardMarkup:
+    """Paginated truck list for Camera Check — tap a truck to check its camera."""
+    start = page * page_size
+    page_vehicles = vehicles[start:start + page_size]
+    total_pages = max(1, (len(vehicles) + page_size - 1) // page_size)
+
+    rows = []
+    for v in page_vehicles:
+        name = v["name"]
+        co = v.get("_org", "")
+        label = f"#{name}"
+        if co:
+            label += f" — {co}"
+        rows.append([InlineKeyboardButton(label, callback_data=f"cam_truck_{name}")])
+
+    # Pagination
+    nav = []
+    prefix = f"cam_page_{company_filter or 'ALL'}"
+    if page > 0:
+        nav.append(InlineKeyboardButton("◀️ Prev", callback_data=f"{prefix}_{page - 1}"))
+    nav.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="noop"))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton("Next ▶️", callback_data=f"{prefix}_{page + 1}"))
+    rows.append(nav)
+
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_cam_tool")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -574,6 +631,7 @@ def auto_reports_type_kb() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🏥 Health", callback_data="ar_type_health"),
             InlineKeyboardButton("📊 Efficiency", callback_data="ar_type_efficiency"),
         ],
+        [InlineKeyboardButton("📷 Camera Check", callback_data="ar_type_camera")],
         [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_auto_reports")],
     ]
     return InlineKeyboardMarkup(rows)
@@ -674,6 +732,10 @@ def alert_settings_kb(user) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(
             f"{_icon(user.alert_events)} {t('alert_settings.events')}",
             callback_data="alert_toggle_events",
+        )],
+        [InlineKeyboardButton(
+            f"{_icon(user.alert_camera)} 📷 Camera",
+            callback_data="alert_toggle_camera",
         )],
         [InlineKeyboardButton(t("alert_settings.pending"), callback_data="cmd_pending_alerts"),
          InlineKeyboardButton(t("alert_settings.history"), callback_data="cmd_alert_history")],

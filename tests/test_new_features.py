@@ -650,31 +650,31 @@ class TestSamsaraDeepLinks:
         from samsara_client import samsara_vehicle_url
         url = samsara_vehicle_url("12345", "v999", "fault",
                                   dashboard_base="https://cloud.samsara.com")
-        assert url == "https://cloud.samsara.com/o/12345/devices/v999/vehicle"
+        assert url == "https://cloud.samsara.com/o/12345/fleet/vehicles/v999"
 
     def test_url_builder_health(self):
         from samsara_client import samsara_vehicle_url
         url = samsara_vehicle_url("12345", "v999", "health",
                                   dashboard_base="https://cloud.samsara.com")
-        assert url == "https://cloud.samsara.com/o/12345/devices/v999/vehicle"
+        assert url == "https://cloud.samsara.com/o/12345/fleet/vehicles/v999"
 
     def test_url_builder_fuel(self):
         from samsara_client import samsara_vehicle_url
         url = samsara_vehicle_url("12345", "v999", "fuel",
                                   dashboard_base="https://cloud.samsara.com")
-        assert url == "https://cloud.samsara.com/o/12345/devices/v999/vehicle"
+        assert url == "https://cloud.samsara.com/o/12345/fleet/vehicles/v999"
 
     def test_url_builder_events(self):
         from samsara_client import samsara_vehicle_url
         url = samsara_vehicle_url("12345", "v999", "events",
                                   dashboard_base="https://cloud.samsara.com")
-        assert url == "https://cloud.samsara.com/o/12345/devices/v999/vehicle"
+        assert url == "https://cloud.samsara.com/o/12345/fleet/vehicles/v999"
 
     def test_url_builder_unknown_type_fallback(self):
         from samsara_client import samsara_vehicle_url
         url = samsara_vehicle_url("12345", "v999", "unknown_type",
                                   dashboard_base="https://cloud.samsara.com")
-        assert url == "https://cloud.samsara.com/o/12345/devices/v999/vehicle"
+        assert url == "https://cloud.samsara.com/o/12345/fleet/vehicles/v999"
 
     def test_url_builder_no_org_returns_none(self):
         from samsara_client import samsara_vehicle_url
@@ -719,7 +719,7 @@ class TestSamsaraDeepLinks:
             )
             urls = [b.url for r in kb.inline_keyboard for b in r if b.url]
             assert len(urls) == 1
-            assert "/devices/" in urls[0]
+            assert "/fleet/vehicles/" in urls[0]
             labels = [b.text for r in kb.inline_keyboard for b in r]
             # INFO → no ACK, no AI Diagnose, but should have URL + View Truck + Menu
             assert "✅ Acknowledge" not in labels

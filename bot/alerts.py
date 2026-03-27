@@ -156,7 +156,7 @@ async def check_new_faults(app: Application):
                     previously_known = await _get_known_faults(vid)
                     new_codes = current_codes - previously_known
 
-                    if new_codes and previously_known:
+                    if new_codes:
                         new_dtcs = [
                             dtc for dtc in v.get("_dtcs", [])
                             if f"{dtc.get('spnId', '?')}-{dtc.get('fmiId', '?')}" in new_codes
@@ -484,7 +484,6 @@ async def send_alert(
     """
     vid = vehicle["id"]
     vname = vehicle.get("name", "?")
-    samsara_url = _build_samsara_url(vehicle.get("_org_id"), vid)
     needs_ack = severity in (AlertSeverity.CRITICAL, AlertSeverity.WARNING)
     bypasses_dnd = severity == AlertSeverity.CRITICAL
 
@@ -530,6 +529,21 @@ async def send_alert(
                 send_text += ai_note
             send_text += history_footer
 
+            # ── Send dashcam video first (events) so text can reply to it ──
+            video_msg_id = None
+            if video_url:
+                try:
+                    vmsg = await app.bot.send_video(
+                        chat_id=sub.telegram_id,
+                        video=video_url,
+                        caption=f"🎥 {vname}",
+                        read_timeout=30,
+                        write_timeout=30,
+                    )
+                    video_msg_id = vmsg.message_id
+                except Exception as ve:
+                    logger.debug(f"Video send failed for {vname}: {ve}")
+
             if needs_ack:
                 # Supersede old unacked alerts for this vehicle/type/subscriber
                 old_acks = await db.get_active_vehicle_acks(
@@ -557,6 +571,7 @@ async def send_alert(
                     text=send_text,
                     parse_mode=ParseMode.HTML,
                     reply_markup=basic_kb,
+                    reply_to_message_id=video_msg_id,
                 )
 
                 # Create ACK record
@@ -597,20 +612,8 @@ async def send_alert(
                     text=send_text,
                     parse_mode=ParseMode.HTML,
                     reply_markup=basic_kb,
+                    reply_to_message_id=video_msg_id,
                 )
-
-            # Send dashcam video as media when available (events)
-            if video_url:
-                try:
-                    await app.bot.send_video(
-                        chat_id=sub.telegram_id,
-                        video=video_url,
-                        caption=f"🎥 {vname}",
-                        read_timeout=30,
-                        write_timeout=30,
-                    )
-                except Exception as ve:
-                    logger.debug(f"Video send failed for {vname}: {ve}")
 
             # Update alert history
             await db.upsert_alert_history(
@@ -1014,6 +1017,152 @@ async def _notify_api_errors(
         f"API error alert sent for account {account_id}, "
         f"companies: {codes_str}"
     )
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Camera Check Alerts (scheduled)
+# ═══════════════════════════════════════════════════════════════════
+
+# Dedup: account_id → set of "vehicle:camera_type" that already alerted
+_known_camera_issues: dict[int, set[str]] = {}
+
+_camera_warmup_done = False
+
+
+async def check_camera_alerts(app: Application):
+    """Periodic camera check — alerts on PROBLEM/WARNING dashcams.
+
+    Runs less frequently (daily or every few hours). Downloads fresh
+    dashcam snapshots, runs AI vision analysis, and sends alerts for
+    cameras that have problems (obstruction, misalignment, etc.).
+
+    Only sends alerts for *new* issues not already flagged.
+    """
+    global _camera_warmup_done
+
+    try:
+        subscribers = await db.get_all_typed_subscribers("camera")
+        if not subscribers:
+            return
+
+        acct_subs: dict[int, list] = {}
+        for sub in subscribers:
+            acct_subs.setdefault(sub.account_id, []).append(sub)
+
+        is_warmup = not _camera_warmup_done
+
+        for account_id, subs in acct_subs.items():
+            try:
+                from bot.cameras import _gather_snapshots, _analyze_snapshot, _save_camera_results
+                import ai_client
+
+                await ai_client.ensure_account_model(account_id)
+                snapshots, show_co = await _gather_snapshots(account_id)
+                if not snapshots:
+                    continue
+
+                sem = asyncio.Semaphore(3)  # conservative for background task
+                tasks = [_analyze_snapshot(s, account_id, sem) for s in snapshots]
+                results = await asyncio.gather(*tasks)
+
+                # Save all results to history
+                await _save_camera_results(account_id, results)
+
+                # Filter to problems/warnings only
+                issues = [
+                    r for r in results
+                    if r.get("status") in ("PROBLEM", "WARNING")
+                ]
+
+                if is_warmup:
+                    # First cycle: populate dedup cache only
+                    known = set()
+                    for r in issues:
+                        key = f"{r['vehicle']}:{r.get('camera_type', 'forward')}"
+                        known.add(key)
+                    _known_camera_issues[account_id] = known
+                    continue
+
+                previously_known = _known_camera_issues.get(account_id, set())
+                new_issues = []
+                current_keys = set()
+
+                for r in issues:
+                    key = f"{r['vehicle']}:{r.get('camera_type', 'forward')}"
+                    current_keys.add(key)
+                    if key not in previously_known:
+                        new_issues.append(r)
+
+                # Update dedup cache
+                _known_camera_issues[account_id] = current_keys
+
+                if not new_issues:
+                    continue
+
+                # Build alert message
+                problems = sum(1 for r in new_issues if r.get("status") == "PROBLEM")
+                warnings = sum(1 for r in new_issues if r.get("status") == "WARNING")
+
+                lines = [
+                    "━━━━━━━━━━━━━━━━━━━",
+                    "  📷  <b>Camera Alert</b>",
+                    "━━━━━━━━━━━━━━━━━━━",
+                    "",
+                ]
+                if problems:
+                    lines.append(f"  🚨 {problems} camera problem(s)")
+                if warnings:
+                    lines.append(f"  ⚠️ {warnings} camera warning(s)")
+                lines.append("")
+
+                for r in new_issues[:10]:  # cap at 10 to avoid huge messages
+                    icon = "🚨" if r.get("status") == "PROBLEM" else "⚠️"
+                    cam_icon = {"forward": "🎥", "inward": "🪞"}.get(r.get("camera_type", "forward"), "📷")
+                    co_label = f" ({r.get('company', '?')})" if show_co else ""
+                    lines.append(f"  {icon} <b>#{r['vehicle']}{co_label}</b> {cam_icon}")
+                    summary = r.get("summary", "")[:80]
+                    if summary:
+                        lines.append(f"     {summary}")
+
+                if len(new_issues) > 10:
+                    lines.append(f"\n  ... +{len(new_issues) - 10} more")
+
+                alert_text = "\n".join(lines)
+                kb = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📷 View Full Check", callback_data="cmd_camera_report")],
+                    [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
+                ])
+
+                # Send to each subscriber
+                for sub in subs:
+                    try:
+                        await app.bot.send_message(
+                            chat_id=sub.telegram_id,
+                            text=alert_text,
+                            parse_mode=ParseMode.HTML,
+                            reply_markup=kb,
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Camera alert to {sub.telegram_id}: {e}"
+                        )
+                    await asyncio.sleep(0.3)
+
+                logger.info(
+                    f"Camera alert for account {account_id}: "
+                    f"{len(new_issues)} new issue(s)"
+                )
+
+            except Exception as e:
+                logger.error(f"Camera alert check for account {account_id}: {e}")
+
+        if is_warmup:
+            _camera_warmup_done = True
+            logger.info("Camera alerts: warm-up cycle done, "
+                        f"cached {sum(len(v) for v in _known_camera_issues.values())} issue(s)")
+
+    except Exception as e:
+        logger.error(f"check_camera_alerts failed: {e}")
 
 
 # ── Alert Acknowledgment Handler ─────────────────────────────────
@@ -1513,20 +1662,52 @@ async def check_alert_realerts(app: Application):
                     )
 
                     atype_label = atype.replace("_", " ").title()
+                    co_display = COMPANY_DISPLAY.get(co, co)
+
+                    # Urgency escalation based on attempt number
+                    if new_count >= MAX_REALERTS:
+                        urgency_icon = "🚨"
+                        urgency_label = "FINAL REMINDER"
+                        urgency_note = "  ❗ This is the <b>last reminder</b>.\n  The alert will expire if not acknowledged.\n"
+                    else:
+                        urgency_icon = "🔔"
+                        urgency_label = "REMINDER"
+                        urgency_note = ""
+
+                    # Time formatting
+                    hours_ago = mins_ago // 60
+                    if hours_ago >= 1:
+                        time_str = f"{hours_ago}h {mins_ago % 60}m"
+                    else:
+                        time_str = f"{mins_ago} min"
+
                     realert_text = (
                         "━━━━━━━━━━━━━━━━━━━\n"
-                        f"  🔔  <b>RE-ALERT ({new_count}/{MAX_REALERTS})</b>\n"
+                        f"  {urgency_icon}  <b>{urgency_label} ({new_count}/{MAX_REALERTS})</b>\n"
                         "━━━━━━━━━━━━━━━━━━━\n"
-                        f"\n  🚛 Truck: <b>{vname}</b>\n"
-                        f"\n  ⚠️  Unacknowledged <b>{atype_label}</b> alert\n"
+                        f"\n  🚛 Truck: <b>#{vname}</b>"
                     )
+                    if co_display:
+                        realert_text += f"  ({co_display})"
+                    realert_text += "\n"
+
+                    # Alert type header
+                    type_icons = {
+                        "fault": "⚙️",
+                        "health": "🛑",
+                        "fuel": "⛽",
+                    }
+                    type_icon = type_icons.get(atype, "⚠️")
+                    realert_text += f"\n  {type_icon}  <b>{atype_label} Alert</b>\n"
 
                     if detail_lines:
                         realert_text += f"\n{detail_lines}\n"
 
                     realert_text += (
-                        f"\n  🕐 Sent {mins_ago} min ago — not yet acknowledged.\n"
+                        f"\n  🕐 Unacknowledged for <b>{time_str}</b>\n"
                     )
+                    if urgency_note:
+                        realert_text += f"\n{urgency_note}"
 
                     # Re-use build_alert_keyboard for consistent buttons + correct AI callback
                     ack_kb = build_alert_keyboard(
