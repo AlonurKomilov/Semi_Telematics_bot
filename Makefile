@@ -98,3 +98,81 @@ test-fast:
 ## Watch mode — re-runs tests on file changes
 test-watch:
 	ptw -- tests/ -v --tb=short
+
+# ── backup targets ───────────────────────────────────
+
+BACKUP_DIR   = backups
+BACKUP_TS   := $(shell date +%Y%m%d_%H%M%S)
+BACKUP_NAME  = $(SERVICE)_$(BACKUP_TS)
+
+## Create a pre-work backup: source code + consistent SQLite DB snapshot
+## Archives land in ./backups/  (git-ignored, never deployed)
+backup:
+	@echo "📦 Creating backup: $(BACKUP_NAME)"
+	@mkdir -p $(BACKUP_DIR)/$(BACKUP_NAME)/data
+	@# ── 1. Consistent SQLite backup (handles WAL safely) ──
+	@if [ -f data/bot.db ]; then \
+		sqlite3 data/bot.db ".backup '$(BACKUP_DIR)/$(BACKUP_NAME)/data/bot.db'"; \
+		echo "   ✅ Database snapshot saved"; \
+	else \
+		echo "   ⚠️  No database found at data/bot.db — skipping DB"; \
+	fi
+	@# ── 2. Source code archive (exclude junk) ──
+	@tar cf - \
+		--exclude='__pycache__'   \
+		--exclude='.pytest_cache' \
+		--exclude='.mypy_cache'   \
+		--exclude='.git'          \
+		--exclude='*.pyc'         \
+		--exclude='*.pyo'         \
+		--exclude='.venv'         \
+		--exclude='venv'          \
+		--exclude='env'           \
+		--exclude='*.log'         \
+		--exclude='.bot.pid'      \
+		--exclude='.pid'          \
+		--exclude='data'          \
+		--exclude='backups'       \
+		--exclude='.env'          \
+		--exclude='*.db'          \
+		--exclude='*.db-shm'     \
+		--exclude='*.db-wal'     \
+		. | tar xf - -C $(BACKUP_DIR)/$(BACKUP_NAME)/
+	@# ── 3. Pack everything into a single .tar.gz ──
+	@cd $(BACKUP_DIR) && tar czf $(BACKUP_NAME).tar.gz $(BACKUP_NAME)/ \
+		&& rm -rf $(BACKUP_NAME)/
+	@echo "✅ Backup ready: $(BACKUP_DIR)/$(BACKUP_NAME).tar.gz"
+	@echo "   Size: $$(du -h $(BACKUP_DIR)/$(BACKUP_NAME).tar.gz | cut -f1)"
+
+## List existing backups
+backup-list:
+	@if [ -d $(BACKUP_DIR) ] && ls $(BACKUP_DIR)/*.tar.gz >/dev/null 2>&1; then \
+		echo "📋 Available backups:"; \
+		ls -lh $(BACKUP_DIR)/*.tar.gz | awk '{print "   " $$NF " (" $$5 ")"}'; \
+	else \
+		echo "⚠️  No backups found"; \
+	fi
+
+## Restore from latest backup (prompts for confirmation)
+backup-restore:
+	@LATEST=$$(ls -t $(BACKUP_DIR)/*.tar.gz 2>/dev/null | head -1); \
+	if [ -z "$$LATEST" ]; then \
+		echo "⚠️  No backups found in $(BACKUP_DIR)/"; \
+		exit 1; \
+	fi; \
+	echo "⚠️  This will restore from: $$LATEST"; \
+	echo "   Current data/bot.db will be overwritten."; \
+	read -p "   Continue? [y/N] " confirm; \
+	if [ "$$confirm" = "y" ] || [ "$$confirm" = "Y" ]; then \
+		TMPDIR=$$(mktemp -d); \
+		tar xzf "$$LATEST" -C "$$TMPDIR"; \
+		INNER=$$(ls "$$TMPDIR"); \
+		if [ -f "$$TMPDIR/$$INNER/data/bot.db" ]; then \
+			cp "$$TMPDIR/$$INNER/data/bot.db" data/bot.db; \
+			echo "   ✅ Database restored"; \
+		fi; \
+		rm -rf "$$TMPDIR"; \
+		echo "✅ Restore complete from $$LATEST"; \
+	else \
+		echo "❌ Restore cancelled"; \
+	fi

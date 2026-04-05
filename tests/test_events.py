@@ -10,19 +10,10 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 from database import Database, Role, User
 from permissions import get_permissions
 from formatters import format_event_alert, format_events_dashboard
-from csv_generator import generate_events_csv
+from reports import generate_events_csv
 
 
 # ── Fixtures ──────────────────────────────────────────────────────
-
-@pytest_asyncio.fixture
-async def db(tmp_path):
-    db_path = str(tmp_path / "test.db")
-    database = Database(db_path)
-    await database.initialize()
-    yield database
-    await database.close()
-
 
 @pytest_asyncio.fixture
 async def seeded(db: Database):

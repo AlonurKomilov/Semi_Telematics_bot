@@ -1,0 +1,178 @@
+"""Registration, onboarding, and invite formatters."""
+
+from samsara_client import COMPANY_DISPLAY
+from formatters.helpers import _t
+
+
+def format_help(company_codes: list[str] | None = None,
+                user=None, account=None) -> str:
+    """Build the /start help text.
+
+    If `user` (database.User) and `account` (database.Account) are given,
+    show personalised role-aware info.  Falls back to the original
+    generic text when called without those args (backwards compat).
+    """
+    # Role badge
+    role_line = ""
+    acct_line = ""
+    if user and account:
+        from permissions import role_display
+        role_line = f"\n  {role_display(user.role)}  ·  {account.name}\n"
+    elif account:
+        acct_line = f"\n  🏢 {account.name}\n"
+
+    company_line = ""
+    has_api = bool(company_codes)
+    if company_codes and len(company_codes) > 1:
+        names = [f"{c} ({COMPANY_DISPLAY.get(c, c)})" for c in company_codes]
+        company_line = (
+            "\n"
+            "  🏢 Companies:\n"
+            "  " + "  ·  ".join(names) + "\n"
+        )
+
+    # API status hint
+    if has_api:
+        status_line = f"  {_t('welcome.api_connected')}\n"
+    else:
+        status_line = f"  {_t('welcome.api_not_connected')}\n"
+
+    return (
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"  {_t('welcome.title')}\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "\n"
+        f"{_t('welcome.subtitle')}\n"
+        f"{role_line}{acct_line}{company_line}"
+        "\n"
+        f"{status_line}"
+        "\n"
+        f"{_t('welcome.tap_begin')}\n"
+    )
+
+
+def format_welcome_unregistered(support_contact: str = "", name: str = "") -> str:
+    """Shown to users who haven't registered or joined yet."""
+    return (
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"  {_t('welcome_unreg.title')}\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "\n"
+        f"{_t('welcome_unreg.subtitle')}\n"
+        "\n"
+        f"{_t('welcome_unreg.reports_title')}\n"
+        "  · Fault codes &amp; diagnostics\n"
+        "  · Fuel levels &amp; consumption\n"
+        "  · Vehicle health monitoring\n"
+        "\n"
+        f"{_t('welcome_unreg.tools_title')}\n"
+        "  · Driver safety scorecards\n"
+        "  · Live GPS location &amp; maps\n"
+        "  · Route history &amp; geofences\n"
+        "\n"
+        f"{_t('welcome_unreg.costs_title')}\n"
+        "  · Fuel cost tracking\n"
+        "  · Cost-per-mile analysis\n"
+        "  · Maintenance records\n"
+        "\n"
+        f"{_t('welcome_unreg.ai_title')}\n"
+        "  · Ask anything about your fleet\n"
+        "  · Instant insights &amp; summaries\n"
+        "  · Smart follow-up suggestions\n"
+        "\n"
+        f"{_t('welcome_unreg.alerts_title')}\n"
+        "  · Real-time fault alerts\n"
+        "  · Scheduled PDF report delivery\n"
+        "  · Geofence notifications\n"
+        "\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"  {_t('welcome_unreg.contact_admin')}\n"
+        "  👉 https://t.me/Allen_Klein\n"
+        "━━━━━━━━━━━━━━━━━━━━━"
+    )
+
+
+def format_register_success(account_name: str) -> str:
+    return (
+        "━━━━━━━━━━━━━━━━━━━\n"
+        f"  {_t('register.success_title')}\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "\n"
+        f"  🏢  <b>{account_name}</b>\n"
+        f"  {_t('register.you_are_owner')}\n"
+        "\n"
+        f"  {_t('register.next_steps')}\n"
+        f"  {_t('register.step_add_company')}\n"
+        "       to connect your Company\n"
+        "\n"
+        f"  {_t('register.step_invite')}\n"
+        "       to invite team members\n"
+    )
+
+
+def format_join_success(account_name: str, role_str: str) -> str:
+    return (
+        "━━━━━━━━━━━━━━━━━━━\n"
+        f"  {_t('join.success_title').replace('{account}', account_name.upper())}\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "\n"
+        f"  {_t('join.role_label').replace('{role}', role_str)}\n"
+        "\n"
+        f"  {_t('join.tap_begin')}\n"
+    )
+
+
+def format_invite_created(code: str, role_str: str, dept: str,
+                         invite_link: str | None = None) -> str:
+    text = (
+        "━━━━━━━━━━━━━━━━━━━\n"
+        f"  {_t('invite.created_title')}\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "\n"
+        f"  {_t('invite.code_label')}  <code>{code}</code>\n"
+        f"  {_t('invite.role_label')}  {role_str}\n"
+        f"  {_t('invite.dept_label')}  {dept}\n"
+        f"  {_t('invite.expires')}\n"
+    )
+    if invite_link:
+        text += (
+            "\n"
+            f"  {_t('invite.share_label')}\n"
+            f"  {invite_link}\n"
+            "\n"
+            f"  {_t('invite.share_note')}\n"
+        )
+    else:
+        text += (
+            "\n"
+            f"  {_t('invite.share_instructions')}\n"
+            "\n"
+            f"  {_t('invite.share_step1')}\n"
+            f"  {_t('invite.share_step2')}\n"
+            f"  {_t('invite.share_step3')} <code>{code}</code>\n"
+        )
+    return text
+
+
+def format_org_added(
+    code: str,
+    display_name: str,
+    total_trucks: int | None = None,
+    active_trucks: int | None = None,
+) -> str:
+    truck_info = ""
+    if total_trucks is not None:
+        truck_info += f"\n  {_t('company.trucks_total').replace('{count}', str(total_trucks))}"
+        if active_trucks is not None:
+            truck_info += (
+                f"\n  {_t('company.trucks_active').replace('{count}', str(active_trucks))}"
+            )
+    return (
+        "━━━━━━━━━━━━━━━━━━━\n"
+        f"  {_t('company.added_title')}\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "\n"
+        f"  Code:  {code}\n"
+        f"  Name:  {display_name}\n"
+        f"{truck_info}\n"
+    )

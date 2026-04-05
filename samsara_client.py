@@ -29,7 +29,7 @@ class SamsaraPermissionError(Exception):
 
 
 # ── Legacy compat shim — populated at runtime by bot.py ──────────
-# pdf_generator.py and formatters.py still read COMPANY_DISPLAY.
+# reports/ and formatters/ packages still read COMPANY_DISPLAY.
 # bot.py calls `populate_company_display(companies)` for display names.
 COMPANY_DISPLAY: dict[str, str] = {}
 
@@ -53,6 +53,15 @@ def populate_company_display(companies: list) -> dict[str, str]:
 
 # ── Samsara Dashboard URL helpers ────────────────────────────────
 
+# Page slug per alert type
+_ALERT_PAGE: dict[str, str] = {
+    "fault": "diagnostics",
+    "health": "diagnostics",
+    "fuel": "vehicle-details",
+    "events": "safety",
+}
+
+
 def samsara_vehicle_url(
     org_id: str,
     vehicle_id: str,
@@ -68,7 +77,35 @@ def samsara_vehicle_url(
     if not dashboard_base:
         from bot.config import SAMSARA_DASHBOARD_URL
         dashboard_base = SAMSARA_DASHBOARD_URL
-    return f"{dashboard_base}/o/{org_id}/fleet/vehicles/{vehicle_id}"
+    return f"{dashboard_base}/o/{org_id}/devices/{vehicle_id}/vehicle"
+
+
+def samsara_event_url(
+    org_id: str,
+    event_id: str,
+    dashboard_base: str = "",
+) -> str | None:
+    """Build a Samsara Cloud deep-link for a safety event."""
+    if not org_id or not event_id:
+        return None
+    if not dashboard_base:
+        from bot.config import SAMSARA_DASHBOARD_URL
+        dashboard_base = SAMSARA_DASHBOARD_URL
+    return f"{dashboard_base}/o/{org_id}/fleet/reports/safety/event/{event_id}"
+
+
+def samsara_fault_url(
+    org_id: str,
+    vehicle_id: str,
+    dashboard_base: str = "",
+) -> str | None:
+    """Build a Samsara Cloud deep-link for a vehicle's fault/diagnostics page."""
+    if not org_id:
+        return None
+    if not dashboard_base:
+        from bot.config import SAMSARA_DASHBOARD_URL
+        dashboard_base = SAMSARA_DASHBOARD_URL
+    return f"{dashboard_base}/o/{org_id}/devices/{vehicle_id}/vehicle"
 
 
 # Names that indicate ghost / deactivated records (case-insensitive)
@@ -105,6 +142,18 @@ class SamsaraClient:
         if self._session and not self._session.closed:
             await self._session.close()
 
+    async def get_org_id(self) -> str | None:
+        """Fetch and cache the Samsara organization ID via /me endpoint."""
+        if self._org_id is not None:
+            return self._org_id
+        try:
+            data = await self._get("/me")
+            self._org_id = str(data.get("data", {}).get("id", ""))
+            return self._org_id or None
+        except Exception as e:
+            logger.warning(f"Failed to fetch Samsara org ID: {e}")
+            return None
+
     def vehicle_url(self, vehicle_id: str) -> str | None:
         """Build a Samsara dashboard URL for a vehicle.
 
@@ -112,7 +161,7 @@ class SamsaraClient:
         """
         if not self._org_id or not vehicle_id:
             return None
-        return f"https://cloud.samsara.com/o/{self._org_id}/fleet/vehicles/{vehicle_id}"
+        return f"https://cloud.samsara.com/o/{self._org_id}/devices/{vehicle_id}/vehicle"
 
     async def _get(self, endpoint: str, params: Optional[dict] = None) -> dict:
         session = await self._get_session()
@@ -134,43 +183,7 @@ class SamsaraClient:
             logger.error(f"Samsara API error on {endpoint}: {e}")
             raise
 
-    async def _post(self, endpoint: str, payload: dict) -> dict:
-        """POST JSON to a Samsara API endpoint and return the response dict."""
-        session = await self._get_session()
-        url = f"{self.base_url}{endpoint}"
-        try:
-            async with session.post(url, json=payload) as resp:
-                if resp.status in (401, 403):
-                    try:
-                        body = await resp.json()
-                        msg = body.get("message", "Permission denied")
-                    except Exception:
-                        msg = f"HTTP {resp.status} — permission denied"
-                    raise SamsaraPermissionError(msg)
-                resp.raise_for_status()
-                return await resp.json()
-        except SamsaraPermissionError:
-            raise
-        except aiohttp.ClientError as e:
-            logger.error(f"Samsara API POST error on {endpoint}: {e}")
-            raise
-
     # ── Vehicle List ─────────────────────────────────────────────
-
-    async def get_org_id(self) -> str | None:
-        """Fetch and cache the Samsara organization ID for this API token."""
-        if self._org_id:
-            return self._org_id
-        try:
-            data = await self._get("/me")
-            # Response: {"data": {"id": "5009472", "name": "...", ...}}
-            org_id = str(data.get("data", {}).get("id", "") or "")
-            if org_id:
-                self._org_id = org_id
-                return org_id
-            return None
-        except Exception:
-            return None
 
     async def get_vehicles(self) -> list[dict]:
         """Return list of all vehicles in the fleet."""
@@ -195,6 +208,43 @@ class SamsaraClient:
         """Return GPS stats (lat/lng/speed/address) for all vehicles."""
         data = await self._get("/fleet/vehicles/stats", params={"types": "gps"})
         return data.get("data", [])
+
+    async def get_engine_states(self) -> list[dict]:
+        """Return latest engine state (On/Off/Idle) for all vehicles.
+
+        Uses /fleet/vehicles/stats?types=engineStates which returns the
+        most recent engine state per vehicle.
+        """
+        try:
+            data = await self._get(
+                "/fleet/vehicles/stats", params={"types": "engineStates"},
+            )
+            return data.get("data", [])
+        except Exception as e:
+            logger.warning("Engine states unavailable (non-fatal): %s", e)
+            return []
+
+    async def get_vehicle_location(
+        self, vehicle_id: str, company: str | None = None,
+    ) -> dict | None:
+        """Get fresh GPS location for a single vehicle.
+
+        Uses /fleet/vehicles/stats?types=gps&vehicleIds=<id> to get
+        the latest GPS reading for one specific vehicle.
+        Returns the location dict or None.
+        """
+        try:
+            data = await self._get(
+                "/fleet/vehicles/stats",
+                params={"types": "gps", "vehicleIds": vehicle_id},
+            )
+            items = data.get("data", [])
+            if items:
+                gps = items[0].get("gps", {})
+                return gps if isinstance(gps, dict) else None
+        except Exception as e:
+            logger.debug("get_vehicle_location(%s) failed: %s", vehicle_id, e)
+        return None
 
     # ── Fuel Levels ──────────────────────────────────────────────
 
@@ -333,13 +383,10 @@ class SamsaraClient:
         Vehicles are filtered by GPS recency (active_days) and
         ghost-name patterns.
         """
-        import asyncio
-        vehicles_raw, fault_raw, location_raw, fuel_raw = await asyncio.gather(
-            self.get_vehicles(),
-            self.get_fault_codes(),
-            self.get_locations(),
-            self.get_fuel_levels(),
-        )
+        vehicles_raw = await self.get_vehicles()
+        fault_raw = await self.get_fault_codes()
+        location_raw = await self.get_locations()
+        fuel_raw = await self.get_fuel_levels()
 
         # Index by vehicle ID
         vehicles = {v["id"]: v for v in vehicles_raw}
@@ -394,13 +441,10 @@ class SamsaraClient:
         Unlike get_fleet_overview(), this searches ALL vehicles (including
         those without a gateway) so direct truck lookups always work.
         """
-        import asyncio
-        vehicles_raw, fault_raw, location_raw, fuel_raw = await asyncio.gather(
-            self.get_vehicles(),
-            self.get_fault_codes(),
-            self.get_locations(),
-            self.get_fuel_levels(),
-        )
+        vehicles_raw = await self.get_vehicles()
+        fault_raw = await self.get_fault_codes()
+        location_raw = await self.get_locations()
+        fuel_raw = await self.get_fuel_levels()
 
         faults_by_id = {v["id"]: v.get("faultCodes", {}) for v in fault_raw}
         loc_by_id = {v["id"]: v.get("location", {}) for v in location_raw}
@@ -998,11 +1042,11 @@ class SamsaraClient:
         engineStates values: "On" (driving), "Idle", "Off".
         Miles come from a parallel obdOdometerMeters fetch.
         """
-        import asyncio as _aio
-        odo_raw, fleet = await _aio.gather(
-            self._get_paginated_history("obdOdometerMeters", start, end=end),
-            self.get_fleet_overview(),
+        odo_raw = await self._get_paginated_history(
+            "obdOdometerMeters", start, end=end,
         )
+
+        fleet = await self.get_fleet_overview()
         active_names = {v["name"].lower() for v in fleet}
 
         odo_by_id: dict[str, list] = {}
@@ -1078,13 +1122,11 @@ class SamsaraClient:
         Uses ``obdEngineSeconds`` (cumulative engine counter) and
         ``obdOdometerMeters`` (odometer delta → driving detection).
         """
-        import asyncio as _aio
-        raw, fleet = await _aio.gather(
-            self._get_paginated_history(
-                "obdEngineSeconds,obdOdometerMeters", start, end=end,
-            ),
-            self.get_fleet_overview(),
+        raw = await self._get_paginated_history(
+            "obdEngineSeconds,obdOdometerMeters", start, end=end,
         )
+
+        fleet = await self.get_fleet_overview()
         active_names = {v["name"].lower() for v in fleet}
 
         results: list[dict] = []
@@ -1159,7 +1201,7 @@ class SamsaraClient:
 
     # ── Dashcam Snapshots ─────────────────────────────────────────
 
-    _MAX_VIDEO_BYTES = 10 * 1024 * 1024  # 10 MB download cap
+    _MAX_VIDEO_BYTES = 25 * 1024 * 1024  # 25 MB download cap
     _MAX_IMAGE_BYTES = 5 * 1024 * 1024   # 5 MB image cap
 
     async def _get_camera_media(self) -> list[dict]:
@@ -1253,7 +1295,7 @@ class SamsaraClient:
 
         Two-tier approach:
         1. Primary: GET /cameras/media (24h) — direct JPEG URLs for periodic
-           snapshots, trip start/end stills. Covers ~51/62 active trucks.
+           snapshots, trip start/end stills. Covers most active trucks.
            No video download or ffmpeg needed.
         2. Fallback: Safety events (``days`` window) — for any truck that
            wasn't covered by the media API (e.g. token lacks permission,
@@ -1396,6 +1438,10 @@ class SamsaraClient:
                                 return None
                             cl = resp.content_length
                             if cl is not None and cl > self._MAX_VIDEO_BYTES:
+                                logger.warning(
+                                    f"Dashcam video too large ({cl} bytes) "
+                                    f"for {ev.get('vehicle_name', '?')}, skipping"
+                                )
                                 return None
                             video_bytes = await resp.read()
                             if len(video_bytes) > self._MAX_VIDEO_BYTES:
@@ -1575,7 +1621,8 @@ class MultiCompanyClient:
         tasks = {code: client.get_org_id() for code, client in self.clients.items()}
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
         for code, result in zip(tasks, results):
-            if isinstance(result, str):
+            if isinstance(result, str) and result:
+                ORG_IDS[code] = result
                 logger.info(f"Samsara org ID for {code}: {result}")
             else:
                 logger.warning(f"Failed to get org ID for {code}: {result}")
@@ -1889,3 +1936,45 @@ class MultiCompanyClient:
         combined.sort(key=lambda x: x.get("time", ""), reverse=True)
         await self._cache_set(cache_key, combined)
         return combined
+
+    # ── engine states ────────────────────────────────────────────
+
+    async def get_engine_states(
+        self, company: str | None = None,
+    ) -> list[dict]:
+        """Get latest engine states across companies."""
+        async def _fn(c):
+            return await c.get_engine_states()
+
+        per_co = await self._run_per_company(_fn, company=company)
+        combined: list[dict] = []
+        for code, states in per_co.items():
+            for s in states:
+                s["_org"] = code
+            combined.extend(states)
+        return combined
+
+    # ── single vehicle location ──────────────────────────────────
+
+    async def get_vehicle_location(
+        self, vehicle_id: str, company: str | None = None,
+    ) -> dict | None:
+        """Get fresh GPS location for a single vehicle across companies."""
+        if company:
+            client = self.clients.get(company)
+            if client:
+                return await client.get_vehicle_location(vehicle_id)
+            return None
+        # Try all companies in parallel
+        tasks = {
+            code: asyncio.create_task(c.get_vehicle_location(vehicle_id))
+            for code, c in self.clients.items()
+        }
+        for code, task in tasks.items():
+            try:
+                result = await task
+                if result:
+                    return result
+            except Exception:
+                pass
+        return None

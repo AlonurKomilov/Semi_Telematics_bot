@@ -4,10 +4,8 @@ import asyncio
 import io
 import csv
 from datetime import datetime as _dt
-from zoneinfo import ZoneInfo as _ZI
+from constants import TZ_ET as _TZ_ET
 from bot.i18n import t
-
-_TZ_ET = _ZI("America/New_York")
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -104,7 +102,7 @@ async def cmd_events_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 events = [e for e in events
                           if user.truck_num.lower() in e.get("vehicle_name", "").lower()]
 
-        from csv_generator import generate_events_csv
+        from reports import generate_events_csv
         csv_buf = await asyncio.to_thread(generate_events_csv, events, days)
         chat_id = update.effective_chat.id
         await context.bot.send_document(

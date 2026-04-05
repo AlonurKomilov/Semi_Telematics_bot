@@ -24,6 +24,16 @@ from bot.keyboards import (
     unregistered_kb,
     invite_kb,
     auto_reports_menu_kb,
+    maint_company_picker_kb,
+    maint_vehicle_list_kb,
+    maint_type_kb,
+    maint_due_kb,
+    maint_miles_kb,
+    maint_desc_kb,
+    maint_task_detail_kb,
+    maint_edit_kb,
+    maint_delete_confirm_kb,
+    maint_task_list_kb,
 )
 
 
@@ -92,6 +102,11 @@ class TestMainMenu:
         kb = main_menu_kb(Role.DRIVER, ["CO1"])
         assert not _has_callback(kb, "submenu_mgmt")
 
+    def test_all_roles_see_settings(self):
+        for role in (Role.OWNER, Role.ADMIN, Role.DISPATCHER, Role.DRIVER):
+            kb = main_menu_kb(role, ["CO1"])
+            assert _has_callback(kb, "cmd_settings"), f"{role} should see settings"
+
     def test_multi_company_shows_company_buttons(self):
         kb = main_menu_kb(Role.OWNER, ["CO1", "CO2"])
         callbacks = _all_callbacks(kb)
@@ -150,6 +165,7 @@ class TestSubMenuTools:
         assert "cmd_livemap" in callbacks
         assert "cmd_route" in callbacks
         assert "cmd_geofences" in callbacks
+        assert "cmd_maintenance" in callbacks
 
     def test_has_back_button(self):
         kb = submenu_tools_kb(Role.OWNER)
@@ -172,12 +188,10 @@ class TestSubMenuCosts:
         callbacks = _all_callbacks(kb)
         assert "cmd_fuelcost" in callbacks
         assert "cmd_costmile" in callbacks
-        assert "cmd_maintenance" in callbacks
 
-    def test_driver_sees_maintenance_only(self):
+    def test_driver_sees_no_cost_options(self):
         kb = submenu_costs_kb(Role.DRIVER)
         callbacks = _all_callbacks(kb)
-        assert "cmd_maintenance" in callbacks
         assert "cmd_fuelcost" not in callbacks
         assert "cmd_costmile" not in callbacks
 
@@ -238,12 +252,17 @@ class TestBackNavigation:
             )
 
     def test_cost_keyboards_back_to_submenu(self):
-        """Cost/maint keyboards should go back to submenu_costs."""
-        for kb_fn in (fuelcost_menu_kb, costmile_format_kb, maintenance_menu_kb):
-            kb = kb_fn() if kb_fn != costmile_format_kb else kb_fn()
+        """Cost keyboards should go back to submenu_costs."""
+        for kb_fn in (fuelcost_menu_kb, costmile_format_kb):
+            kb = kb_fn()
             assert _has_callback(kb, "submenu_costs"), (
                 f"{kb_fn.__name__} should have back to submenu_costs"
             )
+
+    def test_maintenance_back_to_tools(self):
+        """Maintenance keyboard should go back to submenu_tools."""
+        kb = maintenance_menu_kb()
+        assert _has_callback(kb, "submenu_tools")
 
     def test_route_date_kb_back_to_tools(self):
         kb = route_date_kb("Truck101", "CO1")
@@ -298,3 +317,171 @@ class TestSpecialKeyboards:
         kb = geofence_list_kb(geofences)
         # 15 geofences + 1 back button = 16 rows
         assert len(kb.inline_keyboard) == 16
+
+
+# ══════════════════════════════════════════════════════════════════
+# MAINTENANCE KEYBOARDS (new truck picker + CRUD)
+# ══════════════════════════════════════════════════════════════════
+
+class TestMaintCompanyPicker:
+
+    def test_shows_all_companies(self):
+        kb = maint_company_picker_kb(["CO1", "CO2", "CO3"])
+        callbacks = _all_callbacks(kb)
+        assert "maint_co_CO1" in callbacks
+        assert "maint_co_CO2" in callbacks
+        assert "maint_co_CO3" in callbacks
+
+    def test_has_back_to_maintenance(self):
+        kb = maint_company_picker_kb(["CO1"])
+        assert _has_callback(kb, "cmd_maintenance")
+
+
+class TestMaintVehicleList:
+
+    def test_first_page(self):
+        vehicles = [{"name": f"T{i}", "_org": "CO1"} for i in range(12)]
+        kb = maint_vehicle_list_kb(vehicles, page=0, company_filter="CO1")
+        callbacks = _all_callbacks(kb)
+        # 8 trucks on first page
+        truck_cbs = [c for c in callbacks if c.startswith("maint_truck_")]
+        assert len(truck_cbs) == 8
+        # Has Next, no Prev
+        assert any("Next" in lbl for lbl in _all_labels(kb))
+
+    def test_second_page(self):
+        vehicles = [{"name": f"T{i}", "_org": "CO1"} for i in range(12)]
+        kb = maint_vehicle_list_kb(vehicles, page=1, company_filter="CO1")
+        callbacks = _all_callbacks(kb)
+        truck_cbs = [c for c in callbacks if c.startswith("maint_truck_")]
+        assert len(truck_cbs) == 4  # remaining 4
+        assert any("Prev" in lbl for lbl in _all_labels(kb))
+
+    def test_single_page_no_nav(self):
+        vehicles = [{"name": f"T{i}", "_org": "CO1"} for i in range(3)]
+        kb = maint_vehicle_list_kb(vehicles, page=0)
+        labels = _all_labels(kb)
+        assert not any("Prev" in lbl or "Next" in lbl for lbl in labels)
+
+    def test_has_back_to_add(self):
+        vehicles = [{"name": "T1", "_org": "CO1"}]
+        kb = maint_vehicle_list_kb(vehicles, page=0)
+        assert _has_callback(kb, "maint_add")
+
+
+class TestMaintTypeKb:
+
+    def test_has_all_ten_types(self):
+        kb = maint_type_kb()
+        callbacks = _all_callbacks(kb)
+        expected = ["oil", "tires", "brakes", "inspection", "transmission",
+                     "electrical", "dot_inspection", "dpf_regen", "def_refill", "custom"]
+        for t in expected:
+            assert f"maint_type_{t}" in callbacks
+
+    def test_two_column_layout(self):
+        kb = maint_type_kb()
+        # 10 types in pairs of 2 = 5 rows + 1 cancel row = 6
+        assert len(kb.inline_keyboard) == 6
+
+    def test_has_cancel(self):
+        kb = maint_type_kb()
+        assert _has_callback(kb, "cmd_maintenance")
+
+
+class TestMaintSkipButtons:
+
+    def test_due_kb_has_skip(self):
+        kb = maint_due_kb()
+        assert _has_callback(kb, "maint_skip_date")
+
+    def test_miles_kb_has_skip(self):
+        kb = maint_miles_kb()
+        assert _has_callback(kb, "maint_skip_miles")
+
+    def test_desc_kb_has_skip(self):
+        kb = maint_desc_kb()
+        assert _has_callback(kb, "maint_skip_desc")
+
+    def test_all_have_cancel(self):
+        for fn in (maint_due_kb, maint_miles_kb, maint_desc_kb):
+            kb = fn()
+            assert _has_callback(kb, "cmd_maintenance"), f"{fn.__name__} missing cancel"
+
+
+class TestMaintTaskDetail:
+
+    def test_pending_shows_done_and_edit(self):
+        kb = maint_task_detail_kb(42, "pending")
+        callbacks = _all_callbacks(kb)
+        assert "maint_done_42" in callbacks
+        assert "maint_edit_42" in callbacks
+        assert "maint_del_42" in callbacks
+
+    def test_overdue_shows_done_and_edit(self):
+        kb = maint_task_detail_kb(7, "overdue")
+        callbacks = _all_callbacks(kb)
+        assert "maint_done_7" in callbacks
+        assert "maint_edit_7" in callbacks
+
+    def test_done_hides_done_and_edit(self):
+        kb = maint_task_detail_kb(7, "done")
+        callbacks = _all_callbacks(kb)
+        assert "maint_done_7" not in callbacks
+        assert "maint_edit_7" not in callbacks
+        # Delete still available
+        assert "maint_del_7" in callbacks
+
+    def test_back_to_task_list(self):
+        kb = maint_task_detail_kb(99, "pending")
+        assert _has_callback(kb, "maint_view")
+
+
+class TestMaintEditKb:
+
+    def test_has_all_fields(self):
+        kb = maint_edit_kb(10)
+        callbacks = _all_callbacks(kb)
+        assert "maint_etype_10" in callbacks
+        assert "maint_edate_10" in callbacks
+        assert "maint_emiles_10" in callbacks
+        assert "maint_edesc_10" in callbacks
+
+    def test_back_to_detail(self):
+        kb = maint_edit_kb(10)
+        assert _has_callback(kb, "maint_detail_10")
+
+
+class TestMaintDeleteConfirm:
+
+    def test_confirm_and_cancel(self):
+        kb = maint_delete_confirm_kb(5)
+        callbacks = _all_callbacks(kb)
+        assert "maint_delok_5" in callbacks
+        assert "maint_detail_5" in callbacks
+
+
+class TestMaintTaskList:
+
+    def test_shows_tasks(self):
+        tasks = [
+            {"id": 1, "vehicle_name": "T100", "task_type": "oil", "status": "pending"},
+            {"id": 2, "vehicle_name": "T200", "task_type": "brakes", "status": "done"},
+        ]
+        kb = maint_task_list_kb(tasks)
+        callbacks = _all_callbacks(kb)
+        assert "maint_detail_1" in callbacks
+        assert "maint_detail_2" in callbacks
+
+    def test_pagination(self):
+        tasks = [
+            {"id": i, "vehicle_name": f"T{i}", "task_type": "oil", "status": "pending"}
+            for i in range(12)
+        ]
+        kb = maint_task_list_kb(tasks, page=0)
+        labels = _all_labels(kb)
+        assert any("Next" in lbl for lbl in labels)
+
+    def test_back_to_maintenance(self):
+        kb = maint_task_list_kb([])
+        assert _has_callback(kb, "cmd_maintenance")

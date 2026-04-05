@@ -3,10 +3,8 @@
 import asyncio
 import io
 from datetime import datetime as _dt
-from zoneinfo import ZoneInfo as _ZI
+from constants import TZ_ET as _TZ_ET
 from bot.i18n import t
-
-_TZ_ET = _ZI("America/New_York")
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -111,7 +109,7 @@ async def cmd_livemap(update: Update, context: ContextTypes.DEFAULT_TYPE,
         await context.bot.send_photo(
             chat_id=chat_id, photo=map_buf, caption=caption,
         )
-        await _show(update, context, [""], keyboard=livemap_refresh_kb(company))
+        await _show(update, context, ["🔄 Tap below to refresh or go back."], keyboard=livemap_refresh_kb(company))
 
     except ImportError:
         await _show(update, context, [

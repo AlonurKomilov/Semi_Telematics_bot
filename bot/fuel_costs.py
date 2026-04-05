@@ -1,10 +1,8 @@
 """Fuel Cost Tracker — manual fill-up logging and summary."""
 
 from datetime import datetime as _dt
-from zoneinfo import ZoneInfo as _ZI
+from constants import TZ_ET as _TZ_ET
 from bot.i18n import t
-
-_TZ_ET = _ZI("America/New_York")
 
 from telegram import Update
 from telegram.ext import ContextTypes

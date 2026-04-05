@@ -19,15 +19,6 @@ from bot.keyboards import alert_settings_kb
 # ── Fixtures ──────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture
-async def db(tmp_path):
-    db_path = str(tmp_path / "test.db")
-    database = Database(db_path)
-    await database.initialize()
-    yield database
-    await database.close()
-
-
-@pytest_asyncio.fixture
 async def seeded_db(db):
     account = await db.create_account("Alert Test Co")
     company = await db.add_company(
@@ -331,8 +322,9 @@ class TestAlertPrefMigration:
     @pytest.mark.asyncio
     async def test_migration_idempotent(self, db):
         """Running migration twice does not raise."""
-        await db._migrate_alert_prefs()
-        await db._migrate_alert_prefs()  # should be idempotent
+        from database.migrations import migrate_alert_prefs
+        await migrate_alert_prefs(db._db)
+        await migrate_alert_prefs(db._db)  # should be idempotent
 
     @pytest.mark.asyncio
     async def test_new_user_has_default_prefs(self, seeded_db):

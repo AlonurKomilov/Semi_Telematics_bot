@@ -2,10 +2,8 @@
 
 import asyncio
 from datetime import datetime as _dt
-from zoneinfo import ZoneInfo as _ZI
+from constants import TZ_ET as _TZ_ET
 from bot.i18n import t
-
-_TZ_ET = _ZI("America/New_York")
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -15,10 +13,10 @@ from database import Role
 from permissions import can
 from samsara_client import COMPANY_DISPLAY, populate_company_display
 from formatters import format_truck_detail, format_truck_picker
-from pdf_generator import generate_critical_report_pdf, generate_truck_detail_pdf
+from reports import generate_critical_report_pdf, generate_truck_detail_pdf
 
 from bot.config import db, logger, _active_messages, get_client
-from bot.keyboards import back_kb, truck_kb, truck_picker_kb
+from bot.keyboards import back_kb, truck_kb, truck_picker_kb, vehicle_list_kb
 from bot.helpers import (
     _show, _show_loading, _delete_old_messages, _company_line, _user_menu_kb,
     _msg_key, _safe_error,
@@ -29,7 +27,8 @@ from bot.fleet_reports import _skipped_warning
 
 @_require_registered
 async def cmd_truck(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                    truck_name: str | None = None, company: str | None = None):
+                    truck_name: str | None = None, company: str | None = None,
+                    ack_id: int | None = None):
     """Look up a single truck."""
     user = context.user_data["_db_user"]
 
@@ -46,6 +45,13 @@ async def cmd_truck(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 if len(parts) == 3:
                     company = parts[1]
                     truck_name = parts[2]
+                    # Check for :ack_id suffix
+                    if ":" in truck_name:
+                        truck_name, ack_str = truck_name.rsplit(":", 1)
+                        try:
+                            ack_id = int(ack_str)
+                        except ValueError:
+                            pass
 
     # Driver role: force own truck
     if user.role == Role.DRIVER:
@@ -94,7 +100,8 @@ async def cmd_truck(update: Update, context: ContextTypes.DEFAULT_TYPE,
             v_org = vehicle.get("_org", company or "")
             await _show(update, context, messages,
                         keyboard=truck_kb(truck_name, v_org,
-                                          show_faults=_show_faults))
+                                          show_faults=_show_faults,
+                                          ack_id=ack_id))
         else:
             text = format_truck_picker(truck_name, matches)
             await _show(update, context, [text],
@@ -267,4 +274,38 @@ async def cmd_critical(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
     except Exception as e:
         logger.error(f"Error in /critical: {e}", exc_info=True)
+        await _show(update, context, [_safe_error(e)], keyboard=back_kb())
+
+
+# ── Truck browser (used by callbacks) ────────────────────────────
+
+async def show_truck_list(update, context, user, company_filter, page=0):
+    """Fetch all trucks and show a paginated button list."""
+    orgs_db = await db.get_account_companies(user.account_id)
+    populate_company_display(orgs_db)
+    company_codes = [o.code for o in orgs_db]
+    show_org = len(company_codes) > 1
+
+    await _show_loading(update, context, t('truck.loading_list'))
+    try:
+        samsara = await get_client(user.account_id)
+        vehicles = await samsara.get_fleet_overview(company=company_filter)
+        if not vehicles:
+            label = company_filter or t('common.all_companies')
+            await _show(update, context,
+                        [t('truck.no_trucks_for').format(label=label)],
+                        keyboard=back_kb())
+            return
+
+        total = len(vehicles)
+        header = (
+            f"{t('truck.browse_header').format(count=total)}\n"
+        )
+        if company_filter:
+            header += f"  📡 {COMPANY_DISPLAY.get(company_filter, company_filter)}\n"
+
+        kb = vehicle_list_kb(vehicles, page=page, company_filter=company_filter)
+        await _show(update, context, [header + f"\n{t('truck.browse_tap')}"],
+                    keyboard=kb)
+    except Exception as e:
         await _show(update, context, [_safe_error(e)], keyboard=back_kb())

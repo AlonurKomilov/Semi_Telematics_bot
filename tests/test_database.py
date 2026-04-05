@@ -17,16 +17,6 @@ from database import Database, Role, Account, Company, User, Invite
 # ── Fixtures ──────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture
-async def db(tmp_path):
-    """Create a fresh temporary database for each test."""
-    db_path = str(tmp_path / "test.db")
-    database = Database(db_path)
-    await database.initialize()
-    yield database
-    await database.close()
-
-
-@pytest_asyncio.fixture
 async def seeded_db(db):
     """DB pre-populated with an account, company, and owner user."""
     account = await db.create_account("Test Fleet Co")
@@ -427,6 +417,93 @@ class TestMaintenanceTasks:
         tasks = await db.get_maintenance_tasks(acct.id, status="done")
         assert len(tasks) == 1
         assert tasks[0]["completed_at"] is not None
+
+    @pytest.mark.asyncio
+    async def test_get_single_task(self, seeded_db):
+        db, acct, _, owner = seeded_db
+        tid = await db.add_maintenance_task(
+            acct.id, "TFC", "Truck 101", "oil",
+            "Oil change", created_by=owner.id,
+        )
+        task = await db.get_maintenance_task(tid)
+        assert task is not None
+        assert task["task_type"] == "oil"
+        assert task["vehicle_name"] == "Truck 101"
+
+    @pytest.mark.asyncio
+    async def test_get_single_task_not_found(self, seeded_db):
+        db, acct, _, owner = seeded_db
+        task = await db.get_maintenance_task(99999)
+        assert task is None
+
+    @pytest.mark.asyncio
+    async def test_update_maintenance_task_fields(self, seeded_db):
+        db, acct, _, owner = seeded_db
+        tid = await db.add_maintenance_task(
+            acct.id, "TFC", "Truck 101", "oil",
+            "Oil change", created_by=owner.id,
+        )
+        result = await db.update_maintenance_task(
+            tid, task_type="brakes", description="Brake job",
+            due_date="2026-06-01", due_miles=80000,
+        )
+        assert result is True
+        task = await db.get_maintenance_task(tid)
+        assert task["task_type"] == "brakes"
+        assert task["description"] == "Brake job"
+        assert task["due_date"] == "2026-06-01"
+        assert task["due_miles"] == 80000
+
+    @pytest.mark.asyncio
+    async def test_update_maintenance_task_ignores_bad_fields(self, seeded_db):
+        db, acct, _, owner = seeded_db
+        tid = await db.add_maintenance_task(
+            acct.id, "TFC", "Truck 101", "oil",
+            "Oil change", created_by=owner.id,
+        )
+        result = await db.update_maintenance_task(tid, fake_field="bad")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_delete_maintenance_task(self, seeded_db):
+        db, acct, _, owner = seeded_db
+        tid = await db.add_maintenance_task(
+            acct.id, "TFC", "Truck 101", "oil",
+            "Oil change", created_by=owner.id,
+        )
+        await db.delete_maintenance_task(tid)
+        task = await db.get_maintenance_task(tid)
+        assert task is None
+        tasks = await db.get_maintenance_tasks(acct.id)
+        assert len(tasks) == 0
+
+    @pytest.mark.asyncio
+    async def test_add_task_with_recurring(self, seeded_db):
+        db, acct, _, owner = seeded_db
+        tid = await db.add_maintenance_task(
+            acct.id, "TFC", "Truck 101", "oil",
+            "Oil change", created_by=owner.id,
+            recur_interval_days=90, recur_interval_miles=5000,
+        )
+        task = await db.get_maintenance_task(tid)
+        assert task["recur_interval_days"] == 90
+        assert task["recur_interval_miles"] == 5000
+
+    @pytest.mark.asyncio
+    async def test_get_pending_tasks_by_miles(self, seeded_db):
+        db, acct, _, owner = seeded_db
+        await db.add_maintenance_task(
+            acct.id, "TFC", "Truck 101", "oil",
+            "Oil change", due_miles=50000, created_by=owner.id,
+        )
+        # Task with no due_miles should NOT appear
+        await db.add_maintenance_task(
+            acct.id, "TFC", "Truck 102", "brakes",
+            "Brake check", created_by=owner.id,
+        )
+        tasks = await db.get_pending_tasks_by_miles()
+        assert len(tasks) == 1
+        assert tasks[0]["vehicle_name"] == "Truck 101"
 
 
 # ══════════════════════════════════════════════════════════════════

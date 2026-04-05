@@ -101,7 +101,9 @@ class User:
     ai_fuel: bool = False       # Proactive AI on fuel alerts
     alert_events: bool = True   # Safety event alerts
     ai_events: bool = False     # Proactive AI on event alerts
-    alert_camera: bool = True   # Camera check alerts
+    alert_camera: bool = True   # Camera alerts
+    alert_parking: bool = True  # Unsafe parking alerts
+    ai_parking: bool = False    # Proactive AI on parking alerts
     quiet_start: Optional[int] = None   # DND start hour (0-23)
     quiet_end: Optional[int] = None     # DND end hour (0-23)
     timezone: str = "America/New_York"
@@ -127,6 +129,11 @@ class User:
     def is_in_quiet_hours(self) -> bool:
         """Check if the user is currently in their DND quiet hours.
 
+        quiet_start/quiet_end define the WORKING hours window (when
+        alerts should be delivered).  This method returns True when
+        the current local time is OUTSIDE that window, meaning the
+        user is in quiet / do-not-disturb mode.
+
         Returns False if quiet hours are not configured.
         """
         if self.quiet_start is None or self.quiet_end is None:
@@ -136,11 +143,14 @@ class User:
             user_tz = ZoneInfo(self.timezone)
             local_hour = datetime.now(timezone.utc).astimezone(user_tz).hour
             start, end = self.quiet_start, self.quiet_end
+            # Determine if the user is INSIDE working hours
             if start <= end:
-                return start <= local_hour < end
+                in_working = start <= local_hour < end
             else:
                 # Wraps midnight, e.g., 22:00 - 06:00
-                return local_hour >= start or local_hour < end
+                in_working = local_hour >= start or local_hour < end
+            # Quiet hours = NOT in working hours
+            return not in_working
         except Exception:
             return False
 
@@ -211,8 +221,6 @@ class Database:
         self._db.row_factory = aiosqlite.Row
         await self._db.execute("PRAGMA journal_mode=WAL")
         await self._db.execute("PRAGMA foreign_keys=ON")
-        await self._db.execute("PRAGMA busy_timeout=5000")
-        await self._db.execute("PRAGMA synchronous=NORMAL")
         await self._create_tables()
         logger.info(f"Database ready at {self.path}")
 
@@ -449,6 +457,9 @@ class Database:
         await self._migrate_alert_ack_status()
         await self._migrate_user_language()
         await self._migrate_camera_checks_table()
+        await self._migrate_parking_events_table()
+        await self._migrate_maintenance_recurring()
+        await self._migrate_work_schedules_table()
 
     async def _migrate_alert_prefs(self):
         """Add alert_faults/health/fuel/geofence columns if missing."""
@@ -462,6 +473,8 @@ class Database:
             ("ai_fuel", "INTEGER NOT NULL DEFAULT 0"),
             ("alert_events", "INTEGER NOT NULL DEFAULT 1"),
             ("ai_events", "INTEGER NOT NULL DEFAULT 0"),
+            ("alert_parking", "INTEGER NOT NULL DEFAULT 1"),
+            ("ai_parking", "INTEGER NOT NULL DEFAULT 0"),
             ("alert_camera", "INTEGER NOT NULL DEFAULT 1"),
         ]
         for col_name, col_def in new_cols:
@@ -568,9 +581,70 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_camera_checks_account
                     ON camera_checks(account_id, checked_at DESC)
             """)
+            await self._db.commit()
+        except Exception:
+            pass  # already exists
+
+    async def _migrate_parking_events_table(self):
+        """Create parking_events table for unsafe parking detection."""
+        try:
             await self._db.execute("""
-                CREATE INDEX IF NOT EXISTS idx_camera_checks_vehicle
-                    ON camera_checks(account_id, vehicle_id, checked_at DESC)
+                CREATE TABLE IF NOT EXISTS parking_events (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id      INTEGER NOT NULL REFERENCES accounts(id),
+                    vehicle_id      TEXT    NOT NULL DEFAULT '',
+                    vehicle_name    TEXT    NOT NULL DEFAULT '',
+                    company_code    TEXT    NOT NULL DEFAULT '',
+                    latitude        REAL    NOT NULL DEFAULT 0,
+                    longitude       REAL    NOT NULL DEFAULT 0,
+                    address         TEXT    NOT NULL DEFAULT '',
+                    first_stopped   TEXT    NOT NULL,
+                    duration_hours  REAL    NOT NULL DEFAULT 0,
+                    location_class  TEXT    NOT NULL DEFAULT 'unknown',
+                    alert_level     TEXT    NOT NULL DEFAULT 'none',
+                    ai_analysis     TEXT    NOT NULL DEFAULT '',
+                    resolved        INTEGER NOT NULL DEFAULT 0,
+                    last_checked    TEXT    NOT NULL,
+                    created_at      TEXT    NOT NULL
+                )
+            """)
+            await self._db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_parking_events_active
+                    ON parking_events(account_id, vehicle_id, resolved)
+            """)
+            await self._db.commit()
+        except Exception:
+            pass  # already exists
+
+    async def _migrate_maintenance_recurring(self):
+        """Add recur_interval_days and recur_interval_miles to maintenance_tasks."""
+        for col_name, col_def in [
+            ("recur_interval_days", "INTEGER"),
+            ("recur_interval_miles", "REAL"),
+        ]:
+            try:
+                await self._db.execute(
+                    f"ALTER TABLE maintenance_tasks ADD COLUMN {col_name} {col_def}"
+                )
+                await self._db.commit()
+                logger.info(f"Added column maintenance_tasks.{col_name}")
+            except Exception:
+                pass  # column already exists
+
+    async def _migrate_work_schedules_table(self):
+        """Create work_schedules table for admin-defined working hour presets."""
+        try:
+            await self._db.execute("""
+                CREATE TABLE IF NOT EXISTS work_schedules (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id  INTEGER NOT NULL REFERENCES accounts(id),
+                    label       TEXT    NOT NULL,
+                    start_hour  INTEGER NOT NULL,
+                    end_hour    INTEGER NOT NULL,
+                    target_role TEXT    NOT NULL DEFAULT 'all',
+                    created_by  INTEGER NOT NULL,
+                    created_at  TEXT    NOT NULL
+                )
             """)
             await self._db.commit()
         except Exception:
@@ -635,6 +709,8 @@ class Database:
             ai_fuel=bool(row["ai_fuel"]) if "ai_fuel" in row.keys() else False,
             alert_events=bool(row["alert_events"]) if "alert_events" in row.keys() else True,
             ai_events=bool(row["ai_events"]) if "ai_events" in row.keys() else False,
+            alert_parking=bool(row["alert_parking"]) if "alert_parking" in row.keys() else True,
+            ai_parking=bool(row["ai_parking"]) if "ai_parking" in row.keys() else False,
             alert_camera=bool(row["alert_camera"]) if "alert_camera" in row.keys() else True,
             quiet_start=row["quiet_start"] if "quiet_start" in row.keys() else None,
             quiet_end=row["quiet_end"] if "quiet_end" in row.keys() else None,
@@ -855,7 +931,8 @@ class Database:
         """Update user fields. Allowed: role, department, truck_num, alerts_on, is_active, alert_*."""
         allowed = {"role", "department", "truck_num", "alerts_on", "is_active",
                    "alert_faults", "alert_health", "alert_fuel", "alert_geofence",
-                   "alert_events",
+                   "alert_events", "alert_parking",
+                   "alert_camera", "ai_parking",
                    "quiet_start", "quiet_end", "timezone", "display_name",
                    "language"}
         updates = {}
@@ -909,7 +986,7 @@ class Database:
         alert_type: 'faults', 'health', 'fuel', 'geofence', or 'events'
         """
         col = f"alert_{alert_type}"
-        if col not in ("alert_faults", "alert_health", "alert_fuel", "alert_geofence", "alert_events"):
+        if col not in ("alert_faults", "alert_health", "alert_fuel", "alert_geofence", "alert_events", "alert_parking", "alert_camera"):
             return []
         cur = await self._db.execute(
             f"SELECT * FROM users WHERE account_id = ? AND alerts_on = 1"
@@ -922,7 +999,7 @@ class Database:
     async def get_all_typed_subscribers(self, alert_type: str) -> list[User]:
         """All users subscribed to a specific alert type (across all accounts)."""
         col = f"alert_{alert_type}"
-        if col not in ("alert_faults", "alert_health", "alert_fuel", "alert_geofence", "alert_events", "alert_camera"):
+        if col not in ("alert_faults", "alert_health", "alert_fuel", "alert_geofence", "alert_events", "alert_parking", "alert_camera"):
             return []
         cur = await self._db.execute(
             f"SELECT * FROM users WHERE alerts_on = 1 AND {col} = 1 AND is_active = 1",
@@ -1159,15 +1236,19 @@ class Database:
         vehicle_name: str, task_type: str, description: str,
         due_date: Optional[str] = None, due_miles: Optional[float] = None,
         created_by: int = 0, vehicle_id: str = "",
+        recur_interval_days: Optional[int] = None,
+        recur_interval_miles: Optional[float] = None,
     ) -> int:
         now = self._now()
         cur = await self._db.execute(
             """INSERT INTO maintenance_tasks
                (account_id, company_code, vehicle_id, vehicle_name,
-                task_type, description, due_date, due_miles, created_by, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                task_type, description, due_date, due_miles, created_by, created_at,
+                recur_interval_days, recur_interval_miles)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, company_code, vehicle_id, vehicle_name,
-             task_type, description, due_date, due_miles, created_by, now),
+             task_type, description, due_date, due_miles, created_by, now,
+             recur_interval_days, recur_interval_miles),
         )
         await self._db.commit()
         return cur.lastrowid
@@ -1212,6 +1293,44 @@ class Database:
         cur = await self._db.execute(
             "SELECT * FROM maintenance_tasks WHERE status = 'pending' AND due_date IS NOT NULL AND due_date < ?",
             (now,),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def get_maintenance_task(self, task_id: int) -> Optional[dict]:
+        """Get a single maintenance task by ID."""
+        cur = await self._db.execute(
+            "SELECT * FROM maintenance_tasks WHERE id = ?", (task_id,),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def update_maintenance_task(self, task_id: int, **kwargs) -> bool:
+        """Update maintenance task fields."""
+        allowed = {"task_type", "description", "due_date", "due_miles",
+                   "recur_interval_days", "recur_interval_miles"}
+        updates = {k: v for k, v in kwargs.items() if k in allowed}
+        if not updates:
+            return False
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [task_id]
+        await self._db.execute(
+            f"UPDATE maintenance_tasks SET {set_clause} WHERE id = ?", values,
+        )
+        await self._db.commit()
+        return True
+
+    async def delete_maintenance_task(self, task_id: int) -> None:
+        """Delete a maintenance task."""
+        await self._db.execute(
+            "DELETE FROM maintenance_tasks WHERE id = ?", (task_id,),
+        )
+        await self._db.commit()
+
+    async def get_pending_tasks_by_miles(self) -> list[dict]:
+        """Get all pending tasks with due_miles set (across all accounts)."""
+        cur = await self._db.execute(
+            "SELECT * FROM maintenance_tasks WHERE status = 'pending' AND due_miles IS NOT NULL",
         )
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
@@ -1959,3 +2078,289 @@ class Database:
             )
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
+
+    # ── Parking Events ────────────────────────────────────────────
+
+    async def upsert_parking_event(
+        self, account_id: int, vehicle_id: str, vehicle_name: str,
+        company_code: str, latitude: float, longitude: float,
+        address: str, first_stopped: str, duration_hours: float,
+        location_class: str,
+    ) -> dict:
+        """Create or update a parking event for a stopped vehicle.
+
+        If an active (unresolved) record exists for this vehicle, update it.
+        Otherwise create a new record.
+        Returns the record dict.
+        """
+        now = self._now()
+        existing = await self.get_active_parking_event(account_id, vehicle_id)
+        if existing:
+            await self._db.execute(
+                "UPDATE parking_events SET "
+                "latitude = ?, longitude = ?, address = ?, "
+                "duration_hours = ?, location_class = ?, "
+                "last_checked = ? "
+                "WHERE id = ?",
+                (latitude, longitude, address,
+                 duration_hours, location_class, now, existing["id"]),
+            )
+            await self._db.commit()
+            existing.update(
+                latitude=latitude, longitude=longitude, address=address,
+                duration_hours=duration_hours, location_class=location_class,
+                last_checked=now,
+            )
+            return existing
+        else:
+            cur = await self._db.execute(
+                "INSERT INTO parking_events "
+                "(account_id, vehicle_id, vehicle_name, company_code, "
+                "latitude, longitude, address, first_stopped, "
+                "duration_hours, location_class, alert_level, "
+                "ai_analysis, resolved, last_checked, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'none', '', 0, ?, ?)",
+                (account_id, vehicle_id, vehicle_name, company_code,
+                 latitude, longitude, address, first_stopped,
+                 duration_hours, location_class, now, now),
+            )
+            await self._db.commit()
+            return {
+                "id": cur.lastrowid,
+                "account_id": account_id,
+                "vehicle_id": vehicle_id,
+                "vehicle_name": vehicle_name,
+                "company_code": company_code,
+                "latitude": latitude,
+                "longitude": longitude,
+                "address": address,
+                "first_stopped": first_stopped,
+                "duration_hours": duration_hours,
+                "location_class": location_class,
+                "alert_level": "none",
+                "ai_analysis": "",
+                "resolved": 0,
+                "last_checked": now,
+                "created_at": now,
+            }
+
+    async def get_active_parking_event(
+        self, account_id: int, vehicle_id: str,
+    ) -> dict | None:
+        """Get the active (unresolved) parking event for a vehicle."""
+        cur = await self._db.execute(
+            "SELECT * FROM parking_events "
+            "WHERE account_id = ? AND vehicle_id = ? AND resolved = 0 "
+            "ORDER BY created_at DESC LIMIT 1",
+            (account_id, vehicle_id),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def get_active_parking_events(
+        self, account_id: int, attention_only: bool = True,
+    ) -> list[dict]:
+        """Get all active parking events for an account.
+
+        attention_only=True: only unsafe/unknown (needs attention).
+        attention_only=False: all active events including safe.
+        Sorted by duration_hours DESC.
+        """
+        if attention_only:
+            cur = await self._db.execute(
+                "SELECT * FROM parking_events "
+                "WHERE account_id = ? AND resolved = 0 "
+                "AND location_class NOT IN ('safe', 'geofence') "
+                "ORDER BY duration_hours DESC",
+                (account_id,),
+            )
+        else:
+            cur = await self._db.execute(
+                "SELECT * FROM parking_events "
+                "WHERE account_id = ? AND resolved = 0 "
+                "ORDER BY duration_hours DESC",
+                (account_id,),
+            )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def resolve_parking_event(
+        self, account_id: int, vehicle_id: str,
+    ) -> bool:
+        """Mark a parking event as resolved (vehicle moved)."""
+        await self._db.execute(
+            "UPDATE parking_events SET resolved = 1, last_checked = ? "
+            "WHERE account_id = ? AND vehicle_id = ? AND resolved = 0",
+            (self._now(), account_id, vehicle_id),
+        )
+        await self._db.commit()
+        return True
+
+    async def update_parking_alert_level(
+        self, event_id: int, alert_level: str, ai_analysis: str = "",
+    ) -> bool:
+        """Update the alert level and AI analysis for a parking event."""
+        now = self._now()
+        if ai_analysis:
+            await self._db.execute(
+                "UPDATE parking_events SET alert_level = ?, ai_analysis = ?, "
+                "last_checked = ? WHERE id = ?",
+                (alert_level, ai_analysis, now, event_id),
+            )
+        else:
+            await self._db.execute(
+                "UPDATE parking_events SET alert_level = ?, "
+                "last_checked = ? WHERE id = ?",
+                (alert_level, now, event_id),
+            )
+        await self._db.commit()
+        return True
+
+    async def get_parking_event_by_id(self, event_id: int) -> dict | None:
+        """Get a single parking event by its row ID."""
+        cur = await self._db.execute(
+            "SELECT * FROM parking_events WHERE id = ?",
+            (event_id,),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def get_parking_history(
+        self, account_id: int, days: int = 0, limit: int = 50,
+    ) -> list[dict]:
+        """Get parking event history (resolved events), newest first.
+
+        If days > 0, only return events resolved within the last N days.
+        """
+        if days > 0:
+            from datetime import timedelta
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+            cur = await self._db.execute(
+                "SELECT * FROM parking_events "
+                "WHERE account_id = ? AND resolved = 1 "
+                "AND last_checked >= ? "
+                "ORDER BY last_checked DESC LIMIT ?",
+                (account_id, cutoff, limit),
+            )
+        else:
+            cur = await self._db.execute(
+                "SELECT * FROM parking_events "
+                "WHERE account_id = ? AND resolved = 1 "
+                "ORDER BY last_checked DESC LIMIT ?",
+                (account_id, limit),
+            )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    # ══════════════════════════════════════════════════════════════
+    # WORK SCHEDULES
+    # ══════════════════════════════════════════════════════════════
+
+    async def create_work_schedule(
+        self, account_id: int, label: str,
+        start_hour: int, end_hour: int, created_by: int,
+        target_role: str = "all",
+    ) -> dict:
+        """Create a working-hour preset for an account."""
+        now = self._now()
+        cur = await self._db.execute(
+            """INSERT INTO work_schedules
+               (account_id, label, start_hour, end_hour, target_role, created_by, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (account_id, label, start_hour, end_hour, target_role, created_by, now),
+        )
+        await self._db.commit()
+        return {
+            "id": cur.lastrowid, "account_id": account_id,
+            "label": label, "start_hour": start_hour, "end_hour": end_hour,
+            "target_role": target_role, "created_by": created_by, "created_at": now,
+        }
+
+    async def get_work_schedules(self, account_id: int) -> list[dict]:
+        """List all work schedules for an account."""
+        cur = await self._db.execute(
+            "SELECT * FROM work_schedules WHERE account_id = ? ORDER BY label",
+            (account_id,),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def get_work_schedule(self, schedule_id: int) -> Optional[dict]:
+        """Get a single work schedule by ID."""
+        cur = await self._db.execute(
+            "SELECT * FROM work_schedules WHERE id = ?", (schedule_id,),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def update_work_schedule(self, schedule_id: int, **kwargs) -> bool:
+        """Update work schedule fields."""
+        allowed = {"label", "start_hour", "end_hour", "target_role"}
+        updates = {k: v for k, v in kwargs.items() if k in allowed}
+        if not updates:
+            return False
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [schedule_id]
+        await self._db.execute(
+            f"UPDATE work_schedules SET {set_clause} WHERE id = ?", values,
+        )
+        await self._db.commit()
+        return True
+
+    async def delete_work_schedule(self, schedule_id: int) -> None:
+        """Delete a work schedule."""
+        await self._db.execute(
+            "DELETE FROM work_schedules WHERE id = ?", (schedule_id,),
+        )
+        await self._db.commit()
+
+    async def get_work_schedules_for_role(
+        self, account_id: int, role: str,
+    ) -> list[dict]:
+        """Get schedules matching a role (includes 'all' target_role)."""
+        cur = await self._db.execute(
+            "SELECT * FROM work_schedules WHERE account_id = ? "
+            "AND (target_role = 'all' OR target_role = ?) ORDER BY label",
+            (account_id, role),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def get_shift_handoff_data(
+        self, account_id: int, telegram_id: int,
+    ) -> dict:
+        """Build shift handoff summary: pending alerts, resolved alerts, pending maintenance."""
+        # Pending (unacked) alerts for user
+        cur = await self._db.execute(
+            "SELECT * FROM alert_acknowledgments "
+            "WHERE account_id = ? AND sent_to = ? AND acknowledged_at IS NULL "
+            "AND status = 'active' ORDER BY created_at DESC",
+            (account_id, telegram_id),
+        )
+        pending_alerts = [dict(r) for r in await cur.fetchall()]
+
+        # Recently resolved alerts (last 24h)
+        from datetime import timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        cur = await self._db.execute(
+            "SELECT * FROM alert_acknowledgments "
+            "WHERE account_id = ? AND sent_to = ? AND acknowledged_at IS NOT NULL "
+            "AND acknowledged_at >= ? ORDER BY acknowledged_at DESC",
+            (account_id, telegram_id, cutoff),
+        )
+        resolved_alerts = [dict(r) for r in await cur.fetchall()]
+
+        # Pending maintenance tasks
+        cur = await self._db.execute(
+            "SELECT * FROM maintenance_tasks "
+            "WHERE account_id = ? AND status IN ('pending', 'overdue') "
+            "ORDER BY CASE status WHEN 'overdue' THEN 0 ELSE 1 END, created_at DESC",
+            (account_id,),
+        )
+        pending_maintenance = [dict(r) for r in await cur.fetchall()]
+
+        return {
+            "pending_alerts": pending_alerts,
+            "resolved_alerts": resolved_alerts,
+            "pending_maintenance": pending_maintenance,
+        }

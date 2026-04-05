@@ -6,6 +6,9 @@ import os
 import sys
 import tempfile
 
+# Ensure encryption is not active during tests (unless explicitly tested)
+os.environ.setdefault("ENCRYPTION_KEY", "")
+
 import pytest
 import pytest_asyncio
 

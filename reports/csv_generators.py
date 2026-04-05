@@ -3,9 +3,7 @@
 import csv
 import io
 from datetime import datetime
-from zoneinfo import ZoneInfo
-
-_TZ_ET = ZoneInfo("America/New_York")
+from constants import TZ_ET as _TZ_ET
 _BOM = "\ufeff"
 
 _NA = "N/A"

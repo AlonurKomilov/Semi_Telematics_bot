@@ -1,0 +1,610 @@
+"""Static model catalog, pricing, URL builders, and credentials."""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+logger = logging.getLogger("bot.ai")
+
+# ── Model Registry ───────────────────────────────────────────────
+#
+# Static catalog of models with ALL known Vertex AI regions.  The
+# live health-check (probe_model_availability) tests which of these
+# the current GCP project actually has access to, and the bot only
+# shows the verified subset to users.
+
+MODEL_REGISTRY: dict[str, dict] = {
+    # ── Gemini (native Vertex AI SDK) ─────────────────────────
+    "gemini-2.5-flash": {
+        "display": "Gemini 2.5 Flash",
+        "description": "Smart & fast, great balance of speed/quality",
+        "category": "gemini",
+        "api_type": "gemini",
+        "locations": [
+            "us-central1", "us-east4", "us-west1", "us-west4", "us-south1",
+            "europe-west1", "europe-west2", "europe-west3", "europe-west4",
+            "europe-west9", "europe-north1",
+            "asia-northeast1", "asia-northeast3", "asia-southeast1",
+            "australia-southeast1",
+            "northamerica-northeast1",
+        ],
+        "max_output_tokens": 16384,
+    },
+    "gemini-2.5-pro": {
+        "display": "Gemini 2.5 Pro",
+        "description": "Most capable, best for complex reasoning",
+        "category": "gemini",
+        "api_type": "gemini",
+        "locations": [
+            "us-central1", "us-east4", "us-west1", "us-west4", "us-south1",
+            "europe-west1", "europe-west4",
+            "europe-west9", "europe-north1",
+            "asia-northeast1",
+            "northamerica-northeast1",
+        ],
+        "max_output_tokens": 16384,
+    },
+    # ── MaaS models (OpenAI-compatible endpoint, serverless) ─
+    "deepseek-r1": {
+        "display": "DeepSeek R1",
+        "description": "Deep reasoning model, strong on analysis",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "deepseek-ai/deepseek-r1-0528-maas",
+        "locations": ["us-central1"],
+        "max_output_tokens": 8192,
+    },
+    "deepseek-v3.2": {
+        "display": "DeepSeek V3.2",
+        "description": "Fast general-purpose, hybrid thinking mode",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "deepseek-ai/deepseek-v3.2-maas",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    "deepseek-v3.1": {
+        "display": "DeepSeek V3.1",
+        "description": "Hybrid inference — thinking + non-thinking modes",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "deepseek-ai/deepseek-v3.1-maas",
+        "locations": ["us-west2"],
+        "max_output_tokens": 8192,
+    },
+    "deepseek-ocr": {
+        "display": "DeepSeek OCR",
+        "description": "DeepSeek OCR — vision-text compression & analysis",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "deepseek-ai/deepseek-ocr-maas",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    "kimi-k2": {
+        "display": "Kimi K2",
+        "description": "Moonshot Kimi K2 — strong reasoning & tool use",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "moonshotai/kimi-k2-thinking-maas",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    "qwen3-next": {
+        "display": "Qwen3-Next 80B",
+        "description": "Alibaba Qwen3-Next instruct — efficient 80B MoE",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "qwen/qwen3-next-80b-a3b-instruct-maas",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    "minimax-m2": {
+        "display": "MiniMax M2",
+        "description": "MiniMax M2 — versatile general model",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "minimaxai/minimax-m2-maas",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    "glm-5": {
+        "display": "GLM 5",
+        "description": "Zhipu GLM 5 — large-scale general model",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "zai-org/glm-5-maas",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    "glm-4.7": {
+        "display": "GLM 4.7",
+        "description": "Zhipu GLM 4.7 — efficient general model",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "zai-org/glm-4.7-maas",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    "gpt-oss-120b": {
+        "display": "GPT OSS 120B",
+        "description": "OpenAI open-source 120B model",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "openai/gpt-oss-120b-maas",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    "gpt-oss-20b": {
+        "display": "GPT OSS 20B",
+        "description": "OpenAI open-source 20B — fast & cheap",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "openai/gpt-oss-20b-maas",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    "llama-4-scout": {
+        "display": "Llama 4 Scout",
+        "description": "Meta Llama 4 Scout — fast 17B MoE model",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "meta/llama-4-scout-17b-16e-instruct-maas",
+        "locations": ["us-east5"],
+        "max_output_tokens": 8192,
+    },
+    "llama-4-maverick": {
+        "display": "Llama 4 Maverick",
+        "description": "Meta Llama 4 Maverick — powerful 17B x 128E MoE",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "meta/llama-4-maverick-17b-128e-instruct-maas",
+        "locations": ["us-east5"],
+        "max_output_tokens": 8192,
+    },
+    "llama-3.3": {
+        "display": "Llama 3.3 70B",
+        "description": "Meta Llama 3.3 70B — proven & reliable",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "meta/llama-3.3-70b-instruct-maas",
+        "locations": ["us-central1"],
+        "max_output_tokens": 8192,
+    },
+    # ── Gemini 3.x (native Vertex AI SDK, global only) ───────
+    "gemini-3.1-flash-lite-preview": {
+        "display": "Gemini 3.1 Flash-Lite",
+        "description": "Next-gen Gemini — ultra fast & cheap (preview)",
+        "category": "gemini",
+        "api_type": "gemini",
+        "locations": ["global"],
+        "max_output_tokens": 16384,
+    },
+    "gemini-3.1-pro-preview": {
+        "display": "Gemini 3.1 Pro",
+        "description": "Next-gen Gemini Pro — most capable (preview)",
+        "category": "gemini",
+        "api_type": "gemini",
+        "locations": ["global"],
+        "max_output_tokens": 16384,
+    },
+    # ── Claude (Anthropic rawPredict on Vertex AI) ───────────
+    "claude-sonnet-4.6": {
+        "display": "Claude Sonnet 4.6",
+        "description": "Anthropic Claude Sonnet 4.6 — top-tier reasoning",
+        "category": "anthropic",
+        "api_type": "anthropic",
+        "anthropic_model_id": "claude-sonnet-4-6",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    # ── Codestral (Mistral rawPredict on Vertex AI) ──────────
+    "codestral-2": {
+        "display": "Codestral 2",
+        "description": "Mistral Codestral 2 — code-focused model",
+        "category": "mistral",
+        "api_type": "mistral_raw",
+        "mistral_model_id": "codestral-2",
+        "mistral_publisher": "mistralai",
+        "locations": ["europe-west4", "us-central1"],
+        "max_output_tokens": 4096,
+    },
+}
+
+# ── Pricing (USD per 1M tokens) ─────────────────────────────────
+# Vertex AI pricing includes separate rates for thinking tokens.
+# For Gemini: thinking is NOT included in reply (candidates_token_count).
+# For MaaS (OpenAI-compat): reasoning IS included in completion_tokens.
+#   "thinking" rates are set explicitly for all reasoning models.
+#   MaaS reasoning = output rate on Vertex AI (as of 2026-Q2).
+
+MODEL_PRICING: dict[str, dict[str, float]] = {
+    # Gemini (thinking separate from output in API)
+    "gemini-2.5-flash":            {"input": 0.15, "output": 0.60, "thinking": 0.70},
+    "gemini-2.5-pro":              {"input": 1.25, "output": 10.00, "thinking": 3.75},
+    "gemini-3.1-flash-lite-preview": {"input": 0.10, "output": 0.40, "thinking": 0.40},
+    "gemini-3.1-pro-preview":      {"input": 1.25, "output": 10.00, "thinking": 3.75},
+    # MaaS reasoning models (thinking included in completion_tokens)
+    "deepseek-r1":                 {"input": 0.80, "output": 2.17, "thinking": 2.17},
+    "deepseek-v3.2":               {"input": 0.30, "output": 0.88, "thinking": 0.88},
+    "deepseek-v3.1":               {"input": 0.30, "output": 0.88, "thinking": 0.88},
+    "kimi-k2":                     {"input": 0.60, "output": 2.40, "thinking": 2.40},
+    # MaaS non-reasoning models
+    "deepseek-ocr":                {"input": 0.30, "output": 0.88},
+    "qwen3-next":                  {"input": 0.14, "output": 0.27},
+    "minimax-m2":                  {"input": 0.36, "output": 1.10},
+    "glm-5":                       {"input": 0.50, "output": 2.00},
+    "glm-4.7":                     {"input": 0.14, "output": 0.55},
+    "gpt-oss-120b":                {"input": 0.30, "output": 0.50},
+    "gpt-oss-20b":                 {"input": 0.10, "output": 0.30},
+    "llama-4-scout":               {"input": 0.14, "output": 0.27},
+    "llama-4-maverick":            {"input": 0.30, "output": 0.50},
+    "llama-3.3":                   {"input": 0.20, "output": 0.20},
+    # Partner models
+    "claude-sonnet-4.6":           {"input": 3.00, "output": 15.00, "thinking": 15.00},
+    "codestral-2":                 {"input": 0.30, "output": 0.90},
+}
+
+_COST_MARGIN = 0.30    # 30 % business margin
+
+_TYPICAL_INPUT_TOKENS = 2000
+_TYPICAL_OUTPUT_TOKENS = 1000
+_TYPICAL_THINKING_TOKENS = 4000  # thinking-heavy models
+
+
+def estimate_cost(model: str, prompt_tokens: int,
+                  reply_tokens: int,
+                  total_tokens: int = 0,
+                  thinking_tokens: int = 0) -> float:
+    """Return estimated cost in USD including thinking tokens + margin.
+
+    Two patterns of thinking-token accounting:
+
+    • **Gemini** (native SDK): ``reply_tokens`` = candidates only (no
+      thinking).  ``total_tokens`` includes everything.
+      *thinking = total − prompt − reply*.
+
+    • **MaaS / OpenAI-compat** (DeepSeek-R1, Kimi-K2, …):
+      ``reply_tokens`` = completion_tokens which *already includes*
+      reasoning.  ``total_tokens = prompt + completion``.  The explicit
+      ``thinking_tokens`` from ``completion_tokens_details`` tells us
+      how many are reasoning.  We subtract them from reply to avoid
+      double-counting.
+
+    If neither derivation applies, all output is priced at the output rate.
+    """
+    pricing = MODEL_PRICING.get(model, {"input": 1.0, "output": 2.0})
+    factor = 1.0 + _COST_MARGIN
+    thinking_rate = pricing.get("thinking", pricing["output"])
+
+    # Determine thinking vs text-output split
+    derived = max(0, total_tokens - prompt_tokens - reply_tokens)
+
+    if derived > 0:
+        # Gemini path: thinking is separate from reply in the API
+        thinking = derived
+        text_reply = reply_tokens
+    elif thinking_tokens > 0:
+        # MaaS path: reasoning is inside reply_tokens
+        thinking = thinking_tokens
+        text_reply = max(0, reply_tokens - thinking_tokens)
+    else:
+        thinking = 0
+        text_reply = reply_tokens
+
+    cost = (
+        prompt_tokens * pricing["input"] / 1_000_000
+        + text_reply * pricing["output"] / 1_000_000
+        + thinking * thinking_rate / 1_000_000
+    ) * factor
+    return round(cost, 6)
+
+
+def estimate_request_cost(model: str) -> float:
+    """Estimate cost of a typical request for display in the model selector."""
+    pricing = MODEL_PRICING.get(model, {})
+    thinking = _TYPICAL_THINKING_TOKENS if "thinking" in pricing else 0
+    total = _TYPICAL_INPUT_TOKENS + _TYPICAL_OUTPUT_TOKENS + thinking
+    return estimate_cost(
+        model, _TYPICAL_INPUT_TOKENS, _TYPICAL_OUTPUT_TOKENS, total,
+    )
+
+
+# ── Defaults ─────────────────────────────────────────────────────
+
+DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_LOCATION = "us-central1"
+DEFAULT_VISION_MODEL = "gemini-2.5-flash"
+DEFAULT_VISION_LOCATION = "us-central1"
+
+# ── Fallback Chain ───────────────────────────────────────────────
+
+_FALLBACK_CHAIN: list[str] = [
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "deepseek-v3.2",
+    "llama-4-maverick",
+    "qwen3-next",
+    "llama-3.3",
+    "glm-4.7",
+    "gemini-3.1-flash-lite-preview",
+]
+
+# ── Query helpers ────────────────────────────────────────────────
+
+
+def _is_openai_compat(model_name: str) -> bool:
+    """Return True for non-Gemini API types (openai_compat, anthropic, mistral_raw)."""
+    info = MODEL_REGISTRY.get(model_name, {})
+    return info.get("api_type") != "gemini"
+
+
+def is_vision_capable(model_name: str) -> bool:
+    """Check whether a model supports multimodal vision (image input)."""
+    info = MODEL_REGISTRY.get(model_name, {})
+    return info.get("api_type") == "gemini"
+
+
+def get_model_info(model_name: str) -> dict | None:
+    """Get registry info for a model, or None if unknown."""
+    return MODEL_REGISTRY.get(model_name)
+
+
+def get_locations_for_model(model_name: str) -> list[str]:
+    """Return available locations for a model, or [DEFAULT_LOCATION] if unknown."""
+    info = MODEL_REGISTRY.get(model_name)
+    if info and info.get("locations"):
+        return info["locations"]
+    return [DEFAULT_LOCATION]
+
+
+def get_available_models() -> list[dict]:
+    """Return all registered models with display info, sorted by category."""
+    result = []
+    for name, info in MODEL_REGISTRY.items():
+        result.append({
+            "name": name,
+            "display": info["display"],
+            "description": info["description"],
+            "category": info["category"],
+            "locations": info["locations"],
+            "max_output_tokens": info["max_output_tokens"],
+            "est_cost": estimate_request_cost(name),
+        })
+    result.sort(key=lambda m: (m["category"], m["name"]))
+    return result
+
+
+def get_vision_models() -> list[dict]:
+    """Return only vision-capable models with display info."""
+    result = []
+    for name, info in MODEL_REGISTRY.items():
+        if info.get("api_type") != "gemini":
+            continue
+        result.append({
+            "name": name,
+            "display": info["display"],
+            "description": info["description"],
+            "category": info["category"],
+            "locations": info["locations"],
+            "max_output_tokens": info["max_output_tokens"],
+            "est_cost": estimate_request_cost(name),
+        })
+    result.sort(key=lambda m: m["name"])
+    return result
+
+
+def get_text_models() -> list[dict]:
+    """Return all models (for text/chat tasks), sorted by category."""
+    return get_available_models()
+
+
+# ── URL Builders ─────────────────────────────────────────────────
+
+
+def _maas_base_url(location: str, project: str) -> str:
+    """Build the OpenAI-compat chat/completions URL."""
+    if location == "global":
+        host = "aiplatform.googleapis.com"
+    else:
+        host = f"{location}-aiplatform.googleapis.com"
+    return (
+        f"https://{host}/v1/"
+        f"projects/{project}/locations/{location}/"
+        f"endpoints/openapi/chat/completions"
+    )
+
+
+def _anthropic_url(location: str, project: str, model_id: str) -> str:
+    """Build the Anthropic rawPredict URL on Vertex AI."""
+    if location == "global":
+        host = "aiplatform.googleapis.com"
+    else:
+        host = f"{location}-aiplatform.googleapis.com"
+    return (
+        f"https://{host}/v1/projects/{project}/locations/{location}/"
+        f"publishers/anthropic/models/{model_id}:rawPredict"
+    )
+
+
+def _mistral_url(location: str, project: str,
+                 publisher: str, model_id: str) -> str:
+    """Build the Mistral rawPredict URL on Vertex AI."""
+    host = f"{location}-aiplatform.googleapis.com"
+    return (
+        f"https://{host}/v1/projects/{project}/locations/{location}/"
+        f"publishers/{publisher}/models/{model_id}:rawPredict"
+    )
+
+
+# ── Credentials ──────────────────────────────────────────────────
+
+
+def _get_credentials():
+    """Load service account credentials (internal helper)."""
+    import os
+    from google.oauth2 import service_account
+    creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+    if not creds_path:
+        return None
+    try:
+        return service_account.Credentials.from_service_account_file(
+            creds_path,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
+    except Exception:
+        return None
+
+
+# ── Cloud Monitoring (real Vertex AI usage) ──────────────────────
+
+# Map Cloud Monitoring model IDs → our short model names
+_CLOUD_MODEL_MAP: dict[str, str] = {
+    "gemini-2.5-flash": "gemini-2.5-flash",
+    "gemini-2.5-pro": "gemini-2.5-pro",
+    "gemini-2.5-pro-001": "gemini-2.5-pro",
+    "gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite-preview",
+    "gemini-3.1-pro-preview": "gemini-3.1-pro-preview",
+    "deepseek-r1-0528-maas": "deepseek-r1",
+    "deepseek-v3.2-maas": "deepseek-v3.2",
+    "deepseek-v3.1-maas": "deepseek-v3.1",
+    "deepseek-ocr-maas": "deepseek-ocr",
+    "kimi-k2-thinking-maas": "kimi-k2",
+    "qwen3-next-80b-a3b-instruct-maas": "qwen3-next",
+    "minimax-m2-maas": "minimax-m2",
+    "glm-5-maas": "glm-5",
+    "glm-4.7-maas": "glm-4.7",
+    "gpt-oss-120b-maas": "gpt-oss-120b",
+    "gpt-oss-20b-maas": "gpt-oss-20b",
+    "llama-4-scout-17b-16e-instruct-maas": "llama-4-scout",
+    "llama-4-maverick-17b-128e-instruct-maas": "llama-4-maverick",
+    "llama-3.3-70b-instruct-maas": "llama-3.3",
+    "claude-sonnet-4-6": "claude-sonnet-4.6",
+    "codestral-2": "codestral-2",
+}
+
+
+def _resolve_cloud_model(cloud_id: str) -> str:
+    """Map a Cloud Monitoring model_user_id to our registry key."""
+    if cloud_id in MODEL_PRICING:
+        return cloud_id
+    if cloud_id in _CLOUD_MODEL_MAP:
+        return _CLOUD_MODEL_MAP[cloud_id]
+    # Try suffix matching (e.g. "deepseek-ai/deepseek-r1-0528-maas")
+    short = cloud_id.rsplit("/", 1)[-1] if "/" in cloud_id else cloud_id
+    return _CLOUD_MODEL_MAP.get(short, cloud_id)
+
+
+async def get_vertex_ai_cloud_usage(days: int = 90) -> dict | None:
+    """Query real Vertex AI usage from Cloud Monitoring.
+
+    Returns dict with by_model breakdown, totals, and cost with margin,
+    or None if the API is unavailable.
+    """
+    import asyncio
+    import os
+    from collections import defaultdict
+    from datetime import datetime, timedelta, timezone
+
+    try:
+        from google.cloud import monitoring_v3
+    except ImportError:
+        logger.debug("google-cloud-monitoring not installed")
+        return None
+
+    creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+    project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "")
+    if not creds_path or not project_id:
+        return None
+
+    def _query():
+        client = monitoring_v3.MetricServiceClient()
+        project_name = f"projects/{project_id}"
+        now = datetime.now(timezone.utc)
+        start = now - timedelta(days=days)
+        interval = monitoring_v3.TimeInterval({
+            "start_time": {"seconds": int(start.timestamp())},
+            "end_time": {"seconds": int(now.timestamp())},
+        })
+
+        # Token counts by model (input/output)
+        token_data = defaultdict(lambda: {"input": 0, "output": 0})
+        results = client.list_time_series(request={
+            "name": project_name,
+            "filter": 'metric.type = "aiplatform.googleapis.com/publisher/online_serving/token_count"',
+            "interval": interval,
+            "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
+        })
+        for ts in results:
+            cloud_model = ts.resource.labels.get("model_user_id", "unknown")
+            model = _resolve_cloud_model(cloud_model)
+            tok_type = ts.metric.labels.get("type", "")
+            total_val = sum(
+                p.value.int64_value or int(p.value.double_value)
+                for p in ts.points
+            )
+            if tok_type in ("input", "output"):
+                token_data[model][tok_type] += total_val
+
+        # Request counts by model
+        request_data = defaultdict(lambda: {"ok": 0, "errors": 0})
+        results = client.list_time_series(request={
+            "name": project_name,
+            "filter": 'metric.type = "aiplatform.googleapis.com/publisher/online_serving/model_invocation_count"',
+            "interval": interval,
+            "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
+        })
+        for ts in results:
+            cloud_model = ts.resource.labels.get("model_user_id", "unknown")
+            model = _resolve_cloud_model(cloud_model)
+            status = ts.metric.labels.get("response_code", "200")
+            total_val = sum(
+                p.value.int64_value or int(p.value.double_value)
+                for p in ts.points
+            )
+            if status == "200":
+                request_data[model]["ok"] += total_val
+            else:
+                request_data[model]["errors"] += total_val
+
+        # Build result
+        all_models = set(list(token_data.keys()) + list(request_data.keys()))
+        factor = 1.0 + _COST_MARGIN
+        by_model = {}
+        grand = {"requests": 0, "errors": 0, "input": 0, "output": 0,
+                 "base_cost": 0.0, "cost": 0.0}
+
+        for model in sorted(all_models):
+            tok = token_data.get(model, {"input": 0, "output": 0})
+            req = request_data.get(model, {"ok": 0, "errors": 0})
+            pricing = MODEL_PRICING.get(model, {"input": 1.0, "output": 2.0})
+            base = (tok["input"] * pricing["input"] / 1_000_000
+                    + tok["output"] * pricing["output"] / 1_000_000)
+            cost = round(base * factor, 6)
+
+            by_model[model] = {
+                "requests": req["ok"],
+                "errors": req["errors"],
+                "input": tok["input"],
+                "output": tok["output"],
+                "base_cost": round(base, 6),
+                "cost": cost,
+            }
+            grand["requests"] += req["ok"]
+            grand["errors"] += req["errors"]
+            grand["input"] += tok["input"]
+            grand["output"] += tok["output"]
+            grand["base_cost"] += base
+            grand["cost"] += cost
+
+        grand["base_cost"] = round(grand["base_cost"], 4)
+        grand["cost"] = round(grand["cost"], 4)
+
+        return {"days": days, "totals": grand, "by_model": by_model}
+
+    try:
+        return await asyncio.to_thread(_query)
+    except Exception as e:
+        logger.warning(f"Cloud Monitoring query failed: {e}")
+        return None

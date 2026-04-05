@@ -1,13 +1,12 @@
-"""Bot-wide configuration, globals, and client cache."""
+"""Bot-wide configuration — environment settings and re-exported runtime state.
+
+Pure read-only configuration (env vars, logging) lives here.
+Mutable runtime state (db, caches, client helpers) lives in bot.state
+and is re-exported below for backward compatibility.
+"""
 
 import os
 import logging
-import time
-
-from cachetools import LRUCache
-
-from database import Database
-from samsara_client import MultiCompanyClient, build_multi_company_client
 
 # ── Environment ──────────────────────────────────────────────────
 
@@ -63,56 +62,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger("bot")
 
-# ── Database ─────────────────────────────────────────────────────
+# ── Mutable runtime state (canonical home: bot.state) ────────────
+# Re-exported here for backward compatibility so existing
+# ``from bot.config import db, get_client, …`` keeps working.
 
-db = Database(DATABASE_PATH)
-
-# ── In-memory caches (bounded to prevent unbounded growth) ───────
-
-_client_cache: dict[int, MultiCompanyClient] = {}
-_known_faults = LRUCache(maxsize=10_000)      # "acct:ORG:vid" → set(codes)
-_active_messages = LRUCache(maxsize=5_000)     # (chat_id, user_id) → [msg_ids]
 bot_username: str = ""                         # set in post_init via getMe
 
-# Rate limiter: (user_id, command) → last_use_timestamp
-_rate_limits: dict[tuple[int, str], float] = {}
-
-
-def check_rate_limit(user_id: int, command: str) -> bool:
-    """Return True if the command is allowed (not rate-limited).
-
-    Returns False if the user should be throttled.
-    """
-    key = (user_id, command)
-    now = time.time()
-    last = _rate_limits.get(key, 0)
-    if now - last < RATE_LIMIT_SECONDS:
-        return False
-    _rate_limits[key] = now
-    return True
-
-
-# ── Client cache helpers ─────────────────────────────────────────
-
-async def get_client(account_id: int) -> MultiCompanyClient:
-    """Get or build a MultiCompanyClient for an account."""
-    if account_id in _client_cache:
-        return _client_cache[account_id]
-    companies = await db.get_account_companies(account_id)
-    client = build_multi_company_client(companies, SAMSARA_BASE_URL)
-    await client.prefetch_org_ids()
-    _client_cache[account_id] = client
-    return client
-
-
-async def invalidate_client(account_id: int):
-    """Drop cached client — call after adding/removing companies."""
-    old = _client_cache.pop(account_id, None)
-    if old:
-        await old.close()
-
-
-async def get_user_company_codes(account_id: int) -> list[str]:
-    """Get sorted company codes for an account."""
-    companies = await db.get_account_companies(account_id)
-    return [o.code for o in companies]
+from bot.state import (  # noqa: E402
+    db,
+    _client_cache,
+    _known_faults,
+    _active_messages,
+    _rate_limits,
+    check_rate_limit,
+    get_client,
+    invalidate_client,
+    get_user_company_codes,
+)

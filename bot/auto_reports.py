@@ -17,7 +17,7 @@ from telegram.constants import ParseMode
 from database import Role
 from permissions import can
 from samsara_client import populate_company_display
-from pdf_generator import (
+from reports import (
     generate_fault_report_pdf,
     generate_fuel_report_pdf,
     generate_vehicle_health_pdf,
@@ -219,7 +219,7 @@ async def _generate_report_pdf(account_id: int, report_type: str):
 
         elif report_type == "camera":
             from bot.cameras import _gather_snapshots, _analyze_snapshot, _save_camera_results
-            import ai_client as _ai
+            import ai as _ai
 
             snapshots, _ = await _gather_snapshots(account_id)
             if not snapshots:
@@ -276,8 +276,7 @@ async def send_auto_reports(app: Application):
     if not subscribers:
         return
 
-    from zoneinfo import ZoneInfo as _ZI
-    _TZ_ET = _ZI("America/New_York")
+    from constants import TZ_ET as _TZ_ET
 
     for sub in subscribers:
         freq = sub.get("frequency", "daily")

@@ -56,8 +56,8 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
             rows.append(row2)
 
         # AI Assistant (visible when API key is configured)
-        import ai_client
-        if ai_client.is_configured():
+        import ai
+        if ai.is_configured():
             rows.append([InlineKeyboardButton(t("menu.ai_assistant"), callback_data="cmd_ai")])
 
         # Driver: show truck shortcut
@@ -85,11 +85,14 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
                 callback_data="cmd_no_api_info",
             )])
 
-    # ── Management buttons (always visible) ─────────────────────
+    # ── Management & Settings (bottom row) ─────────────────────
     has_mgmt = (perms.can_manage_account or perms.can_manage_users
                 or perms.can_invite or perms.can_manage_companies)
+    bottom = []
     if has_mgmt:
-        rows.append([InlineKeyboardButton(t("menu.management"), callback_data="submenu_mgmt")])
+        bottom.append(InlineKeyboardButton(t("menu.management"), callback_data="submenu_mgmt"))
+    bottom.append(InlineKeyboardButton(t("menu.settings"), callback_data="cmd_settings"))
+    rows.append(bottom)
 
     return InlineKeyboardMarkup(rows)
 
@@ -161,6 +164,13 @@ def submenu_tools_kb(role: Role) -> InlineKeyboardMarkup:
     if perms.can_faults:
         rows.append([InlineKeyboardButton("📷 Camera Check", callback_data="cmd_cam_tool")])
 
+    # Parking safety — uses geofence permission
+    if perms.can_geofence_all or perms.can_geofence_own:
+        rows.append([InlineKeyboardButton("🅿️ Parking Safety", callback_data="cmd_parking_events")])
+
+    if perms.can_maintenance_all or perms.can_maintenance_own:
+        rows.append([InlineKeyboardButton(t("costs_menu.maintenance"), callback_data="cmd_maintenance")])
+
     rows.append([InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
 
@@ -178,15 +188,12 @@ def submenu_costs_kb(role: Role) -> InlineKeyboardMarkup:
     if row1:
         rows.append(row1)
 
-    if perms.can_maintenance_all or perms.can_maintenance_own:
-        rows.append([InlineKeyboardButton(t("costs_menu.maintenance"), callback_data="cmd_maintenance")])
-
     rows.append([InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
 
 
 def submenu_mgmt_kb(role: Role, has_api: bool = False) -> InlineKeyboardMarkup:
-    """Team & Settings sub-menu — top-level navigation."""
+    """Team & Management sub-menu — account, users, audit, schedules."""
     perms = get_permissions(role)
     rows = []
 
@@ -203,8 +210,10 @@ def submenu_mgmt_kb(role: Role, has_api: bool = False) -> InlineKeyboardMarkup:
     if perms.can_manage_users:
         rows.append([InlineKeyboardButton("📜 Audit Log", callback_data="cmd_audit")])
 
-    # ── Personal ────────────────────────────────────────────
-    rows.append([InlineKeyboardButton(t("menu.settings"), callback_data="cmd_settings")])
+    # ── Working Hours (admin/owner) ─────────────────────────
+    if role in (Role.OWNER, Role.ADMIN):
+        rows.append([InlineKeyboardButton("🕐 Working Hours", callback_data="cmd_work_schedules")])
+
     rows.append([InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
 
@@ -332,12 +341,14 @@ def truck_kb(
     truck_name: str | None = None,
     company: str | None = None,
     show_faults: bool = True,
+    ack_id: int | None = None,
 ) -> InlineKeyboardMarkup:
     """Buttons shown below a single-truck detail.
 
     *show_faults* — when False (Dispatcher / Driver) the PDF report
     button is hidden so role restrictions are enforced visually as
     well as logically.
+    *ack_id* — when set, shows a Back to Alert button instead of Main Menu.
     """
     rows = []
     if show_faults and truck_name and company:
@@ -345,15 +356,18 @@ def truck_kb(
             InlineKeyboardButton("📄 PDF Report", callback_data=f"truckfaults_{company}_{truck_name}"),
         ])
     if truck_name and company:
-        import ai_client
-        if ai_client.is_configured():
+        import ai
+        if ai.is_configured():
             rows.append([
                 InlineKeyboardButton("🔧 AI Diagnose", callback_data=f"ai_diag_{company}_{truck_name}"),
             ])
         rows.append([
             InlineKeyboardButton("📷 Camera Check", callback_data=f"cam_truck_{truck_name}"),
         ])
-    rows.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
+    if ack_id is not None:
+        rows.append([InlineKeyboardButton("↩️ Back to Alert", callback_data=f"back_alert_{ack_id}")])
+    else:
+        rows.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -383,6 +397,10 @@ def system_owner_kb() -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton("📊 Dashboard", callback_data="sys_dashboard"),
             InlineKeyboardButton("📋 Accounts", callback_data="sys_accounts"),
+        ],
+        [
+            InlineKeyboardButton("🤖 AI Stats", callback_data="sys_ai_stats"),
+            InlineKeyboardButton("🖥 Server", callback_data="sys_server"),
         ],
         [
             InlineKeyboardButton("🔄 Refresh", callback_data="sys_dashboard"),
@@ -534,23 +552,6 @@ def scorecard_format_kb(company: str | None = None) -> InlineKeyboardMarkup:
     ])
 
 
-def events_format_kb() -> InlineKeyboardMarkup:
-    """Period + format picker for Events dashboard."""
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("7 Days", callback_data="events_text_7"),
-            InlineKeyboardButton("14 Days", callback_data="events_text_14"),
-            InlineKeyboardButton("30 Days", callback_data="events_text_30"),
-        ],
-        [
-            InlineKeyboardButton("📊 CSV 7d", callback_data="events_csv_7"),
-            InlineKeyboardButton("📊 CSV 14d", callback_data="events_csv_14"),
-            InlineKeyboardButton("📊 CSV 30d", callback_data="events_csv_30"),
-        ],
-        [InlineKeyboardButton("◀️ Back", callback_data="submenu_reports")],
-    ])
-
-
 def fuelcost_menu_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("➕ Log Fill-Up", callback_data="fuelcost_add")],
@@ -574,8 +575,173 @@ def maintenance_menu_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("➕ Add Task", callback_data="maint_add")],
         [InlineKeyboardButton("📋 View Tasks", callback_data="maint_view")],
-        [InlineKeyboardButton("◀️ Back", callback_data="submenu_costs")],
+        [InlineKeyboardButton("◀️ Back", callback_data="submenu_tools")],
     ])
+
+
+def maint_company_picker_kb(company_codes: list[str]) -> InlineKeyboardMarkup:
+    """Company picker for maintenance — add task flow."""
+    rows = []
+    for code in company_codes:
+        display = COMPANY_DISPLAY.get(code, code)
+        rows.append([InlineKeyboardButton(
+            f"🚛 {display} ({code})", callback_data=f"maint_co_{code}",
+        )])
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_maintenance")])
+    return InlineKeyboardMarkup(rows)
+
+
+def maint_vehicle_list_kb(
+    vehicles: list[dict],
+    page: int = 0,
+    page_size: int = 8,
+    company_filter: str | None = None,
+) -> InlineKeyboardMarkup:
+    """Paginated truck picker for maintenance task creation."""
+    start = page * page_size
+    page_vehicles = vehicles[start:start + page_size]
+    total_pages = max(1, (len(vehicles) + page_size - 1) // page_size)
+
+    rows = []
+    for v in page_vehicles:
+        name = v["name"]
+        co = v.get("_org", "")
+        label = f"#{name}"
+        if co:
+            label += f" — {co}"
+        rows.append([InlineKeyboardButton(label, callback_data=f"maint_truck_{co}_{name}")])
+
+    # Pagination
+    nav = []
+    prefix = f"maint_pg_{company_filter or 'ALL'}"
+    if page > 0:
+        nav.append(InlineKeyboardButton("◀️ Prev", callback_data=f"{prefix}_{page - 1}"))
+    nav.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="noop"))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton("Next ▶️", callback_data=f"{prefix}_{page + 1}"))
+    rows.append(nav)
+
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="maint_add")])
+    return InlineKeyboardMarkup(rows)
+
+
+def maint_type_kb() -> InlineKeyboardMarkup:
+    """Task type picker with extended types."""
+    types = [
+        ("oil", "🛢 Oil Change"),
+        ("tires", "🛞 Tire Service"),
+        ("brakes", "🔴 Brake Inspection"),
+        ("inspection", "📋 General Inspection"),
+        ("transmission", "⚙️ Transmission"),
+        ("electrical", "⚡ Electrical"),
+        ("dot_inspection", "🏛 DOT Inspection"),
+        ("dpf_regen", "♨️ DPF Regen"),
+        ("def_refill", "💧 DEF Refill"),
+        ("custom", "✏️ Custom"),
+    ]
+    rows = []
+    for i in range(0, len(types), 2):
+        row = []
+        for key, label in types[i:i + 2]:
+            row.append(InlineKeyboardButton(label, callback_data=f"maint_type_{key}"))
+        rows.append(row)
+    rows.append([InlineKeyboardButton("◀️ Cancel", callback_data="cmd_maintenance")])
+    return InlineKeyboardMarkup(rows)
+
+
+def maint_due_kb() -> InlineKeyboardMarkup:
+    """Due date step — skip button instead of typing 'skip'."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⏭ No Due Date", callback_data="maint_skip_date")],
+        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_maintenance")],
+    ])
+
+
+def maint_miles_kb() -> InlineKeyboardMarkup:
+    """Due mileage step — skip or enter miles."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⏭ No Mileage Limit", callback_data="maint_skip_miles")],
+        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_maintenance")],
+    ])
+
+
+def maint_desc_kb() -> InlineKeyboardMarkup:
+    """Description step — skip button."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⏭ Skip Description", callback_data="maint_skip_desc")],
+        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_maintenance")],
+    ])
+
+
+def maint_task_detail_kb(task_id: int, status: str) -> InlineKeyboardMarkup:
+    """Detail view for a single task — edit/done/delete actions."""
+    rows = []
+    if status in ("pending", "overdue"):
+        rows.append([
+            InlineKeyboardButton("✅ Mark Done", callback_data=f"maint_done_{task_id}"),
+            InlineKeyboardButton("✏️ Edit", callback_data=f"maint_edit_{task_id}"),
+        ])
+    rows.append([
+        InlineKeyboardButton("🗑 Delete", callback_data=f"maint_del_{task_id}"),
+    ])
+    rows.append([InlineKeyboardButton("◀️ Back to Tasks", callback_data="maint_view")])
+    return InlineKeyboardMarkup(rows)
+
+
+def maint_edit_kb(task_id: int) -> InlineKeyboardMarkup:
+    """Edit menu — pick which field to change."""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("📋 Type", callback_data=f"maint_etype_{task_id}"),
+            InlineKeyboardButton("📅 Due Date", callback_data=f"maint_edate_{task_id}"),
+        ],
+        [
+            InlineKeyboardButton("🛣 Due Miles", callback_data=f"maint_emiles_{task_id}"),
+            InlineKeyboardButton("📝 Description", callback_data=f"maint_edesc_{task_id}"),
+        ],
+        [InlineKeyboardButton("◀️ Back", callback_data=f"maint_detail_{task_id}")],
+    ])
+
+
+def maint_delete_confirm_kb(task_id: int) -> InlineKeyboardMarkup:
+    """Confirm deletion."""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("⚠️ Yes, Delete", callback_data=f"maint_delok_{task_id}"),
+            InlineKeyboardButton("◀️ No, Cancel", callback_data=f"maint_detail_{task_id}"),
+        ],
+    ])
+
+
+def maint_task_list_kb(
+    tasks: list[dict],
+    page: int = 0,
+    page_size: int = 8,
+) -> InlineKeyboardMarkup:
+    """Paginated task list — tap a task to see details."""
+    start = page * page_size
+    page_tasks = tasks[start:start + page_size]
+    total_pages = max(1, (len(tasks) + page_size - 1) // page_size)
+
+    status_emoji = {"overdue": "🔴", "pending": "🟡", "done": "✅"}
+    rows = []
+    for task in page_tasks:
+        emoji = status_emoji.get(task["status"], "⚪")
+        label = f"{emoji} #{task['vehicle_name']} — {task['task_type']}"
+        rows.append([InlineKeyboardButton(label, callback_data=f"maint_detail_{task['id']}")])
+
+    # Pagination
+    if total_pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton("◀️ Prev", callback_data=f"maint_lpage_{page - 1}"))
+        nav.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="noop"))
+        if page < total_pages - 1:
+            nav.append(InlineKeyboardButton("Next ▶️", callback_data=f"maint_lpage_{page + 1}"))
+        rows.append(nav)
+
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_maintenance")])
+    return InlineKeyboardMarkup(rows)
 
 
 def maintenance_task_kb(task_id: int) -> InlineKeyboardMarkup:
@@ -737,10 +903,71 @@ def alert_settings_kb(user) -> InlineKeyboardMarkup:
             f"{_icon(user.alert_camera)} 📷 Camera",
             callback_data="alert_toggle_camera",
         )],
+        [InlineKeyboardButton(
+            f"{_icon(user.alert_parking)} 🅿️ {t('alert_settings.parking')}",
+            callback_data="alert_toggle_parking",
+        )],
         [InlineKeyboardButton(t("alert_settings.pending"), callback_data="cmd_pending_alerts"),
          InlineKeyboardButton(t("alert_settings.history"), callback_data="cmd_alert_history")],
         [InlineKeyboardButton(t("alert_settings.disable_all"), callback_data="alert_disable_all")],
         [InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+def parking_events_kb(
+    events: list[dict], show_all: bool = False,
+) -> InlineKeyboardMarkup:
+    """Keyboard listing active unsafe parking events.
+
+    show_all=False (default): attention-only view (unsafe + unknown).
+    show_all=True: all stopped vehicles including safe/geofenced.
+    """
+    rows = []
+    for ev in events[:10]:
+        vname = ev.get("vehicle_name", "?")
+        dur = ev.get("duration_hours", 0)
+        loc_class = ev.get("location_class", "unknown")
+        icon = {"unsafe": "🔴", "unknown": "🟡", "safe": "🟢", "geofence": "🟢"}.get(loc_class, "🟡")
+        if dur >= 24:
+            dur_str = f"{dur / 24:.1f}d"
+        elif dur < 1:
+            dur_str = f"{int(dur * 60)}m"
+        else:
+            dur_str = f"{dur:.1f}h"
+        rows.append([InlineKeyboardButton(
+            f"{icon} #{vname} — {dur_str}",
+            callback_data=f"parking_detail_{ev.get('id', 0)}",
+        )])
+    if not events:
+        rows.append([InlineKeyboardButton("✅ No vehicles need attention", callback_data="noop")])
+    # N2 — Tab toggle
+    if show_all:
+        rows.append([InlineKeyboardButton("🔍 Attention Only", callback_data="cmd_parking_events")])
+    else:
+        rows.append([InlineKeyboardButton("📋 All Stopped", callback_data="cmd_parking_all")])
+    rows.append([
+        InlineKeyboardButton("🔄 Refresh", callback_data="cmd_parking_events"),
+        InlineKeyboardButton("📅 History", callback_data="cmd_parking_history"),
+    ])
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")])
+    return InlineKeyboardMarkup(rows)
+
+
+def parking_history_kb(days: int = 7) -> InlineKeyboardMarkup:
+    """Keyboard for the parking history tab with period selector."""
+    rows = [
+        [
+            InlineKeyboardButton(
+                f"{'✓ ' if days == 7 else ''}7 Days",
+                callback_data="cmd_parking_history_7",
+            ),
+            InlineKeyboardButton(
+                f"{'✓ ' if days == 30 else ''}30 Days",
+                callback_data="cmd_parking_history_30",
+            ),
+        ],
+        [InlineKeyboardButton("◀️ Back", callback_data="cmd_parking_events")],
     ]
     return InlineKeyboardMarkup(rows)
 
@@ -760,18 +987,18 @@ def events_format_kb() -> InlineKeyboardMarkup:
 
 
 def user_settings_kb(user) -> InlineKeyboardMarkup:
-    """User settings menu with quiet hours, timezone, and language."""
-    quiet = ""
+    """User settings menu with working hours, timezone, and language."""
+    work = ""
     if getattr(user, "quiet_start", None) is not None and getattr(user, "quiet_end", None) is not None:
-        quiet = f" ({user.quiet_start:02d}:00–{user.quiet_end:02d}:00)"
+        work = f" ({user.quiet_start:02d}:00–{user.quiet_end:02d}:00)"
     tz = getattr(user, "timezone", None) or "Not set"
     tz_short = tz.split("/")[-1].replace("_", " ") if "/" in tz else tz
     lang_code = getattr(user, "language", "en") or "en"
     lang_flag = LANGUAGE_FLAGS.get(lang_code, "🌐")
     lang_name = LANGUAGE_NAMES.get(lang_code, lang_code)
     rows = [
-        [InlineKeyboardButton(f"🌙 {t('user_settings.notifications')}{quiet}", callback_data="settings_quiet")],
-        [InlineKeyboardButton(f"🕐 {t('user_settings.timezone')}: {tz_short}", callback_data="settings_tz")],
+        [InlineKeyboardButton(f"🕐 {t('user_settings.working_hours')}{work}", callback_data="settings_quiet")],
+        [InlineKeyboardButton(f"🌐 {t('user_settings.timezone')}: {tz_short}", callback_data="settings_tz")],
         [InlineKeyboardButton(f"{lang_flag} {t('user_settings.language')}: {lang_name}", callback_data="settings_lang")],
         [InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")],
     ]
@@ -816,30 +1043,110 @@ def language_kb(current: str = "en", region: str | None = None) -> InlineKeyboar
 
 
 def quiet_hours_kb(user) -> InlineKeyboardMarkup:
-    """DND quiet hours settings."""
+    """Working hours settings (employee view)."""
     active = getattr(user, "quiet_start", None) is not None
     rows = []
     if active:
         rows.append([InlineKeyboardButton(
-            f"🌙 Active: {user.quiet_start:02d}:00–{user.quiet_end:02d}:00",
+            f"🕐 Active: {user.quiet_start:02d}:00–{user.quiet_end:02d}:00",
             callback_data="settings_quiet_set",
         )])
-        rows.append([InlineKeyboardButton("❌ Disable Quiet Hours", callback_data="settings_quiet_off")])
+        rows.append([InlineKeyboardButton("❌ Clear Working Hours", callback_data="settings_quiet_off")])
     else:
-        rows.append([InlineKeyboardButton("🌙 Enable Quiet Hours", callback_data="settings_quiet_set")])
+        rows.append([InlineKeyboardButton("🕐 Set Working Hours", callback_data="settings_quiet_set")])
     rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_settings")])
     return InlineKeyboardMarkup(rows)
 
 
-def quiet_hours_picker_kb() -> InlineKeyboardMarkup:
-    """Time preset picker for quiet hours."""
-    rows = [
-        [InlineKeyboardButton("🌙 10 PM – 6 AM", callback_data="quiet_set_22_6")],
-        [InlineKeyboardButton("🌙 9 PM – 6 AM", callback_data="quiet_set_21_6")],
-        [InlineKeyboardButton("🌙 11 PM – 7 AM", callback_data="quiet_set_23_7")],
-        [InlineKeyboardButton("🌙 8 PM – 5 AM", callback_data="quiet_set_20_5")],
-        [InlineKeyboardButton("◀️ Back", callback_data="cmd_settings")],
+def quiet_hours_picker_kb(schedules: list[dict] | None = None) -> InlineKeyboardMarkup:
+    """Working hours preset picker.
+
+    If account-level schedules exist, show those.
+    Otherwise fall back to hardcoded defaults.
+    """
+    rows = []
+    if schedules:
+        for s in schedules:
+            start, end = s["start_hour"], s["end_hour"]
+            label = s.get("label") or f"{start:02d}:00–{end:02d}:00"
+            rows.append([InlineKeyboardButton(
+                f"🕐 {label} ({start}:00–{end}:00)",
+                callback_data=f"quiet_set_{start}_{end}",
+            )])
+    else:
+        rows = [
+            [InlineKeyboardButton("🕐 6 AM – 10 PM", callback_data="quiet_set_6_22")],
+            [InlineKeyboardButton("🕐 6 AM – 9 PM", callback_data="quiet_set_6_21")],
+            [InlineKeyboardButton("🕐 7 AM – 11 PM", callback_data="quiet_set_7_23")],
+            [InlineKeyboardButton("🕐 5 AM – 8 PM", callback_data="quiet_set_5_20")],
+        ]
+    rows.append([InlineKeyboardButton("🕐 24/7 (Always On)", callback_data="settings_quiet_off")])
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="settings_quiet")])
+    return InlineKeyboardMarkup(rows)
+
+
+def work_schedules_kb(schedules: list[dict]) -> InlineKeyboardMarkup:
+    """Admin view: list existing schedules + add button."""
+    rows = []
+    for s in schedules:
+        start, end = s["start_hour"], s["end_hour"]
+        label = s.get("label") or f"{start:02d}:00–{end:02d}:00"
+        role_tag = ""
+        target = s.get("target_role", "all")
+        if target and target != "all":
+            role_tag = f" [{target}]"
+        rows.append([
+            InlineKeyboardButton(
+                f"🕐 {label} ({start}:00–{end}:00){role_tag}",
+                callback_data=f"wsched_view_{s['id']}",
+            ),
+        ])
+    if len(schedules) < 10:
+        rows.append([InlineKeyboardButton(t("work_schedules.add"), callback_data="wsched_add")])
+    else:
+        rows.append([InlineKeyboardButton(t("work_schedules.max_reached"), callback_data="noop")])
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="submenu_mgmt")])
+    return InlineKeyboardMarkup(rows)
+
+
+def work_schedule_detail_kb(schedule_id: int) -> InlineKeyboardMarkup:
+    """Admin view: edit or delete a single schedule."""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(t("work_schedules.edit_label"), callback_data=f"wsched_rename_{schedule_id}"),
+            InlineKeyboardButton(t("work_schedules.edit_hours"), callback_data=f"wsched_hours_{schedule_id}"),
+        ],
+        [InlineKeyboardButton("👥 Change Role", callback_data=f"wsched_changerole_{schedule_id}")],
+        [InlineKeyboardButton(t("work_schedules.delete"), callback_data=f"wsched_del_{schedule_id}")],
+        [InlineKeyboardButton("◀️ Back", callback_data="cmd_work_schedules")],
+    ])
+
+
+def work_schedule_hour_picker_kb(prefix: str) -> InlineKeyboardMarkup:
+    """Hour picker for schedule start or end. prefix = 'wsched_start_X' or 'wsched_end_X'."""
+    rows = []
+    for row_start in range(0, 24, 4):
+        row = []
+        for h in range(row_start, min(row_start + 4, 24)):
+            label = f"{h:02d}:00"
+            row.append(InlineKeyboardButton(label, callback_data=f"{prefix}_{h}"))
+        rows.append(row)
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_work_schedules")])
+    return InlineKeyboardMarkup(rows)
+
+
+def work_schedule_role_picker_kb() -> InlineKeyboardMarkup:
+    """Role picker for assigning a schedule to a role."""
+    role_labels = [
+        ("All Roles", "all"),
+        ("👑 Owner", "owner"),
+        ("🔧 Admin", "admin"),
+        ("🚛 Fleet Manager", "fleet_manager"),
+        ("📋 Dispatcher", "dispatcher"),
+        ("🚗 Driver", "driver"),
     ]
+    rows = [[InlineKeyboardButton(label, callback_data=f"wsched_role_{val}")] for label, val in role_labels]
+    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_work_schedules")])
     return InlineKeyboardMarkup(rows)
 
 

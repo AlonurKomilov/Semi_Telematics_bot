@@ -19,7 +19,7 @@ from bot.i18n import t
 
 import bot.config as _cfg
 from bot.config import (
-    TELEGRAM_TOKEN, ALERT_INTERVAL,
+    TELEGRAM_TOKEN,
     WEBHOOK_URL, WEBHOOK_PORT, WEBHOOK_SECRET, USE_WEBHOOK,
     db, logger, _active_messages,
 )
@@ -37,15 +37,13 @@ from bot.admin import (
     cmd_broadcast, cmd_sys_disable_account,
 )
 from bot.callbacks import handle_callback, handle_text
-from bot.alerts import check_new_faults, check_health_alerts, check_low_fuel, check_camera_alerts, initialize_known_faults, check_alert_realerts, deliver_dnd_alerts, check_events
-from bot.auto_reports import send_auto_reports
-from bot.maintenance import check_overdue_maintenance
-from bot.geofences import check_geofence_events
+from bot.alerts import initialize_known_faults, check_unsafe_parking
+from bot.scheduler import register_all as _register_jobs
 from bot.events import cmd_events
 import bot.redis_client as rcache
 import encryption
 from bot.auth import _get_user
-import ai_client
+import ai
 from bot.helpers import _show, _render_audit_log
 from bot.keyboards import user_settings_kb, back_kb
 
@@ -105,7 +103,7 @@ async def post_init(app: Application):
     await db.initialize()
 
     # Give AI client access to DB for per-account model persistence
-    ai_client.set_db(db)
+    ai.set_db(db)
 
     # Migrate plaintext API keys → encrypted (one-time, idempotent)
     await db.migrate_encrypt_api_keys()
@@ -144,6 +142,12 @@ async def post_init(app: Application):
 
     # Initialize known faults for alerts
     await initialize_known_faults()
+
+    # Run initial parking check now that DB is ready
+    try:
+        await check_unsafe_parking(app)
+    except Exception as e:
+        logger.warning("Initial parking check failed: %s", e)
 
     # Notify system owner(s) that bot is online
     sys_accounts = await db.list_accounts()
@@ -271,56 +275,7 @@ def main():
 
     # Scheduled alerts
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(
-        check_new_faults, "interval",
-        minutes=ALERT_INTERVAL, args=[app], id="fault_check",
-        max_instances=1, coalesce=True,
-    )
-    scheduler.add_job(
-        check_health_alerts, "interval",
-        minutes=15, args=[app], id="health_check",
-        max_instances=1, coalesce=True,
-    )
-    scheduler.add_job(
-        check_low_fuel, "interval",
-        minutes=ALERT_INTERVAL, args=[app], id="fuel_check",
-        max_instances=1, coalesce=True,
-    )
-    scheduler.add_job(
-        send_auto_reports, "interval",
-        hours=1, args=[app], id="auto_reports_send",
-        max_instances=1, coalesce=True,
-    )
-    scheduler.add_job(
-        check_overdue_maintenance, "interval",
-        hours=24, args=[app], id="maintenance_check",
-        max_instances=1, coalesce=True,
-    )
-    scheduler.add_job(
-        check_geofence_events, "interval",
-        minutes=5, args=[app], id="geofence_check",
-        max_instances=1, coalesce=True,
-    )
-    scheduler.add_job(
-        check_events, "interval",
-        minutes=5, args=[app], id="events_check",
-        max_instances=1, coalesce=True,
-    )
-    scheduler.add_job(
-        check_camera_alerts, "interval",
-        hours=6, args=[app], id="camera_check",
-        max_instances=1, coalesce=True,
-    )
-    scheduler.add_job(
-        check_alert_realerts, "interval",
-        minutes=5, args=[app], id="realert_check",
-        max_instances=1, coalesce=True,
-    )
-    scheduler.add_job(
-        deliver_dnd_alerts, "interval",
-        hours=1, args=[app], id="dnd_delivery",
-        max_instances=1, coalesce=True,
-    )
+    _register_jobs(scheduler, app)
     scheduler.start()
 
     if USE_WEBHOOK:
