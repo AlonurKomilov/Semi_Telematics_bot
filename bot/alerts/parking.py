@@ -90,14 +90,14 @@ def classify_parking_location(address: str) -> str:
     unsafe_score = 0
 
     for keyword in _SAFE_KEYWORDS:
-        if keyword in addr_lower:
+        if _re.search(r"\b" + _re.escape(keyword) + r"\b", addr_lower):
             safe_score += 1
     for pattern in _SAFE_REGEX:
         if pattern.search(address):
             safe_score += 1
 
     for keyword in _UNSAFE_KEYWORDS:
-        if keyword in addr_lower:
+        if _re.search(r"\b" + _re.escape(keyword) + r"\b", addr_lower):
             unsafe_score += 1
     for pattern in _UNSAFE_REGEX:
         if pattern.search(address):
@@ -316,10 +316,10 @@ async def _get_ai_parking_analysis(
             except Exception:
                 pass
 
-        if response and len(response) < 500:
-            return escape_html(response)
-        elif response:
-            return escape_html(response[:500]) + "…"
+        if response:
+            from bot.alerts.ai_maintenance import _truncate_at_sentence, _is_valid_ai_response
+            if _is_valid_ai_response(response):
+                return escape_html(_truncate_at_sentence(response, 800))
     except Exception as e:
         logger.debug(f"AI parking analysis failed: {e}")
     return ""

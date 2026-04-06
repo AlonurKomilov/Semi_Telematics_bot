@@ -135,101 +135,105 @@ async def check_health_alerts(app: Application):
                     faulted_by_id = {}
 
                 for v in vehicles:
-                    if await is_vehicle_suppressed(account_id, v.get("name", "")):
-                        continue
-
-                    alerts = v.get("_health_alerts", [])
-                    push_alerts = [
-                        a for a in alerts
-                        if a in ("low_battery", "low_oil_pressure",
-                                 "high_coolant_temp", "low_def")
-                    ]
-
-                    fv = faulted_by_id.get(v["id"])
-                    if fv:
-                        has_coolant_dtc = any(
-                            dtc.get("spnId") in COOLANT_SPNS
-                            for dtc in fv.get("_dtcs", [])
-                        )
-                        if has_coolant_dtc and "coolant_dtc" not in push_alerts:
-                            push_alerts.append("coolant_dtc")
-
-                    if not push_alerts:
-                        co = v.get("_org", "?")
-                        vid = f"{account_id}:{co}:{v['id']}"
-                        cleared = await db.clear_alert_history(
-                            account_id, "health", v["id"],
-                        )
-                        for rec in cleared:
-                            if rec.get("message_id") and rec.get("chat_id"):
-                                try:
-                                    await app.bot.delete_message(
-                                        chat_id=rec["chat_id"],
-                                        message_id=rec["message_id"],
-                                    )
-                                except Exception:
-                                    pass
-                        # Auto-resolve any unacked health alerts for this vehicle
-                        await _auto_resolve_vehicle_alerts(
-                            app, account_id, "health", v["id"],
-                            v.get("name", "?"), co,
-                        )
-                        # Clear dedup so returning issues are detected as new
-                        await _set_known_health(vid, set())
-                        continue
-
-                    co = v.get("_org", "?")
-                    vid = f"{account_id}:{co}:{v['id']}"
-                    previously_known = await _get_known_health(vid)
-                    new_alerts = set(push_alerts) - previously_known
-
-                    if not new_alerts:
-                        await _set_known_health(vid, set(push_alerts))
-                        continue
-
-                    # ── Classify severity ────────────────────
-                    if new_alerts & _CRITICAL_HEALTH:
-                        severity = AlertSeverity.CRITICAL
-                    else:
-                        severity = AlertSeverity.WARNING
-
-                    # Cooldown: skip WARNING if recently alerted.
-                    # CRITICAL always bypasses cooldown (safety-first).
-                    if severity != AlertSeverity.CRITICAL:
-                        last_sent = await _get_health_last_sent(vid)
-                        if _is_health_on_cooldown(last_sent):
-                            # Don't update _known_health here — preserves
-                            # new codes so they alert after cooldown expires
+                    try:
+                        if await is_vehicle_suppressed(account_id, v.get("name", "")):
                             continue
 
-                    show_co = len(company_codes) > 1
-                    health = v.get("_health", {})
-                    alert_text = format_health_alert(
-                        v, list(new_alerts), health,
-                        show_company=show_co,
-                    )
+                        alerts = v.get("_health_alerts", [])
+                        push_alerts = [
+                            a for a in alerts
+                            if a in ("low_battery", "low_oil_pressure",
+                                     "high_coolant_temp", "low_def")
+                        ]
 
-                    # Proactive AI — only if any subscriber enabled it
-                    ai_note = ""
-                    if any(getattr(s, 'ai_health', False) for s in subs):
-                        ai_note = await _get_ai_health_note(v, list(new_alerts), health)
+                        fv = faulted_by_id.get(v["id"])
+                        if fv:
+                            has_coolant_dtc = any(
+                                dtc.get("spnId") in COOLANT_SPNS
+                                for dtc in fv.get("_dtcs", [])
+                            )
+                            if has_coolant_dtc and "coolant_dtc" not in push_alerts:
+                                push_alerts.append("coolant_dtc")
 
-                    # ── Universal pipeline ───────────────────
-                    await send_alert(
-                        app,
-                        account_id=account_id,
-                        alert_type="health",
-                        severity=severity,
-                        vehicle=v,
-                        alert_text=alert_text,
-                        subscribers=subs,
-                        co=co,
-                        ai_note=ai_note,
-                        alert_key_detail="-".join(sorted(new_alerts)),
-                    )
+                        if not push_alerts:
+                            co = v.get("_org", "?")
+                            vid = f"{account_id}:{co}:{v['id']}"
+                            cleared = await db.clear_alert_history(
+                                account_id, "health", v["id"],
+                            )
+                            for rec in cleared:
+                                if rec.get("message_id") and rec.get("chat_id"):
+                                    try:
+                                        await app.bot.delete_message(
+                                            chat_id=rec["chat_id"],
+                                            message_id=rec["message_id"],
+                                        )
+                                    except Exception:
+                                        pass
+                            # Auto-resolve any unacked health alerts for this vehicle
+                            await _auto_resolve_vehicle_alerts(
+                                app, account_id, "health", v["id"],
+                                v.get("name", "?"), co,
+                            )
+                            # Clear dedup so returning issues are detected as new
+                            await _set_known_health(vid, set())
+                            continue
 
-                    await _set_known_health(vid, set(push_alerts))
-                    await _set_health_last_sent(vid)
+                        co = v.get("_org", "?")
+                        vid = f"{account_id}:{co}:{v['id']}"
+                        previously_known = await _get_known_health(vid)
+                        new_alerts = set(push_alerts) - previously_known
+
+                        if not new_alerts:
+                            await _set_known_health(vid, set(push_alerts))
+                            continue
+
+                        # ── Classify severity ────────────────────
+                        if new_alerts & _CRITICAL_HEALTH:
+                            severity = AlertSeverity.CRITICAL
+                        else:
+                            severity = AlertSeverity.WARNING
+
+                        # Cooldown: skip WARNING if recently alerted.
+                        # CRITICAL always bypasses cooldown (safety-first).
+                        if severity != AlertSeverity.CRITICAL:
+                            last_sent = await _get_health_last_sent(vid)
+                            if _is_health_on_cooldown(last_sent):
+                                # Don't update _known_health here — preserves
+                                # new codes so they alert after cooldown expires
+                                continue
+
+                        show_co = len(company_codes) > 1
+                        health = v.get("_health", {})
+                        alert_text = format_health_alert(
+                            v, list(new_alerts), health,
+                            show_company=show_co,
+                        )
+
+                        # Proactive AI — only if any subscriber enabled it
+                        ai_note = ""
+                        if any(getattr(s, 'ai_health', False) for s in subs):
+                            ai_note = await _get_ai_health_note(v, list(new_alerts), health)
+
+                        # ── Universal pipeline ───────────────────
+                        await send_alert(
+                            app,
+                            account_id=account_id,
+                            alert_type="health",
+                            severity=severity,
+                            vehicle=v,
+                            alert_text=alert_text,
+                            subscribers=subs,
+                            co=co,
+                            ai_note=ai_note,
+                            alert_key_detail="-".join(sorted(new_alerts)),
+                        )
+
+                        await _set_known_health(vid, set(push_alerts))
+                        await _set_health_last_sent(vid)
+                    except Exception as e:
+                        logger.warning(f"Health check for vehicle {v.get('name', '?')}: {e}")
+                        continue
 
             except Exception as e:
                 logger.error(f"Health check for account {account_id}: {e}")

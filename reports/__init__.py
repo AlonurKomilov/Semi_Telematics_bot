@@ -7,6 +7,7 @@ from .fuel_pdf import generate_fuel_report_pdf
 from .health_pdf import generate_vehicle_health_pdf
 from .weather_pdf import generate_weather_pdf
 from .camera_pdf import generate_camera_check_pdf
+from .shift_pdf import generate_shift_report_pdf
 from .pdf_base import compute_stats
 
 from .csv_generators import (
@@ -27,6 +28,7 @@ __all__ = [
     "generate_vehicle_health_pdf",
     "generate_weather_pdf",
     "generate_camera_check_pdf",
+    "generate_shift_report_pdf",
     "compute_stats",
     "generate_efficiency_csv",
     "generate_fuel_csv",

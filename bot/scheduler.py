@@ -77,8 +77,8 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         max_instances=1, coalesce=True,
     )
     scheduler.add_job(
-        deliver_dnd_alerts, "interval",
-        hours=1, args=[app], id="dnd_delivery",
+        deliver_dnd_alerts, "cron",
+        minute=0, args=[app], id="dnd_delivery",
         max_instances=1, coalesce=True,
     )
     scheduler.add_job(

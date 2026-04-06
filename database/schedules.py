@@ -79,9 +79,9 @@ class SchedulesMixin:
         return [dict(r) for r in rows]
 
     async def get_shift_handoff_data(
-        self, account_id: int, telegram_id: int,
+        self, account_id: int, telegram_id: int, *, days: int = 1,
     ) -> dict:
-        """Build shift handoff summary: pending alerts, resolved alerts, pending maintenance."""
+        """Build shift handoff summary: pending alerts, resolved alerts, pending maintenance, recent alert history."""
         # Pending (unacked) alerts for user
         cur = await self._db.execute(
             "SELECT * FROM alert_acknowledgments "
@@ -91,8 +91,8 @@ class SchedulesMixin:
         )
         pending_alerts = [dict(r) for r in await cur.fetchall()]
 
-        # Recently resolved alerts (last 24h)
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        # Recently resolved alerts
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         cur = await self._db.execute(
             "SELECT * FROM alert_acknowledgments "
             "WHERE account_id = ? AND sent_to = ? AND acknowledged_at IS NOT NULL "
@@ -110,8 +110,18 @@ class SchedulesMixin:
         )
         pending_maintenance = [dict(r) for r in await cur.fetchall()]
 
+        # Recent alert history — broader view of all alerts for the account
+        cur = await self._db.execute(
+            "SELECT * FROM alert_history "
+            "WHERE account_id = ? AND last_seen >= ? "
+            "ORDER BY last_seen DESC LIMIT 50",
+            (account_id, cutoff),
+        )
+        recent_history = [dict(r) for r in await cur.fetchall()]
+
         return {
             "pending_alerts": pending_alerts,
             "resolved_alerts": resolved_alerts,
             "pending_maintenance": pending_maintenance,
+            "recent_history": recent_history,
         }

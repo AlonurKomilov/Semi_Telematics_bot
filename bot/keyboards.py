@@ -904,7 +904,7 @@ def alert_settings_kb(user) -> InlineKeyboardMarkup:
             callback_data="alert_toggle_camera",
         )],
         [InlineKeyboardButton(
-            f"{_icon(user.alert_parking)} 🅿️ {t('alert_settings.parking')}",
+            f"{_icon(user.alert_parking)} {t('alert_settings.parking')}",
             callback_data="alert_toggle_parking",
         )],
         [InlineKeyboardButton(t("alert_settings.pending"), callback_data="cmd_pending_alerts"),

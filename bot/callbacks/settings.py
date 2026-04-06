@@ -34,10 +34,14 @@ async def settings_quiet(update, context):
 async def settings_quiet_set(update, context):
     query = update.callback_query
     await query.answer()
+    user = context.user_data["_db_user"]
+    schedules = await db.get_work_schedules_for_role(
+        user.account_id, user.role.value,
+    )
     await _show(update, context, [
         t('user_settings.quiet_select_title') + "\n\n"
         + t('user_settings.quiet_select_prompt')
-    ], keyboard=quiet_hours_picker_kb())
+    ], keyboard=quiet_hours_picker_kb(schedules=schedules if schedules else None))
 
 
 async def quiet_set(update, context):

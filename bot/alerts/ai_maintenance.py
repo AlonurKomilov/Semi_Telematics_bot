@@ -7,6 +7,40 @@ from bot.helpers import escape_html
 from bot.alerts.pipeline import SYSTEM_USER_ID
 
 
+def _truncate_at_sentence(text: str, max_len: int) -> str:
+    """Truncate text at the last sentence boundary within max_len.
+
+    If the text is shorter than max_len, returns it as-is.
+    Otherwise finds the last '.', '!', or '?' within the limit.
+    """
+    if len(text) <= max_len:
+        return text
+    truncated = text[:max_len]
+    # Find last sentence-ending punctuation
+    for i in range(len(truncated) - 1, -1, -1):
+        if truncated[i] in ".!?":
+            return truncated[: i + 1]
+    # No sentence boundary found — fall back to last space
+    last_space = truncated.rfind(" ")
+    if last_space > max_len // 2:
+        return truncated[:last_space] + "…"
+    return truncated + "…"
+
+
+_REFUSAL_PREFIXES = (
+    "error", "i cannot", "i'm sorry", "i can't", "i am unable",
+    "as an ai", "i'm not able",
+)
+
+
+def _is_valid_ai_response(text: str | None) -> bool:
+    """Return True if the AI response contains useful content."""
+    if not text or len(text.strip()) < 20:
+        return False
+    lower = text.strip().lower()
+    return not lower.startswith(_REFUSAL_PREFIXES)
+
+
 # ── Proactive AI on Critical Alerts ──────────────────────────────
 
 async def _get_ai_diagnosis_note(vehicle: dict, dtcs: list[dict]) -> str:
@@ -57,10 +91,9 @@ async def _get_ai_diagnosis_note(vehicle: dict, dtcs: list[dict]) -> str:
             except Exception:
                 pass
 
-        if response and len(response) < 500:
-            return f"\n\n🤖 <b>AI Diagnosis:</b>\n{escape_html(response)}"
-        elif response:
-            return f"\n\n🤖 <b>AI Diagnosis:</b>\n{escape_html(response[:500])}…"
+        if _is_valid_ai_response(response):
+            text = _truncate_at_sentence(response, 800)
+            return f"\n\n🤖 <b>AI Diagnosis:</b>\n{escape_html(text)}"
     except Exception as e:
         logger.debug(f"AI diagnosis for alert failed: {e}")
     return ""
@@ -122,10 +155,9 @@ async def _get_ai_health_note(
             except Exception:
                 pass
 
-        if response and len(response) < 500:
-            return f"\n\n🤖 <b>AI Assessment:</b>\n{escape_html(response)}"
-        elif response:
-            return f"\n\n🤖 <b>AI Assessment:</b>\n{escape_html(response[:500])}…"
+        if _is_valid_ai_response(response):
+            text = _truncate_at_sentence(response, 800)
+            return f"\n\n🤖 <b>AI Assessment:</b>\n{escape_html(text)}"
     except Exception as e:
         logger.debug(f"AI health note failed: {e}")
     return ""

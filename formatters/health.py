@@ -24,11 +24,10 @@ def format_health_alert(vehicle: dict, alerts: list[str],
         "low_battery", "low_oil_pressure", "high_coolant_temp",
     ))
     header = _t('alert_format.health_critical') if is_critical else _t('alert_format.health_warning')
-    icon = "🛑" if is_critical else "⚠️"
 
     lines = [
         "━━━━━━━━━━━━━━━━━━━━━",
-        f"  {icon}  {header}",
+        f"  {header}",
         "━━━━━━━━━━━━━━━━━━━━━",
         "",
         f"  🚛  <b>Truck #{name}</b>",
@@ -39,31 +38,31 @@ def format_health_alert(vehicle: dict, alerts: list[str],
     # Show each alert condition with current value
     alert_details = {
         "low_battery": (
-            "🔋", _t('alert_format.health_low_battery'),
+            _t('alert_format.health_low_battery'),
             f"{health.get('battery_v', '?')}V (threshold: 12.2V)",
         ),
         "low_oil_pressure": (
-            "🛢", _t('alert_format.health_low_oil'),
+            _t('alert_format.health_low_oil'),
             f"{health.get('oil_psi', '?')} PSI (threshold: 10 PSI)",
         ),
         "high_coolant_temp": (
-            "🌡", _t('alert_format.health_high_coolant'),
+            _t('alert_format.health_high_coolant'),
             f"{health.get('coolant_c', '?')}°C (threshold: 105°C)",
         ),
         "low_def": (
-            "💧", _t('alert_format.health_low_def'),
+            _t('alert_format.health_low_def'),
             f"{health.get('def_pct', '?')}% (threshold: 10%)",
         ),
         "coolant_dtc": (
-            "🌡", _t('alert_format.health_coolant_fault'),
+            _t('alert_format.health_coolant_fault'),
             _t('alert_format.health_coolant_dtc'),
         ),
     }
 
     for alert_key in alerts:
         if alert_key in alert_details:
-            emoji, label, detail = alert_details[alert_key]
-            lines.append(f"  {emoji}  <b>{label}</b>\n       {detail}\n")
+            label, detail = alert_details[alert_key]
+            lines.append(f"  <b>{label}</b>\n       {detail}\n")
 
     return "\n".join(lines)
 

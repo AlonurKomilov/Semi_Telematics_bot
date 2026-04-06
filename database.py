@@ -460,6 +460,7 @@ class Database:
         await self._migrate_parking_events_table()
         await self._migrate_maintenance_recurring()
         await self._migrate_work_schedules_table()
+        await self._migrate_user_last_shift_report()
 
     async def _migrate_alert_prefs(self):
         """Add alert_faults/health/fuel/geofence columns if missing."""
@@ -650,6 +651,17 @@ class Database:
         except Exception:
             pass  # already exists
 
+    async def _migrate_user_last_shift_report(self):
+        """Add last_shift_report column to users table for duplicate prevention."""
+        try:
+            await self._db.execute(
+                "ALTER TABLE users ADD COLUMN last_shift_report TEXT"
+            )
+            await self._db.commit()
+            logger.info("Added column users.last_shift_report")
+        except Exception:
+            pass  # column already exists
+
     # ── Helpers ───────────────────────────────────────────────────
 
     @staticmethod
@@ -716,6 +728,7 @@ class Database:
             quiet_end=row["quiet_end"] if "quiet_end" in row.keys() else None,
             timezone=row["timezone"] if "timezone" in row.keys() else "America/New_York",
             language=row["language"] if "language" in row.keys() else "en",
+            last_shift_report=row["last_shift_report"] if "last_shift_report" in row.keys() else None,
         )
 
     def _row_to_invite(self, row) -> Invite:
@@ -934,7 +947,7 @@ class Database:
                    "alert_events", "alert_parking",
                    "alert_camera", "ai_parking",
                    "quiet_start", "quiet_end", "timezone", "display_name",
-                   "language"}
+                   "language", "last_shift_report"}
         updates = {}
         for k, v in kwargs.items():
             if k not in allowed:
@@ -2327,9 +2340,9 @@ class Database:
         return [dict(r) for r in rows]
 
     async def get_shift_handoff_data(
-        self, account_id: int, telegram_id: int,
+        self, account_id: int, telegram_id: int, *, days: int = 1,
     ) -> dict:
-        """Build shift handoff summary: pending alerts, resolved alerts, pending maintenance."""
+        """Build shift handoff summary: pending alerts, resolved alerts, pending maintenance, recent history."""
         # Pending (unacked) alerts for user
         cur = await self._db.execute(
             "SELECT * FROM alert_acknowledgments "
@@ -2339,9 +2352,9 @@ class Database:
         )
         pending_alerts = [dict(r) for r in await cur.fetchall()]
 
-        # Recently resolved alerts (last 24h)
+        # Recently resolved alerts
         from datetime import timedelta
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         cur = await self._db.execute(
             "SELECT * FROM alert_acknowledgments "
             "WHERE account_id = ? AND sent_to = ? AND acknowledged_at IS NOT NULL "
@@ -2359,8 +2372,18 @@ class Database:
         )
         pending_maintenance = [dict(r) for r in await cur.fetchall()]
 
+        # Recent alert history (last 24h) — broader view of all alerts
+        cur = await self._db.execute(
+            "SELECT * FROM alert_history "
+            "WHERE account_id = ? AND last_seen >= ? "
+            "ORDER BY last_seen DESC LIMIT 50",
+            (account_id, cutoff),
+        )
+        recent_history = [dict(r) for r in await cur.fetchall()]
+
         return {
             "pending_alerts": pending_alerts,
             "resolved_alerts": resolved_alerts,
             "pending_maintenance": pending_maintenance,
+            "recent_history": recent_history,
         }

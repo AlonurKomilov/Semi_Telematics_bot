@@ -82,6 +82,7 @@ class User:
     quiet_end: Optional[int] = None     # DND end hour (0-23)
     timezone: str = "America/New_York"
     language: str = "en"                # UI language (en/es/ru/uk/fr)
+    last_shift_report: Optional[str] = None  # ISO date of last shift report
 
     @property
     def is_owner(self) -> bool:

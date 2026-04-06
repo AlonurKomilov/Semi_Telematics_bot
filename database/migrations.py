@@ -21,6 +21,7 @@ async def run_all(conn) -> None:
     await migrate_parking_events_created_at(conn)
     await migrate_maintenance_recurring(conn)
     await migrate_work_schedules_table(conn)
+    await migrate_user_last_shift_report(conn)
 
 
 async def migrate_alert_prefs(conn) -> None:
@@ -264,3 +265,15 @@ async def migrate_encrypt_api_keys(conn) -> int:
         await conn.commit()
         logger.info(f"Encrypted {count} plaintext API key(s)")
     return count
+
+
+async def migrate_user_last_shift_report(conn) -> None:
+    """Add last_shift_report column to users table for duplicate prevention."""
+    try:
+        await conn.execute(
+            "ALTER TABLE users ADD COLUMN last_shift_report TEXT"
+        )
+        await conn.commit()
+        logger.info("Added column users.last_shift_report")
+    except Exception:
+        pass  # column already exists

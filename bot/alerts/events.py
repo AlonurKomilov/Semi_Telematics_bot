@@ -110,32 +110,36 @@ async def check_events(app: Application):
                 continue
 
             for event in new_events:
-                vname = event.get("vehicle_name", "?")
+                try:
+                    vname = event.get("vehicle_name", "?")
 
-                if await is_vehicle_suppressed(account.id, vname):
+                    if await is_vehicle_suppressed(account.id, vname):
+                        continue
+
+                    severity = _event_severity(event)
+                    alert_text = format_event_alert(event)
+                    vid = event.get("vehicle_id", vname)
+                    co = event.get("_org", "?")
+                    vehicle_dict = {"id": vid, "name": vname, "_org": co}
+                    eid = event.get("event_id", "")
+
+                    await send_alert(
+                        app,
+                        account_id=account.id,
+                        alert_type="events",
+                        severity=severity,
+                        vehicle=vehicle_dict,
+                        alert_text=alert_text,
+                        subscribers=subscribers,
+                        co=co,
+                        alert_key_detail=f"{event.get('event_type', '')}:{eid}",
+                        video_url=event.get("video_url") or "",
+                        event_id=eid,
+                        event_time=event.get("time", ""),
+                    )
+                except Exception as e:
+                    logger.warning(f"Event alert for {event.get('vehicle_name', '?')}: {e}")
                     continue
-
-                severity = _event_severity(event)
-                alert_text = format_event_alert(event)
-                vid = event.get("vehicle_id", vname)
-                co = event.get("_org", "?")
-                vehicle_dict = {"id": vid, "name": vname, "_org": co}
-                eid = event.get("event_id", "")
-
-                await send_alert(
-                    app,
-                    account_id=account.id,
-                    alert_type="events",
-                    severity=severity,
-                    vehicle=vehicle_dict,
-                    alert_text=alert_text,
-                    subscribers=subscribers,
-                    co=co,
-                    alert_key_detail=f"{event.get('event_type', '')}:{eid}",
-                    video_url=event.get("video_url") or "",
-                    event_id=eid,
-                    event_time=event.get("time", ""),
-                )
 
     except Exception as e:
         logger.error(f"Events check error: {e}")

@@ -193,108 +193,112 @@ async def check_new_faults(app: Application):
                 company_codes = [o.code for o in acct_companies]
 
                 for v in faulted:
-                    co = v.get("_org", "?")
-                    vid = f"{account_id}:{co}:{v['id']}"
+                    try:
+                        co = v.get("_org", "?")
+                        vid = f"{account_id}:{co}:{v['id']}"
 
-                    if await is_vehicle_suppressed(account_id, v["name"]):
-                        continue
+                        if await is_vehicle_suppressed(account_id, v["name"]):
+                            continue
 
-                    current_codes = set()
-                    for dtc in v.get("_dtcs", []):
-                        key = f"{dtc.get('spnId', '?')}-{dtc.get('fmiId', '?')}"
-                        current_codes.add(key)
+                        current_codes = set()
+                        for dtc in v.get("_dtcs", []):
+                            key = f"{dtc.get('spnId', '?')}-{dtc.get('fmiId', '?')}"
+                            current_codes.add(key)
 
-                    previously_known = await _get_known_faults(vid)
-                    new_codes = current_codes - previously_known
+                        previously_known = await _get_known_faults(vid)
+                        new_codes = current_codes - previously_known
 
-                    if new_codes:
-                        new_dtcs = [
-                            dtc for dtc in v.get("_dtcs", [])
-                            if f"{dtc.get('spnId', '?')}-{dtc.get('fmiId', '?')}" in new_codes
-                        ]
-                        if new_dtcs:
-                            # ── Classify severity ────────────────
-                            lights = v.get("_lights", {})
-                            is_critical = (
-                                lights.get("stopIsOn", False)
-                                or lights.get("protectIsOn", False)
-                                or lights.get("emissionsIsOn", False)
-                            )
-                            if not is_critical:
+                        if new_codes:
+                            new_dtcs = [
+                                dtc for dtc in v.get("_dtcs", [])
+                                if f"{dtc.get('spnId', '?')}-{dtc.get('fmiId', '?')}" in new_codes
+                            ]
+                            if new_dtcs:
+                                # ── Classify severity ────────────────
+                                lights = v.get("_lights", {})
+                                is_critical = (
+                                    lights.get("stopIsOn", False)
+                                    or lights.get("protectIsOn", False)
+                                    or lights.get("emissionsIsOn", False)
+                                )
+                                if not is_critical:
+                                    for dtc in new_dtcs:
+                                        fmi_desc = dtc.get("fmiDescription", "").lower()
+                                        if "most severe" in fmi_desc:
+                                            is_critical = True
+                                            break
+
+                                severity = (AlertSeverity.CRITICAL if is_critical
+                                            else AlertSeverity.WARNING)
+
+                                # Cooldown: skip WARNING faults if recently alerted
+                                if severity != AlertSeverity.CRITICAL:
+                                    last_sent = await _get_fault_last_sent(vid)
+                                    if _is_fault_on_cooldown(last_sent):
+                                        await _set_known_faults(vid, current_codes)
+                                        continue
+
+                                # Check for coolant-related DTCs
+                                has_coolant_dtc = any(
+                                    dtc.get("spnId") in COOLANT_SPNS
+                                    for dtc in new_dtcs
+                                )
+
+                                show_co = len(company_codes) > 1
+                                if severity == AlertSeverity.CRITICAL:
+                                    alert_text = format_critical_fault_alert(
+                                        v, new_dtcs, lights, show_company=show_co,
+                                    )
+                                else:
+                                    alert_text = format_new_fault_alert(
+                                        v, new_dtcs, show_company=show_co,
+                                    )
+
+                                if has_coolant_dtc:
+                                    alert_text += (
+                                        "\n\n  🌡 <b>Coolant system fault detected</b>"
+                                        "\n  Check coolant level and temp"
+                                    )
+
+                                # Proactive AI — only if any subscriber enabled it
+                                ai_note = ""
+                                if any(getattr(s, 'ai_fault', False) for s in subs):
+                                    ai_note = await _get_ai_diagnosis_note(v, new_dtcs)
+
+                                # Build fault detail with descriptions
+                                fault_details = []
                                 for dtc in new_dtcs:
-                                    fmi_desc = dtc.get("fmiDescription", "").lower()
-                                    if "most severe" in fmi_desc:
-                                        is_critical = True
-                                        break
+                                    spn = dtc.get('spnId', '?')
+                                    fmi = dtc.get('fmiId', '?')
+                                    desc = dtc.get('spnDescription', '')
+                                    fault_details.append(f"{spn}-{fmi}:{desc}")
+                                fault_detail_str = "|".join(sorted(fault_details))
 
-                            severity = (AlertSeverity.CRITICAL if is_critical
-                                        else AlertSeverity.WARNING)
-
-                            # Cooldown: skip WARNING faults if recently alerted
-                            if severity != AlertSeverity.CRITICAL:
-                                last_sent = await _get_fault_last_sent(vid)
-                                if _is_fault_on_cooldown(last_sent):
-                                    await _set_known_faults(vid, current_codes)
-                                    continue
-
-                            # Check for coolant-related DTCs
-                            has_coolant_dtc = any(
-                                dtc.get("spnId") in COOLANT_SPNS
-                                for dtc in new_dtcs
-                            )
-
-                            show_co = len(company_codes) > 1
-                            if severity == AlertSeverity.CRITICAL:
-                                alert_text = format_critical_fault_alert(
-                                    v, new_dtcs, lights, show_company=show_co,
-                                )
-                            else:
-                                alert_text = format_new_fault_alert(
-                                    v, new_dtcs, show_company=show_co,
+                                # ── Universal pipeline ───────────────
+                                await send_alert(
+                                    app,
+                                    account_id=account_id,
+                                    alert_type="fault",
+                                    severity=severity,
+                                    vehicle=v,
+                                    alert_text=alert_text,
+                                    subscribers=subs,
+                                    co=co,
+                                    ai_note=ai_note,
+                                    alert_key_detail=fault_detail_str,
                                 )
 
-                            if has_coolant_dtc:
-                                alert_text += (
-                                    "\n\n  🌡 <b>Coolant system fault detected</b>"
-                                    "\n  Check coolant level and temp"
-                                )
+                                if severity == AlertSeverity.CRITICAL:
+                                    await auto_create_maintenance_from_faults(
+                                        account_id, v["name"], new_dtcs,
+                                    )
 
-                            # Proactive AI — only if any subscriber enabled it
-                            ai_note = ""
-                            if any(getattr(s, 'ai_fault', False) for s in subs):
-                                ai_note = await _get_ai_diagnosis_note(v, new_dtcs)
+                                await _set_fault_last_sent(vid)
 
-                            # Build fault detail with descriptions
-                            fault_details = []
-                            for dtc in new_dtcs:
-                                spn = dtc.get('spnId', '?')
-                                fmi = dtc.get('fmiId', '?')
-                                desc = dtc.get('spnDescription', '')
-                                fault_details.append(f"{spn}-{fmi}:{desc}")
-                            fault_detail_str = "|".join(sorted(fault_details))
-
-                            # ── Universal pipeline ───────────────
-                            await send_alert(
-                                app,
-                                account_id=account_id,
-                                alert_type="fault",
-                                severity=severity,
-                                vehicle=v,
-                                alert_text=alert_text,
-                                subscribers=subs,
-                                co=co,
-                                ai_note=ai_note,
-                                alert_key_detail=fault_detail_str,
-                            )
-
-                            if severity == AlertSeverity.CRITICAL:
-                                await auto_create_maintenance_from_faults(
-                                    account_id, v["name"], new_dtcs,
-                                )
-
-                            await _set_fault_last_sent(vid)
-
-                    await _set_known_faults(vid, current_codes)
+                        await _set_known_faults(vid, current_codes)
+                    except Exception as e:
+                        logger.warning(f"Fault check for vehicle {v.get('name', '?')}: {e}")
+                        continue
 
                 # Clear fault alert history for vehicles that no longer
                 # have faults — delete old messages from chat
