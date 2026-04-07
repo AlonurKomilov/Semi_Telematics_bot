@@ -176,3 +176,27 @@ backup-restore:
 	else \
 		echo "❌ Restore cancelled"; \
 	fi
+
+# ── Docker targets ───────────────────────────────────
+
+## Build Docker image
+docker-build:
+	docker compose build
+
+## Start all services (bot + redis)
+docker-up:
+	docker compose up -d
+
+## Stop all services
+docker-down:
+	docker compose down
+
+## View Docker logs (follow)
+docker-logs:
+	docker compose logs -f
+
+## Rebuild and restart
+docker-restart:
+	docker compose down
+	docker compose build
+	docker compose up -d

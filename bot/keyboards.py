@@ -6,6 +6,7 @@ from telegram import (
     InlineKeyboardButton, InlineKeyboardMarkup,
     KeyboardButton, KeyboardButtonRequestChat,
     ReplyKeyboardMarkup, ReplyKeyboardRemove,
+    WebAppInfo,
 )
 
 
@@ -59,6 +60,14 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
         import ai
         if ai.is_configured():
             rows.append([InlineKeyboardButton(t("menu.ai_assistant"), callback_data="cmd_ai")])
+
+        # Live Map Mini App (visible when WEBAPP_URL is configured)
+        from bot.config import WEBAPP_URL
+        if WEBAPP_URL and (perms.can_location_map or perms.can_location_own):
+            rows.append([InlineKeyboardButton(
+                "🗺 Live Map",
+                web_app=WebAppInfo(url=f"{WEBAPP_URL}#map"),
+            )])
 
         # Driver: show truck shortcut
         if role == Role.DRIVER:

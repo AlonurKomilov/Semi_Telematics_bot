@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Semi Telematics</title>
+
+    <!-- Telegram Web App SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <!-- Leaflet CSS + JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <!-- Leaflet MarkerCluster -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+    <!-- App styles -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav id="nav-bar">
+        <div class="nav-inner">
+            <button class="nav-btn active" data-page="map">🗺 Map</button>
+            <button class="nav-btn" data-page="trucks">🚛 Trucks</button>
+            <button class="nav-btn" data-page="alerts">🔔 Alerts</button>
+        </div>
+    </nav>
+
+    <!-- Pages -->
+    <main id="app">
+        <!-- Map page -->
+        <section id="page-map" class="page active">
+            <div id="map"></div>
+            <!-- Truck detail bottom sheet -->
+            <div id="truck-sheet" class="bottom-sheet hidden">
+                <div class="sheet-handle"></div>
+                <div id="truck-sheet-content"></div>
+            </div>
+        </section>
+
+        <!-- Trucks list page -->
+        <section id="page-trucks" class="page">
+            <div class="page-header">
+                <h2>Fleet Vehicles</h2>
+                <div class="search-bar">
+                    <input type="text" id="truck-search" placeholder="Search trucks...">
+                </div>
+            </div>
+            <div id="truck-list" class="card-list"></div>
+        </section>
+
+        <!-- Alerts page -->
+        <section id="page-alerts" class="page">
+            <div class="page-header">
+                <h2>Alerts</h2>
+            </div>
+            <div id="alert-list" class="card-list"></div>
+        </section>
+
+        <!-- Loading overlay -->
+        <div id="loading" class="loading-overlay hidden">
+            <div class="spinner"></div>
+        </div>
+
+        <!-- Auth error -->
+        <div id="auth-error" class="auth-error hidden">
+            <div class="auth-error-inner">
+                <h2>🔒 Authentication Required</h2>
+                <p>Please open this app through the Telegram bot, or register first using /start.</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- App scripts -->
+    <script src="js/auth.js"></script>
+    <script src="js/map.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

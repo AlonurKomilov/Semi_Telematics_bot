@@ -1,0 +1,16 @@
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.git/
+*.pyc
+*.pyo
+tests/
+backups/
+*.log
+.bot.pid
+.pid
+.env
+.venv/
+venv/
+env/
+*.tar.gz

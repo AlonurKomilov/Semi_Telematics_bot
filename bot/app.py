@@ -213,13 +213,20 @@ async def post_shutdown(app: Application):
     logger.info("Redis connection closed")
 
 
-def main():
+def build_app() -> Application:
+    """Build and return the Telegram Application with all handlers.
+
+    Does NOT start the bot — caller is responsible for lifecycle.
+    """
     if not TELEGRAM_TOKEN:
         raise RuntimeError("TELEGRAM_BOT_TOKEN not set")
 
-    logger.info("Starting Semi Telematics Bot — multi-tenant mode")
-
-    app = Application.builder().token(TELEGRAM_TOKEN).concurrent_updates(True).post_init(post_init).post_shutdown(post_shutdown).build()
+    app = (Application.builder()
+           .token(TELEGRAM_TOKEN)
+           .concurrent_updates(True)
+           .post_init(post_init)
+           .post_shutdown(post_shutdown)
+           .build())
 
     # Registration
     app.add_handler(CommandHandler("start", cmd_start))
@@ -272,6 +279,15 @@ def main():
 
     # Text input handler (for interactive prompts: register, join, truck, etc.)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+    return app
+
+
+def main():
+    """Standalone bot entry point (blocking — runs polling or webhook)."""
+    logger.info("Starting Semi Telematics Bot — multi-tenant mode")
+
+    app = build_app()
 
     # Scheduled alerts
     scheduler = AsyncIOScheduler()
