@@ -1,5 +1,7 @@
 """Application builder, post_init, and main entry point."""
 
+import asyncio
+
 from telegram import Update, BotCommand
 from telegram.ext import (
     Application,
@@ -144,14 +146,23 @@ async def post_init(app: Application):
     ])
     logger.info("Commands set")
 
-    # Initialize known faults for alerts
-    await initialize_known_faults()
+    # Initialize known faults and run initial parking check in background
+    # (these make Samsara API calls that can take minutes — don't block startup)
+    async def _deferred_init():
+        try:
+            await initialize_known_faults()
+            logger.info("Known faults initialized")
+        except Exception as e:
+            logger.warning("initialize_known_faults failed: %s", e)
+        try:
+            await check_unsafe_parking(app)
+            logger.info("Initial parking check done")
+        except Exception as e:
+            logger.warning("Initial parking check failed: %s", e)
 
-    # Run initial parking check now that DB is ready
-    try:
-        await check_unsafe_parking(app)
-    except Exception as e:
-        logger.warning("Initial parking check failed: %s", e)
+    _bg_task = asyncio.create_task(_deferred_init(), name="deferred-init")
+    # Store reference on the app to prevent GC of the background task
+    app.bot_data["_deferred_init_task"] = _bg_task
 
     # Notify system owner(s) that bot is online
     sys_accounts = await db.list_accounts()

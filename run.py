@@ -88,11 +88,11 @@ async def main():
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop_event.set)
 
-    # Start bot (non-blocking)
-    await run_bot(tg_app)
-
-    # Start API server in background task
+    # Start API server first (so /api/health responds immediately)
     api_task = asyncio.create_task(run_api())
+
+    # Start bot (post_init may take time due to Samsara API calls)
+    await run_bot(tg_app)
 
     # Wait for shutdown signal
     await stop_event.wait()
