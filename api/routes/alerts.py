@@ -1,29 +1,52 @@
 """Alert API endpoints."""
 
 from fastapi import APIRouter, Depends, Query, HTTPException
+from pydantic import BaseModel
 
-from api.deps import require_permission
-from bot.state import db
+from api.deps import require_permission, get_tenant_db
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
 
 @router.get("/pending")
 async def pending_alerts(
+    alert_type: str | None = Query(None, description="Filter: fault, health, fuel, events"),
+    vehicle: str | None = Query(None, description="Filter by vehicle name (substring)"),
     user: dict = Depends(require_permission("can_alerts_all")),
+    tenant_db=Depends(get_tenant_db),
 ):
     """Get all pending (unacknowledged) alerts for this account."""
-    alerts = await db.get_pending_alerts(user["account_id"])
+    alerts = await tenant_db.get_pending_alerts(user["account_id"])
+
+    if alert_type:
+        alerts = [a for a in alerts if a.get("alert_type") == alert_type]
+    if vehicle:
+        q = vehicle.lower()
+        alerts = [a for a in alerts if q in (a.get("vehicle_name") or "").lower()]
+
     return {"alerts": alerts, "count": len(alerts)}
 
 
 @router.get("/history")
 async def alert_history(
     days: int = Query(7, ge=1, le=90),
+    alert_type: str | None = Query(None, description="Filter: fault, health, fuel, events"),
+    vehicle: str | None = Query(None, description="Filter by vehicle name (substring)"),
+    status: str | None = Query(None, description="Filter: acknowledged, expired, active"),
     user: dict = Depends(require_permission("can_alerts_all")),
+    tenant_db=Depends(get_tenant_db),
 ):
     """Get alert history for this account."""
-    alerts = await db.get_alert_history(user["account_id"], limit=days * 50)
+    alerts = await tenant_db.get_alert_history(user["account_id"], limit=days * 50)
+
+    if alert_type:
+        alerts = [a for a in alerts if a.get("alert_type") == alert_type]
+    if vehicle:
+        q = vehicle.lower()
+        alerts = [a for a in alerts if q in (a.get("vehicle_name") or "").lower()]
+    if status:
+        alerts = [a for a in alerts if a.get("status") == status]
+
     return {"alerts": alerts, "count": len(alerts)}
 
 
@@ -31,10 +54,34 @@ async def alert_history(
 async def acknowledge_alert(
     ack_id: int,
     user: dict = Depends(require_permission("can_alerts_all")),
+    tenant_db=Depends(get_tenant_db),
 ):
     """Acknowledge an alert from the web UI."""
     telegram_id = int(user["sub"])
-    success = await db.acknowledge_alert(ack_id, telegram_id)
+    success = await tenant_db.acknowledge_alert(ack_id, telegram_id, account_id=user["account_id"])
     if not success:
         raise HTTPException(status_code=404, detail="Alert not found or already acknowledged")
     return {"status": "acknowledged", "ack_id": ack_id}
+
+
+class BulkAckRequest(BaseModel):
+    ids: list[int]
+
+
+@router.post("/bulk-ack")
+async def bulk_acknowledge(
+    body: BulkAckRequest,
+    user: dict = Depends(require_permission("can_alerts_all")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Acknowledge multiple alerts at once."""
+    telegram_id = int(user["sub"])
+    acked = 0
+    failed = 0
+    for ack_id in body.ids:
+        success = await tenant_db.acknowledge_alert(ack_id, telegram_id, account_id=user["account_id"])
+        if success:
+            acked += 1
+        else:
+            failed += 1
+    return {"acked": acked, "failed": failed, "total": len(body.ids)}

@@ -5,6 +5,7 @@ from fastapi import Depends, HTTPException, Header
 from jose import JWTError
 
 from api.auth import decode_jwt
+from bot.state import router as db_router
 from permissions import can
 
 
@@ -33,3 +34,13 @@ def require_permission(feature: str):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         return user
     return _check
+
+
+async def get_tenant_db(user: dict = Depends(get_current_user)):
+    """Get the tenant database for the current user's account."""
+    return await db_router.get_tenant(user["account_id"])
+
+
+async def get_platform_db():
+    """Get the platform database."""
+    return db_router.platform

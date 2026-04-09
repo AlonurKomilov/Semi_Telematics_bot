@@ -50,7 +50,7 @@ VERTEX_AI_MODEL = os.getenv("VERTEX_AI_MODEL", "gemini-2.5-flash")
 
 # Webhook settings (optional — if WEBHOOK_URL is empty, bot uses polling)
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
-WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", "8443"))
+WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", "8001"))
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
 USE_WEBHOOK = bool(WEBHOOK_URL)
 

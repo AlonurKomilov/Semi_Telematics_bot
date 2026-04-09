@@ -37,33 +37,61 @@ class SchedulesMixin:
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
-    async def get_work_schedule(self, schedule_id: int) -> Optional[dict]:
-        """Get a single work schedule by ID."""
-        cur = await self._db.execute(
-            "SELECT * FROM work_schedules WHERE id = ?", (schedule_id,),
-        )
+    async def get_work_schedule(self, schedule_id: int, account_id: int = 0) -> Optional[dict]:
+        """Get a single work schedule by ID.
+
+        If account_id is provided, the row must belong to that account.
+        """
+        if account_id:
+            cur = await self._db.execute(
+                "SELECT * FROM work_schedules WHERE id = ? AND account_id = ?",
+                (schedule_id, account_id),
+            )
+        else:
+            cur = await self._db.execute(
+                "SELECT * FROM work_schedules WHERE id = ?", (schedule_id,),
+            )
         row = await cur.fetchone()
         return dict(row) if row else None
 
-    async def update_work_schedule(self, schedule_id: int, **kwargs) -> bool:
-        """Update work schedule fields."""
+    async def update_work_schedule(self, schedule_id: int, account_id: int = 0, **kwargs) -> bool:
+        """Update work schedule fields.
+
+        If account_id is provided, the row must belong to that account.
+        """
         allowed = {"label", "start_hour", "end_hour", "target_role"}
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
             return False
         set_clause = ", ".join(f"{k} = ?" for k in updates)
-        values = list(updates.values()) + [schedule_id]
-        await self._db.execute(
-            f"UPDATE work_schedules SET {set_clause} WHERE id = ?", values,
-        )
+        if account_id:
+            values = list(updates.values()) + [schedule_id, account_id]
+            cur = await self._db.execute(
+                f"UPDATE work_schedules SET {set_clause} WHERE id = ? AND account_id = ?",
+                values,
+            )
+        else:
+            values = list(updates.values()) + [schedule_id]
+            cur = await self._db.execute(
+                f"UPDATE work_schedules SET {set_clause} WHERE id = ?", values,
+            )
         await self._db.commit()
-        return True
+        return cur.rowcount > 0
 
-    async def delete_work_schedule(self, schedule_id: int) -> None:
-        """Delete a work schedule."""
-        await self._db.execute(
-            "DELETE FROM work_schedules WHERE id = ?", (schedule_id,),
-        )
+    async def delete_work_schedule(self, schedule_id: int, account_id: int = 0) -> None:
+        """Delete a work schedule.
+
+        If account_id is provided, the row must belong to that account.
+        """
+        if account_id:
+            await self._db.execute(
+                "DELETE FROM work_schedules WHERE id = ? AND account_id = ?",
+                (schedule_id, account_id),
+            )
+        else:
+            await self._db.execute(
+                "DELETE FROM work_schedules WHERE id = ?", (schedule_id,),
+            )
         await self._db.commit()
 
     async def get_work_schedules_for_role(

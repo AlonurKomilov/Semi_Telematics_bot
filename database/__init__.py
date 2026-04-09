@@ -42,6 +42,10 @@ from .parking_db import ParkingMixin
 from .camera_db import CameraMixin
 from .schedules import SchedulesMixin
 
+from .platform_db import PlatformDB
+from .tenant_db import TenantDB
+from .tenant_router import TenantRouter, LegacyRouter
+
 
 class Database(
     AccountsMixin,
@@ -78,4 +82,8 @@ __all__ = [
     "User",
     "AuthorizedChat",
     "Invite",
+    "PlatformDB",
+    "TenantDB",
+    "TenantRouter",
+    "LegacyRouter",
 ]

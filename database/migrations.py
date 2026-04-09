@@ -22,6 +22,7 @@ async def run_all(conn) -> None:
     await migrate_maintenance_recurring(conn)
     await migrate_work_schedules_table(conn)
     await migrate_user_last_shift_report(conn)
+    await migrate_user_email_password(conn)
 
 
 async def migrate_alert_prefs(conn) -> None:
@@ -277,3 +278,28 @@ async def migrate_user_last_shift_report(conn) -> None:
         logger.info("Added column users.last_shift_report")
     except Exception:
         pass  # column already exists
+
+
+async def migrate_user_email_password(conn) -> None:
+    """Add email + password_hash columns for dashboard login."""
+    for col_name, col_def in [
+        ("email", "TEXT"),
+        ("password_hash", "TEXT"),
+    ]:
+        try:
+            await conn.execute(
+                f"ALTER TABLE users ADD COLUMN {col_name} {col_def}"
+            )
+            await conn.commit()
+            logger.info(f"Added column users.{col_name}")
+        except Exception:
+            pass  # already exists
+    # Unique index on email (only for non-NULL values)
+    try:
+        await conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email "
+            "ON users(email) WHERE email IS NOT NULL"
+        )
+        await conn.commit()
+    except Exception:
+        pass

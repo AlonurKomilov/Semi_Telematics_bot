@@ -7,6 +7,7 @@ aiosqlite==0.20.0
 cachetools>=5.3
 redis>=5.0
 cryptography>=41.0
+bcrypt>=4.0
 staticmap>=0.5.7
 google-generativeai>=0.8
 
@@ -14,6 +15,7 @@ google-generativeai>=0.8
 fastapi>=0.115
 uvicorn[standard]>=0.30
 python-jose[cryptography]>=3.3
+slowapi>=0.1.9
 
 # Testing
 pytest>=8.0

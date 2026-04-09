@@ -5,7 +5,12 @@ SERVICE  = semi-telematics-bot
 PID_FILE = .bot.pid
 LOG_FILE = bot.log
 
-.PHONY: start stop restart status logs install clean
+.PHONY: start stop restart status logs install clean \
+       test test-cov test-fast test-watch \
+       backup backup-list backup-restore \
+       docker-build docker-up docker-down docker-logs docker-restart \
+       nginx-install nginx-test nginx-status ports \
+       redis-start redis-stop redis-cli
 
 # ── systemd-aware targets (preferred) ────────────────
 
@@ -13,54 +18,105 @@ LOG_FILE = bot.log
 install:
 	@bash install-service.sh
 
-## Start bot via systemd (falls back to nohup if service not installed)
+## Start all services: Redis + bot/API (systemd or nohup fallback)
 start:
+	@echo "🚀 Starting Semi Telematics services..."
+	@# ── 1. Redis ──
+	@if docker ps --format '{{.Names}}' | grep -q $(REDIS_CONTAINER); then \
+		echo "   ✅ Redis already running on port 8002"; \
+	else \
+		docker start $(REDIS_CONTAINER) 2>/dev/null || \
+		docker run -d \
+			--name $(REDIS_CONTAINER) \
+			--restart unless-stopped \
+			-p 127.0.0.1:8002:8002 \
+			-v semi-telematics-redis:/data \
+			redis:7-alpine \
+			redis-server --port 8002 >/dev/null; \
+		echo "   ✅ Redis started on port 8002"; \
+	fi
+	@# ── 2. Bot + API ──
 	@if systemctl is-enabled $(SERVICE) >/dev/null 2>&1; then \
 		sudo systemctl start $(SERVICE); \
-		echo "✅ Bot started via systemd"; \
+		echo "   ✅ Bot + API started via systemd"; \
 	elif [ -f $(PID_FILE) ] && kill -0 $$(cat $(PID_FILE)) 2>/dev/null; then \
-		echo "⚠️  Bot already running (PID $$(cat $(PID_FILE)))"; \
+		echo "   ⚠️  Bot already running (PID $$(cat $(PID_FILE)))"; \
 	else \
 		nohup python3 run.py >> $(LOG_FILE) 2>&1 & echo $$! > $(PID_FILE); \
-		echo "✅ Bot started (PID $$(cat $(PID_FILE))) — logs: $(LOG_FILE)"; \
+		echo "   ✅ Bot + API started (PID $$(cat $(PID_FILE))) — logs: $(LOG_FILE)"; \
 	fi
+	@# ── 3. Health check ──
+	@echo "   🔍 Checking health..."
+	@for i in 1 2 3 4 5; do \
+		if curl -sf http://127.0.0.1:8000/api/health >/dev/null 2>&1; then \
+			echo "   ✅ All services healthy"; \
+			break; \
+		fi; \
+		if [ $$i -eq 5 ]; then \
+			echo "   ⚠️  Health check not responding yet (services may still be starting)"; \
+		fi; \
+		sleep 1; \
+	done
 
-## Stop bot (also kills any orphan run.py processes for this project)
+## Stop all services: bot/API + Redis
 stop:
+	@echo "🛑 Stopping Semi Telematics services..."
+	@# ── 1. Bot + API ──
 	@if systemctl is-enabled $(SERVICE) >/dev/null 2>&1; then \
 		sudo systemctl stop $(SERVICE); \
-		echo "🛑 Bot stopped (systemd)"; \
+		echo "   🛑 Bot + API stopped (systemd)"; \
 	elif [ -f $(PID_FILE) ] && kill -0 $$(cat $(PID_FILE)) 2>/dev/null; then \
 		kill $$(cat $(PID_FILE)) && rm -f $(PID_FILE); \
-		echo "🛑 Bot stopped"; \
+		echo "   🛑 Bot + API stopped"; \
 	else \
-		echo "⚠️  Bot is not running"; \
+		echo "   ⚠️  Bot is not running"; \
 		rm -f $(PID_FILE); \
 	fi
 	@# Kill any orphan run.py processes for this project
 	@ps aux | grep "[p]ython.*$(CURDIR)/run.py" | awk '{print $$2}' | while read pid; do \
-		echo "🧹 Killing orphan bot process $$pid"; \
+		echo "   🧹 Killing orphan bot process $$pid"; \
 		kill $$pid 2>/dev/null || kill -9 $$pid 2>/dev/null; \
 	done; true
-
-## Restart bot
-restart:
-	@if systemctl is-enabled $(SERVICE) >/dev/null 2>&1; then \
-		sudo systemctl restart $(SERVICE); \
-		echo "🔄 Bot restarted (systemd)"; \
+	@# ── 2. Redis ──
+	@if docker ps --format '{{.Names}}' | grep -q $(REDIS_CONTAINER); then \
+		docker stop $(REDIS_CONTAINER) >/dev/null; \
+		echo "   🛑 Redis stopped"; \
 	else \
-		$(MAKE) stop; \
-		$(MAKE) start; \
+		echo "   ⚠️  Redis not running"; \
 	fi
+	@echo "   ✅ All services stopped"
 
-## Show bot status
+## Restart all services
+restart:
+	@$(MAKE) stop
+	@$(MAKE) start
+
+## Show status of all services
 status:
+	@echo "📋 Semi Telematics service status:"
+	@# ── Bot + API ──
 	@if systemctl is-enabled $(SERVICE) >/dev/null 2>&1; then \
-		sudo systemctl status $(SERVICE) --no-pager; \
+		if systemctl is-active $(SERVICE) >/dev/null 2>&1; then \
+			echo "   ✅ Bot + API: running (systemd)"; \
+		else \
+			echo "   ❌ Bot + API: stopped (systemd)"; \
+		fi; \
 	elif [ -f $(PID_FILE) ] && kill -0 $$(cat $(PID_FILE)) 2>/dev/null; then \
-		echo "✅ Bot running (PID $$(cat $(PID_FILE)))"; \
+		echo "   ✅ Bot + API: running (PID $$(cat $(PID_FILE)))"; \
 	else \
-		echo "⚠️  Bot is not running"; \
+		echo "   ❌ Bot + API: stopped"; \
+	fi
+	@# ── Redis ──
+	@if docker ps --format '{{.Names}}' | grep -q $(REDIS_CONTAINER); then \
+		echo "   ✅ Redis: running on port 8002"; \
+	else \
+		echo "   ❌ Redis: stopped"; \
+	fi
+	@# ── Health ──
+	@if curl -sf http://127.0.0.1:8000/api/health >/dev/null 2>&1; then \
+		echo "   ✅ Health: $$(curl -s http://127.0.0.1:8000/api/health)"; \
+	else \
+		echo "   ⚠️  Health endpoint not responding"; \
 	fi
 
 ## Tail logs
@@ -200,3 +256,72 @@ docker-restart:
 	docker compose down
 	docker compose build
 	docker compose up -d
+
+# ── Nginx targets ────────────────────────────────────
+
+NGINX_CONF = semi-telematics-bot
+NGINX_SRC  = nginx/semi-telematics-bot.conf
+
+## Install/update nginx config (safe — only adds 4truck.us, won't touch other sites)
+nginx-install:
+	@echo "📋 Installing nginx config for 4truck.us..."
+	@sudo cp $(NGINX_SRC) /etc/nginx/sites-available/$(NGINX_CONF)
+	@sudo ln -sf /etc/nginx/sites-available/$(NGINX_CONF) /etc/nginx/sites-enabled/$(NGINX_CONF)
+	@echo "🔍 Testing nginx config..."
+	@sudo nginx -t
+	@sudo systemctl reload nginx
+	@echo "✅ Nginx config installed and reloaded"
+	@echo "   Other sites (2bot.org, analyticbot.org) are untouched"
+
+## Test nginx config without applying
+nginx-test:
+	@sudo cp $(NGINX_SRC) /etc/nginx/sites-available/$(NGINX_CONF)
+	@sudo nginx -t
+
+## Show which nginx sites are enabled
+nginx-status:
+	@echo "📋 Enabled nginx sites:"
+	@ls -la /etc/nginx/sites-enabled/ 2>/dev/null || echo "   (none)"
+	@echo ""
+	@echo "📋 Listening ports:"
+	@ss -tlnp 2>/dev/null | grep -E ":(80|443|8000|8001|8002|8080)" || echo "   (none listening)"
+
+# ── Port overview ────────────────────────────────────
+
+## Show port assignments for this project
+ports:
+	@echo "📋 Semi Telematics Bot — Port Layout"
+	@echo "   8000  FastAPI API + static files (webapp, dashboard)"
+	@echo "   8001  Telegram webhook listener"
+	@echo "   8002  Redis cache (localhost only)"
+	@echo ""
+	@echo "📋 Currently listening:"
+	@ss -tlnp 2>/dev/null | grep -E ":(8000|8001|8002) " || echo "   (none — services not running)"
+
+# ── Redis standalone (when not using docker-compose) ─
+
+REDIS_CONTAINER = semi-telematics-redis
+
+## Start Redis on port 8002 (Docker container, standalone)
+redis-start:
+	@if docker ps --format '{{.Names}}' | grep -q $(REDIS_CONTAINER); then \
+		echo "✅ Redis already running on port 8002"; \
+	else \
+		docker start $(REDIS_CONTAINER) 2>/dev/null || \
+		docker run -d \
+			--name $(REDIS_CONTAINER) \
+			--restart unless-stopped \
+			-p 127.0.0.1:8002:8002 \
+			-v semi-telematics-redis:/data \
+			redis:7-alpine \
+			redis-server --port 8002; \
+		echo "✅ Redis started on port 8002"; \
+	fi
+
+## Stop Redis container
+redis-stop:
+	@docker stop $(REDIS_CONTAINER) 2>/dev/null && echo "🛑 Redis stopped" || echo "⚠️  Redis not running"
+
+## Redis CLI on port 8002
+redis-cli:
+	@redis-cli -p 8002

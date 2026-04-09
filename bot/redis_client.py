@@ -15,7 +15,7 @@ import redis.asyncio as aioredis
 
 logger = logging.getLogger(__name__)
 
-REDIS_URL = os.getenv("REDIS_URL", "")
+REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:8002/0")
 
 _pool: Optional[aioredis.Redis] = None
 _available: bool = False

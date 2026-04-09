@@ -2,12 +2,50 @@
 
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from api.routes import fleet, map_data, alerts, health
+from api.routes import dispatch as dispatch_routes
+from api.routes import safety as safety_routes
+from api.routes import reports as reports_routes
+from api.routes import costs as costs_routes
+from api.routes import user as user_routes
+from api.routes import dashboard as dashboard_routes
+from api.routes import admin as admin_routes
+from api.routes import maintenance as maintenance_routes
 from api.auth import router as auth_router
+from api.rate_limit import limiter
+
+# ── Allowed CORS origins ─────────────────────────────────────────
+_ALLOWED_ORIGINS = [
+    "https://4truck.us",
+    "https://www.4truck.us",
+    "https://web.telegram.org",
+    "https://weba.telegram.org",
+    "https://webk.telegram.org",
+]
+# Allow override via env var (comma-separated) for dev/staging
+_extra = os.getenv("CORS_ALLOWED_ORIGINS", "")
+if _extra:
+    _ALLOWED_ORIGINS.extend(o.strip() for o in _extra.split(",") if o.strip())
+
+# Max request body size (bytes) — 2 MB at app level; nginx also enforces 5 MB
+_MAX_BODY_SIZE = int(os.getenv("MAX_BODY_SIZE", str(2 * 1024 * 1024)))
+
+
+class LimitBodyMiddleware(BaseHTTPMiddleware):
+    """Reject requests with Content-Length exceeding the configured limit."""
+
+    async def dispatch(self, request: Request, call_next):
+        cl = request.headers.get("content-length")
+        if cl and int(cl) > _MAX_BODY_SIZE:
+            return Response("Request body too large", status_code=413)
+        return await call_next(request)
 
 
 def create_api() -> FastAPI:
@@ -19,30 +57,51 @@ def create_api() -> FastAPI:
         openapi_url="/api/openapi.json",
     )
 
-    # CORS — allow Mini App and standalone web origins
-    webapp_url = os.getenv("WEBAPP_URL", "")
-    allowed_origins = ["*"] if not webapp_url else [
-        webapp_url,
-        "https://web.telegram.org",
-    ]
+    # Rate limiter
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+    # Request body size limit
+    app.add_middleware(LimitBodyMiddleware)
+
+    # CORS — explicit allowed origins (wildcard + credentials is spec-violating)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=allowed_origins,
+        allow_origins=_ALLOWED_ORIGINS,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
     )
 
     # API routes
     app.include_router(health.router, prefix="/api")
     app.include_router(auth_router, prefix="/api")
+    app.include_router(user_routes.router, prefix="/api")
+    app.include_router(dashboard_routes.router, prefix="/api")
     app.include_router(fleet.router, prefix="/api")
     app.include_router(map_data.router, prefix="/api")
     app.include_router(alerts.router, prefix="/api")
+    app.include_router(dispatch_routes.router, prefix="/api")
+    app.include_router(safety_routes.router, prefix="/api")
+    app.include_router(reports_routes.router, prefix="/api")
+    app.include_router(costs_routes.router, prefix="/api")
+    app.include_router(admin_routes.router, prefix="/api")
+    app.include_router(maintenance_routes.router, prefix="/api")
 
-    # Serve webapp static files (if directory exists)
+    # Serve webapp static files (Mini App)
     webapp_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "webapp")
     if os.path.isdir(webapp_dir):
         app.mount("/app", StaticFiles(directory=webapp_dir, html=True), name="webapp")
+
+    # Serve dashboard static files (desktop)
+    dashboard_dir = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), "dashboard", "dist"
+    )
+    if os.path.isdir(dashboard_dir):
+        app.mount(
+            "/dashboard",
+            StaticFiles(directory=dashboard_dir, html=True),
+            name="dashboard",
+        )
 
     return app

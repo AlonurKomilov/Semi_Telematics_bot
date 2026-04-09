@@ -1,7 +1,9 @@
 __pycache__/
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
 .git/
+.github/
 *.pyc
 *.pyo
 tests/
@@ -14,3 +16,10 @@ backups/
 venv/
 env/
 *.tar.gz
+dashboard/node_modules/
+dashboard/dist/
+data/
+*.db
+*.db-shm
+*.db-wal
+semi-telematics-*.json

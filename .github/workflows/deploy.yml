@@ -31,6 +31,14 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build dashboard
+        run: cd dashboard && npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts && npm run build
+
       - name: Run tests
         run: python -m pytest tests/ -x -q --tb=short
 

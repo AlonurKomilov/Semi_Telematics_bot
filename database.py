@@ -108,6 +108,9 @@ class User:
     quiet_end: Optional[int] = None     # DND end hour (0-23)
     timezone: str = "America/New_York"
     language: str = "en"                # UI language (en/es/ru/uk/fr)
+    last_shift_report: Optional[str] = None
+    email: Optional[str] = None         # For dashboard email+password login
+    password_hash: Optional[str] = None # bcrypt hash
 
     @property
     def is_owner(self) -> bool:
@@ -461,6 +464,7 @@ class Database:
         await self._migrate_maintenance_recurring()
         await self._migrate_work_schedules_table()
         await self._migrate_user_last_shift_report()
+        await self._migrate_user_email_password()
 
     async def _migrate_alert_prefs(self):
         """Add alert_faults/health/fuel/geofence columns if missing."""
@@ -662,6 +666,30 @@ class Database:
         except Exception:
             pass  # column already exists
 
+    async def _migrate_user_email_password(self):
+        """Add email + password_hash columns for dashboard login."""
+        for col_name, col_def in [
+            ("email", "TEXT"),
+            ("password_hash", "TEXT"),
+        ]:
+            try:
+                await self._db.execute(
+                    f"ALTER TABLE users ADD COLUMN {col_name} {col_def}"
+                )
+                await self._db.commit()
+                logger.info(f"Added column users.{col_name}")
+            except Exception:
+                pass  # already exists
+        # Unique index on email (only for non-NULL values)
+        try:
+            await self._db.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email "
+                "ON users(email) WHERE email IS NOT NULL"
+            )
+            await self._db.commit()
+        except Exception:
+            pass
+
     # ── Helpers ───────────────────────────────────────────────────
 
     @staticmethod
@@ -729,6 +757,8 @@ class Database:
             timezone=row["timezone"] if "timezone" in row.keys() else "America/New_York",
             language=row["language"] if "language" in row.keys() else "en",
             last_shift_report=row["last_shift_report"] if "last_shift_report" in row.keys() else None,
+            email=row["email"] if "email" in row.keys() else None,
+            password_hash=row["password_hash"] if "password_hash" in row.keys() else None,
         )
 
     def _row_to_invite(self, row) -> Invite:
@@ -914,6 +944,62 @@ class Database:
         )
         row = await cur.fetchone()
         return self._row_to_user(row) if row else None
+
+    async def get_user_by_email(self, email: str) -> Optional[User]:
+        """Look up a user by email address."""
+        cur = await self._db.execute(
+            "SELECT * FROM users WHERE email = ? AND is_active = 1",
+            (email.lower().strip(),),
+        )
+        row = await cur.fetchone()
+        return self._row_to_user(row) if row else None
+
+    async def set_user_email_password(
+        self, user_id: int, email: str, password_hash: str
+    ) -> None:
+        """Set email and password hash for an existing user."""
+        await self._db.execute(
+            "UPDATE users SET email = ?, password_hash = ? WHERE id = ?",
+            (email.lower().strip(), password_hash, user_id),
+        )
+        await self._db.commit()
+
+    async def create_user_with_email(
+        self, email: str, password_hash: str, account_id: int,
+        role: Role = Role.FLEET_MGR, department: str = "general",
+        display_name: str = "",
+    ) -> User:
+        """Create a new user with email+password (no Telegram ID yet)."""
+        now = self._now()
+        # Use a placeholder telegram_id (negative, unique per email)
+        # This will be updated when they link their Telegram account
+        import hashlib
+        placeholder_tid = -abs(int(hashlib.sha256(email.encode()).hexdigest()[:15], 16))
+        cur = await self._db.execute(
+            """INSERT INTO users
+               (telegram_id, account_id, role, department, display_name,
+                email, password_hash, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (placeholder_tid, account_id, role.value, department,
+             display_name, email.lower().strip(), password_hash, now),
+        )
+        await self._db.commit()
+        return User(
+            id=cur.lastrowid, telegram_id=placeholder_tid,
+            account_id=account_id, role=role,
+            department=department, truck_num=None,
+            display_name=display_name, email=email.lower().strip(),
+            password_hash=password_hash,
+            alerts_on=False, is_active=True, created_at=now,
+        )
+
+    async def link_telegram_to_user(self, user_id: int, telegram_id: int) -> None:
+        """Link a real Telegram ID to an email-registered user."""
+        await self._db.execute(
+            "UPDATE users SET telegram_id = ? WHERE id = ?",
+            (telegram_id, user_id),
+        )
+        await self._db.commit()
 
     async def get_user(self, user_id: int) -> Optional[User]:
         cur = await self._db.execute(

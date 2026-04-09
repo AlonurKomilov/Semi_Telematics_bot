@@ -56,16 +56,30 @@ class CompaniesMixin:
         row = await cur.fetchone()
         return self._row_to_company(row) if row else None
 
-    async def remove_company(self, company_id: int) -> bool:
-        """Soft-delete a company."""
-        await self._db.execute(
-            "UPDATE companies SET is_active = 0 WHERE id = ?", (company_id,)
-        )
-        await self._db.commit()
-        return True
+    async def remove_company(self, company_id: int, account_id: int = 0) -> bool:
+        """Soft-delete a company.
 
-    async def update_company(self, company_id: int, **kwargs) -> bool:
-        """Update company fields. Allowed: display_name, samsara_api_key, active_days, is_active."""
+        If account_id is provided, the row must belong to that account
+        (prevents cross-tenant deletion).
+        """
+        if account_id:
+            cur = await self._db.execute(
+                "UPDATE companies SET is_active = 0 WHERE id = ? AND account_id = ?",
+                (company_id, account_id),
+            )
+        else:
+            cur = await self._db.execute(
+                "UPDATE companies SET is_active = 0 WHERE id = ?", (company_id,)
+            )
+        await self._db.commit()
+        return cur.rowcount > 0
+
+    async def update_company(self, company_id: int, account_id: int = 0, **kwargs) -> bool:
+        """Update company fields. Allowed: display_name, samsara_api_key, active_days, is_active.
+
+        If account_id is provided, the row must belong to that account
+        (prevents cross-tenant modification).
+        """
         allowed = {"display_name", "samsara_api_key", "active_days", "is_active"}
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
@@ -73,9 +87,15 @@ class CompaniesMixin:
         if "samsara_api_key" in updates:
             updates["samsara_api_key"] = _enc(updates["samsara_api_key"])
         set_clause = ", ".join(f"{k} = ?" for k in updates)
-        values = list(updates.values()) + [company_id]
-        await self._db.execute(
-            f"UPDATE companies SET {set_clause} WHERE id = ?", values,
-        )
+        if account_id:
+            values = list(updates.values()) + [company_id, account_id]
+            cur = await self._db.execute(
+                f"UPDATE companies SET {set_clause} WHERE id = ? AND account_id = ?", values,
+            )
+        else:
+            values = list(updates.values()) + [company_id]
+            cur = await self._db.execute(
+                f"UPDATE companies SET {set_clause} WHERE id = ?", values,
+            )
         await self._db.commit()
-        return True
+        return cur.rowcount > 0

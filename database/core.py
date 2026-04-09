@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import aiosqlite
 import logging
 import os
 import secrets
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -16,29 +18,98 @@ from . import schema, migrations
 
 logger = logging.getLogger(__name__)
 
+# Default number of read-pool connections per database.
+# Each connection runs in its own thread via aiosqlite, so N connections
+# allow N concurrent reads under WAL mode.
+_DEFAULT_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "4"))
+
 
 class _DatabaseCore:
     """Base class providing connection lifecycle, row converters, and utilities."""
 
-    def __init__(self, path: str = "data/bot.db"):
+    def __init__(self, path: str = "data/bot.db", pool_size: int = _DEFAULT_POOL_SIZE):
         self.path = path
-        self._db: Optional[aiosqlite.Connection] = None
+        self._pool_size = pool_size
+        self._db: Optional[aiosqlite.Connection] = None  # writer connection
+        self._read_pool: asyncio.Queue[aiosqlite.Connection] = asyncio.Queue()
+        self._all_readers: list[aiosqlite.Connection] = []
+
+    async def _open_connection(self) -> aiosqlite.Connection:
+        """Open a new aiosqlite connection with standard pragmas."""
+        conn = await aiosqlite.connect(self.path)
+        conn.row_factory = aiosqlite.Row
+        await conn.execute("PRAGMA journal_mode=WAL")
+        await conn.execute("PRAGMA foreign_keys=ON")
+        return conn
 
     async def initialize(self):
-        """Open DB and create / migrate schema."""
+        """Open DB, create/migrate schema, and spin up the read pool."""
         os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
-        self._db = await aiosqlite.connect(self.path)
-        self._db.row_factory = aiosqlite.Row
-        await self._db.execute("PRAGMA journal_mode=WAL")
-        await self._db.execute("PRAGMA foreign_keys=ON")
+        self._db = await self._open_connection()
         await schema.create_tables(self._db)
         await migrations.run_all(self._db)
-        logger.info(f"Database ready at {self.path}")
+
+        # Spin up read-pool connections
+        for _ in range(self._pool_size):
+            conn = await self._open_connection()
+            self._all_readers.append(conn)
+            self._read_pool.put_nowait(conn)
+
+        logger.info(
+            "Database ready at %s (writer + %d readers)", self.path, self._pool_size,
+        )
+
+    @asynccontextmanager
+    async def acquire(self):
+        """Check out a read connection from the pool.
+
+        Usage::
+
+            async with db.acquire() as conn:
+                cur = await conn.execute("SELECT ...")
+                rows = await cur.fetchall()
+
+        The connection is returned to the pool when the block exits.
+        For write operations, use ``self._db`` (the dedicated writer)
+        or the ``transaction()`` context manager.
+        """
+        conn = await self._read_pool.get()
+        try:
+            yield conn
+        finally:
+            self._read_pool.put_nowait(conn)
 
     async def close(self):
+        for conn in self._all_readers:
+            await conn.close()
+        self._all_readers.clear()
+        # Drain the queue
+        while not self._read_pool.empty():
+            try:
+                self._read_pool.get_nowait()
+            except asyncio.QueueEmpty:
+                break
         if self._db:
             await self._db.close()
             self._db = None
+
+    @asynccontextmanager
+    async def transaction(self):
+        """Async context manager for an IMMEDIATE transaction.
+
+        Usage::
+            async with db.transaction():
+                await db._db.execute(...)
+                await db._db.execute(...)
+        Commits on success, rolls back on exception.
+        """
+        await self._db.execute("BEGIN IMMEDIATE")
+        try:
+            yield
+            await self._db.execute("COMMIT")
+        except BaseException:
+            await self._db.execute("ROLLBACK")
+            raise
 
     # ── Helpers ───────────────────────────────────────────────────
 
@@ -108,6 +179,9 @@ class _DatabaseCore:
             quiet_end=row["quiet_end"] if "quiet_end" in row.keys() else None,
             timezone=row["timezone"] if "timezone" in row.keys() else "America/New_York",
             language=row["language"] if "language" in row.keys() else "en",
+            last_shift_report=row["last_shift_report"] if "last_shift_report" in row.keys() else None,
+            email=row["email"] if "email" in row.keys() else None,
+            password_hash=row["password_hash"] if "password_hash" in row.keys() else None,
         )
 
     def _row_to_invite(self, row) -> Invite:

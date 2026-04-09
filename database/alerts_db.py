@@ -41,34 +41,50 @@ class AlertsMixin:
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
-    async def supersede_alert_ack(self, ack_id: int):
-        """Mark an alert ack as superseded (replaced by a newer alert)."""
-        await self._db.execute(
-            "UPDATE alert_acknowledgments SET status = 'superseded', "
-            "next_escalation = NULL WHERE id = ?",
-            (ack_id,),
-        )
+    async def supersede_alert_ack(self, ack_id: int, account_id: int = 0):
+        """Mark an alert ack as superseded (replaced by a newer alert).
+
+        If account_id is provided, the row must belong to that account.
+        """
+        if account_id:
+            await self._db.execute(
+                "UPDATE alert_acknowledgments SET status = 'superseded', "
+                "next_escalation = NULL WHERE id = ? AND account_id = ?",
+                (ack_id, account_id),
+            )
+        else:
+            await self._db.execute(
+                "UPDATE alert_acknowledgments SET status = 'superseded', "
+                "next_escalation = NULL WHERE id = ?",
+                (ack_id,),
+            )
         await self._db.commit()
 
-    async def acknowledge_alert(self, ack_id: int, user_id: int) -> bool:
+    async def acknowledge_alert(self, ack_id: int, user_id: int, account_id: int = 0) -> bool:
         """Mark an alert as acknowledged — also acks all rows with the same alert_key."""
         now = self._now()
         # Get the alert_key for this alert
-        cur = await self._db.execute(
-            "SELECT alert_key, account_id FROM alert_acknowledgments WHERE id = ?",
-            (ack_id,),
-        )
+        if account_id:
+            cur = await self._db.execute(
+                "SELECT alert_key, account_id FROM alert_acknowledgments WHERE id = ? AND account_id = ?",
+                (ack_id, account_id),
+            )
+        else:
+            cur = await self._db.execute(
+                "SELECT alert_key, account_id FROM alert_acknowledgments WHERE id = ?",
+                (ack_id,),
+            )
         row = await cur.fetchone()
         if not row:
             return False
         alert_key = row["alert_key"]
-        account_id = row["account_id"]
+        row_account_id = row["account_id"]
         # Ack all rows with the same alert_key (shared acknowledgment)
         await self._db.execute(
             "UPDATE alert_acknowledgments SET acknowledged_by = ?, acknowledged_at = ?, "
             "status = 'acknowledged', next_escalation = NULL "
             "WHERE alert_key = ? AND account_id = ? AND acknowledged_at IS NULL",
-            (user_id, now, alert_key, account_id),
+            (user_id, now, alert_key, row_account_id),
         )
         await self._db.commit()
         return True
@@ -93,19 +109,30 @@ class AlertsMixin:
     async def update_alert_escalation(self, ack_id: int,
                                        escalation_level: int,
                                        next_escalation: Optional[str],
-                                       message_id: Optional[int] = None):
-        """Update escalation level, next escalation time, and optionally message_id."""
+                                       message_id: Optional[int] = None,
+                                       account_id: int = 0):
+        """Update escalation level, next escalation time, and optionally message_id.
+
+        If account_id is provided, the row must belong to that account.
+        """
+        acct_filter = " AND account_id = ?" if account_id else ""
         if message_id is not None:
+            params = [escalation_level, next_escalation, message_id, ack_id]
+            if account_id:
+                params.append(account_id)
             await self._db.execute(
                 "UPDATE alert_acknowledgments SET escalation_level = ?, "
-                "next_escalation = ?, message_id = ? WHERE id = ?",
-                (escalation_level, next_escalation, message_id, ack_id),
+                f"next_escalation = ?, message_id = ? WHERE id = ?{acct_filter}",
+                params,
             )
         else:
+            params = [escalation_level, next_escalation, ack_id]
+            if account_id:
+                params.append(account_id)
             await self._db.execute(
                 "UPDATE alert_acknowledgments SET escalation_level = ?, "
-                "next_escalation = ? WHERE id = ?",
-                (escalation_level, next_escalation, ack_id),
+                f"next_escalation = ? WHERE id = ?{acct_filter}",
+                params,
             )
         await self._db.commit()
 
@@ -155,26 +182,44 @@ class AlertsMixin:
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
-    async def snooze_alert(self, ack_id: int, snooze_until: str) -> bool:
-        """Snooze an alert — postpone its next escalation without acking."""
-        cur = await self._db.execute(
-            "UPDATE alert_acknowledgments SET next_escalation = ? "
-            "WHERE id = ? AND acknowledged_at IS NULL AND status = 'active'",
-            (snooze_until, ack_id),
-        )
+    async def snooze_alert(self, ack_id: int, snooze_until: str, account_id: int = 0) -> bool:
+        """Snooze an alert — postpone its next escalation without acking.
+
+        If account_id is provided, the row must belong to that account.
+        """
+        if account_id:
+            cur = await self._db.execute(
+                "UPDATE alert_acknowledgments SET next_escalation = ? "
+                "WHERE id = ? AND account_id = ? AND acknowledged_at IS NULL AND status = 'active'",
+                (snooze_until, ack_id, account_id),
+            )
+        else:
+            cur = await self._db.execute(
+                "UPDATE alert_acknowledgments SET next_escalation = ? "
+                "WHERE id = ? AND acknowledged_at IS NULL AND status = 'active'",
+                (snooze_until, ack_id),
+            )
         await self._db.commit()
         return cur.rowcount > 0
 
-    async def get_alert_ack_by_id(self, ack_id: int) -> dict | None:
-        """Fetch an alert acknowledgment row by its ID."""
-        cur = await self._db.execute(
-            "SELECT * FROM alert_acknowledgments WHERE id = ?", (ack_id,),
-        )
+    async def get_alert_ack_by_id(self, ack_id: int, account_id: int = 0) -> dict | None:
+        """Fetch an alert acknowledgment row by its ID.
+
+        If account_id is provided, the row must belong to that account.
+        """
+        if account_id:
+            cur = await self._db.execute(
+                "SELECT * FROM alert_acknowledgments WHERE id = ? AND account_id = ?",
+                (ack_id, account_id),
+            )
+        else:
+            cur = await self._db.execute(
+                "SELECT * FROM alert_acknowledgments WHERE id = ?", (ack_id,),
+            )
         row = await cur.fetchone()
         if not row:
             return None
-        cols = [d[0] for d in cur.description]
-        return dict(zip(cols, row))
+        return dict(row)
 
     # ── DND Alert Queue ───────────────────────────────────────────
 

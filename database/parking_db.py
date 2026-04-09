@@ -124,30 +124,50 @@ class ParkingMixin:
 
     async def update_parking_alert_level(
         self, event_id: int, alert_level: str, ai_analysis: str = "",
+        account_id: int = 0,
     ) -> bool:
-        """Update the alert level and AI analysis for a parking event."""
+        """Update the alert level and AI analysis for a parking event.
+
+        If account_id is provided, the row must belong to that account.
+        """
         now = self._now()
+        acct_filter = " AND account_id = ?" if account_id else ""
         if ai_analysis:
-            await self._db.execute(
+            params: list = [alert_level, ai_analysis, now, event_id]
+            if account_id:
+                params.append(account_id)
+            cur = await self._db.execute(
                 "UPDATE parking_events SET alert_level = ?, ai_analysis = ?, "
-                "last_checked = ? WHERE id = ?",
-                (alert_level, ai_analysis, now, event_id),
+                f"last_checked = ? WHERE id = ?{acct_filter}",
+                params,
             )
         else:
-            await self._db.execute(
+            params = [alert_level, now, event_id]
+            if account_id:
+                params.append(account_id)
+            cur = await self._db.execute(
                 "UPDATE parking_events SET alert_level = ?, "
-                "last_checked = ? WHERE id = ?",
-                (alert_level, now, event_id),
+                f"last_checked = ? WHERE id = ?{acct_filter}",
+                params,
             )
         await self._db.commit()
-        return True
+        return cur.rowcount > 0
 
-    async def get_parking_event_by_id(self, event_id: int) -> dict | None:
-        """Get a single parking event by its row ID."""
-        cur = await self._db.execute(
-            "SELECT * FROM parking_events WHERE id = ?",
-            (event_id,),
-        )
+    async def get_parking_event_by_id(self, event_id: int, account_id: int = 0) -> dict | None:
+        """Get a single parking event by its row ID.
+
+        If account_id is provided, the row must belong to that account.
+        """
+        if account_id:
+            cur = await self._db.execute(
+                "SELECT * FROM parking_events WHERE id = ? AND account_id = ?",
+                (event_id, account_id),
+            )
+        else:
+            cur = await self._db.execute(
+                "SELECT * FROM parking_events WHERE id = ?",
+                (event_id,),
+            )
         row = await cur.fetchone()
         return dict(row) if row else None
 

@@ -22,7 +22,7 @@ from database import Database, Role
 async def db(tmp_path):
     """Provide an initialised in-memory-like Database (temp file)."""
     db_path = str(tmp_path / "test.db")
-    database = Database(db_path)
+    database = Database(db_path, pool_size=1)
     await database.initialize()
     yield database
     await database.close()

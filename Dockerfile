@@ -1,3 +1,12 @@
+# ── Stage 1: Build dashboard ─────────────────────────────────────
+FROM node:20-slim AS dashboard-build
+WORKDIR /build
+COPY dashboard/package.json dashboard/package-lock.json* ./
+RUN npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts
+COPY dashboard/ .
+RUN npm run build
+
+# ── Stage 2: Python application ──────────────────────────────────
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -18,10 +27,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application
 COPY . .
 
+# Copy built dashboard from stage 1
+COPY --from=dashboard-build /build/dist dashboard/dist/
+
 # Create data directory for SQLite
 RUN mkdir -p /app/data
 
-EXPOSE 8443 8000
+EXPOSE 8000 8001
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD curl -f http://localhost:8000/api/health || exit 1

@@ -83,6 +83,8 @@ class User:
     timezone: str = "America/New_York"
     language: str = "en"                # UI language (en/es/ru/uk/fr)
     last_shift_report: Optional[str] = None  # ISO date of last shift report
+    email: Optional[str] = None         # For dashboard email+password login
+    password_hash: Optional[str] = None # bcrypt hash
 
     @property
     def is_owner(self) -> bool:

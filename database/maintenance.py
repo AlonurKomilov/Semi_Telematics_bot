@@ -46,14 +46,20 @@ class MaintenanceMixin:
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
-    async def update_maintenance_status(self, task_id: int, status: str) -> bool:
+    async def update_maintenance_status(self, task_id: int, status: str, account_id: int = 0) -> bool:
         completed_at = self._now() if status == "done" else None
-        await self._db.execute(
-            "UPDATE maintenance_tasks SET status = ?, completed_at = ? WHERE id = ?",
-            (status, completed_at, task_id),
-        )
+        if account_id:
+            cur = await self._db.execute(
+                "UPDATE maintenance_tasks SET status = ?, completed_at = ? WHERE id = ? AND account_id = ?",
+                (status, completed_at, task_id, account_id),
+            )
+        else:
+            cur = await self._db.execute(
+                "UPDATE maintenance_tasks SET status = ?, completed_at = ? WHERE id = ?",
+                (status, completed_at, task_id),
+            )
         await self._db.commit()
-        return True
+        return cur.rowcount > 0
 
     async def get_overdue_tasks(self, account_id: int) -> list[dict]:
         cur = await self._db.execute(
@@ -73,34 +79,62 @@ class MaintenanceMixin:
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
-    async def get_maintenance_task(self, task_id: int) -> Optional[dict]:
-        """Get a single maintenance task by ID."""
-        cur = await self._db.execute(
-            "SELECT * FROM maintenance_tasks WHERE id = ?", (task_id,),
-        )
+    async def get_maintenance_task(self, task_id: int, account_id: int = 0) -> Optional[dict]:
+        """Get a single maintenance task by ID.
+
+        If account_id is provided, the row must belong to that account.
+        """
+        if account_id:
+            cur = await self._db.execute(
+                "SELECT * FROM maintenance_tasks WHERE id = ? AND account_id = ?",
+                (task_id, account_id),
+            )
+        else:
+            cur = await self._db.execute(
+                "SELECT * FROM maintenance_tasks WHERE id = ?", (task_id,),
+            )
         row = await cur.fetchone()
         return dict(row) if row else None
 
-    async def update_maintenance_task(self, task_id: int, **kwargs) -> bool:
-        """Update maintenance task fields."""
+    async def update_maintenance_task(self, task_id: int, account_id: int = 0, **kwargs) -> bool:
+        """Update maintenance task fields.
+
+        If account_id is provided, the row must belong to that account.
+        """
         allowed = {"task_type", "description", "due_date", "due_miles",
-                   "recur_interval_days", "recur_interval_miles"}
+                   "recur_interval_days", "recur_interval_miles", "last_odometer"}
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
             return False
         set_clause = ", ".join(f"{k} = ?" for k in updates)
-        values = list(updates.values()) + [task_id]
-        await self._db.execute(
-            f"UPDATE maintenance_tasks SET {set_clause} WHERE id = ?", values,
-        )
+        if account_id:
+            values = list(updates.values()) + [task_id, account_id]
+            cur = await self._db.execute(
+                f"UPDATE maintenance_tasks SET {set_clause} WHERE id = ? AND account_id = ?",
+                values,
+            )
+        else:
+            values = list(updates.values()) + [task_id]
+            cur = await self._db.execute(
+                f"UPDATE maintenance_tasks SET {set_clause} WHERE id = ?", values,
+            )
         await self._db.commit()
-        return True
+        return cur.rowcount > 0
 
-    async def delete_maintenance_task(self, task_id: int) -> None:
-        """Delete a maintenance task."""
-        await self._db.execute(
-            "DELETE FROM maintenance_tasks WHERE id = ?", (task_id,),
-        )
+    async def delete_maintenance_task(self, task_id: int, account_id: int = 0) -> None:
+        """Delete a maintenance task.
+
+        If account_id is provided, the row must belong to that account.
+        """
+        if account_id:
+            await self._db.execute(
+                "DELETE FROM maintenance_tasks WHERE id = ? AND account_id = ?",
+                (task_id, account_id),
+            )
+        else:
+            await self._db.execute(
+                "DELETE FROM maintenance_tasks WHERE id = ?", (task_id,),
+            )
         await self._db.commit()
 
     async def get_pending_tasks_by_miles(self) -> list[dict]:

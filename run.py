@@ -6,6 +6,7 @@ in a single asyncio event loop.
 """
 
 import asyncio
+import os
 import signal
 
 from dotenv import load_dotenv
@@ -25,6 +26,12 @@ from bot.scheduler import register_all as _register_jobs  # noqa: E402
 async def run_bot(tg_app):
     """Start the Telegram bot (non-blocking)."""
     await tg_app.initialize()
+
+    # post_init is only called automatically by run_polling()/run_webhook(),
+    # not by the manual initialize→start flow we use here.
+    if tg_app.post_init:
+        await tg_app.post_init(tg_app)
+
     if USE_WEBHOOK:
         if not WEBHOOK_SECRET:
             logger.warning(
@@ -32,7 +39,7 @@ async def run_bot(tg_app):
             )
         logger.info("Starting webhook mode on port %s", WEBHOOK_PORT)
         await tg_app.updater.start_webhook(
-            listen="127.0.0.1",
+            listen="0.0.0.0",
             port=WEBHOOK_PORT,
             url_path="/webhook",
             webhook_url=WEBHOOK_URL,
@@ -59,7 +66,8 @@ async def run_api():
         return
 
     api = create_api()
-    config = uvicorn.Config(api, host="0.0.0.0", port=8000, log_level="info")
+    api_port = int(os.environ.get("API_PORT", "8000"))
+    config = uvicorn.Config(api, host="0.0.0.0", port=api_port, log_level="info")
     server = uvicorn.Server(config)
     await server.serve()
 

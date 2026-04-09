@@ -14,16 +14,17 @@ async def health_check():
     # Check DB
     db_ok = False
     try:
-        await db._execute("SELECT 1")
-        db_ok = True
+        async with db.acquire() as conn:
+            await conn.execute("SELECT 1")
+            db_ok = True
     except Exception:
         pass
 
     # Check Redis
     redis_status = "disabled"
-    if rcache._redis is not None:
+    if rcache._pool is not None:
         try:
-            await rcache._redis.ping()
+            await rcache._pool.ping()
             redis_status = "ok"
         except Exception:
             redis_status = "error"

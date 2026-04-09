@@ -102,6 +102,10 @@ async def post_init(app: Application):
     # Initialize database
     await db.initialize()
 
+    # Initialize tenant router (multi-tenant mode or legacy wrapper)
+    from bot.state import router as db_router
+    await db_router.initialize()
+
     # Give AI client access to DB for per-account model persistence
     ai.set_db(db)
 
@@ -174,37 +178,7 @@ async def post_init(app: Application):
         except Exception as e:
             logger.warning(f"Startup msg to system owner {soid}: {e}")
 
-    # Send startup message to all registered customer users
-    accounts = await db.list_accounts()
-    for account in accounts:
-        acct_companies = await db.get_account_companies(account.id)
-        populate_company_display(acct_companies)
-        company_codes = [o.code for o in acct_companies]
-        company_text = ", ".join(company_codes) if company_codes else "No companies yet"
-
-        users = await db.list_account_users(account.id)
-        for user in users:
-            try:
-                kb = main_menu_kb(user.role, company_codes)
-                startup = (
-                    "━━━━━━━━━━━━━━━━━━━━━\n"
-                    "     🟢  <b>Bot is Online</b>\n"
-                    "━━━━━━━━━━━━━━━━━━━━━\n"
-                    "\n"
-                    f"  {role_display(user.role)}\n"
-                    f"  🏢 {account.name}\n"
-                    f"  Monitoring: {company_text}\n"
-                    "  Tap a button to begin ▾"
-                )
-                msg = await app.bot.send_message(
-                    chat_id=user.telegram_id,
-                    text=startup,
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=kb,
-                )
-                _active_messages[(user.telegram_id, user.telegram_id)] = [msg.message_id]
-            except Exception as e:
-                logger.warning(f"Startup msg to {user.telegram_id}: {e}")
+    logger.info("Startup complete — notified system owners only")
 
 
 async def post_shutdown(app: Application):

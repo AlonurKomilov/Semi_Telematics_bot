@@ -5,18 +5,35 @@ Pure env-var configuration stays in bot/config.py (read-only).
 For backward compatibility, bot/config.py re-exports everything from here.
 """
 
+import asyncio
+import os
 import time
 
 from cachetools import LRUCache
 
-from database import Database
+from typing import Union
+
+from database import Database, TenantRouter, LegacyRouter
 from samsara_client import MultiCompanyClient, build_multi_company_client
 
 from bot.config import DATABASE_PATH, SAMSARA_BASE_URL, RATE_LIMIT_SECONDS
 
 # ── Database ─────────────────────────────────────────────────────
 
+# Feature flag: set MULTI_TENANT_DB=1 to use per-tenant SQLite databases
+MULTI_TENANT = bool(os.getenv("MULTI_TENANT_DB"))
+
 db = Database(DATABASE_PATH)
+
+router: Union[TenantRouter, LegacyRouter]
+if MULTI_TENANT:
+    _data_dir = os.path.dirname(DATABASE_PATH) or "data"
+    router = TenantRouter(
+        os.path.join(_data_dir, "platform.db"),
+        os.path.join(_data_dir, "tenants"),
+    )
+else:
+    router = LegacyRouter(db)
 
 # ── In-memory caches (bounded to prevent unbounded growth) ───────
 
@@ -44,15 +61,21 @@ def check_rate_limit(user_id: int, command: str) -> bool:
 
 # ── Client cache helpers ─────────────────────────────────────────
 
+_client_lock = asyncio.Lock()
+
 async def get_client(account_id: int) -> MultiCompanyClient:
     """Get or build a MultiCompanyClient for an account."""
     if account_id in _client_cache:
         return _client_cache[account_id]
-    companies = await db.get_account_companies(account_id)
-    client = build_multi_company_client(companies, SAMSARA_BASE_URL)
-    await client.prefetch_org_ids()
-    _client_cache[account_id] = client
-    return client
+    async with _client_lock:
+        # Double-check after acquiring lock
+        if account_id in _client_cache:
+            return _client_cache[account_id]
+        companies = await db.get_account_companies(account_id)
+        client = build_multi_company_client(companies, SAMSARA_BASE_URL)
+        await client.prefetch_org_ids()
+        _client_cache[account_id] = client
+        return client
 
 
 async def invalidate_client(account_id: int):

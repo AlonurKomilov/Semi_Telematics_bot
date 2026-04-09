@@ -42,6 +42,71 @@ class UsersMixin:
         row = await cur.fetchone()
         return self._row_to_user(row) if row else None
 
+    async def get_user_by_email(self, email: str) -> Optional[User]:
+        """Look up a user by email address."""
+        cur = await self._db.execute(
+            "SELECT * FROM users WHERE email = ? AND is_active = 1",
+            (email.lower().strip(),),
+        )
+        row = await cur.fetchone()
+        return self._row_to_user(row) if row else None
+
+    async def get_user_by_email_in_account(
+        self, email: str, account_id: int,
+    ) -> Optional[User]:
+        """Look up a user by email within a specific account."""
+        cur = await self._db.execute(
+            "SELECT * FROM users WHERE email = ? AND account_id = ? AND is_active = 1",
+            (email.lower().strip(), account_id),
+        )
+        row = await cur.fetchone()
+        return self._row_to_user(row) if row else None
+
+    async def set_user_email_password(
+        self, user_id: int, email: str, password_hash: str
+    ) -> None:
+        """Set email and password hash for an existing user."""
+        await self._db.execute(
+            "UPDATE users SET email = ?, password_hash = ? WHERE id = ?",
+            (email.lower().strip(), password_hash, user_id),
+        )
+        await self._db.commit()
+
+    async def create_user_with_email(
+        self, email: str, password_hash: str, account_id: int,
+        role: Role = Role.FLEET_MGR, department: str = "general",
+        display_name: str = "",
+    ) -> User:
+        """Create a new user with email+password (no Telegram ID yet)."""
+        now = self._now()
+        import hashlib
+        placeholder_tid = -abs(int(hashlib.sha256(email.encode()).hexdigest()[:15], 16))
+        cur = await self._db.execute(
+            """INSERT INTO users
+               (telegram_id, account_id, role, department, display_name,
+                email, password_hash, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (placeholder_tid, account_id, role.value, department,
+             display_name, email.lower().strip(), password_hash, now),
+        )
+        await self._db.commit()
+        return User(
+            id=cur.lastrowid, telegram_id=placeholder_tid,
+            account_id=account_id, role=role,
+            department=department, truck_num=None,
+            display_name=display_name, email=email.lower().strip(),
+            password_hash=password_hash,
+            alerts_on=False, is_active=True, created_at=now,
+        )
+
+    async def link_telegram_to_user(self, user_id: int, telegram_id: int) -> None:
+        """Link a real Telegram ID to an email-registered user."""
+        await self._db.execute(
+            "UPDATE users SET telegram_id = ? WHERE id = ?",
+            (telegram_id, user_id),
+        )
+        await self._db.commit()
+
     async def get_user(self, user_id: int) -> Optional[User]:
         cur = await self._db.execute(
             "SELECT * FROM users WHERE id = ?", (user_id,)

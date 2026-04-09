@@ -129,14 +129,18 @@ class SamsaraClient:
         self.active_days = active_days   # 0 = no filter
         self._session: Optional[aiohttp.ClientSession] = None
         self._org_id: Optional[str] = None
+        self._session_lock = asyncio.Lock()
 
     async def _get_session(self) -> aiohttp.ClientSession:
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                timeout=aiohttp.ClientTimeout(total=30),
-            )
-        return self._session
+        if self._session is not None and not self._session.closed:
+            return self._session
+        async with self._session_lock:
+            if self._session is None or self._session.closed:
+                self._session = aiohttp.ClientSession(
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    timeout=aiohttp.ClientTimeout(total=30),
+                )
+            return self._session
 
     async def close(self):
         if self._session and not self._session.closed:
@@ -146,13 +150,16 @@ class SamsaraClient:
         """Fetch and cache the Samsara organization ID via /me endpoint."""
         if self._org_id is not None:
             return self._org_id
-        try:
-            data = await self._get("/me")
-            self._org_id = str(data.get("data", {}).get("id", ""))
-            return self._org_id or None
-        except Exception as e:
-            logger.warning(f"Failed to fetch Samsara org ID: {e}")
-            return None
+        async with self._session_lock:
+            if self._org_id is not None:
+                return self._org_id
+            try:
+                data = await self._get("/me")
+                self._org_id = str(data.get("data", {}).get("id", ""))
+                return self._org_id or None
+            except Exception as e:
+                logger.warning(f"Failed to fetch Samsara org ID: {e}")
+                return None
 
     def vehicle_url(self, vehicle_id: str) -> str | None:
         """Build a Samsara dashboard URL for a vehicle.

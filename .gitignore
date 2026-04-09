@@ -15,12 +15,22 @@ env/
 .bot.pid
 .pid
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 =*
+
+# Build outputs
+dashboard/dist/
+node_modules/
+*.tar.gz
 
 # Google Cloud service account keys — NEVER commit
 *.json
 !package.json
 !package-lock.json
+!tsconfig.json
+!locales/*.json
+!pytest.ini
 
 # Old backup files from refactoring
 _*_old.py
