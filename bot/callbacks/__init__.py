@@ -8,10 +8,11 @@ existing command functions.
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from samsara_client import COMPANY_DISPLAY, populate_company_display
+from samsara_client import populate_company_display
+from core.context import get_company_display
 from formatters import format_help, format_welcome_unregistered, format_system_owner_welcome
 
-from bot.config import db, SUPPORT_CONTACT
+from bot.config import get_platform_db, get_tenant_db, SUPPORT_CONTACT
 from bot.keyboards import (
     main_menu_kb, back_kb, system_owner_kb, unregistered_kb,
     co_menu_kb, truck_company_picker_kb,
@@ -71,6 +72,10 @@ from bot.auto_reports import (
     cmd_auto_reports, cmd_auto_reports_subscribe,
     cmd_auto_reports_unsubscribe, cmd_auto_reports_set_hour,
     cmd_auto_reports_set_tz, cmd_auto_reports_set_type,
+)
+from bot.knowledge import (
+    cmd_tips, cmd_kb_category, cmd_kb_pinned, cmd_kb_article,
+    cmd_kb_search, handle_kb_search_input,
 )
 from bot.alerts import handle_alert_ack, handle_alert_snooze, handle_snooze_pick
 from bot.fleet_trucks import show_truck_list
@@ -155,6 +160,9 @@ _router.exact("cmd_auto_reports", cmd_auto_reports)
 _router.exact("ar_unsub", cmd_auto_reports_unsubscribe)
 _router.exact("cmd_alert_history", cmd_alert_history)
 _router.exact("cmd_pending_alerts", cmd_pending_alerts)
+_router.exact("cmd_tips", cmd_tips)
+_router.exact("kb_pinned", cmd_kb_pinned)
+_router.exact("kb_search", cmd_kb_search)
 _router.exact("noop", lambda u, c: u.callback_query.answer())
 
 # AI routes
@@ -501,6 +509,8 @@ _router.prefix("ai_setmodel_", _ai_setmodel)
 _router.prefix("ai_setvision_", _ai_setvision)
 _router.prefix("ai_sug_", _ai_sug)
 _router.prefix("ai_diag_", _ai_diag)
+_router.prefix("kb_cat:", cmd_kb_category)
+_router.prefix("kb_art:", cmd_kb_article)
 
 _router.exact("costmile_pdf", _costmile_text)
 _router.exact("costmile_csv", _costmile_csv)
@@ -587,7 +597,7 @@ async def _co_submenu(update, context):
     data = query.data
     co = data.replace("co_", "")
     await query.answer()
-    name = COMPANY_DISPLAY.get(co, co)
+    name = get_company_display().get(co, co)
     text = (
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"  🏢  <b>{name}</b>\n"
@@ -736,7 +746,7 @@ async def _cmd_audit(update, context):
     if not can(user.role, "can_manage_users"):
         await query.answer(t("access.no_access"), show_alert=True)
         return
-    text = await _render_audit_log(user.account_id, db)
+    text = await _render_audit_log(user.account_id)
     await _show(update, context, [text], keyboard=back_kb())
 
 _router.exact("cmd_audit", _cmd_audit)
@@ -832,13 +842,38 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         [format_system_owner_welcome()],
                         keyboard=system_owner_kb())
         else:
-            await _show(update, context,
-                        [format_welcome_unregistered(SUPPORT_CONTACT)],
-                        keyboard=unregistered_kb())
+            # Per-account bot: show organization-specific message
+            bot_account_id = context.bot_data.get("account_id")
+            if bot_account_id is not None:
+                acct = await get_platform_db().get_account(bot_account_id)
+                acct_name = acct.name if acct else "this organization"
+                first = getattr(update.effective_user, "first_name", "") or ""
+                await _show(update, context, [
+                    f"👋 Hi{(' ' + first) if first else ''}!\n\n"
+                    f"This bot belongs to <b>{acct_name}</b>.\n"
+                    "You're not registered as a member.\n\n"
+                    "Ask your admin to send you an invite link,\n"
+                    "or contact us at @Allen_Klein\n\n"
+                    "🌐 <a href=\"https://4truck.us\">4truck.us</a>"
+                ], keyboard=unregistered_kb())
+            else:
+                await _show(update, context,
+                            [format_welcome_unregistered(SUPPORT_CONTACT)],
+                            keyboard=unregistered_kb())
+        return
+
+    # Per-account bot isolation: reject users from other accounts
+    bot_account_id = context.bot_data.get("account_id")
+    if bot_account_id is not None and user.account_id != bot_account_id:
+        await query.answer()
+        await _show(update, context, [
+            "⛔ This bot belongs to a different organization.\n"
+            "Please use your own organization's bot."
+        ])
         return
 
     # Check if account is active
-    account = await db.get_account(user.account_id)
+    account = await get_platform_db().get_account(user.account_id)
     if not account or not account.is_active:
         await query.answer()
         await _show(update, context, [
@@ -855,7 +890,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     set_lang(getattr(user, "language", "en") or "en")
 
     # Populate COMPANY_DISPLAY for this user's account
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
     context.user_data["_companies"] = companies
     context.user_data["_sys_owner"] = sys_owner

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from telegram.ext import Application
 
-from bot.config import db, logger, get_client
+from bot.config import logger, get_client, get_platform_db, get_tenant_db
+from core.context import set_tenant_display
 from formatters import format_event_alert
 import bot.redis_client as rcache
+from core.isolation import run_account_job
+from core.bot_registry import get_app_for_account
 
 from bot.alerts.pipeline import (
     AlertSeverity, send_alert, is_vehicle_suppressed,
@@ -33,7 +36,7 @@ def _event_severity(event: dict) -> AlertSeverity:
 
 async def _get_known_event_ids(account_id: int) -> set[str]:
     """Get already-alerted event IDs (Redis → in-memory)."""
-    rkey = f"events_seen:{account_id}"
+    rkey = f"t:{account_id}:events_seen"
     if rcache.is_available():
         return await rcache.smembers(rkey)
     return _known_event_ids.get(account_id, set())
@@ -43,7 +46,7 @@ async def _add_known_event_ids(account_id: int, ids: set[str]):
     """Mark event IDs as alerted (Redis → in-memory)."""
     if not ids:
         return
-    rkey = f"events_seen:{account_id}"
+    rkey = f"t:{account_id}:events_seen"
     if rcache.is_available():
         existing = await rcache.smembers(rkey)
         await rcache.sset(rkey, existing | ids, ttl=86400)
@@ -59,87 +62,97 @@ async def check_events(app: Application):
     First cycle per account is a warm-up (populate known IDs, don't send).
     """
     try:
-        accounts = await db.list_accounts()
+        accounts = await get_platform_db().list_accounts()
         for account in accounts:
-            companies = await db.get_account_companies(account.id)
-            if not companies:
+            bot_app = get_app_for_account(account.id)
+            if not bot_app:
+                logger.debug("No bot for account %d — skipping events check", account.id)
                 continue
-
-            try:
-                samsara = await get_client(account.id)
-            except Exception:
-                continue
-
-            await samsara.ensure_org_ids()
-
-            try:
-                events = await samsara.get_events(days=1)
-            except Exception as e:
-                logger.debug(f"Events check for account {account.id}: {e}")
-                continue
-
-            if not events:
-                if account.id not in _events_warmup_done:
-                    _events_warmup_done[account.id] = True
-                continue
-
-            known = await _get_known_event_ids(account.id)
-            new_events = [e for e in events if e.get("event_id") not in known]
-
-            # Mark all current event IDs as known
-            all_ids = {e.get("event_id") for e in events if e.get("event_id")}
-            await _add_known_event_ids(account.id, all_ids)
-
-            # Warmup: first cycle populates known set without sending
-            if not _events_warmup_done.get(account.id):
-                _events_warmup_done[account.id] = True
-                logger.info(
-                    f"Events warmup for account {account.id}: "
-                    f"populated {len(all_ids)} known event IDs"
-                )
-                continue
-
-            if not new_events:
-                continue
-
-            # Get event-alert subscribers
-            subscribers = await db.get_typed_alert_subscribers(
-                account.id, "events"
+            await run_account_job(
+                _check_events_account(bot_app, account),
+                account_id=account.id,
+                job_name="events_check",
             )
-            if not subscribers:
-                continue
-
-            for event in new_events:
-                try:
-                    vname = event.get("vehicle_name", "?")
-
-                    if await is_vehicle_suppressed(account.id, vname):
-                        continue
-
-                    severity = _event_severity(event)
-                    alert_text = format_event_alert(event)
-                    vid = event.get("vehicle_id", vname)
-                    co = event.get("_org", "?")
-                    vehicle_dict = {"id": vid, "name": vname, "_org": co}
-                    eid = event.get("event_id", "")
-
-                    await send_alert(
-                        app,
-                        account_id=account.id,
-                        alert_type="events",
-                        severity=severity,
-                        vehicle=vehicle_dict,
-                        alert_text=alert_text,
-                        subscribers=subscribers,
-                        co=co,
-                        alert_key_detail=f"{event.get('event_type', '')}:{eid}",
-                        video_url=event.get("video_url") or "",
-                        event_id=eid,
-                        event_time=event.get("time", ""),
-                    )
-                except Exception as e:
-                    logger.warning(f"Event alert for {event.get('vehicle_name', '?')}: {e}")
-                    continue
 
     except Exception as e:
         logger.error(f"Events check error: {e}")
+
+
+async def _check_events_account(bot_app: Application, account):
+    """Process safety event alerts for a single account."""
+    account_id = account.id
+    tenant = await get_tenant_db(account_id)
+    companies = await tenant.get_account_companies(account_id)
+    if not companies:
+        return
+
+    samsara = await get_client(account_id)
+    await samsara.ensure_org_ids()
+    display = {co.code: co.display_name or co.code for co in companies}
+    set_tenant_display(display, samsara.org_ids)
+
+    events = await samsara.get_events(days=1)
+
+    if not events:
+        if account_id not in _events_warmup_done:
+            _events_warmup_done[account_id] = True
+        return
+
+    known = await _get_known_event_ids(account_id)
+    new_events = [e for e in events if e.get("event_id") not in known]
+
+    # Mark all current event IDs as known
+    all_ids = {e.get("event_id") for e in events if e.get("event_id")}
+    await _add_known_event_ids(account_id, all_ids)
+
+    # Warmup: first cycle populates known set without sending
+    if not _events_warmup_done.get(account_id):
+        _events_warmup_done[account_id] = True
+        logger.info(
+            f"Events warmup for account {account_id}: "
+            f"populated {len(all_ids)} known event IDs"
+        )
+        return
+
+    if not new_events:
+        return
+
+    # Get event-alert subscribers
+    subscribers = await get_platform_db().get_typed_alert_subscribers(
+        account_id, "events"
+    )
+    if not subscribers:
+        return
+
+    for event in new_events:
+        try:
+            vname = event.get("vehicle_name", "?")
+
+            if await is_vehicle_suppressed(account_id, vname):
+                continue
+
+            severity = _event_severity(event)
+            alert_text = format_event_alert(event)
+            vid = event.get("vehicle_id", vname)
+            co = event.get("_org", "?")
+            vehicle_dict = {"id": vid, "name": vname, "_org": co}
+            eid = event.get("event_id", "")
+
+            await send_alert(
+                bot_app,
+                account_id=account_id,
+                alert_type="events",
+                severity=severity,
+                vehicle=vehicle_dict,
+                alert_text=alert_text,
+                subscribers=subscribers,
+                co=co,
+                alert_key_detail=f"{event.get('event_type', '')}:{eid}",
+                video_url=event.get("video_url") or "",
+                event_id=eid,
+                event_time=event.get("time", ""),
+                bot_app=bot_app,
+            )
+        except Exception as e:
+            logger.warning(f"Event alert for {event.get('vehicle_name', '?')}: {e}")
+            continue

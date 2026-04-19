@@ -2,13 +2,14 @@
 
 import html as _html
 import re
+from typing import Optional
 
 from telegram import Update, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from telegram.error import BadRequest
 
-from bot.config import _active_messages, logger, get_user_company_codes
+from bot.config import _active_messages, logger, get_user_company_codes, get_tenant_db
 from bot.keyboards import main_menu_kb
 
 MAX_TG_MSG = 4096  # Telegram message character limit
@@ -35,6 +36,27 @@ def _safe_error(e: Exception) -> str:
     if len(msg) > 200:
         msg = msg[:197] + "…"
     return f"❌ Error: {msg}"
+
+
+def get_bot_username(context: ContextTypes.DEFAULT_TYPE) -> str:
+    """Get the bot username for the current bot instance.
+
+    Checks context.bot_data first (per-account bot), then falls back
+    to the global bot_username in bot.config.
+    """
+    username = context.bot_data.get("bot_username", "")
+    if username:
+        return username
+    import bot.config as _cfg
+    return _cfg.bot_username or ""
+
+
+def make_invite_link(invite_code: str, context: ContextTypes.DEFAULT_TYPE) -> Optional[str]:
+    """Build a Telegram deep-link for an invite code, or None if no bot username."""
+    username = get_bot_username(context)
+    if not username:
+        return None
+    return f"https://t.me/{username}?start=join_{invite_code}"
 
 
 def escape_html(text: str) -> str:
@@ -167,9 +189,10 @@ async def _user_menu_kb(user) -> InlineKeyboardMarkup:
     return main_menu_kb(user.role, company_codes)
 
 
-async def _render_audit_log(account_id: int, db) -> str:
+async def _render_audit_log(account_id: int) -> str:
     """Render the audit log text for an account (shared by command and callback)."""
-    entries = await db.get_audit_log(account_id, limit=15)
+    tenant = await get_tenant_db(account_id)
+    entries = await tenant.get_audit_log(account_id, limit=15)
     if not entries:
         return "📋 <b>Audit Log</b>\n\nNo recent activity."
     lines = ["📋 <b>Audit Log</b> (last 15)\n"]

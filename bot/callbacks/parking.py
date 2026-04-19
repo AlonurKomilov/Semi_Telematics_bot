@@ -4,7 +4,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from permissions import can
 
-from bot.config import db
+from bot.config import get_tenant_db
 from bot.keyboards import back_kb, parking_events_kb, parking_history_kb
 from bot.helpers import _show
 from bot.i18n import t
@@ -19,7 +19,8 @@ async def _handle_parking_events(update, context, user, show_all: bool = False):
         await query.answer(t("access.no_access"), show_alert=True)
         return
 
-    events = await db.get_active_parking_events(
+    tenant = await get_tenant_db(user.account_id)
+    events = await tenant.get_active_parking_events(
         user.account_id, attention_only=not show_all,
     )
 
@@ -50,7 +51,8 @@ async def _handle_parking_history(update, context, user, days: int = 7):
         await query.answer(t("access.no_access"), show_alert=True)
         return
 
-    history = await db.get_parking_history(user.account_id, days=days)
+    tenant = await get_tenant_db(user.account_id)
+    history = await tenant.get_parking_history(user.account_id, days=days)
 
     if not history:
         text = f"📅 No resolved parking events in the last {days} days."
@@ -87,7 +89,8 @@ async def _handle_parking_detail(update, context, user, event_id: int):
         await query.answer(t("access.no_access"), show_alert=True)
         return
 
-    event = await db.get_parking_event_by_id(event_id)
+    tenant = await get_tenant_db(user.account_id)
+    event = await tenant.get_parking_event_by_id(event_id)
     if not event or event.get("account_id") != user.account_id:
         await _show(update, context, ["❌ Parking event not found."],
                     keyboard=back_kb())

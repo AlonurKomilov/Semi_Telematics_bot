@@ -8,21 +8,47 @@ Features:
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from telegram.constants import ParseMode
 
 from database import Role
-from permissions import can
+from permissions import can, is_management_role
 
-from bot.config import db, logger, get_client, get_user_company_codes
-from bot.helpers import _show, _show_loading, _msg_key, escape_html
+from bot.config import logger, get_client, get_platform_db, get_tenant_db
+from bot.helpers import _show, _show_loading, escape_html
 from bot.keyboards import back_kb
 from bot.auth import _require_registered
 from bot.i18n import t
 
 import ai
+import re as _re
 
 
 # ── Helpers ──────────────────────────────────────────────────────
+
+def _sanitize_ai_html(text: str) -> str:
+    """Sanitize AI output for Telegram HTML parse mode.
+
+    Preserves <b>, <i>, <code>, <pre> tags that AI outputs while
+    escaping everything else to prevent parse errors.
+    """
+    # First escape all HTML
+    escaped = escape_html(text)
+    # Re-enable the safe tags that AI uses
+    for tag in ("b", "i", "code", "pre", "u", "s"):
+        escaped = escaped.replace(f"&lt;{tag}&gt;", f"<{tag}>")
+        escaped = escaped.replace(f"&lt;/{tag}&gt;", f"</{tag}>")
+    return escaped
+
+
+def _build_user_context(user) -> dict:
+    """Build user_context dict from a DB user object."""
+    role_val = user.role.value if hasattr(user.role, "value") else user.role
+    return {
+        "name": getattr(user, "display_name", "") or "",
+        "role": role_val,
+        "department": getattr(user, "department", "general") or "general",
+        "truck_num": getattr(user, "truck_num", None) or "",
+        "timezone": getattr(user, "timezone", "America/New_York") or "America/New_York",
+    }
 
 async def _log_ai_usage(account_id: int, telegram_user_id: int,
                         action: str):
@@ -32,7 +58,7 @@ async def _log_ai_usage(account_id: int, telegram_user_id: int,
                   or ai.get_current_model_name())
     if usage:
         try:
-            await db.log_ai_usage(
+            await get_platform_db().log_ai_usage(
                 account_id, telegram_user_id,
                 model_name, action,
                 usage.get("prompt_tokens", 0),
@@ -44,14 +70,15 @@ async def _log_ai_usage(account_id: int, telegram_user_id: int,
             logger.debug(f"Failed to log AI usage: {e}")
 
 
-async def _dtcs_from_ack(ack_id: int) -> list[dict]:
+async def _dtcs_from_ack(account_id: int, ack_id: int) -> list[dict]:
     """Recover DTC info from an alert_acknowledgments record.
 
     When a fault auto-resolves before the user taps AI Diagnose,
     live data shows no DTCs.  The alert_key stores the original fault
     details as ``co:vid:SPN-FMI:desc|SPN-FMI:desc``.
     """
-    row = await db.get_alert_ack_by_id(ack_id)
+    tenant = await get_tenant_db(account_id)
+    row = await tenant.get_alert_ack_by_id(ack_id)
     if not row:
         return []
     key = row.get("alert_key", "")
@@ -82,177 +109,14 @@ async def _dtcs_from_ack(ack_id: int) -> list[dict]:
         })
     return dtcs
 
+
 async def _gather_fleet_snapshot(account_id: int,
                                  truck_num: str | None = None) -> dict:
     """Build a compact fleet data snapshot for AI context.
 
-    If truck_num is provided (Driver role), only include that truck.
+    Delegates to the shared builder in ai.intelligence.
     """
-    samsara = await get_client(account_id)
-    snapshot: dict = {}
-
-    try:
-        fleet = await samsara.get_fleet_overview()
-        if truck_num:
-            fleet = [
-                v for v in fleet
-                if v.get("name", "").lower() == truck_num.lower()
-            ]
-
-        snapshot["total_vehicles"] = len(fleet)
-        snapshot["vehicles"] = []
-        for v in fleet[:50]:  # Cap to keep context reasonable
-            entry: dict = {
-                "name": v.get("name", "?"),
-                "company": v.get("_org", "?"),
-            }
-            loc = v.get("location", {})
-            if loc:
-                entry["city"] = loc.get("reverseGeo", {}).get(
-                    "formattedLocation", ""
-                )
-            fuel = v.get("fuel", {})
-            if fuel.get("value") is not None:
-                entry["fuel_pct"] = fuel["value"]
-            dtcs = v.get("_dtcs", [])
-            if dtcs:
-                entry["fault_count"] = len(dtcs)
-                entry["faults"] = [
-                    {
-                        "spn": d.get("spnId"),
-                        "description": d.get("spnDescription", ""),
-                        "severity": d.get("fmiDescription", ""),
-                    }
-                    for d in dtcs[:5]
-                ]
-            lights = v.get("_lights", {})
-            if any(lights.get(k) for k in
-                   ("stopIsOn", "protectIsOn", "emissionsIsOn", "warningIsOn")):
-                entry["check_engine_lights"] = {
-                    k: v for k, v in lights.items() if v
-                }
-            snapshot["vehicles"].append(entry)
-    except Exception as e:
-        logger.error(f"AI fleet snapshot failed: {e}")
-        snapshot["error"] = str(e)
-
-    # Health data
-    try:
-        health = await samsara.get_vehicle_health()
-        if truck_num:
-            health = [
-                v for v in health
-                if v.get("name", "").lower() == truck_num.lower()
-            ]
-        alerts_summary = []
-        for v in health:
-            h_alerts = v.get("_health_alerts", [])
-            if h_alerts:
-                alerts_summary.append({
-                    "truck": v.get("name", "?"),
-                    "alerts": h_alerts,
-                    "battery_v": v.get("_health", {}).get("battery_v"),
-                    "coolant_c": v.get("_health", {}).get("coolant_c"),
-                    "oil_psi": v.get("_health", {}).get("oil_psi"),
-                    "def_pct": v.get("_health", {}).get("def_pct"),
-                })
-        if alerts_summary:
-            snapshot["health_alerts"] = alerts_summary
-    except Exception as e:
-        logger.debug(f"AI health snapshot skipped: {e}")
-
-    # Counts
-    faulted = [v for v in snapshot.get("vehicles", []) if v.get("fault_count")]
-    low_fuel = [v for v in snapshot.get("vehicles", [])
-                if v.get("fuel_pct") is not None and v["fuel_pct"] <= 20]
-    snapshot["faulted_count"] = len(faulted)
-    snapshot["low_fuel_count"] = len(low_fuel)
-
-    # ── Recent safety events (7-day summary for snapshot context) ──
-    try:
-        events = await samsara.get_events(days=7)
-        if truck_num:
-            events = [
-                e for e in events
-                if e.get("vehicle_name", "").lower() == truck_num.lower()
-            ]
-        if events:
-            evt_by_type: dict[str, int] = {}
-            by_truck: dict[str, dict[str, int]] = {}
-            for ev in events:
-                etype = ev.get("event_name", "Unknown")
-                evt_by_type[etype] = evt_by_type.get(etype, 0) + 1
-                vname = ev.get("vehicle_name", "?")
-                if vname not in by_truck:
-                    by_truck[vname] = {}
-                by_truck[vname][etype] = by_truck[vname].get(etype, 0) + 1
-            snapshot["recent_events"] = {
-                "period_days": 7,
-                "total": len(events),
-                "by_type": evt_by_type,
-                "by_truck": [
-                    {"truck": t, "total": sum(types.values()), "types": types}
-                    for t, types in sorted(
-                        by_truck.items(),
-                        key=lambda x: sum(x[1].values()),
-                        reverse=True,
-                    )[:30]
-                ],
-            }
-    except Exception as e:
-        logger.debug(f"AI events snapshot skipped: {e}")
-
-    # ── Maintenance tasks ────────────────────────────────────────
-    try:
-        tasks = await db.get_maintenance_tasks(account_id)
-        if truck_num:
-            tasks = [t for t in tasks if t.get("vehicle_name", "").lower() == truck_num.lower()]
-        active = [t for t in tasks if t.get("status") in ("pending", "overdue")]
-        if active:
-            snapshot["maintenance"] = {
-                "pending": sum(1 for t in active if t["status"] == "pending"),
-                "overdue": sum(1 for t in active if t["status"] == "overdue"),
-                "tasks": [
-                    {
-                        "truck": t.get("vehicle_name", "?"),
-                        "type": t.get("task_type", "custom"),
-                        "status": t.get("status"),
-                        "due_date": t.get("due_date"),
-                        "due_miles": t.get("due_miles"),
-                    }
-                    for t in active[:10]
-                ],
-            }
-    except Exception as e:
-        logger.debug(f"AI maintenance snapshot skipped: {e}")
-
-    # ── Fuel cost summary ────────────────────────────────────────
-    try:
-        fuel_summary = await db.get_fuel_summary(account_id)
-        if truck_num:
-            fuel_summary = [
-                s for s in fuel_summary
-                if s.get("vehicle_name", "").lower() == truck_num.lower()
-            ]
-        if fuel_summary:
-            items = []
-            for s in fuel_summary[:15]:
-                first_odo = s.get("first_odo") or 0
-                last_odo = s.get("last_odo") or 0
-                miles = last_odo - first_odo if last_odo > first_odo else 0
-                total_cost = s.get("total_cost") or 0
-                items.append({
-                    "truck": s.get("vehicle_name", "?"),
-                    "total_gallons": round(s.get("total_gallons") or 0, 1),
-                    "total_cost": round(total_cost, 2),
-                    "avg_price": round(s.get("avg_price") or 0, 3),
-                    "cost_per_mile": round(total_cost / miles, 3) if miles > 0 else None,
-                })
-            snapshot["fuel_costs"] = items
-    except Exception as e:
-        logger.debug(f"AI fuel cost snapshot skipped: {e}")
-
-    return snapshot
+    return await ai.build_context(account_id, truck_num=truck_num)
 
 
 def _ai_menu_kb(user_role=None, account_id=None) -> InlineKeyboardMarkup:
@@ -264,7 +128,7 @@ def _ai_menu_kb(user_role=None, account_id=None) -> InlineKeyboardMarkup:
     rows.append([InlineKeyboardButton(
         "🤖 AI Alert Analysis", callback_data="cmd_ai_alerts",
     )])
-    if user_role in (Role.OWNER, Role.ADMIN):
+    if is_management_role(user_role):
         # Text model button
         text_model = ai.get_account_model_name(account_id) if account_id is not None else None
         if not text_model:
@@ -412,6 +276,8 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
                         question: str):
     """Process the user's AI question and return the answer."""
     user = context.user_data["_db_user"]
+    user_ctx = _build_user_context(user)
+    lang = getattr(user, "language", "en") or "en"
 
     await _show_loading(update, context, "🤖  <i>Thinking...</i>")
 
@@ -425,7 +291,19 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
         snapshot = await _gather_fleet_snapshot(
             user.account_id, truck_num=truck_filter,
         )
-        answer = await ai.ask_fleet(question, snapshot)
+        samsara = await get_client(user.account_id)
+        tenant_db = await get_tenant_db(user.account_id)
+
+        result = await ai.ask_agent(
+            question, snapshot,
+            samsara_client=samsara,
+            user_id=update.effective_user.id,
+            account_id=user.account_id,
+            db=tenant_db,
+            language=lang,
+            user_context=user_ctx,
+        )
+        answer = result["text"]
         await _log_ai_usage(user.account_id, update.effective_user.id, "question")
 
         # Extract suggestion lines and remove them from the answer text
@@ -435,7 +313,7 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
             "━━━━━━━━━━━━━━━━━━━\n"
             "  🤖  <b>AI ANSWER</b>\n"
             "━━━━━━━━━━━━━━━━━━━\n"
-            f"\n{escape_html(clean_answer)}"
+            f"\n{_sanitize_ai_html(clean_answer)}"
         )
     except Exception as e:
         logger.error(f"AI answer failed: {e}")
@@ -465,6 +343,8 @@ async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user = context.user_data["_db_user"]
+    user_ctx = _build_user_context(user)
+    lang = getattr(user, "language", "en") or "en"
     await _show_loading(update, context, "📊  <i>Generating fleet briefing...</i>")
 
     try:
@@ -475,7 +355,10 @@ async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         snapshot = await _gather_fleet_snapshot(
             user.account_id, truck_num=truck_filter,
         )
-        summary = await ai.fleet_summary(snapshot)
+        summary = await ai.generate_summary(
+            snapshot, account_id=user.account_id,
+            language=lang, user_context=user_ctx,
+        )
         await _log_ai_usage(user.account_id, update.effective_user.id, "summary")
 
         clean_summary, suggestions = _parse_suggestions(summary)
@@ -484,7 +367,7 @@ async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "━━━━━━━━━━━━━━━━━━━\n"
             "  📊  <b>AI FLEET BRIEFING</b>\n"
             "━━━━━━━━━━━━━━━━━━━\n"
-            f"\n{escape_html(clean_summary)}"
+            f"\n{_sanitize_ai_html(clean_summary)}"
         )
     except Exception as e:
         logger.error(f"AI summary failed: {e}")
@@ -614,7 +497,7 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
         if alert_context == "fault" or not prompt_parts:
             # If no live DTCs, try to recover fault info from the alert record
             if not dtcs and ack_id is not None:
-                dtcs = await _dtcs_from_ack(ack_id)
+                dtcs = await _dtcs_from_ack(user.account_id, ack_id)
 
             if dtcs:
                 context_data["active_faults"] = [
@@ -670,13 +553,15 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
             return
 
         prompt = " ".join(prompt_parts)
-        lang = getattr(user, "language", "en")
+        lang = getattr(user, "language", "en") or "en"
+        user_ctx = _build_user_context(user)
         diagnosis = await ai.generate(
             prompt,
             system=ai.FAULT_DIAGNOSIS_SYSTEM,
             context_data=context_data,
             account_id=user.account_id,
             language=lang,
+            user_context=user_ctx,
         )
         await _log_ai_usage(user.account_id, update.effective_user.id, "chat")
 
@@ -687,7 +572,7 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
             "━━━━━━━━━━━━━━━━━━━\n"
             f"\n  🚛  <b>Truck #{truck_name}</b>\n"
             f"{header_info}\n"
-            f"\n{escape_html(diagnosis)}"
+            f"\n{_sanitize_ai_html(diagnosis)}"
         )
 
         kb_rows = []
@@ -986,8 +871,8 @@ async def handle_ai_usage(update, context, user, data):
             days = int(data.replace("ai_usage_", ""))
         except ValueError:
             days = 30
-    stats = await db.get_ai_usage_stats(user.account_id, days=days)
-    daily = await db.get_ai_usage_daily(user.account_id, days=min(days, 7))
+    stats = await get_platform_db().get_ai_usage_stats(user.account_id, days=days)
+    daily = await get_platform_db().get_ai_usage_daily(user.account_id, days=min(days, 7))
 
     total_cost = 0.0
     model_costs: dict[str, float] = {}

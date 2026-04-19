@@ -23,7 +23,7 @@ def generate_weather_pdf(
     # ── Header ───────────────────────────────────────────────────
     subtitle = "Fleet Weather & Ambient Conditions"
     if company_filter:
-        subtitle = f"{COMPANY_DISPLAY.get(company_filter, company_filter)} — Weather Report"
+        subtitle = f"{get_company_display().get(company_filter, company_filter)} — Weather Report"
     _add_header(story, styles, "SEMI TELEMATICS", subtitle, now)
 
     # ── Compute stats ────────────────────────────────────────────

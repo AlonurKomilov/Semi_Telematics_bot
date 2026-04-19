@@ -31,7 +31,7 @@ def generate_fleet_efficiency_pdf(
     subtitle = f"Efficiency Report — Past {days} Days"
     if company_filter:
         subtitle = (
-            f"{COMPANY_DISPLAY.get(company_filter, company_filter)} — "
+            f"{get_company_display().get(company_filter, company_filter)} — "
             f"Efficiency ({days} Days)"
         )
     _add_header(story, styles, "SEMI TELEMATICS", subtitle, now)
@@ -112,7 +112,7 @@ def generate_fleet_efficiency_pdf(
             o_fuel = sum(v["_fuel_gal"] for v in o_wd if v.get("_fuel_gal"))
             o_fmi = sum(v.get("_miles", 0) for v in o_wd)
             o_mpg = o_fmi / o_fuel if o_fuel > 0 else 0
-            co_name = COMPANY_DISPLAY.get(oc, oc)
+            co_name = get_company_display().get(oc, oc)
             co_table_data.append([
                 Paragraph(f"{co_name} ({oc})", styles["CompanyTableCell"]),
                 Paragraph(str(len(ov)),          styles["CompanyTableCell"]),

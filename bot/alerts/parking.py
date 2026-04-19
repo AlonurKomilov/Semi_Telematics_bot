@@ -9,12 +9,13 @@ from telegram.ext import Application
 from telegram.constants import ParseMode
 
 from database import Role
-from bot.config import db, logger, get_client
+from bot.config import logger, get_client, get_platform_db, get_tenant_db
 from bot.helpers import escape_html
 from bot.alerts.pipeline import (
     AlertSeverity, SYSTEM_USER_ID,
     send_alert, is_vehicle_suppressed,
 )
+from core.bot_registry import get_app_for_account
 
 
 # Keywords that indicate a SAFE parking location (case-insensitive match)
@@ -47,7 +48,10 @@ _UNSAFE_KEYWORDS = [
 
 # Regex patterns for unsafe keywords that need word-boundary matching
 _UNSAFE_REGEX = [
-    _re.compile(r"\bi-\d", _re.IGNORECASE),         # I-95, I-10, etc.
+    _re.compile(r"\bI[\s-]\d", _re.IGNORECASE),     # I-95, I 70 (interstate)
+    _re.compile(r"\bUS[\s-]\d", _re.IGNORECASE),     # US-40, US 54
+    _re.compile(r"\bSR[\s-]\d", _re.IGNORECASE),     # SR-99, SR 392
+    _re.compile(r"\b[A-Z]{2}\s\d{2,3}\b"),           # NM 392, CA 99, TX 45 (state routes)
 ]
 
 # Minimum speed (mph) to consider a vehicle "moving"
@@ -56,11 +60,10 @@ _MOVING_SPEED_MPH = 3.0
 # Duration thresholds (hours)
 _PARKING_WARN_HOURS = 2.0      # WARNING if outside safe zone > 2h
 _PARKING_CRITICAL_HOURS = 8.0  # CRITICAL if roadside > 8h
-_PARKING_LONG_HOURS = 24.0     # WARNING if anywhere outside geofence > 24h
+_PARKING_STALE_HOURS = 72.0    # Auto-resolve after 3 days — no longer actionable
 
 # Cooldown: don't re-alert the same vehicle within this window
 _PARKING_ALERT_COOLDOWN_S = 4 * 3600  # 4 hours
-_parking_alert_sent: dict[str, float] = {}  # "acctID:vid" → timestamp
 
 # N7 — Speed-pattern confirmation: how many consecutive 30-min checks must
 # show speed == 0 before we treat the vehicle as truly "stopped".
@@ -71,6 +74,12 @@ _vehicle_stopped_checks: dict[str, int] = {}  # "acctID:vid" → consecutive cou
 # N9 — Breakdown threshold: unknown location parked longer than this without
 # AI being able to classify → flag as possible breakdown, not just "unverified".
 _PARKING_BREAKDOWN_HOURS = 4.0
+
+# First-run flag: after a bot restart the in-memory dicts are empty and all
+# 2-day-old DB cooldowns will have expired.  Skip alert-sending on the very
+# first parking check so we can re-evaluate existing events with fresh data
+# (correct speed + address) without flooding subscribers.
+_first_run = True
 
 
 def classify_parking_location(address: str) -> str:
@@ -178,11 +187,15 @@ def parse_ai_confidence(ai_text: str) -> str:
 
 
 def _render_parking_map(lat: float, lng: float) -> bytes | None:
-    """Render satellite + road map side-by-side for AI vision analysis.
+    """Render satellite-hybrid + road map side-by-side for AI vision analysis.
 
-    Left panel:  Satellite imagery (ESRI World Imagery, zoom 17, ~125 m)
+    Left panel:  Satellite imagery with labels overlay (ESRI Hybrid, zoom 17)
     Right panel:  Labeled road map (OpenStreetMap, zoom 15, ~500 m)
     Red marker shows vehicle position on both panels.
+
+    Uses ESRI World_Imagery as base + Reference_Labels overlay for POI names
+    (truck stops, weigh stations, parking areas, etc.) that raw satellite
+    imagery alone would not show.
 
     Returns PNG bytes or None on failure.
     """
@@ -191,9 +204,9 @@ def _render_parking_map(lat: float, lng: float) -> bytes | None:
         from PIL import Image as PILImage
         import io
 
-        pw, ph = 400, 400
+        pw, ph = 512, 512
 
-        # Satellite panel — close-up terrain / parking lot detail
+        # Satellite base layer — close-up terrain / parking lot detail
         sat = StaticMap(
             pw, ph,
             url_template=(
@@ -202,7 +215,32 @@ def _render_parking_map(lat: float, lng: float) -> bytes | None:
             ),
         )
         sat.add_marker(CircleMarker((lng, lat), "#ff0000", 12))
-        sat_img = sat.render(zoom=17, center=[lng, lat])
+        sat_img = sat.render(zoom=18, center=[lng, lat])
+
+        # Labels overlay on satellite — shows road names, POIs, facility names
+        try:
+            import numpy as np
+            labels = StaticMap(
+                pw, ph,
+                url_template=(
+                    "https://server.arcgisonline.com/ArcGIS/rest/services/"
+                    "Reference/World_Reference_Overlay/MapServer/tile/{z}/{y}/{x}"
+                ),
+            )
+            labels_img = labels.render(zoom=18, center=[lng, lat])
+            # staticmap renders to RGB, losing the tile's alpha channel.
+            # The label tiles have a transparent background, but after RGB
+            # conversion those pixels become white (255,255,255).  Restore
+            # transparency by treating near-white pixels as transparent.
+            labels_rgba = labels_img.convert("RGBA")
+            arr = np.array(labels_rgba)
+            white_mask = (arr[:, :, 0] > 240) & (arr[:, :, 1] > 240) & (arr[:, :, 2] > 240)
+            arr[white_mask, 3] = 0  # make white pixels transparent
+            labels_rgba = PILImage.fromarray(arr, "RGBA")
+            sat_img = sat_img.convert("RGBA")
+            sat_img = PILImage.alpha_composite(sat_img, labels_rgba).convert("RGB")
+        except Exception:
+            pass  # labels overlay failed — use raw satellite
 
         # Road map panel — wider area with road names & POI labels
         road = StaticMap(
@@ -223,6 +261,35 @@ def _render_parking_map(lat: float, lng: float) -> bytes | None:
     except Exception as e:
         logger.debug("Failed to render parking map: %s", e)
         return None
+
+
+async def _save_parking_map(
+    account_id: int, vehicle_id: str, lat: float, lng: float,
+) -> str:
+    """Render and save a parking map image to disk for dashboard display.
+
+    Returns the relative path (from project root) on success, or "" on failure.
+    """
+    import asyncio, os
+    map_bytes = await asyncio.to_thread(_render_parking_map, lat, lng)
+    if not map_bytes:
+        return ""
+    try:
+        maps_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "data", "parking_maps",
+        )
+        os.makedirs(maps_dir, exist_ok=True)
+        # Sanitize vehicle_id for filename
+        safe_vid = vehicle_id.replace("/", "_").replace("\\", "_")
+        fname = f"{account_id}_{safe_vid}.png"
+        fpath = os.path.join(maps_dir, fname)
+        with open(fpath, "wb") as f:
+            f.write(map_bytes)
+        return f"data/parking_maps/{fname}"
+    except Exception as e:
+        logger.debug("Failed to save parking map: %s", e)
+        return ""
 
 
 async def _get_ai_parking_analysis(
@@ -254,17 +321,25 @@ async def _get_ai_parking_analysis(
                 f"Address (GPS reverse-geocode, may be inaccurate): {address}\n"
                 f"Coordinates: {lat:.6f}, {lng:.6f}\n\n"
                 "The image contains TWO map panels of the vehicle's position:\n"
-                "• LEFT — Satellite / aerial imagery (zoom 17, ~125 m)\n"
+                "• LEFT — Satellite / aerial imagery with labels overlay (zoom 18, ~60 m)\n"
+                "  Look for: paved parking surfaces, truck bays, fuel pumps, buildings,\n"
+                "  label text showing facility names (truck stops, parking areas, weigh stations)\n"
                 "• RIGHT — Road map with labels (zoom 15, ~500 m)\n"
+                "  Look for: nearby commercial facilities, truck stops, rest areas,\n"
+                "  exit ramps, highway shoulders, interchanges\n"
                 "The RED DOT marks the truck's exact position.\n\n"
+                "IMPORTANT: The GPS address may just show the nearest road name (e.g. 'I-90')\n"
+                "even if the truck is at a truck stop, rest area, or parking lot RIGHT NEXT TO\n"
+                "the highway. ALWAYS rely on what you SEE in the imagery over the address text.\n\n"
                 "Analyze BOTH panels carefully:\n"
                 "1. Is the truck in a designated safe area? "
                 "(truck stop, rest area, warehouse yard, terminal, parking lot, "
-                "distribution center, fuel station)\n"
+                "distribution center, fuel station, weigh station)\n"
                 "2. Or is it on a highway shoulder, ramp, interchange, median, "
                 "roadside, bridge, or other dangerous location?\n"
                 "3. Look at: paved surfaces, building proximity, road lane "
-                "markings, highway vs local road, commercial facilities.\n\n"
+                "markings, highway vs local road, commercial facilities, "
+                "parking lot striping, truck bays, fuel canopies.\n\n"
                 "Reply in EXACTLY this format:\n"
                 "CLASSIFICATION: SAFE or UNSAFE\n"
                 "CONFIDENCE: HIGH, MEDIUM, or LOW\n"
@@ -303,8 +378,8 @@ async def _get_ai_parking_analysis(
         usage = ai.get_last_usage()
         if usage:
             try:
-                from bot.config import db as _db
-                await _db.log_ai_usage(
+                from bot.config import get_platform_db
+                await get_platform_db().log_ai_usage(
                     account_id=SYSTEM_USER_ID,
                     user_id=SYSTEM_USER_ID,
                     model=ai.get_current_model_name(),
@@ -343,13 +418,31 @@ async def check_unsafe_parking(app: Application):
     - Unsafe address > 8h → CRITICAL
     - Unknown > 4h without AI classification → BREAKDOWN alert
     """
+    global _first_run
+    suppress_alerts = _first_run
+    if _first_run:
+        _first_run = False
+        logger.info(
+            "Parking check: first run after restart — updating data "
+            "without sending alerts to avoid flood"
+        )
     try:
-        accounts = await db.list_accounts()
+        accounts = await get_platform_db().list_accounts()
         if not accounts:
             logger.warning("Parking check: no accounts found")
             return
         for account in accounts:
-            companies = await db.get_account_companies(account.id)
+            bot_app = get_app_for_account(account.id)
+            if not bot_app:
+                logger.debug("No bot for account %d — skipping parking check", account.id)
+                continue
+            try:
+                tenant = await get_tenant_db(account.id)
+                companies = await tenant.get_account_companies(account.id)
+            except Exception:
+                logger.error("Parking check: setup failed for acct %s",
+                             account.id, exc_info=True)
+                continue
             if not companies:
                 logger.debug("Parking check: no companies for acct %s", account.id)
                 continue
@@ -424,20 +517,20 @@ async def check_unsafe_parking(app: Application):
                 if speed > _MOVING_SPEED_MPH:
                     # N7 — reset consecutive-stopped counter
                     _vehicle_stopped_checks.pop(chk_key, None)
-                    existing = await db.get_active_parking_event(account.id, vid)
+                    existing = await tenant.get_active_parking_event(account.id, vid)
                     if existing:
-                        await db.resolve_parking_event(account.id, vid)
+                        await tenant.resolve_parking_event(account.id, vid)
                         # Send resolved notification if it was alerted
                         if existing.get("alert_level") in ("warning", "critical", "breakdown"):
                             await _send_parking_resolved(
-                                app, account.id, vname, co, existing,
+                                bot_app, account.id, vname, co, existing,
                             )
                     continue
 
                 # ── Look up existing DB record before N7 gate ──
                 # Must come first so N7 can be bypassed for already-tracked stops
                 # (e.g. after a bot restart where the in-memory counter reset).
-                existing = await db.get_active_parking_event(account.id, vid)
+                existing = await tenant.get_active_parking_event(account.id, vid)
 
                 # N7 — Speed-pattern confirmation: require _PARKING_CONFIRM_CHECKS
                 # consecutive zero-speed polls before treating as a real stop.
@@ -501,41 +594,82 @@ async def check_unsafe_parking(app: Application):
                 except (ValueError, TypeError):
                     duration_h = existing.get("duration_hours", 0) + 0.5 if existing else 0
 
+                # Staleness guard: auto-resolve events older than _PARKING_STALE_HOURS.
+                # After 3 days a "parked in unsafe location" alert is no longer
+                # actionable — it's either a yard truck (false positive) or an
+                # abandoned / impounded vehicle (different workflow entirely).
+                if duration_h >= _PARKING_STALE_HOURS:
+                    if existing:
+                        await tenant.resolve_parking_event(account.id, vid)
+                        logger.info(
+                            "Parking auto-resolved (stale): %s — %.0fh",
+                            vname, duration_h,
+                        )
+                    _vehicle_stopped_checks.pop(chk_key, None)
+                    continue
+
                 # Check geofence
                 in_geofence = _is_inside_any_geofence(lat, lng, geofences)
 
-                # Classify address
-                loc_class = "geofence" if in_geofence else classify_parking_location(address)
+                # Classify address via keywords (provisional — AI may override)
+                keyword_class = "geofence" if in_geofence else classify_parking_location(address)
 
-                # M1 — Skip safe/geofence stops entirely: they do not need
-                # DB rows or alerts. (Geofences = always safe; safe-keyword
-                # address = truck stop / yard / terminal.)
-                if loc_class in ("geofence", "safe"):
-                    # If there was a stale DB row from a previous session
-                    # that is now inside a geofence/safe zone, resolve it.
+                # M1 — Skip geofence stops entirely (always safe, no AI needed)
+                if keyword_class == "geofence":
                     if existing:
-                        await db.resolve_parking_event(account.id, vid)
+                        await tenant.resolve_parking_event(account.id, vid)
                     continue
 
-                # M2 — AI on first detection (not waiting 2h).
-                # Run once per event for any unknown location the moment we
-                # first see the vehicle stopped and outside a safe zone.
+                # M1b — Safe keywords (truck stop, pilot, etc.) are very
+                # reliable → skip without AI.
+                if keyword_class == "safe":
+                    if existing:
+                        await tenant.resolve_parking_event(account.id, vid)
+                    continue
+
+                # ── AI Vision is the primary authority for unsafe/unknown ──
+                # Address keywords like "I 90" often appear even when the
+                # truck is at a rest stop or truck parking area right off
+                # the highway. The AI sees the actual satellite imagery
+                # and can distinguish highway shoulder from a parking lot.
                 ai_analysis = existing.get("ai_analysis", "") if existing else ""
-                if loc_class == "unknown" and not ai_analysis:
-                    ai_analysis = await _get_ai_parking_analysis(
+                map_image_path = existing.get("map_image_path", "") if existing else ""
+                loc_class = keyword_class  # start with keyword, AI may override
+
+                if not ai_analysis:
+                    # Run AI vision on first detection for ALL non-safe stops
+                    ai_result = await _get_ai_parking_analysis(
                         vname, address, lat, lng, duration_h,
                     )
-                    if ai_analysis:
-                        # Re-classify based on AI response
+                    if ai_result:
+                        ai_analysis = ai_result
                         ai_lower = ai_analysis.lower()
-                        if "safe" in ai_lower and "unsafe" not in ai_lower:
-                            # AI says it's safe — skip entirely (M1)
-                            continue
+                        confidence = parse_ai_confidence(ai_analysis)
+
+                        if "unsafe" not in ai_lower and "safe" in ai_lower:
+                            # AI says SAFE — trust it over keyword regex
+                            if confidence in ("HIGH", "MEDIUM"):
+                                # Resolve and skip — it's a truck stop/yard
+                                if existing:
+                                    await tenant.resolve_parking_event(account.id, vid)
+                                continue
+                            # LOW confidence safe → keep as unknown for monitoring
+                            loc_class = "unknown"
                         elif "unsafe" in ai_lower:
                             loc_class = "unsafe"
+                        else:
+                            loc_class = "unknown"
+
+                    # Save map image to disk for dashboard display
+                    if not map_image_path:
+                        saved_path = await _save_parking_map(
+                            account.id, vid, lat, lng,
+                        )
+                        if saved_path:
+                            map_image_path = saved_path
 
                 # Upsert the parking event (only unsafe/unknown reach here)
-                event = await db.upsert_parking_event(
+                event = await tenant.upsert_parking_event(
                     account_id=account.id,
                     vehicle_id=vid,
                     vehicle_name=vname,
@@ -575,11 +709,19 @@ async def check_unsafe_parking(app: Application):
                         new_alert = "warning"
 
                 # Update DB with alert level and AI analysis
-                await db.update_parking_alert_level(
+                await tenant.update_parking_alert_level(
                     event["id"], new_alert, ai_analysis,
+                    map_image_path=map_image_path,
                 )
 
                 if new_alert == "none":
+                    continue
+
+                # First run after restart: update DB state only — do NOT
+                # send alerts.  The next scheduled check (30 min later)
+                # will have correct in-memory state and meaningful DB
+                # cooldowns, so it can alert normally.
+                if suppress_alerts:
                     continue
 
                 # M4 — Cooldown from DB, not from in-memory dict.
@@ -620,10 +762,10 @@ async def check_unsafe_parking(app: Application):
                                 vname, fresh_speed,
                             )
                             _vehicle_stopped_checks.pop(chk_key, None)
-                            await db.resolve_parking_event(account.id, vid)
+                            await tenant.resolve_parking_event(account.id, vid)
                             if prev_alert in ("warning", "critical", "breakdown"):
                                 await _send_parking_resolved(
-                                    app, account.id, vname, co,
+                                    bot_app, account.id, vname, co,
                                     existing or event,
                                 )
                             continue
@@ -635,7 +777,7 @@ async def check_unsafe_parking(app: Application):
                 severity = (AlertSeverity.CRITICAL if new_alert == "critical"
                             else AlertSeverity.WARNING)
 
-                subscribers = await db.get_all_typed_subscribers("parking")
+                subscribers = await get_platform_db().get_all_typed_subscribers("parking")
                 acct_subs = [s for s in subscribers if s.account_id == account.id]
                 if not acct_subs:
                     continue
@@ -663,11 +805,7 @@ async def check_unsafe_parking(app: Application):
                     subscribers=acct_subs,
                     co=co,
                     alert_key_detail=f"parking:{loc_class}:{duration_h:.0f}h",
-                    photo_bytes=map_bytes,
-                )
-
-                # Keep in-memory dict as secondary guard within same process run
-                _parking_alert_sent[f"{account.id}:{vid}"] = now.timestamp()
+                    photo_bytes=map_bytes,                    bot_app=bot_app,                )
 
               except Exception as e:
                 logger.warning("Parking check vehicle %s error: %s", v.get("name", "?"), e)
@@ -750,7 +888,7 @@ def _format_parking_alert(
 
 
 async def _send_parking_resolved(
-    app: Application,
+    bot_app: Application,
     account_id: int,
     vname: str,
     co: str,
@@ -776,16 +914,17 @@ async def _send_parking_resolved(
         f"\n  Vehicle is now moving.\n"
     )
 
-    subscribers = await db.get_all_typed_subscribers("parking")
+    subscribers = await get_platform_db().get_all_typed_subscribers("parking")
     acct_subs = [s for s in subscribers if s.account_id == account_id]
 
+    tenant = await get_tenant_db(account_id)
     for sub in acct_subs:
         if sub.role == Role.DRIVER and sub.truck_num:
             if vname.lower() != sub.truck_num.lower():
                 continue
         # Respect DND / quiet hours for resolved notifications
         if sub.is_in_quiet_hours():
-            await db.queue_dnd_alert(
+            await tenant.queue_dnd_alert(
                 account_id=account_id,
                 telegram_id=sub.telegram_id,
                 alert_type="parking",
@@ -794,7 +933,7 @@ async def _send_parking_resolved(
             )
             continue
         try:
-            await app.bot.send_message(
+            await bot_app.bot.send_message(
                 chat_id=sub.telegram_id,
                 text=text,
                 parse_mode=ParseMode.HTML,

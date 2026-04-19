@@ -5,7 +5,7 @@ from telegram.ext import ContextTypes
 from bot.i18n import t
 
 from database import Role
-from permissions import can, role_display, role_emoji
+from permissions import can, role_display, role_emoji, role_rank
 from samsara_client import SamsaraClient, populate_company_display
 from formatters import (
     format_account_info,
@@ -14,13 +14,12 @@ from formatters import (
     format_org_added,
 )
 
-import bot.config as _cfg
 from bot.config import (
-    db, logger, SAMSARA_BASE_URL,
-    get_client, invalidate_client, get_user_company_codes,
+    logger, SAMSARA_BASE_URL,
+    invalidate_client, get_platform_db, get_tenant_db,
 )
 from bot.keyboards import back_kb, invite_kb
-from bot.helpers import _show, _show_loading, _user_menu_kb, _safe_error
+from bot.helpers import _show, _show_loading, _user_menu_kb, _safe_error, make_invite_link
 from bot.auth import _require_registered
 
 
@@ -29,8 +28,10 @@ async def cmd_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show companies overview — clickable company buttons for drill-down."""
     user = context.user_data["_db_user"]
 
-    account = await db.get_account(user.account_id)
-    companies = await db.get_account_companies(user.account_id)
+    platform = get_platform_db()
+    account = await platform.get_account(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
 
     text = format_account_info(account, companies, user)
 
@@ -65,7 +66,7 @@ async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("🔑 Admin", callback_data="inv_admin"),
-                InlineKeyboardButton("🔧 Fleet", callback_data="inv_fleet_manager"),
+                InlineKeyboardButton("🔧 Fleet", callback_data="inv_fleet"),
             ],
             [
                 InlineKeyboardButton("📡 Dispatcher", callback_data="inv_dispatcher"),
@@ -90,13 +91,12 @@ async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await _show(update, context, [
             f"{t('invite.unknown_role').replace('{role}', role_str)}\n\n"
-            "Valid roles: admin, fleet_manager, dispatcher, driver"
+            "Valid roles: admin, fleet, safety, dispatcher, driver"
         ], keyboard=back_kb())
         return
 
     # Can't invite a role higher than your own
-    role_order = [Role.OWNER, Role.ADMIN, Role.FLEET_MGR, Role.DISPATCHER, Role.DRIVER]
-    if role_order.index(invite_role) < role_order.index(user.role):
+    if role_rank(invite_role) > role_rank(user.role):
         await _show(update, context,
                     [t('access.cant_invite_higher')],
                     keyboard=back_kb())
@@ -110,14 +110,14 @@ async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        invite = await db.create_invite(
+        invite = await get_platform_db().create_invite(
             account_id=user.account_id,
             created_by=user.id,
             role=invite_role,
             department=dept,
             truck_num=truck,
         )
-        link = f"https://t.me/{_cfg.bot_username}?start=join_{invite.code}" if _cfg.bot_username else None
+        link = make_invite_link(invite.code, context)
         text = format_invite_created(
             invite.code, role_display(invite_role), dept,
             invite_link=link,
@@ -140,8 +140,9 @@ async def cmd_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     keyboard=back_kb())
         return
 
-    account = await db.get_account(user.account_id)
-    users = await db.list_account_users(user.account_id)
+    platform = get_platform_db()
+    account = await platform.get_account(user.account_id)
+    users = await platform.list_account_users(user.account_id)
     text = format_users_list(users, account.name)
 
     # Build interactive user buttons for management
@@ -179,7 +180,7 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{t('user_mgmt.setrole_usage')}\n"
             "  /setrole <b>telegram_id</b> <b>role</b>\n\n"
             "  Example:\n"
-            "  /setrole 123456789 fleet_manager"
+            "  /setrole 123456789 fleet"
         ], keyboard=back_kb())
         return
 
@@ -192,7 +193,7 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     keyboard=back_kb())
         return
 
-    target_user = await db.get_user_by_telegram_id(target_tid)
+    target_user = await get_platform_db().get_user_by_telegram_id(target_tid)
     if not target_user or target_user.account_id != user.account_id:
         await _show(update, context,
                     [t('user_mgmt.user_not_found')],
@@ -206,7 +207,7 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     keyboard=back_kb())
         return
 
-    await db.update_user(target_user.id, role=new_role)
+    await get_platform_db().update_user(target_user.id, role=new_role)
     await _show(update, context, [
         t('user_mgmt.role_updated').replace('{user}', target_user.label).replace('{role}', role_display(new_role))
     ], keyboard=back_kb())
@@ -242,14 +243,14 @@ async def cmd_remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     keyboard=back_kb())
         return
 
-    target_user = await db.get_user_by_telegram_id(target_tid)
+    target_user = await get_platform_db().get_user_by_telegram_id(target_tid)
     if not target_user or target_user.account_id != user.account_id:
         await _show(update, context,
                     [t('user_mgmt.user_not_found')],
                     keyboard=back_kb())
         return
 
-    await db.remove_user(target_user.id)
+    await get_platform_db().remove_user(target_user.id)
     await _show(update, context, [
         t('user_mgmt.user_removed').replace('{user}', target_user.label)
     ], keyboard=back_kb())
@@ -289,7 +290,8 @@ async def cmd_addcompany(update: Update, context: ContextTypes.DEFAULT_TYPE):
     display_name = " ".join(context.args[1:]) if len(context.args) > 1 else code
 
     # Check if code already exists
-    existing = await db.get_company_by_code(user.account_id, code)
+    tenant = await get_tenant_db(user.account_id)
+    existing = await tenant.get_company_by_code(user.account_id, code)
     if existing:
         await _show(update, context,
                     [t('company.already_exists').replace('{name}', code)],
@@ -321,7 +323,7 @@ async def cmd_addcompany(update: Update, context: ContextTypes.DEFAULT_TYPE):
             finally:
                 await active_client.close()
 
-        new_company = await db.add_company(
+        new_company = await tenant.add_company(
             account_id=user.account_id,
             code=code,
             samsara_api_key=api_key,
@@ -332,7 +334,7 @@ async def cmd_addcompany(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await invalidate_client(user.account_id)
 
         # Refresh COMPANY_DISPLAY
-        companies = await db.get_account_companies(user.account_id)
+        companies = await tenant.get_account_companies(user.account_id)
         populate_company_display(companies)
 
         text = format_org_added(code, display_name, total_trucks, active_trucks)
@@ -363,17 +365,18 @@ async def cmd_removecompany(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     code = context.args[0].strip().upper()
-    company = await db.get_company_by_code(user.account_id, code)
+    tenant = await get_tenant_db(user.account_id)
+    company = await tenant.get_company_by_code(user.account_id, code)
     if not company:
         await _show(update, context,
                     [t('company.not_found_code').replace('{code}', code)],
                     keyboard=back_kb())
         return
 
-    await db.remove_company(company.id)
+    await tenant.remove_company(company.id)
     await invalidate_client(user.account_id)
 
-    companies = await db.get_account_companies(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
 
     await _show(update, context,
@@ -418,7 +421,7 @@ async def cmd_addgroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     title = " ".join(context.args[1:]) if len(context.args) > 1 else f"Group {chat_id}"
 
-    await db.add_authorized_chat(
+    await get_platform_db().add_authorized_chat(
         account_id=user.account_id,
         chat_id=chat_id,
         chat_title=title,
@@ -459,7 +462,7 @@ async def cmd_removegroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     keyboard=back_kb())
         return
 
-    await db.remove_authorized_chat(user.account_id, chat_id)
+    await get_platform_db().remove_authorized_chat(user.account_id, chat_id)
     await _show(update, context, [
         t('groups.removed').replace('{id}', str(chat_id))
     ], keyboard=back_kb())
@@ -475,7 +478,7 @@ async def cmd_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     keyboard=back_kb())
         return
 
-    chats = await db.get_authorized_chats(user.account_id)
+    chats = await get_platform_db().get_authorized_chats(user.account_id)
 
     if not chats:
         await _show(update, context, [

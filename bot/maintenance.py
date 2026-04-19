@@ -10,9 +10,12 @@ from telegram.constants import ParseMode
 
 from database import Role
 from permissions import can
-from samsara_client import populate_company_display, COMPANY_DISPLAY
+from samsara_client import populate_company_display
+from core.context import get_company_display
+from core.bot_registry import get_app_for_account
 
-from bot.config import db, logger, get_client, get_user_company_codes
+from bot.config import logger, get_client, get_user_company_codes, get_platform_db, get_tenant_db
+from core.isolation import run_account_job
 from bot.keyboards import (
     back_kb, maintenance_menu_kb,
     maint_company_picker_kb, maint_vehicle_list_kb,
@@ -100,7 +103,8 @@ async def cmd_maint_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Get companies
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     codes = [o.code for o in companies]
     populate_company_display(companies)
 
@@ -162,7 +166,7 @@ async def cmd_maint_select_truck(update: Update, context: ContextTypes.DEFAULT_T
 
     await _show(update, context, [
         f"🚛 Truck: <b>#{truck_name}</b>"
-        + (f" — {COMPANY_DISPLAY.get(company, company)}" if company else "")
+        + (f" — {get_company_display().get(company, company)}" if company else "")
         + f"\n\n<b>Step 2/5</b> — Select task type:"
     ], keyboard=maint_type_kb())
 
@@ -252,7 +256,8 @@ async def _finalize_task(update, context):
     wiz = context.user_data.get("_maint", {})
 
     try:
-        task_id = await db.add_maintenance_task(
+        tenant = await get_tenant_db(user.account_id)
+        task_id = await tenant.add_maintenance_task(
             account_id=user.account_id,
             company_code=wiz.get("company", ""),
             vehicle_id=wiz.get("vehicle_id", ""),
@@ -305,7 +310,8 @@ async def cmd_maint_view(update: Update, context: ContextTypes.DEFAULT_TYPE,
     if user.role == Role.DRIVER and not can(user.role, "can_maintenance_all"):
         vehicle_filter = user.truck_num
 
-    tasks = await db.get_maintenance_tasks(user.account_id, vehicle_name=vehicle_filter)
+    tenant = await get_tenant_db(user.account_id)
+    tasks = await tenant.get_maintenance_tasks(user.account_id, vehicle_name=vehicle_filter)
 
     if not tasks:
         await _show(update, context, [
@@ -346,7 +352,8 @@ async def cmd_maint_detail(update: Update, context: ContextTypes.DEFAULT_TYPE,
                             task_id: int = 0):
     """Show detailed view of a single task."""
     user = context.user_data["_db_user"]
-    task = await db.get_maintenance_task(task_id)
+    tenant = await get_tenant_db(user.account_id)
+    task = await tenant.get_maintenance_task(task_id)
     if not task or task["account_id"] != user.account_id:
         if update.callback_query:
             await update.callback_query.answer("⛔ Task not found", show_alert=True)
@@ -360,7 +367,7 @@ async def cmd_maint_detail(update: Update, context: ContextTypes.DEFAULT_TYPE,
     due_miles = task.get("due_miles")
     due_mi_str = f"{due_miles:,.0f} mi" if due_miles else "—"
     company = task.get("company_code", "")
-    company_display = COMPANY_DISPLAY.get(company, company) if company else ""
+    company_display = get_company_display().get(company, company) if company else ""
 
     lines = [
         f"━━━━━━━━━━━━━━━━━━━",
@@ -394,13 +401,14 @@ async def cmd_maint_done(update: Update, context: ContextTypes.DEFAULT_TYPE,
                          task_id: int = 0):
     """Mark a task as done."""
     user = context.user_data["_db_user"]
-    task = await db.get_maintenance_task(task_id)
+    tenant = await get_tenant_db(user.account_id)
+    task = await tenant.get_maintenance_task(task_id)
     if not task or task["account_id"] != user.account_id:
         if update.callback_query:
             await update.callback_query.answer("⛔ Task not found", show_alert=True)
         return
 
-    await db.update_maintenance_status(task_id, "done")
+    await tenant.update_maintenance_status(task_id, "done")
 
     # Handle recurring tasks — auto-create next occurrence
     recur_days = task.get("recur_interval_days")
@@ -418,7 +426,7 @@ async def cmd_maint_done(update: Update, context: ContextTypes.DEFAULT_TYPE,
         if recur_miles and task.get("due_miles"):
             new_due_miles = task["due_miles"] + recur_miles
 
-        await db.add_maintenance_task(
+        await tenant.add_maintenance_task(
             account_id=task["account_id"],
             company_code=task.get("company_code", ""),
             vehicle_id=task.get("vehicle_id", ""),
@@ -448,7 +456,8 @@ async def cmd_maint_delete(update: Update, context: ContextTypes.DEFAULT_TYPE,
                             task_id: int = 0):
     """Show delete confirmation."""
     user = context.user_data["_db_user"]
-    task = await db.get_maintenance_task(task_id)
+    tenant = await get_tenant_db(user.account_id)
+    task = await tenant.get_maintenance_task(task_id)
     if not task or task["account_id"] != user.account_id:
         if update.callback_query:
             await update.callback_query.answer("⛔ Task not found", show_alert=True)
@@ -467,13 +476,14 @@ async def cmd_maint_delete_confirm(update: Update, context: ContextTypes.DEFAULT
                                     task_id: int = 0):
     """Actually delete the task."""
     user = context.user_data["_db_user"]
-    task = await db.get_maintenance_task(task_id)
+    tenant = await get_tenant_db(user.account_id)
+    task = await tenant.get_maintenance_task(task_id)
     if not task or task["account_id"] != user.account_id:
         if update.callback_query:
             await update.callback_query.answer("⛔ Task not found", show_alert=True)
         return
 
-    await db.delete_maintenance_task(task_id)
+    await tenant.delete_maintenance_task(task_id)
     await _show(update, context, [
         "🗑 <b>Task deleted.</b>"
     ], keyboard=maintenance_menu_kb())
@@ -488,7 +498,8 @@ async def cmd_maint_edit(update: Update, context: ContextTypes.DEFAULT_TYPE,
                           task_id: int = 0):
     """Show edit menu for a task."""
     user = context.user_data["_db_user"]
-    task = await db.get_maintenance_task(task_id)
+    tenant = await get_tenant_db(user.account_id)
+    task = await tenant.get_maintenance_task(task_id)
     if not task or task["account_id"] != user.account_id:
         if update.callback_query:
             await update.callback_query.answer("⛔ Task not found", show_alert=True)
@@ -533,10 +544,11 @@ async def cmd_maint_set_type(update: Update, context: ContextTypes.DEFAULT_TYPE,
                               task_id: int = 0, new_type: str = ""):
     """Apply type change."""
     user = context.user_data["_db_user"]
-    task = await db.get_maintenance_task(task_id)
+    tenant = await get_tenant_db(user.account_id)
+    task = await tenant.get_maintenance_task(task_id)
     if not task or task["account_id"] != user.account_id:
         return
-    await db.update_maintenance_task(task_id, task_type=new_type)
+    await tenant.update_maintenance_task(task_id, task_type=new_type)
     context.user_data.pop("_pending", None)
     context.user_data.pop("_maint_edit_id", None)
     await cmd_maint_detail(update, context, task_id=task_id)
@@ -589,13 +601,14 @@ async def cmd_maint_remove_field(update: Update, context: ContextTypes.DEFAULT_T
                                   task_id: int = 0, field: str = ""):
     """Remove a field value (date, miles, or desc)."""
     user = context.user_data["_db_user"]
-    task = await db.get_maintenance_task(task_id)
+    tenant = await get_tenant_db(user.account_id)
+    task = await tenant.get_maintenance_task(task_id)
     if not task or task["account_id"] != user.account_id:
         return
     field_map = {"date": "due_date", "miles": "due_miles", "desc": "description"}
     db_field = field_map.get(field)
     if db_field:
-        await db.update_maintenance_task(task_id, **{db_field: None if db_field != "description" else ""})
+        await tenant.update_maintenance_task(task_id, **{db_field: None if db_field != "description" else ""})
     context.user_data.pop("_pending", None)
     context.user_data.pop("_maint_edit_id", None)
     await cmd_maint_detail(update, context, task_id=task_id)
@@ -689,7 +702,8 @@ async def handle_maintenance_text(update: Update, context: ContextTypes.DEFAULT_
                 [InlineKeyboardButton("◀️ Cancel", callback_data=f"maint_edit_{task_id}")],
             ]))
             return True
-        await db.update_maintenance_task(task_id, due_date=text)
+        tenant = await get_tenant_db(user.account_id)
+        await tenant.update_maintenance_task(task_id, due_date=text)
         context.user_data.pop("_pending", None)
         context.user_data.pop("_maint_edit_id", None)
         await cmd_maint_detail(update, context, task_id=task_id)
@@ -708,7 +722,8 @@ async def handle_maintenance_text(update: Update, context: ContextTypes.DEFAULT_
                 [InlineKeyboardButton("◀️ Cancel", callback_data=f"maint_edit_{task_id}")],
             ]))
             return True
-        await db.update_maintenance_task(task_id, due_miles=miles)
+        tenant = await get_tenant_db(user.account_id)
+        await tenant.update_maintenance_task(task_id, due_miles=miles)
         context.user_data.pop("_pending", None)
         context.user_data.pop("_maint_edit_id", None)
         await cmd_maint_detail(update, context, task_id=task_id)
@@ -716,7 +731,8 @@ async def handle_maintenance_text(update: Update, context: ContextTypes.DEFAULT_
 
     elif pending == "maint_edit_desc":
         task_id = context.user_data.get("_maint_edit_id", 0)
-        await db.update_maintenance_task(task_id, description=text)
+        tenant = await get_tenant_db(user.account_id)
+        await tenant.update_maintenance_task(task_id, description=text)
         context.user_data.pop("_pending", None)
         context.user_data.pop("_maint_edit_id", None)
         await cmd_maint_detail(update, context, task_id=task_id)
@@ -772,132 +788,163 @@ async def _get_current_odometer(account_id: int, company_code: str, vehicle_name
 async def check_overdue_maintenance(app: Application):
     """Scheduled job: check for overdue maintenance tasks (by date).
 
-    Runs daily. Marks tasks as overdue when due_date has passed.
+    Runs daily. Iterates all accounts, marks tasks as overdue when
+    due_date has passed, and notifies creators + admins.
     """
     try:
-        overdue = await db.get_pending_tasks_by_date()
-        for task in overdue:
-            await db.update_maintenance_status(task["id"], "overdue")
-
-            # Notify the task creator
-            try:
-                type_label = _task_label(task["task_type"])
-                notify_text = (
-                    f"🔴 <b>Overdue Maintenance</b>\n\n"
-                    f"  🚛 #{task['vehicle_name']}\n"
-                    f"  📋 {type_label}\n"
-                    f"  📅 Due: {task.get('due_date', '?')}\n"
-                )
-                # Notify creator
-                if task["created_by"]:
-                    await app.bot.send_message(
-                        chat_id=task["created_by"],
-                        text=notify_text,
-                        parse_mode=ParseMode.HTML,
-                    )
-                # Also notify admins/owners of the account
-                await _notify_account_admins(app, task["account_id"], notify_text,
-                                             exclude=task["created_by"])
-            except Exception as e:
-                logger.debug(f"Overdue notification failed: {e}")
-
-        if overdue:
-            logger.info(f"Marked {len(overdue)} maintenance task(s) as overdue (date)")
+        accounts = await get_platform_db().list_accounts()
     except Exception as e:
-        logger.error(f"Overdue date check error: {e}")
+        logger.error(f"Overdue date check — cannot list accounts: {e}", exc_info=True)
+        return
+
+    total_marked = 0
+    for account in accounts:
+        async def _run(acct=account):
+            nonlocal total_marked
+            bot_app = get_app_for_account(acct.id)
+            if not bot_app:
+                logger.warning("No bot for account %d — skipping overdue date check", acct.id)
+                return
+            tenant = await get_tenant_db(acct.id)
+            overdue = await tenant.get_pending_tasks_by_date()
+            for task in overdue:
+                await tenant.update_maintenance_status(task["id"], "overdue",
+                                                       account_id=acct.id)
+                total_marked += 1
+                try:
+                    type_label = _task_label(task["task_type"])
+                    notify_text = (
+                        f"🔴 <b>Overdue Maintenance</b>\n\n"
+                        f"  🚛 #{task['vehicle_name']}\n"
+                        f"  📋 {type_label}\n"
+                        f"  📅 Due: {task.get('due_date', '?')}\n"
+                    )
+                    if task["created_by"]:
+                        await bot_app.bot.send_message(
+                            chat_id=task["created_by"],
+                            text=notify_text,
+                            parse_mode=ParseMode.HTML,
+                        )
+                    await _notify_account_admins(bot_app, acct.id, notify_text,
+                                                 exclude=task["created_by"])
+                except Exception as e:
+                    logger.debug(f"Overdue notification failed: {e}")
+
+        await run_account_job(_run(), account_id=account.id,
+                              job_name="overdue_date_check")
+
+    if total_marked:
+        logger.info(f"Marked {total_marked} maintenance task(s) as overdue (date)")
 
 
 async def check_overdue_by_mileage(app: Application):
     """Scheduled job: check for overdue maintenance by odometer reading.
 
-    Runs every 6 hours. Fetches current odometer for vehicles with
-    pending mileage-based tasks and marks overdue if exceeded.
+    Runs every 6 hours. Iterates all accounts, fetches current odometer
+    for vehicles with pending mileage-based tasks, and marks overdue.
     """
     try:
-        tasks = await db.get_pending_tasks_by_miles()
-        if not tasks:
-            return
-
-        # Group tasks by (account_id, company_code) to minimize API calls
-        by_key: dict[tuple[int, str], list[dict]] = {}
-        for task in tasks:
-            co = task.get("company_code", "")
-            aid = task.get("account_id")
-            if co and aid:
-                by_key.setdefault((aid, co), []).append(task)
-
-        marked = 0
-        for (account_id, company_code), company_tasks in by_key.items():
-            try:
-                client = await get_client(account_id)
-            except Exception:
-                continue
-
-            # Get fleet to map names → IDs
-            fleet = await client.get_fleet_overview(company=company_code)
-            name_to_id = {v["name"]: v["id"] for v in fleet}
-
-            # Fetch odometers for all vehicles in one call
-            end = _dt.now(timezone.utc)
-            start = end - timedelta(hours=12)
-            try:
-                raw = await client._get_paginated_history(
-                    "obdOdometerMeters", start, end=end,
-                )
-            except Exception as e:
-                logger.debug(f"Odometer fetch failed for {company_code}: {e}")
-                continue
-
-            # Check each task
-            for task in company_tasks:
-                vid = name_to_id.get(task["vehicle_name"], "")
-                if not vid or vid not in raw:
-                    continue
-                points = raw[vid].get("obdOdometerMeters", [])
-                if not points:
-                    continue
-
-                current_miles = points[-1].get("value", 0) / 1609.344
-                due_miles = task["due_miles"]
-
-                # Store latest odometer reading
-                await db.update_maintenance_task(task["id"], last_odometer=round(current_miles, 1))
-
-                if current_miles >= due_miles:
-                    await db.update_maintenance_status(task["id"], "overdue")
-                    marked += 1
-
-                    try:
-                        type_label = _task_label(task["task_type"])
-                        notify_text = (
-                            f"🔴 <b>Overdue Maintenance (Mileage)</b>\n\n"
-                            f"  🚛 #{task['vehicle_name']}\n"
-                            f"  📋 {type_label}\n"
-                            f"  🛣 Due at: {due_miles:,.0f} mi\n"
-                            f"  📏 Current: {current_miles:,.0f} mi\n"
-                        )
-                        if task["created_by"]:
-                            await app.bot.send_message(
-                                chat_id=task["created_by"],
-                                text=notify_text,
-                                parse_mode=ParseMode.HTML,
-                            )
-                        await _notify_account_admins(app, task["account_id"], notify_text,
-                                                     exclude=task["created_by"])
-                    except Exception as e:
-                        logger.debug(f"Mileage overdue notification failed: {e}")
-
-        if marked:
-            logger.info(f"Marked {marked} maintenance task(s) as overdue (mileage)")
+        accounts = await get_platform_db().list_accounts()
     except Exception as e:
-        logger.error(f"Odometer check error: {e}")
+        logger.error(f"Odometer check — cannot list accounts: {e}", exc_info=True)
+        return
+
+    total_marked = 0
+
+    for account in accounts:
+        async def _run(acct=account):
+            nonlocal total_marked
+            bot_app = get_app_for_account(acct.id)
+            if not bot_app:
+                logger.warning("No bot for account %d — skipping mileage check", acct.id)
+                return
+            tenant = await get_tenant_db(acct.id)
+            tasks = await tenant.get_pending_tasks_by_miles()
+            if not tasks:
+                return
+
+            # Group tasks by company_code to minimize API calls
+            by_company: dict[str, list[dict]] = {}
+            for task in tasks:
+                co = task.get("company_code", "")
+                if co:
+                    by_company.setdefault(co, []).append(task)
+
+            for company_code, company_tasks in by_company.items():
+                try:
+                    client = await get_client(acct.id)
+                except Exception:
+                    continue
+
+                fleet = await client.get_fleet_overview(company=company_code)
+                name_to_id = {v["name"]: v["id"] for v in fleet}
+
+                end = _dt.now(timezone.utc)
+                start = end - timedelta(hours=12)
+                try:
+                    raw = await client._get_paginated_history(
+                        "obdOdometerMeters", start, end=end,
+                    )
+                except Exception as e:
+                    logger.debug(f"Odometer fetch failed for {company_code}: {e}")
+                    continue
+
+                for task in company_tasks:
+                    vid = name_to_id.get(task["vehicle_name"], "")
+                    if not vid or vid not in raw:
+                        continue
+                    points = raw[vid].get("obdOdometerMeters", [])
+                    if not points:
+                        continue
+
+                    current_miles = points[-1].get("value", 0) / 1609.344
+                    due_miles = task["due_miles"]
+
+                    await tenant.update_maintenance_task(
+                        task["id"], account_id=acct.id,
+                        last_odometer=round(current_miles, 1),
+                    )
+
+                    if current_miles >= due_miles:
+                        await tenant.update_maintenance_status(
+                            task["id"], "overdue", account_id=acct.id,
+                        )
+                        total_marked += 1
+
+                        try:
+                            type_label = _task_label(task["task_type"])
+                            notify_text = (
+                                f"🔴 <b>Overdue Maintenance (Mileage)</b>\n\n"
+                                f"  🚛 #{task['vehicle_name']}\n"
+                                f"  📋 {type_label}\n"
+                                f"  🛣 Due at: {due_miles:,.0f} mi\n"
+                                f"  📏 Current: {current_miles:,.0f} mi\n"
+                            )
+                            if task["created_by"]:
+                                await bot_app.bot.send_message(
+                                    chat_id=task["created_by"],
+                                    text=notify_text,
+                                    parse_mode=ParseMode.HTML,
+                                )
+                            await _notify_account_admins(
+                                bot_app, acct.id, notify_text,
+                                exclude=task["created_by"],
+                            )
+                        except Exception as e:
+                            logger.debug(f"Mileage overdue notification failed: {e}")
+
+        await run_account_job(_run(), account_id=account.id,
+                              job_name="overdue_mileage_check")
+
+    if total_marked:
+        logger.info(f"Marked {total_marked} maintenance task(s) as overdue (mileage)")
 
 
 async def _notify_account_admins(app: Application, account_id: int, text: str,
                                   exclude: int = 0):
     """Send a notification to all admins/owners of an account (except exclude)."""
     try:
-        users = await db.list_account_users(account_id)
+        users = await get_platform_db().list_account_users(account_id)
         for u in users:
             if u.telegram_id == exclude:
                 continue

@@ -67,7 +67,7 @@ def get_last_usage() -> dict | None:
 
 # ── System Prompts ───────────────────────────────────────────────
 
-FLEET_ASSISTANT_SYSTEM = """\
+ASSISTANT_SYSTEM = """\
 You are a fleet telematics AI assistant inside a Telegram bot for \
 semi-truck fleet management. You help fleet managers, owners, and \
 drivers understand their vehicle data.
@@ -111,6 +111,20 @@ data is not available from the hardware, not that things are normal. \
 Maintenance and fuel cost data come from manual entries — if empty, \
 it means no entries have been recorded yet.
 
+USER AWARENESS:
+You may receive a "User profile" block with the user's name, role, \
+assigned truck, department, timezone, and their permission summary \
+(what they CAN and CANNOT access). Use this to tailor responses:
+- You know the user's name but do NOT greet them by name in every message. \
+  Use their name only occasionally when it feels natural (e.g. first greeting \
+  of a session). Most replies should skip the name entirely.
+- Only discuss data categories the user has permission to see. \
+  If they ask about something they CANNOT access, politely explain \
+  they don't have access to that feature.
+- Follow the behavioral guidance included in the profile.
+- Respect the user's timezone when mentioning times.
+- If no user profile is provided, give a general fleet-level answer.
+
 Rules:
 - Be concise. Telegram messages should be short and scannable.
 - Use simple language — the audience is truck drivers and fleet ops, \
@@ -121,6 +135,10 @@ Rules:
 - Never make up data. If the provided fleet data doesn't contain \
   what the user asked for, say so honestly and explain which fields \
   are unavailable.
+- If a tool returns an "error" field, you MUST report the error to the \
+  user honestly — never hide tool failures or pretend everything is fine. \
+  Say something like "I tried to check [X] but the tool returned an error: \
+  [error message]. Please try again or check manually."
 - When discussing faults/DTCs, explain in plain English what the \
   fault means, how severe it is, and what action to take.
 - Amounts in USD, distances in miles, temperatures in °F.
@@ -157,7 +175,7 @@ Rules:
 - If it's a critical fault (STOP light), emphasize urgency.
 """
 
-FLEET_SUMMARY_SYSTEM = """\
+SUMMARY_SYSTEM = """\
 You are a fleet intelligence AI. Given raw fleet data, produce a \
 brief executive summary suitable for a fleet manager checking their \
 phone in the morning. Include:
@@ -444,11 +462,12 @@ async def _generate_with_model(
 # ── Main generate (with retries) ────────────────────────────────
 
 
-async def _generate_impl(prompt: str, system: str = FLEET_ASSISTANT_SYSTEM,
+async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                          context_data: dict | str | None = None,
                          user_id: int | None = None,
                          account_id: int | None = None,
-                         language: str = "en") -> str:
+                         language: str = "en",
+                         user_context: dict | None = None) -> str:
     """Core generate implementation (before fallback wrapper)."""
     import asyncio
     import re
@@ -479,6 +498,28 @@ async def _generate_impl(prompt: str, system: str = FLEET_ASSISTANT_SYSTEM,
             return cached
 
     user_parts = []
+
+    # Inject user identity so the AI knows who it's talking to
+    if user_context:
+        uc = user_context
+        profile_lines = ["User profile:"]
+        if uc.get("name"):
+            profile_lines.append(f"- Name: {uc['name']}")
+        if uc.get("role"):
+            profile_lines.append(f"- Role: {uc['role']}")
+        if uc.get("department") and uc["department"] != "general":
+            profile_lines.append(f"- Department: {uc['department']}")
+        if uc.get("truck_num"):
+            profile_lines.append(f"- Assigned truck: {uc['truck_num']}")
+        if uc.get("timezone"):
+            profile_lines.append(f"- Timezone: {uc['timezone']}")
+        # Dynamic permission guidance from ROLE_PERMISSIONS
+        if uc.get("role"):
+            from permissions import build_role_guidance
+            guidance = build_role_guidance(uc["role"])
+            profile_lines.append(f"\n{guidance}")
+        user_parts.append("\n".join(profile_lines) + "\n\n")
+
     if context_data:
         if isinstance(context_data, dict):
             data_str = json.dumps(context_data, separators=(',', ':'), default=str)
@@ -636,11 +677,12 @@ async def _generate_impl(prompt: str, system: str = FLEET_ASSISTANT_SYSTEM,
 # ── generate() with automatic fallback ──────────────────────────
 
 
-async def generate(prompt: str, system: str = FLEET_ASSISTANT_SYSTEM,
+async def generate(prompt: str, system: str = ASSISTANT_SYSTEM,
                    context_data: dict | str | None = None,
                    user_id: int | None = None,
                    account_id: int | None = None,
-                   language: str = "en") -> str:
+                   language: str = "en",
+                   user_context: dict | None = None) -> str:
     """Generate a response with automatic fallback on 429."""
     import asyncio
 
@@ -649,7 +691,7 @@ async def generate(prompt: str, system: str = FLEET_ASSISTANT_SYSTEM,
         return await _generate_impl(
             prompt, system=system, context_data=context_data,
             user_id=user_id, account_id=account_id,
-            language=language,
+            language=language, user_context=user_context,
         )
     except Exception as primary_exc:
         if not _is_rate_limit_error(primary_exc):

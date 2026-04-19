@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter, Depends, Query
 
-from api.deps import require_permission
-from bot.state import get_client
+from api.deps import require_permission, get_user_company_codes, validate_company_access, filter_by_allowed_companies, filter_by_assigned_trucks
+from bot.config import get_client
 
 router = APIRouter(prefix="/map", tags=["map"])
 
@@ -14,8 +14,12 @@ async def map_vehicles(
     user: dict = Depends(require_permission("can_location_map")),
 ):
     """Current positions for all vehicles — optimized for map rendering."""
+    allowed = await get_user_company_codes(user)
+    validate_company_access(allowed, company)
     client = await get_client(user["account_id"])
     vehicles = await client.get_fleet_overview(company=company)
+    vehicles = filter_by_allowed_companies(vehicles, allowed)
+    vehicles = await filter_by_assigned_trucks(vehicles, user)
     features = []
     for v in vehicles:
         lat = v.get("latitude")
@@ -60,8 +64,11 @@ async def map_geofences(
     user: dict = Depends(require_permission("can_geofence_all")),
 ):
     """Geofence polygons for map overlay."""
+    allowed = await get_user_company_codes(user)
+    validate_company_access(allowed, company)
     client = await get_client(user["account_id"])
     geofences = await client.get_geofences(company=company)
+    geofences = filter_by_allowed_companies(geofences, allowed)
     features = []
     for gf in geofences:
         # Samsara returns geofences with polygon vertices

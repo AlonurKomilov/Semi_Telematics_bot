@@ -1,6 +1,6 @@
 """User-settings callback handlers — quiet hours, timezone, language."""
 
-from bot.config import db
+from bot.config import get_platform_db, get_tenant_db
 from bot.keyboards import (
     user_settings_kb, quiet_hours_kb, quiet_hours_picker_kb,
     settings_tz_kb, language_kb,
@@ -35,7 +35,8 @@ async def settings_quiet_set(update, context):
     query = update.callback_query
     await query.answer()
     user = context.user_data["_db_user"]
-    schedules = await db.get_work_schedules_for_role(
+    tenant = await get_tenant_db(user.account_id)
+    schedules = await tenant.get_work_schedules_for_role(
         user.account_id, user.role.value,
     )
     await _show(update, context, [
@@ -50,8 +51,8 @@ async def quiet_set(update, context):
     parts = data.replace("quiet_set_", "").split("_")
     q_start, q_end = int(parts[0]), int(parts[1])
     user = context.user_data["_db_user"]
-    await db.update_user(user.id, quiet_start=q_start, quiet_end=q_end)
-    user = await db.get_user(user.id)
+    await get_platform_db().update_user(user.id, quiet_start=q_start, quiet_end=q_end)
+    user = await get_platform_db().get_user(user.id)
     context.user_data["_db_user"] = user
     await query.answer(t('user_settings.quiet_updated_toast'))
     await _show(update, context, [
@@ -62,8 +63,8 @@ async def quiet_set(update, context):
 async def settings_quiet_off(update, context):
     query = update.callback_query
     user = context.user_data["_db_user"]
-    await db.update_user(user.id, quiet_start=None, quiet_end=None)
-    user = await db.get_user(user.id)
+    await get_platform_db().update_user(user.id, quiet_start=None, quiet_end=None)
+    user = await get_platform_db().get_user(user.id)
     context.user_data["_db_user"] = user
     await query.answer(t('user_settings.quiet_disabled_toast'))
     await _show(update, context, [
@@ -85,8 +86,8 @@ async def set_tz(update, context):
     data = query.data
     tz = data.replace("set_tz_", "")
     user = context.user_data["_db_user"]
-    await db.update_user(user.id, timezone=tz)
-    user = await db.get_user(user.id)
+    await get_platform_db().update_user(user.id, timezone=tz)
+    user = await get_platform_db().get_user(user.id)
     context.user_data["_db_user"] = user
     tz_short = tz.split("/")[-1].replace("_", " ")
     await query.answer(t('user_settings.tz_toast', tz=tz_short))
@@ -134,8 +135,8 @@ async def set_lang(update, context):
         await query.answer(t('common.unknown_language'), show_alert=True)
         return
     user = context.user_data["_db_user"]
-    await db.update_user(user.id, language=lang)
-    user = await db.get_user(user.id)
+    await get_platform_db().update_user(user.id, language=lang)
+    user = await get_platform_db().get_user(user.id)
     context.user_data["_db_user"] = user
     lang_name = LANGUAGE_NAMES.get(lang, lang)
     await query.answer(f"✅ {lang_name}")

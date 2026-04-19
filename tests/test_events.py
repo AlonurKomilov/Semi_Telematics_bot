@@ -84,8 +84,8 @@ class TestEventsPermissions:
         assert perms.can_events_all is True
         assert perms.can_events_own is True
 
-    def test_fleet_mgr_has_events_all(self):
-        perms = get_permissions(Role.FLEET_MGR)
+    def test_fleet_has_events_all(self):
+        perms = get_permissions(Role.FLEET)
         assert perms.can_events_all is True
         assert perms.can_events_own is True
 

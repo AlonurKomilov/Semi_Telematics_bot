@@ -48,8 +48,12 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}): Promise<R
 export async function apiJSON<T = unknown>(path: string, opts: ApiFetchOpts = {}): Promise<T> {
   const res = await apiFetch(path, opts);
   if (!res.ok) {
-    const err: { detail?: string } = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || res.statusText);
+    const err: { detail?: unknown } = await res.json().catch(() => ({ detail: res.statusText }));
+    const detail = err.detail;
+    const msg = typeof detail === 'string' ? detail
+      : Array.isArray(detail) ? detail.map((d: { msg?: string }) => d.msg || String(d)).join('; ')
+      : res.statusText;
+    throw new Error(msg);
   }
   return res.json();
 }

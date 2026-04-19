@@ -11,9 +11,10 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from permissions import can
-from samsara_client import COMPANY_DISPLAY, populate_company_display
+from samsara_client import populate_company_display
+from core.context import get_company_display
 
-from bot.config import db, logger, get_client
+from bot.config import logger, get_client, get_tenant_db
 from bot.keyboards import back_kb, costmile_format_kb
 from bot.helpers import _show, _show_loading, _safe_error
 from bot.auth import _require_registered
@@ -29,7 +30,7 @@ async def cmd_costmile(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
+    company_label = get_company_display().get(company, t('common.all_companies')) if company else t('common.all_companies')
     sep = t("alert_format.separator")
     text = (
         f"{sep}\n"
@@ -51,13 +52,14 @@ async def cmd_costmile_report(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
-    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
+    company_label = get_company_display().get(company, t('common.all_companies')) if company else t('common.all_companies')
 
     await _show_loading(update, context, t('cost_per_mile.loading').format(company=company_label))
     try:
-        fuel_summary = await db.get_fuel_summary(user.account_id)
+        fuel_summary = await tenant.get_fuel_summary(user.account_id)
         if not fuel_summary:
             await _show(update, context, [
                 t('cost_per_mile.no_fuel_data')

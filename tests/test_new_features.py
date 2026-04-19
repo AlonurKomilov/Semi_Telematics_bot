@@ -1073,9 +1073,9 @@ class TestWorkSchedules:
     async def test_update_schedule_target_role(self, seeded):
         db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
         sched = await db.create_work_schedule(account.id, "Shift", 6, 18, owner.id)
-        await db.update_work_schedule(sched["id"], target_role="fleet_manager")
+        await db.update_work_schedule(sched["id"], target_role="fleet")
         updated = await db.get_work_schedule(sched["id"])
-        assert updated["target_role"] == "fleet_manager"
+        assert updated["target_role"] == "fleet"
 
     async def test_get_shift_handoff_data(self, seeded):
         db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
@@ -1113,7 +1113,7 @@ class TestRolePickerKeyboard:
         assert "wsched_role_all" in callbacks
         assert "wsched_role_owner" in callbacks
         assert "wsched_role_admin" in callbacks
-        assert "wsched_role_fleet_manager" in callbacks
+        assert "wsched_role_fleet" in callbacks
         assert "wsched_role_dispatcher" in callbacks
         assert "wsched_role_driver" in callbacks
 
@@ -1511,12 +1511,14 @@ class TestParkingMapRender:
 
         # Mock staticmap and PIL to avoid actual HTTP tile fetching
         mock_img = MagicMock()
+        mock_img.convert.return_value = mock_img
 
         mock_map_instance = MagicMock()
         mock_map_instance.render.return_value = mock_img
 
         with patch("staticmap.StaticMap", return_value=mock_map_instance) as MockMap, \
-             patch("PIL.Image.new") as MockPILNew:
+             patch("PIL.Image.new") as MockPILNew, \
+             patch("PIL.Image.alpha_composite", return_value=mock_img):
             combined_mock = MagicMock()
             def fake_save(buf, format):
                 buf.write(b"\x89PNG_combined_map_data")
@@ -1528,8 +1530,8 @@ class TestParkingMapRender:
         assert result is not None
         assert isinstance(result, bytes)
         assert len(result) > 0
-        # StaticMap should be called twice (satellite + road map)
-        assert MockMap.call_count == 2
+        # StaticMap called 3 times (satellite + labels overlay + road map)
+        assert MockMap.call_count == 3
 
     def test_render_parking_map_catches_errors(self):
         """Should return None if tile fetch / rendering fails."""

@@ -16,16 +16,18 @@ from telegram.constants import ParseMode
 
 from database import Role
 from samsara_client import (
-    COMPANY_DISPLAY, ORG_IDS,
     samsara_vehicle_url, samsara_event_url, samsara_fault_url,
 )
+from core.context import get_org_ids
+from core.bot_registry import get_app_for_account
 from formatters import format_alert_history_footer
 
 from bot.config import (
-    db, logger, _active_messages,
+    logger, _active_messages,
     ESCALATION_TIMEOUT_MINUTES,
     FAULT_ALERT_COOLDOWN_HOURS,
     HEALTH_ALERT_COOLDOWN_HOURS,
+    get_tenant_db,
 )
 
 
@@ -106,7 +108,7 @@ def build_alert_keyboard(
         )])
 
     # "Open in Samsara" deep-link (URL button — opens browser)
-    org_id = ORG_IDS.get(co, "")
+    org_id = get_org_ids().get(co, "")
     if alert_type == "events" and event_id:
         samsara_url = samsara_event_url(org_id, event_id)
     elif alert_type in ("fault", "health"):
@@ -147,6 +149,7 @@ async def send_alert(
     event_id: str = "",
     event_time: str = "",
     photo_bytes: bytes | None = None,
+    bot_app: Application | None = None,
 ):
     """Universal alert delivery pipeline.
 
@@ -159,6 +162,15 @@ async def send_alert(
     needs_ack = severity in (AlertSeverity.CRITICAL, AlertSeverity.WARNING)
     bypasses_dnd = severity == AlertSeverity.CRITICAL
 
+    # Resolve per-account bot — skip if no account bot registered
+    if bot_app is None:
+        bot_app = get_app_for_account(account_id)
+    if not bot_app:
+        logger.warning("No bot for account %d — skipping alert delivery", account_id)
+        return
+
+    tenant = await get_tenant_db(account_id)
+
     for sub in subscribers:
         # Driver: only alert for their own truck
         if sub.role == Role.DRIVER and sub.truck_num:
@@ -167,7 +179,7 @@ async def send_alert(
 
         # DND: queue non-critical alerts during quiet hours
         if not bypasses_dnd and sub.is_in_quiet_hours():
-            await db.queue_dnd_alert(
+            await tenant.queue_dnd_alert(
                 account_id=account_id,
                 telegram_id=sub.telegram_id,
                 alert_type=alert_type,
@@ -178,12 +190,12 @@ async def send_alert(
 
         try:
             # ── History consolidation — delete old, count occurrences ──
-            existing_hist = await db.get_active_alert_history(
+            existing_hist = await tenant.get_active_alert_history(
                 account_id, alert_type, vid, sub.telegram_id,
             )
             if existing_hist and existing_hist["message_id"]:
                 try:
-                    await app.bot.delete_message(
+                    await bot_app.bot.delete_message(
                         chat_id=sub.telegram_id,
                         message_id=existing_hist["message_id"],
                     )
@@ -210,7 +222,7 @@ async def send_alert(
             video_msg_id = None
             if video_url:
                 try:
-                    vmsg = await app.bot.send_video(
+                    vmsg = await bot_app.bot.send_video(
                         chat_id=sub.telegram_id,
                         video=video_url,
                         caption=f"🎥 {vname}",
@@ -226,7 +238,7 @@ async def send_alert(
             if photo_bytes and not video_msg_id:
                 try:
                     import io as _io
-                    pmsg = await app.bot.send_photo(
+                    pmsg = await bot_app.bot.send_photo(
                         chat_id=sub.telegram_id,
                         photo=_io.BytesIO(photo_bytes),
                         caption=f"📍 Parking location — #{vname}",
@@ -241,15 +253,15 @@ async def send_alert(
 
             if needs_ack:
                 # Supersede old unacked alerts for this vehicle/type/subscriber
-                old_acks = await db.get_active_vehicle_acks(
+                old_acks = await tenant.get_active_vehicle_acks(
                     account_id, vid, sub.telegram_id,
                 )
                 for old_ack in old_acks:
                     if old_ack.get("alert_type") == alert_type:
-                        await db.supersede_alert_ack(old_ack["id"])
+                        await tenant.supersede_alert_ack(old_ack["id"])
                         if old_ack.get("message_id") and old_ack.get("chat_id"):
                             try:
-                                await app.bot.delete_message(
+                                await bot_app.bot.delete_message(
                                     chat_id=old_ack["chat_id"],
                                     message_id=old_ack["message_id"],
                                 )
@@ -261,7 +273,7 @@ async def send_alert(
                     severity, co, vname, alert_type=alert_type,
                     vehicle_id=vid, event_id=event_id, event_time=event_time,
                 )
-                msg = await app.bot.send_message(
+                msg = await bot_app.bot.send_message(
                     chat_id=sub.telegram_id,
                     text=send_text,
                     parse_mode=ParseMode.HTML,
@@ -274,7 +286,7 @@ async def send_alert(
                     minutes=ACK_WINDOW_MINUTES,
                 )).isoformat()
                 alert_key = f"{co}:{vid}:{alert_key_detail}"
-                ack_id = await db.create_alert_ack(
+                ack_id = await tenant.create_alert_ack(
                     account_id=account_id,
                     alert_type=alert_type,
                     vehicle_id=vid,
@@ -291,7 +303,7 @@ async def send_alert(
                     severity, co, vname, ack_id=ack_id, alert_type=alert_type,
                     vehicle_id=vid, event_id=event_id, event_time=event_time,
                 )
-                await app.bot.edit_message_reply_markup(
+                await bot_app.bot.edit_message_reply_markup(
                     chat_id=sub.telegram_id,
                     message_id=msg.message_id,
                     reply_markup=ack_kb,
@@ -302,7 +314,7 @@ async def send_alert(
                     severity, co, vname, alert_type=alert_type,
                     vehicle_id=vid, event_id=event_id, event_time=event_time,
                 )
-                msg = await app.bot.send_message(
+                msg = await bot_app.bot.send_message(
                     chat_id=sub.telegram_id,
                     text=send_text,
                     parse_mode=ParseMode.HTML,
@@ -311,7 +323,7 @@ async def send_alert(
                 )
 
             # Update alert history
-            await db.upsert_alert_history(
+            await tenant.upsert_alert_history(
                 account_id=account_id,
                 alert_type=alert_type,
                 vehicle_id=vid,
@@ -330,6 +342,7 @@ async def send_alert(
 async def is_vehicle_suppressed(account_id: int, vehicle_name: str) -> bool:
     """Check if alerts should be suppressed for a vehicle in active maintenance."""
     try:
-        return await db.is_vehicle_in_maintenance(account_id, vehicle_name)
+        tenant = await get_tenant_db(account_id)
+        return await tenant.is_vehicle_in_maintenance(account_id, vehicle_name)
     except Exception:
         return False

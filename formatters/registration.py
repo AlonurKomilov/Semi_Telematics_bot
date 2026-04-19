@@ -1,6 +1,6 @@
 """Registration, onboarding, and invite formatters."""
 
-from samsara_client import COMPANY_DISPLAY
+from core.context import get_company_display
 from formatters.helpers import _t
 
 
@@ -24,7 +24,7 @@ def format_help(company_codes: list[str] | None = None,
     company_line = ""
     has_api = bool(company_codes)
     if company_codes and len(company_codes) > 1:
-        names = [f"{c} ({COMPANY_DISPLAY.get(c, c)})" for c in company_codes]
+        names = [f"{c} ({get_company_display().get(c, c)})" for c in company_codes]
         company_line = (
             "\n"
             "  🏢 Companies:\n"

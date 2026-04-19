@@ -47,14 +47,13 @@ async def db_and_app(tmp_path):
     token_b = create_jwt(owner_b.telegram_id, acct_b.id, "owner")
     token_driver = create_jwt(driver_a.telegram_id, acct_a.id, "driver")
 
-    # Patch bot.state.db — need to patch the module-level `db` object's internals
-    # since route files do `from bot.state import db` at import time
-    import bot.state as state
-    old_db = state.db
-    old_internal = old_db._db
-    # Swap the internal connection so existing references to state.db work
-    old_db._db = database._db
-    old_db.path = database.path
+    # Patch core.platform so api/deps.py and bot.state lazy proxy resolve correctly
+    import core.platform as _cp
+    from database.tenant_router import LegacyRouter
+    _old_router = _cp._router
+    _old_cp_db = _cp._db
+    _cp._router = LegacyRouter(database)
+    _cp._db = database
 
     # Import app after patching
     from api.app import create_api
@@ -70,7 +69,8 @@ async def db_and_app(tmp_path):
         "token_driver": token_driver,
     }
 
-    old_db._db = old_internal
+    _cp._router = _old_router
+    _cp._db = _old_cp_db
     await database.close()
 
 

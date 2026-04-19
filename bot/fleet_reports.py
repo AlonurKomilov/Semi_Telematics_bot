@@ -10,7 +10,8 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
 from permissions import can
-from samsara_client import COMPANY_DISPLAY, populate_company_display, SamsaraPermissionError
+from samsara_client import populate_company_display, SamsaraPermissionError
+from core.context import get_company_display
 from reports import (
     generate_fault_report_pdf,
     generate_fleet_efficiency_pdf,
@@ -25,8 +26,8 @@ from reports import (
 )
 
 from bot.config import (
-    db, logger,
-    _active_messages, get_client,
+    logger,
+    _active_messages, get_client, get_tenant_db,
 )
 from bot.keyboards import (
     back_kb, faults_menu_kb,
@@ -88,7 +89,7 @@ async def cmd_faults(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
+    company_label = get_company_display().get(company, t('common.all_companies')) if company else t('common.all_companies')
     text = (
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"  {t('reports.faults_title')}\n"
@@ -111,11 +112,12 @@ async def cmd_faults_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
         return
 
     # Populate COMPANY_DISPLAY for this account
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
+    company_label = get_company_display().get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
                         t('reports.loading_faults_pdf').format(company=company_label))
     try:
@@ -152,11 +154,12 @@ async def cmd_faults_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
+    company_label = get_company_display().get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
                         t('reports.loading_faults_csv').format(company=company_label))
     try:
@@ -225,7 +228,7 @@ async def cmd_fuel(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
+    company_label = get_company_display().get(company, t('common.all_companies')) if company else t('common.all_companies')
     text = (
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"  {t('reports.fuel_title')}\n"
@@ -247,11 +250,12 @@ async def cmd_fuel_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
+    company_label = get_company_display().get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
                         t('reports.loading_fuel_pdf').format(company=company_label))
     try:
@@ -288,11 +292,12 @@ async def cmd_fuel_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
+    company_label = get_company_display().get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
                         t('reports.loading_fuel_csv').format(company=company_label))
     try:
@@ -361,7 +366,7 @@ async def cmd_efficiency(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
+    company_label = get_company_display().get(company, t('common.all_companies')) if company else t('common.all_companies')
     text = (
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"  {t('reports.efficiency_title')}\n"
@@ -383,12 +388,13 @@ async def cmd_efficiency_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
     company_codes = [o.code for o in companies]
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
+    company_label = get_company_display().get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
                         t('reports.loading_efficiency_pdf').format(company=company_label))
     try:
@@ -438,12 +444,13 @@ async def cmd_efficiency_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
     company_codes = [o.code for o in companies]
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
+    company_label = get_company_display().get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
                         t('reports.loading_efficiency_csv').format(company=company_label))
     try:
@@ -529,7 +536,7 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
+    company_label = get_company_display().get(company, t('common.all_companies')) if company else t('common.all_companies')
     text = (
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"  {t('reports.health_title')}\n"
@@ -551,12 +558,13 @@ async def cmd_health_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
     company_codes = [o.code for o in companies]
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
+    company_label = get_company_display().get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
                         t('reports.loading_health_pdf').format(company=company_label))
     try:
@@ -607,12 +615,13 @@ async def cmd_health_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
     company_codes = [o.code for o in companies]
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
+    company_label = get_company_display().get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
                         t('reports.loading_health_csv').format(company=company_label))
     try:
@@ -692,12 +701,13 @@ async def cmd_weather(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
     company_codes = [o.code for o in companies]
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
+    company_label = get_company_display().get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
                         t('reports.loading_weather').format(company=company_label))
     try:

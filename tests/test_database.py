@@ -125,7 +125,7 @@ class TestCompanies:
     @pytest.mark.asyncio
     async def test_remove_company_soft_delete(self, seeded_db):
         db, acct, co, _ = seeded_db
-        await db.remove_company(co.id)
+        await db.remove_company(co.id, account_id=acct.id)
         active = await db.get_account_companies(acct.id, active_only=True)
         assert len(active) == 0
         # Still in DB with active_only=False
@@ -135,7 +135,7 @@ class TestCompanies:
     @pytest.mark.asyncio
     async def test_update_company(self, seeded_db):
         db, _, co, _ = seeded_db
-        await db.update_company(co.id, display_name="New Name")
+        await db.update_company(co.id, account_id=co.account_id, display_name="New Name")
         updated = await db.get_company_by_code(co.account_id, co.code)
         assert updated.display_name == "New Name"
 
@@ -184,7 +184,7 @@ class TestUsers:
     @pytest.mark.asyncio
     async def test_update_user_role(self, seeded_db):
         db, acct, _, _ = seeded_db
-        fleet = await db.create_user(222222, acct.id, Role.FLEET_MGR)
+        fleet = await db.create_user(222222, acct.id, Role.FLEET)
         await db.update_user(fleet.id, role=Role.ADMIN)
         updated = await db.get_user(fleet.id)
         assert updated.role == Role.ADMIN
@@ -234,7 +234,7 @@ class TestInvites:
     async def test_create_invite(self, seeded_db):
         db, acct, _, owner = seeded_db
         invite = await db.create_invite(
-            acct.id, owner.id, Role.FLEET_MGR, "ops"
+            acct.id, owner.id, Role.FLEET, "ops"
         )
         assert isinstance(invite, Invite)
         assert "-" in invite.code  # XXXX-XXXX format
@@ -265,7 +265,7 @@ class TestInvites:
     @pytest.mark.asyncio
     async def test_cannot_redeem_twice(self, seeded_db):
         db, acct, _, owner = seeded_db
-        invite = await db.create_invite(acct.id, owner.id, Role.FLEET_MGR)
+        invite = await db.create_invite(acct.id, owner.id, Role.FLEET)
         await db.redeem_invite(invite.code, 555555)
         result = await db.redeem_invite(invite.code, 666666)
         assert result is None  # already used
@@ -273,14 +273,14 @@ class TestInvites:
     @pytest.mark.asyncio
     async def test_cannot_redeem_expired(self, seeded_db):
         db, acct, _, owner = seeded_db
-        invite = await db.create_invite(acct.id, owner.id, Role.FLEET_MGR, hours=0)
+        invite = await db.create_invite(acct.id, owner.id, Role.FLEET, hours=0)
         # hours=0 means expires immediately
         import asyncio
         await asyncio.sleep(0.01)
         result = await db.redeem_invite(invite.code, 555555)
         # Depending on timing, this may or may not be expired.
         # Create truly expired invite by manipulating DB directly
-        inv2 = await db.create_invite(acct.id, owner.id, Role.FLEET_MGR)
+        inv2 = await db.create_invite(acct.id, owner.id, Role.FLEET)
         await db._db.execute(
             "UPDATE invites SET expires_at = '2020-01-01T00:00:00+00:00' WHERE id = ?",
             (inv2.id,),
@@ -293,7 +293,7 @@ class TestInvites:
     async def test_registered_user_cannot_redeem(self, seeded_db):
         """User already registered cannot redeem an invite."""
         db, acct, _, owner = seeded_db
-        invite = await db.create_invite(acct.id, owner.id, Role.FLEET_MGR)
+        invite = await db.create_invite(acct.id, owner.id, Role.FLEET)
         # Owner (tid=111111) is already registered
         result = await db.redeem_invite(invite.code, 111111)
         assert result is None

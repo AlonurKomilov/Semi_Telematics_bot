@@ -37,16 +37,16 @@ class TestAIClientConfig:
 
     def test_system_prompts_not_empty(self):
         import ai
-        assert len(ai.FLEET_ASSISTANT_SYSTEM) > 100
+        assert len(ai.ASSISTANT_SYSTEM) > 100
         assert len(ai.FAULT_DIAGNOSIS_SYSTEM) > 100
-        assert len(ai.FLEET_SUMMARY_SYSTEM) > 100
+        assert len(ai.SUMMARY_SYSTEM) > 100
 
     def test_system_prompts_mention_html(self):
         """Prompts should instruct the model to use HTML formatting."""
         import ai
-        assert "HTML" in ai.FLEET_ASSISTANT_SYSTEM
+        assert "HTML" in ai.ASSISTANT_SYSTEM
         assert "HTML" in ai.FAULT_DIAGNOSIS_SYSTEM
-        assert "HTML" in ai.FLEET_SUMMARY_SYSTEM
+        assert "HTML" in ai.SUMMARY_SYSTEM
 
 
 class TestAIClientGenerate:
@@ -417,7 +417,8 @@ class TestFleetSnapshot:
         mock_client.get_driver_efficiency.return_value = []
         mock_client.get_fleet_weather.return_value = []
 
-        with patch("bot.ai.get_client", return_value=mock_client):
+        with patch("bot.config.get_client", return_value=mock_client), \
+             patch("bot.config.get_tenant_db", new_callable=AsyncMock):
             snapshot = await _gather_fleet_snapshot(account_id=1)
 
         assert snapshot["total_vehicles"] == 2
@@ -445,7 +446,8 @@ class TestFleetSnapshot:
         mock_client.get_driver_efficiency.return_value = []
         mock_client.get_fleet_weather.return_value = []
 
-        with patch("bot.ai.get_client", return_value=mock_client):
+        with patch("bot.config.get_client", return_value=mock_client), \
+             patch("bot.config.get_tenant_db", new_callable=AsyncMock):
             snapshot = await _gather_fleet_snapshot(
                 account_id=1, truck_num="101"
             )

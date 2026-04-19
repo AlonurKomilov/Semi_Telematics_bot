@@ -15,7 +15,8 @@ Two-tier authority model:
   CUSTOMER ROLES (in the database):
     owner        — full control of their account, manage companies/users
     admin        — manage users, all fleet features
-    fleet_manager — all fleet features, no user management
+    fleet        — all fleet features, no user management
+    safety       — safety-focused: scorecards, events, alerts, no costs
     dispatcher   — fuel, truck location, rolling/stopped alerts
     driver       — own truck only, own fuel, own alerts
 """
@@ -137,7 +138,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_cost_per_mile=True,
         can_events_all=True, can_events_own=True,
     ),
-    Role.FLEET_MGR: FeatureSet(
+    Role.FLEET: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=True,
         can_efficiency=True, can_health=True,
         can_truck_all=True, can_truck_own=True,
@@ -153,6 +154,24 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_fuel_cost=True,
         can_route_all=True, can_route_own=True,
         can_cost_per_mile=True,
+        can_events_all=True, can_events_own=True,
+    ),
+    Role.SAFETY: FeatureSet(
+        can_faults=True, can_critical=True, can_fuel=False,
+        can_efficiency=False, can_health=True,
+        can_truck_all=True, can_truck_own=True,
+        can_alerts_all=True, can_alerts_own=True,
+        can_invite=False, can_manage_users=False,
+        can_manage_companies=False, can_manage_account=False,
+        can_rolling_stopped=False,
+        can_geofence_all=True, can_geofence_own=True,
+        can_digest=True,
+        can_maintenance_all=True, can_maintenance_own=True,
+        can_scorecard_all=True, can_scorecard_own=True,
+        can_location_map=True, can_location_own=True,
+        can_fuel_cost=False,
+        can_route_all=True, can_route_own=True,
+        can_cost_per_mile=False,
         can_events_all=True, can_events_own=True,
     ),
     Role.DISPATCHER: FeatureSet(
@@ -195,8 +214,66 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
 
 
 def get_permissions(role: Role) -> FeatureSet:
-    """Get the permission set for a role."""
+    """Get the default permission set for a role (sync, no DB).
+
+    For account-specific permissions, use get_account_permissions() instead.
+    """
     return ROLE_PERMISSIONS.get(role, FeatureSet())
+
+
+async def get_account_permissions(
+    role: Role,
+    account_id: int,
+    company_id: Optional[int] = None,
+) -> FeatureSet:
+    """Get permission set for a role within a specific account.
+
+    Resolution order:
+    1. DB: company-specific override (if company_id given)
+    2. DB: account-wide custom permissions
+    3. Fallback: hardcoded ROLE_PERMISSIONS defaults
+
+    Results are cached per (account_id, role, company_id).
+    """
+    cache_key = (account_id, role.value if hasattr(role, "value") else role, company_id)
+    cached = _permissions_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        from core.platform import get_platform_db
+        pdb = get_platform_db()
+        role_str = role.value if hasattr(role, "value") else role
+        perm_dict = await pdb.get_role_permissions(account_id, role_str, company_id)
+        if perm_dict is not None:
+            # Build FeatureSet from stored dict, only using known fields
+            known_fields = {f.name for f in FeatureSet.__dataclass_fields__.values()}
+            filtered = {k: v for k, v in perm_dict.items() if k in known_fields}
+            fs = FeatureSet(**filtered)
+            _permissions_cache[cache_key] = fs
+            return fs
+    except Exception:
+        pass  # DB not ready or import error — fall through
+
+    fs = ROLE_PERMISSIONS.get(role, FeatureSet())
+    _permissions_cache[cache_key] = fs
+    return fs
+
+
+def invalidate_permissions_cache(
+    account_id: Optional[int] = None,
+) -> None:
+    """Clear cached permissions. Call after Owner edits role permissions."""
+    if account_id is None:
+        _permissions_cache.clear()
+    else:
+        keys_to_drop = [k for k in _permissions_cache if k[0] == account_id]
+        for k in keys_to_drop:
+            del _permissions_cache[k]
+
+
+# In-memory cache: (account_id, role_str, company_id) → FeatureSet
+_permissions_cache: dict[tuple, FeatureSet] = {}
 
 
 def can(role: Role, feature: str) -> bool:
@@ -213,7 +290,8 @@ def can(role: Role, feature: str) -> bool:
 ROLE_DISPLAY: dict[Role, str] = {
     Role.OWNER:       "👑 Owner",
     Role.ADMIN:       "🔑 Admin",
-    Role.FLEET_MGR:   "🔧 Fleet",
+    Role.FLEET:      "🔧 Fleet",
+    Role.SAFETY:      "🛡️ Safety",
     Role.DISPATCHER:  "📡 Dispatcher",
     Role.DRIVER:      "🚛 Driver",
 }
@@ -221,7 +299,8 @@ ROLE_DISPLAY: dict[Role, str] = {
 ROLE_EMOJI: dict[Role, str] = {
     Role.OWNER:       "👑",
     Role.ADMIN:       "🔑",
-    Role.FLEET_MGR:   "🔧",
+    Role.FLEET:      "🔧",
+    Role.SAFETY:      "🛡️",
     Role.DISPATCHER:  "📡",
     Role.DRIVER:      "🚛",
 }
@@ -233,6 +312,94 @@ def role_display(role: Role) -> str:
 
 def role_emoji(role: Role) -> str:
     return ROLE_EMOJI.get(role, "👤")
+
+
+# ─── AI Role Guidance (dynamic, auto-synced with permissions) ─────
+
+# Human-readable labels for permission flags → AI-friendly descriptions
+_FEATURE_LABELS: dict[str, str] = {
+    "can_faults": "fault reports",
+    "can_critical": "critical fault alerts",
+    "can_fuel": "fuel levels",
+    "can_efficiency": "driver efficiency",
+    "can_health": "vehicle health",
+    "can_truck_all": "all trucks",
+    "can_truck_own": "own truck only",
+    "can_alerts_all": "alerts for all trucks",
+    "can_alerts_own": "alerts for own truck",
+    "can_invite": "invite users",
+    "can_manage_users": "manage users",
+    "can_manage_companies": "manage companies",
+    "can_manage_account": "account settings",
+    "can_rolling_stopped": "rolling/stopped status",
+    "can_geofence_all": "geofence alerts (all)",
+    "can_geofence_own": "geofence alerts (own)",
+    "can_digest": "auto reports",
+    "can_maintenance_all": "maintenance (all trucks)",
+    "can_maintenance_own": "maintenance (own truck)",
+    "can_scorecard_all": "driver scorecards (all)",
+    "can_scorecard_own": "driver scorecards (own)",
+    "can_location_map": "live location map (all)",
+    "can_location_own": "live location (own truck)",
+    "can_fuel_cost": "fuel cost tracking",
+    "can_route_all": "route replay (all)",
+    "can_route_own": "route replay (own)",
+    "can_cost_per_mile": "cost per mile",
+    "can_events_all": "safety events (all)",
+    "can_events_own": "safety events (own)",
+}
+
+
+def build_role_guidance(role_str: str) -> str:
+    """Build AI guidance text dynamically from the role's actual permissions.
+
+    Returns a short paragraph the AI can use to understand what data
+    this user can and cannot access. Always reflects current ROLE_PERMISSIONS.
+    """
+    try:
+        role = Role(role_str)
+    except (ValueError, KeyError):
+        return "Unknown role — give a general fleet-level answer."
+
+    perms = get_permissions(role)
+    allowed: list[str] = []
+    denied: list[str] = []
+    for field_name, label in _FEATURE_LABELS.items():
+        if getattr(perms, field_name, False):
+            allowed.append(label)
+        else:
+            denied.append(label)
+
+    lines = [f"Role: {role.value.upper()}"]
+    if allowed:
+        lines.append(f"CAN access: {', '.join(allowed)}.")
+    if denied:
+        lines.append(f"CANNOT access: {', '.join(denied)}.")
+
+    # Add role-specific behavioral hints
+    if role == Role.DRIVER:
+        lines.append(
+            "Focus on their assigned truck. Use simple language. "
+            "If they say 'my truck' use their assigned truck number."
+        )
+    elif role in (Role.OWNER, Role.ADMIN):
+        lines.append(
+            "Include cost analysis, fleet-wide metrics, management insights."
+        )
+    elif role == Role.DISPATCHER:
+        lines.append(
+            "Focus on routes, locations, ETAs, scheduling, fuel levels."
+        )
+    elif role == Role.SAFETY:
+        lines.append(
+            "Focus on safety events, scorecards, compliance, cameras."
+        )
+    elif role == Role.FLEET:
+        lines.append(
+            "Focus on vehicle health, maintenance, fault trends."
+        )
+
+    return "\n".join(lines)
 
 
 # ─── Menu visibility — which buttons to show per role ─────────────
@@ -254,3 +421,69 @@ def can_access_company_submenu(role: Role) -> bool:
     """Whether this role can filter by individual company."""
     perms = get_permissions(role)
     return perms.can_faults or perms.can_fuel
+
+
+# ─── Role Hierarchy ───────────────────────────────────────────────
+
+ROLE_HIERARCHY: dict[str, int] = {
+    "owner": 5, "admin": 4, "fleet": 3, "safety": 3,
+    "dispatcher": 2, "driver": 1,
+}
+
+
+def role_rank(role: Role | str) -> int:
+    """Numeric rank for a role (higher = more privileged)."""
+    key = role.value if isinstance(role, Role) else role
+    return ROLE_HIERARCHY.get(key, 0)
+
+
+def is_management_role(role: Role | str) -> bool:
+    """True for owner or admin — roles that manage the account."""
+    key = role.value if isinstance(role, Role) else role
+    return key in ("owner", "admin")
+
+
+# ─── AI Tool Permission Mappings ──────────────────────────────────
+# Centralized here (not in AI code) so RBAC policy stays in one file.
+
+# Map each tool to the permission flag(s) required.
+# If ANY listed permission is True for the user's role, the tool is allowed.
+# None means always allowed.
+TOOL_PERMISSIONS: dict[str, list[str] | None] = {
+    "get_truck_faults":         ["can_faults"],                             # owner/admin/fleet/safety
+    "get_truck_detail":         ["can_truck_all", "can_truck_own"],         # all roles
+    "get_driver_efficiency":    ["can_efficiency"],                         # owner/admin/fleet
+    "get_critical_faults":      ["can_critical"],                           # owner/admin/fleet/safety
+    "get_low_fuel_vehicles":    ["can_fuel"],                               # owner/admin/fleet/dispatcher
+    "get_vehicle_health":       ["can_health"],                             # owner/admin/fleet/safety
+    "get_weather":              ["can_truck_all"],                          # all except driver
+    "get_efficiency_summary":   ["can_efficiency"],                         # owner/admin/fleet
+    "get_truck_location":       ["can_location_map", "can_location_own"],   # all roles
+    "get_geofences":            ["can_geofence_all", "can_geofence_own"],   # all roles
+    "count_stats":              ["can_truck_all"],                          # all except driver
+    "get_truck_events":         ["can_events_all", "can_events_own"],       # owner/admin/fleet/safety/driver(own)
+    "get_events_summary":       ["can_events_all"],                         # owner/admin/fleet/safety
+    "get_truck_maintenance":    ["can_maintenance_all", "can_maintenance_own"],  # owner/admin/fleet/safety/driver(own)
+    "get_maintenance_summary":  ["can_maintenance_all"],                    # owner/admin/fleet/safety
+    "get_truck_fuel_costs":     ["can_fuel_cost"],                          # owner/admin/fleet
+    "get_fuel_cost_summary":    ["can_fuel_cost"],                          # owner/admin/fleet
+    "check_truck_camera":       ["can_truck_all"],                          # all except driver
+    "get_driver_scorecard":     ["can_scorecard_all", "can_scorecard_own"], # all except dispatcher
+    "get_rolling_stopped":      ["can_rolling_stopped"],                    # owner/admin/dispatcher
+}
+
+# Tools that are account-wide — driver must NOT call these even if permitted
+# via can_*_own flags (they return data for ALL trucks).
+ACCOUNT_WIDE_TOOLS: frozenset[str] = frozenset({
+    "get_critical_faults", "get_low_fuel_vehicles", "get_vehicle_health",
+    "get_weather", "get_efficiency_summary", "count_stats",
+    "get_events_summary", "get_maintenance_summary",
+    "get_fuel_cost_summary", "get_rolling_stopped",
+})
+
+# Tools that accept a truck_name param and must enforce driver truck isolation.
+TRUCK_SPECIFIC_TOOLS: frozenset[str] = frozenset({
+    "get_truck_faults", "get_truck_detail", "get_truck_location",
+    "get_truck_events", "get_truck_maintenance", "get_truck_fuel_costs",
+    "check_truck_camera",
+})

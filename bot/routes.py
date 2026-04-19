@@ -11,9 +11,9 @@ from telegram.ext import ContextTypes
 
 from database import Role
 from permissions import can
-from samsara_client import COMPANY_DISPLAY, populate_company_display
+from samsara_client import populate_company_display
 
-from bot.config import db, logger, get_client
+from bot.config import logger, get_client, get_tenant_db
 from bot.keyboards import back_kb, route_date_kb
 from bot.helpers import _show, _show_loading, _safe_error
 from bot.auth import _require_registered
@@ -88,7 +88,8 @@ async def cmd_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Driver with truck_num: auto-select
     if user.role == Role.DRIVER and user.truck_num:
-        companies = await db.get_account_companies(user.account_id)
+        tenant = await get_tenant_db(user.account_id)
+        companies = await tenant.get_account_companies(user.account_id)
         co_code = companies[0].code if companies else ""
         kb = route_date_kb(user.truck_num, co_code)
         await _show(update, context, [
@@ -116,7 +117,8 @@ async def cmd_route_go(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
     samsara = await get_client(user.account_id)
 
@@ -202,7 +204,8 @@ async def handle_route_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     context.user_data.pop("_pending", None)
 
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     co_code = companies[0].code if companies else ""
     kb = route_date_kb(text, co_code)
     await _show(update, context, [

@@ -124,7 +124,7 @@ class ParkingMixin:
 
     async def update_parking_alert_level(
         self, event_id: int, alert_level: str, ai_analysis: str = "",
-        account_id: int = 0,
+        account_id: int = 0, map_image_path: str = "",
     ) -> bool:
         """Update the alert level and AI analysis for a parking event.
 
@@ -132,24 +132,27 @@ class ParkingMixin:
         """
         now = self._now()
         acct_filter = " AND account_id = ?" if account_id else ""
+
+        # Build SET clause dynamically
+        set_parts = ["alert_level = ?"]
+        params: list = [alert_level]
         if ai_analysis:
-            params: list = [alert_level, ai_analysis, now, event_id]
-            if account_id:
-                params.append(account_id)
-            cur = await self._db.execute(
-                "UPDATE parking_events SET alert_level = ?, ai_analysis = ?, "
-                f"last_checked = ? WHERE id = ?{acct_filter}",
-                params,
-            )
-        else:
-            params = [alert_level, now, event_id]
-            if account_id:
-                params.append(account_id)
-            cur = await self._db.execute(
-                "UPDATE parking_events SET alert_level = ?, "
-                f"last_checked = ? WHERE id = ?{acct_filter}",
-                params,
-            )
+            set_parts.append("ai_analysis = ?")
+            params.append(ai_analysis)
+        if map_image_path:
+            set_parts.append("map_image_path = ?")
+            params.append(map_image_path)
+        set_parts.append("last_checked = ?")
+        params.append(now)
+        params.append(event_id)
+        if account_id:
+            params.append(account_id)
+
+        cur = await self._db.execute(
+            f"UPDATE parking_events SET {', '.join(set_parts)} "
+            f"WHERE id = ?{acct_filter}",
+            params,
+        )
         await self._db.commit()
         return cur.rowcount > 0
 

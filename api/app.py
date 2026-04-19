@@ -4,12 +4,14 @@ import os
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from api.routes import fleet, map_data, alerts, health
+from api.routes import parking as parking_routes
 from api.routes import dispatch as dispatch_routes
 from api.routes import safety as safety_routes
 from api.routes import reports as reports_routes
@@ -18,6 +20,9 @@ from api.routes import user as user_routes
 from api.routes import dashboard as dashboard_routes
 from api.routes import admin as admin_routes
 from api.routes import maintenance as maintenance_routes
+from api.routes import ai as ai_routes
+from api.routes import knowledge as knowledge_routes
+from api.routes import permissions as permissions_routes
 from api.auth import router as auth_router
 from api.rate_limit import limiter
 
@@ -81,12 +86,16 @@ def create_api() -> FastAPI:
     app.include_router(fleet.router, prefix="/api")
     app.include_router(map_data.router, prefix="/api")
     app.include_router(alerts.router, prefix="/api")
+    app.include_router(parking_routes.router, prefix="/api")
     app.include_router(dispatch_routes.router, prefix="/api")
     app.include_router(safety_routes.router, prefix="/api")
     app.include_router(reports_routes.router, prefix="/api")
     app.include_router(costs_routes.router, prefix="/api")
     app.include_router(admin_routes.router, prefix="/api")
+    app.include_router(permissions_routes.router, prefix="/api")
     app.include_router(maintenance_routes.router, prefix="/api")
+    app.include_router(ai_routes.router, prefix="/api")
+    app.include_router(knowledge_routes.router, prefix="/api")
 
     # Serve webapp static files (Mini App)
     webapp_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "webapp")
@@ -98,6 +107,19 @@ def create_api() -> FastAPI:
         os.path.dirname(os.path.dirname(__file__)), "dashboard", "dist"
     )
     if os.path.isdir(dashboard_dir):
+        dashboard_index = os.path.join(dashboard_dir, "index.html")
+
+        # SPA catch-all: serve index.html for any /dashboard/* path that
+        # doesn't match a real static file (e.g. /dashboard/fleet/weather)
+        @app.get("/dashboard/{full_path:path}")
+        async def dashboard_spa(full_path: str):
+            # If the path maps to a real file (JS/CSS/images), serve it
+            file_path = os.path.join(dashboard_dir, full_path)
+            if os.path.isfile(file_path):
+                return FileResponse(file_path)
+            # Otherwise, serve index.html for client-side routing
+            return FileResponse(dashboard_index)
+
         app.mount(
             "/dashboard",
             StaticFiles(directory=dashboard_dir, html=True),

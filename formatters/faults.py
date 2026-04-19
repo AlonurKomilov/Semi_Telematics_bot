@@ -1,6 +1,6 @@
 """Fault alert formatters."""
 
-from samsara_client import COMPANY_DISPLAY
+from core.context import get_company_display
 from formatters.helpers import _t, _short_location
 
 
@@ -13,7 +13,7 @@ def format_new_fault_alert(vehicle: dict, new_dtcs: list,
 
     co_label = ""
     if show_company and co:
-        co_label = f"\n  🏢  {COMPANY_DISPLAY.get(co, co)}  ({co})"
+        co_label = f"\n  🏢  {get_company_display().get(co, co)}  ({co})"
 
     lines = [
         "━━━━━━━━━━━━━━━━━━━━━",
@@ -51,7 +51,7 @@ def format_critical_fault_alert(vehicle: dict, new_dtcs: list,
 
     co_label = ""
     if show_company and co:
-        co_label = f"\n  🏢  {COMPANY_DISPLAY.get(co, co)}  ({co})"
+        co_label = f"\n  🏢  {get_company_display().get(co, co)}  ({co})"
 
     # Determine which lights are on
     light_flags = []

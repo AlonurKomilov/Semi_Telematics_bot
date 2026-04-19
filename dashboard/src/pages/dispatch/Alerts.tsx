@@ -5,7 +5,7 @@ import StatusBadge from '../../components/StatusBadge';
 import type { Alert, AlertsResponse, BulkAckResponse } from '../../types';
 import type { AnyColumn } from '../../types';
 
-const ALERT_TYPES = ['all', 'fault', 'health', 'fuel', 'events'] as const;
+const ALERT_TYPES = ['all', 'fault', 'health', 'fuel', 'events', 'parking'] as const;
 
 function TypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
@@ -13,6 +13,7 @@ function TypeBadge({ type }: { type: string }) {
     health: 'bg-red-500/20 text-red-400',
     fuel: 'bg-yellow-500/20 text-yellow-400',
     events: 'bg-purple-500/20 text-purple-400',
+    parking: 'bg-cyan-500/20 text-cyan-400',
   };
   const cls = colors[type] || 'bg-gray-500/20 text-gray-400';
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{type}</span>;

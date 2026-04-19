@@ -1,0 +1,74 @@
+"""Camera tools: dashcam check with AI vision analysis."""
+
+from __future__ import annotations
+
+import logging
+
+from ai.tools.registry import register_tool
+
+logger = logging.getLogger("bot.ai.tools")
+
+
+@register_tool({
+    "name": "check_truck_camera",
+    "description": (
+        "Check the dashcam status for a specific truck: captures the "
+        "latest camera image and analyzes it for obstruction, alignment, "
+        "and image quality. This is per-truck only — for a full fleet "
+        "camera check, direct the user to the Camera Check feature "
+        "in the main menu."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "truck_name": {
+                "type": "string",
+                "description": "The truck name or number",
+            },
+        },
+        "required": ["truck_name"],
+    },
+})
+async def check_truck_camera(tool_args: dict, samsara_client,
+                             account_id: int | None = None, db=None) -> dict:
+    truck = tool_args.get("truck_name", "")
+    try:
+        from samsara_client import SamsaraClient
+        from ai.vision import analyze_camera_image
+        # Get snapshots for the specific truck
+        from core.platform import get_tenant_db as _get_tdb
+        _tdb = await _get_tdb(account_id) if account_id else None
+        companies = await _tdb.get_account_companies(account_id) if _tdb else []
+        snap = None
+        for co in companies:
+            client = SamsaraClient(
+                api_key=co.samsara_api_key,
+                active_days=co.active_days,
+            )
+            try:
+                snaps = await client.get_dashcam_snapshots(days=3)
+                match = [
+                    s for s in snaps
+                    if s["vehicle_name"].lower() == truck.lower()
+                ]
+                if match:
+                    snap = match[0]
+                    break
+            finally:
+                await client.close()
+        if not snap or not snap.get("image_bytes"):
+            return {"truck": truck, "result": "No recent camera image found for this truck."}
+        analysis = await analyze_camera_image(
+            snap["image_bytes"],
+            vehicle_name=truck,
+            account_id=account_id,
+        )
+        return {
+            "truck": truck,
+            "camera_type": snap.get("camera_type", "unknown"),
+            "event_time": snap.get("event_time", ""),
+            "analysis": analysis,
+        }
+    except Exception as e:
+        logger.error(f"Camera check tool failed for {truck}: {e}")
+        return {"truck": truck, "error": f"Camera check failed: {e}"}

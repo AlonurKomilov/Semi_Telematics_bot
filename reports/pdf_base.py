@@ -16,7 +16,7 @@ from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 from reportlab.graphics.shapes import Drawing, Rect
 from reportlab.pdfgen.canvas import Canvas
 
-from samsara_client import COMPANY_DISPLAY
+from core.context import get_company_display
 
 
 # ── Color Palette ────────────────────────────────────────────────
@@ -422,7 +422,7 @@ def _add_company_breakdown_table(story, styles, company_breakdown: dict[str, dic
     grand_total = grand_faulted = grand_dtcs = 0
     for code in sorted(company_breakdown.keys()):
         info = company_breakdown[code]
-        name = COMPANY_DISPLAY.get(code, code)
+        name = get_company_display().get(code, code)
         total = info.get("total", 0)
         faulted = info.get("faulted", 0)
         dtcs = info.get("dtcs", 0)
@@ -1214,7 +1214,7 @@ __all__ = [
     "TA_RIGHT",
     "Drawing",
     "Rect",
-    "COMPANY_DISPLAY",
+    "get_company_display",
     "_TZ_ET",
     "C_DARK",
     "C_HEADER_BG",

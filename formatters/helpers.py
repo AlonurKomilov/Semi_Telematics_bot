@@ -4,8 +4,6 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 from constants import TZ_ET as _TZ_ET, TZ_CT as _TZ_CT, TZ_MT as _TZ_MT, TZ_PT as _TZ_PT
 
-from samsara_client import COMPANY_DISPLAY
-
 
 def _t(key: str, lang: str | None = None) -> str:
     """Lazy wrapper for bot.i18n.t() to avoid circular imports."""

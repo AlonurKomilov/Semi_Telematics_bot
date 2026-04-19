@@ -11,9 +11,10 @@ from telegram.ext import ContextTypes
 
 from database import Role
 from permissions import can
-from samsara_client import COMPANY_DISPLAY, populate_company_display
+from samsara_client import populate_company_display
+from core.context import get_company_display
 
-from bot.config import db, logger, get_client
+from bot.config import logger, get_client, get_tenant_db
 from bot.keyboards import back_kb, livemap_refresh_kb
 from bot.helpers import _show, _show_loading, _safe_error
 from bot.auth import _require_registered
@@ -68,10 +69,11 @@ async def cmd_livemap(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
+    company_label = get_company_display().get(company, t('common.all_companies')) if company else t('common.all_companies')
 
     await _show_loading(update, context, t('live_map.loading').format(company=company_label))
 

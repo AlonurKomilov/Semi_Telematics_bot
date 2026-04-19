@@ -11,7 +11,9 @@ from telegram.ext import ContextTypes, Application
 from permissions import can
 from samsara_client import populate_company_display
 
-from bot.config import db, logger, get_client
+from bot.config import logger, get_client, get_platform_db, get_tenant_db
+from core.isolation import run_account_job
+from core.bot_registry import get_app_for_account
 from bot.keyboards import back_kb, geofence_list_kb
 from bot.helpers import _show, _show_loading, _safe_error
 from bot.auth import _require_registered
@@ -32,7 +34,8 @@ async def cmd_geofences(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
     samsara = await get_client(user.account_id)
 
@@ -82,104 +85,119 @@ async def check_geofence_events(app: Application):
     with INFO severity (no ACK required).
     """
     try:
-        accounts = await db.list_accounts()
+        accounts = await get_platform_db().list_accounts()
         for account in accounts:
-            companies = await db.get_account_companies(account.id)
-            if not companies:
+            bot_app = get_app_for_account(account.id)
+            if not bot_app:
+                logger.debug("No bot for account %d — skipping geofence check", account.id)
                 continue
-
-            try:
-                samsara = await get_client(account.id)
-            except Exception:
-                continue
-
-            try:
-                geofences = await samsara.get_geofences()
-                vehicles = await samsara.get_fleet_overview()
-            except Exception as e:
-                logger.debug(f"Geofence check for account {account.id}: {e}")
-                continue
-
-            if not geofences or not vehicles:
-                continue
-
-            for v in vehicles:
-                loc = v.get("location", {})
-                lat = loc.get("latitude")
-                lng = loc.get("longitude")
-                if lat is None or lng is None:
-                    continue
-
-                vid = v.get("id", v.get("name", ""))
-                vname = v.get("name", "?")
-
-                for gf in geofences:
-                    gfid = gf.get("id", "")
-                    gfname = gf.get("name", "?")
-                    inside = _is_inside_geofence(lat, lng, gf)
-                    state_key = f"geofence:{vid}:{gfid}"
-
-                    # Get previous state
-                    prev_state = None
-                    if rcache and rcache.is_available():
-                        raw = await rcache.get(state_key)
-                        if raw is not None:
-                            prev_state = raw.get("state")
-                    current_state = "inside" if inside else "outside"
-
-                    # Store current state
-                    if rcache and rcache.is_available():
-                        await rcache.set(state_key, {"state": current_state}, ttl=86400)
-
-                    # Detect state change
-                    if prev_state is not None and prev_state != current_state:
-                        event = t('geofence.event_entered') if inside else t('geofence.event_exited')
-                        emoji = "📍" if inside else "📤"
-
-                        from bot.alerts import is_vehicle_suppressed
-                        if await is_vehicle_suppressed(account.id, vname):
-                            continue
-
-                        # Auto-resolve: on exit, clear geofence alert history
-                        if event == "exited":
-                            cleared = await db.clear_alert_history(
-                                account.id, "geofence", vid,
-                            )
-                            for rec in cleared:
-                                if rec.get("message_id") and rec.get("chat_id"):
-                                    try:
-                                        await app.bot.delete_message(
-                                            chat_id=rec["chat_id"],
-                                            message_id=rec["message_id"],
-                                        )
-                                    except Exception:
-                                        pass
-
-                        alert_text = (
-                            f"{emoji} {t('geofence.alert_title')}\n\n"
-                            f"  🚛 <b>{vname}</b> {event}\n"
-                            f"  📍 <b>{gfname}</b>\n"
-                        )
-
-                        # Use universal alert pipeline
-                        from bot.alerts import send_alert, AlertSeverity
-                        subscribers = await db.get_typed_alert_subscribers(
-                            account.id, "geofence"
-                        )
-                        co = v.get("_org", "?")
-                        vehicle_dict = {"id": vid, "name": vname, "_org": co}
-
-                        await send_alert(
-                            app,
-                            account_id=account.id,
-                            alert_type="geofence",
-                            severity=AlertSeverity.INFO,
-                            vehicle=vehicle_dict,
-                            alert_text=alert_text,
-                            subscribers=subscribers,
-                            co=co,
-                            alert_key_detail=f"{event} {gfname}",
-                        )
+            await run_account_job(
+                _check_geofences_account(bot_app, account),
+                account_id=account.id,
+                job_name="geofence_check",
+            )
 
     except Exception as e:
         logger.error(f"Geofence check error: {e}")
+
+
+async def _check_geofences_account(bot_app: Application, account):
+    """Process geofence events for a single account."""
+    tenant = await get_tenant_db(account.id)
+    companies = await tenant.get_account_companies(account.id)
+    if not companies:
+        return
+
+    try:
+        samsara = await get_client(account.id)
+    except Exception:
+        return
+
+    try:
+        geofences = await samsara.get_geofences()
+        vehicles = await samsara.get_fleet_overview()
+    except Exception as e:
+        logger.debug(f"Geofence check for account {account.id}: {e}")
+        return
+
+    if not geofences or not vehicles:
+        return
+
+    for v in vehicles:
+        loc = v.get("location", {})
+        lat = loc.get("latitude")
+        lng = loc.get("longitude")
+        if lat is None or lng is None:
+            continue
+
+        vid = v.get("id", v.get("name", ""))
+        vname = v.get("name", "?")
+
+        for gf in geofences:
+            gfid = gf.get("id", "")
+            gfname = gf.get("name", "?")
+            inside = _is_inside_geofence(lat, lng, gf)
+            state_key = f"t:{account.id}:geofence:{vid}:{gfid}"
+
+            # Get previous state
+            prev_state = None
+            if rcache and rcache.is_available():
+                raw = await rcache.get(state_key)
+                if raw is not None:
+                    prev_state = raw.get("state")
+            current_state = "inside" if inside else "outside"
+
+            # Store current state
+            if rcache and rcache.is_available():
+                await rcache.set(state_key, {"state": current_state}, ttl=86400)
+
+            # Detect state change
+            if prev_state is not None and prev_state != current_state:
+                event = t('geofence.event_entered') if inside else t('geofence.event_exited')
+                emoji = "📍" if inside else "📤"
+
+                from bot.alerts import is_vehicle_suppressed
+                if await is_vehicle_suppressed(account.id, vname):
+                    continue
+
+                # Auto-resolve: on exit, clear geofence alert history
+                if event == "exited":
+                    cleared = await tenant.clear_alert_history(
+                        account.id, "geofence", vid,
+                    )
+                    for rec in cleared:
+                        if rec.get("message_id") and rec.get("chat_id"):
+                            try:
+                                await bot_app.bot.delete_message(
+                                    chat_id=rec["chat_id"],
+                                    message_id=rec["message_id"],
+                                )
+                            except Exception:
+                                pass
+
+                alert_text = (
+                    f"{emoji} {t('geofence.alert_title')}\n\n"
+                    f"  🚛 <b>{vname}</b> {event}\n"
+                    f"  📍 <b>{gfname}</b>\n"
+                )
+
+                # Use universal alert pipeline
+                from bot.alerts import send_alert, AlertSeverity
+                subscribers = await get_platform_db().get_typed_alert_subscribers(
+                    account.id, "geofence"
+                )
+                co = v.get("_org", "?")
+                vehicle_dict = {"id": vid, "name": vname, "_org": co}
+
+                await send_alert(
+                    bot_app,
+                    account_id=account.id,
+                    alert_type="geofence",
+                    severity=AlertSeverity.INFO,
+                    vehicle=vehicle_dict,
+                    alert_text=alert_text,
+                    subscribers=subscribers,
+                    co=co,
+                    alert_key_detail=f"{event} {gfname}",
+                    bot_app=bot_app,
+                )

@@ -27,7 +27,11 @@ from reports import (
 )
 
 from bot.i18n import t
-from bot.config import db, logger, get_client
+from bot.config import logger, get_client, get_platform_db, get_tenant_db
+from core.bot_registry import get_app_for_account
+from core.isolation import run_account_job
+
+# NOTE: `db` singleton removed — use get_platform_db() / get_tenant_db() instead
 from bot.keyboards import back_kb, auto_reports_menu_kb
 from bot.helpers import _show
 from bot.auth import _require_registered
@@ -53,7 +57,8 @@ async def cmd_auto_reports(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    sub = await db.get_digest_subscription(user.id)
+    tenant = await get_tenant_db(user.account_id)
+    sub = await tenant.get_digest_subscription(user.id)
     sep = t("alert_format.separator")
     text = (
         f"{sep}\n"
@@ -134,11 +139,12 @@ async def cmd_auto_reports_set_tz(update: Update, context: ContextTypes.DEFAULT_
     rtype = context.user_data.pop("_ar_type", "faults")
     hour = context.user_data.pop("_ar_hour", 7)
 
-    await db.subscribe_digest_ext(
+    tenant = await get_tenant_db(user.account_id)
+    await tenant.subscribe_digest_ext(
         user.id, frequency=freq, send_hour=hour,
         timezone=tz, report_type=rtype,
     )
-    sub = await db.get_digest_subscription(user.id)
+    sub = await tenant.get_digest_subscription(user.id)
 
     type_label = REPORT_TYPES.get(rtype, rtype.title())
     tz_short = tz.split("/")[-1].replace("_", " ") if "/" in tz else tz
@@ -154,7 +160,8 @@ async def cmd_auto_reports_set_tz(update: Update, context: ContextTypes.DEFAULT_
 async def cmd_auto_reports_unsubscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Unsubscribe from auto reports."""
     user = context.user_data["_db_user"]
-    await db.unsubscribe_digest(user.id)
+    tenant = await get_tenant_db(user.account_id)
+    await tenant.unsubscribe_digest(user.id)
     await _show(update, context, [
         f"{t('auto_reports.unsubscribed')}\n\n"
         f"{t('auto_reports.resubscribe')}"
@@ -172,7 +179,8 @@ async def _generate_report_pdf(account_id: int, report_type: str):
     """
     try:
         samsara = await get_client(account_id)
-        companies = await db.get_account_companies(account_id)
+        tenant = await get_tenant_db(account_id)
+        companies = await tenant.get_account_companies(account_id)
         populate_company_display(companies)
 
         if report_type == "faults":
@@ -272,42 +280,60 @@ async def send_auto_reports(app: Application):
     is_monday = now.weekday() == 0
     is_first = now.day == 1
 
-    subscribers = await db.get_digest_subscribers_by_local_hour(current_hour)
-    if not subscribers:
+    try:
+        accounts = await get_platform_db().list_accounts()
+    except Exception as e:
+        logger.error(f"Auto reports — cannot list accounts: {e}", exc_info=True)
         return
 
     from constants import TZ_ET as _TZ_ET
 
-    for sub in subscribers:
-        freq = sub.get("frequency", "daily")
-        if freq == "weekly" and not is_monday:
-            continue
-        if freq == "monthly" and not is_first:
-            continue
+    for account in accounts:
+        async def _run(acct=account):
+            tenant = await get_tenant_db(acct.id)
+            bot_app = get_app_for_account(acct.id)
+            if not bot_app:
+                logger.warning("No bot for account %d — skipping auto reports", acct.id)
+                return
+            subs = await tenant.get_digest_subscribers_by_local_hour(current_hour)
+            if not subs:
+                return
 
-        try:
-            report_type = sub.get("report_type", "faults")
-            result = await _generate_report_pdf(sub["account_id"], report_type)
+            for sub in subs:
+                freq = sub.get("frequency", "daily")
+                if freq == "weekly" and not is_monday:
+                    continue
+                if freq == "monthly" and not is_first:
+                    continue
 
-            if result[0] is None:
-                # Error — send text message
-                await app.bot.send_message(
-                    chat_id=sub["telegram_id"],
-                    text=result[1],
-                    parse_mode=ParseMode.HTML,
-                )
-                continue
+                try:
+                    report_type = sub.get("report_type", "faults")
+                    result = await _generate_report_pdf(sub["account_id"], report_type)
 
-            pdf_buf, caption, filename_base = result
-            now_et = _dt.now(_TZ_ET)
-            ts = now_et.strftime("%Y-%m-%d_%H%M")
+                    if result[0] is None:
+                        await bot_app.bot.send_message(
+                            chat_id=sub["telegram_id"],
+                            text=result[1],
+                            parse_mode=ParseMode.HTML,
+                        )
+                        continue
 
-            await app.bot.send_document(
-                chat_id=sub["telegram_id"],
-                document=pdf_buf,
-                filename=f"{filename_base}_{ts}.pdf",
-                caption=caption,
-                parse_mode=ParseMode.HTML,
-            )
-        except Exception as e:
-            logger.warning(f"Auto report send to {sub.get('telegram_id')}: {e}")
+                    pdf_buf, caption, filename_base = result
+                    now_et = _dt.now(_TZ_ET)
+                    ts = now_et.strftime("%Y-%m-%d_%H%M")
+
+                    await bot_app.bot.send_document(
+                        chat_id=sub["telegram_id"],
+                        document=pdf_buf,
+                        filename=f"{filename_base}_{ts}.pdf",
+                        caption=caption,
+                        parse_mode=ParseMode.HTML,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Auto report send to {sub.get('telegram_id')}: {e}",
+                        exc_info=True,
+                    )
+
+        await run_account_job(_run(), account_id=account.id,
+                              job_name="auto_reports")

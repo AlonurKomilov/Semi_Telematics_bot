@@ -8,7 +8,8 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application
 from telegram.constants import ParseMode
 
-from bot.config import db, logger
+from bot.config import logger, get_platform_db, get_tenant_db
+from core.bot_registry import get_app_for_account
 
 
 async def deliver_dnd_alerts(app: Application):
@@ -21,7 +22,7 @@ async def deliver_dnd_alerts(app: Application):
     Only delivers once per calendar day (user's local timezone).
     """
     try:
-        subscribers = await db.get_all_alert_subscribers()
+        subscribers = await get_platform_db().get_all_alert_subscribers()
         if not subscribers:
             return
 
@@ -45,9 +46,10 @@ async def deliver_dnd_alerts(app: Application):
             if sub.last_shift_report == today_local:
                 continue  # already sent today
 
-            queued = await db.get_pending_dnd_alerts(sub.telegram_id)
+            tenant = await get_tenant_db(sub.account_id)
+            queued = await tenant.get_pending_dnd_alerts(sub.telegram_id)
 
-            handoff = await db.get_shift_handoff_data(sub.account_id, sub.telegram_id)
+            handoff = await tenant.get_shift_handoff_data(sub.account_id, sub.telegram_id)
             pending = handoff["pending_alerts"]
             resolved = handoff["resolved_alerts"]
             maint = handoff["pending_maintenance"]
@@ -68,36 +70,40 @@ async def deliver_dnd_alerts(app: Application):
 
             # ── Send ───────────────────────────────────────────
             try:
+                bot_app = get_app_for_account(sub.account_id)
+                if not bot_app:
+                    logger.warning("No bot for account %d — skipping DND delivery", sub.account_id)
+                    continue
                 kb = InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔔 Pending Alerts", callback_data="cmd_pending_alerts")],
                     [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
                 ])
 
                 if queued:
-                    await db.mark_dnd_alerts_delivered(sub.telegram_id)
+                    await tenant.mark_dnd_alerts_delivered(sub.telegram_id)
 
                 if pdf_buf:
                     filename = f"shift_report_{today_local}.pdf"
-                    await app.bot.send_document(
+                    await bot_app.bot.send_document(
                         chat_id=sub.telegram_id,
                         document=pdf_buf,
                         filename=filename,
                         caption="🌅 Shift Handoff Report",
                     )
 
-                await app.bot.send_message(
+                await bot_app.bot.send_message(
                     chat_id=sub.telegram_id,
                     text=summary_text,
                     parse_mode=ParseMode.HTML,
                     reply_markup=kb,
                 )
 
-                await db.update_user(sub.id, last_shift_report=today_local)
+                await get_platform_db().update_user(sub.id, last_shift_report=today_local)
             except Exception as e:
                 logger.error(f"DND delivery to {sub.telegram_id}: {e}")
 
     except Exception as e:
-        logger.error(f"DND delivery error: {e}")
+        logger.error(f"DND delivery error: {e}", exc_info=True)
 
 
 # ── Helpers ──────────────────────────────────────────────────────

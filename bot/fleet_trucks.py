@@ -11,11 +11,12 @@ from telegram.constants import ParseMode
 
 from database import Role
 from permissions import can
-from samsara_client import COMPANY_DISPLAY, populate_company_display
+from samsara_client import populate_company_display
+from core.context import get_company_display
 from formatters import format_truck_detail, format_truck_picker
 from reports import generate_critical_report_pdf, generate_truck_detail_pdf
 
-from bot.config import db, logger, _active_messages, get_client
+from bot.config import logger, _active_messages, get_client, get_tenant_db
 from bot.keyboards import back_kb, truck_kb, truck_picker_kb, vehicle_list_kb
 from bot.helpers import (
     _show, _show_loading, _delete_old_messages, _company_line, _user_menu_kb,
@@ -73,7 +74,8 @@ async def cmd_truck(update: Update, context: ContextTypes.DEFAULT_TYPE,
         return
 
     # Populate COMPANY_DISPLAY
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
     company_codes = [o.code for o in companies]
 
@@ -123,7 +125,8 @@ async def cmd_truck_report(update: Update, context: ContextTypes.DEFAULT_TYPE,
         return
 
     # Populate COMPANY_DISPLAY
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
 
     await _show_loading(update, context,
@@ -202,11 +205,12 @@ async def cmd_critical(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
 
     samsara = await get_client(user.account_id)
-    company_label = COMPANY_DISPLAY.get(company, t('common.all_companies')) if company else t('common.all_companies')
+    company_label = get_company_display().get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
                         t('truck.loading_critical').format(company=company_label))
     try:
@@ -281,7 +285,8 @@ async def cmd_critical(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
 async def show_truck_list(update, context, user, company_filter, page=0):
     """Fetch all trucks and show a paginated button list."""
-    orgs_db = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    orgs_db = await tenant.get_account_companies(user.account_id)
     populate_company_display(orgs_db)
     company_codes = [o.code for o in orgs_db]
     show_org = len(company_codes) > 1
@@ -302,7 +307,7 @@ async def show_truck_list(update, context, user, company_filter, page=0):
             f"{t('truck.browse_header').format(count=total)}\n"
         )
         if company_filter:
-            header += f"  📡 {COMPANY_DISPLAY.get(company_filter, company_filter)}\n"
+            header += f"  📡 {get_company_display().get(company_filter, company_filter)}\n"
 
         kb = vehicle_list_kb(vehicles, page=page, company_filter=company_filter)
         await _show(update, context, [header + f"\n{t('truck.browse_tap')}"],

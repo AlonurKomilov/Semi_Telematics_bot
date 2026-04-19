@@ -7,12 +7,15 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application
 from telegram.constants import ParseMode
 
-from samsara_client import COMPANY_DISPLAY
+from core.context import get_company_display, set_tenant_display
+from core.isolation import run_account_job
+from core.bot_registry import get_app_for_account
 
 from bot.config import (
     db, logger, get_client,
     FUEL_THRESHOLD, FUEL_HYSTERESIS_PERCENT,
     ESCALATION_MAX_HOURS,
+    get_platform_db, get_tenant_db,
 )
 
 from bot.alerts.pipeline import (
@@ -30,7 +33,9 @@ async def handle_alert_ack(update, context, ack_id: int):
     try:
         user = context.user_data.get("_db_user")
         tid = query.from_user.id
-        await db.acknowledge_alert(ack_id, tid)
+        acct_id = user.account_id if user else 0
+        tenant = await get_tenant_db(acct_id) if acct_id else db
+        await tenant.acknowledge_alert(ack_id, tid)
 
         # Update the message to show it's been acknowledged
         try:
@@ -54,7 +59,7 @@ async def handle_alert_ack(update, context, ack_id: int):
 
         # Audit log
         if user:
-            await db.add_audit_log(
+            await tenant.add_audit_log(
                 account_id=user.account_id,
                 user_id=user.id,
                 action="alert_acknowledged",
@@ -73,25 +78,28 @@ async def _expire_stale_alerts(app: Application):
     cutoff = (
         datetime.now(timezone.utc) - timedelta(hours=ESCALATION_MAX_HOURS)
     ).isoformat()
-    expired = await db.expire_stale_alerts(older_than=cutoff)
-    for alert in expired:
-        try:
-            await db.add_audit_log(
-                account_id=alert["account_id"],
-                user_id=None,
-                action="alert_expired",
-                target_type="alert",
-                target_id=str(alert["id"]),
-                details=(
-                    f"Auto-expired after {ESCALATION_MAX_HOURS}h — "
-                    f"{alert['alert_type']} alert for Truck {alert['vehicle_name']}, "
-                    f"re-alerted {alert['escalation_level']} time(s), never acknowledged"
-                ),
-            )
-        except Exception as e:
-            logger.error(f"Audit log for expired alert {alert['id']}: {e}")
-    if expired:
-        logger.info(f"Auto-expired {len(expired)} stale alerts (>{ESCALATION_MAX_HOURS}h)")
+    accounts = await get_platform_db().list_accounts()
+    for account in accounts:
+        tenant = await get_tenant_db(account.id)
+        expired = await tenant.expire_stale_alerts(older_than=cutoff)
+        for alert in expired:
+            try:
+                await tenant.add_audit_log(
+                    account_id=alert["account_id"],
+                    user_id=None,
+                    action="alert_expired",
+                    target_type="alert",
+                    target_id=str(alert["id"]),
+                    details=(
+                        f"Auto-expired after {ESCALATION_MAX_HOURS}h — "
+                        f"{alert['alert_type']} alert for Truck {alert['vehicle_name']}, "
+                        f"re-alerted {alert['escalation_level']} time(s), never acknowledged"
+                    ),
+                )
+            except Exception as e:
+                logger.error(f"Audit log for expired alert {alert['id']}: {e}")
+        if expired:
+            logger.info(f"Auto-expired {len(expired)} stale alerts (>{ESCALATION_MAX_HOURS}h) for account {account.id}")
 
 
 # Health-alert severity thresholds for display in re-alerts
@@ -240,6 +248,7 @@ async def _auto_resolve_vehicle_alerts(
     vehicle_id: str,
     vehicle_name: str,
     co: str,
+    bot_app: Application | None = None,
 ):
     """Auto-resolve all unacked alerts for a vehicle when the source check
     detects the condition has cleared.
@@ -249,10 +258,17 @@ async def _auto_resolve_vehicle_alerts(
     Eliminates waiting for the re-alert cycle to auto-resolve.
     Respects working hours — queues notification if user is outside working hours.
     """
-    resolved = await db.auto_resolve_alerts_by_vehicle(
+    resolved = await (await get_tenant_db(account_id)).auto_resolve_alerts_by_vehicle(
         account_id, alert_type, vehicle_id,
     )
     if not resolved:
+        return
+
+    # Resolve per-account bot — skip if no account bot registered
+    if bot_app is None:
+        bot_app = get_app_for_account(account_id)
+    if not bot_app:
+        logger.warning("No bot for account %d — skipping auto-resolve", account_id)
         return
 
     for alert in resolved:
@@ -261,7 +277,7 @@ async def _auto_resolve_vehicle_alerts(
         # Delete old alert message from chat
         if alert.get("message_id") and alert.get("chat_id"):
             try:
-                await app.bot.delete_message(
+                await bot_app.bot.delete_message(
                     chat_id=alert["chat_id"],
                     message_id=alert["message_id"],
                 )
@@ -271,9 +287,9 @@ async def _auto_resolve_vehicle_alerts(
         # Check DND — skip sending if user is outside working hours
         recipient_id = alert.get("sent_to")
         if recipient_id:
-            recipient = await db.get_user_by_telegram_id(recipient_id)
+            recipient = await get_platform_db().get_user_by_telegram_id(recipient_id)
             if recipient and recipient.is_in_quiet_hours():
-                await db.queue_dnd_alert(
+                await (await get_tenant_db(account_id)).queue_dnd_alert(
                     account_id=account_id,
                     telegram_id=recipient_id,
                     alert_type=alert_type,
@@ -319,7 +335,7 @@ async def _auto_resolve_vehicle_alerts(
             resolve_text += f"\n{duration_str}"
 
         try:
-            await app.bot.send_message(
+            await bot_app.bot.send_message(
                 chat_id=alert["sent_to"],
                 text=resolve_text,
                 parse_mode=ParseMode.HTML,
@@ -335,7 +351,7 @@ async def _auto_resolve_vehicle_alerts(
 
     # Single audit log entry for all resolved records
     log_name = vehicle_name or resolved[0].get("vehicle_name", "?")
-    await db.add_audit_log(
+    await (await get_tenant_db(account_id)).add_audit_log(
         account_id=account_id,
         user_id=None,
         action="alert_auto_resolved",
@@ -429,7 +445,14 @@ async def check_alert_realerts(app: Application):
 
         now = datetime.now(timezone.utc)
         now_str = now.isoformat()
-        pending = await db.get_unacked_alerts(before=now_str)
+
+        # Collect pending alerts across all tenant databases
+        accounts = await get_platform_db().list_accounts()
+        pending = []
+        for account in accounts:
+            tenant = await get_tenant_db(account.id)
+            acct_pending = await tenant.get_unacked_alerts(before=now_str)
+            pending.extend(acct_pending)
 
         if not pending:
             return
@@ -440,298 +463,320 @@ async def check_alert_realerts(app: Application):
             by_account.setdefault(alert["account_id"], []).append(alert)
 
         for account_id, alerts in by_account.items():
-            # Fetch live data for this account (cached by samsara client)
-            live_health_by_name: dict[str, dict] = {}
-            live_health_alerts_by_name: dict[str, list[str]] = {}
-            live_fuel_by_name: dict[str, float] = {}
-            live_faults_by_name: dict[str, list[dict]] = {}
-            try:
-                samsara = await get_client(account_id)
-                await samsara.ensure_org_ids()
-
-                # Determine what data we need based on alert types
-                alert_types = {a["alert_type"] for a in alerts}
-                if "health" in alert_types:
-                    health_vehicles = await samsara.get_vehicle_health()
-                    for hv in health_vehicles:
-                        live_health_by_name[hv["name"]] = hv.get("_health", {})
-                        live_health_alerts_by_name[hv["name"]] = hv.get("_health_alerts", [])
-
-                if "fuel" in alert_types:
-                    fuel_vehicles = await samsara.get_low_fuel_vehicles(threshold=100)
-                    for fv in fuel_vehicles:
-                        pct = fv.get("_fuel_pct")
-                        if pct is not None:
-                            live_fuel_by_name[fv["name"]] = pct
-
-                if "fault" in alert_types:
-                    faulted, _ = await samsara.get_vehicles_with_faults()
-                    for fv in faulted:
-                        live_faults_by_name[fv["name"]] = fv.get("_dtcs", [])
-
-            except Exception as e:
-                logger.debug(f"Live data fetch for re-alerts (account {account_id}): {e}")
-
-            for alert in alerts:
-                try:
-                    realert_count = alert["escalation_level"]  # repurposed field
-
-                    if realert_count >= MAX_REALERTS:
-                        await db.update_alert_escalation(alert["id"], realert_count, None)
-                        await db.add_audit_log(
-                            account_id=account_id,
-                            user_id=None,
-                            action="alert_max_realerts",
-                            target_type="alert",
-                            target_id=str(alert["id"]),
-                            details=(
-                                f"Max re-alerts ({MAX_REALERTS}) reached — "
-                                f"{alert['alert_type']} alert for Truck {alert['vehicle_name']}"
-                            ),
-                        )
-                        continue
-
-                    # ── Auto-resolve: skip re-alert if live data shows issue cleared ──
-                    vname = alert["vehicle_name"]
-                    alert_key = alert.get("alert_key", "")
-                    key_parts = alert_key.split(":", 2)
-                    co = key_parts[0] if key_parts else "?"
-                    detail = key_parts[2] if len(key_parts) > 2 else ""
-                    atype = alert["alert_type"]
-
-                    resolved = _is_alert_resolved(
-                        atype, detail, vname,
-                        live_health_alerts=live_health_alerts_by_name.get(vname),
-                        live_fuel_pct=live_fuel_by_name.get(vname),
-                        live_dtcs=live_faults_by_name.get(vname),
-                    )
-
-                    if resolved:
-                        # Auto-resolve: mark acknowledged, delete old message, notify user
-                        await db.acknowledge_alert(alert["id"], user_id=SYSTEM_USER_ID)
-                        if alert.get("message_id") and alert.get("chat_id"):
-                            try:
-                                await app.bot.delete_message(
-                                    chat_id=alert["chat_id"],
-                                    message_id=alert["message_id"],
-                                )
-                            except Exception:
-                                pass
-
-                        # Also clear alert history so the normal alert cycle
-                        # doesn't keep a stale entry
-                        vid = key_parts[1] if len(key_parts) > 1 else ""
-                        await db.clear_alert_history(account_id, atype, vid)
-
-                        # Calculate alert duration
-                        created = alert.get("created_at", "")
-                        duration_str = ""
-                        if created:
-                            try:
-                                created_dt = datetime.fromisoformat(created)
-                                mins = int((now - created_dt).total_seconds() / 60)
-                                if mins >= 60:
-                                    duration_str = f"\n  🕐 Was active for <b>{mins // 60}h {mins % 60}m</b>\n"
-                                else:
-                                    duration_str = f"\n  🕐 Was active for <b>{mins} min</b>\n"
-                            except Exception:
-                                pass
-
-                        co_display = COMPANY_DISPLAY.get(co, co)
-                        co_suffix = f"  ({co_display})" if co_display else ""
-
-                        # Check DND — queue if user is outside working hours
-                        resolve_recipient = await db.get_user_by_telegram_id(alert["sent_to"])
-                        if resolve_recipient and resolve_recipient.is_in_quiet_hours():
-                            await db.queue_dnd_alert(
-                                account_id=account_id,
-                                telegram_id=alert["sent_to"],
-                                alert_type=atype,
-                                vehicle_name=vname,
-                                alert_text=f"✅ Auto-resolved: {atype} alert cleared",
-                            )
-                            continue
-
-                        # Send auto-resolved notification
-                        resolve_text = (
-                            "━━━━━━━━━━━━━━━━━━━\n"
-                            f"  ✅  <b>AUTO-RESOLVED</b>\n"
-                            "━━━━━━━━━━━━━━━━━━━\n"
-                            f"\n  🚛 Truck: <b>#{vname}</b>{co_suffix}\n"
-                            f"\n  The <b>{atype.replace('_', ' ').title()}</b> alert "
-                            "has been automatically resolved.\n"
-                            f"\n{resolved}\n"
-                            f"{duration_str}"
-                        )
-                        try:
-                            await app.bot.send_message(
-                                chat_id=alert["sent_to"],
-                                text=resolve_text,
-                                parse_mode=ParseMode.HTML,
-                                reply_markup=InlineKeyboardMarkup([
-                                    [InlineKeyboardButton(
-                                        f"📋 View Truck #{vname}",
-                                        callback_data=f"cotruck_{co}_{vname}",
-                                    )],
-                                    [InlineKeyboardButton(
-                                        "◀️ Main Menu", callback_data="cmd_menu",
-                                    )],
-                                ]),
-                            )
-                        except Exception:
-                            pass
-
-                        await db.add_audit_log(
-                            account_id=account_id,
-                            user_id=None,
-                            action="alert_auto_resolved",
-                            target_type="alert",
-                            target_id=str(alert["id"]),
-                            details=(
-                                f"{atype} alert for Truck {vname} auto-resolved — "
-                                f"{resolved}"
-                            ),
-                        )
-                        logger.info(
-                            f"Auto-resolved {atype} alert #{alert['id']} "
-                            f"for Truck {vname}: {resolved}"
-                        )
-                        continue
-
-                    new_count = realert_count + 1
-                    next_realert = (now + timedelta(
-                        minutes=ACK_WINDOW_MINUTES,
-                    )).isoformat()
-
-                    # Re-alert the SAME user
-                    tid = alert["sent_to"]
-
-                    # Check DND for re-alerts — only CRITICAL bypasses working hours
-                    realert_recipient = await db.get_user_by_telegram_id(tid)
-                    if realert_recipient and realert_recipient.is_in_quiet_hours():
-                        sev = alert.get("alert_type", "")
-                        # Only truly critical faults bypass DND
-                        if sev != "fault" or not any(
-                            kw in (alert.get("alert_key", "")).lower()
-                            for kw in ("stop", "protect")
-                        ):
-                            # Postpone re-alert until working hours
-                            await db.update_alert_escalation(
-                                alert["id"], realert_count, next_realert,
-                            )
-                            continue
-
-                    mins_ago = int(
-                        (now - datetime.fromisoformat(alert["created_at"])).total_seconds() / 60
-                    )
-
-                    # ── Delete previous message to keep chat clean ────
-                    if alert.get("message_id") and alert.get("chat_id"):
-                        try:
-                            await app.bot.delete_message(
-                                chat_id=alert["chat_id"],
-                                message_id=alert["message_id"],
-                            )
-                        except Exception:
-                            pass
-
-                    # Build detail lines with live data when available
-                    detail_lines = _build_realert_detail(
-                        atype,
-                        alert_key,
-                        live_health=live_health_by_name.get(vname),
-                        live_fuel_pct=live_fuel_by_name.get(vname),
-                        live_dtcs=live_faults_by_name.get(vname),
-                    )
-
-                    atype_label = atype.replace("_", " ").title()
-                    co_display = COMPANY_DISPLAY.get(co, co)
-
-                    # Urgency escalation based on attempt number
-                    if new_count >= MAX_REALERTS:
-                        urgency_icon = "🚨"
-                        urgency_label = "FINAL REMINDER"
-                        urgency_note = "  ❗ This is the <b>last reminder</b>.\n  The alert will expire if not acknowledged.\n"
-                    else:
-                        urgency_icon = "🔔"
-                        urgency_label = "REMINDER"
-                        urgency_note = ""
-
-                    # Time formatting
-                    hours_ago = mins_ago // 60
-                    if hours_ago >= 1:
-                        time_str = f"{hours_ago}h {mins_ago % 60}m"
-                    else:
-                        time_str = f"{mins_ago} min"
-
-                    realert_text = (
-                        "━━━━━━━━━━━━━━━━━━━\n"
-                        f"  {urgency_icon}  <b>{urgency_label} ({new_count}/{MAX_REALERTS})</b>\n"
-                        "━━━━━━━━━━━━━━━━━━━\n"
-                        f"\n  🚛 Truck: <b>#{vname}</b>"
-                    )
-                    if co_display:
-                        realert_text += f"  ({co_display})"
-                    realert_text += "\n"
-
-                    # Alert type header
-                    type_icons = {
-                        "fault": "⚙️",
-                        "health": "🛑",
-                        "fuel": "⛽",
-                    }
-                    type_icon = type_icons.get(atype, "⚠️")
-                    realert_text += f"\n  {type_icon}  <b>{atype_label} Alert</b>\n"
-
-                    if detail_lines:
-                        realert_text += f"\n{detail_lines}\n"
-
-                    realert_text += (
-                        f"\n  🕐 Unacknowledged for <b>{time_str}</b>\n"
-                    )
-                    if urgency_note:
-                        realert_text += f"\n{urgency_note}"
-
-                    # Re-use build_alert_keyboard for consistent buttons + correct AI callback
-                    ack_kb = build_alert_keyboard(
-                        AlertSeverity.WARNING,  # re-alerts always show ACK buttons
-                        co,
-                        vname,
-                        ack_id=alert["id"],
-                        alert_type=atype,
-                        vehicle_id=alert.get("vehicle_id", ""),
-                    )
-
-                    msg = await app.bot.send_message(
-                        chat_id=tid,
-                        text=realert_text,
-                        parse_mode=ParseMode.HTML,
-                        reply_markup=ack_kb,
-                    )
-
-                    # Update DB with new message_id so next cycle can delete it
-                    await db.update_alert_escalation(
-                        alert["id"], new_count, next_realert,
-                        message_id=msg.message_id,
-                    )
-
-                    await db.add_audit_log(
-                        account_id=account_id,
-                        user_id=None,
-                        action="alert_realerted",
-                        target_type="alert",
-                        target_id=str(alert["id"]),
-                        details=(
-                            f"{atype} re-alert {new_count}/{MAX_REALERTS} "
-                            f"for Truck {vname} — sent to {tid}"
-                        ),
-                    )
-
-                except Exception as e:
-                    logger.error(f"Re-alert for alert {alert['id']}: {e}")
+            bot_app = get_app_for_account(account_id)
+            if not bot_app:
+                logger.debug("No bot for account %d — skipping re-alerts", account_id)
+                continue
+            await run_account_job(
+                _check_realerts_account(bot_app, account_id, alerts),
+                account_id=account_id,
+                job_name="realert_check",
+            )
 
     except Exception as e:
         logger.error(f"Re-alert check error: {e}")
+
+
+async def _check_realerts_account(
+    bot_app: Application, account_id: int, alerts: list[dict],
+):
+    """Process re-alerts for a single account."""
+    now = datetime.now(timezone.utc)
+    tenant = await get_tenant_db(account_id)
+    # Fetch live data for this account (cached by samsara client)
+    live_health_by_name: dict[str, dict] = {}
+    live_health_alerts_by_name: dict[str, list[str]] = {}
+    live_fuel_by_name: dict[str, float] = {}
+    live_faults_by_name: dict[str, list[dict]] = {}
+    try:
+        samsara = await get_client(account_id)
+        await samsara.ensure_org_ids()
+
+        # Set tenant display context for formatters
+        acct_companies = await tenant.get_account_companies(account_id)
+        display = {co.code: co.display_name or co.code for co in acct_companies}
+        set_tenant_display(display, samsara.org_ids)
+
+        # Determine what data we need based on alert types
+        alert_types = {a["alert_type"] for a in alerts}
+        if "health" in alert_types:
+            health_vehicles = await samsara.get_vehicle_health()
+            for hv in health_vehicles:
+                live_health_by_name[hv["name"]] = hv.get("_health", {})
+                live_health_alerts_by_name[hv["name"]] = hv.get("_health_alerts", [])
+
+        if "fuel" in alert_types:
+            fuel_vehicles = await samsara.get_low_fuel_vehicles(threshold=100)
+            for fv in fuel_vehicles:
+                pct = fv.get("_fuel_pct")
+                if pct is not None:
+                    live_fuel_by_name[fv["name"]] = pct
+
+        if "fault" in alert_types:
+            faulted, _ = await samsara.get_vehicles_with_faults()
+            for fv in faulted:
+                live_faults_by_name[fv["name"]] = fv.get("_dtcs", [])
+
+    except Exception as e:
+        logger.debug(f"Live data fetch for re-alerts (account {account_id}): {e}")
+
+    for alert in alerts:
+        try:
+            realert_count = alert["escalation_level"]  # repurposed field
+
+            if realert_count >= MAX_REALERTS:
+                await tenant.update_alert_escalation(alert["id"], realert_count, None)
+                await tenant.add_audit_log(
+                    account_id=account_id,
+                    user_id=None,
+                    action="alert_max_realerts",
+                    target_type="alert",
+                    target_id=str(alert["id"]),
+                    details=(
+                        f"Max re-alerts ({MAX_REALERTS}) reached — "
+                        f"{alert['alert_type']} alert for Truck {alert['vehicle_name']}"
+                    ),
+                )
+                continue
+
+            # ── Auto-resolve: skip re-alert if live data shows issue cleared ──
+            vname = alert["vehicle_name"]
+            alert_key = alert.get("alert_key", "")
+            key_parts = alert_key.split(":", 2)
+            co = key_parts[0] if key_parts else "?"
+            detail = key_parts[2] if len(key_parts) > 2 else ""
+            atype = alert["alert_type"]
+
+            resolved = _is_alert_resolved(
+                atype, detail, vname,
+                live_health_alerts=live_health_alerts_by_name.get(vname),
+                live_fuel_pct=live_fuel_by_name.get(vname),
+                live_dtcs=live_faults_by_name.get(vname),
+            )
+
+            if resolved:
+                # Auto-resolve: mark acknowledged, delete old message, notify user
+                await tenant.acknowledge_alert(alert["id"], user_id=SYSTEM_USER_ID)
+                if alert.get("message_id") and alert.get("chat_id"):
+                    try:
+                        await bot_app.bot.delete_message(
+                            chat_id=alert["chat_id"],
+                            message_id=alert["message_id"],
+                        )
+                    except Exception:
+                        pass
+
+                # Also clear alert history so the normal alert cycle
+                # doesn't keep a stale entry
+                vid = key_parts[1] if len(key_parts) > 1 else ""
+                await tenant.clear_alert_history(account_id, atype, vid)
+
+                # Calculate alert duration
+                created = alert.get("created_at", "")
+                duration_str = ""
+                if created:
+                    try:
+                        created_dt = datetime.fromisoformat(created)
+                        mins = int((now - created_dt).total_seconds() / 60)
+                        if mins >= 60:
+                            duration_str = f"\n  🕐 Was active for <b>{mins // 60}h {mins % 60}m</b>\n"
+                        else:
+                            duration_str = f"\n  🕐 Was active for <b>{mins} min</b>\n"
+                    except Exception:
+                        pass
+
+                co_display = get_company_display().get(co, co)
+                co_suffix = f"  ({co_display})" if co_display else ""
+
+                # Check DND — queue if user is outside working hours
+                resolve_recipient = await get_platform_db().get_user_by_telegram_id(alert["sent_to"])
+                if resolve_recipient and resolve_recipient.is_in_quiet_hours():
+                    await tenant.queue_dnd_alert(
+                        account_id=account_id,
+                        telegram_id=alert["sent_to"],
+                        alert_type=atype,
+                        vehicle_name=vname,
+                        alert_text=f"✅ Auto-resolved: {atype} alert cleared",
+                    )
+                    continue
+
+                # Send auto-resolved notification
+                resolve_text = (
+                    "━━━━━━━━━━━━━━━━━━━\n"
+                    f"  ✅  <b>AUTO-RESOLVED</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━\n"
+                    f"\n  🚛 Truck: <b>#{vname}</b>{co_suffix}\n"
+                    f"\n  The <b>{atype.replace('_', ' ').title()}</b> alert "
+                    "has been automatically resolved.\n"
+                    f"\n{resolved}\n"
+                    f"{duration_str}"
+                )
+                try:
+                    await bot_app.bot.send_message(
+                        chat_id=alert["sent_to"],
+                        text=resolve_text,
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton(
+                                f"📋 View Truck #{vname}",
+                                callback_data=f"cotruck_{co}_{vname}",
+                            )],
+                            [InlineKeyboardButton(
+                                "◀️ Main Menu", callback_data="cmd_menu",
+                            )],
+                        ]),
+                    )
+                except Exception:
+                    pass
+
+                await tenant.add_audit_log(
+                    account_id=account_id,
+                    user_id=None,
+                    action="alert_auto_resolved",
+                    target_type="alert",
+                    target_id=str(alert["id"]),
+                    details=(
+                        f"{atype} alert for Truck {vname} auto-resolved — "
+                        f"{resolved}"
+                    ),
+                )
+                logger.info(
+                    f"Auto-resolved {atype} alert #{alert['id']} "
+                    f"for Truck {vname}: {resolved}"
+                )
+                continue
+
+            new_count = realert_count + 1
+            next_realert = (now + timedelta(
+                minutes=ACK_WINDOW_MINUTES,
+            )).isoformat()
+
+            # Re-alert the SAME user
+            tid = alert["sent_to"]
+
+            # Check DND for re-alerts — only CRITICAL bypasses working hours
+            realert_recipient = await get_platform_db().get_user_by_telegram_id(tid)
+            if realert_recipient and realert_recipient.is_in_quiet_hours():
+                sev = alert.get("alert_type", "")
+                # Only truly critical faults bypass DND
+                if sev != "fault" or not any(
+                    kw in (alert.get("alert_key", "")).lower()
+                    for kw in ("stop", "protect")
+                ):
+                    # Postpone re-alert until working hours
+                    await tenant.update_alert_escalation(
+                        alert["id"], realert_count, next_realert,
+                    )
+                    continue
+
+            mins_ago = int(
+                (now - datetime.fromisoformat(alert["created_at"])).total_seconds() / 60
+            )
+
+            # ── Delete previous message to keep chat clean ────
+            if alert.get("message_id") and alert.get("chat_id"):
+                try:
+                    await bot_app.bot.delete_message(
+                        chat_id=alert["chat_id"],
+                        message_id=alert["message_id"],
+                    )
+                except Exception:
+                    pass
+
+            # Build detail lines with live data when available
+            detail_lines = _build_realert_detail(
+                atype,
+                alert_key,
+                live_health=live_health_by_name.get(vname),
+                live_fuel_pct=live_fuel_by_name.get(vname),
+                live_dtcs=live_faults_by_name.get(vname),
+            )
+
+            atype_label = atype.replace("_", " ").title()
+            co_display = get_company_display().get(co, co)
+
+            # Urgency escalation based on attempt number
+            if new_count >= MAX_REALERTS:
+                urgency_icon = "🚨"
+                urgency_label = "FINAL REMINDER"
+                urgency_note = "  ❗ This is the <b>last reminder</b>.\n  The alert will expire if not acknowledged.\n"
+            else:
+                urgency_icon = "🔔"
+                urgency_label = "REMINDER"
+                urgency_note = ""
+
+            # Time formatting
+            hours_ago = mins_ago // 60
+            if hours_ago >= 1:
+                time_str = f"{hours_ago}h {mins_ago % 60}m"
+            else:
+                time_str = f"{mins_ago} min"
+
+            realert_text = (
+                "━━━━━━━━━━━━━━━━━━━\n"
+                f"  {urgency_icon}  <b>{urgency_label} ({new_count}/{MAX_REALERTS})</b>\n"
+                "━━━━━━━━━━━━━━━━━━━\n"
+                f"\n  🚛 Truck: <b>#{vname}</b>"
+            )
+            if co_display:
+                realert_text += f"  ({co_display})"
+            realert_text += "\n"
+
+            # Alert type header
+            type_icons = {
+                "fault": "⚙️",
+                "health": "🛑",
+                "fuel": "⛽",
+            }
+            type_icon = type_icons.get(atype, "⚠️")
+            realert_text += f"\n  {type_icon}  <b>{atype_label} Alert</b>\n"
+
+            if detail_lines:
+                realert_text += f"\n{detail_lines}\n"
+
+            realert_text += (
+                f"\n  🕐 Unacknowledged for <b>{time_str}</b>\n"
+            )
+            if urgency_note:
+                realert_text += f"\n{urgency_note}"
+
+            # Re-use build_alert_keyboard for consistent buttons + correct AI callback
+            ack_kb = build_alert_keyboard(
+                AlertSeverity.WARNING,  # re-alerts always show ACK buttons
+                co,
+                vname,
+                ack_id=alert["id"],
+                alert_type=atype,
+                vehicle_id=alert.get("vehicle_id", ""),
+            )
+
+            msg = await bot_app.bot.send_message(
+                chat_id=tid,
+                text=realert_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=ack_kb,
+            )
+
+            # Update DB with new message_id so next cycle can delete it
+            await tenant.update_alert_escalation(
+                alert["id"], new_count, next_realert,
+                message_id=msg.message_id,
+            )
+
+            await tenant.add_audit_log(
+                account_id=account_id,
+                user_id=None,
+                action="alert_realerted",
+                target_type="alert",
+                target_id=str(alert["id"]),
+                details=(
+                    f"{atype} re-alert {new_count}/{MAX_REALERTS} "
+                    f"for Truck {vname} — sent to {tid}"
+                ),
+            )
+
+        except Exception as e:
+            logger.error(f"Re-alert for alert {alert['id']}: {e}")
 
 
 # ── Alert Snooze Handlers ────────────────────────────────────────
@@ -773,7 +818,10 @@ async def handle_alert_snooze(update, context, ack_id: int, minutes: int = SNOOZ
         snooze_until = (
             datetime.now(timezone.utc) + timedelta(minutes=minutes)
         ).isoformat()
-        await db.snooze_alert(ack_id, snooze_until)
+        user = context.user_data.get("_db_user")
+        acct_id = user.account_id if user else 0
+        tenant = await get_tenant_db(acct_id) if acct_id else db
+        await tenant.snooze_alert(ack_id, snooze_until)
 
         def _label(m: int) -> str:
             if m < 60:
@@ -804,7 +852,7 @@ async def handle_alert_snooze(update, context, ack_id: int, minutes: int = SNOOZ
         # Audit
         user = context.user_data.get("_db_user")
         if user:
-            await db.add_audit_log(
+            await (await get_tenant_db(user.account_id)).add_audit_log(
                 account_id=user.account_id,
                 user_id=user.id,
                 action="alert_snoozed",
@@ -822,7 +870,10 @@ async def _restore_alert_keyboard(update, context, ack_id: int):
     query = update.callback_query
     await query.answer()
     try:
-        row = await db.get_alert_ack_by_id(ack_id)
+        user = context.user_data.get("_db_user")
+        acct_id = user.account_id if user else 0
+        tenant = await get_tenant_db(acct_id) if acct_id else db
+        row = await tenant.get_alert_ack_by_id(ack_id)
         if not row:
             return
         alert_key = row.get("alert_key", "")
@@ -846,7 +897,10 @@ async def handle_back_to_alert(update, context, ack_id: int):
     query = update.callback_query
     await query.answer()
     try:
-        row = await db.get_alert_ack_by_id(ack_id)
+        user = context.user_data.get("_db_user")
+        acct_id = user.account_id if user else 0
+        tenant = await get_tenant_db(acct_id) if acct_id else db
+        row = await tenant.get_alert_ack_by_id(ack_id)
         if not row:
             await query.edit_message_text("Alert not found.", parse_mode=ParseMode.HTML)
             return
@@ -857,7 +911,7 @@ async def handle_back_to_alert(update, context, ack_id: int):
         vname = row.get("vehicle_name", "?")
         alert_type = row.get("alert_type", "fault")
         detail = parts[2] if len(parts) > 2 else ""
-        co_display = COMPANY_DISPLAY.get(co, co)
+        co_display = get_company_display().get(co, co)
 
         # Determine severity (same logic as _restore_alert_keyboard)
         severity = (AlertSeverity.CRITICAL if alert_type == "health"

@@ -41,6 +41,10 @@ from .settings import SettingsMixin
 from .parking_db import ParkingMixin
 from .camera_db import CameraMixin
 from .schedules import SchedulesMixin
+from .knowledge_db import KnowledgeBaseMixin
+from .permissions_db import PermissionsMixin
+from .driver_trucks_db import DriverTrucksMixin
+from .user_companies_db import UserCompaniesMixin
 
 from .platform_db import PlatformDB
 from .tenant_db import TenantDB
@@ -60,6 +64,10 @@ class Database(
     ParkingMixin,
     CameraMixin,
     SchedulesMixin,
+    KnowledgeBaseMixin,
+    PermissionsMixin,
+    DriverTrucksMixin,
+    UserCompaniesMixin,
     _DatabaseCore,
 ):
     """Async SQLite wrapper with typed helpers.

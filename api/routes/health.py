@@ -8,7 +8,7 @@ router = APIRouter(tags=["health"])
 @router.get("/health")
 async def health_check():
     """Basic health check — used by Docker HEALTHCHECK and CI/CD."""
-    from bot.state import db
+    from core.platform import get_db; db = get_db()
     import bot.redis_client as rcache
 
     # Check DB

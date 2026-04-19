@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { setToken } from '../api/client';
 import type { TelegramLoginData } from '../types';
 
 type Mode = 'login' | 'register';
@@ -14,6 +15,74 @@ export default function Login() {
   const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [botUsername, setBotUsername] = useState('SemiTelematicsBot');
+  const [botId, setBotId] = useState('');
+  const [widgetKey, setWidgetKey] = useState(0);
+  const [showDisconnect, setShowDisconnect] = useState(false);
+
+  // Bot-login state
+  const [botLoginLink, setBotLoginLink] = useState('');
+  const [botLoginToken, setBotLoginToken] = useState('');
+  const [botLoginStatus, setBotLoginStatus] = useState<'idle' | 'pending' | 'approved' | 'rejected' | 'expired'>('idle');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Cleanup bot-login polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  // Start bot-login flow
+  const startBotLogin = useCallback(async () => {
+    setError('');
+    setBotLoginStatus('pending');
+    try {
+      const res = await fetch('/api/auth/bot-login/init', { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to start bot login');
+      const data = await res.json();
+      setBotLoginToken(data.token);
+      setBotLoginLink(data.deep_link);
+
+      // Open the bot link
+      window.open(data.deep_link, '_blank');
+
+      // Start polling
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(async () => {
+        try {
+          const check = await fetch(`/api/auth/bot-login/check/${data.token}`);
+          if (!check.ok) return;
+          const result = await check.json();
+          if (result.status === 'approved') {
+            if (pollRef.current) clearInterval(pollRef.current);
+            setBotLoginStatus('approved');
+            setToken(result.access_token);
+            window.location.reload();
+          } else if (result.status === 'rejected') {
+            if (pollRef.current) clearInterval(pollRef.current);
+            setBotLoginStatus('rejected');
+            setError(result.reason || 'Login rejected — you are not registered.');
+          } else if (result.status === 'expired') {
+            if (pollRef.current) clearInterval(pollRef.current);
+            setBotLoginStatus('expired');
+            setError('Login link expired. Please try again.');
+          }
+        } catch { /* ignore poll errors */ }
+      }, 3000);
+    } catch (err) {
+      setBotLoginStatus('idle');
+      setError(err instanceof Error ? err.message : 'Failed to start bot login');
+    }
+  }, []);
+
+  const cancelBotLogin = useCallback(() => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    setBotLoginStatus('idle');
+    setBotLoginLink('');
+    setBotLoginToken('');
+    setError('');
+  }, []);
 
   // Pre-fill invite code from URL ?invite=XXXX
   useEffect(() => {
@@ -40,12 +109,14 @@ export default function Login() {
     if (!el) return;
 
     (async () => {
-      let botUsername = 'SemiTelematicsBot';
+      let fetchedBot = botUsername;
       try {
         const res = await fetch('/api/auth/config');
         if (res.ok) {
           const data = await res.json();
-          botUsername = data.bot_username || botUsername;
+          fetchedBot = data.bot_username || fetchedBot;
+          setBotUsername(fetchedBot);
+          if (data.bot_id) setBotId(data.bot_id);
         }
       } catch { /* use fallback */ }
 
@@ -53,7 +124,7 @@ export default function Login() {
       const script = document.createElement('script');
       script.src = 'https://telegram.org/js/telegram-widget.js?22';
       script.async = true;
-      script.setAttribute('data-telegram-login', botUsername);
+      script.setAttribute('data-telegram-login', fetchedBot);
       script.setAttribute('data-size', 'large');
       script.setAttribute('data-radius', '8');
       script.setAttribute('data-onauth', '__onTelegramAuth(user)');
@@ -62,7 +133,19 @@ export default function Login() {
     })();
 
     return () => { delete window.__onTelegramAuth; };
-  }, [loginWithTelegram]);
+  }, [loginWithTelegram, widgetKey]);
+
+  /** Guide the user to disconnect their Telegram Login Widget session.
+   *
+   *  The Telegram widget session cookie lives on oauth.telegram.org (not our
+   *  domain), so we cannot clear it directly.  The user must disconnect from
+   *  within the Telegram app, then refresh the widget here.
+   */
+  const handleRefreshWidget = () => {
+    setShowDisconnect(false);
+    setWidgetKey((k) => k + 1);
+    setError('');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -174,6 +257,119 @@ export default function Login() {
 
         {/* Telegram widget */}
         <div ref={containerRef} className="flex justify-center" />
+
+        {!showDisconnect ? (
+          <div className="flex justify-center mt-2">
+            <button
+              type="button"
+              onClick={() => setShowDisconnect(true)}
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors underline underline-offset-2"
+            >
+              Disconnect Telegram session
+            </button>
+          </div>
+        ) : (
+          <div className="mt-3 p-3 bg-gray-800 border border-gray-700 rounded-lg text-xs text-gray-300 space-y-3">
+            <p className="font-medium text-gray-200">Switch Telegram account:</p>
+
+            <ol className="list-decimal list-inside space-y-1.5 text-gray-400">
+              <li>Open your <b className="text-gray-300">Telegram</b> app on phone or desktop</li>
+              <li>Go to <b className="text-gray-300">Telegram</b> service chat — tap the search icon 🔍 and type <b className="text-gray-300">"Telegram"</b>, then select the one with ✅ verified badge that says <b className="text-gray-300">"service notifications"</b></li>
+              <li>Scroll to the message that says <b className="text-gray-300">"You have successfully logged in on 4truck.us via @{botUsername}"</b></li>
+              <li>Tap the <b className="text-blue-400">"Disconnect"</b> button below that message</li>
+              <li>Come back here and press <b className="text-gray-300">"Refresh widget"</b> below</li>
+            </ol>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleRefreshWidget}
+                className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded transition-colors"
+              >
+                Refresh widget
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDisconnect(false)}
+                className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs font-medium rounded transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Divider before bot login */}
+        <div className="flex items-center my-5">
+          <div className="flex-1 border-t border-gray-700" />
+          <span className="px-3 text-xs text-gray-500">or</span>
+          <div className="flex-1 border-t border-gray-700" />
+        </div>
+
+        {/* Bot-login flow */}
+        {botLoginStatus === 'idle' && (
+          <button
+            type="button"
+            onClick={startBotLogin}
+            className="w-full py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+          >
+            <span>🤖</span>
+            <span>Login via Telegram Bot</span>
+          </button>
+        )}
+
+        {botLoginStatus === 'pending' && (
+          <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="animate-spin h-4 w-4 border-2 border-blue-400 border-t-transparent rounded-full" />
+              <span className="text-sm text-gray-200">Waiting for approval...</span>
+            </div>
+            <p className="text-xs text-gray-400">
+              A link to <b className="text-gray-300">@app_4truck_bot</b> was opened.
+              Tap <b className="text-gray-300">Start</b> in the bot to approve your login.
+            </p>
+            {botLoginLink && (
+              <a
+                href={botLoginLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block text-center text-xs text-blue-400 hover:text-blue-300 underline underline-offset-2"
+              >
+                Didn't open? Click here to open the bot
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={cancelBotLogin}
+              className="w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs font-medium rounded transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {(botLoginStatus === 'rejected' || botLoginStatus === 'expired') && (
+          <div className="p-4 bg-gray-800 border border-red-800/50 rounded-lg space-y-3">
+            <p className="text-sm text-red-400">
+              {botLoginStatus === 'rejected' ? '❌ Login was rejected' : '⏰ Login link expired'}
+            </p>
+            <button
+              type="button"
+              onClick={() => { cancelBotLogin(); }}
+              className="w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs font-medium rounded transition-colors"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        {botLoginStatus === 'approved' && (
+          <div className="p-4 bg-gray-800 border border-green-800/50 rounded-lg">
+            <p className="text-sm text-green-400 flex items-center gap-2">
+              <span>✅</span> Login approved — redirecting...
+            </p>
+          </div>
+        )}
 
         <p className="text-xs text-gray-500 mt-4 text-center">
           {mode === 'register'

@@ -7,10 +7,9 @@ from permissions import role_display
 from samsara_client import populate_company_display
 from formatters import format_invite_created
 
-import bot.config as _cfg
-from bot.config import db, invalidate_client
+from bot.config import get_platform_db, get_tenant_db, invalidate_client
 from bot.keyboards import back_kb, invite_kb
-from bot.helpers import _show, _safe_error
+from bot.helpers import _show, _safe_error, make_invite_link
 from bot.i18n import t
 from bot.auth import _get_user, _group_chat_guard
 from bot.registration import cmd_start, cmd_register, cmd_join
@@ -97,6 +96,11 @@ async def handle_text(update, context):
     # ── Add Company wizard step 2: api key ──────────────────────────
     elif pending == "addcompany_key":
         api_key = text.strip()
+        # Security: delete the message containing the API key from chat
+        try:
+            await update.message.delete()
+        except Exception:
+            pass
         if not api_key or len(api_key) < 10:
             await _show(update, context, [
                 t('company.chkey_invalid')
@@ -149,12 +153,12 @@ async def handle_text(update, context):
             ]))
             return
 
-        target_user = await db.get_user_by_telegram_id(target_tid)
+        target_user = await get_platform_db().get_user_by_telegram_id(target_tid)
         if not target_user or target_user.account_id != user.account_id:
             await _show(update, context, [t('user_mgmt.user_not_found')], keyboard=back_kb())
             return
 
-        await db.update_user(target_user.id, department=new_dept)
+        await get_platform_db().update_user(target_user.id, department=new_dept)
         await _show(update, context, [
             t('user_mgmt.dept_updated', user=target_user.label, dept=new_dept)
         ], keyboard=InlineKeyboardMarkup([
@@ -183,14 +187,15 @@ async def handle_text(update, context):
             ]))
             return
 
-        company = await db.get_company_by_code(user.account_id, code)
+        tenant = await get_tenant_db(user.account_id)
+        company = await tenant.get_company_by_code(user.account_id, code)
         if company:
-            await db.remove_company(company.id)
+            await tenant.remove_company(company.id, account_id=user.account_id)
             await invalidate_client(user.account_id)
-            companies = await db.get_account_companies(user.account_id)
+            companies = await tenant.get_account_companies(user.account_id)
             populate_company_display(companies)
             # Audit log
-            await db.add_audit_log(
+            await tenant.add_audit_log(
                 account_id=user.account_id,
                 user_id=user.id,
                 action="company_removed",
@@ -222,6 +227,11 @@ async def handle_text(update, context):
             return
 
         api_key = text.strip()
+        # Security: delete the message containing the API key from chat
+        try:
+            await update.message.delete()
+        except Exception:
+            pass
         if not api_key or len(api_key) < 10:
             await _show(update, context, [
                 t('company.chkey_invalid')
@@ -230,14 +240,15 @@ async def handle_text(update, context):
             ]))
             return
 
-        company = await db.get_company_by_code(user.account_id, code)
+        tenant = await get_tenant_db(user.account_id)
+        company = await tenant.get_company_by_code(user.account_id, code)
         if not company:
             await _show(update, context, [t('company.not_found')], keyboard=back_kb())
             return
 
-        await db.update_company(company.id, samsara_api_key=api_key)
+        await tenant.update_company(company.id, account_id=user.account_id, samsara_api_key=api_key)
         await invalidate_client(user.account_id)
-        await db.add_audit_log(
+        await tenant.add_audit_log(
             account_id=user.account_id, user_id=user.id,
             action="api_key_changed", target_type="company",
             target_id=str(company.id),
@@ -271,17 +282,18 @@ async def handle_text(update, context):
             ]))
             return
 
-        company = await db.get_company_by_code(user.account_id, code)
+        tenant = await get_tenant_db(user.account_id)
+        company = await tenant.get_company_by_code(user.account_id, code)
         if not company:
             await _show(update, context, [t('company.not_found')], keyboard=back_kb())
             return
 
         old_name = company.display_name
-        await db.update_company(company.id, display_name=new_name)
+        await tenant.update_company(company.id, display_name=new_name)
         # Refresh display cache
-        companies = await db.get_account_companies(user.account_id)
+        companies = await tenant.get_account_companies(user.account_id)
         populate_company_display(companies)
-        await db.add_audit_log(
+        await tenant.add_audit_log(
             account_id=user.account_id, user_id=user.id,
             action="company_renamed", target_type="company",
             target_id=str(company.id),
@@ -305,7 +317,7 @@ async def handle_text(update, context):
 
         truck_num = None if text.lower() == "skip" else text
         try:
-            invite = await db.create_invite(
+            invite = await get_platform_db().create_invite(
                 account_id=user.account_id,
                 created_by=user.id,
                 role=Role.DRIVER,
@@ -313,7 +325,7 @@ async def handle_text(update, context):
                 truck_num=truck_num,
             )
             truck_label = truck_num or t('invite.truck_not_assigned')
-            link = f"https://t.me/{_cfg.bot_username}?start=join_{invite.code}" if _cfg.bot_username else None
+            link = make_invite_link(invite.code, context)
             invite_text = format_invite_created(
                 invite.code, role_display(Role.DRIVER),
                 "operations",
@@ -350,6 +362,12 @@ async def handle_text(update, context):
     # ── AI question input ───────────────────────────────────────
     elif pending == "ai_question":
         await cmd_ai_answer(update, context, question=text)
+
+    # ── Knowledge base search ───────────────────────────────────
+    elif pending == "kb_search":
+        context.user_data["_pending"] = pending  # restore for handler
+        from bot.knowledge import handle_kb_search_input
+        await handle_kb_search_input(update, context)
 
     else:
         await cmd_start(update, context)

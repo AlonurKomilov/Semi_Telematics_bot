@@ -9,9 +9,9 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
 from permissions import can
-from samsara_client import COMPANY_DISPLAY, populate_company_display
+from samsara_client import populate_company_display
 
-from bot.config import db, logger, get_client, get_user_company_codes
+from bot.config import logger, get_client, get_user_company_codes, get_tenant_db
 from bot.keyboards import back_kb, fuelcost_menu_kb
 from bot.helpers import _show, _show_loading, _user_menu_kb, _safe_error
 from bot.auth import _require_registered
@@ -115,7 +115,8 @@ async def handle_fuelcost_text(update: Update, context: ContextTypes.DEFAULT_TYP
         today = _dt.now(_TZ_ET).strftime("%Y-%m-%d")
 
         try:
-            await db.add_fuel_entry(
+            tenant = await get_tenant_db(user.account_id)
+            await tenant.add_fuel_entry(
                 account_id=user.account_id,
                 company_code="",
                 vehicle_name=truck,
@@ -154,7 +155,8 @@ async def cmd_fuelcost_summary(update: Update, context: ContextTypes.DEFAULT_TYP
 
     await _show_loading(update, context, t('fuel_costs.loading_summary'))
     try:
-        summary = await db.get_fuel_summary(user.account_id)
+        tenant = await get_tenant_db(user.account_id)
+        summary = await tenant.get_fuel_summary(user.account_id)
         if not summary:
             await _show(update, context, [
                 t('fuel_costs.no_entries')

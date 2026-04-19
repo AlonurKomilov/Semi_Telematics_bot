@@ -15,7 +15,7 @@ from formatters import (
     format_join_success,
 )
 
-from bot.config import db, SUPPORT_CONTACT, logger, get_user_company_codes
+from bot.config import SUPPORT_CONTACT, logger, get_user_company_codes, get_platform_db, get_tenant_db
 from bot.keyboards import main_menu_kb, system_owner_kb, unregistered_kb, back_kb, onboarding_kb
 from bot.helpers import _show
 from bot.auth import _get_user
@@ -123,7 +123,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.append(f"\n  {t('help.tap_or_start')}")
 
     company_codes = await get_user_company_codes(user.account_id)
-    companies = await db.get_account_companies(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
     kb = main_menu_kb(user.role, company_codes)
     await _show(update, context, ["\n".join(lines)], keyboard=kb)
@@ -145,13 +146,15 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         code = context.args[0][5:].strip().upper()
         if not user and code:
             tg_name = getattr(update.effective_user, "full_name", "") or ""
-            new_user = await db.redeem_invite(code, tid, display_name=tg_name)
+            platform = get_platform_db()
+            new_user = await platform.redeem_invite(code, tid, display_name=tg_name)
             if new_user:
-                account = await db.get_account(new_user.account_id)
+                account = await platform.get_account(new_user.account_id)
                 r_display = role_display(new_user.role)
                 text = format_join_success(account.name, r_display)
                 company_codes = await get_user_company_codes(new_user.account_id)
-                companies = await db.get_account_companies(new_user.account_id)
+                tenant = await get_tenant_db(new_user.account_id)
+                companies = await tenant.get_account_companies(new_user.account_id)
                 populate_company_display(companies)
                 kb = main_menu_kb(new_user.role, company_codes)
                 await _show(update, context, [text], keyboard=kb)
@@ -167,6 +170,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Already registered — just show menu
             pass  # fall through to normal flow
 
+    # ── 0b. Deep-link dashboard login: /start login_TOKEN ──────
+    if context.args and context.args[0].startswith("login_"):
+        await _handle_bot_login(update, context, context.args[0][6:], user, tid)
+        return
+
     # ── 1. System owner (platform admin) ──────────────────────
     if sys_owner and not user:
         await _show(update, context,
@@ -177,9 +185,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # System owner who is ALSO a customer (both roles) — show customer menu
     # but with admin hint
     if sys_owner and user:
-        account = await db.get_account(user.account_id)
+        platform = get_platform_db()
+        account = await platform.get_account(user.account_id)
         company_codes = await get_user_company_codes(user.account_id)
-        companies = await db.get_account_companies(user.account_id)
+        tenant = await get_tenant_db(user.account_id)
+        companies = await tenant.get_account_companies(user.account_id)
         populate_company_display(companies)
         text = format_help(company_codes, user=user, account=account)
         text += f"\n\n  {t('start.sysadmin_hint')}"
@@ -189,9 +199,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── 2. Existing registered user ────────────────────────────
     if user:
-        account = await db.get_account(user.account_id)
+        platform = get_platform_db()
+        account = await platform.get_account(user.account_id)
         company_codes = await get_user_company_codes(user.account_id)
-        companies = await db.get_account_companies(user.account_id)
+        tenant = await get_tenant_db(user.account_id)
+        companies = await tenant.get_account_companies(user.account_id)
         populate_company_display(companies)
         text = format_help(company_codes, user=user, account=account)
         kb = main_menu_kb(user.role, company_codes)
@@ -200,6 +212,36 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── 3. New / unknown user ──────────────────────────────────
     name = getattr(update.effective_user, "first_name", "") or ""
+
+    # Per-account bot: this person is not in the organization
+    bot_account_id = context.bot_data.get("account_id")
+    if bot_account_id is not None:
+        platform = get_platform_db()
+        account = await platform.get_account(bot_account_id)
+        account_name = account.name if account else "this organization"
+        await _show(update, context, [
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            f"  👋 Hi{(' ' + name) if name else ''}!\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "\n"
+            f"This bot belongs to <b>{account_name}</b>.\n"
+            "\n"
+            "You're not registered as a member yet.\n"
+            "Ask your fleet manager or admin to add you\n"
+            "to the team — they can send you an invite link.\n"
+            "\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "  🚛 <b>4truck — Fleet Intelligence Platform</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "\n"
+            "Real-time fleet monitoring, fault diagnostics,\n"
+            "AI-powered insights, driver scorecards, and more.\n"
+            "\n"
+            "  🌐 <a href=\"https://4truck.us\">4truck.us</a>\n"
+            "  📩 Contact: @Allen_Klein\n"
+        ], keyboard=unregistered_kb())
+        return
+
     await _show(update, context,
                 [format_welcome_unregistered(SUPPORT_CONTACT, name)],
                 keyboard=unregistered_kb())
@@ -237,9 +279,10 @@ async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        account = await db.create_account(company_name)
+        platform = get_platform_db()
+        account = await platform.create_account(company_name)
         tg_name = getattr(update.effective_user, "full_name", "") or ""
-        user = await db.create_user(
+        user = await platform.create_user(
             telegram_id=tid,
             account_id=account.id,
             role=Role.OWNER,
@@ -265,8 +308,9 @@ async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Join a company with invite code."""
     user, tid, sys_owner = await _get_user(update)
+    platform = get_platform_db()
     if user:
-        account = await db.get_account(user.account_id)
+        account = await platform.get_account(user.account_id)
         await _show(update, context, [
             t('join.already_member').replace('{account}', account.name)
         ], keyboard=back_kb())
@@ -282,7 +326,7 @@ async def cmd_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     code = context.args[0].strip().upper()
     tg_name = getattr(update.effective_user, "full_name", "") or ""
-    new_user = await db.redeem_invite(code, tid, display_name=tg_name)
+    new_user = await platform.redeem_invite(code, tid, display_name=tg_name)
 
     if not new_user:
         await _show(update, context, [
@@ -291,14 +335,100 @@ async def cmd_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
         return
 
-    account = await db.get_account(new_user.account_id)
+    account = await platform.get_account(new_user.account_id)
     r_display = role_display(new_user.role)
     text = format_join_success(account.name, r_display)
 
     company_codes = await get_user_company_codes(new_user.account_id)
-    companies = await db.get_account_companies(new_user.account_id)
+    tenant = await get_tenant_db(new_user.account_id)
+    companies = await tenant.get_account_companies(new_user.account_id)
     populate_company_display(companies)
     kb = main_menu_kb(new_user.role, company_codes)
 
     await _show(update, context, [text], keyboard=kb)
     logger.info(f"User {tid} joined '{account.name}' as {new_user.role.value}")
+
+
+# ── Bot-login: approve/reject dashboard login via deep link ───
+
+async def _handle_bot_login(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    token: str,
+    user,
+    tid: int,
+):
+    """Process /start login_TOKEN — approve or reject a dashboard login request.
+
+    The token was generated by POST /api/auth/bot-login/init and stored in Redis.
+    If the Telegram user is a registered employee, we write an approved JWT into
+    Redis so the frontend polling loop can pick it up.
+    """
+    from bot.redis_client import get as redis_get, set as redis_set
+    from api.auth import BOT_LOGIN_PREFIX, BOT_LOGIN_TTL, create_jwt
+
+    # Validate token exists and is pending
+    data = await redis_get(f"{BOT_LOGIN_PREFIX}{token}")
+    if data is None or data.get("status") != "pending":
+        await _show(update, context, [
+            "⚠️ This login link has expired or was already used.\n"
+            "Please request a new one from the dashboard."
+        ])
+        return
+
+    name = getattr(update.effective_user, "first_name", "") or ""
+
+    if not user:
+        # Not registered — reject
+        await redis_set(
+            f"{BOT_LOGIN_PREFIX}{token}",
+            {"status": "rejected", "reason": "User not registered"},
+            ttl=60,
+        )
+        await _show(update, context, [
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            f"  ❌ Login Denied\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "\n"
+            f"Hi{(' ' + name) if name else ''}, you are not registered\n"
+            "in the system. Ask your fleet manager for\n"
+            "an invite link to join your company first."
+        ])
+        logger.info(f"Bot-login rejected: TG user {tid} not registered")
+        return
+
+    # Registered user — approve, generate JWT
+    platform = get_platform_db()
+    account = await platform.get_account(user.account_id)
+    account_name = account.name if account else "your company"
+    jwt_token = create_jwt(user.telegram_id, user.account_id, user.role.value)
+
+    await redis_set(
+        f"{BOT_LOGIN_PREFIX}{token}",
+        {
+            "status": "approved",
+            "access_token": jwt_token,
+            "token_type": "bearer",
+            "user": {
+                "telegram_id": user.telegram_id,
+                "name": name,
+                "role": user.role.value,
+                "account_id": user.account_id,
+            },
+        },
+        ttl=BOT_LOGIN_TTL,
+    )
+
+    await _show(update, context, [
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"  ✅ Login Approved\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "\n"
+        f"Welcome, <b>{name}</b>!\n"
+        f"Company: <b>{account_name}</b>\n"
+        "\n"
+        "You can now close this chat and return\n"
+        "to the dashboard — you'll be logged in\n"
+        "automatically."
+    ])
+    logger.info(f"Bot-login approved: TG user {tid} ({name}) for '{account_name}'")

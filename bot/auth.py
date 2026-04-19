@@ -5,7 +5,8 @@ from telegram.ext import ContextTypes
 
 from permissions import is_system_owner
 
-from bot.config import db, SUPPORT_CONTACT
+from core.context import set_tenant_display
+from bot.config import SUPPORT_CONTACT, get_platform_db, get_tenant_db
 from bot.helpers import _show
 from bot.keyboards import system_owner_kb, unregistered_kb, back_kb
 from formatters import format_system_owner_welcome, format_welcome_unregistered
@@ -30,7 +31,7 @@ async def _group_chat_guard(update: Update) -> bool:
         return True  # private chat — always OK
 
     chat_id = update.effective_chat.id
-    return await db.is_chat_authorized(chat_id)
+    return await get_platform_db().is_chat_authorized(chat_id)
 
 
 async def _get_user(update: Update):
@@ -49,13 +50,13 @@ async def _get_user(update: Update):
         tid = update.effective_user.id if update.effective_user else 0
 
     sys_owner = is_system_owner(tid)
-    user = await db.get_user_by_telegram_id(tid)
+    user = await get_platform_db().get_user_by_telegram_id(tid)
 
     # Keep display_name in sync with Telegram profile
     if user and update.effective_user:
         tg_name = getattr(update.effective_user, "full_name", "") or ""
         if tg_name and tg_name != user.display_name:
-            await db.update_user(user.id, display_name=tg_name)
+            await get_platform_db().update_user(user.id, display_name=tg_name)
             user.display_name = tg_name
 
     # Set i18n language for this request
@@ -70,6 +71,7 @@ def _require_registered(func):
     """Decorator: registered users only. Unregistered → welcome screen.
     System owners are NOT customers — they get redirected to /admin.
     Also checks that the user's account is still active.
+    Verifies account matches the bot instance (per-account isolation).
     Silently ignores unauthorized group chats.
     """
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, **kwargs):
@@ -86,14 +88,46 @@ def _require_registered(func):
             return
 
         if not user:
+            # Per-account bot: show organization-specific message
+            bot_account_id = context.bot_data.get("account_id")
+            if bot_account_id is not None:
+                account = await get_platform_db().get_account(bot_account_id)
+                account_name = account.name if account else "this organization"
+                first = getattr(update.effective_user, "first_name", "") or ""
+                await _show(update, context, [
+                    f"👋 Hi{(' ' + first) if first else ''}!\n\n"
+                    f"This bot belongs to <b>{account_name}</b>.\n"
+                    "You're not registered as a member.\n\n"
+                    "Ask your admin to send you an invite link,\n"
+                    "or contact us at @Allen_Klein\n\n"
+                    "🌐 <a href=\"https://4truck.us\">4truck.us</a>"
+                ], keyboard=unregistered_kb())
+                return
+
             name = getattr(update.effective_user, "first_name", "") or ""
             await _show(update, context,
                         [format_welcome_unregistered(SUPPORT_CONTACT, name)],
                         keyboard=unregistered_kb())
             return
 
+        # Per-account bot isolation: if this bot belongs to a specific account,
+        # reject users from other accounts (prevents cross-account interaction)
+        bot_account_id = context.bot_data.get("account_id")
+        if bot_account_id is not None and user.account_id != bot_account_id:
+            await _show(update, context, [
+                "⛔ This bot belongs to a different organization.\n"
+                "Please use your own organization's bot."
+            ])
+            return
+
+        # In group chats, verify the chat is authorized for this user's account
+        if await _is_group_chat(update):
+            chat_id = update.effective_chat.id
+            if not await get_platform_db().is_chat_authorized(chat_id, account_id=user.account_id):
+                return  # silently ignore — chat not authorized for this account
+
         # Check account still active
-        account = await db.get_account(user.account_id)
+        account = await get_platform_db().get_account(user.account_id)
         if not account or not account.is_active:
             msg = "⛔ Your account has been disabled."
             if SUPPORT_CONTACT:
@@ -102,6 +136,14 @@ def _require_registered(func):
             return
 
         context.user_data["_db_user"] = user
+
+        # Set per-request ContextVar so formatters/reports see the right
+        # company display names and org IDs for this user's account.
+        tenant = await get_tenant_db(user.account_id)
+        companies = await tenant.get_account_companies(user.account_id)
+        display = {co.code: co.display_name or co.code for co in companies}
+        set_tenant_display(display)
+
         return await func(update, context, **kwargs)
     return wrapper
 

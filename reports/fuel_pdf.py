@@ -27,7 +27,7 @@ def generate_fuel_report_pdf(
     # ── Header ───────────────────────────────────────────────────
     subtitle = "Fleet Fuel Level Report"
     if company_filter:
-        subtitle = f"{COMPANY_DISPLAY.get(company_filter, company_filter)} — Fuel Report"
+        subtitle = f"{get_company_display().get(company_filter, company_filter)} — Fuel Report"
     _add_header(story, styles, "SEMI TELEMATICS", subtitle, now)
 
     # ── Classify vehicles ────────────────────────────────────────
@@ -121,7 +121,7 @@ def generate_fuel_report_pdf(
             o_na = sum(1 for v in ov if v.get("fuel", {}).get("value") is None)
             o_def_known = [v for v in ov if v.get("def_level", {}).get("value") is not None]
             o_avg_def = sum(v["def_level"]["value"] for v in o_def_known) / len(o_def_known) if o_def_known else 0
-            co_name = COMPANY_DISPLAY.get(oc, oc)
+            co_name = get_company_display().get(oc, oc)
             co_rows.append([
                 Paragraph(f"{co_name} ({oc})", styles["CompanyTableCell"]),
                 Paragraph(str(len(ov)),         styles["CompanyTableCell"]),

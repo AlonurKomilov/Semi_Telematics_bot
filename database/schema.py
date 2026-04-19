@@ -65,7 +65,7 @@ async def create_tables(conn) -> None:
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             telegram_id INTEGER NOT NULL UNIQUE,
             account_id  INTEGER NOT NULL REFERENCES accounts(id),
-            role        TEXT    NOT NULL DEFAULT 'fleet_manager',
+            role        TEXT    NOT NULL DEFAULT 'fleet',
             department  TEXT    NOT NULL DEFAULT 'general',
             truck_num   TEXT,
             alerts_on   INTEGER NOT NULL DEFAULT 0,
@@ -77,7 +77,7 @@ async def create_tables(conn) -> None:
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             code        TEXT    NOT NULL UNIQUE,
             account_id  INTEGER NOT NULL REFERENCES accounts(id),
-            role        TEXT    NOT NULL DEFAULT 'fleet_manager',
+            role        TEXT    NOT NULL DEFAULT 'fleet',
             department  TEXT    NOT NULL DEFAULT 'general',
             truck_num   TEXT,
             created_by  INTEGER NOT NULL REFERENCES users(id),
@@ -240,5 +240,47 @@ async def create_tables(conn) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_alert_history_active
             ON alert_history(account_id, alert_type, vehicle_id, chat_id, status);
+
+        CREATE TABLE IF NOT EXISTS role_permissions (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL REFERENCES accounts(id),
+            role            TEXT    NOT NULL,
+            company_id      INTEGER,
+            permissions     TEXT    NOT NULL DEFAULT '{}',
+            updated_by      INTEGER NOT NULL DEFAULT 0,
+            updated_at      TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, role, company_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_role_perms_account
+            ON role_permissions(account_id);
+        CREATE INDEX IF NOT EXISTS idx_role_perms_lookup
+            ON role_permissions(account_id, role, company_id);
+
+        CREATE TABLE IF NOT EXISTS driver_trucks (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL REFERENCES users(id),
+            account_id  INTEGER NOT NULL REFERENCES accounts(id),
+            truck_num   TEXT    NOT NULL,
+            is_primary  INTEGER NOT NULL DEFAULT 0,
+            assigned_by INTEGER NOT NULL DEFAULT 0,
+            assigned_at TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_driver_trucks_user_truck
+            ON driver_trucks(user_id, truck_num);
+        CREATE INDEX IF NOT EXISTS idx_driver_trucks_user
+            ON driver_trucks(user_id);
+
+        CREATE TABLE IF NOT EXISTS user_companies (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL REFERENCES users(id),
+            account_id  INTEGER NOT NULL REFERENCES accounts(id),
+            company_id  INTEGER NOT NULL REFERENCES companies(id),
+            assigned_by INTEGER NOT NULL DEFAULT 0,
+            assigned_at TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_user_companies_user_company
+            ON user_companies(user_id, company_id);
+        CREATE INDEX IF NOT EXISTS idx_user_companies_user
+            ON user_companies(user_id);
     """)
     await conn.commit()

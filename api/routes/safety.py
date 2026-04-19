@@ -1,11 +1,16 @@
 """Safety & Compliance API endpoints — scorecards, events, camera checks."""
 
-from fastapi import APIRouter, Depends, Query
+import os
 
-from api.deps import require_permission, get_tenant_db
-from bot.state import get_client
+from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi.responses import FileResponse
+
+from api.deps import require_permission, require_permission_any, get_tenant_db, get_user_truck_nums, get_user_company_codes, validate_company_access, filter_by_allowed_companies
+from bot.config import get_client
 
 router = APIRouter(prefix="/safety", tags=["safety"])
+
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
 
 # ── Scorecards ────────────────────────────────────────────────
@@ -14,11 +19,14 @@ router = APIRouter(prefix="/safety", tags=["safety"])
 async def scorecards(
     days: int = Query(7, ge=1, le=90),
     company: str | None = Query(None),
-    user: dict = Depends(require_permission("can_scorecard_all")),
+    user: dict = Depends(require_permission_any("can_scorecard_all", "can_scorecard_own")),
 ):
     """Driver scorecards — efficiency + safety metrics per driver."""
+    allowed = await get_user_company_codes(user)
+    validate_company_access(allowed, company)
     client = await get_client(user["account_id"])
     drivers = await client.get_driver_efficiency(days=days, company=company)
+    drivers = filter_by_allowed_companies(drivers, allowed)
 
     cards = []
     for d in drivers:
@@ -38,6 +46,15 @@ async def scorecards(
             "cruise_min": round(d.get("_cruise_min", 0), 1),
             "anticipatory_braking_pct": round(d.get("_antic_pct", 0), 1),
         })
+
+    # If user only has _own, filter to their driver name
+    if user.get("_matched_perm") == "can_scorecard_own":
+        trucks = await get_user_truck_nums(user)
+        if trucks:
+            needles = [t.lower() for t in trucks]
+            cards = [c for c in cards if any(n in c["driver_name"].lower() for n in needles)]
+        else:
+            cards = []
 
     # Sort by eco_pct descending (best first)
     cards.sort(key=lambda c: c["eco_pct"], reverse=True)
@@ -77,11 +94,14 @@ async def safety_events(
     event_type: str | None = Query(None, description="crash, braking, harshTurn, etc."),
     driver: str | None = Query(None, description="Filter by driver name (substring)"),
     company: str | None = Query(None),
-    user: dict = Depends(require_permission("can_events_all")),
+    user: dict = Depends(require_permission_any("can_events_all", "can_events_own")),
 ):
     """Safety events — harsh braking, crashes, speeding, etc."""
+    allowed = await get_user_company_codes(user)
+    validate_company_access(allowed, company)
     client = await get_client(user["account_id"])
     raw = await client.get_events(days=days, company=company)
+    raw = filter_by_allowed_companies(raw, allowed)
 
     events = []
     for e in raw:
@@ -104,6 +124,15 @@ async def safety_events(
             "company": e.get("_org", ""),
         }
         events.append(ev)
+
+    # If user only has _own, filter to their assigned vehicle
+    if user.get("_matched_perm") == "can_events_own":
+        trucks = await get_user_truck_nums(user)
+        if trucks:
+            needles = [t.lower() for t in trucks]
+            events = [e for e in events if any(n in e["vehicle_name"].lower() for n in needles)]
+        else:
+            events = []
 
     # Apply filters
     if event_type:
@@ -132,7 +161,8 @@ async def safety_events(
 @router.get("/cameras")
 async def camera_checks(
     vehicle: str | None = Query(None, description="Filter by vehicle name"),
-    limit: int = Query(50, ge=1, le=200),
+    latest_only: bool = Query(True, description="Only latest check per vehicle"),
+    limit: int = Query(100, ge=1, le=500),
     user: dict = Depends(require_permission("can_faults")),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -141,5 +171,28 @@ async def camera_checks(
         user["account_id"],
         limit=limit,
         vehicle_name=vehicle if vehicle else None,
+        latest_only=latest_only,
     )
     return {"checks": checks, "count": len(checks)}
+
+
+@router.get("/cameras/{check_id}/image")
+async def camera_check_image(
+    check_id: int,
+    user: dict = Depends(require_permission("can_faults")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Serve the dashcam screenshot for a camera check."""
+    checks = await tenant_db.get_camera_check_history(
+        user["account_id"], limit=500,
+    )
+    check = next((c for c in checks if c.get("id") == check_id), None)
+    if not check:
+        raise HTTPException(status_code=404, detail="Camera check not found")
+    img_path = check.get("image_path", "")
+    if not img_path:
+        raise HTTPException(status_code=404, detail="No image available")
+    full_path = os.path.join(_PROJECT_ROOT, img_path)
+    if not os.path.isfile(full_path):
+        raise HTTPException(status_code=404, detail="Image file not found")
+    return FileResponse(full_path, media_type="image/jpeg")

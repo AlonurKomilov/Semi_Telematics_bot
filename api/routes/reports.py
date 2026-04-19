@@ -7,8 +7,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 
-from api.deps import require_permission
-from bot.state import get_client
+from api.deps import require_permission, get_user_company_codes, validate_company_access, filter_by_allowed_companies, filter_by_assigned_trucks
+from bot.config import get_client
 
 from reports import (
     generate_fault_report_pdf,
@@ -121,8 +121,12 @@ async def report_faults(
     user: dict = Depends(require_permission("can_faults")),
 ):
     """Fault report — all vehicles with active fault codes."""
+    allowed = await get_user_company_codes(user)
+    validate_company_access(allowed, company)
     client = await get_client(user["account_id"])
     vehicles = await client.get_fault_codes(company=company)
+    vehicles = filter_by_allowed_companies(vehicles, allowed)
+    vehicles = await filter_by_assigned_trucks(vehicles, user)
     faulted = [v for v in vehicles if v.get("fault_codes")]
     return {
         "vehicles": [_simplify_fault(v) for v in faulted],
@@ -137,8 +141,12 @@ async def report_fuel(
     user: dict = Depends(require_permission("can_fuel")),
 ):
     """Fuel & DEF levels for all vehicles."""
+    allowed = await get_user_company_codes(user)
+    validate_company_access(allowed, company)
     client = await get_client(user["account_id"])
     vehicles = await client.get_fuel_levels(company=company)
+    vehicles = filter_by_allowed_companies(vehicles, allowed)
+    vehicles = await filter_by_assigned_trucks(vehicles, user)
     items = [_simplify_fuel(v) for v in vehicles]
     # Summary
     with_fuel = [i for i in items if i["fuel_pct"] is not None]
@@ -166,8 +174,12 @@ async def report_health(
     user: dict = Depends(require_permission("can_health")),
 ):
     """Vehicle health — battery, oil, coolant, DEF, engine data."""
+    allowed = await get_user_company_codes(user)
+    validate_company_access(allowed, company)
     client = await get_client(user["account_id"])
     vehicles = await client.get_vehicle_health(company=company)
+    vehicles = filter_by_allowed_companies(vehicles, allowed)
+    vehicles = await filter_by_assigned_trucks(vehicles, user)
     items = [_simplify_health(v) for v in vehicles]
     alert_count = sum(len(i["alerts"]) for i in items)
     return {
@@ -184,8 +196,12 @@ async def report_efficiency(
     user: dict = Depends(require_permission("can_faults")),
 ):
     """Fleet efficiency — miles, fuel, idle/drive time per vehicle."""
+    allowed = await get_user_company_codes(user)
+    validate_company_access(allowed, company)
     client = await get_client(user["account_id"])
     vehicles = await client.get_fleet_efficiency(days=days, company=company)
+    vehicles = filter_by_allowed_companies(vehicles, allowed)
+    vehicles = await filter_by_assigned_trucks(vehicles, user)
     return {
         "vehicles": [_simplify_efficiency(v) for v in vehicles],
         "count": len(vehicles),
@@ -236,6 +252,9 @@ async def export_report(
         from fastapi import HTTPException
         raise HTTPException(400, f"Unknown report type: {report_type}")
 
+    allowed = await get_user_company_codes(user)
+    validate_company_access(allowed, company)
+
     cfg = EXPORT_TYPES[report_type]
     client = await get_client(user["account_id"])
 
@@ -248,6 +267,9 @@ async def export_report(
         vehicles = await method(company=company)
     else:
         vehicles = await method()
+
+    vehicles = filter_by_allowed_companies(vehicles, allowed)
+    vehicles = await filter_by_assigned_trucks(vehicles, user)
 
     # Generate file
     gen: Any = cfg["pdf"] if fmt == "pdf" else cfg["csv"]

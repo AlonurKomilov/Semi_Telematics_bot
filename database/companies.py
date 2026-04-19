@@ -59,7 +59,7 @@ class CompaniesMixin:
     async def remove_company(self, company_id: int, account_id: int = 0) -> bool:
         """Soft-delete a company.
 
-        If account_id is provided, the row must belong to that account
+        account_id scopes the deletion to the owning account
         (prevents cross-tenant deletion).
         """
         if account_id:
@@ -77,7 +77,7 @@ class CompaniesMixin:
     async def update_company(self, company_id: int, account_id: int = 0, **kwargs) -> bool:
         """Update company fields. Allowed: display_name, samsara_api_key, active_days, is_active.
 
-        If account_id is provided, the row must belong to that account
+        account_id scopes the update to the owning account
         (prevents cross-tenant modification).
         """
         allowed = {"display_name", "samsara_api_key", "active_days", "is_active"}

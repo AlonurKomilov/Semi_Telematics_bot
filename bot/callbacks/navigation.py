@@ -1,6 +1,6 @@
 """Navigation callback handlers — main menu and sub-menus."""
 
-from bot.config import db
+from bot.config import get_platform_db
 from bot.keyboards import (
     main_menu_kb, submenu_reports_kb, submenu_tools_kb,
     submenu_costs_kb, submenu_mgmt_kb,
@@ -16,7 +16,7 @@ async def cmd_menu(update, context):
     user = context.user_data["_db_user"]
     companies = context.user_data.get("_companies", [])
     sys_owner = context.user_data.get("_sys_owner", False)
-    account = await db.get_account(user.account_id)
+    account = await get_platform_db().get_account(user.account_id)
     company_codes = [o.code for o in companies]
     text = format_help(company_codes, user=user, account=account)
     if sys_owner:

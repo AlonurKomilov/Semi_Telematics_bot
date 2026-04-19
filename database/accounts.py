@@ -18,8 +18,14 @@ class AccountsMixin:
             (name, slug, tier, now),
         )
         await self._db.commit()
-        return Account(id=cur.lastrowid, name=name, slug=slug,
+        acct = Account(id=cur.lastrowid, name=name, slug=slug,
                        tier=tier, is_active=True, created_at=now)
+        # Seed default role permissions for the new account
+        try:
+            await self.seed_account_permissions(acct.id)
+        except Exception:
+            pass  # non-fatal — defaults still work via fallback
+        return acct
 
     async def get_account(self, account_id: int) -> Optional[Account]:
         cur = await self._db.execute(
@@ -45,8 +51,8 @@ class AccountsMixin:
         return [self._row_to_account(r) for r in rows]
 
     async def update_account(self, account_id: int, **kwargs) -> bool:
-        """Update account fields. Allowed keys: name, tier, is_active."""
-        allowed = {"name", "tier", "is_active"}
+        """Update account fields. Allowed keys: name, tier, is_active, bot_token_encrypted, bot_username, webhook_secret."""
+        allowed = {"name", "tier", "is_active", "bot_token_encrypted", "bot_username", "webhook_secret"}
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
             return False
@@ -57,3 +63,13 @@ class AccountsMixin:
         )
         await self._db.commit()
         return True
+
+    async def get_accounts_with_bot_tokens(self) -> list[Account]:
+        """Return all active accounts that have a bot token configured."""
+        cur = await self._db.execute(
+            "SELECT * FROM accounts WHERE is_active = 1 "
+            "AND bot_token_encrypted IS NOT NULL AND bot_token_encrypted != '' "
+            "ORDER BY id"
+        )
+        rows = await cur.fetchall()
+        return [self._row_to_account(r) for r in rows]

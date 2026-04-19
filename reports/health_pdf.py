@@ -62,7 +62,7 @@ def generate_vehicle_health_pdf(
     # ── Header ───────────────────────────────────────────────────
     subtitle = "Vehicle Health Dashboard"
     if company_filter:
-        subtitle = f"{COMPANY_DISPLAY.get(company_filter, company_filter)} — Vehicle Health"
+        subtitle = f"{get_company_display().get(company_filter, company_filter)} — Vehicle Health"
     _add_header(story, styles, "SEMI TELEMATICS", subtitle, now)
 
     # ── Summary dashboard ────────────────────────────────────────

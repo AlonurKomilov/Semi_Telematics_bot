@@ -34,7 +34,7 @@ def generate_fault_report_pdf(
     # ── Header Banner ────────────────────────────────────────────
     subtitle = "Fleet Fault Code Report"
     if company_filter:
-        subtitle = f"{COMPANY_DISPLAY.get(company_filter, company_filter)} — Fault Report"
+        subtitle = f"{get_company_display().get(company_filter, company_filter)} — Fault Report"
     _add_header(story, styles, "SEMI TELEMATICS", subtitle, now)
 
     # ── Fleet Overview (when full fleet data is available) ────────
@@ -87,7 +87,7 @@ def generate_fault_report_pdf(
 
         # Company banner (only for multi-company combined reports)
         if multi_org:
-            co_name = COMPANY_DISPLAY.get(co_code, co_code)
+            co_name = get_company_display().get(co_code, co_code)
             co_dtcs = sum(len(v.get("_dtcs", [])) for v in co_vehicles)
             _add_company_banner(story, styles, co_code, co_name,
                             len(co_vehicles), co_dtcs)
@@ -132,7 +132,7 @@ def generate_critical_report_pdf(
 
     subtitle = "Critical Fault Report"
     if company_filter:
-        subtitle = f"{COMPANY_DISPLAY.get(company_filter, company_filter)} — Critical Faults"
+        subtitle = f"{get_company_display().get(company_filter, company_filter)} — Critical Faults"
     _add_header(story, styles, "SEMI TELEMATICS", subtitle, now,
                 header_bg=C_CRIT_HEADER)
 
@@ -222,7 +222,7 @@ def generate_critical_report_pdf(
         story.append(PageBreak())
 
         if multi_org:
-            co_name = COMPANY_DISPLAY.get(co_code, co_code)
+            co_name = get_company_display().get(co_code, co_code)
             co_dtcs = sum(len(v.get("_dtcs", [])) for v in co_vehicles)
             _add_company_banner(story, styles, co_code, co_name,
                             len(co_vehicles), co_dtcs,

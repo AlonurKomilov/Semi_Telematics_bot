@@ -469,6 +469,7 @@
     "role_owner": "👑 Owner",
     "role_admin": "🔑 Admin",
     "role_fleet": "🔧 Fleet",
+    "role_safety": "🛡️ Safety",
     "role_dispatcher": "📡 Dispatcher",
     "role_driver": "🚛 Driver",
     "cancel": "◀️ Cancel",

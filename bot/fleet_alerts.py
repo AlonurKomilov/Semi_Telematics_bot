@@ -7,7 +7,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from permissions import can
-from bot.config import db, ALERT_INTERVAL, get_user_company_codes
+from bot.config import ALERT_INTERVAL, get_user_company_codes, get_platform_db, get_tenant_db
 from bot.keyboards import main_menu_kb, alert_settings_kb
 from bot.helpers import _show
 from bot.auth import _require_registered
@@ -30,8 +30,9 @@ async def cmd_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not user.alerts_on:
         # Enable alerts and show settings
-        await db.update_user(user.id, alerts_on=True)
-        user = await db.get_user_by_telegram_id(user.telegram_id)
+        platform = get_platform_db()
+        await platform.update_user(user.id, alerts_on=True)
+        user = await platform.get_user_by_telegram_id(user.telegram_id)
         context.user_data["_db_user"] = user
 
     sep = t("alert_format.separator")
@@ -61,8 +62,9 @@ async def cmd_alert_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
     col = f"alert_{alert_type}"
     current = getattr(user, col, True)
-    await db.update_user(user.id, **{col: not current})
-    user = await db.get_user_by_telegram_id(user.telegram_id)
+    platform = get_platform_db()
+    await platform.update_user(user.id, **{col: not current})
+    user = await platform.get_user_by_telegram_id(user.telegram_id)
     context.user_data["_db_user"] = user
 
     # Re-show the settings menu
@@ -81,8 +83,9 @@ async def cmd_ai_alert_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     col = f"ai_{ai_type}"
     current = getattr(user, col, False)
-    await db.update_user(user.id, **{col: not current})
-    user = await db.get_user_by_telegram_id(user.telegram_id)
+    platform = get_platform_db()
+    await platform.update_user(user.id, **{col: not current})
+    user = await platform.get_user_by_telegram_id(user.telegram_id)
     context.user_data["_db_user"] = user
 
     # Re-show the AI onalerts screen
@@ -94,8 +97,9 @@ async def cmd_ai_alert_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def cmd_alert_disable_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Turn off all alerts (sets alerts_on = 0)."""
     user = context.user_data["_db_user"]
-    await db.update_user(user.id, alerts_on=False)
-    user = await db.get_user_by_telegram_id(user.telegram_id)
+    platform = get_platform_db()
+    await platform.update_user(user.id, alerts_on=False)
+    user = await platform.get_user_by_telegram_id(user.telegram_id)
     context.user_data["_db_user"] = user
 
     company_codes = await get_user_company_codes(user.account_id)
@@ -121,7 +125,8 @@ async def cmd_alert_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    history = await db.get_alert_history(user.account_id, limit=20)
+    tenant = await get_tenant_db(user.account_id)
+    history = await tenant.get_alert_history(user.account_id, limit=20)
     if not history:
         sep = t("alert_format.separator")
         text = (
@@ -177,7 +182,8 @@ async def cmd_pending_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    pending = await db.get_pending_alerts(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    pending = await tenant.get_pending_alerts(user.account_id)
     if not pending:
         sep = t("alert_format.separator")
         text = (

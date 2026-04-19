@@ -11,7 +11,7 @@ class UsersMixin:
 
     async def create_user(
         self, telegram_id: int, account_id: int,
-        role: Role = Role.FLEET_MGR,
+        role: Role = Role.FLEET,
         department: str = "general",
         truck_num: Optional[str] = None,
         display_name: str = "",
@@ -74,7 +74,7 @@ class UsersMixin:
 
     async def create_user_with_email(
         self, email: str, password_hash: str, account_id: int,
-        role: Role = Role.FLEET_MGR, department: str = "general",
+        role: Role = Role.FLEET, department: str = "general",
         display_name: str = "",
     ) -> User:
         """Create a new user with email+password (no Telegram ID yet)."""

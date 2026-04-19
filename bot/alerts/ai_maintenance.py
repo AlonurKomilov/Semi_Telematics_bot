@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bot.config import db, logger
+from bot.config import logger, get_tenant_db
 from bot.helpers import escape_html
 from bot.alerts.pipeline import SYSTEM_USER_ID
 
@@ -77,9 +77,9 @@ async def _get_ai_diagnosis_note(vehicle: dict, dtcs: list[dict]) -> str:
         usage = ai.get_last_usage()
         if usage:
             try:
-                from bot.config import db as _db
+                from bot.config import get_platform_db
                 # system-triggered usage
-                await _db.log_ai_usage(
+                await get_platform_db().log_ai_usage(
                     account_id=SYSTEM_USER_ID,
                     user_id=SYSTEM_USER_ID,
                     model=ai.get_current_model_name(),
@@ -142,8 +142,8 @@ async def _get_ai_health_note(
         usage = ai.get_last_usage()
         if usage:
             try:
-                from bot.config import db as _db
-                await _db.log_ai_usage(
+                from bot.config import get_platform_db
+                await get_platform_db().log_ai_usage(
                     account_id=SYSTEM_USER_ID,
                     user_id=SYSTEM_USER_ID,
                     model=ai.get_current_model_name(),
@@ -202,7 +202,8 @@ async def auto_create_maintenance_from_faults(
     for the same vehicle and task type.
     """
     try:
-        existing = await db.get_maintenance_tasks(account_id, vehicle_name=vehicle_name)
+        tenant = await get_tenant_db(account_id)
+        existing = await tenant.get_maintenance_tasks(account_id, vehicle_name=vehicle_name)
         existing_types = {
             (t["vehicle_name"], t["task_type"])
             for t in existing
@@ -223,7 +224,7 @@ async def auto_create_maintenance_from_faults(
             if fmi_desc:
                 desc += f" ({fmi_desc})"
 
-            await db.add_maintenance_task(
+            await tenant.add_maintenance_task(
                 account_id=account_id,
                 company_code="",
                 vehicle_name=vehicle_name,
@@ -244,7 +245,7 @@ async def check_api_health(account_id: int) -> dict[str, str]:
 
     Returns: {company_code: "ok" | "error: <message>"}
     """
-    companies = await db.get_account_companies(account_id)
+    companies = await (await get_tenant_db(account_id)).get_account_companies(account_id)
     results: dict[str, str] = {}
 
     for co in companies:

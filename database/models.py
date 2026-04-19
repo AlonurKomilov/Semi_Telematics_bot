@@ -18,13 +18,16 @@ class Role(str, Enum):
     """User roles — ordered from most to least privileged."""
     OWNER       = "owner"
     ADMIN       = "admin"
-    FLEET_MGR   = "fleet_manager"
+    FLEET       = "fleet"
+    SAFETY      = "safety"
     DISPATCHER  = "dispatcher"
     DRIVER      = "driver"
 
     @classmethod
     def from_str(cls, s: str) -> "Role":
         s = s.strip().lower()
+        if s == "fleet_manager":
+            s = "fleet"
         for r in cls:
             if r.value == s:
                 return r
@@ -41,6 +44,9 @@ class Account:
     tier: str
     is_active: bool
     created_at: str
+    bot_token_encrypted: Optional[str] = None
+    bot_username: str = ""
+    webhook_secret: str = ""
 
 @dataclass
 class Company:

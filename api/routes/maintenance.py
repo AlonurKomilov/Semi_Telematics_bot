@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import Optional
 
-from api.deps import get_current_user, require_permission, get_tenant_db
+from api.deps import get_current_user, require_permission, get_tenant_db, get_user_truck_nums
 from permissions import can
 
 router = APIRouter(prefix="/maintenance", tags=["maintenance"])
@@ -52,6 +52,12 @@ async def list_tasks(
         status=status,
         vehicle_name=vehicle,
     )
+    # Filter to assigned trucks for _own permission
+    if not can(user["role"], "can_maintenance_all"):
+        trucks = await get_user_truck_nums(user)
+        if trucks:
+            needles = {t.lower() for t in trucks}
+            tasks = [t for t in tasks if any(n in (t.get("vehicle_name") or "").lower() for n in needles)]
     return {"tasks": tasks, "count": len(tasks)}
 
 
@@ -68,6 +74,13 @@ async def get_task(
     task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    # Check truck ownership for _own permission
+    if not can(user["role"], "can_maintenance_all"):
+        trucks = await get_user_truck_nums(user)
+        if trucks:
+            needles = {t.lower() for t in trucks}
+            if not any(n in (task.get("vehicle_name") or "").lower() for n in needles):
+                raise HTTPException(status_code=404, detail="Task not found")
     return task
 
 

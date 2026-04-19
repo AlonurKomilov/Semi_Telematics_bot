@@ -22,7 +22,7 @@ def generate_truck_detail_pdf(vehicle: dict) -> io.BytesIO:
     now = _now_dt.strftime(f"%B %d, %Y  %I:%M %p {_now_dt.tzname()}")
 
     co_code = vehicle.get("_org", "")
-    co_name = COMPANY_DISPLAY.get(co_code, co_code)
+    co_name = get_company_display().get(co_code, co_code)
     truck_name = vehicle.get("name", "?")
 
     # ── Header ───────────────────────────────────────────────────

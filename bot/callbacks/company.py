@@ -4,14 +4,12 @@ change key, remove, add-company wizard, and invite flows."""
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from permissions import can, role_display
-from samsara_client import COMPANY_DISPLAY
 from database import Role
 from formatters import format_invite_created
 
-import bot.config as _cfg
-from bot.config import db, SUPPORT_CONTACT, invalidate_client
+from bot.config import get_platform_db, get_tenant_db, invalidate_client
 from bot.keyboards import back_kb, skip_name_kb, invite_kb
-from bot.helpers import _show, _safe_error
+from bot.helpers import _show, _safe_error, make_invite_link
 from bot.i18n import t
 from bot.management import cmd_addcompany
 
@@ -23,7 +21,8 @@ async def _handle_company_menu(update, context, user, code):
     query = update.callback_query
     await query.answer()
 
-    company = await db.get_company_by_code(user.account_id, code)
+    tenant = await get_tenant_db(user.account_id)
+    company = await tenant.get_company_by_code(user.account_id, code)
     if not company:
         await _show(update, context, [t('company.not_found')], keyboard=back_kb())
         return
@@ -62,7 +61,8 @@ async def _handle_co_api_status(update, context, user, code):
     query = update.callback_query
     await query.answer()
 
-    company = await db.get_company_by_code(user.account_id, code)
+    tenant = await get_tenant_db(user.account_id)
+    company = await tenant.get_company_by_code(user.account_id, code)
     if not company:
         await _show(update, context, [t('company.not_found')], keyboard=back_kb())
         return
@@ -107,10 +107,13 @@ async def _handle_invite_pick(update, context, user):
     kb = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(t('user_mgmt.role_admin'), callback_data="inv_admin"),
-            InlineKeyboardButton(t('user_mgmt.role_fleet'), callback_data="inv_fleet_manager"),
+            InlineKeyboardButton(t('user_mgmt.role_fleet'), callback_data="inv_fleet"),
         ],
         [
+            InlineKeyboardButton(t('user_mgmt.role_safety'), callback_data="inv_safety"),
             InlineKeyboardButton(t('user_mgmt.role_dispatcher'), callback_data="inv_dispatcher"),
+        ],
+        [
             InlineKeyboardButton(t('user_mgmt.role_driver'), callback_data="inv_driver"),
         ],
         [InlineKeyboardButton(t('menu.back'), callback_data="cmd_users")],
@@ -126,7 +129,7 @@ async def _handle_invite_create(update, context, user, data):
     """Create an invite for the selected role."""
     query = update.callback_query
     await query.answer()
-    role_str = data[4:]  # admin, fleet_manager, dispatcher, driver
+    role_str = data[4:]  # admin, fleet, safety, dispatcher, driver
     try:
         invite_role = Role.from_str(role_str)
     except ValueError:
@@ -143,13 +146,13 @@ async def _handle_invite_create(update, context, user, data):
         return
 
     try:
-        invite = await db.create_invite(
+        invite = await get_platform_db().create_invite(
             account_id=user.account_id,
             created_by=user.id,
             role=invite_role,
             department="general",
         )
-        link = f"https://t.me/{_cfg.bot_username}?start=join_{invite.code}" if _cfg.bot_username else None
+        link = make_invite_link(invite.code, context)
         text = format_invite_created(
             invite.code, role_display(invite_role), "general",
             invite_link=link,
@@ -215,7 +218,8 @@ async def co_rename_handler(update, context):
     await query.answer()
     context.user_data["_pending"] = "rename_company"
     context.user_data["_rename_code"] = code
-    company = await db.get_company_by_code(user.account_id, code)
+    tenant = await get_tenant_db(user.account_id)
+    company = await tenant.get_company_by_code(user.account_id, code)
     current_name = company.display_name if company else code
     await _show(update, context, [
         t('company.rename_title', code=code) + "\n\n"

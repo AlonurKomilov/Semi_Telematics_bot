@@ -1,6 +1,6 @@
 """Truck detail and picker formatters."""
 
-from samsara_client import COMPANY_DISPLAY
+from core.context import get_company_display
 from formatters.helpers import (
     _t, _fmt_time, _light_badges, _short_location,
     _fuel_bar, _split_message, _company_tag,
@@ -20,7 +20,7 @@ def format_truck_detail(v: dict, show_company: bool = False,
 
     co_label = ""
     if show_company and co:
-        co_label = f"\n  🏢  {COMPANY_DISPLAY.get(co, co)}  ({co})"
+        co_label = f"\n  🏢  {get_company_display().get(co, co)}  ({co})"
 
     no_device = ""
     if not v.get("has_gateway", True):
@@ -104,7 +104,7 @@ def format_truck_picker(truck_name: str, matches: list[dict]) -> str:
     ]
     for v in matches:
         co = v.get("_org", "?")
-        name = COMPANY_DISPLAY.get(co, co)
+        name = get_company_display().get(co, co)
         lines.append(f"  • <b>{co}</b> — {name}")
 
     return "\n".join(lines)

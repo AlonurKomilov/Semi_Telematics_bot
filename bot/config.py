@@ -81,4 +81,6 @@ from bot.state import (  # noqa: E402
     get_client,
     invalidate_client,
     get_user_company_codes,
+    get_platform_db,
+    get_tenant_db,
 )

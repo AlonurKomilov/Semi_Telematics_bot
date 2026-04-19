@@ -4,7 +4,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from permissions import can
-from bot.config import db, logger
+from bot.config import logger, get_tenant_db
 from bot.keyboards import (
     work_schedules_kb, work_schedule_detail_kb,
     work_schedule_hour_picker_kb, work_schedule_role_picker_kb,
@@ -23,7 +23,8 @@ async def cmd_work_schedules(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
-    schedules = await db.get_work_schedules(user.account_id)
+    tenant = await get_tenant_db(user.account_id)
+    schedules = await tenant.get_work_schedules(user.account_id)
     await _show(update, context, [
         "━━━━━━━━━━━━━━━━━━━\n"
         "  🕐  <b>Working Hours</b>\n"
@@ -53,7 +54,8 @@ async def cmd_wsched_view(update: Update, context: ContextTypes.DEFAULT_TYPE,
                           schedule_id: int = 0):
     """View a single work schedule."""
     user = context.user_data["_db_user"]
-    sched = await db.get_work_schedule(schedule_id)
+    tenant = await get_tenant_db(user.account_id)
+    sched = await tenant.get_work_schedule(schedule_id)
     if not sched or sched["account_id"] != user.account_id:
         if update.callback_query:
             await update.callback_query.answer("Schedule not found", show_alert=True)
@@ -111,8 +113,10 @@ async def cmd_wsched_start_hour(update: Update, context: ContextTypes.DEFAULT_TY
 async def cmd_wsched_end_hour(update: Update, context: ContextTypes.DEFAULT_TYPE,
                               schedule_id: int = 0, hour: int = 0):
     """End hour selected — save hours."""
+    user = context.user_data["_db_user"]
     start = context.user_data.pop("_wsched_start", 0)
-    await db.update_work_schedule(schedule_id, start_hour=start, end_hour=hour)
+    tenant = await get_tenant_db(user.account_id)
+    await tenant.update_work_schedule(schedule_id, start_hour=start, end_hour=hour)
     context.user_data.pop("_wsched_edit_id", None)
     await cmd_wsched_view(update, context, schedule_id=schedule_id)
 
@@ -134,7 +138,9 @@ async def cmd_wsched_role(update: Update, context: ContextTypes.DEFAULT_TYPE,
     sched_id = context.user_data.get("_wsched_edit_id")
     if not sched_id:
         return
-    await db.update_work_schedule(sched_id, target_role=role)
+    user = context.user_data["_db_user"]
+    tenant = await get_tenant_db(user.account_id)
+    await tenant.update_work_schedule(sched_id, target_role=role)
     context.user_data.pop("_wsched_edit_id", None)
     await cmd_wsched_view(update, context, schedule_id=sched_id)
 
@@ -144,10 +150,11 @@ async def cmd_wsched_delete(update: Update, context: ContextTypes.DEFAULT_TYPE,
                             schedule_id: int = 0):
     """Delete a work schedule."""
     user = context.user_data["_db_user"]
-    sched = await db.get_work_schedule(schedule_id)
+    tenant = await get_tenant_db(user.account_id)
+    sched = await tenant.get_work_schedule(schedule_id)
     if not sched or sched["account_id"] != user.account_id:
         return
-    await db.delete_work_schedule(schedule_id)
+    await tenant.delete_work_schedule(schedule_id)
     await cmd_work_schedules(update, context)
 
 
@@ -162,7 +169,8 @@ async def handle_wsched_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if pending == "wsched_label":
         context.user_data.pop("_pending", None)
         try:
-            sched = await db.create_work_schedule(
+            tenant = await get_tenant_db(user.account_id)
+            sched = await tenant.create_work_schedule(
                 account_id=user.account_id,
                 label=text,
                 start_hour=6,
@@ -179,7 +187,8 @@ async def handle_wsched_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.user_data.pop("_pending", None)
         sched_id = context.user_data.pop("_wsched_edit_id", None)
         if sched_id:
-            await db.update_work_schedule(sched_id, label=text)
+            tenant = await get_tenant_db(user.account_id)
+            await tenant.update_work_schedule(sched_id, label=text)
             await cmd_wsched_view(update, context, schedule_id=sched_id)
         return True
 

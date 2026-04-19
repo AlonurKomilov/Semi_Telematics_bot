@@ -44,10 +44,19 @@ def populate_company_display(companies: list) -> dict[str, str]:
     preventing race conditions in multi-tenant async contexts where
     concurrent calls would wipe each other's data.
 
+    Also updates the per-request ContextVar (if set) so formatters/reports
+    pick up the correct tenant-scoped display names.
+
     Returns the current display dict for callers that want a local reference.
     """
     for co in companies:
         COMPANY_DISPLAY[co.code] = co.display_name or co.code
+    # Also update the per-request ContextVar dict if one is active
+    from core.context import get_company_display
+    ctx_display = get_company_display()
+    if ctx_display is not COMPANY_DISPLAY:
+        for co in companies:
+            ctx_display[co.code] = co.display_name or co.code
     return COMPANY_DISPLAY
 
 
@@ -130,6 +139,7 @@ class SamsaraClient:
         self._session: Optional[aiohttp.ClientSession] = None
         self._org_id: Optional[str] = None
         self._session_lock = asyncio.Lock()
+        self._org_id_lock = asyncio.Lock()
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is not None and not self._session.closed:
@@ -150,7 +160,7 @@ class SamsaraClient:
         """Fetch and cache the Samsara organization ID via /me endpoint."""
         if self._org_id is not None:
             return self._org_id
-        async with self._session_lock:
+        async with self._org_id_lock:
             if self._org_id is not None:
                 return self._org_id
             try:
@@ -419,7 +429,26 @@ class SamsaraClient:
                 skipped += 1
                 continue
 
-            enriched.append({
+            # Normalise keys: the /fleet/vehicles/locations endpoint
+            # uses "speed" (mph) and "reverseGeo.formattedLocation",
+            # while /fleet/vehicles/stats?types=gps uses
+            # "speedMilesPerHour" and the same reverseGeo layout.
+            # Add the stats-style aliases so downstream consumers
+            # (parking checks, maps, etc.) can use either name.
+            if "speedMilesPerHour" not in loc and "speed" in loc:
+                loc["speedMilesPerHour"] = loc["speed"]
+            if "address" not in loc:
+                loc["address"] = (
+                    loc.get("reverseGeo", {}).get("formattedLocation", "")
+                    or ""
+                )
+
+            fc = faults_by_id.get(vid, {})
+            j1939 = fc.get("j1939", {})
+            dtcs = j1939.get("diagnosticTroubleCodes", [])
+            cel = j1939.get("checkEngineLights", {})
+
+            entry = {
                 "id": vid,
                 "name": name,
                 "vin": v.get("vin", "N/A"),
@@ -427,11 +456,19 @@ class SamsaraClient:
                 "model": v.get("model", "N/A"),
                 "year": v.get("year", "N/A"),
                 "license_plate": v.get("licensePlate", "N/A"),
-                "fault_codes": faults_by_id.get(vid, {}),
+                "fault_codes": fc,
                 "location": loc,
                 "fuel": fuel_by_id.get(vid, {}),
                 "def_level": def_by_id.get(vid, {}),
-            })
+            }
+
+            # Pre-parse fault data so downstream code can use
+            # _dtcs / _lights without re-digging into fault_codes.
+            if dtcs:
+                entry["_dtcs"] = dtcs
+                entry["_lights"] = cel
+
+            enriched.append(entry)
 
         if skipped:
             logger.info(f"Filtered out {skipped} inactive vehicles "
@@ -475,6 +512,14 @@ class SamsaraClient:
 
             vid = v["id"]
             loc = loc_by_id.get(vid, {})
+            # Normalise speed / address keys (see get_fleet_overview)
+            if "speedMilesPerHour" not in loc and "speed" in loc:
+                loc["speedMilesPerHour"] = loc["speed"]
+            if "address" not in loc:
+                loc["address"] = (
+                    loc.get("reverseGeo", {}).get("formattedLocation", "")
+                    or ""
+                )
             result = {
                 "id": vid,
                 "name": name,
@@ -1495,12 +1540,14 @@ class SamsaraClient:
 def build_multi_company_client(
     companies: list,
     base_url: str = "https://api.samsara.com",
+    account_id: int | None = None,
 ) -> "MultiCompanyClient":
     """Build a MultiCompanyClient from database Company objects.
 
     Args:
         companies: list of database.Company dataclass instances
         base_url: Samsara API base URL
+        account_id: owning account (used for Redis key namespacing)
     Returns:
         A ready-to-use MultiCompanyClient
     """
@@ -1511,7 +1558,7 @@ def build_multi_company_client(
             base_url=base_url,
             active_days=co.active_days,
         )
-    return MultiCompanyClient(clients)
+    return MultiCompanyClient(clients, account_id=account_id)
 
 
 # Default TTL values (seconds) for cached API responses
@@ -1526,14 +1573,17 @@ class MultiCompanyClient:
     Includes a TTL cache so repeated queries within the TTL window are instant.
     """
 
-    def __init__(self, company_clients: dict[str, SamsaraClient]):
+    def __init__(self, company_clients: dict[str, SamsaraClient], account_id: int | None = None):
         self.clients = company_clients
         self.company_codes = list(company_clients.keys())
+        self.account_id = account_id
         self._last_skipped: list[str] = []
         # In-memory TTL cache (fallback when Redis is unavailable)
         self._mem_cache: TTLCache = TTLCache(maxsize=128, ttl=_CACHE_TTL_SHORT)
         self._cache_hits = 0
         self._cache_misses = 0
+        # Per-instance org IDs (populated by prefetch/ensure_org_ids)
+        self.org_ids: dict[str, str] = {}
 
     @property
     def last_skipped(self) -> list[str]:
@@ -1551,11 +1601,13 @@ class MultiCompanyClient:
 
     async def _cache_get(self, key: str):
         """Look up a cached result. Uses Redis if available, else in-memory."""
+        # Build namespaced Redis key
+        rkey = f"t:{self.account_id}:samsara:{key}" if self.account_id is not None else f"samsara:{key}"
         # Try Redis first
         try:
             from bot.redis_client import is_available as _redis_ok, get as _redis_get
             if _redis_ok():
-                raw = await _redis_get(f"samsara:{key}")
+                raw = await _redis_get(rkey)
                 if raw is not None:
                     self._cache_hits += 1
                     self._last_skipped = raw.get("_skipped", [])
@@ -1577,13 +1629,15 @@ class MultiCompanyClient:
     async def _cache_set(self, key: str, result, ttl: int = _CACHE_TTL_SHORT):
         """Store a result in the cache (with its associated skipped list)."""
         skipped = list(self._last_skipped)
+        # Build namespaced Redis key
+        rkey = f"t:{self.account_id}:samsara:{key}" if self.account_id is not None else f"samsara:{key}"
 
         # Try Redis first
         try:
             from bot.redis_client import is_available as _redis_ok, set as _redis_set
             if _redis_ok():
                 payload = {"data": result, "_skipped": skipped}
-                await _redis_set(f"samsara:{key}", payload, ttl=ttl)
+                await _redis_set(rkey, payload, ttl=ttl)
                 return
         except Exception:
             pass
@@ -1604,20 +1658,22 @@ class MultiCompanyClient:
     async def ensure_org_ids(self):
         """Fetch and cache Samsara org IDs for all companies (idempotent).
 
-        Populates the module-level ORG_IDS dict. Skips companies whose
-        org ID is already known. Errors are logged and silently ignored
-        so alerts still fire even if the dashboard link is unavailable.
+        Populates both the instance ``self.org_ids`` dict and the legacy
+        module-level ``ORG_IDS`` dict.  Skips companies whose org ID is
+        already known.  Errors are logged and silently ignored so alerts
+        still fire even if the dashboard link is unavailable.
         """
         tasks = {}
         for code, client in self.clients.items():
-            if code not in ORG_IDS:
+            if code not in self.org_ids:
                 tasks[code] = client.get_org_id()
         if not tasks:
             return
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
         for code, result in zip(tasks, results):
             if isinstance(result, str) and result:
-                ORG_IDS[code] = result
+                self.org_ids[code] = result
+                ORG_IDS[code] = result           # legacy compat
             elif isinstance(result, Exception):
                 logger.warning("Could not fetch org ID for %s: %s", code, result)
 
@@ -1629,7 +1685,8 @@ class MultiCompanyClient:
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
         for code, result in zip(tasks, results):
             if isinstance(result, str) and result:
-                ORG_IDS[code] = result
+                self.org_ids[code] = result
+                ORG_IDS[code] = result           # legacy compat
                 logger.info(f"Samsara org ID for {code}: {result}")
             else:
                 logger.warning(f"Failed to get org ID for {code}: {result}")

@@ -25,6 +25,11 @@ export interface Permissions {
   can_manage_users: boolean;
   can_manage_companies: boolean;
   can_manage_account: boolean;
+  can_invite: boolean;
+  can_critical: boolean;
+  can_efficiency: boolean;
+  can_rolling_stopped: boolean;
+  can_digest: boolean;
   [key: string]: boolean;
 }
 
@@ -35,8 +40,12 @@ export interface User {
   department?: string;
   account_id?: number;
   truck_num?: string;
+  trucks?: string[];
+  allowed_companies?: string[];
   language?: string;
   timezone?: string;
+  quiet_start?: number;
+  quiet_end?: number;
   permissions: Permissions;
 }
 
@@ -147,10 +156,26 @@ export interface FleetStats {
 }
 
 export interface DashboardStats {
+  role?: string;
   fleet: FleetStats;
   faults?: number;
   low_fuel?: number;
   pending_alerts?: number;
+  unsafe_parking?: number;
+  unknown_parking?: number;
+  maintenance_due?: number;
+  // Driver-specific
+  truck_num?: string;
+  my_truck?: {
+    name: string;
+    status: string;
+    speed_mph: number;
+    fuel_pct: number | null;
+    location: string;
+    faults: number;
+    company: string;
+  };
+  my_alerts?: number;
 }
 
 // ── Alerts ───────────────────────────────────────────────────
@@ -330,6 +355,7 @@ export interface CameraCheck {
   quality: string;
   summary: string;
   checked_at: string;
+  image_path: string;
 }
 
 export interface CameraChecksResponse {
@@ -488,6 +514,8 @@ export interface AdminUser {
   role: string;
   department: string;
   truck_num: string | null;
+  trucks: string[];
+  allowed_companies: string[];
   is_active: boolean;
   email: string | null;
   language: string | null;
@@ -573,6 +601,14 @@ export interface SettingsResponse {
   schedules: WorkSchedule[];
 }
 
+export interface BotConfig {
+  has_bot: boolean;
+  bot_username: string;
+  bot_id?: number;
+  first_name?: string;
+  is_running?: boolean;
+}
+
 // ── Maintenance ──────────────────────────────────────────────
 
 export interface MaintenanceTask {
@@ -595,4 +631,94 @@ export interface MaintenanceTask {
 export interface MaintenanceTasksResponse {
   tasks: MaintenanceTask[];
   count: number;
+}
+
+// ── Parking ──────────────────────────────────────────────────
+
+export interface ParkingEvent {
+  id: number;
+  account_id: number;
+  vehicle_id: string;
+  vehicle_name: string;
+  company_code: string;
+  latitude: number;
+  longitude: number;
+  address: string;
+  first_stopped: string;
+  duration_hours: number;
+  location_class: string;
+  alert_level: string;
+  ai_analysis: string;
+  map_image_path: string;
+  resolved: number;
+  last_checked: string;
+  created_at: string;
+}
+
+export interface ParkingEventsResponse {
+  events: ParkingEvent[];
+  count: number;
+}
+
+export interface ParkingStatsResponse {
+  total_parked: number;
+  unsafe: number;
+  unknown: number;
+  safe: number;
+}
+
+// ── AI Chat ──────────────────────────────────────────────────
+
+export interface AIChatMessage {
+  role: 'user' | 'model';
+  text: string;
+}
+
+export interface AIChatResponse {
+  reply: string;
+  suggestions: string[];
+}
+
+export interface AISummaryResponse {
+  summary: string;
+  suggestions: string[];
+}
+
+export interface AIDiagnoseResponse {
+  diagnosis: string;
+  vehicle: string;
+}
+
+export interface AIModel {
+  name: string;
+  display: string;
+  category: string;
+  vision: boolean;
+  cost_per_request: number | null;
+}
+
+export interface AIModelsResponse {
+  models: AIModel[];
+  current_text: string;
+  current_vision: string;
+  account_default: string;
+  is_admin: boolean;
+}
+
+export interface AIHistoryResponse {
+  messages: AIChatMessage[];
+  count: number;
+}
+
+// ── Subscriptions ────────────────────────────────────────────
+
+export interface Subscription {
+  id?: number;
+  user_id?: number;
+  frequency: string;
+  report_type: string;
+  send_hour: number;
+  timezone: string;
+  is_active?: number;
+  created_at?: string;
 }

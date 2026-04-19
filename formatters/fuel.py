@@ -1,6 +1,6 @@
 """Fuel report and low-fuel alert formatters."""
 
-from samsara_client import COMPANY_DISPLAY
+from core.context import get_company_display
 from formatters.helpers import (
     _t, _short_location, _fuel_bar, _company_tag,
 )
@@ -49,7 +49,7 @@ def format_low_fuel_alert(vehicle: dict, fuel_pct: float,
 
     co_label = ""
     if show_company and co:
-        co_label = f"\n  🏢  {COMPANY_DISPLAY.get(co, co)}  ({co})"
+        co_label = f"\n  🏢  {get_company_display().get(co, co)}  ({co})"
 
     return (
         "━━━━━━━━━━━━━━━━━━━━━\n"

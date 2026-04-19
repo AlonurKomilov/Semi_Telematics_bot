@@ -16,7 +16,7 @@ from formatters import (
     format_admin_account_detail,
 )
 
-from bot.config import db, logger, invalidate_client
+from bot.config import logger, invalidate_client, get_platform_db, get_tenant_db
 from bot.keyboards import system_owner_kb
 from bot.helpers import _show, _show_loading, _safe_error
 from bot.auth import _require_system_owner
@@ -99,8 +99,8 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """System owner dashboard — bot-wide analytics."""
     await _show_loading(update, context, "⏳ Loading admin dashboard…")
     try:
-        stats = await db.get_system_stats()
-        ext = await db.get_system_extended_stats()
+        stats = await get_platform_db().get_system_stats()
+        ext = await get_platform_db().get_system_extended_stats()
         server = _gather_server_info()
         text = format_admin_dashboard(stats, ext=ext, server=server)
         await _show(update, context, [text], keyboard=system_owner_kb())
@@ -113,7 +113,7 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_accounts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """List all accounts (system owner)."""
     try:
-        accounts = await db.list_accounts(active_only=False)
+        accounts = await get_platform_db().list_accounts(active_only=False)
         text = format_admin_accounts_list(accounts)
         await _show(update, context, [text], keyboard=system_owner_kb())
     except Exception as e:
@@ -139,15 +139,16 @@ async def cmd_sysaccount(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     keyboard=system_owner_kb())
         return
 
-    account = await db.get_account(acct_id)
+    account = await get_platform_db().get_account(acct_id)
     if not account:
         await _show(update, context,
                     [f"❌ Account #{acct_id} not found."],
                     keyboard=system_owner_kb())
         return
 
-    companies = await db.get_account_companies(acct_id, active_only=False)
-    users = await db.list_account_users(acct_id)
+    tenant = await get_tenant_db(acct_id)
+    companies = await tenant.get_account_companies(acct_id, active_only=False)
+    users = await get_platform_db().list_account_users(acct_id)
     text = format_admin_account_detail(account, companies, users)
     await _show(update, context, [text], keyboard=system_owner_kb())
 
@@ -173,10 +174,10 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"  {message_text}\n"
     )
 
-    accounts = await db.list_accounts()
+    accounts = await get_platform_db().list_accounts()
     sent, failed = 0, 0
     for account in accounts:
-        users = await db.list_account_users(account.id)
+        users = await get_platform_db().list_account_users(account.id)
         for user in users:
             try:
                 await context.bot.send_message(
@@ -212,14 +213,14 @@ async def cmd_sys_disable_account(update: Update, context: ContextTypes.DEFAULT_
                     keyboard=system_owner_kb())
         return
 
-    account = await db.get_account(acct_id)
+    account = await get_platform_db().get_account(acct_id)
     if not account:
         await _show(update, context, [f"❌ Account #{acct_id} not found."],
                     keyboard=system_owner_kb())
         return
 
     new_state = not account.is_active
-    await db.update_account(acct_id, is_active=new_state)
+    await get_platform_db().update_account(acct_id, is_active=new_state)
 
     # Invalidate client cache if disabling
     if not new_state:
@@ -241,7 +242,7 @@ async def cmd_sys_ai_stats(update: Update, context: ContextTypes.DEFAULT_TYPE,
         from ai.registry import MODEL_PRICING, MODEL_REGISTRY
         from formatters.admin import _fmt_tokens
 
-        stats = await db.get_ai_usage_all_accounts(days=days)
+        stats = await get_platform_db().get_ai_usage_all_accounts(days=days)
         totals = stats["totals"]
 
         # Calculate total cost from bot DB
@@ -390,7 +391,7 @@ async def cmd_sys_server(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Detailed server info for system owner."""
     try:
         server = _gather_server_info()
-        ext = await db.get_system_extended_stats()
+        ext = await get_platform_db().get_system_extended_stats()
         lines = [
             "━━━━━━━━━━━━━━━━━━━━━",
             "  🖥 <b>Server Details</b>",

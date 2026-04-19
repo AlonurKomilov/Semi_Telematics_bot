@@ -13,7 +13,7 @@ from telegram import (
 from bot.i18n import SUPPORTED_LANGUAGES, LANGUAGE_NAMES, LANGUAGE_FLAGS, t
 from database import Role
 from permissions import get_permissions, can_access_company_submenu
-from samsara_client import COMPANY_DISPLAY
+from core.context import get_company_display
 
 
 def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKeyboardMarkup:
@@ -385,7 +385,7 @@ def truck_picker_kb(matches: list[dict]) -> InlineKeyboardMarkup:
     for v in matches:
         co = v.get("_org", "?")
         name = v["name"]
-        label = f"#{name} — {COMPANY_DISPLAY.get(co, co)} ({co})"
+        label = f"#{name} — {get_company_display().get(co, co)} ({co})"
         rows.append([InlineKeyboardButton(label, callback_data=f"cotruck_{co}_{name}")])
     rows.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
@@ -456,7 +456,7 @@ def cam_company_picker_kb(company_codes: list[str]) -> InlineKeyboardMarkup:
     """Company picker for the Camera Check tool."""
     rows = []
     for code in company_codes:
-        display = COMPANY_DISPLAY.get(code, code)
+        display = get_company_display().get(code, code)
         rows.append([InlineKeyboardButton(
             f"📷 {display} ({code})", callback_data=f"camco_{code}",
         )])
@@ -506,7 +506,7 @@ def truck_company_picker_kb(company_codes: list[str]) -> InlineKeyboardMarkup:
             "🚛 All Companies", callback_data="trucks_browse_ALL",
         )])
     for code in company_codes:
-        display = COMPANY_DISPLAY.get(code, code)
+        display = get_company_display().get(code, code)
         rows.append([InlineKeyboardButton(
             f"🚛 {display} ({code})", callback_data=f"trucks_browse_{code}",
         )])
@@ -592,7 +592,7 @@ def maint_company_picker_kb(company_codes: list[str]) -> InlineKeyboardMarkup:
     """Company picker for maintenance — add task flow."""
     rows = []
     for code in company_codes:
-        display = COMPANY_DISPLAY.get(code, code)
+        display = get_company_display().get(code, code)
         rows.append([InlineKeyboardButton(
             f"🚛 {display} ({code})", callback_data=f"maint_co_{code}",
         )])
@@ -1150,8 +1150,9 @@ def work_schedule_role_picker_kb() -> InlineKeyboardMarkup:
         ("All Roles", "all"),
         ("👑 Owner", "owner"),
         ("🔧 Admin", "admin"),
-        ("🚛 Fleet Manager", "fleet_manager"),
-        ("📋 Dispatcher", "dispatcher"),
+        ("🚛 Fleet", "fleet"),
+        ("�️ Safety", "safety"),
+        ("�📋 Dispatcher", "dispatcher"),
         ("🚗 Driver", "driver"),
     ]
     rows = [[InlineKeyboardButton(label, callback_data=f"wsched_role_{val}")] for label, val in role_labels]

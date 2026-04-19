@@ -1,15 +1,20 @@
 """Admin API endpoints — users, companies, invites, audit log, settings, schedules."""
 
+import logging
+import os
+import time
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from typing import Optional
 
-from api.deps import get_current_user, require_permission, get_tenant_db, get_platform_db
-from permissions import can
+from api.deps import require_permission, get_tenant_db, get_platform_db
+from database.models import Role
+from permissions import ROLE_HIERARCHY
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-
-ROLE_HIERARCHY = {"owner": 5, "admin": 4, "fleet_manager": 3, "dispatcher": 2, "driver": 1}
 
 
 # ── Users ─────────────────────────────────────────────────────
@@ -21,6 +26,18 @@ async def list_users(
 ):
     """List all users in the account."""
     users = await platform_db.list_account_users(user["account_id"])
+
+    # Bulk-fetch truck assignments for all users
+    truck_map: dict[int, list[str]] = {}
+    company_map: dict[int, list[str]] = {}
+    for u in users:
+        trucks = await platform_db.get_user_truck_nums(u.id)
+        if trucks:
+            truck_map[u.id] = trucks
+        codes = await platform_db.get_user_company_codes(u.id)
+        if codes:
+            company_map[u.id] = codes
+
     return {
         "users": [
             {
@@ -30,6 +47,8 @@ async def list_users(
                 "role": u.role.value if hasattr(u.role, "value") else u.role,
                 "department": u.department,
                 "truck_num": u.truck_num,
+                "trucks": truck_map.get(u.id, [u.truck_num] if u.truck_num else []),
+                "allowed_companies": company_map.get(u.id, []),
                 "is_active": u.is_active,
                 "email": u.email,
                 "language": u.language,
@@ -42,8 +61,55 @@ async def list_users(
     }
 
 
+# ── User avatar (Telegram profile photo) ─────────────────────
+
+AVATAR_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "avatars")
+AVATAR_MAX_AGE = 86400  # re-fetch after 24 hours
+
+
+@router.get("/users/{user_id}/avatar")
+async def get_user_avatar(
+    user_id: int,
+    user: dict = Depends(require_permission("can_manage_users")),
+    platform_db=Depends(get_platform_db),
+):
+    """Return Telegram profile photo for a user. Cached locally for 24h."""
+    target = await platform_db.get_user(user_id)
+    if not target or target.account_id != user["account_id"]:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    os.makedirs(AVATAR_DIR, exist_ok=True)
+    cached = os.path.join(AVATAR_DIR, f"{target.telegram_id}.jpg")
+
+    # Serve from cache if fresh
+    if os.path.exists(cached) and (time.time() - os.path.getmtime(cached)) < AVATAR_MAX_AGE:
+        return FileResponse(cached, media_type="image/jpeg")
+
+    # Fetch from Telegram
+    try:
+        from bot.config import TELEGRAM_TOKEN as _token
+        import telegram
+        bot = telegram.Bot(token=_token)
+        photos = await bot.get_user_profile_photos(user_id=target.telegram_id, limit=1)
+        if not photos.photos:
+            raise HTTPException(status_code=404, detail="No profile photo")
+
+        # Get the largest size of the first photo
+        photo_sizes = photos.photos[0]
+        best = max(photo_sizes, key=lambda s: s.width * s.height)
+        file = await bot.get_file(best.file_id)
+        await file.download_to_drive(cached)
+
+        return FileResponse(cached, media_type="image/jpeg")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("Failed to fetch avatar for user %s: %s", user_id, exc)
+        raise HTTPException(status_code=404, detail="Could not fetch avatar")
+
+
 class RoleUpdate(BaseModel):
-    role: str = Field(..., pattern=r"^(owner|admin|fleet_manager|dispatcher|driver)$")
+    role: str = Field(..., pattern=r"^(owner|admin|fleet|safety|dispatcher|driver)$")
 
 
 @router.put("/users/{user_id}/role")
@@ -116,10 +182,160 @@ async def update_user_status(
     return {"ok": ok}
 
 
+# ── Truck assignments ─────────────────────────────────────────
+
+class TruckAssignment(BaseModel):
+    trucks: list[str] = Field(..., max_length=200)
+
+
+@router.get("/users/{user_id}/trucks")
+async def get_user_trucks(
+    user_id: int,
+    user: dict = Depends(require_permission("can_manage_users")),
+    platform_db=Depends(get_platform_db),
+):
+    """Get all truck assignments for a user."""
+    target = await platform_db.get_user(user_id)
+    if not target or target.account_id != user["account_id"]:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    trucks = await platform_db.get_user_trucks(user_id)
+    return {
+        "user_id": user_id,
+        "trucks": [
+            {
+                "truck_num": t.truck_num,
+                "is_primary": t.is_primary,
+                "assigned_at": t.assigned_at,
+            }
+            for t in trucks
+        ],
+        "legacy_truck_num": target.truck_num,
+    }
+
+
+@router.put("/users/{user_id}/trucks")
+async def set_user_trucks(
+    user_id: int,
+    body: TruckAssignment,
+    user: dict = Depends(require_permission("can_manage_users")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Set truck assignments for a user. First truck in list is primary."""
+    target = await platform_db.get_user(user_id)
+    if not target or target.account_id != user["account_id"]:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Validate: non-empty strings only
+    cleaned = [t.strip() for t in body.trucks if t.strip()]
+    if len(cleaned) != len(set(cleaned)):
+        raise HTTPException(status_code=400, detail="Duplicate truck numbers")
+
+    trucks = await platform_db.set_user_trucks(
+        user_id, target.account_id, cleaned, assigned_by=int(user["sub"]),
+    )
+
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "truck_assignment",
+        target_type="user", target_id=str(user_id),
+        details=f"Trucks: {', '.join(cleaned) or 'none'}",
+    )
+
+    return {
+        "ok": True,
+        "trucks": [
+            {"truck_num": t.truck_num, "is_primary": t.is_primary}
+            for t in trucks
+        ],
+    }
+
+
+# ── Company access ────────────────────────────────────────────
+
+class CompanyAssignment(BaseModel):
+    company_ids: list[int] = Field(default_factory=list, description="Company IDs to grant access to. Empty = all companies.")
+
+
+@router.get("/users/{user_id}/companies")
+async def get_user_companies(
+    user_id: int,
+    user: dict = Depends(require_permission("can_manage_users")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Get company access assignments for a user."""
+    target = await platform_db.get_user(user_id)
+    if not target or target.account_id != user["account_id"]:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    assignments = await platform_db.get_user_companies(user_id)
+    all_companies = await tenant_db.get_account_companies(user["account_id"])
+
+    return {
+        "user_id": user_id,
+        "companies": [
+            {
+                "company_id": a.company_id,
+                "company_code": a.company_code,
+                "assigned_at": a.assigned_at,
+            }
+            for a in assignments
+        ],
+        "all_companies": [
+            {"id": c.id, "code": c.code, "display_name": c.display_name}
+            for c in all_companies
+        ],
+        "unrestricted": len(assignments) == 0,
+    }
+
+
+@router.put("/users/{user_id}/companies")
+async def set_user_companies(
+    user_id: int,
+    body: CompanyAssignment,
+    user: dict = Depends(require_permission("can_manage_users")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Set company access for a user. Empty list = access to all companies."""
+    target = await platform_db.get_user(user_id)
+    if not target or target.account_id != user["account_id"]:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Owners always have access to all companies — don't restrict them
+    target_role = target.role.value if hasattr(target.role, "value") else target.role
+    if target_role == "owner":
+        raise HTTPException(status_code=400, detail="Cannot restrict company access for owners")
+
+    # Validate company IDs belong to this account
+    if body.company_ids:
+        all_companies = await tenant_db.get_account_companies(user["account_id"])
+        valid_ids = {c.id for c in all_companies}
+        invalid = [cid for cid in body.company_ids if cid not in valid_ids]
+        if invalid:
+            raise HTTPException(status_code=400, detail=f"Invalid company IDs: {invalid}")
+
+    await platform_db.set_user_companies(
+        user_id, target.account_id, body.company_ids,
+        assigned_by=int(user["sub"]),
+    )
+
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "company_assignment",
+        target_type="user", target_id=str(user_id),
+        details=f"Companies: {body.company_ids or 'all (unrestricted)'}",
+    )
+
+    return {"ok": True, "company_ids": body.company_ids, "unrestricted": len(body.company_ids) == 0}
+
+
 # ── Invites ───────────────────────────────────────────────────
 
 class InviteCreate(BaseModel):
-    role: str = Field("fleet_manager", pattern=r"^(admin|fleet_manager|dispatcher|driver)$")
+    role: str = Field("fleet", pattern=r"^(admin|fleet|safety|dispatcher|driver)$")
     department: str = "general"
     truck_num: Optional[str] = None
     hours: int = Field(24, ge=1, le=720)
@@ -138,10 +354,15 @@ async def create_invite(
     if target_rank >= caller_rank:
         raise HTTPException(status_code=403, detail="Cannot create invite for role equal to or above your own")
 
+    # Resolve DB user.id from telegram_id (JWT sub) — FK requires users.id
+    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
     invite = await platform_db.create_invite(
         account_id=user["account_id"],
-        created_by=int(user["sub"]),
-        role=body.role,
+        created_by=db_user.id,
+        role=Role(body.role),
         department=body.department,
         truck_num=body.truck_num,
         hours=body.hours,
@@ -457,3 +678,166 @@ async def delete_schedule(
         target_type="schedule", target_id=str(schedule_id),
     )
     return {"ok": True}
+
+
+# ── Bot configuration (owner-only) ───────────────────────────
+
+
+class BotConfigRequest(BaseModel):
+    bot_token: str = Field(..., min_length=30, max_length=100)
+
+
+@router.put("/bot-config")
+async def update_bot_config(
+    body: BotConfigRequest,
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Configure Telegram bot token for this account (owner-only).
+
+    Validates the token via Telegram getMe(), encrypts it, and stores it.
+    If the account already has a running bot, it will be restarted.
+    """
+    if user["role"] != "owner":
+        raise HTTPException(status_code=403, detail="Only the account owner can configure the bot")
+
+    import aiohttp
+    from encryption import encrypt
+
+    # Validate token with Telegram API
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"https://api.telegram.org/bot{body.bot_token}/getMe",
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                data = await resp.json()
+                if not data.get("ok"):
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"Invalid bot token: {data.get('description', 'unknown error')}",
+                    )
+                bot_info = data["result"]
+    except aiohttp.ClientError as e:
+        raise HTTPException(status_code=502, detail=f"Failed to reach Telegram API: {e}")
+
+    bot_username = bot_info.get("username", "")
+    encrypted_token = encrypt(body.bot_token)
+
+    await platform_db.update_account(
+        user["account_id"],
+        bot_token_encrypted=encrypted_token,
+        bot_username=bot_username,
+    )
+
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "bot_config_update",
+        detail=f"Bot configured: @{bot_username}",
+    )
+
+    # Hot-reload: start or restart per-account bot
+    try:
+        from core.bot_registry import get_registry
+        registry = get_registry()
+        if registry:
+            await registry.restart_bot(
+                account_id=user["account_id"],
+                encrypted_token=encrypted_token,
+            )
+    except Exception as e:
+        logger.warning("Bot hot-reload failed for account %d: %s", user["account_id"], e)
+
+    return {
+        "ok": True,
+        "bot_username": bot_username,
+        "bot_id": bot_info.get("id"),
+    }
+
+
+@router.delete("/bot-config")
+async def delete_bot_config(
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Disconnect the Telegram bot for this account (owner-only)."""
+    if user["role"] != "owner":
+        raise HTTPException(status_code=403, detail="Only the account owner can configure the bot")
+
+    account = await platform_db.get_account(user["account_id"])
+    if not account or not account.bot_token_encrypted:
+        raise HTTPException(status_code=404, detail="No bot configured for this account")
+
+    await platform_db.update_account(
+        user["account_id"],
+        bot_token_encrypted=None,
+        bot_username="",
+        webhook_secret="",
+    )
+
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "bot_config_delete",
+        detail="Bot disconnected",
+    )
+
+    # Hot-reload: stop per-account bot
+    try:
+        from core.bot_registry import get_registry
+        registry = get_registry()
+        if registry:
+            await registry.stop_bot(user["account_id"])
+    except Exception as e:
+        logger.warning("Bot stop failed for account %d: %s", user["account_id"], e)
+
+    return {"ok": True}
+
+
+@router.get("/bot-config")
+async def get_bot_config(
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+):
+    """Get bot configuration status for this account."""
+    account = await platform_db.get_account(user["account_id"])
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    if not account.bot_token_encrypted:
+        return {"has_bot": False, "bot_username": ""}
+
+    result: dict = {
+        "has_bot": True,
+        "bot_username": account.bot_username or "",
+    }
+
+    # Check if bot is running in the registry
+    try:
+        from core.bot_registry import get_registry
+        registry = get_registry()
+        result["is_running"] = bool(registry and registry.get(user["account_id"]))
+    except Exception:
+        result["is_running"] = False
+
+    # Fetch live bot info from Telegram
+    try:
+        from encryption import decrypt
+        import aiohttp
+
+        token = decrypt(account.bot_token_encrypted)
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"https://api.telegram.org/bot{token}/getMe",
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as resp:
+                data = await resp.json()
+                if data.get("ok"):
+                    info = data["result"]
+                    result["bot_id"] = info.get("id")
+                    result["first_name"] = info.get("first_name", "")
+    except Exception:
+        pass
+
+    return result

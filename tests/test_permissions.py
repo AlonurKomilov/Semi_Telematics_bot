@@ -55,14 +55,14 @@ class TestRolePermissions:
 
     # ── Fleet Manager: no management ──────────────────────────────
 
-    def test_fleet_mgr_no_management(self):
+    def test_fleet_no_management(self):
         for feat in ("can_invite", "can_manage_users", "can_manage_companies"):
-            assert not can(Role.FLEET_MGR, feat), f"Fleet MGR should NOT have {feat}"
+            assert not can(Role.FLEET, feat), f"Fleet should NOT have {feat}"
 
-    def test_fleet_mgr_has_fleet_features(self):
+    def test_fleet_has_fleet_features(self):
         for feat in ("can_faults", "can_critical", "can_fuel", "can_truck_all",
                       "can_maintenance_all", "can_scorecard_all"):
-            assert can(Role.FLEET_MGR, feat), f"Fleet MGR should have {feat}"
+            assert can(Role.FLEET, feat), f"Fleet should have {feat}"
 
     # ── Dispatcher: limited fleet access ──────────────────────────
 
@@ -128,7 +128,7 @@ class TestRoleParsing:
 
     def test_from_str_valid(self):
         assert Role.from_str("owner") == Role.OWNER
-        assert Role.from_str("fleet_manager") == Role.FLEET_MGR
+        assert Role.from_str("fleet") == Role.FLEET
         assert Role.from_str("driver") == Role.DRIVER
 
     def test_from_str_case_insensitive(self):
@@ -174,12 +174,12 @@ class TestPrivilegeEscalation:
     feature profiles, so they are tested separately.
     """
 
-    STRICT_HIERARCHY = [Role.OWNER, Role.ADMIN, Role.FLEET_MGR]
+    STRICT_HIERARCHY = [Role.OWNER, Role.ADMIN, Role.FLEET]
 
     def test_management_restricted_to_top_roles(self):
         """Only owner/admin should manage users; only owner manages companies."""
         assert can(Role.OWNER, "can_manage_companies")
-        for role in [Role.ADMIN, Role.FLEET_MGR, Role.DISPATCHER, Role.DRIVER]:
+        for role in [Role.ADMIN, Role.FLEET, Role.DISPATCHER, Role.DRIVER]:
             assert not can(role, "can_manage_companies")
 
     def test_strict_hierarchy_subset(self):

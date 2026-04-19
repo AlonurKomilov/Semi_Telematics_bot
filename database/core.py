@@ -140,6 +140,9 @@ class _DatabaseCore:
             id=row["id"], name=row["name"], slug=row["slug"],
             tier=row["tier"], is_active=bool(row["is_active"]),
             created_at=row["created_at"],
+            bot_token_encrypted=row["bot_token_encrypted"] if "bot_token_encrypted" in row.keys() else None,
+            bot_username=row["bot_username"] if "bot_username" in row.keys() else "",
+            webhook_secret=row["webhook_secret"] if "webhook_secret" in row.keys() else "",
         )
 
     def _row_to_company(self, row) -> Company:

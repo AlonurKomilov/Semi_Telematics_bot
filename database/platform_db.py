@@ -11,6 +11,10 @@ from .accounts import AccountsMixin
 from .users import UsersMixin
 from .invites import InvitesMixin
 from .chats import ChatsMixin
+from .knowledge_db import KnowledgeBaseMixin
+from .permissions_db import PermissionsMixin
+from .driver_trucks_db import DriverTrucksMixin
+from .user_companies_db import UserCompaniesMixin
 from . import platform_schema
 from . import platform_migrations
 
@@ -22,6 +26,10 @@ class PlatformDB(
     UsersMixin,
     InvitesMixin,
     ChatsMixin,
+    KnowledgeBaseMixin,
+    PermissionsMixin,
+    DriverTrucksMixin,
+    UserCompaniesMixin,
     _DatabaseCore,
 ):
     """SQLite database for platform-wide tables: accounts, users, invites, chats, ai_usage.
@@ -71,16 +79,44 @@ class PlatformDB(
         from datetime import datetime, timedelta, timezone
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         cur = await self._db.execute(
-            "SELECT COUNT(*) as total_requests, "
-            "SUM(prompt_tokens) as total_prompt, "
-            "SUM(reply_tokens) as total_reply, "
-            "SUM(thinking_tokens) as total_thinking, "
-            "SUM(total_tokens) as total_all "
-            "FROM ai_usage WHERE account_id = ? AND created_at >= ?",
+            """SELECT request_type, model,
+                      COUNT(*) as cnt,
+                      SUM(prompt_tokens) as sum_prompt,
+                      SUM(reply_tokens) as sum_reply,
+                      SUM(COALESCE(thinking_tokens, 0)) as sum_thinking,
+                      SUM(total_tokens) as sum_total
+               FROM ai_usage
+               WHERE account_id = ? AND created_at >= ?
+               GROUP BY request_type, model""",
             (account_id, cutoff),
         )
-        row = await cur.fetchone()
-        return dict(row) if row else {}
+        rows = await cur.fetchall()
+        by_type: dict[str, dict] = {}
+        by_model: dict[str, dict] = {}
+        total_requests = 0
+        total_tokens = 0
+        for r in rows:
+            rt = r["request_type"] or "unknown"
+            m = r["model"] or "unknown"
+            cnt = r["cnt"]
+            tok = r["sum_total"] or 0
+            total_requests += cnt
+            total_tokens += tok
+            if rt not in by_type:
+                by_type[rt] = {"requests": 0, "tokens": 0}
+            by_type[rt]["requests"] += cnt
+            by_type[rt]["tokens"] += tok
+            if m not in by_model:
+                by_model[m] = {"requests": 0, "tokens": 0}
+            by_model[m]["requests"] += cnt
+            by_model[m]["tokens"] += tok
+        return {
+            "total_requests": total_requests,
+            "total_tokens": total_tokens,
+            "by_type": by_type,
+            "by_model": by_model,
+            "days": days,
+        }
 
     async def get_ai_usage_daily(self, account_id: int, days: int = 7) -> list[dict]:
         from datetime import datetime, timedelta, timezone

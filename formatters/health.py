@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 from constants import TZ_ET as _TZ_ET
-from samsara_client import COMPANY_DISPLAY
+from core.context import get_company_display
 from formatters.helpers import (
     _t, _health_icon, _company_tag, _split_message,
 )
@@ -17,7 +17,7 @@ def format_health_alert(vehicle: dict, alerts: list[str],
 
     co_label = ""
     if show_company and co:
-        co_label = f"\n  🏢  {COMPANY_DISPLAY.get(co, co)}  ({co})"
+        co_label = f"\n  🏢  {get_company_display().get(co, co)}  ({co})"
 
     # Severity — critical items
     is_critical = any(a in alerts for a in (

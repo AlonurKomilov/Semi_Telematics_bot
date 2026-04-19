@@ -153,6 +153,7 @@ async def create_tables(conn) -> None:
             location_class  TEXT    NOT NULL DEFAULT 'unknown',
             alert_level     TEXT    NOT NULL DEFAULT 'none',
             ai_analysis     TEXT    NOT NULL DEFAULT '',
+            map_image_path  TEXT    NOT NULL DEFAULT '',
             resolved        INTEGER NOT NULL DEFAULT 0,
             last_checked    TEXT    NOT NULL DEFAULT '',
             created_at      TEXT    NOT NULL DEFAULT ''
@@ -181,6 +182,22 @@ async def create_tables(conn) -> None:
             UNIQUE(user_id)
         );
 
+        CREATE TABLE IF NOT EXISTS knowledge_base (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            title           TEXT    NOT NULL,
+            description     TEXT    NOT NULL DEFAULT '',
+            category        TEXT    NOT NULL DEFAULT 'general',
+            media_url       TEXT    NOT NULL DEFAULT '',
+            media_type      TEXT    NOT NULL DEFAULT 'link',
+            tags            TEXT    NOT NULL DEFAULT '',
+            visibility      TEXT    NOT NULL DEFAULT 'all',
+            pinned          INTEGER NOT NULL DEFAULT 0,
+            created_by      INTEGER NOT NULL DEFAULT 0,
+            updated_at      TEXT    NOT NULL DEFAULT '',
+            created_at      TEXT    NOT NULL
+        );
+
         -- Indexes
         CREATE INDEX IF NOT EXISTS idx_companies_account_id
             ON companies(account_id);
@@ -204,5 +221,9 @@ async def create_tables(conn) -> None:
             ON parking_events(account_id, resolved);
         CREATE INDEX IF NOT EXISTS idx_work_schedules_account
             ON work_schedules(account_id);
+        CREATE INDEX IF NOT EXISTS idx_kb_account_cat
+            ON knowledge_base(account_id, category);
+        CREATE INDEX IF NOT EXISTS idx_kb_pinned
+            ON knowledge_base(account_id, pinned);
     """)
     await conn.commit()

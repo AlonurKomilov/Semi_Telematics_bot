@@ -2,7 +2,7 @@
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-from bot.config import db
+from bot.config import get_platform_db
 from bot.keyboards import back_kb, group_picker_kb
 from bot.helpers import _show
 from bot.i18n import t
@@ -38,7 +38,7 @@ async def rmgroupconfirm_handler(update, context):
     await query.answer()
     try:
         group_chat_id = int(chat_id_str)
-        await db.remove_authorized_chat(user.account_id, group_chat_id)
+        await get_platform_db().remove_authorized_chat(user.account_id, group_chat_id)
     except ValueError:
         pass
     await cmd_groups(update, context)
@@ -70,7 +70,7 @@ async def addgroup_confirm_handler(update, context):
                     [t('common.nothing_to_confirm')],
                     keyboard=back_kb())
         return
-    await db.add_authorized_chat(
+    await get_platform_db().add_authorized_chat(
         account_id=user.account_id,
         chat_id=pending["chat_id"],
         chat_title=pending["title"],

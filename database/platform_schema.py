@@ -16,19 +16,22 @@ async def create_tables(conn) -> None:
 
     await conn.executescript("""
         CREATE TABLE IF NOT EXISTS accounts (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            name        TEXT    NOT NULL,
-            slug        TEXT    NOT NULL UNIQUE,
-            tier        TEXT    NOT NULL DEFAULT 'free',
-            is_active   INTEGER NOT NULL DEFAULT 1,
-            created_at  TEXT    NOT NULL
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            name                TEXT    NOT NULL,
+            slug                TEXT    NOT NULL UNIQUE,
+            tier                TEXT    NOT NULL DEFAULT 'free',
+            is_active           INTEGER NOT NULL DEFAULT 1,
+            bot_token_encrypted TEXT,
+            bot_username        TEXT    NOT NULL DEFAULT '',
+            webhook_secret      TEXT    NOT NULL DEFAULT '',
+            created_at          TEXT    NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS users (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             telegram_id     INTEGER NOT NULL UNIQUE,
             account_id      INTEGER NOT NULL REFERENCES accounts(id),
-            role            TEXT    NOT NULL DEFAULT 'fleet_manager',
+            role            TEXT    NOT NULL DEFAULT 'fleet',
             department      TEXT    NOT NULL DEFAULT 'general',
             truck_num       TEXT,
             display_name    TEXT    NOT NULL DEFAULT '',
@@ -52,15 +55,16 @@ async def create_tables(conn) -> None:
             timezone        TEXT    NOT NULL DEFAULT 'America/New_York',
             language        TEXT    NOT NULL DEFAULT 'en',
             last_shift_report TEXT,
-            email           TEXT    UNIQUE,
-            password_hash   TEXT
+            email           TEXT,
+            password_hash   TEXT,
+            UNIQUE(account_id, email)
         );
 
         CREATE TABLE IF NOT EXISTS invites (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             code        TEXT    NOT NULL UNIQUE,
             account_id  INTEGER NOT NULL REFERENCES accounts(id),
-            role        TEXT    NOT NULL DEFAULT 'fleet_manager',
+            role        TEXT    NOT NULL DEFAULT 'fleet',
             department  TEXT    NOT NULL DEFAULT 'general',
             truck_num   TEXT,
             created_by  INTEGER NOT NULL REFERENCES users(id),
@@ -101,5 +105,74 @@ async def create_tables(conn) -> None:
             ON authorized_chats(chat_id);
         CREATE INDEX IF NOT EXISTS idx_ai_usage_account
             ON ai_usage(account_id, created_at);
+
+        CREATE TABLE IF NOT EXISTS knowledge_base (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            title           TEXT    NOT NULL,
+            description     TEXT    NOT NULL DEFAULT '',
+            category        TEXT    NOT NULL DEFAULT 'general',
+            media_url       TEXT    NOT NULL DEFAULT '',
+            media_type      TEXT    NOT NULL DEFAULT 'link',
+            tags            TEXT    NOT NULL DEFAULT '',
+            visibility      TEXT    NOT NULL DEFAULT 'private',
+            target_role     TEXT    NOT NULL DEFAULT 'all',
+            pinned          INTEGER NOT NULL DEFAULT 0,
+            created_by      INTEGER NOT NULL DEFAULT 0,
+            creator_name    TEXT    NOT NULL DEFAULT '',
+            approved        INTEGER NOT NULL DEFAULT 1,
+            updated_at      TEXT    NOT NULL DEFAULT '',
+            created_at      TEXT    NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_kb_account_cat
+            ON knowledge_base(account_id, category);
+        CREATE INDEX IF NOT EXISTS idx_kb_pinned
+            ON knowledge_base(account_id, pinned);
+        CREATE INDEX IF NOT EXISTS idx_kb_visibility
+            ON knowledge_base(visibility, target_role);
+        CREATE INDEX IF NOT EXISTS idx_kb_approved
+            ON knowledge_base(approved);
+
+        CREATE TABLE IF NOT EXISTS role_permissions (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL REFERENCES accounts(id),
+            role            TEXT    NOT NULL,
+            company_id      INTEGER,
+            permissions     TEXT    NOT NULL DEFAULT '{}',
+            updated_by      INTEGER NOT NULL DEFAULT 0,
+            updated_at      TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, role, company_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_role_perms_account
+            ON role_permissions(account_id);
+        CREATE INDEX IF NOT EXISTS idx_role_perms_lookup
+            ON role_permissions(account_id, role, company_id);
+
+        CREATE TABLE IF NOT EXISTS driver_trucks (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL REFERENCES users(id),
+            account_id  INTEGER NOT NULL REFERENCES accounts(id),
+            truck_num   TEXT    NOT NULL,
+            is_primary  INTEGER NOT NULL DEFAULT 0,
+            assigned_by INTEGER NOT NULL DEFAULT 0,
+            assigned_at TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_driver_trucks_user_truck
+            ON driver_trucks(user_id, truck_num);
+        CREATE INDEX IF NOT EXISTS idx_driver_trucks_user
+            ON driver_trucks(user_id);
+
+        CREATE TABLE IF NOT EXISTS user_companies (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL REFERENCES users(id),
+            account_id  INTEGER NOT NULL REFERENCES accounts(id),
+            company_id  INTEGER NOT NULL REFERENCES companies(id),
+            assigned_by INTEGER NOT NULL DEFAULT 0,
+            assigned_at TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_user_companies_user_company
+            ON user_companies(user_id, company_id);
+        CREATE INDEX IF NOT EXISTS idx_user_companies_user
+            ON user_companies(user_id);
     """)
     await conn.commit()

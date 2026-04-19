@@ -12,7 +12,7 @@ class InvitesMixin:
 
     async def create_invite(
         self, account_id: int, created_by: int,
-        role: Role = Role.FLEET_MGR,
+        role: Role = Role.FLEET,
         department: str = "general",
         truck_num: Optional[str] = None,
         hours: int = 24,

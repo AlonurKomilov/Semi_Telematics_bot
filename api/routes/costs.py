@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from api.deps import require_permission, get_tenant_db
+from api.deps import require_permission, get_tenant_db, get_user_company_codes, validate_company_access, filter_by_assigned_trucks
 
 router = APIRouter(prefix="/costs", tags=["costs"])
 
@@ -32,6 +32,7 @@ async def fuel_entries(
         vehicle_name=vehicle,
         limit=limit,
     )
+    entries = await filter_by_assigned_trucks(entries, user, name_key="vehicle_name")
     return {"entries": entries, "count": len(entries)}
 
 
@@ -42,6 +43,8 @@ async def add_fuel_entry(
     tenant_db=Depends(get_tenant_db),
 ):
     """Log a new fuel fill-up entry."""
+    allowed = await get_user_company_codes(user)
+    validate_company_access(allowed, body.company_code or None)
     row_id = await tenant_db.add_fuel_entry(
         account_id=user["account_id"],
         company_code=body.company_code,
@@ -62,6 +65,7 @@ async def fuel_summary(
 ):
     """Per-vehicle fuel cost summary — total gallons, cost, avg price."""
     rows = await tenant_db.get_fuel_summary(user["account_id"])
+    rows = await filter_by_assigned_trucks(rows, user, name_key="vehicle_name")
     items = []
     fleet_cost = 0.0
     fleet_gallons = 0.0
@@ -97,6 +101,7 @@ async def cost_per_mile(
 ):
     """Per-vehicle cost-per-mile: fuel cost ÷ miles driven."""
     rows = await tenant_db.get_fuel_summary(user["account_id"])
+    rows = await filter_by_assigned_trucks(rows, user, name_key="vehicle_name")
     items = []
     fleet_cost = 0.0
     fleet_miles = 0.0

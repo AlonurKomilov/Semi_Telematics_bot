@@ -47,15 +47,29 @@ class ChatsMixin:
         rows = await cur.fetchall()
         return [self._row_to_authorized_chat(r) for r in rows]
 
-    async def is_chat_authorized(self, chat_id: int) -> bool:
-        """Check if a group/channel is authorized by any active account."""
-        cur = await self._db.execute(
-            """SELECT 1 FROM authorized_chats ac
-               JOIN accounts a ON a.id = ac.account_id
-               WHERE ac.chat_id = ? AND ac.is_active = 1 AND a.is_active = 1
-               LIMIT 1""",
-            (chat_id,),
-        )
+    async def is_chat_authorized(self, chat_id: int, account_id: int = 0) -> bool:
+        """Check if a group/channel is authorized.
+
+        If account_id is provided, checks authorization for that specific
+        account (multi-tenant scoping).  Otherwise checks any active account.
+        """
+        if account_id:
+            cur = await self._db.execute(
+                """SELECT 1 FROM authorized_chats ac
+                   JOIN accounts a ON a.id = ac.account_id
+                   WHERE ac.chat_id = ? AND ac.account_id = ?
+                     AND ac.is_active = 1 AND a.is_active = 1
+                   LIMIT 1""",
+                (chat_id, account_id),
+            )
+        else:
+            cur = await self._db.execute(
+                """SELECT 1 FROM authorized_chats ac
+                   JOIN accounts a ON a.id = ac.account_id
+                   WHERE ac.chat_id = ? AND ac.is_active = 1 AND a.is_active = 1
+                   LIMIT 1""",
+                (chat_id,),
+            )
         row = await cur.fetchone()
         return row is not None
 

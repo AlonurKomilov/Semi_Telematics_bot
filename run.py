@@ -3,6 +3,15 @@
 
 Runs the Telegram bot and the FastAPI (uvicorn) server concurrently
 in a single asyncio event loop.
+
+Startup order:
+  1. core.startup.initialize()  — encryption, DB, AI, Redis, key migration
+  2. build_app()                — Telegram Application with all handlers
+  3. APScheduler                — scheduled alert/report jobs
+  4. run_api()                  — FastAPI uvicorn server (background task)
+  5. run_bot()                  — Telegram polling or webhook
+  6. await stop_event           — block until SIGINT/SIGTERM
+  7. core.startup.shutdown()    — Redis, DB, caches
 """
 
 import asyncio
@@ -21,6 +30,8 @@ from bot.config import (                           # noqa: E402
     logger,
 )
 from bot.scheduler import register_all as _register_jobs  # noqa: E402
+from core.bot_registry import init_registry         # noqa: E402
+import core.startup                                # noqa: E402
 
 
 async def run_bot(tg_app):
@@ -75,41 +86,56 @@ async def run_api():
 async def main():
     logger.info("Starting Semi Telematics Bot — multi-tenant mode")
 
+    # ── 1. Platform infrastructure ──────────────────────────────
+    await core.startup.initialize()
+
+    # ── 2. Build Telegram Application ───────────────────────────
     tg_app = build_app()
 
-    # Scheduled alerts
+    # ── 2b. Per-account bot registry ────────────────────────────
+    registry = init_registry(system_app=tg_app)
+    try:
+        from core.platform import get_platform_db
+        started = await registry.start_all(get_platform_db())
+        if started:
+            logger.info("Started %d per-account bot(s) from database", started)
+    except Exception:
+        logger.exception("Failed to start per-account bots (continuing with system bot)")
+
+    # ── 3. Scheduled alerts ─────────────────────────────────────
     scheduler = AsyncIOScheduler()
     _register_jobs(scheduler, tg_app)
     scheduler.start()
 
-    # Graceful shutdown
+    # ── 4. Graceful shutdown wiring ─────────────────────────────
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop_event.set)
 
-    # Start API server first (so /api/health responds immediately)
+    # ── 5. Start API server (background) ───────────────────────
     api_task = asyncio.create_task(run_api())
 
-    # Start bot (post_init may take time due to Samsara API calls)
+    # ── 6. Start bot (post_init may take time) ──────────────────
     await run_bot(tg_app)
 
-    # Wait for shutdown signal
+    # ── 7. Wait for shutdown signal ─────────────────────────────
     await stop_event.wait()
     logger.info("Shutdown signal received")
 
-    # Cleanup
+    # ── 8. Cleanup ──────────────────────────────────────────────
     api_task.cancel()
+    await registry.stop_all()
     if tg_app.updater.running:
         await tg_app.updater.stop()
     await tg_app.stop()
     await tg_app.shutdown()
     scheduler.shutdown(wait=False)
+
+    # Platform shutdown (Redis, DB, caches)
+    await core.startup.shutdown()
     logger.info("Shutdown complete")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
-else:
-    # backward compat: `from bot import main; main()` still works via bot/__init__.py
     asyncio.run(main())

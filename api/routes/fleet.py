@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter, Depends, Query
 
-from api.deps import require_permission
-from bot.state import get_client
+from api.deps import require_permission, get_user_company_codes, validate_company_access, filter_by_allowed_companies, filter_by_assigned_trucks
+from bot.config import get_client
 
 router = APIRouter(prefix="/fleet", tags=["fleet"])
 
@@ -41,8 +41,12 @@ async def fleet_overview(
     user: dict = Depends(require_permission("can_faults")),
 ):
     """Fleet snapshot — vehicles with status, location, faults."""
+    allowed = await get_user_company_codes(user)
+    validate_company_access(allowed, company)
     client = await get_client(user["account_id"])
     vehicles = await client.get_fleet_overview(company=company)
+    vehicles = filter_by_allowed_companies(vehicles, allowed)
+    vehicles = await filter_by_assigned_trucks(vehicles, user)
     return {"vehicles": vehicles, "count": len(vehicles)}
 
 
@@ -56,8 +60,12 @@ async def fleet_vehicles(
     user: dict = Depends(require_permission("can_faults")),
 ):
     """Vehicle list with location and engine state, supports filtering and sorting."""
+    allowed = await get_user_company_codes(user)
+    validate_company_access(allowed, company)
     client = await get_client(user["account_id"])
     vehicles = await client.get_fleet_overview(company=company)
+    vehicles = filter_by_allowed_companies(vehicles, allowed)
+    vehicles = await filter_by_assigned_trucks(vehicles, user)
     result = [_simplify(v) for v in vehicles]
 
     # Search filter
@@ -84,8 +92,12 @@ async def fleet_vehicle_detail(
     user: dict = Depends(require_permission("can_faults")),
 ):
     """Single vehicle detail by name."""
+    allowed = await get_user_company_codes(user)
+    validate_company_access(allowed, company)
     client = await get_client(user["account_id"])
     matches = await client.get_vehicle_detail(truck_name, company=company)
+    matches = filter_by_allowed_companies(matches, allowed)
+    matches = await filter_by_assigned_trucks(matches, user)
     if not matches:
         return {"error": "Vehicle not found", "vehicles": []}
     return {"vehicles": matches, "count": len(matches)}
@@ -98,8 +110,12 @@ async def fleet_vehicle_health(
     user: dict = Depends(require_permission("can_health")),
 ):
     """Vehicle health stats: battery, oil, coolant, DEF, seatbelt, engine load."""
+    allowed = await get_user_company_codes(user)
+    validate_company_access(allowed, company)
     client = await get_client(user["account_id"])
     all_health = await client.get_vehicle_health(company=company)
+    all_health = filter_by_allowed_companies(all_health, allowed)
+    all_health = await filter_by_assigned_trucks(all_health, user)
     name_lower = truck_name.lower()
     match = [
         v for v in all_health
@@ -123,8 +139,12 @@ async def fleet_vehicle_faults(
     user: dict = Depends(require_permission("can_faults")),
 ):
     """Active fault codes for a specific vehicle."""
+    allowed = await get_user_company_codes(user)
+    validate_company_access(allowed, company)
     client = await get_client(user["account_id"])
     overview = await client.get_fleet_overview(company=company)
+    overview = filter_by_allowed_companies(overview, allowed)
+    overview = await filter_by_assigned_trucks(overview, user)
     name_lower = truck_name.lower()
     match = [
         v for v in overview
@@ -139,3 +159,46 @@ async def fleet_vehicle_faults(
         "faults": v.get("faults", []),
         "fault_count": len(v.get("faults", [])),
     }
+
+
+# ── Weather (ambient temp from vehicle sensors) ─────────────────
+
+@router.get("/weather")
+async def fleet_weather(
+    user: dict = Depends(require_permission("can_faults")),
+):
+    """Ambient temperature readings from vehicle sensors."""
+    client = await get_client(user["account_id"])
+    vehicles = await client.get_fleet_weather()
+    vehicles = await filter_by_assigned_trucks(vehicles, user)
+
+    items = []
+    temps: list[float] = []
+    for v in vehicles:
+        w = v.get("_weather", {})
+        temp_f = w.get("temp_f")
+        entry = {
+            "name": v.get("name", "?"),
+            "company": v.get("_org", ""),
+            "temp_f": round(temp_f, 1) if temp_f is not None else None,
+            "temp_c": round(w["temp_c"], 1) if w.get("temp_c") is not None else None,
+            "baro_inhg": round(w["baro_inhg"], 2) if w.get("baro_inhg") is not None else None,
+            "temp_time": w.get("temp_time"),
+            "location": v.get("location", {}).get("reverseGeo", {}).get("formattedLocation", ""),
+        }
+        items.append(entry)
+        if temp_f is not None:
+            temps.append(temp_f)
+
+    summary = {}
+    if temps:
+        summary = {
+            "avg_f": round(sum(temps) / len(temps), 1),
+            "min_f": round(min(temps), 1),
+            "max_f": round(max(temps), 1),
+            "freezing_count": sum(1 for t in temps if t <= 32),
+            "hot_count": sum(1 for t in temps if t >= 95),
+            "reporting_count": len(temps),
+        }
+
+    return {"vehicles": items, "count": len(items), "summary": summary}

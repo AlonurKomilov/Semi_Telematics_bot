@@ -4,8 +4,8 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query, HTTPException
 
-from api.deps import require_permission
-from bot.state import get_client
+from api.deps import require_permission, require_permission_any, get_user_truck_nums
+from bot.config import get_client
 
 router = APIRouter(prefix="/dispatch", tags=["dispatch"])
 
@@ -17,13 +17,18 @@ async def route_replay(
         None,
         description="Date in YYYY-MM-DD format (defaults to today UTC)",
     ),
-    user: dict = Depends(require_permission("can_route_all")),
+    user: dict = Depends(require_permission_any("can_route_all", "can_route_own")),
 ):
     """Get GPS breadcrumb trail for a vehicle on a given day.
 
     Returns an array of ``{lat, lng, time, speed_mph}`` points
     suitable for drawing a polyline on Leaflet.
     """
+    # If user only has _own, verify they're requesting their own truck
+    if user.get("_matched_perm") == "can_route_own":
+        trucks = await get_user_truck_nums(user)
+        if not trucks or not any(vehicle_name.lower() == t.lower() for t in trucks):
+            raise HTTPException(status_code=403, detail="You can only view routes for your assigned vehicle")
     # Parse date range
     if date:
         try:
@@ -110,7 +115,7 @@ async def route_replay(
 
 @router.get("/vehicles")
 async def dispatch_vehicles(
-    user: dict = Depends(require_permission("can_route_all")),
+    user: dict = Depends(require_permission_any("can_route_all", "can_route_own")),
 ):
     """Get vehicle list for route replay picker."""
     client = await get_client(user["account_id"])
@@ -119,5 +124,15 @@ async def dispatch_vehicles(
         {"id": v.get("id"), "name": v.get("name", ""), "company": v.get("_org", "")}
         for v in overview
     ]
+
+    # If user only has _own, filter to their assigned truck
+    if user.get("_matched_perm") == "can_route_own":
+        trucks = await get_user_truck_nums(user)
+        if trucks:
+            needles = [t.lower() for t in trucks]
+            vehicles = [v for v in vehicles if any(n in v["name"].lower() for n in needles)]
+        else:
+            vehicles = []
+
     vehicles.sort(key=lambda v: v["name"])
     return {"vehicles": vehicles}

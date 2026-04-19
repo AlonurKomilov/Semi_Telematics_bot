@@ -3,20 +3,32 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
 
-from api.deps import require_permission, get_tenant_db
+from api.deps import require_permission, require_permission_any, get_tenant_db, get_user_truck_nums
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
+
+
+async def _filter_own(user: dict, alerts: list[dict]) -> list[dict]:
+    """If user has only _own permission, filter alerts to their assigned vehicles."""
+    if user.get("_matched_perm") != "can_alerts_own":
+        return alerts
+    trucks = await get_user_truck_nums(user)
+    if not trucks:
+        return []
+    needles = [t.lower() for t in trucks]
+    return [a for a in alerts if any(n in (a.get("vehicle_name") or "").lower() for n in needles)]
 
 
 @router.get("/pending")
 async def pending_alerts(
     alert_type: str | None = Query(None, description="Filter: fault, health, fuel, events"),
     vehicle: str | None = Query(None, description="Filter by vehicle name (substring)"),
-    user: dict = Depends(require_permission("can_alerts_all")),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Get all pending (unacknowledged) alerts for this account."""
     alerts = await tenant_db.get_pending_alerts(user["account_id"])
+    alerts = await _filter_own(user, alerts)
 
     if alert_type:
         alerts = [a for a in alerts if a.get("alert_type") == alert_type]
@@ -33,11 +45,12 @@ async def alert_history(
     alert_type: str | None = Query(None, description="Filter: fault, health, fuel, events"),
     vehicle: str | None = Query(None, description="Filter by vehicle name (substring)"),
     status: str | None = Query(None, description="Filter: acknowledged, expired, active"),
-    user: dict = Depends(require_permission("can_alerts_all")),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Get alert history for this account."""
     alerts = await tenant_db.get_alert_history(user["account_id"], limit=days * 50)
+    alerts = await _filter_own(user, alerts)
 
     if alert_type:
         alerts = [a for a in alerts if a.get("alert_type") == alert_type]
@@ -53,7 +66,7 @@ async def alert_history(
 @router.post("/{ack_id}/acknowledge")
 async def acknowledge_alert(
     ack_id: int,
-    user: dict = Depends(require_permission("can_alerts_all")),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Acknowledge an alert from the web UI."""
@@ -71,7 +84,7 @@ class BulkAckRequest(BaseModel):
 @router.post("/bulk-ack")
 async def bulk_acknowledge(
     body: BulkAckRequest,
-    user: dict = Depends(require_permission("can_alerts_all")),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Acknowledge multiple alerts at once."""

@@ -15,8 +15,7 @@ from telegram.constants import ParseMode
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from permissions import SYSTEM_OWNER_IDS, role_display
-from samsara_client import populate_company_display
+from permissions import SYSTEM_OWNER_IDS
 from bot.i18n import t
 
 import bot.config as _cfg
@@ -25,7 +24,7 @@ from bot.config import (
     WEBHOOK_URL, WEBHOOK_PORT, WEBHOOK_SECRET, USE_WEBHOOK,
     db, logger, _active_messages,
 )
-from bot.keyboards import main_menu_kb, system_owner_kb
+from bot.keyboards import system_owner_kb
 from bot.registration import cmd_start, cmd_register, cmd_join, cmd_help
 from bot.fleet import cmd_faults, cmd_truck, cmd_fuel, cmd_alerts, cmd_health, cmd_efficiency
 from bot.management import (
@@ -42,10 +41,7 @@ from bot.callbacks import handle_callback, handle_text
 from bot.alerts import initialize_known_faults, check_unsafe_parking
 from bot.scheduler import register_all as _register_jobs
 from bot.events import cmd_events
-import bot.redis_client as rcache
-import encryption
 from bot.auth import _get_user
-import ai
 from bot.helpers import _show, _render_audit_log
 from bot.keyboards import user_settings_kb, back_kb
 
@@ -93,29 +89,22 @@ async def cmd_audit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not can(user.role, "can_manage_users"):
         await update.message.reply_text(t("access.no_access"))
         return
-    text = await _render_audit_log(user.account_id, db)
+    text = await _render_audit_log(user.account_id)
     await _show(update, context, [text], keyboard=back_kb())
 
 
 async def post_init(app: Application):
-    # Initialize encryption (must happen before DB reads)
-    encryption.init_encryption()
-
-    # Initialize database
-    await db.initialize()
-
-    # Initialize tenant router (multi-tenant mode or legacy wrapper)
-    from bot.state import router as db_router
-    await db_router.initialize()
-
-    # Give AI client access to DB for per-account model persistence
-    ai.set_db(db)
-
-    # Migrate plaintext API keys → encrypted (one-time, idempotent)
-    await db.migrate_encrypt_api_keys()
-
-    # Initialize Redis (optional — graceful fallback if unavailable)
-    await rcache.init_redis()
+    # ── Per-bot initialization ──────────────────────────────────
+    # Platform-global init (encryption, DB, router, AI, Redis, key migration)
+    # is handled by core.startup.initialize() — called from run.py BEFORE
+    # the bot Application is created.
+    #
+    # If core.platform is not yet initialized (e.g. standalone build_app()
+    # call from legacy code paths), fall back to doing it here.
+    from core import platform as _platform
+    if _platform._db is None:
+        import core.startup
+        await core.startup.initialize()
 
     # Capture bot username for deep-link generation
     me = await app.bot.get_me()
@@ -193,9 +182,12 @@ async def post_init(app: Application):
 
 
 async def post_shutdown(app: Application):
-    """Clean up resources on bot shutdown."""
-    await rcache.close_redis()
-    logger.info("Redis connection closed")
+    """Clean up resources on bot shutdown.
+
+    Redis and DB are now closed by core.startup.shutdown() in run.py.
+    This hook remains for any per-bot cleanup.
+    """
+    logger.info("Bot application shut down")
 
 
 def build_app() -> Application:

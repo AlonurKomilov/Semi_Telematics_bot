@@ -6,7 +6,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from database import Role
 from permissions import can, role_display
 
-from bot.config import db
+from bot.config import get_platform_db, get_tenant_db
 from bot.keyboards import back_kb
 from bot.helpers import _show
 from bot.i18n import t
@@ -16,7 +16,7 @@ async def _handle_user_menu(update, context, user, target_tid):
     """Show action buttons for a specific team member."""
     query = update.callback_query
     await query.answer()
-    target_user = await db.get_user_by_telegram_id(target_tid)
+    target_user = await get_platform_db().get_user_by_telegram_id(target_tid)
     if not target_user or target_user.account_id != user.account_id:
         await _show(update, context, [t('user_mgmt.user_not_found_short')], keyboard=back_kb())
         return
@@ -64,15 +64,16 @@ async def _handle_user_role_picker(update, context, user, target_tid):
             InlineKeyboardButton(t('user_mgmt.role_admin'), callback_data=f"setrole_{target_tid}_admin"),
         ],
         [
-            InlineKeyboardButton(t('user_mgmt.role_fleet'), callback_data=f"setrole_{target_tid}_fleet_manager"),
-            InlineKeyboardButton(t('user_mgmt.role_dispatcher'), callback_data=f"setrole_{target_tid}_dispatcher"),
+            InlineKeyboardButton(t('user_mgmt.role_fleet'), callback_data=f"setrole_{target_tid}_fleet"),
+            InlineKeyboardButton(t('user_mgmt.role_safety'), callback_data=f"setrole_{target_tid}_safety"),
         ],
         [
+            InlineKeyboardButton(t('user_mgmt.role_dispatcher'), callback_data=f"setrole_{target_tid}_dispatcher"),
             InlineKeyboardButton(t('user_mgmt.role_driver'), callback_data=f"setrole_{target_tid}_driver"),
         ],
         [InlineKeyboardButton(t('user_mgmt.cancel'), callback_data=f"usrmenu_{target_tid}")],
     ])
-    target_user = await db.get_user_by_telegram_id(target_tid)
+    target_user = await get_platform_db().get_user_by_telegram_id(target_tid)
     target_label = target_user.label if target_user else str(target_tid)
     await _show(update, context, [
         f"{t('user_mgmt.role_picker_title').format(user=target_label)}\n\n"
@@ -85,7 +86,7 @@ async def _handle_set_role(update, context, user, data):
     query = update.callback_query
     parts = data.split("_")  # setrole_{tid}_{role}
     target_tid = int(parts[1])
-    new_role_str = "_".join(parts[2:])  # handles fleet_manager
+    new_role_str = "_".join(parts[2:])  # handles multi-word roles
     await query.answer()
 
     try:
@@ -94,7 +95,7 @@ async def _handle_set_role(update, context, user, data):
         await _show(update, context, [t('user_mgmt.invalid_role')], keyboard=back_kb())
         return
 
-    target_user = await db.get_user_by_telegram_id(target_tid)
+    target_user = await get_platform_db().get_user_by_telegram_id(target_tid)
     if not target_user or target_user.account_id != user.account_id:
         await _show(update, context, [t('user_mgmt.user_not_found_short')], keyboard=back_kb())
         return
@@ -104,8 +105,9 @@ async def _handle_set_role(update, context, user, data):
         return
 
     old_role = target_user.role
-    await db.update_user(target_user.id, role=new_role)
-    await db.add_audit_log(
+    await get_platform_db().update_user(target_user.id, role=new_role)
+    tenant = await get_tenant_db(user.account_id)
+    await tenant.add_audit_log(
         account_id=user.account_id, user_id=user.id,
         action="role_changed", target_type="user",
         target_id=str(target_user.id),
@@ -149,7 +151,7 @@ async def usrdept_handler(update, context):
         return
     context.user_data["_pending"] = "change_dept"
     context.user_data["_dept_tid"] = target_tid
-    target_user = await db.get_user_by_telegram_id(target_tid)
+    target_user = await get_platform_db().get_user_by_telegram_id(target_tid)
     target_label = target_user.label if target_user else str(target_tid)
     await _show(update, context, [
         f"{t('user_mgmt.dept_change_title').format(user=target_label)}\n\n"
@@ -169,10 +171,10 @@ async def usralerts_handler(update, context):
     if not can(user.role, "can_manage_users"):
         await query.answer(t("access.no_access"), show_alert=True)
         return
-    target_user = await db.get_user_by_telegram_id(target_tid)
+    target_user = await get_platform_db().get_user_by_telegram_id(target_tid)
     if target_user and target_user.account_id == user.account_id:
         new_state = not target_user.alerts_on
-        await db.update_user(target_user.id, alerts_on=new_state)
+        await get_platform_db().update_user(target_user.id, alerts_on=new_state)
         icon = "🔔" if new_state else "🔕"
         label = t('common.on') if new_state else t('common.off')
         await _show(update, context, [
@@ -195,7 +197,7 @@ async def usrremove_handler(update, context):
             InlineKeyboardButton(t('common.cancel_back'), callback_data="cmd_users"),
         ],
     ])
-    target_user = await db.get_user_by_telegram_id(target_tid)
+    target_user = await get_platform_db().get_user_by_telegram_id(target_tid)
     target_label = target_user.label if target_user else str(target_tid)
     await _show(update, context, [
         f"{t('user_mgmt.remove_confirm_title').format(user=target_label)}\n\n"
@@ -212,11 +214,12 @@ async def usrremoveconfirm_handler(update, context):
     if target_tid == user.telegram_id:
         await _show(update, context, [t('access.cant_self_remove')], keyboard=back_kb())
         return
-    target_user = await db.get_user_by_telegram_id(target_tid)
+    target_user = await get_platform_db().get_user_by_telegram_id(target_tid)
     target_label = target_user.label if target_user else str(target_tid)
     if target_user and target_user.account_id == user.account_id:
-        await db.remove_user(target_user.id)
-        await db.add_audit_log(
+        await get_platform_db().remove_user(target_user.id)
+        tenant = await get_tenant_db(user.account_id)
+        await tenant.add_audit_log(
             account_id=user.account_id, user_id=user.id,
             action="user_removed", target_type="user",
             target_id=str(target_user.id),

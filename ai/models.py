@@ -26,6 +26,7 @@ _vertexai_inited: dict[str, bool] = {}
 
 _account_models: dict[int, tuple[str, str, Any]] = {}
 _account_vision_models: dict[int, tuple[str, str, Any]] = {}
+_user_models: dict[int, tuple[str, str, Any]] = {}  # per-user text model
 
 _db = None
 
@@ -55,6 +56,17 @@ def get_account_vision_model_name(account_id: int) -> str | None:
 
 def get_account_vision_model_info(account_id: int) -> tuple[str, str, Any] | None:
     return _account_vision_models.get(account_id)
+
+
+# ── Per-user model preference ─────────────────────────────────────
+
+def get_user_model_name(user_id: int) -> str | None:
+    entry = _user_models.get(user_id)
+    return entry[0] if entry else None
+
+
+def get_user_model_info(user_id: int) -> tuple[str, str, Any] | None:
+    return _user_models.get(user_id)
 
 
 def get_current_model_name() -> str:
@@ -290,6 +302,57 @@ async def save_account_vision_model(account_id: int, model_name: str,
         await _db.set_account_setting(account_id, "ai_vision_location", location)
 
 
+# ── Per-user model persistence ────────────────────────────────────
+
+async def save_user_model(account_id: int, user_id: int,
+                          model_name: str, location: str):
+    """Persist user's model preference via account_settings (keyed by user_id)."""
+    if _db:
+        await _db.set_account_setting(
+            account_id, f"user:{user_id}:ai_model", model_name)
+        await _db.set_account_setting(
+            account_id, f"user:{user_id}:ai_location", location)
+
+
+async def load_user_model(account_id: int, user_id: int) -> tuple[str, str] | None:
+    """Load user's model preference. Returns None if not set."""
+    if _db:
+        model = await _db.get_account_setting(
+            account_id, f"user:{user_id}:ai_model", "")
+        loc = await _db.get_account_setting(
+            account_id, f"user:{user_id}:ai_location", "")
+        if model and model in MODEL_REGISTRY:
+            return model, loc or DEFAULT_LOCATION
+    return None
+
+
+def switch_user_model(user_id: int, model_name: str,
+                      location: str | None = None):
+    """Switch model for a specific user (in-memory cache)."""
+    if model_name not in MODEL_REGISTRY:
+        raise ValueError(f"Unknown model: {model_name}")
+    info = MODEL_REGISTRY[model_name]
+    target_loc = location or info["locations"][0]
+    if _is_openai_compat(model_name):
+        _user_models[user_id] = (model_name, target_loc, None)
+    else:
+        model_obj = _build_model(model_name, target_loc, info)
+        _user_models[user_id] = (model_name, target_loc, model_obj)
+
+
+async def ensure_user_model(account_id: int, user_id: int):
+    """Load user's model preference from DB and cache it."""
+    if user_id in _user_models:
+        return
+    result = await load_user_model(account_id, user_id)
+    if result:
+        model_name, location = result
+        try:
+            switch_user_model(user_id, model_name, location)
+        except Exception as e:
+            logger.warning(f"Failed to build user model for user {user_id}: {e}")
+
+
 async def load_account_vision_model(account_id: int) -> tuple[str, str]:
     if _db:
         model = await _db.get_account_setting(account_id, "ai_vision_model", "")
@@ -320,6 +383,15 @@ def get_model_for_account(account_id: int | None = None):
         name, loc, obj = _account_models[account_id]
         return obj, name, loc
     return _ensure_model(), get_current_model_name(), get_current_location()
+
+
+def get_model_for_user(user_id: int | None = None,
+                       account_id: int | None = None):
+    """Get (model_obj, model_name, location) — user pref → account → global."""
+    if user_id is not None and user_id in _user_models:
+        name, loc, obj = _user_models[user_id]
+        return obj, name, loc
+    return get_model_for_account(account_id)
 
 
 async def ensure_account_model(account_id: int):

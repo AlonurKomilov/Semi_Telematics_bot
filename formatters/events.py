@@ -3,7 +3,7 @@
 from datetime import datetime
 from collections import Counter
 from constants import TZ_ET as _TZ_ET
-from samsara_client import COMPANY_DISPLAY
+from core.context import get_company_display
 from formatters.helpers import (
     _t, _fmt_time, _fmt_us_times, _split_message,
 )
@@ -112,7 +112,7 @@ def format_events_dashboard(
     if len(org_counts) > 1:
         company_lines.append(f"\n  {_t('events.company_header')}")
         for org, cnt in org_counts.most_common():
-            display = COMPANY_DISPLAY.get(org, org)
+            display = get_company_display().get(org, org)
             company_lines.append(f"  {_t('events.company_line').format(company=display, count=cnt)}")
 
     full = "\n".join([header] + summary_lines + driver_lines + gforce_lines + company_lines)

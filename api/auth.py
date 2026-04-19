@@ -5,12 +5,13 @@ import hmac
 import json
 import os
 import re
+import secrets
 import time
 from urllib.parse import parse_qs, unquote
 
 import bcrypt
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from jose import jwt
 from api.rate_limit import limiter
@@ -117,7 +118,7 @@ async def refresh_token(request: Request, authorization: str = __import__("fasta
     (e.g., when less than 1 hour remains).
     """
     from jose import JWTError as _JE
-    from bot.state import db
+    from core.platform import get_platform_db; db = get_platform_db()
 
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid authorization header")
@@ -148,20 +149,44 @@ async def refresh_token(request: Request, authorization: str = __import__("fasta
 @router.post("/telegram", response_model=AuthResponse)
 @limiter.limit("30/minute")
 async def auth_telegram(request: Request, body: AuthRequest):
-    """Authenticate via Telegram Mini App initData."""
-    from bot.state import db
+    """Authenticate via Telegram Mini App initData.
 
+    Supports per-account bot tokens: parses the user ID from initData first,
+    looks up which account they belong to, then validates the HMAC with that
+    account's bot token.  Falls back to the global TELEGRAM_TOKEN for legacy
+    single-bot setups.
+    """
+    from core.platform import get_platform_db; db = get_platform_db()
+    from encryption import decrypt
+
+    # Pre-parse user ID from initData (before HMAC validation)
+    parsed = parse_qs(body.init_data, keep_blank_values=True)
+    user_json = parsed.get("user", [None])[0]
+    if not user_json:
+        raise HTTPException(status_code=401, detail="Missing user in initData")
     try:
-        tg_user = validate_telegram_init_data(body.init_data, TELEGRAM_TOKEN or "")
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail=str(e))
+        tg_user_pre = json.loads(unquote(user_json))
+    except (json.JSONDecodeError, TypeError):
+        raise HTTPException(status_code=401, detail="Invalid user data")
 
-    telegram_id = tg_user.get("id")
+    telegram_id = tg_user_pre.get("id")
     if not telegram_id:
         raise HTTPException(status_code=401, detail="Invalid user data")
 
-    # Look up in our DB
+    # Determine which bot token to validate against
     user = await db.get_user_by_telegram_id(telegram_id)
+    bot_token = TELEGRAM_TOKEN or ""
+
+    if user:
+        account = await db.get_account(user.account_id)
+        if account and account.bot_token_encrypted:
+            bot_token = decrypt(account.bot_token_encrypted)
+
+    try:
+        tg_user = validate_telegram_init_data(body.init_data, bot_token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
     if not user:
         raise HTTPException(
             status_code=403,
@@ -222,15 +247,33 @@ def validate_telegram_login_widget(data: dict, bot_token: str) -> None:
 @router.post("/telegram-login", response_model=AuthResponse)
 @limiter.limit("30/minute")
 async def auth_telegram_login(request: Request, body: LoginWidgetRequest):
-    """Authenticate via Telegram Login Widget (desktop dashboard)."""
-    from bot.state import db
+    """Authenticate via Telegram Login Widget (desktop dashboard).
+
+    Supports per-account bot tokens: looks up user → account → bot token
+    before validating the login widget hash.
+    """
+    from core.platform import get_platform_db; db = get_platform_db()
+    from encryption import decrypt
+
+    user = await db.get_user_by_telegram_id(body.id)
+
+    # Determine which bot token to validate against
+    bot_token = TELEGRAM_TOKEN or ""
+    if user:
+        account = await db.get_account(user.account_id)
+        if account and account.bot_token_encrypted:
+            bot_token = decrypt(account.bot_token_encrypted)
 
     try:
-        validate_telegram_login_widget(body.model_dump(), TELEGRAM_TOKEN or "")
+        # model_dump() includes all fields (even empty defaults like
+        # last_name="", photo_url="").  Telegram only signs the fields
+        # that were actually present in the widget callback, so we must
+        # exclude keys whose value is an empty string.
+        raw = {k: v for k, v in body.model_dump().items() if v != ""}
+        validate_telegram_login_widget(raw, bot_token)
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
 
-    user = await db.get_user_by_telegram_id(body.id)
     if not user:
         raise HTTPException(
             status_code=403,
@@ -255,10 +298,126 @@ _EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
 
 @router.get("/config")
-async def auth_config():
-    """Return public auth config (bot username for Telegram Login Widget)."""
-    from bot.config import bot_username
-    return {"bot_username": bot_username or "SemiTelematicsBot"}
+async def auth_config(request: Request):
+    """Return public auth config (bot username for Telegram Login Widget).
+
+    If the request carries a valid JWT, returns the per-account bot_username.
+    Otherwise returns the first configured account bot (for the login widget),
+    falling back to the global system bot.
+    """
+    from bot.config import bot_username as global_bot_username
+
+    # Try to extract account-specific bot_username from JWT
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        try:
+            payload = decode_jwt(auth_header[7:])
+            account_id = payload.get("account_id")
+            if account_id:
+                from core.platform import get_platform_db; db = get_platform_db()
+                from encryption import decrypt
+                account = await db.get_account(account_id)
+                if account and account.bot_username:
+                    acct_bot_id = ""
+                    if account.bot_token_encrypted:
+                        try:
+                            tok = decrypt(account.bot_token_encrypted)
+                            if ":" in tok:
+                                acct_bot_id = tok.split(":", 1)[0]
+                        except Exception:
+                            pass
+                    return {"bot_username": account.bot_username, "bot_id": acct_bot_id}
+        except Exception:
+            pass  # fall through
+
+    # No JWT — return the first account bot for the login widget
+    # (account bots handle user auth; system bot is for platform admin only)
+    try:
+        from core.platform import get_platform_db; db = get_platform_db()
+        from encryption import decrypt
+        accounts = await db.list_accounts()
+        for acct in accounts:
+            if acct.bot_token_encrypted and acct.bot_username:
+                acct_bot_id = ""
+                try:
+                    tok = decrypt(acct.bot_token_encrypted)
+                    if ":" in tok:
+                        acct_bot_id = tok.split(":", 1)[0]
+                except Exception:
+                    pass
+                return {"bot_username": acct.bot_username, "bot_id": acct_bot_id}
+    except Exception:
+        pass
+
+    # Final fallback: system bot
+    _bot_id = ""
+    if TELEGRAM_TOKEN and ":" in TELEGRAM_TOKEN:
+        _bot_id = TELEGRAM_TOKEN.split(":", 1)[0]
+    return {"bot_username": global_bot_username or "SemiTelematicsBot", "bot_id": _bot_id}
+
+
+# ── Bot-login: one-time deep-link auth via system bot ─────────
+
+BOT_LOGIN_TTL = 300  # 5 minutes
+BOT_LOGIN_PREFIX = "bot_login:"
+
+
+@router.post("/bot-login/init")
+@limiter.limit("10/minute")
+async def bot_login_init(request: Request):
+    """Generate a one-time login token and return a deep link to the system bot.
+
+    The user clicks the link, which opens @app_4truck_bot with /start login_TOKEN.
+    The bot verifies the user and writes approval into Redis.
+    The frontend polls /bot-login/check/{token} until approved or expired.
+    """
+    from bot.config import bot_username as sys_bot_username
+    from bot.redis_client import set as redis_set
+
+    token = secrets.token_urlsafe(32)
+    await redis_set(
+        f"{BOT_LOGIN_PREFIX}{token}",
+        {"status": "pending"},
+        ttl=BOT_LOGIN_TTL,
+    )
+
+    username = sys_bot_username or "app_4truck_bot"
+    deep_link = f"https://t.me/{username}?start=login_{token}"
+    return {"token": token, "deep_link": deep_link, "ttl": BOT_LOGIN_TTL}
+
+
+@router.get("/bot-login/check/{token}")
+@limiter.limit("60/minute")
+async def bot_login_check(request: Request, token: str):
+    """Poll for the result of a bot-login attempt.
+
+    Returns:
+      - {"status": "pending"} — still waiting
+      - {"status": "approved", "access_token": "...", "user": {...}} — success
+      - {"status": "rejected", "reason": "..."} — user not registered
+      - {"status": "expired"} — token gone from Redis
+    """
+    from bot.redis_client import get as redis_get
+
+    if not token or len(token) > 64:
+        raise HTTPException(status_code=400, detail="Invalid token")
+
+    data = await redis_get(f"{BOT_LOGIN_PREFIX}{token}")
+    if data is None:
+        return {"status": "expired"}
+
+    if data.get("status") == "approved":
+        # Clean up the token — one-time use
+        from bot.redis_client import delete as redis_del
+        await redis_del(f"{BOT_LOGIN_PREFIX}{token}")
+        return data
+
+    if data.get("status") == "rejected":
+        from bot.redis_client import delete as redis_del
+        await redis_del(f"{BOT_LOGIN_PREFIX}{token}")
+        return {"status": "rejected", "reason": data.get("reason", "Not authorized")}
+
+    return {"status": "pending"}
 
 
 def _hash_password(password: str) -> str:
@@ -285,7 +444,7 @@ class EmailRegisterRequest(BaseModel):
 @limiter.limit("10/minute")
 async def auth_email_login(request: Request, body: EmailLoginRequest):
     """Authenticate via email + password."""
-    from bot.state import db
+    from core.platform import get_platform_db; db = get_platform_db()
 
     user = await db.get_user_by_email(body.email)
     if not user or not user.password_hash:
@@ -310,7 +469,7 @@ async def auth_email_login(request: Request, body: EmailLoginRequest):
 @limiter.limit("10/minute")
 async def auth_email_register(request: Request, body: EmailRegisterRequest):
     """Register a new user via email + password + invite code."""
-    from bot.state import db
+    from core.platform import get_platform_db; db = get_platform_db()
 
     # Validate email format
     if not _EMAIL_RE.match(body.email):
@@ -384,7 +543,7 @@ async def auth_set_password(body: EmailLoginRequest):
     """
     from fastapi import Request
     from api.deps import get_current_user
-    from bot.state import db
+    from core.platform import get_platform_db; db = get_platform_db()
 
     # Manually parse the auth header since we can't use Depends() here
     # (the router is defined at module level, deps imported at call time)
@@ -394,3 +553,64 @@ async def auth_set_password(body: EmailLoginRequest):
         status_code=501,
         detail="Use PUT /api/user/credentials instead",
     )
+
+
+# ── Web-based account registration (4truck.us) ───────────────
+
+
+class RegisterAccountRequest(BaseModel):
+    """Create a new account + owner user via web (no Telegram required)."""
+    company_name: str = Field(..., min_length=2, max_length=100)
+    email: str
+    password: str = Field(..., min_length=8, max_length=128)
+    display_name: str = ""
+
+
+@router.post("/register-account", response_model=AuthResponse)
+@limiter.limit("5/minute")
+async def auth_register_account(request: Request, body: RegisterAccountRequest):
+    """Register a new company account via web at 4truck.us.
+
+    Creates an account and an owner user with email/password credentials.
+    The owner can then configure their Telegram bot in admin settings.
+    No Telegram interaction required for initial registration.
+    """
+    from core.platform import get_platform_db; db = get_platform_db()
+
+    # Validate email format
+    if not _EMAIL_RE.match(body.email):
+        raise HTTPException(status_code=422, detail="Invalid email address")
+
+    # Check if email already taken
+    existing = await db.get_user_by_email(body.email)
+    if existing:
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    try:
+        # Create account
+        account = await db.create_account(body.company_name)
+
+        # Create owner user with email+password (telegram_id=0 for web-only users)
+        pw_hash = _hash_password(body.password)
+        user = await db.create_user_with_email(
+            email=body.email,
+            password_hash=pw_hash,
+            account_id=account.id,
+            role=database.Role.OWNER,
+            department="management",
+            display_name=body.display_name or body.email.split("@")[0],
+        )
+
+        token = create_jwt(user.telegram_id, user.account_id, user.role.value)
+        return AuthResponse(
+            access_token=token,
+            user={
+                "telegram_id": user.telegram_id,
+                "name": user.display_name or body.email.split("@")[0],
+                "role": user.role.value,
+                "account_id": user.account_id,
+            },
+        )
+    except Exception as e:
+        logging.getLogger("api.auth").error("Account registration failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Registration failed. Please try again.")

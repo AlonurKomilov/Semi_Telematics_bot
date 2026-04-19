@@ -30,14 +30,18 @@ __all__ = [
     "set_db",
     "get_account_model_name", "get_account_model_info",
     "get_account_vision_model_name", "get_account_vision_model_info",
+    "get_user_model_name", "get_user_model_info",
     "get_current_model_name", "get_current_location",
     "is_configured",
     "_ensure_model", "_build_model",
     "switch_model", "switch_vision_model",
+    "switch_user_model",
     "save_account_model", "load_account_model",
     "save_account_vision_model", "load_account_vision_model",
+    "save_user_model", "load_user_model",
     "ensure_account_model", "ensure_account_vision_model",
-    "get_model_for_account",
+    "ensure_user_model",
+    "get_model_for_account", "get_model_for_user",
     # probing
     "probe_model_availability",
     # generation
@@ -46,10 +50,11 @@ __all__ = [
     "_generate_anthropic", "_generate_mistral_raw",
     "_is_rate_limit_error",
     "_capture_usage", "get_last_usage",
-    "FLEET_ASSISTANT_SYSTEM", "FAULT_DIAGNOSIS_SYSTEM", "FLEET_SUMMARY_SYSTEM",
-    # fleet intelligence
-    "diagnose_faults", "fleet_summary", "ask_fleet", "ask_fleet_agent",
-    "FLEET_TOOLS",
+    "ASSISTANT_SYSTEM", "FAULT_DIAGNOSIS_SYSTEM", "SUMMARY_SYSTEM",
+    # intelligence
+    "diagnose_faults", "generate_summary", "ask_ai", "ask_agent",
+    "build_context",
+    "AI_TOOLS",
     # vision
     "analyze_camera_image", "generate_with_vision", "CAMERA_CHECK_SYSTEM",
 ]
@@ -122,9 +127,16 @@ from ai.models import (                                      # noqa: F401
     load_account_model,
     save_account_vision_model,
     load_account_vision_model,
+    save_user_model,
+    load_user_model,
     ensure_account_model,
     ensure_account_vision_model,
+    ensure_user_model,
     get_model_for_account,
+    get_model_for_user,
+    get_user_model_name,
+    get_user_model_info,
+    switch_user_model,
 )
 
 # ── probing (depends: registry) ─────────────────────────────────
@@ -142,19 +154,22 @@ from ai.generation import (                                  # noqa: F401
     _is_rate_limit_error,
     _capture_usage,
     get_last_usage,
-    FLEET_ASSISTANT_SYSTEM,
+    ASSISTANT_SYSTEM,
     FAULT_DIAGNOSIS_SYSTEM,
-    FLEET_SUMMARY_SYSTEM,
+    SUMMARY_SYSTEM,
 )
 
-# ── fleet intelligence (depends: generation) ─────────────────────
-from ai.fleet_intelligence import (                          # noqa: F401
+# ── intelligence (depends: generation) ─────────────────────────
+from ai.intelligence import (                               # noqa: F401
     diagnose_faults,
-    fleet_summary,
-    ask_fleet,
-    ask_fleet_agent,
-    FLEET_TOOLS,
+    generate_summary,
+    ask_ai,
+    ask_agent,
+    build_context,
 )
+
+# ── tools registry ───────────────────────────────────────────────
+from ai.tools import AI_TOOLS                               # noqa: F401
 
 # ── vision (depends: models, generation) ─────────────────────────
 from ai.vision import (                                      # noqa: F401
