@@ -6,7 +6,7 @@
     "management": "👥 አስተዳደር",
     "ai_assistant": "🤖 AI ረዳት",
     "alerts": "🔔 ማሳወቂያዎች",
-    "digest": "📋 ራስ-ሰር ሪፖርቶች",
+    "digest": "📋 የሪፖርት ደንበኝነቶች",
     "settings": "⚙️ ማስተካከያዎች",
     "help": "ℹ️ እርዳታ",
     "admin_panel": "⚙️ የአስተዳዳሪ ፓነል",
@@ -20,19 +20,19 @@
     "fuel_def": "⛽ ነዳጅ እና DEF",
     "efficiency": "📊 የስራ አፈጻጸም",
     "vehicle_health": "🏥 የተሽከርካሪ ጤንነት",
-    "scorecards": "📋 የውጤት ካርድ",
+    "scorecards": "📋 የሾፌር ደረጃዎች",
     "live_map": "🗺 የቀጥታ ካርታ",
-    "search_truck": "🚛 የጭነት መኪና ይፈልጉ",
+    "search_truck": "🚛 ተሽከርካሪዎች",
     "back_main": "◀️ ዋና ምናሌ"
   },
   "tools_menu": {
     "header": "🛠  <b>መሳሪያዎች</b>",
     "subtitle": "መሳሪያ ይምረጡ:",
-    "search_truck": "🚛 የጭነት መኪና ይፈልጉ",
+    "search_truck": "🚛 ተሽከርካሪዎች",
     "live_map": "🗺 የቀጥታ ካርታ",
     "route_history": "📍 የመንገድ ታሪክ",
     "geofences": "📌 Geofences",
-    "events": "🚨 ክስተቶች",
+    "events": "🚨 የደህንነት ክስተቶች",
     "back_main": "◀️ ዋና ምናሌ"
   },
   "costs_menu": {
@@ -100,9 +100,9 @@
     "critical_codes": "📄  <b>{count}</b> የችግር ኮዶች",
     "critical_health": "📊  የስብስብ ጤንነት: <b>{pct}%</b>",
     "critical_severity": "🛑 {stop} STOP  ·  🛡 {protect} PROT  ·  ♨️ {emis} EMIS",
-    "browse_title": "🚛 <b>የጭነት መኪና ይፈልጉ</b>",
+    "browse_title": "🚛 <b>ተሽከርካሪዎች</b>",
     "browse_prompt": "የጭነት መኪናዎችን ለማሰስ ኩባንያ ይምረጡ,\nወይም <b>All Companies</b> ይምረጡ:",
-    "browse_header": "🚛 <b>የጭነት መኪናዎች</b>  —  {count} ንቁ",
+    "browse_header": "🚛 <b>ተሽከርካሪዎች</b>  —  {count} ያሉ",
     "browse_tap": "ለዝርዝር መረጃ የጭነት መኪና ይንኩ:",
     "loading_list": "⏳ የጭነት መኪና ዝርዝር በመጫን ላይ…",
     "no_trucks_for": "ℹ️ ለ <b>{label}</b> ምንም ንቁ የጭነት መኪናዎች አልተገኙም።"
@@ -115,7 +115,7 @@
     "health": "🏥 ጤንነት",
     "fuel": "⛽ አነስተኛ ነዳጅ",
     "geofence": "📌 Geofence",
-    "events": "🚨 ክስተቶች",
+    "events": "🚨 የደህንነት ክስተቶች",
     "quiet_hours": "🕐 የሥራ ሰዓታት",
     "pending": "🟡 የሚጠባበቁ ማሳወቂያዎች",
     "history": "📜 ታሪክ",
@@ -126,16 +126,9 @@
   },
   "alert_actions": {
     "acknowledge": "✅ አረጋግጥ",
-    "snooze": "⏰ አዘግይ",
     "ai_diagnose": "🤖 AI ምርመራ",
     "open_in_samsara": "🔗 በSamsara ውስጥ ክፈት",
     "watch_video": "🎥 ቪዲዮ ይመልከቱ"
-  },
-  "snooze": {
-    "pick_title": "⏰ የማዘግያ ጊዜ ይምረጡ:",
-    "minutes": "{n} ደቂቃ",
-    "hours": "{n} ሰዓት",
-    "back": "◀️ ወደኋላ"
   },
   "user_settings": {
     "header": "⚙️  <b>ማስተካከያዎች</b>",
@@ -360,8 +353,6 @@
     "history_btn": "📜 የማሳወቂያ ታሪክ",
     "history_acked": "→ ተረጋግጧል {time}",
     "history_expired_label": "→ ጊዜው አልፏል",
-    "history_escalation": "(መጨመር: {level})",
-    "pending_detail": "{mins} ደቂቃ በፊት • መጨመር: {level}",
     "pending_more": "… እና {count} ተጨማሪ"
   },
   "alert_format": {
@@ -375,7 +366,7 @@
     "fuel_level": "⛽ የነዳጅ ደረጃ: <b>{pct}%</b>",
     "new_fault_title": "🚨  <b>አዲስ ችግር ተገኝቷል</b>",
     "new_fault_truck": "🚛  <b>የጭነት መኪና #{name}</b>",
-    "new_fault_hint": "▸  ለዝርዝሮች 🚛 የጭነት መኪና ይፈልጉ ይንኩ",
+    "new_fault_hint": "▸  ለዝርዝሮች 🚛 ተሽከርካሪዎችን ይንኩ",
     "new_fault_source": "ምንጭ:",
     "critical_fault_title": "🛑  <b>ወሳኝ ችግር</b>",
     "critical_fault_action": "⚠️ <b>አስቸኳይ ትኩረት ያስፈልጋል</b>",
@@ -705,7 +696,7 @@
     "install_required": "❌ የካርታ ትዕይንት አይገኝም።\nጫን: <code>pip install staticmap</code>"
   },
   "route": {
-    "title": "🛣 <b>የመንገድ ድጋሚ ጨዋታ</b>",
+    "title": "🛣 <b>መንገዶች</b>",
     "select_date": "ቀን ይምረጡ:",
     "type_truck": "የጭነት መኪና ቁጥር/ስም ይተይቡ:",
     "loading": "⏳ መንገድ በማግኘት ላይ ለ {vehicle} ({date})…",
@@ -750,7 +741,7 @@
     "total_summary": "ጠቅላላ: {cost} / {miles} ማይል"
   },
   "fuel_costs": {
-    "header": "💰  <b>የነዳጅ ወጪ መከታተያ</b>",
+    "header": "💰  <b>የነዳጅ ወጪዎች</b>",
     "description": "በእያንዳንዱ የጭነት መኪና የነዳጅ ወጪዎችን ይከታተሉ።",
     "add_title": "➕ <b>ነዳጅ መሙያ አስገባ</b>",
     "step1_truck": "<b>እርምጃ 1/4</b> — የጭነት መኪና ስም\nየጭነት መኪና ቁጥር/ስም ይተይቡ:",
@@ -805,7 +796,7 @@
     "not_connected_info": "━━━━━━━━━━━━━━━━━━━\n  ⏳  <b>API እስካሁን አልተገናኘም</b>\n━━━━━━━━━━━━━━━━━━━\n\n  የኩባንያዎ ባለቤት እስካሁን Samsara API\n  ቁልፍ አላገናኘም።\n\n  አንዴ ኤፒአዩን ካገናኙ፣\n  የስብስብ ባህሪዎች በቀጥታ\n  እዚህ ይታያሉ:\n\n  • 🔧 የችግር ኮዶች\n  • 🚨 ወሳኝ ማሳወቂያዎች\n  • ⛽ የነዳጅ ደረጃዎች\n  • 🚛 የጭነት መኪና ፍለጋ\n\n  Samsaraን እንዲያገናኙ የኩባንያዎን ባለቤት ወይም\n  አድሚን ይጠይቁ።"
   },
   "events": {
-    "title": "ክስተቶች",
+    "title": "የደህንነት ክስተቶች",
     "loading": "⏳ ክስተቶች በመጫን ላይ...",
     "empty": "✅ ባለፉት {days} ቀናት ክስተት የለም።",
     "select_period": "ጊዜ እና ቅርጸት ይምረጡ:",
@@ -841,7 +832,7 @@
     "csv_exported": "✅ የክስተት CSV ተላከ።"
   },
   "auto_reports": {
-    "header": "📋  <b>ራስ-ሰር ሪፖርቶች</b>",
+    "header": "📋  <b>የሪፖርት ደንበኝነቶች</b>",
     "description": "በ Telegram ቻት ውስጥ ራስ-ሰር የመኪና ፍሊት ሪፖርቶችን ያቅዱ።",
     "subscribed": "✅ ንቁ: <b>{rtype}</b> · {freq} በ {time}",
     "timezone_label": "🕐 ሰዓት ቀጠና: {tz}",
@@ -854,16 +845,16 @@
     "time_local": "(በአካባቢዎ ሰዓት ቀጠና)",
     "delivery_at": "🕐 ማድረሻ በ <b>{time}</b>",
     "select_tz": "<b>ሰዓት ቀጠናዎን ይምረጡ:</b>",
-    "subscribed_confirm": "✅ ራስ-ሰር ሪፖርት ታቅዷል!",
+    "subscribed_confirm": "✅ የሪፖርት ደንበኝነት ተያዘ!",
     "delivery_info": "ሪፖርት: <b>{rtype}</b> · {freq} በ {time}",
     "timezone_info": "ሰዓት ቀጠና: {tz}",
     "auto_summary": "ይህን ሪፖርት በራስ-ሰር ይቀበላሉ።",
-    "unsubscribed": "🔕 ራስ-ሰር ሪፖርት ተሰርዟል።",
+    "unsubscribed": "🔕 የሪፖርት ደንበኝነት ተሰርዟል።",
     "resubscribe": "በማንኛውም ጊዜ አዲስ መርሃግብር ማዘጋጀት ይችላሉ።",
-    "subscribe_title": "📋 <b>{freq} ራስ-ሰር ሪፖርት</b>",
+    "subscribe_title": "📋 <b>{freq} የሪፖርት ደንበኝነት</b>",
     "unsubscribe": "🔕 ምዝገባ ሰርዝ",
     "back_reports": "◀️ ሪፖርቶች",
-    "error_content": "📋 <b>ራስ-ሰር ሪፖርት</b>\n\n⚠️ ሪፖርቱን ማዘጋጀት አልተቻለም።",
+    "error_content": "📋 <b>የሪፖርት ደንበኝነት</b>\n\n⚠️ ሪፖርቱን ማዘጋጀት አልተቻለም።",
     "sending": "📋 የታቀደው <b>{rtype}</b> ሪፖርትዎ እየተዘጋጀ ነው..."
   }
 }

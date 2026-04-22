@@ -15,8 +15,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from httpx import ASGITransport, AsyncClient
 
-from database import Database, Role
-from api.auth import create_jwt, JWT_SECRET
+from adapters.storage import Database, Role
+from interfaces.api.auth import create_jwt, JWT_SECRET
 
 
 # ---------------------------------------------------------------------------
@@ -49,14 +49,14 @@ async def db_and_app(tmp_path):
 
     # Patch core.platform so api/deps.py and bot.state lazy proxy resolve correctly
     import core.platform as _cp
-    from database.tenant_router import LegacyRouter
+    from adapters.storage.tenant_router import LegacyRouter
     _old_router = _cp._router
     _old_cp_db = _cp._db
     _cp._router = LegacyRouter(database)
     _cp._db = database
 
     # Import app after patching
-    from api.app import create_api
+    from interfaces.api.app import create_api
     app = create_api()
 
     yield {

@@ -325,3 +325,80 @@ redis-stop:
 ## Redis CLI on port 8002
 redis-cli:
 	@redis-cli -p 8002
+
+# ── Split-service targets (Phase C) ──────────────────
+
+SERVICE_API = semi-telematics-api
+
+.PHONY: start-api stop-api start-bot stop-bot \
+        install-api install-split docker-split-up docker-split-down
+
+## Install the API-only systemd unit (runs alongside the bot unit)
+install-api:
+	@echo "📋 Installing API service unit..."
+	@sudo cp semi-telematics-api.service /etc/systemd/system/$(SERVICE_API).service
+	@sudo systemctl daemon-reload
+	@sudo systemctl enable $(SERVICE_API)
+	@echo "✅ $(SERVICE_API) installed. Start with: make start-api"
+
+## Install both split-service units (bot+scheduler + API as separate processes)
+install-split: install-api
+	@sudo cp semi-telematics-bot.service /etc/systemd/system/$(SERVICE).service
+	@sudo systemctl daemon-reload
+	@echo "✅ Both units installed. Run: make start-api && make start"
+	@echo "   NOTE: update $(SERVICE).service to set ENABLE_API=0 before starting both."
+
+## Start only the API service (systemd or direct)
+start-api:
+	@if systemctl is-enabled $(SERVICE_API) >/dev/null 2>&1; then \
+		sudo systemctl start $(SERVICE_API); \
+		echo "✅ API service started (systemd)"; \
+	else \
+		ENABLE_API=1 ENABLE_BOT=0 ENABLE_SCHEDULER=0 \
+		nohup python3 run.py >> api.log 2>&1 & echo $$! > .api.pid; \
+		echo "✅ API started (PID $$(cat .api.pid)) — logs: api.log"; \
+	fi
+
+## Stop only the API service
+stop-api:
+	@if systemctl is-enabled $(SERVICE_API) >/dev/null 2>&1; then \
+		sudo systemctl stop $(SERVICE_API); \
+		echo "🛑 API service stopped (systemd)"; \
+	elif [ -f .api.pid ] && kill -0 $$(cat .api.pid) 2>/dev/null; then \
+		kill $$(cat .api.pid) && rm -f .api.pid; \
+		echo "🛑 API process stopped"; \
+	else \
+		echo "⚠️  API service not running"; \
+	fi
+
+## Start only the bot+scheduler (no API, systemd or direct)
+start-bot:
+	@if systemctl is-enabled $(SERVICE) >/dev/null 2>&1; then \
+		sudo systemctl start $(SERVICE); \
+		echo "✅ Bot+scheduler started (systemd)"; \
+	else \
+		ENABLE_API=0 ENABLE_BOT=1 ENABLE_SCHEDULER=1 \
+		nohup python3 run.py >> bot.log 2>&1 & echo $$! > .bot.pid; \
+		echo "✅ Bot+scheduler started (PID $$(cat .bot.pid)) — logs: bot.log"; \
+	fi
+
+## Stop only the bot+scheduler
+stop-bot:
+	@if systemctl is-enabled $(SERVICE) >/dev/null 2>&1; then \
+		sudo systemctl stop $(SERVICE); \
+		echo "🛑 Bot service stopped (systemd)"; \
+	elif [ -f .bot.pid ] && kill -0 $$(cat .bot.pid) 2>/dev/null; then \
+		kill $$(cat .bot.pid) && rm -f .bot.pid; \
+		echo "🛑 Bot process stopped"; \
+	else \
+		echo "⚠️  Bot service not running"; \
+	fi
+
+## Start split services via docker-compose.services.yml (api + bot + redis)
+docker-split-up:
+	docker compose -f docker-compose.services.yml up -d
+
+## Stop split services
+docker-split-down:
+	docker compose -f docker-compose.services.yml down
+

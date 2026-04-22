@@ -15,6 +15,7 @@ Modules:
 """
 
 from .platform import get_platform_db, get_tenant_db, get_db, get_router
+from .services import get_client, invalidate_client, get_user_company_codes, check_rate_limit  # noqa: F401
 from .tenant import TenantContext
 from .registry import TenantRegistry
 from .bot_registry import BotRegistry

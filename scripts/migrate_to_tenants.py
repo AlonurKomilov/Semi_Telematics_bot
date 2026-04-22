@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import aiosqlite
 
-from database import platform_schema, tenant_schema
+from adapters.storage import platform_schema, tenant_schema
 
 logger = logging.getLogger(__name__)
 

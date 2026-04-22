@@ -11,7 +11,7 @@ from unittest.mock import patch
 # Ensure encryption is not active during DB tests (unless explicitly tested)
 os.environ.setdefault("ENCRYPTION_KEY", "")
 
-from database import Database, Role, Account, Company, User, Invite
+from adapters.storage import Database, Role, Account, Company, User, Invite
 
 
 # ── Fixtures ──────────────────────────────────────────────────────
@@ -587,7 +587,7 @@ class TestEncryptionMigration:
     @pytest.mark.asyncio
     async def test_migrate_encrypts_plaintext_keys(self, db):
         """When encryption is enabled, migration encrypts existing plaintext keys."""
-        import encryption
+        import adapters.crypto as encryption
         from unittest.mock import patch as _patch
 
         acct = await db.create_account("Enc Test")
@@ -615,7 +615,7 @@ class TestEncryptionMigration:
     @pytest.mark.asyncio
     async def test_migrate_skips_already_encrypted(self, db):
         """Already-encrypted keys are not re-encrypted."""
-        import encryption
+        import adapters.crypto as encryption
         from unittest.mock import patch as _patch
 
         with _patch.dict(os.environ, {"ENCRYPTION_KEY": "test-key"}):
@@ -637,7 +637,7 @@ class TestEncryptionMigration:
     @pytest.mark.asyncio
     async def test_migrate_disabled_returns_zero(self, db):
         """Migration does nothing when encryption is disabled."""
-        import encryption
+        import adapters.crypto as encryption
         from unittest.mock import patch as _patch
 
         with _patch.dict(os.environ, {"ENCRYPTION_KEY": ""}):

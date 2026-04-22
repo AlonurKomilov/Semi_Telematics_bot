@@ -21,7 +21,7 @@ import pytest_asyncio
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from database import Database
+from adapters.storage import Database
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -42,7 +42,7 @@ async def platform_db(tmp_path):
     _old_router = _cp._router
     _cp._db = database
 
-    from database.tenant_router import LegacyRouter
+    from adapters.storage.tenant_router import LegacyRouter
     _cp._router = LegacyRouter(database)
 
     yield database
@@ -484,7 +484,7 @@ class TestContextVars:
     async def test_fallback_to_global(self):
         """Without set_tenant_display, getter falls back to samsara_client global."""
         from core.context import _company_display_var, get_company_display
-        from samsara_client import COMPANY_DISPLAY
+        from adapters.samsara.client import COMPANY_DISPLAY
 
         # Reset the context var to trigger fallback
         token = _company_display_var.set(None)

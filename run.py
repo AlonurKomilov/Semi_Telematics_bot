@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """Entry point for Semi Telematics Bot + FastAPI API server.
 
-Runs the Telegram bot and the FastAPI (uvicorn) server concurrently
-in a single asyncio event loop.
+Service-split flags (set via environment variables or .env):
+  ENABLE_API=1       — start FastAPI/uvicorn on API_PORT (default 8000)
+  ENABLE_BOT=1       — start Telegram bot (polling or webhook)
+  ENABLE_SCHEDULER=1 — start APScheduler background jobs
+
+Defaults: all three enabled (backward-compatible with the existing systemd unit).
+To run only the API: ENABLE_BOT=0 ENABLE_SCHEDULER=0 ENABLE_API=1
+To run only bot+scheduler: ENABLE_API=0 ENABLE_BOT=1 ENABLE_SCHEDULER=1
 
 Startup order:
   1. core.startup.initialize()  — encryption, DB, AI, Redis, key migration
-  2. build_app()                — Telegram Application with all handlers
-  3. APScheduler                — scheduled alert/report jobs
-  4. run_api()                  — FastAPI uvicorn server (background task)
-  5. run_bot()                  — Telegram polling or webhook
+  2. build_app()                — Telegram Application with all handlers (if ENABLE_BOT)
+  3. APScheduler                — scheduled alert/report jobs (if ENABLE_SCHEDULER)
+  4. run_api()                  — FastAPI uvicorn server (if ENABLE_API)
+  5. run_bot()                  — Telegram polling or webhook (if ENABLE_BOT)
   6. await stop_event           — block until SIGINT/SIGTERM
   7. core.startup.shutdown()    — Redis, DB, caches
 """
@@ -21,17 +27,27 @@ import signal
 from dotenv import load_dotenv
 load_dotenv()
 
-from telegram import Update                       # noqa: E402
-from apscheduler.schedulers.asyncio import AsyncIOScheduler  # noqa: E402
+# ── Service flags ─────────────────────────────────────────────────
+# Each defaults to "1" (enabled) so existing deployments need no changes.
+_ENABLE_API       = os.getenv("ENABLE_API",       "1") == "1"
+_ENABLE_BOT       = os.getenv("ENABLE_BOT",       "1") == "1"
+_ENABLE_SCHEDULER = os.getenv("ENABLE_SCHEDULER", "1") == "1"
 
-from bot.app import build_app                      # noqa: E402
-from bot.config import (                           # noqa: E402
-    WEBHOOK_URL, WEBHOOK_PORT, WEBHOOK_SECRET, USE_WEBHOOK,
-    logger,
-)
-from bot.scheduler import register_all as _register_jobs  # noqa: E402
-from core.bot_registry import init_registry         # noqa: E402
 import core.startup                                # noqa: E402
+
+if _ENABLE_BOT or _ENABLE_SCHEDULER:
+    from telegram import Update                    # noqa: E402
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler  # noqa: E402
+    from interfaces.bot.app import build_app                      # noqa: E402
+    from interfaces.bot.config import (                           # noqa: E402
+        WEBHOOK_URL, WEBHOOK_PORT, WEBHOOK_SECRET, USE_WEBHOOK,
+        logger,
+    )
+    from interfaces.bot.scheduler import register_all as _register_jobs  # noqa: E402
+    from core.bot_registry import init_registry    # noqa: E402
+else:
+    import logging
+    logger = logging.getLogger(__name__)
 
 
 async def run_bot(tg_app):
@@ -71,7 +87,7 @@ async def run_api():
     """Start the FastAPI server via uvicorn."""
     try:
         import uvicorn
-        from api.app import create_api
+        from interfaces.api.app import create_api
     except ImportError:
         logger.info("FastAPI/uvicorn not installed — API server disabled")
         return
@@ -84,53 +100,89 @@ async def run_api():
 
 
 async def main():
-    logger.info("Starting Semi Telematics Bot — multi-tenant mode")
+    mode_parts = []
+    if _ENABLE_API:       mode_parts.append("API")
+    if _ENABLE_BOT:       mode_parts.append("Bot")
+    if _ENABLE_SCHEDULER: mode_parts.append("Scheduler")
+    logger.info("Starting Semi Telematics — services: %s", "+".join(mode_parts) or "none")
 
-    # ── 1. Platform infrastructure ──────────────────────────────
+    # ── 1. Platform infrastructure (always required) ─────────────
     await core.startup.initialize()
 
-    # ── 2. Build Telegram Application ───────────────────────────
-    tg_app = build_app()
-
-    # ── 2b. Per-account bot registry ────────────────────────────
-    registry = init_registry(system_app=tg_app)
-    try:
-        from core.platform import get_platform_db
-        started = await registry.start_all(get_platform_db())
-        if started:
-            logger.info("Started %d per-account bot(s) from database", started)
-    except Exception:
-        logger.exception("Failed to start per-account bots (continuing with system bot)")
-
-    # ── 3. Scheduled alerts ─────────────────────────────────────
-    scheduler = AsyncIOScheduler()
-    _register_jobs(scheduler, tg_app)
-    scheduler.start()
-
-    # ── 4. Graceful shutdown wiring ─────────────────────────────
+    # ── Graceful shutdown wiring ─────────────────────────────────
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop_event.set)
 
-    # ── 5. Start API server (background) ───────────────────────
-    api_task = asyncio.create_task(run_api())
+    tg_app = None
+    scheduler = None
+    registry = None
+    api_task = None
 
-    # ── 6. Start bot (post_init may take time) ──────────────────
-    await run_bot(tg_app)
+    # ── 2. Bot setup ─────────────────────────────────────────────
+    if _ENABLE_BOT:
+        tg_app = build_app()
 
-    # ── 7. Wait for shutdown signal ─────────────────────────────
+        # Per-account bot registry
+        registry = init_registry(system_app=tg_app)
+        try:
+            from core.platform import get_platform_db
+            started = await registry.start_all(get_platform_db())
+            if started:
+                logger.info("Started %d per-account bot(s) from database", started)
+        except Exception:
+            logger.exception("Failed to start per-account bots (continuing with system bot)")
+
+    # ── 3. Scheduler setup ───────────────────────────────────────
+    if _ENABLE_SCHEDULER:
+        if tg_app is None:
+            # Scheduler needs bot_app to send messages — log and skip if no bot
+            logger.warning(
+                "ENABLE_SCHEDULER=1 requires ENABLE_BOT=1 (scheduler sends Telegram messages). "
+                "Scheduler will not start."
+            )
+        else:
+            # Acquire distributed lock so only one scheduler instance runs across deploys
+            import adapters.cache.redis as _rcache
+            lock_acquired = await _rcache.acquire_lock("scheduler:global", ttl_secs=90)
+            if lock_acquired:
+                scheduler = AsyncIOScheduler()
+                _register_jobs(scheduler, tg_app)
+                scheduler.start()
+                logger.info("Scheduler started (distributed lock acquired)")
+            else:
+                logger.info("Scheduler lock held by another instance — this instance will not run jobs")
+
+    # ── 4. API server ────────────────────────────────────────────
+    if _ENABLE_API:
+        api_task = asyncio.create_task(run_api())
+
+    # ── 5. Start bot ─────────────────────────────────────────────
+    if _ENABLE_BOT and tg_app:
+        await run_bot(tg_app)
+
+    # ── 6. Wait for shutdown signal ──────────────────────────────
     await stop_event.wait()
     logger.info("Shutdown signal received")
 
-    # ── 8. Cleanup ──────────────────────────────────────────────
-    api_task.cancel()
-    await registry.stop_all()
-    if tg_app.updater.running:
-        await tg_app.updater.stop()
-    await tg_app.stop()
-    await tg_app.shutdown()
-    scheduler.shutdown(wait=False)
+    # ── 7. Cleanup ───────────────────────────────────────────────
+    if api_task:
+        api_task.cancel()
+
+    if registry:
+        await registry.stop_all()
+
+    if tg_app:
+        if tg_app.updater.running:
+            await tg_app.updater.stop()
+        await tg_app.stop()
+        await tg_app.shutdown()
+
+    if scheduler:
+        scheduler.shutdown(wait=False)
+        import adapters.cache.redis as _rcache
+        await _rcache.release_lock("scheduler:global")
 
     # Platform shutdown (Redis, DB, caches)
     await core.startup.shutdown()

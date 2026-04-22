@@ -6,7 +6,7 @@
     "management": "👥 ਪ੍ਰਬੰਧਨ",
     "ai_assistant": "🤖 AI ਸਹਾਇਕ",
     "alerts": "🔔 ਅਲਰਟ",
-    "digest": "📋 ਆਟੋ ਰਿਪੋਰਟਾਂ",
+    "digest": "📋 ਰਿਪੋਰਟ ਸਬਸਕ੍ਰਿਪਸ਼ਨਾਂ",
     "settings": "⚙️ ਸੈਟਿੰਗਜ਼",
     "help": "ℹ️ ਮਦਦ",
     "admin_panel": "⚙️ ਐਡਮਿਨ ਪੈਨਲ",
@@ -20,19 +20,19 @@
     "fuel_def": "⛽ ਈਂਧਨ ਅਤੇ DEF",
     "efficiency": "📊 ਕੁਸ਼ਲਤਾ",
     "vehicle_health": "🏥 ਵਾਹਨ ਦੀ ਸਿਹਤ",
-    "scorecards": "📋 ਸਕੋਰਕਾਰਡ",
+    "scorecards": "📋 ਡਰਾਈਵਰ ਸਕੋਰਕਾਰਡ",
     "live_map": "🗺 ਲਾਈਵ ਨਕਸ਼ਾ",
-    "search_truck": "🚛 ਟਰੱਕ ਖੋਜੋ",
+    "search_truck": "🚛 ਵਾਹਨ",
     "back_main": "◀️ ਮੁੱਖ ਮੀਨੂ"
   },
   "tools_menu": {
     "header": "🛠  <b>ਟੂਲ</b>",
     "subtitle": "ਇੱਕ ਟੂਲ ਚੁਣੋ:",
-    "search_truck": "🚛 ਟਰੱਕ ਖੋਜੋ",
+    "search_truck": "🚛 ਵਾਹਨ",
     "live_map": "🗺 ਲਾਈਵ ਨਕਸ਼ਾ",
     "route_history": "📍 ਰੂਟ ਦਾ ਇਤਿਹਾਸ",
     "geofences": "📌 ਜੀਓਫੈਂਸ",
-    "events": "🚨 ਘਟਨਾਵਾਂ",
+    "events": "🚨 ਸੁਰੱਖਿਆ ਘਟਨਾਵਾਂ",
     "back_main": "◀️ ਮੁੱਖ ਮੀਨੂ"
   },
   "costs_menu": {
@@ -100,9 +100,9 @@
     "critical_codes": "📄  <b>{count}</b> ਨੁਕਸ/ਖਰਾਬੀ ਕੋਡ",
     "critical_health": "📊  ਫਲੀਟ ਦੀ ਸਿਹਤ: <b>{pct}%</b>",
     "critical_severity": "🛑 {stop} STOP  ·  🛡 {protect} PROT  ·  ♨️ {emis} EMIS",
-    "browse_title": "🚛 <b>ਟਰੱਕ ਖੋਜੋ</b>",
+    "browse_title": "🚛 <b>ਵਾਹਨ</b>",
     "browse_prompt": "ਟਰੱਕਾਂ ਨੂੰ ਬ੍ਰਾਊਜ਼ ਕਰਨ ਲਈ ਕੋਈ ਕੰਪਨੀ ਚੁਣੋ,\nਜਾਂ <b>ਸਭ ਕੰਪਨੀਆਂ</b> ਚੁਣੋ:",
-    "browse_header": "🚛 <b>ਟਰੱਕ</b>  —  {count} ਸਰਗਰਮ",
+    "browse_header": "🚛 <b>ਵਾਹਨ</b>  —  {count} ਕਿਰਿਆਸ਼ੀਲ",
     "browse_tap": "ਵੇਰਵਿਆਂ ਲਈ ਟਰੱਕ 'ਤੇ ਟੈਪ ਕਰੋ:",
     "loading_list": "⏳ ਟਰੱਕ ਸੂਚੀ ਲੋਡ ਹੋ ਰਹੀ ਹੈ…",
     "no_trucks_for": "ℹ️ <b>{label}</b> ਲਈ ਕੋਈ ਸਰਗਰਮ ਟਰੱਕ ਨਹੀਂ ਮਿਲੇ।"
@@ -115,7 +115,7 @@
     "health": "🏥 ਸਿਹਤ",
     "fuel": "⛽ ਘੱਟ ਈਂਧਨ",
     "geofence": "📌 ਜੀਓਫੈਂਸ",
-    "events": "🚨 ਘਟਨਾਵਾਂ",
+    "events": "🚨 ਸੁਰੱਖਿਆ ਘਟਨਾਵਾਂ",
     "quiet_hours": "🕐 ਕੰਮ ਦੇ ਘੰਟੇ",
     "pending": "🟡 ਬਕਾਇਆ ਅਲਰਟ",
     "history": "📜 ਇਤਿਹਾਸ",
@@ -126,16 +126,9 @@
   },
   "alert_actions": {
     "acknowledge": "✅ ਪ੍ਰਵਾਨ ਕਰੋ",
-    "snooze": "⏰ ਸਨੂਜ਼ ਕਰੋ",
     "ai_diagnose": "🤖 AI ਤਸ਼ਖੀਸ਼",
     "open_in_samsara": "🔗 Samsara ਵਿੱਚ ਖੋਲ੍ਹੋ",
     "watch_video": "🎥 ਵੀਡੀਓ ਦੇਖੋ"
-  },
-  "snooze": {
-    "pick_title": "⏰ ਸਨੂਜ਼ ਕਰਨ ਦਾ ਸਮਾਂ ਚੁਣੋ:",
-    "minutes": "{n} ਮਿੰਟ",
-    "hours": "{n} ਘੰਟੇ",
-    "back": "◀️ ਪਿੱਛੇ"
   },
   "user_settings": {
     "header": "⚙️  <b>ਸੈਟਿੰਗਜ਼</b>",
@@ -360,8 +353,6 @@
     "history_btn": "📜 ਅਲਰਟ ਦਾ ਇਤਿਹਾਸ",
     "history_acked": "→ ਪ੍ਰਵਾਨ ਕੀਤਾ {time}",
     "history_expired_label": "→ ਮਿਆਦ ਪੁੱਗੀ",
-    "history_escalation": "(ਐਸਕੇਲੇਸ਼ਨ: {level})",
-    "pending_detail": "{mins} ਮਿੰਟ ਪਹਿਲਾਂ • ਐਸਕੇਲੇਸ਼ਨ: {level}",
     "pending_more": "… ਅਤੇ {count} ਹੋਰ"
   },
   "alert_format": {
@@ -375,7 +366,7 @@
     "fuel_level": "⛽ ਈਂਧਨ ਦਾ ਪੱਧਰ: <b>{pct}%</b>",
     "new_fault_title": "🚨  <b>ਨਵਾਂ ਨੁਕਸ/ਖਰਾਬੀ ਮਿਲੀ</b>",
     "new_fault_truck": "🚛  <b>ਟਰੱਕ #{name}</b>",
-    "new_fault_hint": "▸  ਵੇਰਵਿਆਂ ਲਈ 🚛 ਟਰੱਕ ਖੋਜੋ 'ਤੇ ਟੈਪ ਕਰੋ",
+    "new_fault_hint": "▸  ਵੇਰਵਿਆਂ ਲਈ 🚛 ਵਾਹਨ 'ਤੇ ਟੈਪ ਕਰੋ",
     "new_fault_source": "ਸਰੋਤ:",
     "critical_fault_title": "🛑  <b>ਗੰਭੀਰ ਨੁਕਸ/ਖਰਾਬੀ</b>",
     "critical_fault_action": "⚠️ <b>ਤੁਰੰਤ ਧਿਆਨ ਦੇਣ ਦੀ ਲੋੜ ਹੈ</b>",
@@ -705,7 +696,7 @@
     "install_required": "❌ ਨਕਸ਼ਾ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।\nਇਹ ਇੰਸਟਾਲ ਕਰੋ: <code>pip install staticmap</code>"
   },
   "route": {
-    "title": "🛣 <b>ਰੂਟ ਰੀਪਲੇ (Route Replay)</b>",
+    "title": "🛣 <b>ਰੂਟਾਂ</b>",
     "select_date": "ਮਿਤੀ ਚੁਣੋ:",
     "type_truck": "ਟਰੱਕ ਨੰਬਰ/ਨਾਮ ਟਾਈਪ ਕਰੋ:",
     "loading": "⏳ {vehicle} ਲਈ ਰੂਟ ਪ੍ਰਾਪਤ ਕਰ ਰਿਹਾ ਹੈ ({date})…",
@@ -750,7 +741,7 @@
     "total_summary": "ਕੁੱਲ: {cost} / {miles} ਮੀਲ"
   },
   "fuel_costs": {
-    "header": "💰  <b>ਈਂਧਨ ਦੀ ਲਾਗਤ ਟਰੈਕਰ</b>",
+    "header": "💰  <b>ਈਂਧਨ ਦੀ ਲਾਗਤ</b>",
     "description": "ਪ੍ਰਤੀ ਟਰੱਕ ਈਂਧਨ ਦੇ ਖਰਚਿਆਂ ਨੂੰ ਟਰੈਕ ਕਰੋ।",
     "add_title": "➕ <b>Fill-Up (ਤੇਲ ਭਰਨਾ) ਸ਼ਾਮਲ ਕਰੋ</b>",
     "step1_truck": "<b>ਕਦਮ 1/4</b> — ਟਰੱਕ ਦਾ ਨਾਮ\nਟਰੱਕ ਨੰਬਰ/ਨਾਮ ਟਾਈਪ ਕਰੋ:",
@@ -805,7 +796,7 @@
     "not_connected_info": "━━━━━━━━━━━━━━━━━━━\n  ⏳  <b>API ਅਜੇ ਕਨੈਕਟ ਨਹੀਂ ਹੈ</b>\n━━━━━━━━━━━━━━━━━━━\n\n  ਤੁਹਾਡੇ ਕੰਪਨੀ ਦੇ ਮਾਲਕ ਨੇ ਅਜੇ ਕੋਈ\n  Samsara API ਕੁੰਜੀ ਕਨੈਕਟ ਨਹੀਂ ਕੀਤੀ ਹੈ।\n\n  ਜਦੋਂ ਉਹ API ਨੂੰ ਕਨੈਕਟ ਕਰਦੇ ਹਨ,\n  ਤਾਂ ਫਲੀਟ ਵਿਸ਼ੇਸ਼ਤਾਵਾਂ ਇੱਥੇ ਆਪਣੇ ਆਪ\n  ਦਿਖਾਈ ਦੇਣਗੀਆਂ:\n\n  • 🔧 ਨੁਕਸ/ਖਰਾਬੀ ਕੋਡ\n  • 🚨 ਗੰਭੀਰ ਅਲਰਟ\n  • ⛽ ਈਂਧਨ ਦੇ ਪੱਧਰ\n  • 🚛 ਟਰੱਕ ਦੀ ਖੋਜ\n\n  Samsara ਨੂੰ ਕਨੈਕਟ ਕਰਨ ਲਈ ਆਪਣੀ ਕੰਪਨੀ\n  ਦੇ ਮਾਲਕ ਜਾਂ ਐਡਮਿਨ ਨੂੰ ਕਹੋ।"
   },
   "events": {
-    "title": "ਘਟਨਾਵਾਂ",
+    "title": "ਸੁਰੱਖਿਆ ਘਟਨਾਵਾਂ",
     "loading": "⏳ ਘਟਨਾਵਾਂ ਲੋਡ ਹੋ ਰਹੀਆਂ ਹਨ...",
     "empty": "✅ ਪਿਛਲੇ {days} ਦਿਨਾਂ ਵਿੱਚ ਕੋਈ ਘਟਨਾ ਨਹੀਂ।",
     "select_period": "ਸਮਾਂ ਅਤੇ ਫਾਰਮੈਟ ਚੁਣੋ:",
@@ -841,7 +832,7 @@
     "csv_exported": "✅ ਘਟਨਾ CSV ਐਕਸਪੋਰਟ ਹੋਈ।"
   },
   "auto_reports": {
-    "header": "📋  <b>ਆਟੋ ਰਿਪੋਰਟਾਂ</b>",
+    "header": "📋  <b>ਰਿਪੋਰਟ ਸਬਸਕ੍ਰਿਪਸ਼ਨਾਂ</b>",
     "description": "ਆਪਣੇ Telegram ਚੈਟ ਵਿੱਚ ਆਟੋਮੈਟਿਕ ਫਲੀਟ ਰਿਪੋਰਟਾਂ ਦਾ ਸਮਾਂ ਨਿਰਧਾਰਤ ਕਰੋ।",
     "subscribed": "✅ ਸਰਗਰਮ: <b>{rtype}</b> · {freq} {time} ਵਜੇ",
     "timezone_label": "🕐 ਸਮਾਂ ਖੇਤਰ: {tz}",
@@ -854,16 +845,16 @@
     "time_local": "(ਤੁਹਾਡੇ ਸਥਾਨਕ ਸਮੇਂ ਵਿੱਚ)",
     "delivery_at": "🕐 ਡਿਲੀਵਰੀ <b>{time}</b> ਵਜੇ",
     "select_tz": "<b>ਆਪਣਾ ਸਮਾਂ ਖੇਤਰ ਚੁਣੋ:</b>",
-    "subscribed_confirm": "✅ ਆਟੋ ਰਿਪੋਰਟ ਸੈੱਟ ਹੋ ਗਈ!",
+    "subscribed_confirm": "✅ ਰਿਪੋਰਟ ਸਬਸਕ੍ਰਿਪਸ਼ਨ ਤਹਿ ਕੀਤੀ!",
     "delivery_info": "ਰਿਪੋਰਟ: <b>{rtype}</b> · {freq} {time} ਵਜੇ",
     "timezone_info": "ਸਮਾਂ ਖੇਤਰ: {tz}",
     "auto_summary": "ਤੁਸੀਂ ਇਹ ਰਿਪੋਰਟ ਆਟੋਮੈਟਿਕ ਪ੍ਰਾਪਤ ਕਰੋਗੇ।",
-    "unsubscribed": "🔕 ਆਟੋ ਰਿਪੋਰਟ ਰੱਦ ਕੀਤੀ।",
+    "unsubscribed": "🔕 ਰਿਪੋਰਟ ਸਬਸਕ੍ਰਿਪਸ਼ਨ ਰੱਦ ਕੀਤੀ।",
     "resubscribe": "ਤੁਸੀਂ ਕਿਸੇ ਵੀ ਸਮੇਂ ਨਵਾਂ ਸ਼ਡਿਊਲ ਸੈੱਟ ਕਰ ਸਕਦੇ ਹੋ।",
-    "subscribe_title": "📋 <b>{freq} ਆਟੋ ਰਿਪੋਰਟ</b>",
+    "subscribe_title": "📋 <b>{freq} ਰਿਪੋਰਟ ਸਬਸਕ੍ਰਿਪਸ਼ਨ</b>",
     "unsubscribe": "🔕 ਅਣਸਬਸਕ੍ਰਾਈਬ",
     "back_reports": "◀️ ਰਿਪੋਰਟਾਂ",
-    "error_content": "📋 <b>ਆਟੋ ਰਿਪੋਰਟ</b>\n\n⚠️ ਰਿਪੋਰਟ ਤਿਆਰ ਨਹੀਂ ਹੋ ਸਕੀ।",
+    "error_content": "📋 <b>ਰਿਪੋਰਟ ਸਬਸਕ੍ਰਿਪਸ਼ਨ</b>\n\n⚠️ ਰਿਪੋਰਟ ਤਿਆਰ ਨਹੀਂ ਹੋ ਸਕੀ।",
     "sending": "📋 ਤੁਹਾਡੀ ਸ਼ਡਿਊਲਡ <b>{rtype}</b> ਰਿਪੋਰਟ ਤਿਆਰ ਹੋ ਰਹੀ ਹੈ..."
   }
 }

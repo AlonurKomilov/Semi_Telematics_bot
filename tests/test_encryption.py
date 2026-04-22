@@ -4,7 +4,7 @@ import os
 import pytest
 from unittest.mock import patch
 
-from encryption import (
+from adapters.crypto import (
     init_encryption,
     is_enabled,
     encrypt,
@@ -18,7 +18,7 @@ from encryption import (
 @pytest.fixture(autouse=True)
 def _reset_encryption():
     """Ensure each test starts with a clean encryption state."""
-    import encryption
+    import adapters.crypto as encryption
     encryption._fernet = None
     yield
     encryption._fernet = None
@@ -94,7 +94,7 @@ class TestEncryptionErrors:
     def test_wrong_key_raises_valueerror(self, enabled):
         ct = encrypt("secret")
         # Re-init with a different key
-        import encryption
+        import adapters.crypto as encryption
         encryption._fernet = None
         with patch.dict(os.environ, {"ENCRYPTION_KEY": "different-passphrase"}):
             init_encryption()
@@ -104,7 +104,7 @@ class TestEncryptionErrors:
     def test_encrypted_value_without_key_raises(self, enabled):
         ct = encrypt("secret")
         # Disable encryption
-        import encryption
+        import adapters.crypto as encryption
         encryption._fernet = None
         with pytest.raises(ValueError, match="ENCRYPTION_KEY is not configured"):
             decrypt(ct)

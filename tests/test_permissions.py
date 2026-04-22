@@ -4,8 +4,8 @@ import os
 import pytest
 from unittest.mock import patch
 
-from database import Role
-from permissions import (
+from adapters.storage import Role
+from capabilities.iam.permissions import (
     FeatureSet,
     ROLE_PERMISSIONS,
     get_permissions,
@@ -145,7 +145,7 @@ class TestSystemOwner:
 
     def test_system_owner_check(self):
         with patch.dict(os.environ, {"SYSTEM_OWNER_IDS": "111,222"}):
-            from permissions import _parse_system_owners
+            from capabilities.iam.permissions import _parse_system_owners
             ids = _parse_system_owners()
             assert 111 in ids
             assert 222 in ids
@@ -153,7 +153,7 @@ class TestSystemOwner:
 
     def test_empty_system_owners(self):
         with patch.dict(os.environ, {"SYSTEM_OWNER_IDS": ""}):
-            from permissions import _parse_system_owners
+            from capabilities.iam.permissions import _parse_system_owners
             ids = _parse_system_owners()
             assert len(ids) == 0
 

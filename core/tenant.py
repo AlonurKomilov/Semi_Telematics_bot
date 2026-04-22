@@ -20,12 +20,12 @@ from typing import TYPE_CHECKING
 
 from cachetools import LRUCache
 
-from samsara_client import MultiCompanyClient, build_multi_company_client
+from adapters.samsara.client import MultiCompanyClient, build_multi_company_client
 
 from .config import SAMSARA_BASE_URL, RATE_LIMIT_SECONDS
 
 if TYPE_CHECKING:
-    from database.tenant_db import TenantDB
+    from adapters.storage.tenant_db import TenantDB
 
 logger = logging.getLogger(__name__)
 
@@ -98,8 +98,34 @@ class TenantContext:
     def check_rate_limit(self, user_id: int, command: str) -> bool:
         """Return True if the command is allowed (not rate-limited).
 
-        Returns False if the user should be throttled.
+        Sync version — uses in-memory LRUCache only.
+        Use check_rate_limit_async() in async contexts to also enforce
+        via Redis (cross-process, survives restarts).
         """
+        key = (user_id, command)
+        now = time.time()
+        last = self.rate_limits.get(key, 0)
+        if now - last < RATE_LIMIT_SECONDS:
+            return False
+        self.rate_limits[key] = now
+        return True
+
+    async def check_rate_limit_async(self, user_id: int, command: str) -> bool:
+        """Async rate limit: Redis first, in-memory LRUCache fallback.
+
+        Redis key: ``t:{account_id}:rl:{user_id}:{command}``
+        """
+        import adapters.cache.redis as _redis_cache
+        if _redis_cache.is_available():
+            rl_key = f"{self.redis_prefix}rl:{user_id}:{command}"
+            allowed = await _redis_cache.rate_limit_check(rl_key, RATE_LIMIT_SECONDS, 1)
+            if not allowed:
+                return False
+            # Keep in-memory in sync so sync callers stay consistent
+            self.rate_limits[(user_id, command)] = time.time()
+            return True
+
+        # In-memory fallback
         key = (user_id, command)
         now = time.time()
         last = self.rate_limits.get(key, 0)

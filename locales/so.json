@@ -6,7 +6,7 @@
     "management": "👥 Maamulka",
     "ai_assistant": "🤖 Caawiyaha AI",
     "alerts": "🔔 Ogeysiisyada",
-    "digest": "📋 Warbixinaha Tooska",
+    "digest": "📋 Rukunka Warbixinnada",
     "settings": "⚙️ Dejinta",
     "help": "ℹ️ Caawin",
     "admin_panel": "⚙️ Qaybta Maamulka",
@@ -20,19 +20,19 @@
     "fuel_def": "⛽ Shidaalka & DEF",
     "efficiency": "📊 Hufnaanta",
     "vehicle_health": "🏥 Caafimaadka Gaariga",
-    "scorecards": "📋 Dhibcaha",
+    "scorecards": "📋 Xarriidaha Darawalnimada",
     "live_map": "🗺 Khariidadda Tooska ah",
-    "search_truck": "🚛 Raadi Gaari",
+    "search_truck": "🚛 Gaadiidka",
     "back_main": "◀️ Liiska Weyn"
   },
   "tools_menu": {
     "header": "🛠  <b>QALABKA</b>",
     "subtitle": "Dooro qalab:",
-    "search_truck": "🚛 Raadi Gaari",
+    "search_truck": "🚛 Gaadiidka",
     "live_map": "🗺 Khariidadda Tooska ah",
     "route_history": "📍 Taariikhda Jidka",
     "geofences": "📌 Geofences",
-    "events": "🚨 Dhacdooyinka",
+    "events": "🚨 Dhacdooyinka Ammaanka",
     "back_main": "◀️ Liiska Weyn"
   },
   "costs_menu": {
@@ -100,9 +100,9 @@
     "critical_codes": "📄  <b>{count}</b> koodhka cilad",
     "critical_health": "📊  Caafimaadka rac: <b>{pct}%</b>",
     "critical_severity": "🛑 {stop} JOOJI  ·  🛡 {protect} ILAALI  ·  ♨️ {emis} QIIQA",
-    "browse_title": "🚛 <b>Raadi Gaari</b>",
+    "browse_title": "🚛 <b>Gaadiidka</b>",
     "browse_prompt": "Dooro shirkad si aad u eegto gawaarida,\nama dooro <b>Dhammaan Shirkadaha</b>:",
-    "browse_header": "🚛 <b>Gawaarida</b>  —  {count} firfircoon",
+    "browse_header": "🚛 <b>Gaadiidka</b>  —  {count} firfircoon",
     "browse_tap": "Taabo gaari si aad u hesho faahfaahin:",
     "loading_list": "⏳ Soo dejinta liiska gawaarida…",
     "no_trucks_for": "ℹ️ Lama helin gawaari firfircoon <b>{label}</b>."
@@ -115,7 +115,7 @@
     "health": "🏥 Caafimaadka",
     "fuel": "⛽ Shidaal Yar",
     "geofence": "📌 Geofence",
-    "events": "🚨 Dhacdooyinka",
+    "events": "🚨 Dhacdooyinka Ammaanka",
     "quiet_hours": "🕐 Saacadaha Shaqada",
     "pending": "🟡 Ogeysiisyada Sugaya",
     "history": "📜 Taariikhda",
@@ -126,16 +126,9 @@
   },
   "alert_actions": {
     "acknowledge": "✅ Xaqiiji",
-    "snooze": "⏰ Sifee",
     "ai_diagnose": "🤖 Baaritaanka AI",
     "open_in_samsara": "🔗 Ku fur Samsara",
     "watch_video": "🎥 Daawo Fiidiyowga"
-  },
-  "snooze": {
-    "pick_title": "⏰ Dooro muddada sifaynta:",
-    "minutes": "{n} daqiiqadood",
-    "hours": "{n} saacadood",
-    "back": "◀️ Dib"
   },
   "user_settings": {
     "header": "⚙️  <b>DEJINTA</b>",
@@ -360,8 +353,6 @@
     "history_btn": "📜 Taariikhda Ogeysiiska",
     "history_acked": "→ la xaqiijiyay {time}",
     "history_expired_label": "→ waa dhacay",
-    "history_escalation": "(kor: {level})",
-    "pending_detail": "{mins} daqiiqadood ka hor • kordhin: {level}",
     "pending_more": "… iyo {count} in ka badan"
   },
   "alert_format": {
@@ -375,7 +366,7 @@
     "fuel_level": "⛽ Heerka Shidaalka: <b>{pct}%</b>",
     "new_fault_title": "🚨  <b>CILAD CUSUB BAA LA HELAY</b>",
     "new_fault_truck": "🚛  <b>Gaari #{name}</b>",
-    "new_fault_hint": "▸  Taabo 🚛 Raadi Gaari wixii faahfaahin ah",
+    "new_fault_hint": "▸  Taabo 🚛 Gaadiidka wixii faahfaahin ah",
     "new_fault_source": " Isha:",
     "critical_fault_title": "🛑  <b>CILAD HALIS AH</b>",
     "critical_fault_action": "⚠️ <b>Feejignaan degdeg ah ayaa loo baahan yahay</b>",
@@ -705,7 +696,7 @@
     "install_required": "❌ Khariidadda dhirow ma la heli karo.\nKu shub: <code>pip install staticmap</code>"
   },
   "route": {
-    "title": "🛣 <b>Soo Celinta Jidka</b>",
+    "title": "🛣 <b>Jidadka</b>",
     "select_date": "Dooro taariikh:",
     "type_truck": "Qor lambarka gaariga/magaca:",
     "loading": "⏳ Soo qaadidda jidka ee {vehicle} ({date})…",
@@ -750,7 +741,7 @@
     "total_summary": "Wadar: {cost} / {miles} mayl"
   },
   "fuel_costs": {
-    "header": "💰  <b>RAADRAACA KHARASHKA SHIDAALKA</b>",
+    "header": "💰  <b>KHARASHKA SHIDAALKA</b>",
     "description": "Raadraac kharashyada shidaalka halkii gaari.",
     "add_title": "➕ <b>Diiwaangeli Shidaal Buuxinta</b>",
     "step1_truck": "<b>Tallaabada 1/4</b> — Magaca gaariga\nQor lambarka gaariga/magaca:",
@@ -805,7 +796,7 @@
     "not_connected_info": "━━━━━━━━━━━━━━━━━━━\n  ⏳  <b>API KUMA XIRNA WELI</b>\n━━━━━━━━━━━━━━━━━━━\n\n  Milkiilaha shirkaddaada kuma uuu xirin\n  furaha Samsara API weli.\n\n  Mar ay isku xiraan API,\n  astaamaha rac ayaa halkaan soo\n  bixi doona si toos ah:\n\n  • 🔧 Koodhka ciladaha\n  • 🚨 Ogeysiisyada halista ah\n  • ⛽ Heerarka shidaalka\n  • 🚛 Raadinta gaariga\n\n  Weydii milkiilaha shirkadda ama maamulaha\n  inuu ku xiro Samsara."
   },
   "events": {
-    "title": "DHACDOOYINKA",
+    "title": "DHACDOOYINKA AMMAANKA",
     "loading": "⏳ Dhacdooyinka waa la soo rarayaa...",
     "empty": "✅ Ma jiraan dhacdooyin {days} maalmood ee la soo dhaafay.",
     "select_period": "Dooro waqtiga iyo qaabka:",
@@ -841,7 +832,7 @@
     "csv_exported": "✅ CSV dhacdooyinka waa la saaray."
   },
   "auto_reports": {
-    "header": "📋  <b>WARBIXINAHA TOOSKA</b>",
+    "header": "📋  <b>RUKUNKA WARBIXINNADA</b>",
     "description": "Qorsheey warbixino gaariyo oo toos ah oo Telegram-kaaga la keeno.",
     "subscribed": "✅ Firfircoon: <b>{rtype}</b> · {freq} {time}",
     "timezone_label": "🕐 Aagga wakhtiga: {tz}",
@@ -854,16 +845,16 @@
     "time_local": "(Wakhtiga deegaankaaga)",
     "delivery_at": "🕐 Waa la keenayaa <b>{time}</b>",
     "select_tz": "<b>Dooro aagga wakhtiga:</b>",
-    "subscribed_confirm": "✅ Warbixinta tooska ah waa la qorsheeyay!",
+    "subscribed_confirm": "✅ Rukunka warbixinta la habeeyay!",
     "delivery_info": "Warbixin: <b>{rtype}</b> · {freq} {time}",
     "timezone_info": "Aagga wakhtiga: {tz}",
     "auto_summary": "Warbixintan si toos ah ayaad u heli doontaa.",
-    "unsubscribed": "🔕 Warbixinta tooska ah waa la joojiyay.",
+    "unsubscribed": "🔕 Rukunka warbixinta la baajiyay.",
     "resubscribe": "Waqti kasta jadwal cusub ayaad dejin kartaa.",
-    "subscribe_title": "📋 <b>Warbixin Toos {freq}</b>",
+    "subscribe_title": "📋 <b>Rukunka Warbixinta {freq}</b>",
     "unsubscribe": "🔕 Ka bax",
     "back_reports": "◀️ Warbixinaha",
-    "error_content": "📋 <b>Warbixin Toos</b>\n\n⚠️ Warbixinta lama samayn karin.",
+    "error_content": "📋 <b>Rukunka Warbixinta</b>\n\n⚠️ Warbixinta lama samayn karin.",
     "sending": "📋 Warbixintaada <b>{rtype}</b> ee la qorsheeyay waa la sameynayaa..."
   }
 }

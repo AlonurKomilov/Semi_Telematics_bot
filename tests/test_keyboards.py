@@ -2,8 +2,8 @@
 
 import pytest
 
-from database import Role
-from bot.keyboards import (
+from adapters.storage import Role
+from interfaces.bot.keyboards import (
     main_menu_kb,
     submenu_reports_kb,
     submenu_tools_kb,

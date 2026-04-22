@@ -17,6 +17,9 @@ TimeoutStopSec=10
 StandardOutput=append:/home/abcdev/projects/Semi_Telematics_bot/bot.log
 StandardError=append:/home/abcdev/projects/Semi_Telematics_bot/bot.log
 EnvironmentFile=/home/abcdev/projects/Semi_Telematics_bot/.env
+Environment=ENABLE_API=1
+Environment=ENABLE_BOT=1
+Environment=ENABLE_SCHEDULER=1
 
 [Install]
 WantedBy=multi-user.target

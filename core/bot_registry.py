@@ -27,7 +27,7 @@ from telegram.ext import (
     filters,
 )
 
-from encryption import decrypt
+from adapters.crypto import decrypt
 
 logger = logging.getLogger(__name__)
 
@@ -38,25 +38,25 @@ def _register_handlers(app: Application) -> None:
     Imports are done inside the function to keep this module lightweight
     and avoid circular imports at import time.
     """
-    from bot.app import cmd_chatid, cmd_settings, cmd_audit
-    from bot.registration import cmd_start, cmd_register, cmd_join, cmd_help
-    from bot.fleet import (
+    from interfaces.bot.app import cmd_chatid, cmd_settings, cmd_audit
+    from interfaces.bot.registration import cmd_start, cmd_register, cmd_join, cmd_help
+    from interfaces.bot.fleet import (
         cmd_faults, cmd_truck, cmd_fuel, cmd_alerts,
         cmd_health, cmd_efficiency,
     )
-    from bot.management import (
+    from interfaces.bot.management import (
         cmd_account, cmd_invite, cmd_users, cmd_setrole,
         cmd_remove, cmd_addcompany, cmd_removecompany,
         cmd_addgroup, cmd_removegroup, cmd_groups,
         handle_chat_shared,
     )
-    from bot.admin import (
+    from interfaces.bot.admin import (
         cmd_admin, cmd_accounts, cmd_sysaccount,
         cmd_broadcast, cmd_sys_disable_account,
     )
-    from bot.callbacks import handle_callback, handle_text
-    from bot.events import cmd_events
-    from bot.knowledge import cmd_tips
+    from interfaces.bot.callbacks import handle_callback, handle_text
+    from interfaces.bot.events import cmd_events
+    from interfaces.bot.knowledge import cmd_tips
 
     # Registration
     app.add_handler(CommandHandler("start", cmd_start))

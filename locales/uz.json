@@ -6,7 +6,7 @@
     "management": "👥 Boshqaruv",
     "ai_assistant": "🤖 AI Yordamchi",
     "alerts": "🔔 Ogohlantirishlar",
-    "digest": "📋 Avto Hisobotlar",
+    "digest": "📋 Hisobot Obunalari",
     "settings": "⚙️ Sozlamalar",
     "help": "ℹ️ Yordam",
     "admin_panel": "⚙️ Admin paneli",
@@ -20,19 +20,19 @@
     "fuel_def": "⛽ Yoqilg'i va DEF",
     "efficiency": "📊 Samaradorlik",
     "vehicle_health": "🏥 Transport holati",
-    "scorecards": "📋 Haydovchi bahosi",
+    "scorecards": "📋 Haydovchi Ballari",
     "live_map": "🗺 Jonli xarita",
-    "search_truck": "🚛 Yuk mashinasini izlash",
+    "search_truck": "🚛 Avtomobillar",
     "back_main": "◀️ Asosiy menyu"
   },
   "tools_menu": {
     "header": "🛠  <b>ASBOBLAR</b>",
     "subtitle": "Asbobni tanlang:",
-    "search_truck": "🚛 Yuk mashinasini izlash",
+    "search_truck": "🚛 Avtomobillar",
     "live_map": "🗺 Jonli xarita",
     "route_history": "📍 Marshrut tarixi",
     "geofences": "📌 Geofences",
-    "events": "🚨 Hodisalar",
+    "events": "🚨 Xavfsizlik Hodisalari",
     "back_main": "◀️ Asosiy menyu"
   },
   "costs_menu": {
@@ -100,9 +100,9 @@
     "critical_codes": "📄  <b>{count}</b> ta nosozlik kodi",
     "critical_health": "📊  Avtopark holati: <b>{pct}%</b>",
     "critical_severity": "🛑 {stop} STOP  ·  🛡 {protect} PROT  ·  ♨️ {emis} EMIS",
-    "browse_title": "🚛 <b>Yuk mashinasini izlash</b>",
+    "browse_title": "🚛 <b>Avtomobillar</b>",
     "browse_prompt": "Yuk mashinalarini ko'rish uchun kompaniyani tanlang,\nyoki <b>Barcha kompaniyalar</b> ni tanlang:",
-    "browse_header": "🚛 <b>Yuk mashinalari</b>  —  {count} ta faol",
+    "browse_header": "🚛 <b>Avtomobillar</b>  —  {count} faol",
     "browse_tap": "Tafsilotlar uchun yuk mashinasini bosing:",
     "loading_list": "⏳ Yuk mashinalari ro'yxati yuklanmoqda…",
     "no_trucks_for": "ℹ️ <b>{label}</b> uchun faol yuk mashinalari topilmadi."
@@ -115,7 +115,7 @@
     "health": "🏥 Salomatlik holati",
     "fuel": "⛽ Kam yoqilg'i",
     "geofence": "📌 Geofence",
-    "events": "🚨 Hodisalar",
+    "events": "🚨 Xavfsizlik Hodisalari",
     "quiet_hours": "🕐 Ish soatlari",
     "pending": "🟡 Kutilayotgan ogohlantirishlar",
     "history": "📜 Tarix",
@@ -126,16 +126,9 @@
   },
   "alert_actions": {
     "acknowledge": "✅ Tasdiqlash",
-    "snooze": "⏰ Kechiktirish",
     "ai_diagnose": "🤖 AI Diagnostika",
     "open_in_samsara": "🔗 Samsarada ochish",
     "watch_video": "🎥 Videoni ko'rish"
-  },
-  "snooze": {
-    "pick_title": "⏰ Kechiktirish muddatini tanlang:",
-    "minutes": "{n} daq",
-    "hours": "{n} soat",
-    "back": "◀️ Orqaga"
   },
   "user_settings": {
     "header": "⚙️  <b>SOZLAMALAR</b>",
@@ -360,8 +353,6 @@
     "history_btn": "📜 Tarix",
     "history_acked": "→ tasdiqlandi {time}",
     "history_expired_label": "→ muddati o'tdi",
-    "history_escalation": "(muhimlik: {level})",
-    "pending_detail": "{mins} daqiqa oldin • muhimlik: {level}",
     "pending_more": "… va yana {count} ta"
   },
   "alert_format": {
@@ -375,7 +366,7 @@
     "fuel_level": "⛽ Yoqilg'i darajasi: <b>{pct}%</b>",
     "new_fault_title": "🚨  <b>YANGI NOSOZLIK ANIQLANDI</b>",
     "new_fault_truck": "🚛  <b>Yuk mashinasi #{name}</b>",
-    "new_fault_hint": "▸  Tafsilotlar uchun 🚛 Yuk mashinasini qidirish tugmasini bosing",
+    "new_fault_hint": "▸  Tafsilotlar uchun 🚛 Avtomobillar tugmasini bosing",
     "new_fault_source": "Manba:",
     "critical_fault_title": "🛑  <b>KRITIK NOSOZLIK</b>",
     "critical_fault_action": "⚠️ <b>Zudlik bilan e'tibor qaratish kerak</b>",
@@ -705,7 +696,7 @@
     "install_required": "❌ Xaritani chizish imkoni yo'q.\nO'rnatish kerak: <code>pip install staticmap</code>"
   },
   "route": {
-    "title": "🛣 <b>Marshrut Takrorlash</b>",
+    "title": "🛣 <b>Marshrutlar</b>",
     "select_date": "Sanani tanlang:",
     "type_truck": "Yuk mashinasini ismini/raqamini yozing:",
     "loading": "⏳ {vehicle} uchun tarix topilyapti ({date})…",
@@ -750,7 +741,7 @@
     "total_summary": "Jami: {cost} / {miles} mil"
   },
   "fuel_costs": {
-    "header": "💰  <b>YOQILG'I XARAJATLARI KUZATUVI</b>",
+    "header": "💰  <b>YOQILG'I XARAJATLARI</b>",
     "description": "Yuk mashinasining xarajatini kuzating.",
     "add_title": "➕ <b>To'ldirishni kiritish</b>",
     "step1_truck": "<b>1/4 qadam</b> — Mashinani nomini\n(Raqamini) kiriting:",
@@ -805,7 +796,7 @@
     "not_connected_info": "━━━━━━━━━━━━━━━━━━━\n  ⏳  <b>API ULANILMAGAN</b>\n━━━━━━━━━━━━━━━━━━━\n\n  Botni ko'p funksiyalari (avtopark xarita, nosozlik xabarlari,\n  kabi) Samsara API-si orkali mavjud bo'ladi.\n\n  Davom etishdan oldin,\n  Kompaniya menejeri uni kiritsin!\n\n  Shu vaqt faqat API-si bilan:\n  • 🔧 Nosozliklar\n  • 🚨 Muhim Ogohlantirishlar\n  • ⛽ Yoqilg'i darajasi\n  • 🚛 Mashina axboroti\n\n  Bizga bog'laning (Admin xaridlari ulanilsin)!"
   },
   "events": {
-    "title": "HODISALAR",
+    "title": "XAVFSIZLIK HODISALARI",
     "loading": "⏳ Hodisalar yuklanmoqda...",
     "empty": "✅ So'nggi {days} kunda hodisalar yo'q.",
     "select_period": "Davr va formatni tanlang:",
@@ -841,7 +832,7 @@
     "csv_exported": "✅ Hodisalar CSV eksport qilindi."
   },
   "auto_reports": {
-    "header": "📋  <b>AVTO HISOBOTLAR</b>",
+    "header": "📋  <b>HISOBOT OBUNALARI</b>",
     "description": "Telegram chatIngizga avtomatik flot hisobotlarini rejalashtiring.",
     "subscribed": "✅ Faol: <b>{rtype}</b> · {freq} soat {time}",
     "timezone_label": "🕐 Vaqt mintaqasi: {tz}",
@@ -854,16 +845,16 @@
     "time_local": "(Mahalliy vaqt mintaqangizda)",
     "delivery_at": "🕐 Yetkazish soat <b>{time}</b>",
     "select_tz": "<b>Vaqt mintaqangizni tanlang:</b>",
-    "subscribed_confirm": "✅ Avto hisobot rejalashtirildi!",
+    "subscribed_confirm": "✅ Hisobot obunasi rejalashtirildi!",
     "delivery_info": "Hisobot: <b>{rtype}</b> · {freq} soat {time}",
     "timezone_info": "Vaqt mintaqasi: {tz}",
     "auto_summary": "Siz bu hisobotni avtomatik ravishda olasiz.",
-    "unsubscribed": "🔕 Avto hisobot bekor qilindi.",
+    "unsubscribed": "🔕 Hisobot obunasi bekor qilindi.",
     "resubscribe": "Istalgan vaqtda yangi jadval sozlashingiz mumkin.",
-    "subscribe_title": "📋 <b>{freq} Avto Hisobot</b>",
+    "subscribe_title": "📋 <b>{freq} Hisobot Obunasi</b>",
     "unsubscribe": "🔕 Obunani bekor qilish",
     "back_reports": "◀️ Hisobotlar",
-    "error_content": "📋 <b>Avto Hisobot</b>\n\n⚠️ Hisobotni yaratib bolmadi.",
+    "error_content": "📋 <b>Hisobot Obunasi</b>\n\n⚠️ Hisobotni yaratib bolmadi.",
     "sending": "📋 Rejalashtirilgan <b>{rtype}</b> hisobotingiz yaratilmoqda..."
   }
 }

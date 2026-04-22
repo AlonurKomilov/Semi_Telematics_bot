@@ -6,7 +6,7 @@
     "management": "👥 Gestion",
     "ai_assistant": "🤖 Assistant IA",
     "alerts": "🔔 Alertes",
-    "digest": "📋 Rapports Auto",
+    "digest": "📋 Abonnements aux Rapports",
     "settings": "⚙️ Paramètres",
     "help": "ℹ️ Aide",
     "admin_panel": "⚙️ Panneau admin",
@@ -20,19 +20,19 @@
     "fuel_def": "⛽ Carburant & DEF",
     "efficiency": "📊 Efficacité",
     "vehicle_health": "🏥 Santé des véhicules",
-    "scorecards": "📋 Fiches d'évaluation",
+    "scorecards": "📋 Fiches de Conducteur",
     "live_map": "🗺 Carte en direct",
-    "search_truck": "🚛 Rechercher un camion",
+    "search_truck": "🚛 Véhicules",
     "back_main": "◀️ Menu principal"
   },
   "tools_menu": {
     "header": "🛠  <b>OUTILS</b>",
     "subtitle": "Sélectionnez un outil :",
-    "search_truck": "🚛 Rechercher un camion",
+    "search_truck": "🚛 Véhicules",
     "live_map": "🗺 Carte en direct",
     "route_history": "📍 Historique des trajets",
     "geofences": "📌 Géoclôtures",
-    "events": "🚨 Événements",
+    "events": "🚨 Événements de Sécurité",
     "back_main": "◀️ Menu principal"
   },
   "costs_menu": {
@@ -100,9 +100,9 @@
     "critical_codes": "📄  <b>{count}</b> codes de défaut",
     "critical_health": "📊  Santé de la flotte : <b>{pct}%</b>",
     "critical_severity": "🛑 {stop} ARRÊT  ·  🛡 {protect} PROT  ·  ♨️ {emis} ÉMIS",
-    "browse_title": "🚛 <b>Rechercher un camion</b>",
+    "browse_title": "🚛 <b>Véhicules</b>",
     "browse_prompt": "Sélectionnez une entreprise pour parcourir les camions,\nou choisissez <b>Toutes les entreprises</b> :",
-    "browse_header": "🚛 <b>Camions</b>  —  {count} actifs",
+    "browse_header": "🚛 <b>Véhicules</b>  —  {count} actifs",
     "browse_tap": "Appuyez sur un camion pour les détails :",
     "loading_list": "⏳ Chargement de la liste des camions…",
     "no_trucks_for": "ℹ️ Aucun camion actif trouvé pour <b>{label}</b>."
@@ -115,7 +115,7 @@
     "health": "🏥 Santé",
     "fuel": "⛽ Carburant bas",
     "geofence": "📌 Géoclôture",
-    "events": "🚨 Événements",
+    "events": "🚨 Événements de Sécurité",
     "quiet_hours": "🕐 Heures de travail",
     "pending": "🟡 Alertes en attente",
     "history": "📜 Historique",
@@ -126,16 +126,9 @@
   },
   "alert_actions": {
     "acknowledge": "✅ Accuser réception",
-    "snooze": "⏰ Reporter",
     "ai_diagnose": "🤖 Diagnostic IA",
     "open_in_samsara": "🔗 Ouvrir dans Samsara",
     "watch_video": "🎥 Voir la vidéo"
-  },
-  "snooze": {
-    "pick_title": "⏰ Sélectionnez la durée du report :",
-    "minutes": "{n} min",
-    "hours": "{n} h",
-    "back": "◀️ Retour"
   },
   "user_settings": {
     "header": "⚙️  <b>PARAMÈTRES</b>",
@@ -360,8 +353,6 @@
     "history_btn": "📜 Historique des alertes",
     "history_acked": "→ acquittée {time}",
     "history_expired_label": "→ expirée",
-    "history_escalation": "(esc : {level})",
-    "pending_detail": "il y a {mins} min • escalade : {level}",
     "pending_more": "… et {count} de plus"
   },
   "alert_format": {
@@ -375,7 +366,7 @@
     "fuel_level": "⛽ Niveau de carburant : <b>{pct}%</b>",
     "new_fault_title": "🚨  <b>NOUVEAU DÉFAUT DÉTECTÉ</b>",
     "new_fault_truck": "🚛  <b>Camion #{name}</b>",
-    "new_fault_hint": "▸  Appuyez sur 🚛 Rechercher un camion pour les détails",
+    "new_fault_hint": "▸  Appuyez sur 🚛 Véhicules pour les détails",
     "new_fault_source": "Source :",
     "critical_fault_title": "🛑  <b>DÉFAUT CRITIQUE</b>",
     "critical_fault_action": "⚠️ <b>Attention immédiate requise</b>",
@@ -705,7 +696,7 @@
     "install_required": "❌ Rendu de carte non disponible.\nInstallez : <code>pip install staticmap</code>"
   },
   "route": {
-    "title": "🛣 <b>Historique de trajet</b>",
+    "title": "🛣 <b>Itinéraires</b>",
     "select_date": "Sélectionnez une date :",
     "type_truck": "Entrez le numéro/nom du camion :",
     "loading": "⏳ Récupération du trajet pour {vehicle} ({date})…",
@@ -750,7 +741,7 @@
     "total_summary": "Total : {cost} / {miles} mi"
   },
   "fuel_costs": {
-    "header": "💰  <b>SUIVI DES COÛTS DE CARBURANT</b>",
+    "header": "💰  <b>COÛTS DE CARBURANT</b>",
     "description": "Suivez les dépenses de carburant par camion.",
     "add_title": "➕ <b>Enregistrer un plein</b>",
     "step1_truck": "<b>Étape 1/4</b> — Nom du camion\nEntrez le numéro/nom du camion :",
@@ -805,7 +796,7 @@
     "not_connected_info": "━━━━━━━━━━━━━━━━━━━\n  ⏳  <b>API PAS ENCORE CONNECTÉE</b>\n━━━━━━━━━━━━━━━━━━━\n\n  Le propriétaire de votre entreprise n'a pas\n  encore connecté de clé API Samsara.\n\n  Une fois l'API intégrée,\n  les fonctionnalités de flotte apparaîtront\n  ici automatiquement :\n\n  • 🔧 Codes de défaut\n  • 🚨 Alertes critiques\n  • ⛽ Niveaux de carburant\n  • 🚛 Recherche de camions\n\n  Demandez au propriétaire ou à l'administrateur\n  de votre entreprise de connecter Samsara."
   },
   "events": {
-    "title": "ÉVÉNEMENTS",
+    "title": "ÉVÉNEMENTS DE SÉCURITÉ",
     "loading": "⏳ Chargement des événements...",
     "empty": "✅ Aucun événement ces {days} derniers jours.",
     "select_period": "Sélectionnez la période et le format :",
@@ -841,7 +832,7 @@
     "csv_exported": "✅ CSV des événements exporté."
   },
   "auto_reports": {
-    "header": "📋  <b>RAPPORTS AUTOMATIQUES</b>",
+    "header": "📋  <b>ABONNEMENTS AUX RAPPORTS</b>",
     "description": "Planifiez des rapports de flotte automatiques livrés sur Telegram.",
     "subscribed": "✅ Actif : <b>{rtype}</b> · {freq} à {time}",
     "timezone_label": "🕐 Fuseau horaire : {tz}",
@@ -854,16 +845,16 @@
     "time_local": "(Dans votre fuseau horaire local)",
     "delivery_at": "🕐 Livraison à <b>{time}</b>",
     "select_tz": "<b>Sélectionnez votre fuseau horaire :</b>",
-    "subscribed_confirm": "✅ Rapport automatique planifié !",
+    "subscribed_confirm": "✅ Abonnement au rapport programmé!",
     "delivery_info": "Rapport : <b>{rtype}</b> · {freq} à {time}",
     "timezone_info": "Fuseau horaire : {tz}",
     "auto_summary": "Vous recevrez ce rapport automatiquement.",
-    "unsubscribed": "🔕 Rapport automatique annulé.",
+    "unsubscribed": "🔕 Abonnement au rapport annulé.",
     "resubscribe": "Vous pouvez configurer un nouveau planning à tout moment.",
-    "subscribe_title": "📋 <b>Rapport Auto {freq}</b>",
+    "subscribe_title": "📋 <b>Abonnement au Rapport {freq}</b>",
     "unsubscribe": "🔕 Se désabonner",
     "back_reports": "◀️ Rapports",
-    "error_content": "📋 <b>Rapport Auto</b>\n\n⚠️ Impossible de générer le rapport.",
+    "error_content": "📋 <b>Abonnement au Rapport</b>\n\n⚠️ Impossible de générer le rapport.",
     "sending": "📋 Génération de votre rapport planifié <b>{rtype}</b>..."
   }
 }

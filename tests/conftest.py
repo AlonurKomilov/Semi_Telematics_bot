@@ -13,7 +13,7 @@ import pytest_asyncio
 # Ensure project root is on sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from database import Database, Role
+from adapters.storage import Database, Role
 
 
 @pytest_asyncio.fixture
@@ -58,7 +58,7 @@ async def core_platform(tmp_path):
     Yields the Database instance.  Restores original core.platform state on teardown.
     """
     import core.platform as _cp
-    from database.tenant_router import LegacyRouter
+    from adapters.storage.tenant_router import LegacyRouter
 
     db_path = str(tmp_path / "core_platform_test.db")
     database = Database(db_path, pool_size=1)

@@ -51,24 +51,24 @@ def set_tenant_display(
 def get_company_display() -> dict[str, str]:
     """Return the company display dict for the current async context.
 
-    Falls back to the legacy global ``samsara_client.COMPANY_DISPLAY``
-    when no tenant-scoped dict has been set.
+    Returns an empty dict when no tenant-scoped dict has been set
+    (callers should always call populate_company_display first).
     """
     val = _company_display_var.get()
     if val is not None:
         return val
-    from samsara_client import COMPANY_DISPLAY
+    from adapters.samsara.client import COMPANY_DISPLAY
     return COMPANY_DISPLAY
 
 
 def get_org_ids() -> dict[str, str]:
     """Return the org-IDs dict for the current async context.
 
-    Falls back to the legacy global ``samsara_client.ORG_IDS`` when
-    no tenant-scoped dict has been set.
+    Returns an empty dict when no tenant-scoped dict has been set
+    (callers should always call populate_company_display first).
     """
     val = _org_ids_var.get()
     if val is not None:
         return val
-    from samsara_client import ORG_IDS
+    from adapters.samsara.client import ORG_IDS
     return ORG_IDS

@@ -30,21 +30,21 @@ async def initialize() -> TenantRegistry:
     global tenant_registry
 
     # 1. Encryption for secrets at rest (must happen before DB reads)
-    from encryption import init_encryption
+    from adapters.crypto import init_encryption
     init_encryption()
 
     # 2. Database layer (platform DB + tenant router)
     await _platform.initialize()
 
     # 3. Give AI client access to the DB for per-account model persistence
-    import ai
+    import capabilities.ai as ai
     ai.set_db(_platform.get_db())
 
     # 4. Migrate plaintext API keys → encrypted (one-time, idempotent)
     await _platform.get_db().migrate_encrypt_api_keys()
 
     # 5. Initialize Redis (optional — graceful fallback if unavailable)
-    import bot.redis_client as rcache
+    import adapters.cache.redis as rcache
     await rcache.init_redis()
 
     # 6. Tenant registry
@@ -60,7 +60,7 @@ async def shutdown():
 
     # Close Redis
     try:
-        import bot.redis_client as rcache
+        import adapters.cache.redis as rcache
         await rcache.close_redis()
     except Exception as e:
         logger.warning("Redis close error: %s", e)

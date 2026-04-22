@@ -18,32 +18,32 @@ class TestAIClientConfig:
     """ai configuration checks."""
 
     def test_is_configured_false_when_no_key(self):
-        import ai
+        import capabilities.ai as ai
         with patch.dict(os.environ, {"GOOGLE_CLOUD_PROJECT": "", "GOOGLE_APPLICATION_CREDENTIALS": ""}):
             assert ai.is_configured() is False
 
     def test_is_configured_true_when_key_set(self):
-        import ai
+        import capabilities.ai as ai
         with patch.dict(os.environ, {"GOOGLE_CLOUD_PROJECT": "my-project", "GOOGLE_APPLICATION_CREDENTIALS": "/tmp/sa.json"}):
             assert ai.is_configured() is True
 
     def test_ensure_model_raises_without_project(self):
-        import ai
-        import ai.models
+        import capabilities.ai as ai
+        import capabilities.ai.models  # ensure submodule loaded
         ai.models._model = None  # Reset
         with patch.dict(os.environ, {"GOOGLE_CLOUD_PROJECT": "", "GOOGLE_APPLICATION_CREDENTIALS": ""}):
             with pytest.raises(RuntimeError, match="GOOGLE_CLOUD_PROJECT"):
                 ai._ensure_model()
 
     def test_system_prompts_not_empty(self):
-        import ai
+        import capabilities.ai as ai
         assert len(ai.ASSISTANT_SYSTEM) > 100
         assert len(ai.FAULT_DIAGNOSIS_SYSTEM) > 100
         assert len(ai.SUMMARY_SYSTEM) > 100
 
     def test_system_prompts_mention_html(self):
         """Prompts should instruct the model to use HTML formatting."""
-        import ai
+        import capabilities.ai as ai
         assert "HTML" in ai.ASSISTANT_SYSTEM
         assert "HTML" in ai.FAULT_DIAGNOSIS_SYSTEM
         assert "HTML" in ai.SUMMARY_SYSTEM
@@ -54,7 +54,7 @@ class TestAIClientGenerate:
 
     @pytest.mark.asyncio
     async def test_generate_calls_model(self):
-        import ai
+        import capabilities.ai as ai
 
         mock_candidate = MagicMock()
         mock_candidate.finish_reason = MagicMock()
@@ -68,7 +68,7 @@ class TestAIClientGenerate:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = mock_response
 
-        import ai.models
+        import capabilities.ai.models  # ensure submodule loaded
         ai.models._model = mock_model
 
         result = await ai.generate("test question")
@@ -80,7 +80,7 @@ class TestAIClientGenerate:
 
     @pytest.mark.asyncio
     async def test_generate_includes_context_data(self):
-        import ai
+        import capabilities.ai as ai
 
         mock_candidate = MagicMock()
         mock_candidate.finish_reason = MagicMock()
@@ -94,7 +94,7 @@ class TestAIClientGenerate:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = mock_response
 
-        import ai.models
+        import capabilities.ai.models  # ensure submodule loaded
         ai.models._model = mock_model
 
         result = await ai.generate(
@@ -110,7 +110,7 @@ class TestAIClientGenerate:
 
     @pytest.mark.asyncio
     async def test_generate_strips_markdown(self):
-        import ai
+        import capabilities.ai as ai
 
         mock_candidate = MagicMock()
         mock_candidate.finish_reason = MagicMock()
@@ -124,7 +124,7 @@ class TestAIClientGenerate:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = mock_response
 
-        import ai.models
+        import capabilities.ai.models  # ensure submodule loaded
         ai.models._model = mock_model
 
         result = await ai.generate("test")
@@ -135,7 +135,7 @@ class TestAIClientGenerate:
 
     @pytest.mark.asyncio
     async def test_generate_truncates_large_data(self):
-        import ai
+        import capabilities.ai as ai
 
         mock_candidate = MagicMock()
         mock_candidate.finish_reason = MagicMock()
@@ -149,7 +149,7 @@ class TestAIClientGenerate:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = mock_response
 
-        import ai.models
+        import capabilities.ai.models  # ensure submodule loaded
         ai.models._model = mock_model
 
         large_data = "x" * 50000
@@ -163,7 +163,7 @@ class TestAIClientGenerate:
     @pytest.mark.asyncio
     async def test_generate_handles_safety_block(self):
         """Should return a friendly message when response is blocked."""
-        import ai
+        import capabilities.ai as ai
 
         # Clear cache to avoid hits from previous tests
         ai._response_cache.clear()
@@ -176,7 +176,7 @@ class TestAIClientGenerate:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = mock_response
 
-        import ai.models
+        import capabilities.ai.models  # ensure submodule loaded
         ai.models._model = mock_model
 
         result = await ai.generate("test safety block")
@@ -190,7 +190,7 @@ class TestAIDiagnose:
 
     @pytest.mark.asyncio
     async def test_diagnose_formats_dtcs(self):
-        import ai
+        import capabilities.ai as ai
 
         mock_candidate = MagicMock()
         mock_candidate.finish_reason = MagicMock()
@@ -204,7 +204,7 @@ class TestAIDiagnose:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = mock_response
 
-        import ai.models
+        import capabilities.ai.models  # ensure submodule loaded
         ai.models._model = mock_model
 
         dtcs = [
@@ -224,7 +224,7 @@ class TestAIDiagnose:
     @pytest.mark.asyncio
     async def test_diagnose_caps_dtc_count(self):
         """Should cap at 10 DTCs to stay within token limits."""
-        import ai
+        import capabilities.ai as ai
 
         mock_candidate = MagicMock()
         mock_candidate.finish_reason = MagicMock()
@@ -238,7 +238,7 @@ class TestAIDiagnose:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = mock_response
 
-        import ai.models
+        import capabilities.ai.models  # ensure submodule loaded
         ai.models._model = mock_model
 
         dtcs = [
@@ -268,24 +268,24 @@ class TestAIKeyboard:
         return [b.text for r in markup.inline_keyboard for b in r]
 
     def test_main_menu_shows_ai_when_configured(self):
-        from database import Role
+        from adapters.storage import Role
         with patch.dict(os.environ, {"GOOGLE_CLOUD_PROJECT": "my-project", "GOOGLE_APPLICATION_CREDENTIALS": "/tmp/sa.json"}):
-            from bot.keyboards import main_menu_kb
+            from interfaces.bot.keyboards import main_menu_kb
             kb = main_menu_kb(Role.OWNER, ["CO1"])
             callbacks = self._all_callbacks(kb)
             assert "cmd_ai" in callbacks
 
     def test_main_menu_hides_ai_when_not_configured(self):
-        from database import Role
+        from adapters.storage import Role
         with patch.dict(os.environ, {"GOOGLE_CLOUD_PROJECT": "", "GOOGLE_APPLICATION_CREDENTIALS": ""}):
-            from bot.keyboards import main_menu_kb
+            from interfaces.bot.keyboards import main_menu_kb
             kb = main_menu_kb(Role.OWNER, ["CO1"])
             callbacks = self._all_callbacks(kb)
             assert "cmd_ai" not in callbacks
 
     def test_truck_kb_shows_ai_diagnose_when_configured(self):
         with patch.dict(os.environ, {"GOOGLE_CLOUD_PROJECT": "my-project", "GOOGLE_APPLICATION_CREDENTIALS": "/tmp/sa.json"}):
-            from bot.keyboards import truck_kb
+            from interfaces.bot.keyboards import truck_kb
             kb = truck_kb(truck_name="101", company="CO1", show_faults=True)
             callbacks = self._all_callbacks(kb)
             assert "ai_diag_CO1_101" in callbacks
@@ -294,13 +294,13 @@ class TestAIKeyboard:
 
     def test_truck_kb_hides_ai_diagnose_when_not_configured(self):
         with patch.dict(os.environ, {"GOOGLE_CLOUD_PROJECT": "", "GOOGLE_APPLICATION_CREDENTIALS": ""}):
-            from bot.keyboards import truck_kb
+            from interfaces.bot.keyboards import truck_kb
             kb = truck_kb(truck_name="101", company="CO1", show_faults=True)
             callbacks = self._all_callbacks(kb)
             assert not any("ai_diag" in c for c in callbacks)
 
     def test_ai_menu_kb(self):
-        from bot.ai import _ai_menu_kb
+        from interfaces.bot.ai import _ai_menu_kb
         kb = _ai_menu_kb()
         callbacks = self._all_callbacks(kb)
         assert "ai_chat" in callbacks
@@ -308,8 +308,8 @@ class TestAIKeyboard:
         assert "cmd_menu" in callbacks
 
     def test_ai_menu_kb_owner_sees_model_button(self):
-        from bot.ai import _ai_menu_kb
-        from database import Role
+        from interfaces.bot.ai import _ai_menu_kb
+        from adapters.storage import Role
         kb = _ai_menu_kb(user_role=Role.OWNER)
         callbacks = self._all_callbacks(kb)
         assert "ai_models_text" in callbacks
@@ -320,8 +320,8 @@ class TestAIKeyboard:
         assert any("Vision:" in l for l in labels)
 
     def test_ai_menu_kb_driver_no_model_button(self):
-        from bot.ai import _ai_menu_kb
-        from database import Role
+        from interfaces.bot.ai import _ai_menu_kb
+        from adapters.storage import Role
         kb = _ai_menu_kb(user_role=Role.DRIVER)
         callbacks = self._all_callbacks(kb)
         assert "ai_models_text" not in callbacks
@@ -329,21 +329,21 @@ class TestAIKeyboard:
         assert "cmd_ai_alerts" in callbacks
 
     def test_ai_back_kb(self):
-        from bot.ai import _ai_back_kb
+        from interfaces.bot.ai import _ai_back_kb
         kb = _ai_back_kb()
         callbacks = self._all_callbacks(kb)
         assert "cmd_ai" in callbacks
         assert "cmd_menu" in callbacks
 
     def test_ai_chat_kb(self):
-        from bot.ai import _ai_chat_kb
+        from interfaces.bot.ai import _ai_chat_kb
         kb = _ai_chat_kb()
         callbacks = self._all_callbacks(kb)
         assert "ai_newchat" in callbacks
         assert "cmd_menu" in callbacks
 
     def test_build_chat_kb_with_suggestions(self):
-        from bot.ai import _build_chat_kb
+        from interfaces.bot.ai import _build_chat_kb
         kb = _build_chat_kb(["Which truck needs fuel?", "Show faults"])
         callbacks = self._all_callbacks(kb)
         assert any(c.startswith("ai_sug_") for c in callbacks)
@@ -353,14 +353,14 @@ class TestAIKeyboard:
         assert any("Which truck needs fuel?" in l for l in labels)
 
     def test_build_chat_kb_no_suggestions(self):
-        from bot.ai import _build_chat_kb
+        from interfaces.bot.ai import _build_chat_kb
         kb = _build_chat_kb()
         callbacks = self._all_callbacks(kb)
         assert not any(c.startswith("ai_sug_") for c in callbacks)
         assert "cmd_ai" in callbacks
 
     def test_parse_suggestions(self):
-        from bot.ai import _parse_suggestions
+        from interfaces.bot.ai import _parse_suggestions
         text = "Here are 3 trucks.\n>> Check truck 101\n>> Show fuel levels"
         clean, suggestions = _parse_suggestions(text)
         assert ">> Check truck 101" not in clean
@@ -369,7 +369,7 @@ class TestAIKeyboard:
         assert suggestions[1] == "Show fuel levels"
 
     def test_parse_suggestions_no_suggestions(self):
-        from bot.ai import _parse_suggestions
+        from interfaces.bot.ai import _parse_suggestions
         text = "Here are 3 trucks with low fuel."
         clean, suggestions = _parse_suggestions(text)
         assert clean == text
@@ -385,7 +385,7 @@ class TestFleetSnapshot:
 
     @pytest.mark.asyncio
     async def test_snapshot_structure(self):
-        from bot.ai import _gather_fleet_snapshot
+        from interfaces.bot.ai import _gather_fleet_snapshot
 
         mock_fleet = [
             {
@@ -417,8 +417,8 @@ class TestFleetSnapshot:
         mock_client.get_driver_efficiency.return_value = []
         mock_client.get_fleet_weather.return_value = []
 
-        with patch("bot.config.get_client", return_value=mock_client), \
-             patch("bot.config.get_tenant_db", new_callable=AsyncMock):
+        with patch("core.services.get_client", return_value=mock_client), \
+             patch("core.services.get_tenant_db", new_callable=AsyncMock):
             snapshot = await _gather_fleet_snapshot(account_id=1)
 
         assert snapshot["total_vehicles"] == 2
@@ -431,7 +431,7 @@ class TestFleetSnapshot:
 
     @pytest.mark.asyncio
     async def test_snapshot_filters_by_truck(self):
-        from bot.ai import _gather_fleet_snapshot
+        from interfaces.bot.ai import _gather_fleet_snapshot
 
         mock_fleet = [
             {"id": "v1", "name": "101", "_org": "CO1",
@@ -446,8 +446,8 @@ class TestFleetSnapshot:
         mock_client.get_driver_efficiency.return_value = []
         mock_client.get_fleet_weather.return_value = []
 
-        with patch("bot.config.get_client", return_value=mock_client), \
-             patch("bot.config.get_tenant_db", new_callable=AsyncMock):
+        with patch("core.services.get_client", return_value=mock_client), \
+             patch("core.services.get_tenant_db", new_callable=AsyncMock):
             snapshot = await _gather_fleet_snapshot(
                 account_id=1, truck_num="101"
             )
@@ -464,11 +464,11 @@ class TestModelRegistry:
     """Model registry and switching logic."""
 
     def test_registry_has_models(self):
-        import ai
+        import capabilities.ai as ai
         assert len(ai.MODEL_REGISTRY) >= 2
 
     def test_all_models_have_required_fields(self):
-        import ai
+        import capabilities.ai as ai
         for name, info in ai.MODEL_REGISTRY.items():
             assert "display" in info, f"{name} missing display"
             assert "description" in info, f"{name} missing description"
@@ -478,7 +478,7 @@ class TestModelRegistry:
             assert "max_output_tokens" in info, f"{name} missing max_output_tokens"
 
     def test_all_locations_are_valid_gcp_regions(self):
-        import ai
+        import capabilities.ai as ai
         for name, info in ai.MODEL_REGISTRY.items():
             for loc in info["locations"]:
                 # GCP regions follow pattern: area-direction-number
@@ -486,26 +486,26 @@ class TestModelRegistry:
                 assert "-" in loc or loc == "global", f"{name}: invalid location {loc}"
 
     def test_default_model_in_registry(self):
-        import ai
+        import capabilities.ai as ai
         assert ai.DEFAULT_MODEL in ai.MODEL_REGISTRY
 
     def test_default_location_available_for_default_model(self):
-        import ai
+        import capabilities.ai as ai
         info = ai.MODEL_REGISTRY[ai.DEFAULT_MODEL]
         assert ai.DEFAULT_LOCATION in info["locations"]
 
     def test_get_model_info_returns_dict(self):
-        import ai
+        import capabilities.ai as ai
         info = ai.get_model_info("gemini-2.5-flash")
         assert info is not None
         assert info["display"] == "Gemini 2.5 Flash"
 
     def test_get_model_info_unknown_returns_none(self):
-        import ai
+        import capabilities.ai as ai
         assert ai.get_model_info("nonexistent-model") is None
 
     def test_get_available_models_sorted(self):
-        import ai
+        import capabilities.ai as ai
         models = ai.get_available_models()
         assert len(models) >= 2
         # Should be sorted by category
@@ -513,21 +513,21 @@ class TestModelRegistry:
         assert cats == sorted(cats)
 
     def test_get_locations_for_model(self):
-        import ai
+        import capabilities.ai as ai
         locs = ai.get_locations_for_model("gemini-2.5-flash")
         assert "us-central1" in locs
 
     def test_get_locations_for_unknown_model(self):
-        import ai
+        import capabilities.ai as ai
         locs = ai.get_locations_for_model("nonexistent")
         assert locs == [ai.DEFAULT_LOCATION]
 
     def test_switch_model_validates(self):
-        import ai
+        import capabilities.ai as ai
         with pytest.raises(ValueError, match="Unknown model"):
             ai.switch_model("fake-model-xyz")
 
     def test_switch_model_validates_location(self):
-        import ai
+        import capabilities.ai as ai
         with pytest.raises(ValueError, match="not available"):
             ai.switch_model("gemini-2.5-flash", "fake-location-1")

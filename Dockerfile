@@ -1,9 +1,9 @@
 # ── Stage 1: Build dashboard ─────────────────────────────────────
 FROM node:20-slim AS dashboard-build
 WORKDIR /build
-COPY dashboard/package.json dashboard/package-lock.json* ./
+COPY interfaces/dashboard/package.json interfaces/dashboard/package-lock.json* ./
 RUN npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts
-COPY dashboard/ .
+COPY interfaces/dashboard/ .
 RUN npm run build
 
 # ── Stage 2: Python application ──────────────────────────────────
@@ -28,7 +28,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Copy built dashboard from stage 1
-COPY --from=dashboard-build /build/dist dashboard/dist/
+COPY --from=dashboard-build /build/dist interfaces/dashboard/dist/
 
 # Create data directory for SQLite
 RUN mkdir -p /app/data

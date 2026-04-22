@@ -14,7 +14,7 @@ import logging
 import os
 from typing import Union
 
-from database import Database, TenantRouter, LegacyRouter
+from adapters.storage import Database, TenantRouter, LegacyRouter
 
 from .config import DATABASE_PATH, MULTI_TENANT
 

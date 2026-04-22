@@ -7,10 +7,10 @@ import pytest_asyncio
 
 os.environ.setdefault("ENCRYPTION_KEY", "")
 
-from database import Database, Role, User
-from permissions import get_permissions
-from formatters import format_event_alert, format_events_dashboard
-from reports import generate_events_csv
+from adapters.storage import Database, Role, User
+from capabilities.iam.permissions import get_permissions
+from capabilities.formatting import format_event_alert, format_events_dashboard
+from capabilities.reporting import generate_events_csv
 
 
 # ── Fixtures ──────────────────────────────────────────────────────
@@ -257,48 +257,48 @@ class TestEventSeverity:
     """_event_severity classification."""
 
     def test_crash_is_critical(self):
-        from bot.alerts import _event_severity, AlertSeverity
+        from capabilities.alerting import _event_severity, AlertSeverity
         event = _sample_event(event_type="crash", g_force=1.5)
         assert _event_severity(event) == AlertSeverity.CRITICAL
 
     def test_harsh_brake_high_g_is_warning(self):
-        from bot.alerts import _event_severity, AlertSeverity
+        from capabilities.alerting import _event_severity, AlertSeverity
         event = _sample_event(event_type="braking", g_force=0.9)
         assert _event_severity(event) == AlertSeverity.WARNING
 
     def test_harsh_brake_low_g_is_info(self):
-        from bot.alerts import _event_severity, AlertSeverity
+        from capabilities.alerting import _event_severity, AlertSeverity
         event = _sample_event(event_type="braking", g_force=0.5)
         assert _event_severity(event) == AlertSeverity.INFO
 
     def test_rolling_stop_is_info(self):
-        from bot.alerts import _event_severity, AlertSeverity
+        from capabilities.alerting import _event_severity, AlertSeverity
         event = _sample_event(event_type="rollingStop")
         assert _event_severity(event) == AlertSeverity.INFO
 
     def test_following_distance_is_info(self):
-        from bot.alerts import _event_severity, AlertSeverity
+        from capabilities.alerting import _event_severity, AlertSeverity
         event = _sample_event(event_type="followingDistance")
         assert _event_severity(event) == AlertSeverity.INFO
 
     def test_harsh_turn_is_info(self):
-        from bot.alerts import _event_severity, AlertSeverity
+        from capabilities.alerting import _event_severity, AlertSeverity
         event = _sample_event(event_type="harshTurn")
         assert _event_severity(event) == AlertSeverity.INFO
 
     def test_lane_departure_is_info(self):
-        from bot.alerts import _event_severity, AlertSeverity
+        from capabilities.alerting import _event_severity, AlertSeverity
         event = _sample_event(event_type="laneDeparture")
         assert _event_severity(event) == AlertSeverity.INFO
 
     def test_acceleration_is_info(self):
-        from bot.alerts import _event_severity, AlertSeverity
+        from capabilities.alerting import _event_severity, AlertSeverity
         event = _sample_event(event_type="acceleration")
         assert _event_severity(event) == AlertSeverity.INFO
 
     def test_harsh_brake_boundary_0_8_is_info(self):
         """g_force exactly 0.8 is INFO (>0.8 required for WARNING)."""
-        from bot.alerts import _event_severity, AlertSeverity
+        from capabilities.alerting import _event_severity, AlertSeverity
         event = _sample_event(event_type="braking", g_force=0.8)
         assert _event_severity(event) == AlertSeverity.INFO
 
@@ -376,7 +376,7 @@ class TestEventNormalization:
 
     def test_event_type_recognized(self):
         """All 7 event types should have emoji mappings."""
-        from formatters import _EVENT_EMOJI
+        from capabilities.formatting import _EVENT_EMOJI
         types = ["crash", "braking", "rollingStop", "followingDistance",
                  "harshTurn", "laneDeparture", "acceleration"]
         for t in types:
@@ -384,7 +384,7 @@ class TestEventNormalization:
 
     def test_event_type_has_i18n_key(self):
         """All 7 event types should have i18n key mappings."""
-        from formatters import _EVENT_TYPE_KEYS
+        from capabilities.formatting import _EVENT_TYPE_KEYS
         types = ["crash", "braking", "rollingStop", "followingDistance",
                  "harshTurn", "laneDeparture", "acceleration"]
         for t in types:
@@ -399,7 +399,7 @@ class TestEventsKeyboard:
     """Events keyboard construction."""
 
     def test_events_format_kb_has_period_buttons(self):
-        from bot.keyboards import events_format_kb
+        from interfaces.bot.keyboards import events_format_kb
         kb = events_format_kb()
         callbacks = [b.callback_data for r in kb.inline_keyboard for b in r if b.callback_data]
         assert "events_text_7" in callbacks
@@ -407,7 +407,7 @@ class TestEventsKeyboard:
         assert "events_text_30" in callbacks
 
     def test_events_format_kb_has_csv_buttons(self):
-        from bot.keyboards import events_format_kb
+        from interfaces.bot.keyboards import events_format_kb
         kb = events_format_kb()
         callbacks = [b.callback_data for r in kb.inline_keyboard for b in r if b.callback_data]
         assert "events_csv_7" in callbacks
@@ -415,13 +415,13 @@ class TestEventsKeyboard:
         assert "events_csv_30" in callbacks
 
     def test_events_format_kb_has_back_button(self):
-        from bot.keyboards import events_format_kb
+        from interfaces.bot.keyboards import events_format_kb
         kb = events_format_kb()
         callbacks = [b.callback_data for r in kb.inline_keyboard for b in r if b.callback_data]
         assert "submenu_reports" in callbacks
 
     def test_alert_settings_kb_has_events_toggle(self):
-        from bot.keyboards import alert_settings_kb
+        from interfaces.bot.keyboards import alert_settings_kb
         user = User(
             id=1, telegram_id=100, account_id=1, role=Role.OWNER,
             department="", truck_num=None, alerts_on=True,

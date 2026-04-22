@@ -16,8 +16,8 @@ backups/
 venv/
 env/
 *.tar.gz
-dashboard/node_modules/
-dashboard/dist/
+interfaces/dashboard/node_modules/
+interfaces/dashboard/dist/
 data/
 *.db
 *.db-shm

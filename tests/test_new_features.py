@@ -7,7 +7,7 @@ import pytest_asyncio
 
 os.environ.setdefault("ENCRYPTION_KEY", "")
 
-from database import Database, Role, User
+from adapters.storage import Database, Role, User
 
 
 # ── Fixtures ──────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ class TestQuietHours:
             def now(cls, tz_val=None):
                 return fake_now.astimezone(tz_val) if tz_val else fake_now
 
-        with patch("database.models.datetime", FakeDatetime):
+        with patch("adapters.storage.models.datetime", FakeDatetime):
             assert updated.is_in_quiet_hours() is True
 
     async def test_is_in_quiet_hours_outside(self, seeded):
@@ -72,7 +72,7 @@ class TestQuietHours:
             def now(cls, tz_val=None):
                 return fake_now.astimezone(tz_val) if tz_val else fake_now
 
-        with patch("database.models.datetime", FakeDatetime):
+        with patch("adapters.storage.models.datetime", FakeDatetime):
             assert updated.is_in_quiet_hours() is False
 
     async def test_is_in_quiet_hours_none(self, seeded):
@@ -101,7 +101,7 @@ class TestQuietHours:
             @classmethod
             def now(cls, tz_val=None):
                 return fake_now.astimezone(tz_val) if tz_val else fake_now
-        with patch("database.models.datetime", FakeDatetime9):
+        with patch("adapters.storage.models.datetime", FakeDatetime9):
             assert updated.is_in_quiet_hours() is True  # outside working hours
 
         # 3 AM UTC — INSIDE working hours (00:00-08:00) → should deliver
@@ -110,7 +110,7 @@ class TestQuietHours:
             @classmethod
             def now(cls, tz_val=None):
                 return fake_now2.astimezone(tz_val) if tz_val else fake_now2
-        with patch("database.models.datetime", FakeDatetime3):
+        with patch("adapters.storage.models.datetime", FakeDatetime3):
             assert updated.is_in_quiet_hours() is False  # inside working hours
 
     async def test_working_hours_boundary_exact(self, seeded):
@@ -127,7 +127,7 @@ class TestQuietHours:
             @classmethod
             def now(cls, tz_val=None):
                 return fake_now.astimezone(tz_val) if tz_val else fake_now
-        with patch("database.models.datetime", FakeDatetime):
+        with patch("adapters.storage.models.datetime", FakeDatetime):
             assert updated.is_in_quiet_hours() is True  # outside working hours
 
 
@@ -162,7 +162,6 @@ class TestAlertAcknowledgments:
             message_id=1001,
             chat_id=2001,
             sent_to=100001,
-            next_escalation="2099-01-01T00:00:00",
         )
 
     async def test_create_alert_ack(self, seeded):
@@ -177,19 +176,6 @@ class TestAlertAcknowledgments:
         result = await db.acknowledge_alert(ack_id, owner.telegram_id)
         assert result is True
 
-    async def test_get_unacked_alerts(self, seeded):
-        db, account = seeded["db"], seeded["account"]
-        await self._make_ack(db, account.id, vehicle="T1")
-        await self._make_ack(db, account.id, vehicle="T2")
-        unacked = await db.get_unacked_alerts()
-        assert len(unacked) == 2
-
-    async def test_acked_not_in_unacked(self, seeded):
-        db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
-        ack_id = await self._make_ack(db, account.id)
-        await db.acknowledge_alert(ack_id, owner.telegram_id)
-        unacked = await db.get_unacked_alerts()
-        assert len(unacked) == 0
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -269,7 +255,7 @@ class TestNewKeyboards:
         return [btn.callback_data for row in kb.inline_keyboard for btn in row]
 
     def test_auto_reports_hour_kb(self):
-        from bot.keyboards import auto_reports_hour_kb
+        from interfaces.bot.keyboards import auto_reports_hour_kb
         kb = auto_reports_hour_kb()
         callbacks = self._callbacks(kb)
         assert "ar_hour_7" in callbacks
@@ -277,7 +263,7 @@ class TestNewKeyboards:
         assert "cmd_auto_reports" in callbacks  # cancel button
 
     def test_auto_reports_tz_kb(self):
-        from bot.keyboards import auto_reports_tz_kb
+        from interfaces.bot.keyboards import auto_reports_tz_kb
         kb = auto_reports_tz_kb()
         callbacks = self._callbacks(kb)
         assert "ar_tz_America/New_York" in callbacks
@@ -285,7 +271,7 @@ class TestNewKeyboards:
         assert "cmd_auto_reports" in callbacks
 
     def test_auto_reports_type_kb(self):
-        from bot.keyboards import auto_reports_type_kb
+        from interfaces.bot.keyboards import auto_reports_type_kb
         kb = auto_reports_type_kb()
         callbacks = self._callbacks(kb)
         assert "ar_type_faults" in callbacks
@@ -294,14 +280,14 @@ class TestNewKeyboards:
         assert "ar_type_efficiency" in callbacks
 
     def test_quiet_hours_picker_kb(self):
-        from bot.keyboards import quiet_hours_picker_kb
+        from interfaces.bot.keyboards import quiet_hours_picker_kb
         kb = quiet_hours_picker_kb()
         callbacks = self._callbacks(kb)
         assert "quiet_set_6_22" in callbacks
         assert "settings_quiet" in callbacks
 
     def test_quiet_hours_picker_kb_with_schedules(self):
-        from bot.keyboards import quiet_hours_picker_kb
+        from interfaces.bot.keyboards import quiet_hours_picker_kb
         schedules = [
             {"id": 1, "start_hour": 6, "end_hour": 18, "label": "Day Shift"},
             {"id": 2, "start_hour": 18, "end_hour": 6, "label": "Night Shift"},
@@ -315,7 +301,7 @@ class TestNewKeyboards:
         assert "quiet_set_6_22" not in callbacks
 
     def test_user_settings_kb(self):
-        from bot.keyboards import user_settings_kb
+        from interfaces.bot.keyboards import user_settings_kb
         user = User(
             id=1, telegram_id=1, account_id=1, role=Role.OWNER,
             department="", truck_num=None, alerts_on=True, is_active=True,
@@ -330,7 +316,7 @@ class TestNewKeyboards:
         assert "cmd_menu" in callbacks
 
     def test_onboarding_kb(self):
-        from bot.keyboards import onboarding_kb
+        from interfaces.bot.keyboards import onboarding_kb
         kb = onboarding_kb()
         callbacks = self._callbacks(kb)
         assert "cmd_integrate_guide" in callbacks
@@ -339,7 +325,7 @@ class TestNewKeyboards:
         assert "cmd_menu" in callbacks
 
     def test_quiet_hours_kb_active(self):
-        from bot.keyboards import quiet_hours_kb
+        from interfaces.bot.keyboards import quiet_hours_kb
         user = User(
             id=1, telegram_id=1, account_id=1, role=Role.OWNER,
             department="", truck_num=None, alerts_on=True, is_active=True,
@@ -353,7 +339,7 @@ class TestNewKeyboards:
         assert "settings_quiet_off" in callbacks
 
     def test_quiet_hours_kb_inactive(self):
-        from bot.keyboards import quiet_hours_kb
+        from interfaces.bot.keyboards import quiet_hours_kb
         user = User(
             id=1, telegram_id=1, account_id=1, role=Role.OWNER,
             department="", truck_num=None, alerts_on=True, is_active=True,
@@ -368,7 +354,7 @@ class TestNewKeyboards:
 
     def test_quiet_hours_kb_admin_no_manage_button(self):
         """Manage button moved to Management menu; quiet_hours_kb should not have it."""
-        from bot.keyboards import quiet_hours_kb
+        from interfaces.bot.keyboards import quiet_hours_kb
         user = User(
             id=1, telegram_id=1, account_id=1, role=Role.OWNER,
             department="", truck_num=None, alerts_on=True, is_active=True,
@@ -378,10 +364,10 @@ class TestNewKeyboards:
         )
         kb = quiet_hours_kb(user)
         callbacks = self._callbacks(kb)
-        assert "cmd_work_schedules" not in callbacks
+        assert "cmd_work_hours" not in callbacks
 
     def test_quiet_hours_kb_non_admin_no_manage_button(self):
-        from bot.keyboards import quiet_hours_kb
+        from interfaces.bot.keyboards import quiet_hours_kb
         user = User(
             id=1, telegram_id=1, account_id=1, role=Role.DRIVER,
             department="", truck_num=None, alerts_on=True, is_active=True,
@@ -391,44 +377,44 @@ class TestNewKeyboards:
         )
         kb = quiet_hours_kb(user)
         callbacks = self._callbacks(kb)
-        assert "cmd_work_schedules" not in callbacks
+        assert "cmd_work_hours" not in callbacks
 
-    def test_work_schedules_kb(self):
-        from bot.keyboards import work_schedules_kb
+    def test_work_hours_kb(self):
+        from interfaces.bot.keyboards import work_hours_kb
         schedules = [
             {"id": 1, "start_hour": 6, "end_hour": 18, "label": "Day Shift", "target_role": "all"},
         ]
-        kb = work_schedules_kb(schedules)
+        kb = work_hours_kb(schedules)
         callbacks = self._callbacks(kb)
-        assert "wsched_view_1" in callbacks
-        assert "wsched_add" in callbacks
+        assert "whours_view_1" in callbacks
+        assert "whours_add" in callbacks
         assert "submenu_mgmt" in callbacks  # back goes to Management
 
-    def test_work_schedules_kb_max(self):
-        from bot.keyboards import work_schedules_kb
+    def test_work_hours_kb_max(self):
+        from interfaces.bot.keyboards import work_hours_kb
         schedules = [{"id": i, "start_hour": 6, "end_hour": 18, "label": f"S{i}", "target_role": "all"} for i in range(10)]
-        kb = work_schedules_kb(schedules)
+        kb = work_hours_kb(schedules)
         callbacks = self._callbacks(kb)
-        assert "wsched_add" not in callbacks
+        assert "whours_add" not in callbacks
 
-    def test_work_schedules_kb_shows_role_tag(self):
-        from bot.keyboards import work_schedules_kb
+    def test_work_hours_kb_shows_role_tag(self):
+        from interfaces.bot.keyboards import work_hours_kb
         schedules = [
             {"id": 1, "start_hour": 6, "end_hour": 18, "label": "Driver Shift", "target_role": "driver"},
         ]
-        kb = work_schedules_kb(schedules)
+        kb = work_hours_kb(schedules)
         labels = [b.text for r in kb.inline_keyboard for b in r]
         assert any("[driver]" in lbl for lbl in labels)
 
     def test_settings_tz_kb(self):
-        from bot.keyboards import settings_tz_kb
+        from interfaces.bot.keyboards import settings_tz_kb
         kb = settings_tz_kb()
         callbacks = self._callbacks(kb)
         assert "set_tz_America/New_York" in callbacks
         assert "set_tz_UTC" in callbacks
 
     def test_auto_reports_menu_with_subscription(self):
-        from bot.keyboards import auto_reports_menu_kb
+        from interfaces.bot.keyboards import auto_reports_menu_kb
         sub = {"frequency": "daily", "send_hour": 9, "timezone": "America/Chicago", "report_type": "faults"}
         kb = auto_reports_menu_kb(sub)
         callbacks = self._callbacks(kb)
@@ -436,21 +422,21 @@ class TestNewKeyboards:
 
     def test_submenu_mgmt_has_no_settings(self):
         """Settings was moved to the main menu root; management submenu should not have it."""
-        from bot.keyboards import submenu_mgmt_kb
+        from interfaces.bot.keyboards import submenu_mgmt_kb
         kb = submenu_mgmt_kb(Role.OWNER, has_api=True)
         callbacks = self._callbacks(kb)
         assert "cmd_settings" not in callbacks
         assert "cmd_audit" in callbacks
-        assert "cmd_work_schedules" in callbacks
+        assert "cmd_work_hours" in callbacks
 
     def test_submenu_mgmt_driver_has_no_settings_no_audit(self):
         """Driver mgmt submenu: no settings (in root) and no audit."""
-        from bot.keyboards import submenu_mgmt_kb
+        from interfaces.bot.keyboards import submenu_mgmt_kb
         kb = submenu_mgmt_kb(Role.DRIVER, has_api=False)
         callbacks = self._callbacks(kb)
         assert "cmd_settings" not in callbacks
         assert "cmd_audit" not in callbacks
-        assert "cmd_work_schedules" not in callbacks
+        assert "cmd_work_hours" not in callbacks
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -459,24 +445,24 @@ class TestNewKeyboards:
 
 class TestRateLimiting:
     def test_first_call_allowed(self):
-        from bot.config import check_rate_limit, _rate_limits
+        from interfaces.bot.config import check_rate_limit, _rate_limits
         _rate_limits.clear()
         assert check_rate_limit(12345, "test_cmd") is True
 
     def test_second_call_blocked(self):
-        from bot.config import check_rate_limit, _rate_limits
+        from interfaces.bot.config import check_rate_limit, _rate_limits
         _rate_limits.clear()
         check_rate_limit(99999, "test_cmd")
         assert check_rate_limit(99999, "test_cmd") is False
 
     def test_different_users_independent(self):
-        from bot.config import check_rate_limit, _rate_limits
+        from interfaces.bot.config import check_rate_limit, _rate_limits
         _rate_limits.clear()
         check_rate_limit(1001, "cmd")
         assert check_rate_limit(1002, "cmd") is True
 
     def test_different_commands_independent(self):
-        from bot.config import check_rate_limit, _rate_limits
+        from interfaces.bot.config import check_rate_limit, _rate_limits
         _rate_limits.clear()
         check_rate_limit(5555, "cmd_a")
         assert check_rate_limit(5555, "cmd_b") is True
@@ -571,7 +557,7 @@ class TestAIClientUsageCapture:
     """Tests for ai._capture_usage and get_last_usage."""
 
     def test_capture_usage_with_metadata(self):
-        import ai
+        import capabilities.ai as ai
 
         class FakeMeta:
             prompt_token_count = 120
@@ -589,7 +575,7 @@ class TestAIClientUsageCapture:
         assert usage["total_tokens"] == 200
 
     def test_capture_usage_no_metadata(self):
-        import ai
+        import capabilities.ai as ai
 
         class FakeResponse:
             pass
@@ -598,7 +584,7 @@ class TestAIClientUsageCapture:
         assert ai.get_last_usage() is None
 
     def test_capture_usage_exception_safe(self):
-        import ai
+        import capabilities.ai as ai
 
         class BadResponse:
             @property
@@ -609,7 +595,7 @@ class TestAIClientUsageCapture:
         assert ai.get_last_usage() is None
 
     def test_get_last_usage_cleared_after_no_meta(self):
-        import ai
+        import capabilities.ai as ai
 
         # Set some usage first
         class FakeMeta:
@@ -638,44 +624,36 @@ class TestAIClientUsageCapture:
 class TestReAlertConfig:
     """Tests for the unified alert architecture configuration.
 
-    Verifies AlertSeverity enum, re-alert constants, and build_alert_keyboard.
+    Verifies AlertSeverity enum and build_alert_keyboard.
     """
 
     def test_alert_severity_values(self):
-        from bot.alerts import AlertSeverity
+        from capabilities.alerting import AlertSeverity
         assert AlertSeverity.CRITICAL.value == "critical"
         assert AlertSeverity.WARNING.value == "warning"
         assert AlertSeverity.INFO.value == "info"
 
-    def test_realert_constants(self):
-        from bot.alerts import ACK_WINDOW_MINUTES, MAX_REALERTS, SNOOZE_MINUTES
-        assert ACK_WINDOW_MINUTES > 0
-        assert MAX_REALERTS >= 1
-        assert SNOOZE_MINUTES > 0
-
     def test_build_keyboard_critical_with_ack(self):
-        from bot.alerts import build_alert_keyboard, AlertSeverity, SNOOZE_MINUTES
+        from capabilities.alerting import build_alert_keyboard, AlertSeverity
         kb = build_alert_keyboard(AlertSeverity.CRITICAL, "CO1", "101", ack_id=42)
         labels = [b.text for r in kb.inline_keyboard for b in r]
         callbacks = [b.callback_data for r in kb.inline_keyboard for b in r]
         assert "✅ Acknowledge" in labels
-        assert "⏰ Snooze" in labels
         assert "🤖 AI Diagnose" in labels
         assert "📋 View Truck #101" in labels
         assert "ack_alert_42" in callbacks
-        assert "snooze_pick_42" in callbacks
         # Default alert_type is "fault", ack_id appended
         assert "ai_diag_fault_CO1_101:42" in callbacks
 
     def test_build_keyboard_warning_with_ack(self):
-        from bot.alerts import build_alert_keyboard, AlertSeverity
+        from capabilities.alerting import build_alert_keyboard, AlertSeverity
         kb = build_alert_keyboard(AlertSeverity.WARNING, "CO1", "202", ack_id=99)
         labels = [b.text for r in kb.inline_keyboard for b in r]
         assert "✅ Acknowledge" in labels
         assert "🤖 AI Diagnose" in labels
 
     def test_build_keyboard_health_type(self):
-        from bot.alerts import build_alert_keyboard, AlertSeverity
+        from capabilities.alerting import build_alert_keyboard, AlertSeverity
         kb = build_alert_keyboard(
             AlertSeverity.WARNING, "CO1", "303", ack_id=10,
             alert_type="health",
@@ -684,7 +662,7 @@ class TestReAlertConfig:
         assert "ai_diag_health_CO1_303:10" in callbacks
 
     def test_build_keyboard_fuel_type(self):
-        from bot.alerts import build_alert_keyboard, AlertSeverity
+        from capabilities.alerting import build_alert_keyboard, AlertSeverity
         kb = build_alert_keyboard(
             AlertSeverity.CRITICAL, "CO1", "404", ack_id=20,
             alert_type="fuel",
@@ -693,7 +671,7 @@ class TestReAlertConfig:
         assert "ai_diag_fuel_CO1_404:20" in callbacks
 
     def test_build_keyboard_critical_no_ack(self):
-        from bot.alerts import build_alert_keyboard, AlertSeverity
+        from capabilities.alerting import build_alert_keyboard, AlertSeverity
         kb = build_alert_keyboard(AlertSeverity.CRITICAL, "CO1", "101")
         labels = [b.text for r in kb.inline_keyboard for b in r]
         assert "✅ Acknowledge" not in labels
@@ -701,7 +679,7 @@ class TestReAlertConfig:
         assert "📋 View Truck #101" in labels
 
     def test_build_keyboard_info_no_ack_no_ai(self):
-        from bot.alerts import build_alert_keyboard, AlertSeverity
+        from capabilities.alerting import build_alert_keyboard, AlertSeverity
         kb = build_alert_keyboard(AlertSeverity.INFO, "CO1", "303")
         labels = [b.text for r in kb.inline_keyboard for b in r]
         assert "✅ Acknowledge" not in labels
@@ -710,8 +688,8 @@ class TestReAlertConfig:
         assert "◀️ Main Menu" in labels
 
     def test_build_keyboard_has_samsara_link(self):
-        from bot.alerts import build_alert_keyboard, AlertSeverity
-        from samsara_client import ORG_IDS
+        from capabilities.alerting import build_alert_keyboard, AlertSeverity
+        from adapters.samsara.client import ORG_IDS
         ORG_IDS["CO1"] = "123"
         try:
             kb = build_alert_keyboard(AlertSeverity.CRITICAL, "CO1", "101", ack_id=1,
@@ -722,24 +700,24 @@ class TestReAlertConfig:
             ORG_IDS.pop("CO1", None)
 
     def test_build_keyboard_no_samsara_link_without_id(self):
-        from bot.alerts import build_alert_keyboard, AlertSeverity
+        from capabilities.alerting import build_alert_keyboard, AlertSeverity
         kb = build_alert_keyboard(AlertSeverity.CRITICAL, "CO1", "101", ack_id=1)
         urls = [b.url for r in kb.inline_keyboard for b in r if b.url]
         assert not urls
 
     def test_cooldown_hours_per_type(self):
-        from bot.alerts import _COOLDOWN_HOURS
+        from capabilities.alerting import _COOLDOWN_HOURS
         assert _COOLDOWN_HOURS["fault"] > 0
         assert _COOLDOWN_HOURS["health"] > 0
         assert _COOLDOWN_HOURS["fuel"] == 0   # uses hysteresis
         assert _COOLDOWN_HOURS["geofence"] == 0  # event-based
 
     def test_fuel_critical_threshold(self):
-        from bot.alerts import FUEL_CRITICAL_PCT
+        from capabilities.alerting import FUEL_CRITICAL_PCT
         assert FUEL_CRITICAL_PCT == 10
 
     def test_health_severity_sets(self):
-        from bot.alerts import _CRITICAL_HEALTH, _WARNING_HEALTH
+        from capabilities.alerting import _CRITICAL_HEALTH, _WARNING_HEALTH
         assert "low_oil_pressure" in _CRITICAL_HEALTH
         assert "high_coolant_temp" in _CRITICAL_HEALTH
         assert "low_battery" in _WARNING_HEALTH
@@ -755,43 +733,43 @@ class TestSamsaraDeepLinks:
     """Tests for samsara_vehicle_url helper and alert keyboard URL button."""
 
     def test_url_builder_fault(self):
-        from samsara_client import samsara_vehicle_url
+        from adapters.samsara.client import samsara_vehicle_url
         url = samsara_vehicle_url("12345", "v999", "fault",
                                   dashboard_base="https://cloud.samsara.com")
         assert url == "https://cloud.samsara.com/o/12345/devices/v999/vehicle"
 
     def test_url_builder_health(self):
-        from samsara_client import samsara_vehicle_url
+        from adapters.samsara.client import samsara_vehicle_url
         url = samsara_vehicle_url("12345", "v999", "health",
                                   dashboard_base="https://cloud.samsara.com")
         assert url == "https://cloud.samsara.com/o/12345/devices/v999/vehicle"
 
     def test_url_builder_fuel(self):
-        from samsara_client import samsara_vehicle_url
+        from adapters.samsara.client import samsara_vehicle_url
         url = samsara_vehicle_url("12345", "v999", "fuel",
                                   dashboard_base="https://cloud.samsara.com")
         assert url == "https://cloud.samsara.com/o/12345/devices/v999/vehicle"
 
     def test_url_builder_events(self):
-        from samsara_client import samsara_vehicle_url
+        from adapters.samsara.client import samsara_vehicle_url
         url = samsara_vehicle_url("12345", "v999", "events",
                                   dashboard_base="https://cloud.samsara.com")
         assert url == "https://cloud.samsara.com/o/12345/devices/v999/vehicle"
 
     def test_url_builder_unknown_type_fallback(self):
-        from samsara_client import samsara_vehicle_url
+        from adapters.samsara.client import samsara_vehicle_url
         url = samsara_vehicle_url("12345", "v999", "unknown_type",
                                   dashboard_base="https://cloud.samsara.com")
         assert url == "https://cloud.samsara.com/o/12345/devices/v999/vehicle"
 
     def test_url_builder_no_org_returns_none(self):
-        from samsara_client import samsara_vehicle_url
+        from adapters.samsara.client import samsara_vehicle_url
         assert samsara_vehicle_url("", "v999", "fault") is None
         assert samsara_vehicle_url("", "v999", "health") is None
 
     def test_keyboard_includes_url_button_when_org_known(self):
-        from bot.alerts import build_alert_keyboard, AlertSeverity
-        import samsara_client
+        from capabilities.alerting import build_alert_keyboard, AlertSeverity
+        import adapters.samsara.client as samsara_client
         samsara_client.ORG_IDS["TEST"] = "org123"
         try:
             kb = build_alert_keyboard(
@@ -806,8 +784,8 @@ class TestSamsaraDeepLinks:
             samsara_client.ORG_IDS.pop("TEST", None)
 
     def test_keyboard_no_url_button_when_org_unknown(self):
-        from bot.alerts import build_alert_keyboard, AlertSeverity
-        import samsara_client
+        from capabilities.alerting import build_alert_keyboard, AlertSeverity
+        import adapters.samsara.client as samsara_client
         samsara_client.ORG_IDS.pop("NOPE", None)
         kb = build_alert_keyboard(
             AlertSeverity.CRITICAL, "NOPE", "T100",
@@ -817,8 +795,8 @@ class TestSamsaraDeepLinks:
         assert len(urls) == 0
 
     def test_keyboard_info_severity_with_url(self):
-        from bot.alerts import build_alert_keyboard, AlertSeverity
-        import samsara_client
+        from capabilities.alerting import build_alert_keyboard, AlertSeverity
+        import adapters.samsara.client as samsara_client
         samsara_client.ORG_IDS["CO2"] = "org456"
         try:
             kb = build_alert_keyboard(
@@ -836,11 +814,11 @@ class TestSamsaraDeepLinks:
             samsara_client.ORG_IDS.pop("CO2", None)
 
     def test_org_ids_dict_exists(self):
-        from samsara_client import ORG_IDS
+        from adapters.samsara.client import ORG_IDS
         assert isinstance(ORG_IDS, dict)
 
     def test_dashboard_url_config(self):
-        from bot.config import SAMSARA_DASHBOARD_URL
+        from interfaces.bot.config import SAMSARA_DASHBOARD_URL
         assert "cloud" in SAMSARA_DASHBOARD_URL
         assert "samsara.com" in SAMSARA_DASHBOARD_URL
 
@@ -860,20 +838,18 @@ class TestSharedAcknowledgment:
             vehicle_id="v1", vehicle_name="T100",
             alert_key="shared_key_1",
             message_id=1, chat_id=1001, sent_to=1001,
-            next_escalation="2099-01-01T00:00:00",
         )
         ack_id2 = await db.create_alert_ack(
             account_id=account.id, alert_type="fault",
             vehicle_id="v1", vehicle_name="T100",
             alert_key="shared_key_1",
             message_id=2, chat_id=2002, sent_to=2002,
-            next_escalation="2099-01-01T00:00:00",
         )
         # Ack the first one
         await db.acknowledge_alert(ack_id1, owner.telegram_id)
         # Both should now be acked
-        unacked = await db.get_unacked_alerts()
-        assert len(unacked) == 0
+        pending = await db.get_pending_alerts(account.id)
+        assert len(pending) == 0
 
     async def test_different_keys_not_shared(self, seeded):
         db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
@@ -882,59 +858,17 @@ class TestSharedAcknowledgment:
             vehicle_id="v1", vehicle_name="T100",
             alert_key="key_A",
             message_id=1, chat_id=1001, sent_to=1001,
-            next_escalation="2099-01-01T00:00:00",
         )
         ack_id2 = await db.create_alert_ack(
             account_id=account.id, alert_type="fault",
             vehicle_id="v2", vehicle_name="T200",
             alert_key="key_B",
             message_id=2, chat_id=2002, sent_to=2002,
-            next_escalation="2099-01-01T00:00:00",
         )
         await db.acknowledge_alert(ack_id1, owner.telegram_id)
-        unacked = await db.get_unacked_alerts()
-        assert len(unacked) == 1
-        assert unacked[0]["alert_key"] == "key_B"
-
-
-# ══════════════════════════════════════════════════════════════════
-# ALERT EXPIRATION
-# ══════════════════════════════════════════════════════════════════
-
-class TestAlertExpiration:
-    """Tests for auto-expiring stale alerts."""
-
-    async def test_expire_old_alerts(self, seeded):
-        db, account = seeded["db"], seeded["account"]
-        # Create alert with old timestamp
-        ack_id = await db.create_alert_ack(
-            account_id=account.id, alert_type="fault",
-            vehicle_id="v1", vehicle_name="T100",
-            alert_key="expire_test",
-            message_id=1, chat_id=1001, sent_to=1001,
-            next_escalation="2020-01-01T00:00:00",
-        )
-        # Expire alerts older than now
-        from datetime import datetime, timezone
-        expired = await db.expire_stale_alerts(datetime.now(timezone.utc).isoformat())
-        assert len(expired) == 1
-        assert expired[0]["id"] == ack_id
-        # Should no longer appear in unacked
-        unacked = await db.get_unacked_alerts()
-        assert len(unacked) == 0
-
-    async def test_fresh_alerts_not_expired(self, seeded):
-        db, account = seeded["db"], seeded["account"]
-        await db.create_alert_ack(
-            account_id=account.id, alert_type="fault",
-            vehicle_id="v1", vehicle_name="T100",
-            alert_key="fresh_test",
-            message_id=1, chat_id=1001, sent_to=1001,
-            next_escalation="2099-01-01T00:00:00",
-        )
-        # Try to expire with a past cutoff
-        expired = await db.expire_stale_alerts("2020-01-01T00:00:00")
-        assert len(expired) == 0
+        pending = await db.get_pending_alerts(account.id)
+        assert len(pending) == 1
+        assert pending[0]["alert_key"] == "key_B"
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -992,7 +926,7 @@ class TestWorkSchedules:
 
     async def test_create_work_schedule(self, seeded):
         db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
-        sched = await db.create_work_schedule(
+        sched = await db.create_work_hour(
             account_id=account.id, label="Day Shift",
             start_hour=6, end_hour=18, created_by=owner.id,
         )
@@ -1000,81 +934,81 @@ class TestWorkSchedules:
         assert sched["start_hour"] == 6
         assert sched["end_hour"] == 18
 
-    async def test_list_work_schedules(self, seeded):
+    async def test_list_work_hours(self, seeded):
         db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
-        await db.create_work_schedule(account.id, "Day Shift", 6, 18, owner.id)
-        await db.create_work_schedule(account.id, "Night Shift", 18, 6, owner.id)
-        schedules = await db.get_work_schedules(account.id)
+        await db.create_work_hour(account.id, "Day Shift", 6, 18, owner.id)
+        await db.create_work_hour(account.id, "Night Shift", 18, 6, owner.id)
+        schedules = await db.get_work_hours(account.id)
         assert len(schedules) == 2
 
     async def test_get_work_schedule(self, seeded):
         db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
-        created = await db.create_work_schedule(account.id, "Office Hours", 8, 17, owner.id)
-        fetched = await db.get_work_schedule(created["id"])
+        created = await db.create_work_hour(account.id, "Office Hours", 8, 17, owner.id)
+        fetched = await db.get_work_hour(created["id"])
         assert fetched is not None
         assert fetched["label"] == "Office Hours"
 
     async def test_update_work_schedule(self, seeded):
         db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
-        created = await db.create_work_schedule(account.id, "Early", 5, 14, owner.id)
-        await db.update_work_schedule(created["id"], label="Early Bird", start_hour=4, end_hour=13)
-        updated = await db.get_work_schedule(created["id"])
+        created = await db.create_work_hour(account.id, "Early", 5, 14, owner.id)
+        await db.update_work_hour(created["id"], label="Early Bird", start_hour=4, end_hour=13)
+        updated = await db.get_work_hour(created["id"])
         assert updated["label"] == "Early Bird"
         assert updated["start_hour"] == 4
         assert updated["end_hour"] == 13
 
     async def test_delete_work_schedule(self, seeded):
         db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
-        created = await db.create_work_schedule(account.id, "Temp", 9, 17, owner.id)
-        await db.delete_work_schedule(created["id"])
-        result = await db.get_work_schedule(created["id"])
+        created = await db.create_work_hour(account.id, "Temp", 9, 17, owner.id)
+        await db.delete_work_hour(created["id"])
+        result = await db.get_work_hour(created["id"])
         assert result is None
 
     async def test_schedules_isolation_between_accounts(self, seeded):
         db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
-        await db.create_work_schedule(account.id, "Shift A", 6, 18, owner.id)
+        await db.create_work_hour(account.id, "Shift A", 6, 18, owner.id)
         # Different account should see nothing
-        other_schedules = await db.get_work_schedules(999)
+        other_schedules = await db.get_work_hours(999)
         assert len(other_schedules) == 0
 
     async def test_create_schedule_with_target_role(self, seeded):
         db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
-        sched = await db.create_work_schedule(
+        sched = await db.create_work_hour(
             account_id=account.id, label="Driver Shift",
             start_hour=7, end_hour=19, created_by=owner.id,
             target_role="driver",
         )
         assert sched["target_role"] == "driver"
-        fetched = await db.get_work_schedule(sched["id"])
+        fetched = await db.get_work_hour(sched["id"])
         assert fetched["target_role"] == "driver"
 
     async def test_default_target_role_is_all(self, seeded):
         db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
-        sched = await db.create_work_schedule(account.id, "General", 8, 17, owner.id)
+        sched = await db.create_work_hour(account.id, "General", 8, 17, owner.id)
         assert sched["target_role"] == "all"
 
-    async def test_get_work_schedules_for_role_all(self, seeded):
+    async def test_get_work_hours_for_role_all(self, seeded):
         db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
-        await db.create_work_schedule(account.id, "All Shift", 6, 18, owner.id, target_role="all")
-        await db.create_work_schedule(account.id, "Driver Only", 7, 19, owner.id, target_role="driver")
+        await db.create_work_hour(account.id, "All Shift", 6, 18, owner.id, target_role="all")
+        await db.create_work_hour(account.id, "Driver Only", 7, 19, owner.id, target_role="driver")
         # Driver should see both 'all' and 'driver'
-        driver_schedules = await db.get_work_schedules_for_role(account.id, "driver")
+        driver_schedules = await db.get_work_hours_for_role(account.id, "driver")
         assert len(driver_schedules) == 2
 
-    async def test_get_work_schedules_for_role_filtered(self, seeded):
+    async def test_get_work_hours_for_role_filtered(self, seeded):
         db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
-        await db.create_work_schedule(account.id, "Driver Only", 7, 19, owner.id, target_role="driver")
-        await db.create_work_schedule(account.id, "Admin Only", 8, 17, owner.id, target_role="admin")
+        await db.create_work_hour(account.id, "Driver Only", 7, 19, owner.id, target_role="driver")
+        await db.create_work_hour(account.id, "Admin Only", 8, 17, owner.id, target_role="admin")
         # Admin should see only 'admin' (not 'driver')
-        admin_schedules = await db.get_work_schedules_for_role(account.id, "admin")
+        admin_schedules = await db.get_work_hours_for_role(account.id, "admin")
         assert len(admin_schedules) == 1
         assert admin_schedules[0]["target_role"] == "admin"
 
     async def test_update_schedule_target_role(self, seeded):
         db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
-        sched = await db.create_work_schedule(account.id, "Shift", 6, 18, owner.id)
-        await db.update_work_schedule(sched["id"], target_role="fleet")
-        updated = await db.get_work_schedule(sched["id"])
+        sched = await db.create_work_hour(account.id, "Shift", 6, 18, owner.id)
+        await db.update_work_hour(sched["id"], target_role="fleet")
+        updated = await db.get_work_hour(sched["id"])
         assert updated["target_role"] == "fleet"
 
     async def test_get_shift_handoff_data(self, seeded):
@@ -1092,7 +1026,6 @@ class TestWorkSchedules:
             vehicle_id="v1", vehicle_name="T100",
             alert_key="handoff_test",
             message_id=1, chat_id=owner.telegram_id, sent_to=owner.telegram_id,
-            next_escalation="2099-01-01T00:00:00",
         )
         handoff = await db.get_shift_handoff_data(account.id, owner.telegram_id)
         assert len(handoff["pending_alerts"]) == 1
@@ -1107,60 +1040,27 @@ class TestRolePickerKeyboard:
         return [b.callback_data for r in kb.inline_keyboard for b in r if b.callback_data]
 
     def test_role_picker_has_all_roles(self):
-        from bot.keyboards import work_schedule_role_picker_kb
-        kb = work_schedule_role_picker_kb()
+        from interfaces.bot.keyboards import work_hour_role_picker_kb
+        kb = work_hour_role_picker_kb()
         callbacks = self._callbacks(kb)
-        assert "wsched_role_all" in callbacks
-        assert "wsched_role_owner" in callbacks
-        assert "wsched_role_admin" in callbacks
-        assert "wsched_role_fleet" in callbacks
-        assert "wsched_role_dispatcher" in callbacks
-        assert "wsched_role_driver" in callbacks
+        assert "whours_role_all" in callbacks
+        assert "whours_role_owner" in callbacks
+        assert "whours_role_admin" in callbacks
+        assert "whours_role_fleet" in callbacks
+        assert "whours_role_dispatcher" in callbacks
+        assert "whours_role_driver" in callbacks
 
     def test_role_picker_has_back(self):
-        from bot.keyboards import work_schedule_role_picker_kb
-        kb = work_schedule_role_picker_kb()
+        from interfaces.bot.keyboards import work_hour_role_picker_kb
+        kb = work_hour_role_picker_kb()
         callbacks = self._callbacks(kb)
-        assert "cmd_work_schedules" in callbacks
+        assert "cmd_work_hours" in callbacks
 
     def test_schedule_detail_has_change_role(self):
-        from bot.keyboards import work_schedule_detail_kb
-        kb = work_schedule_detail_kb(42)
+        from interfaces.bot.keyboards import work_hour_detail_kb
+        kb = work_hour_detail_kb(42)
         callbacks = self._callbacks(kb)
-        assert "wsched_changerole_42" in callbacks
-
-class TestAlertSnooze:
-    """Tests for alert snooze."""
-
-    async def test_snooze_postpones_escalation(self, seeded):
-        db, account = seeded["db"], seeded["account"]
-        ack_id = await db.create_alert_ack(
-            account_id=account.id, alert_type="fault",
-            vehicle_id="v1", vehicle_name="T100",
-            alert_key="snooze_test",
-            message_id=1, chat_id=1001, sent_to=1001,
-            next_escalation="2025-01-01T00:00:00",
-        )
-        new_time = "2025-01-01T00:15:00"
-        await db.snooze_alert(ack_id, new_time)
-        unacked = await db.get_unacked_alerts(before="2025-01-01T00:10:00")
-        assert len(unacked) == 0  # snoozed past the check time
-        unacked_later = await db.get_unacked_alerts(before="2025-01-01T00:16:00")
-        assert len(unacked_later) == 1
-
-    async def test_snooze_does_not_ack(self, seeded):
-        db, account = seeded["db"], seeded["account"]
-        ack_id = await db.create_alert_ack(
-            account_id=account.id, alert_type="fault",
-            vehicle_id="v1", vehicle_name="T100",
-            alert_key="snooze_no_ack",
-            message_id=1, chat_id=1001, sent_to=1001,
-            next_escalation="2025-01-01T00:00:00",
-        )
-        await db.snooze_alert(ack_id, "2099-01-01T00:00:00")
-        # Still appears in full unacked list (no before filter)
-        unacked = await db.get_unacked_alerts()
-        assert len(unacked) == 1
+        assert "whours_changerole_42" in callbacks
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1215,14 +1115,12 @@ class TestAlertHistoryAndPending:
         await db.create_alert_ack(
             account_id=account.id, alert_type="fault",
             vehicle_id="v1", vehicle_name="T100",
-            alert_key="hist_1", message_id=1, chat_id=1001,
-            sent_to=1001, next_escalation="2099-01-01T00:00:00",
+            alert_key="hist_1", message_id=1, chat_id=1001, sent_to=1001,
         )
         await db.create_alert_ack(
             account_id=account.id, alert_type="health",
             vehicle_id="v2", vehicle_name="T200",
-            alert_key="hist_2", message_id=2, chat_id=1001,
-            sent_to=1001, next_escalation="2099-01-01T00:00:00",
+            alert_key="hist_2", message_id=2, chat_id=1001, sent_to=1001,
         )
         history = await db.get_alert_history(account.id)
         assert len(history) == 2
@@ -1232,14 +1130,12 @@ class TestAlertHistoryAndPending:
         await db.create_alert_ack(
             account_id=account.id, alert_type="fault",
             vehicle_id="v1", vehicle_name="T100",
-            alert_key="pend_1", message_id=1, chat_id=1001,
-            sent_to=1001, next_escalation="2099-01-01T00:00:00",
+            alert_key="pend_1", message_id=1, chat_id=1001, sent_to=1001,
         )
         ack_id2 = await db.create_alert_ack(
             account_id=account.id, alert_type="fault",
             vehicle_id="v2", vehicle_name="T200",
-            alert_key="pend_2", message_id=2, chat_id=1001,
-            sent_to=1001, next_escalation="2099-01-01T00:00:00",
+            alert_key="pend_2", message_id=2, chat_id=1001, sent_to=1001,
         )
         # Ack one
         await db.acknowledge_alert(ack_id2, owner.telegram_id)
@@ -1253,8 +1149,7 @@ class TestAlertHistoryAndPending:
             await db.create_alert_ack(
                 account_id=account.id, alert_type="fault",
                 vehicle_id=f"v{i}", vehicle_name=f"T{i}",
-                alert_key=f"lim_{i}", message_id=i, chat_id=1001,
-                sent_to=1001, next_escalation="2099-01-01T00:00:00",
+                alert_key=f"lim_{i}", message_id=i, chat_id=1001, sent_to=1001,
             )
         history = await db.get_alert_history(account.id, limit=5)
         assert len(history) == 5
@@ -1268,76 +1163,76 @@ class TestAddressClassification:
     """Tests for the address classification heuristic."""
 
     def test_safe_truck_stop(self):
-        from bot.alerts import classify_parking_location
+        from capabilities.alerting import classify_parking_location
         assert classify_parking_location("Pilot Travel Center, I-95, Exit 42") == "safe"
 
     def test_safe_rest_area(self):
-        from bot.alerts import classify_parking_location
+        from capabilities.alerting import classify_parking_location
         assert classify_parking_location("I-40 Rest Area Mile Marker 150") == "safe"
 
     def test_safe_loves(self):
-        from bot.alerts import classify_parking_location
+        from capabilities.alerting import classify_parking_location
         assert classify_parking_location("Love's Travel Stop #429, Hwy 10") == "safe"
 
     def test_safe_warehouse(self):
-        from bot.alerts import classify_parking_location
+        from capabilities.alerting import classify_parking_location
         assert classify_parking_location("Amazon Warehouse, 123 Distribution Blvd") == "safe"
 
     def test_safe_terminal(self):
-        from bot.alerts import classify_parking_location
+        from capabilities.alerting import classify_parking_location
         assert classify_parking_location("FedEx Terminal, Industrial Park Dr") == "safe"
 
     def test_unsafe_highway(self):
-        from bot.alerts import classify_parking_location
+        from capabilities.alerting import classify_parking_location
         assert classify_parking_location("I-95 Highway, Mile Marker 87") == "unsafe"
 
     def test_unsafe_shoulder(self):
-        from bot.alerts import classify_parking_location
+        from capabilities.alerting import classify_parking_location
         assert classify_parking_location("Shoulder of Route 22, Exit Ramp") == "unsafe"
 
     def test_unsafe_interchange(self):
-        from bot.alerts import classify_parking_location
+        from capabilities.alerting import classify_parking_location
         assert classify_parking_location("Interstate 280 Interchange") == "unsafe"
 
     def test_unsafe_ramp(self):
-        from bot.alerts import classify_parking_location
+        from capabilities.alerting import classify_parking_location
         assert classify_parking_location("Exit ramp off I-10") == "unsafe"
 
     def test_unknown_residential(self):
-        from bot.alerts import classify_parking_location
+        from capabilities.alerting import classify_parking_location
         assert classify_parking_location("123 Maple Street, Springfield, IL") == "unknown"
 
     def test_unknown_empty(self):
-        from bot.alerts import classify_parking_location
+        from capabilities.alerting import classify_parking_location
         assert classify_parking_location("") == "unknown"
 
     def test_safe_flying_j(self):
-        from bot.alerts import classify_parking_location
+        from capabilities.alerting import classify_parking_location
         assert classify_parking_location("Flying J Travel Plaza, Exit 12") == "safe"
 
     def test_safe_petro(self):
-        from bot.alerts import classify_parking_location
+        from capabilities.alerting import classify_parking_location
         assert classify_parking_location("Petro Stopping Center, Hwy 55") == "safe"
 
     def test_unsafe_freeway(self):
-        from bot.alerts import classify_parking_location
+        from capabilities.alerting import classify_parking_location
         assert classify_parking_location("US-101 Freeway, Northbound") == "unsafe"
 
     def test_unsafe_beltway(self):
         """Real Truck #238 address: Capital Beltway, Adelphi, MD, 20740."""
-        from bot.alerts import classify_parking_location
+        from capabilities.alerting import classify_parking_location
         assert classify_parking_location("Capital Beltway, Adelphi, MD, 20740") == "unsafe"
 
     def test_unsafe_turnpike(self):
-        from bot.alerts import classify_parking_location
+        from capabilities.alerting import classify_parking_location
         assert classify_parking_location("NJ Turnpike, Mile Marker 87") == "unsafe"
 
     def test_unsafe_expressway(self):
-        from bot.alerts import classify_parking_location
+        from capabilities.alerting import classify_parking_location
         assert classify_parking_location("Long Island Expressway, Queens") == "unsafe"
 
     def test_unsafe_parkway(self):
-        from bot.alerts import classify_parking_location
+        from capabilities.alerting import classify_parking_location
         assert classify_parking_location("Garden State Parkway, Rahway") == "unsafe"
 
 
@@ -1466,7 +1361,7 @@ class TestGeofenceCheck:
     """Test geofence-based parking safety."""
 
     def test_inside_circular_geofence(self):
-        from bot.geofences import _is_inside_geofence
+        from interfaces.bot.geofences import _is_inside_geofence
         gf = {
             "circularGeofence": {
                 "latitude": 40.7128,
@@ -1477,7 +1372,7 @@ class TestGeofenceCheck:
         assert _is_inside_geofence(40.7128, -74.006, gf) is True
 
     def test_outside_circular_geofence(self):
-        from bot.geofences import _is_inside_geofence
+        from interfaces.bot.geofences import _is_inside_geofence
         gf = {
             "circularGeofence": {
                 "latitude": 40.7128,
@@ -1489,7 +1384,7 @@ class TestGeofenceCheck:
         assert _is_inside_geofence(41.0, -73.0, gf) is False
 
     def test_is_inside_any_geofence(self):
-        from bot.alerts import _is_inside_any_geofence
+        from capabilities.alerting import _is_inside_any_geofence
         geofences = [
             {"circularGeofence": {"latitude": 40.0, "longitude": -74.0, "radiusMeters": 100}},
             {"circularGeofence": {"latitude": 41.0, "longitude": -73.0, "radiusMeters": 500}},
@@ -1505,7 +1400,7 @@ class TestParkingMapRender:
 
     def test_render_parking_map_returns_bytes(self):
         """_render_parking_map should return PNG bytes for valid coords."""
-        from bot.alerts import _render_parking_map
+        from capabilities.alerting import _render_parking_map
         from unittest.mock import patch, MagicMock
         import io
 
@@ -1535,7 +1430,7 @@ class TestParkingMapRender:
 
     def test_render_parking_map_catches_errors(self):
         """Should return None if tile fetch / rendering fails."""
-        from bot.alerts import _render_parking_map
+        from capabilities.alerting import _render_parking_map
         from unittest.mock import patch
 
         with patch("staticmap.StaticMap", side_effect=Exception("tile error")):
@@ -1545,7 +1440,7 @@ class TestParkingMapRender:
     @pytest.mark.asyncio
     async def test_ai_analysis_with_map_uses_vision(self):
         """When map renders successfully, should call generate_with_vision."""
-        from bot.alerts import _get_ai_parking_analysis
+        from capabilities.alerting import _get_ai_parking_analysis
         from unittest.mock import patch, AsyncMock, MagicMock
 
         mock_map = b"\x89PNG_fake_map"
@@ -1555,11 +1450,11 @@ class TestParkingMapRender:
             "REASON: Truck is on the highway shoulder near an interchange."
         )
 
-        with patch("bot.alerts.parking._render_parking_map", return_value=mock_map), \
-             patch("ai.is_configured", return_value=True), \
-             patch("ai.generate_with_vision", new_callable=AsyncMock,
+        with patch("capabilities.alerting.parking._render_parking_map", return_value=mock_map), \
+             patch("capabilities.ai.is_configured", return_value=True), \
+             patch("capabilities.ai.generate_with_vision", new_callable=AsyncMock,
                    return_value=mock_vision_response) as mock_gv, \
-             patch("ai.get_last_usage", return_value=None):
+             patch("capabilities.ai.get_last_usage", return_value=None):
             result = await _get_ai_parking_analysis(
                 "238", "Capital Beltway, Adelphi, MD, 20740",
                 39.018952, -76.950656, 3.5,
@@ -1574,14 +1469,14 @@ class TestParkingMapRender:
     @pytest.mark.asyncio
     async def test_ai_analysis_fallback_to_text(self):
         """When map render fails, should fall back to text-only generate."""
-        from bot.alerts import _get_ai_parking_analysis
+        from capabilities.alerting import _get_ai_parking_analysis
         from unittest.mock import patch, AsyncMock
 
-        with patch("bot.alerts.parking._render_parking_map", return_value=None), \
-             patch("ai.is_configured", return_value=True), \
-             patch("ai.generate", new_callable=AsyncMock,
+        with patch("capabilities.alerting.parking._render_parking_map", return_value=None), \
+             patch("capabilities.ai.is_configured", return_value=True), \
+             patch("capabilities.ai.generate", new_callable=AsyncMock,
                    return_value="SAFE. This is a truck stop.") as mock_gen, \
-             patch("ai.get_last_usage", return_value=None):
+             patch("capabilities.ai.get_last_usage", return_value=None):
             result = await _get_ai_parking_analysis("100", "Loves #42", 35.0, -90.0, 4.0)
 
         assert "SAFE" in result
@@ -1592,7 +1487,7 @@ class TestParkingAlertFormat:
     """Test parking alert message formatting."""
 
     def test_format_warning(self):
-        from bot.alerts import _format_parking_alert, AlertSeverity
+        from capabilities.alerting import _format_parking_alert, AlertSeverity
         text = _format_parking_alert(
             "238", "Capital Beltway, Adelphi, MD, 20740",
             39.018952, -76.950656,
@@ -1605,7 +1500,7 @@ class TestParkingAlertFormat:
         assert "maps.google.com" in text
 
     def test_format_critical(self):
-        from bot.alerts import _format_parking_alert, AlertSeverity
+        from capabilities.alerting import _format_parking_alert, AlertSeverity
         text = _format_parking_alert(
             "238", "Capital Beltway, Adelphi, MD, 20740",
             39.018952, -76.950656,
@@ -1618,7 +1513,7 @@ class TestParkingAlertFormat:
         assert "AI Analysis" in text
 
     def test_format_long_duration_days(self):
-        from bot.alerts import _format_parking_alert, AlertSeverity
+        from capabilities.alerting import _format_parking_alert, AlertSeverity
         text = _format_parking_alert(
             "238", "Capital Beltway, Adelphi, MD, 20740",
             39.018952, -76.950656,
@@ -1631,14 +1526,14 @@ class TestParkingEventsKeyboard:
     """Test parking events keyboard builder."""
 
     def test_empty_events(self):
-        from bot.keyboards import parking_events_kb
+        from interfaces.bot.keyboards import parking_events_kb
         kb = parking_events_kb([])
         buttons = [b.text for row in kb.inline_keyboard for b in row]
         assert any("No vehicles need attention" in b for b in buttons)
         assert any("Refresh" in b for b in buttons)
 
     def test_with_events(self):
-        from bot.keyboards import parking_events_kb
+        from interfaces.bot.keyboards import parking_events_kb
         events = [
             {"id": 1, "vehicle_name": "T100", "duration_hours": 5.0, "location_class": "unsafe"},
             {"id": 2, "vehicle_name": "T200", "duration_hours": 26.0, "location_class": "unknown"},
@@ -1649,7 +1544,7 @@ class TestParkingEventsKeyboard:
         assert any("T200" in b for b in buttons)
 
     def test_tools_menu_has_parking(self):
-        from bot.keyboards import submenu_tools_kb
+        from interfaces.bot.keyboards import submenu_tools_kb
         kb = submenu_tools_kb(Role.OWNER)
         callbacks = [b.callback_data for row in kb.inline_keyboard for b in row]
         assert "cmd_parking_events" in callbacks
@@ -1659,8 +1554,8 @@ class TestParkingAlertSubscription:
     """Test alert_parking and ai_parking subscription toggles."""
 
     def test_alert_settings_has_parking_toggle(self):
-        from bot.keyboards import alert_settings_kb
-        from database import User, Role
+        from interfaces.bot.keyboards import alert_settings_kb
+        from adapters.storage import User, Role
         user = User(
             id=1, telegram_id=111, account_id=1, role=Role.OWNER,
             department="general", truck_num=None, alerts_on=True,
@@ -1671,8 +1566,8 @@ class TestParkingAlertSubscription:
         assert "alert_toggle_parking" in callbacks
 
     def test_alert_settings_parking_icon_on(self):
-        from bot.keyboards import alert_settings_kb
-        from database import User, Role
+        from interfaces.bot.keyboards import alert_settings_kb
+        from adapters.storage import User, Role
         user = User(
             id=1, telegram_id=111, account_id=1, role=Role.OWNER,
             department="general", truck_num=None, alerts_on=True,
@@ -1688,8 +1583,8 @@ class TestParkingAlertSubscription:
         assert "✅" in parking_btn.text
 
     def test_ai_alerts_has_parking_toggle(self):
-        from bot.ai import _ai_alerts_kb
-        from database import User, Role
+        from interfaces.bot.ai import _ai_alerts_kb
+        from adapters.storage import User, Role
         user = User(
             id=1, telegram_id=111, account_id=1, role=Role.OWNER,
             department="general", truck_num=None, alerts_on=True,

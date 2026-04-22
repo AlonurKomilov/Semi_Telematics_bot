@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 import pytest_asyncio
 
-from database import Database, Role
+from adapters.storage import Database, Role
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +30,7 @@ async def two_tenants(db: Database):
         vehicle_name="Truck-A1", task_type="oil_change",
         description="Oil change for A",
     )
-    sched_a = await db.create_work_schedule(
+    sched_a = await db.create_work_hour(
         account_id=acct_a.id, label="Day shift A",
         start_hour=6, end_hour=18, created_by=1001,
     )
@@ -56,7 +56,7 @@ async def two_tenants(db: Database):
         vehicle_name="Truck-B1", task_type="tire_rotation",
         description="Tires for B",
     )
-    sched_b = await db.create_work_schedule(
+    sched_b = await db.create_work_hour(
         account_id=acct_b.id, label="Night shift B",
         start_hour=18, end_hour=6, created_by=2001,
     )
@@ -131,7 +131,7 @@ class TestScheduleIsolation:
     async def test_get_schedule_wrong_tenant(self, two_tenants):
         d = two_tenants
         db = d["db"]
-        result = await db.get_work_schedule(
+        result = await db.get_work_hour(
             d["a"]["schedule"]["id"],
             account_id=d["b"]["account"].id,
         )
@@ -140,7 +140,7 @@ class TestScheduleIsolation:
     async def test_update_schedule_wrong_tenant(self, two_tenants):
         d = two_tenants
         db = d["db"]
-        ok = await db.update_work_schedule(
+        ok = await db.update_work_hour(
             d["a"]["schedule"]["id"],
             account_id=d["b"]["account"].id,
             label="Hacked schedule",
@@ -151,12 +151,12 @@ class TestScheduleIsolation:
         d = two_tenants
         db = d["db"]
         # Delete with wrong account — should silently not delete
-        await db.delete_work_schedule(
+        await db.delete_work_hour(
             d["a"]["schedule"]["id"],
             account_id=d["b"]["account"].id,
         )
         # Verify it still exists
-        sched = await db.get_work_schedule(
+        sched = await db.get_work_hour(
             d["a"]["schedule"]["id"],
             account_id=d["a"]["account"].id,
         )
@@ -250,16 +250,6 @@ class TestAlertIsolation:
         )
         assert alert is not None
         assert alert.get("status") != "superseded"
-
-    async def test_snooze_alert_wrong_tenant(self, two_tenants):
-        d = two_tenants
-        db = d["db"]
-        ok = await db.snooze_alert(
-            d["a"]["alert_id"],
-            snooze_until="2099-01-01T00:00:00",
-            account_id=d["b"]["account"].id,
-        )
-        assert ok is False
 
     async def test_acknowledge_alert_own_tenant(self, two_tenants):
         d = two_tenants

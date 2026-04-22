@@ -6,7 +6,7 @@
     "management": "👥 Management",
     "ai_assistant": "🤖 AI Assistant",
     "alerts": "🔔 Alerts",
-    "digest": "� Auto Reports",
+    "digest": "📋 Report Subscriptions",
     "settings": "⚙️ Settings",
     "help": "ℹ️ Help",
     "admin_panel": "⚙️ Admin Panel",
@@ -20,19 +20,19 @@
     "fuel_def": "⛽ Fuel & DEF",
     "efficiency": "📊 Efficiency",
     "vehicle_health": "🏥 Vehicle Health",
-    "scorecards": "📋 Scorecards",
+    "scorecards": "📋 Driver Scorecards",
     "live_map": "🗺 Live Map",
-    "search_truck": "🚛 Search Truck",
+    "search_truck": "🚛 Vehicles",
     "back_main": "◀️ Main Menu"
   },
   "tools_menu": {
     "header": "🛠  <b>TOOLS</b>",
     "subtitle": "Select a tool:",
-    "search_truck": "🚛 Search Truck",
+    "search_truck": "🚛 Vehicles",
     "live_map": "🗺 Live Map",
     "route_history": "📍 Route History",
     "geofences": "📌 Geofences",
-    "events": "🚨 Events",
+    "events": "🚨 Safety Events",
     "back_main": "◀️ Main Menu"
   },
   "costs_menu": {
@@ -100,9 +100,9 @@
     "critical_codes": "📄  <b>{count}</b> fault codes",
     "critical_health": "📊  Fleet health: <b>{pct}%</b>",
     "critical_severity": "🛑 {stop} STOP  ·  🛡 {protect} PROT  ·  ♨️ {emis} EMIS",
-    "browse_title": "🚛 <b>Search Truck</b>",
+    "browse_title": "🚛 <b>Vehicles</b>",
     "browse_prompt": "Select a company to browse trucks,\nor choose <b>All Companies</b>:",
-    "browse_header": "🚛 <b>Trucks</b>  —  {count} active",
+    "browse_header": "🚛 <b>Vehicles</b>  —  {count} active",
     "browse_tap": "Tap a truck for details:",
     "loading_list": "⏳ Loading truck list…",
     "no_trucks_for": "ℹ️ No active trucks found for <b>{label}</b>."
@@ -115,7 +115,7 @@
     "health": "🏥 Health",
     "fuel": "⛽ Low Fuel",
     "geofence": "📌 Geofence",
-    "events": "🚨 Events",
+    "events": "🚨 Safety Events",
     "parking": "🅿️ Unsafe Parking",
     "quiet_hours": "🕐 Working Hours",
     "pending": "🟡 Pending Alerts",
@@ -127,16 +127,9 @@
   },
   "alert_actions": {
     "acknowledge": "✅ Acknowledge",
-    "snooze": "⏰ Snooze",
     "ai_diagnose": "🤖 AI Diagnose",
     "open_in_samsara": "🔗 Open in Samsara",
     "watch_video": "🎥 Watch Video"
-  },
-  "snooze": {
-    "pick_title": "⏰ Select snooze duration:",
-    "minutes": "{n} min",
-    "hours": "{n} hr",
-    "back": "◀️ Back"
   },
   "user_settings": {
     "header": "⚙️  <b>SETTINGS</b>",
@@ -193,7 +186,7 @@
     "no_schedules_employee": "ℹ️ No working hour schedules have been set up yet.\n\nAsk your admin to create schedules.",
     "no_schedules_admin": "ℹ️ No schedules yet.\n\nCreate working hour presets for your team."
   },
-  "work_schedules": {
+  "work_hours": {
     "header": "🕐  <b>MANAGE WORK SCHEDULES</b>",
     "description": "Create working hour presets for your team.\nEmployees will choose from schedules matching their role.",
     "add": "➕ Add Schedule",
@@ -216,7 +209,7 @@
     "back": "◀️ Back"
   },
   "auto_reports": {
-    "header": "📋  <b>AUTO REPORTS</b>",
+    "header": "📋  <b>REPORT SUBSCRIPTIONS</b>",
     "description": "Schedule automated fleet reports delivered to your Telegram chat.",
     "subscribed": "✅ Active: <b>{rtype}</b> · {freq} at {time}",
     "timezone_label": "🕐 Timezone: {tz}",
@@ -229,16 +222,16 @@
     "time_local": "(In your local timezone)",
     "delivery_at": "🕐 Delivery at <b>{time}</b>",
     "select_tz": "<b>Select your timezone:</b>",
-    "subscribed_confirm": "✅ Auto Report scheduled!",
+    "subscribed_confirm": "✅ Report Subscription scheduled!",
     "delivery_info": "Report: <b>{rtype}</b> · {freq} at {time}",
     "timezone_info": "Timezone: {tz}",
     "auto_summary": "You'll receive this report automatically.",
-    "unsubscribed": "🔕 Auto Report cancelled.",
+    "unsubscribed": "🔕 Report Subscription cancelled.",
     "resubscribe": "You can set up a new schedule any time.",
-    "subscribe_title": "📋 <b>{freq} Auto Report</b>",
+    "subscribe_title": "📋 <b>{freq} Report Subscription</b>",
     "unsubscribe": "🔕 Unsubscribe",
     "back_reports": "◀️ Reports",
-    "error_content": "📋 <b>Auto Report</b>\n\n⚠️ Unable to generate report.",
+    "error_content": "📋 <b>Report Subscription</b>\n\n⚠️ Unable to generate report.",
     "sending": "📋 Generating your scheduled <b>{rtype}</b> report..."
   },
   "welcome": {
@@ -413,8 +406,6 @@
     "history_btn": "📜 Alert History",
     "history_acked": "→ acked {time}",
     "history_expired_label": "→ expired",
-    "history_escalation": "(esc: {level})",
-    "pending_detail": "{mins} min ago • escalation: {level}",
     "pending_more": "… and {count} more"
   },
   "alert_format": {
@@ -428,7 +419,7 @@
     "fuel_level": "⛽ Fuel Level: <b>{pct}%</b>",
     "new_fault_title": "🚨  <b>NEW FAULT DETECTED</b>",
     "new_fault_truck": "🚛  <b>Truck #{name}</b>",
-    "new_fault_hint": "▸  Tap 🚛 Search Truck for details",
+    "new_fault_hint": "▸  Tap 🚛 Vehicles for details",
     "new_fault_source": "Source:",
     "critical_fault_title": "🛑  <b>CRITICAL FAULT</b>",
     "critical_fault_action": "⚠️ <b>Immediate attention required</b>",
@@ -763,7 +754,7 @@
     "install_required": "❌ Map rendering unavailable.\nInstall: <code>pip install staticmap</code>"
   },
   "route": {
-    "title": "🛣 <b>Route Replay</b>",
+    "title": "🛣 <b>Routes</b>",
     "select_date": "Select a date:",
     "type_truck": "Type the truck number/name:",
     "loading": "⏳ Fetching route for {vehicle} ({date})…",
@@ -802,13 +793,13 @@
     "choose_format": "Choose export format:",
     "loading": "⏳ Calculating cost/mile ({company})…",
     "no_fuel_data": "ℹ️ No fuel entries yet.\n\nUse 💰 Fuel Costs → ➕ Log Fill-Up to start tracking.",
-    "csv_caption": "📊 Cost Per Mile — {company}",
+    "csv_caption": "📊 Cost per Mile — {company}",
     "csv_exported": "✅ CSV exported.",
     "fleet_avg": "<b>Fleet Avg: {avg}/mi</b>",
     "total_summary": "Total: {cost} / {miles} mi"
   },
   "fuel_costs": {
-    "header": "💰  <b>FUEL COST TRACKER</b>",
+    "header": "💰  <b>FUEL COSTS</b>",
     "description": "Track fuel expenses per truck.",
     "add_title": "➕ <b>Log Fill-Up</b>",
     "step1_truck": "<b>Step 1/4</b> — Truck name\nType the truck number/name:",
@@ -863,7 +854,7 @@
     "not_connected_info": "━━━━━━━━━━━━━━━━━━━\n  ⏳  <b>API NOT YET CONNECTED</b>\n━━━━━━━━━━━━━━━━━━━\n\n  Your company owner hasn't\n  connected a Samsara API key yet.\n\n  Once they integrate the API,\n  fleet features will appear here\n  automatically:\n\n  • 🔧 Fault codes\n  • 🚨 Critical alerts\n  • ⛽ Fuel levels\n  • 🚛 Truck search\n\n  Ask your company owner or admin\n  to connect Samsara."
   },
   "events": {
-    "title": "EVENTS",
+    "title": "SAFETY EVENTS",
     "loading": "⏳ Loading events...",
     "empty": "✅ No events in the last {days} days.",
     "select_period": "Select time period and format:",
@@ -899,7 +890,7 @@
     "csv_exported": "✅ Events CSV exported."
   },
   "parking": {
-    "header": "🅿️  <b>PARKING SAFETY</b>",
+    "header": "🅿️  <b>PARKING</b>",
     "no_events": "✅ All vehicles are parked safely or currently moving.",
     "vehicle_count": "{count} vehicle(s) currently stopped:",
     "detail_header": "🅿️  <b>PARKING DETAIL</b>",

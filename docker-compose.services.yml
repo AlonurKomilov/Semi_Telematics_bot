@@ -1,0 +1,72 @@
+##
+## docker-compose.services.yml — Split-service deployment
+##
+## Run with: docker compose -f docker-compose.services.yml up -d
+##
+## Services:
+##   api       — FastAPI/uvicorn on port 8000 (ENABLE_BOT=0)
+##   bot       — Telegram bot + APScheduler (ENABLE_API=0)
+##   redis     — Redis on port 8002 (shared by both)
+##
+## The bot service holds the scheduler distributed lock via Redis.
+## To scale the API horizontally: docker compose scale api=3
+## The bot service must remain a single instance (owns the lock).
+##
+
+services:
+  api:
+    build: .
+    env_file: .env
+    environment:
+      - REDIS_URL=redis://redis:8002/0
+      - ENABLE_API=1
+      - ENABLE_BOT=0
+      - ENABLE_SCHEDULER=0
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  bot:
+    build: .
+    env_file: .env
+    environment:
+      - REDIS_URL=redis://redis:8002/0
+      - ENABLE_API=0
+      - ENABLE_BOT=1
+      - ENABLE_SCHEDULER=1
+    ports:
+      - "8001:8001"    # Telegram Webhook (if USE_WEBHOOK=1)
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --port 8002
+    ports:
+      - "127.0.0.1:8002:8002"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "8002", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  redis_data:
