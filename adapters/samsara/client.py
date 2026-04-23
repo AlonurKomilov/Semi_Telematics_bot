@@ -265,23 +265,17 @@ class SamsaraClient:
     async def get_fuel_levels(self) -> list[dict]:
         """Return fuel percent and DEF level for all vehicles.
 
-        Non-fatal: if the Samsara endpoint returns an error (e.g. 400
-        for fleets that don't support defLevelMilliPercent), retry with
-        fuelPercents only so we still get fuel data.
+        Uses _safe_stats() which retries each type individually if the
+        combined request fails — so a company whose gateway does not
+        report DEF will still return fuel data (DEF will be absent from
+        those vehicle objects rather than crashing the whole call).
         """
         try:
-            data = await self._get("/fleet/vehicles/stats",
-                                   params={"types": "fuelPercents,defLevelMilliPercent"})
-            return data.get("data", [])
-        except Exception:
-            logger.warning("Fuel+DEF stats failed, retrying with fuelPercents only")
-            try:
-                data = await self._get("/fleet/vehicles/stats",
-                                       params={"types": "fuelPercents"})
-                return data.get("data", [])
-            except Exception as e2:
-                logger.warning(f"Fuel stats unavailable (non-fatal): {e2}")
-                return []
+            result = await self._safe_stats("fuelPercents,defLevelMilliPercent")
+            return result.get("data", [])
+        except Exception as e:
+            logger.warning(f"Fuel/DEF stats unavailable (non-fatal): {e}")
+            return []
 
     async def get_current_odometer_readings(self) -> list[dict]:
         """Return current odometer readings (in miles) for all vehicles.
@@ -432,13 +426,21 @@ class SamsaraClient:
         vehicles = {v["id"]: v for v in vehicles_raw}
         faults_by_id = {v["id"]: v.get("faultCodes", {}) for v in fault_raw}
         loc_by_id = {v["id"]: v.get("location", {}) for v in location_raw}
-        fuel_by_id = {v["id"]: v.get("fuelPercent", {}) for v in fuel_raw}
+        # Samsara may return the key as "fuelPercents" (matching the type name)
+        # or "fuelPercent" (singular); read both defensively.
+        fuel_by_id = {
+            v["id"]: v.get("fuelPercents") or v.get("fuelPercent") or {}
+            for v in fuel_raw
+        }
         def_by_id: dict[str, dict] = {}
         for fv in fuel_raw:
-            d = fv.get("defLevelMilliPercent", {})
-            if d.get("value") is not None:
+            # defLevelMilliPercent is absent (not just empty) for vehicles
+            # without DEF sensors — treat missing or empty the same way.
+            d = fv.get("defLevelMilliPercent") or {}
+            val = d.get("value") if isinstance(d, dict) else None
+            if val is not None:
                 def_by_id[fv["id"]] = {
-                    "value": round(d["value"] / 1000, 1),
+                    "value": round(val / 1000, 1),
                     "time": d.get("time", ""),
                 }
 
@@ -515,13 +517,17 @@ class SamsaraClient:
 
         faults_by_id = {v["id"]: v.get("faultCodes", {}) for v in fault_raw}
         loc_by_id = {v["id"]: v.get("location", {}) for v in location_raw}
-        fuel_by_id = {v["id"]: v.get("fuelPercent", {}) for v in fuel_raw}
+        fuel_by_id = {
+            v["id"]: v.get("fuelPercents") or v.get("fuelPercent") or {}
+            for v in fuel_raw
+        }
         def_by_id: dict[str, dict] = {}
         for fv in fuel_raw:
-            d = fv.get("defLevelMilliPercent", {})
-            if d.get("value") is not None:
+            d = fv.get("defLevelMilliPercent") or {}
+            val = d.get("value") if isinstance(d, dict) else None
+            if val is not None:
                 def_by_id[fv["id"]] = {
-                    "value": round(d["value"] / 1000, 1),
+                    "value": round(val / 1000, 1),
                     "time": d.get("time", ""),
                 }
 
