@@ -16,21 +16,144 @@ from capabilities.location.service import classify_vehicle_status
 router = APIRouter(prefix="/fleet", tags=["fleet"])
 
 
+def _extract_fuel(v: dict) -> float | None:
+    """Extract fuel percent from raw Samsara vehicle dict.
+
+    The Samsara adapter stores fuel as v["fuel"] = {"value": 45.3, "time": "..."}
+    (not as v["fuelPercent"] which is the key Samsara uses internally in the
+    raw stats payload before the adapter processes it).
+    """
+    fuel = v.get("fuel", {})
+    if isinstance(fuel, dict):
+        return fuel.get("value")
+    if isinstance(fuel, (int, float)):
+        return float(fuel)
+    return None
+
+
+def _extract_def(v: dict) -> float | None:
+    """Extract DEF level percent from raw Samsara vehicle dict."""
+    def_lvl = v.get("def_level", {})
+    if isinstance(def_lvl, dict):
+        return def_lvl.get("value")
+    if isinstance(def_lvl, (int, float)):
+        return float(def_lvl)
+    return None
+
+
+def _extract_fault_count(v: dict) -> int:
+    """Count active DTCs from raw Samsara fault_codes dict."""
+    fc = v.get("fault_codes", {})
+    if isinstance(fc, dict):
+        return len(fc.get("j1939", {}).get("diagnosticTroubleCodes", []))
+    if isinstance(fc, list):
+        return len(fc)
+    return 0
+
+
+def _extract_dtcs(v: dict) -> list:
+    """Return raw DTC list from fault_codes."""
+    fc = v.get("fault_codes", {})
+    if isinstance(fc, dict):
+        return fc.get("j1939", {}).get("diagnosticTroubleCodes", [])
+    return []
+
+
+def _extract_speed(v: dict) -> float:
+    """Extract speed (mph) from nested location dict."""
+    loc = v.get("location", {})
+    speed = loc.get("speedMilesPerHour") or loc.get("speed") or 0
+    return float(speed or 0)
+
+
+def _derive_engine_state(status: str) -> str:
+    """Derive a human-readable engine state from classified status.
+
+    Engine state data is not included in the fleet overview API call,
+    so we derive it from the speed-based status classification.
+    """
+    if status == "moving":
+        return "On"
+    if status == "idle":
+        return "Idle"
+    return "Off"
+
+
 def _simplify(v: dict) -> dict:
-    """Flatten a fleet overview vehicle into a consistent API shape."""
+    """Flatten a fleet overview vehicle into a consistent API shape.
+
+    Samsara's get_fleet_overview() returns nested structures:
+      - fuel:       {"value": 45.3, "time": "..."}
+      - def_level:  {"value": 78.0, "time": "..."}
+      - fault_codes: {"j1939": {"diagnosticTroubleCodes": [...]}}
+      - location:   {"latitude": ..., "speedMilesPerHour": ..., "reverseGeo": {...}}
+
+    This function flattens all of them into the fields the frontend expects.
+    """
+    loc = v.get("location", {})
+    speed = _extract_speed(v)
+    status = classify_vehicle_status(v)
+    engine_state = _derive_engine_state(status)
+    address = (
+        loc.get("reverseGeo", {}).get("formattedLocation")
+        or loc.get("address")
+        or ""
+    )
     return {
         "id": v.get("id"),
         "name": v.get("name", ""),
         "company": v.get("_org", ""),
-        "latitude": v.get("latitude"),
-        "longitude": v.get("longitude"),
-        "speed_mph": v.get("speed_mph", 0),
-        "address": v.get("formattedAddress", ""),
-        "engine_state": v.get("engineState", "Off"),
-        "fuel_percent": v.get("fuelPercent"),
-        "def_percent": v.get("defPercent"),
-        "fault_count": len(v.get("faults", [])),
-        "status": classify_vehicle_status(v),
+        "latitude": loc.get("latitude"),
+        "longitude": loc.get("longitude"),
+        "speed_mph": speed,
+        "address": address,
+        "engine_state": engine_state,
+        "fuel_percent": _extract_fuel(v),
+        "def_percent": _extract_def(v),
+        "fault_count": _extract_fault_count(v),
+        "status": status,
+    }
+
+
+def _normalize_detail(v: dict) -> dict:
+    """Produce a normalized vehicle dict for the detail endpoint.
+
+    Keeps the nested ``location`` and ``fault_codes`` objects intact
+    (the frontend uses them) while also adding flat aliases for fuel,
+    DEF, speed, engine state, and address so the UI can read them
+    directly without traversing the nested structure.
+    """
+    loc = v.get("location", {})
+    speed = _extract_speed(v)
+    fuel_pct = _extract_fuel(v)
+    def_pct = _extract_def(v)
+    dtcs = _extract_dtcs(v)
+    status = classify_vehicle_status(v)
+    engine_state = _derive_engine_state(status)
+    address = (
+        loc.get("reverseGeo", {}).get("formattedLocation")
+        or loc.get("address")
+        or ""
+    )
+    return {
+        **v,
+        # Flat fields the frontend reads directly:
+        "fuel_percent": fuel_pct,
+        "fuelPercent": fuel_pct,
+        "def_percent": def_pct,
+        "defPercent": def_pct,
+        "speed_mph": speed,
+        "engine_state": engine_state,
+        "engineState": engine_state,
+        "status": status,
+        "fault_count": len(dtcs),
+        "formattedAddress": address,
+        "address": address,
+        "latitude": loc.get("latitude"),
+        "longitude": loc.get("longitude"),
+        # Normalize license plate key (Samsara uses "licensePlate" in /vehicles,
+        # but the adapter stores it as "license_plate").
+        "licensePlate": v.get("licensePlate") or v.get("license_plate") or "N/A",
     }
 
 
@@ -101,7 +224,8 @@ async def fleet_vehicle_detail(
     matches = await filter_by_assigned_trucks(matches, user)
     if not matches:
         return {"error": "Vehicle not found", "vehicles": []}
-    return {"vehicles": matches, "count": len(matches)}
+    normalized = [_normalize_detail(m) for m in matches]
+    return {"vehicles": normalized, "count": len(normalized)}
 
 
 @router.get("/vehicle/{truck_name}/health")
@@ -152,11 +276,12 @@ async def fleet_vehicle_faults(
     if not match:
         return {"error": "Vehicle not found", "faults": []}
     v = match[0]
+    dtcs = _extract_dtcs(v)
     return {
         "name": v.get("name"),
         "company": v.get("_org", ""),
-        "faults": v.get("faults", []),
-        "fault_count": len(v.get("faults", [])),
+        "faults": dtcs,
+        "fault_count": len(dtcs),
     }
 
 

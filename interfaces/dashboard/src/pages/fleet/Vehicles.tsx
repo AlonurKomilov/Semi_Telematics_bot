@@ -37,6 +37,7 @@ const columns: AnyColumn[] = [
 
 export default function Vehicles() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -46,19 +47,29 @@ export default function Vehicles() {
     setLoading(true);
     const params = new URLSearchParams();
     if (statusFilter !== 'all') params.set('status', statusFilter);
+    // Request up to 200 vehicles per page so the list shows the full fleet.
+    // For very large fleets, replace this with a proper pagination UI.
+    params.set('page_size', '200');
     apiJSON<VehiclesResponse>(`/fleet/vehicles?${params}`)
-      .then((d) => setVehicles(d.vehicles || []))
+      .then((d) => {
+        setVehicles(d.vehicles || []);
+        setTotalCount((d as unknown as { count: number }).count ?? d.vehicles?.length ?? 0);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [statusFilter]);
 
   useEffect(() => { fetchVehicles(); }, [fetchVehicles]);
 
-  // Summary counters
+  // Summary counters — computed from the loaded vehicles.
+  // When filtering by status the API returns only those vehicles,
+  // so per-status counts reflect the full server result.
   const counts: Record<string, number> = { moving: 0, idle: 0, stopped: 0 };
   vehicles.forEach((v) => { if (v.status && counts[v.status] !== undefined) counts[v.status]++; });
+  // "All" label uses the server's total count (may be larger than loaded when filtered)
+  const allLabel = statusFilter === 'all' ? `All (${totalCount})` : `All (${totalCount})`;
 
-  if (error) return <p className="text-red-400">{error}</p>;
+  if (error) return <p className="text-destructive">{error}</p>;
 
   return (
     <div>
@@ -66,7 +77,7 @@ export default function Vehicles() {
         <h1 className="text-2xl font-bold">Vehicles</h1>
         <button
           onClick={fetchVehicles}
-          className="text-sm text-gray-400 hover:text-white transition"
+          className="text-sm text-muted-foreground hover:text-white transition"
         >
           ↻ Refresh
         </button>
@@ -75,15 +86,15 @@ export default function Vehicles() {
       {/* Status summary */}
       <div className="flex gap-3 mb-4">
         {STATUS_OPTIONS.map((s) => {
-          const label = s === 'all' ? `All (${vehicles.length})` : `${s} (${counts[s] || 0})`;
+          const label = s === 'all' ? allLabel : `${s} (${counts[s] || 0})`;
           return (
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize transition ${
                 statusFilter === s
-                  ? 'bg-gray-700 text-white'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                  ? 'bg-muted/80 text-foreground'
+                  : 'text-muted-foreground hover:text-white hover:bg-muted'
               }`}
             >
               {label}
@@ -93,7 +104,7 @@ export default function Vehicles() {
       </div>
 
       {loading && vehicles.length === 0 ? (
-        <p className="text-gray-500">Loading...</p>
+        <p className="text-muted-foreground">Loading...</p>
       ) : (
         <DataTable
           columns={columns}

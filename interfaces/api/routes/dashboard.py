@@ -57,14 +57,30 @@ async def dashboard_stats(
             "my_truck": {
                 "name": my_truck.get("name", truck_num or "—") if my_truck else (truck_num or "—"),
                 "status": (
-                    "Moving" if my_truck and my_truck.get("speed_mph", 0) and my_truck["speed_mph"] > 0
-                    else "Idle" if my_truck and my_truck.get("engineState") == "On"
+                    "Moving" if my_truck and (
+                        (my_truck.get("location", {}).get("speedMilesPerHour") or
+                         my_truck.get("location", {}).get("speed") or 0) > 2
+                    )
                     else "Stopped"
                 ) if my_truck else "Unknown",
-                "speed_mph": round(my_truck.get("speed_mph", 0) or 0, 1) if my_truck else 0,
-                "fuel_pct": my_truck.get("fuelPercent") if my_truck else None,
-                "location": my_truck.get("location", "") if my_truck else "",
-                "faults": len(my_truck.get("faults", [])) if my_truck else 0,
+                "speed_mph": round(
+                    my_truck.get("location", {}).get("speedMilesPerHour")
+                    or my_truck.get("location", {}).get("speed")
+                    or 0, 1
+                ) if my_truck else 0,
+                "fuel_pct": (
+                    my_truck.get("fuel", {}).get("value")
+                    if isinstance(my_truck.get("fuel"), dict)
+                    else my_truck.get("fuel")
+                ) if my_truck else None,
+                "location": (
+                    my_truck.get("location", {}).get("reverseGeo", {}).get("formattedLocation")
+                    or my_truck.get("location", {}).get("address")
+                    or ""
+                ) if my_truck else "",
+                "faults": len(
+                    my_truck.get("fault_codes", {}).get("j1939", {}).get("diagnosticTroubleCodes", [])
+                ) if my_truck else 0,
                 "company": my_truck.get("_org", "") if my_truck else "",
             } if True else None,
             "my_alerts": len(my_alerts),
@@ -73,11 +89,18 @@ async def dashboard_stats(
 
     # ── All other roles: fleet-wide stats ───────────────────────
     total = len(overview)
-    moving = sum(1 for v in overview if v.get("speed_mph", 0) and v["speed_mph"] > 0)
-    idle = sum(
-        1 for v in overview
-        if v.get("engineState") == "On" and not v.get("speed_mph")
-    )
+
+    # Speed is nested inside v["location"]["speedMilesPerHour"] (or "speed")
+    # — the raw Samsara fleet_overview data is NOT flattened at the top level.
+    def _spd(v: dict) -> float:
+        loc = v.get("location", {})
+        return float(loc.get("speedMilesPerHour") or loc.get("speed") or 0)
+
+    moving  = sum(1 for v in overview if _spd(v) > 2)
+    # "Idle" = engine on but speed at or near zero.  Engine state is not
+    # available in fleet_overview (would need a separate API call), so we
+    # use the low-speed window (0 < speed <= 2 mph) as a proxy.
+    idle    = sum(1 for v in overview if 0 < _spd(v) <= 2)
     stopped = total - moving - idle
 
     result: dict = {
@@ -91,14 +114,21 @@ async def dashboard_stats(
     }
 
     # Faults — visible to owner, admin, fleet, safety
+    # Raw data: v["fault_codes"]["j1939"]["diagnosticTroubleCodes"] (list)
     if can(role, "can_faults"):
-        result["faults"] = sum(1 for v in overview if v.get("faults"))
+        result["faults"] = sum(
+            1 for v in overview
+            if v.get("fault_codes", {}).get("j1939", {}).get("diagnosticTroubleCodes")
+        )
 
     # Low fuel — visible to roles with can_fuel
+    # Raw data: v["fuel"] = {"value": 45.3, "time": "..."}
     if can(role, "can_fuel"):
         result["low_fuel"] = sum(
             1 for v in overview
-            if v.get("fuelPercent") is not None and v["fuelPercent"] < 20
+            if isinstance(v.get("fuel"), dict)
+            and v["fuel"].get("value") is not None
+            and v["fuel"]["value"] < 20
         )
 
     # Pending alerts
