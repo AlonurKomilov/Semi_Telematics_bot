@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Entry point for Semi Telematics Bot + FastAPI API server.
+"""Entry point for 4truck Bot + FastAPI API server.
 
 Service-split flags (set via environment variables or .env):
   ENABLE_API=1       — start FastAPI/uvicorn on API_PORT (default 8000)
@@ -44,7 +44,9 @@ if _ENABLE_BOT or _ENABLE_SCHEDULER:
         logger,
     )
     from interfaces.bot.scheduler import register_all as _register_jobs  # noqa: E402
-    from core.bot_registry import init_registry    # noqa: E402
+    from core.bot_registry import init_registry, set_handler_setup  # noqa: E402
+    from interfaces.bot.handler_setup import register_handlers as _bot_handlers  # noqa: E402
+    set_handler_setup(_bot_handlers)
 else:
     import logging
     logger = logging.getLogger(__name__)
@@ -104,7 +106,7 @@ async def main():
     if _ENABLE_API:       mode_parts.append("API")
     if _ENABLE_BOT:       mode_parts.append("Bot")
     if _ENABLE_SCHEDULER: mode_parts.append("Scheduler")
-    logger.info("Starting Semi Telematics — services: %s", "+".join(mode_parts) or "none")
+    logger.info("Starting 4truck — services: %s", "+".join(mode_parts) or "none")
 
     # ── 1. Platform infrastructure (always required) ─────────────
     await core.startup.initialize()

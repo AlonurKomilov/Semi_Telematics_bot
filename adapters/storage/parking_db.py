@@ -113,13 +113,23 @@ class ParkingMixin:
     async def resolve_parking_event(
         self, account_id: int, vehicle_id: str,
     ) -> bool:
-        """Mark a parking event as resolved (vehicle moved)."""
+        """Mark a parking event as resolved (vehicle moved or condition cleared).
+
+        Also clears alert_history and alert_acknowledgments for this vehicle so
+        the parking alert no longer shows as pending anywhere in the system.
+        The notification to subscribers is handled separately by the caller
+        via _send_parking_resolved when appropriate.
+        """
         await self._db.execute(
             "UPDATE parking_events SET resolved = 1, last_checked = ? "
             "WHERE account_id = ? AND vehicle_id = ? AND resolved = 0",
             (self._now(), account_id, vehicle_id),
         )
         await self._db.commit()
+        # Clean up the shared alert history record and all subscriber ack rows
+        # so the parking alert is removed from pending everywhere.
+        await self.clear_alert_history(account_id, "parking", vehicle_id)
+        await self.auto_resolve_alerts_by_vehicle(account_id, "parking", vehicle_id)
         return True
 
     async def update_parking_alert_level(

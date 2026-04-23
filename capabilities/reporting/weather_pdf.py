@@ -24,7 +24,7 @@ def generate_weather_pdf(
     subtitle = "Fleet Weather & Ambient Conditions"
     if company_filter:
         subtitle = f"{get_company_display().get(company_filter, company_filter)} — Weather Report"
-    _add_header(story, styles, "SEMI TELEMATICS", subtitle, now)
+    _add_header(story, styles, "4TRUCK", subtitle, now)
 
     # ── Compute stats ────────────────────────────────────────────
     temps = [v["_weather"]["temp_f"] for v in vehicles

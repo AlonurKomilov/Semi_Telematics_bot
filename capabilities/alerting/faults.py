@@ -342,18 +342,6 @@ async def _check_faults_account(bot_app: Application, account_id: int, subs: lis
         if len(parts) == 3:
             co = parts[1]
             v_id = parts[2]
-            cleared = await tenant.clear_alert_history(
-                account_id, "fault", v_id,
-            )
-            for rec in cleared:
-                if rec.get("message_id") and rec.get("chat_id"):
-                    try:
-                        await bot_app.bot.delete_message(
-                            chat_id=rec["chat_id"],
-                            message_id=rec["message_id"],
-                        )
-                    except Exception as e:
-                        logger.debug("Could not delete fault alert message: %s", e)
             await _auto_resolve_vehicle_alerts(
                 bot_app, account_id, "fault", v_id, "", co,
                 bot_app=bot_app,

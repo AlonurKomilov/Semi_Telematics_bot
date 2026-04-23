@@ -15,7 +15,7 @@ export default function Login() {
   const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [botUsername, setBotUsername] = useState('SemiTelematicsBot');
+  const [botUsername, setBotUsername] = useState('4truckBot');
   const [botId, setBotId] = useState('');
   const [widgetKey, setWidgetKey] = useState(0);
   const [showDisconnect, setShowDisconnect] = useState(false);

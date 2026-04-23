@@ -28,7 +28,6 @@ from interfaces.api.routes import ai as ai_routes
 from interfaces.api.routes import knowledge as knowledge_routes
 from interfaces.api.routes import permissions as permissions_routes
 from interfaces.api.routes import billing as billing_routes
-from interfaces.api.routes import work_hours as work_hours_routes
 from interfaces.api.auth import router as auth_router
 from interfaces.api.rate_limit import limiter
 
@@ -73,7 +72,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 def create_api() -> FastAPI:
     """Build and return the FastAPI application."""
     app = FastAPI(
-        title="Semi Telematics API",
+        title="4truck API",
         version="1.0.0",
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
@@ -135,12 +134,21 @@ def create_api() -> FastAPI:
         app.include_router(ai_routes.router, prefix=prefix)
         app.include_router(knowledge_routes.router, prefix=prefix)
         app.include_router(billing_routes.router, prefix=prefix)
-        app.include_router(work_hours_routes.router, prefix=prefix)
 
-    # Serve webapp static files (Mini App)
-    webapp_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "webapp")
-    if os.path.isdir(webapp_dir):
-        app.mount("/app", StaticFiles(directory=webapp_dir, html=True), name="webapp")
+    # Serve miniapp static files (Telegram Mini App) — built via `npm run build`
+    miniapp_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "miniapp", "dist")
+    if os.path.isdir(miniapp_dir):
+        miniapp_index = os.path.join(miniapp_dir, "index.html")
+
+        # SPA catch-all: serve index.html for any /miniapp/* path (Vite base is '/miniapp/')
+        @app.get("/miniapp/{full_path:path}")
+        async def miniapp_spa(full_path: str):
+            file_path = os.path.join(miniapp_dir, full_path)
+            if os.path.isfile(file_path):
+                return FileResponse(file_path)
+            return FileResponse(miniapp_index)
+
+        app.mount("/miniapp", StaticFiles(directory=miniapp_dir, html=True), name="miniapp")
 
     # Serve dashboard static files (desktop)
     dashboard_dir = os.path.join(

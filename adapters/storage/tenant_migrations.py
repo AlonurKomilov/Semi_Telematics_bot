@@ -27,6 +27,8 @@ async def run_all(conn) -> None:
     await migrate_add_knowledge_base(conn)
     await migrate_rename_fleet_manager_visibility(conn)
     await migrate_drop_escalation_columns(conn)
+    await migrate_dedup_alert_history(conn)
+    await migrate_resolve_orphaned_acks(conn)
 
 
 async def migrate_add_parking_map_image(conn) -> None:
@@ -125,3 +127,139 @@ async def migrate_drop_escalation_columns(conn) -> None:
         )
         await conn.commit()
         logger.info("Migration: dropped escalation columns from alert_acknowledgments")
+
+
+async def migrate_dedup_alert_history(conn) -> None:
+    """Deduplicate alert_history to one row per (account_id, alert_type, vehicle_id).
+
+    Previously one row was created per subscriber per alert, resulting in N rows
+    for the same vehicle alert when N subscribers are registered.  The correct
+    design is one shared row per logical alert that accumulates the total
+    occurrence count across all subscribers and all time.
+
+    Migration steps:
+    1. Rebuild alert_history keeping only the best row per vehicle+type:
+       - Keep the row with the earliest first_seen (original detection time)
+       - Accumulate occurrence_count as the MAX across duplicates (prevents
+         double-counting while preserving the highest known count)
+       - Preserve last_seen / last_detail from the most-recent row
+    2. Drop old chat_id-keyed index.
+    3. Add UNIQUE(account_id, alert_type, vehicle_id) constraint via table rebuild
+       (SQLite does not support ADD CONSTRAINT after creation, so we rename →
+       create → insert → drop old table).
+    """
+    try:
+        # Check whether the UNIQUE constraint already exists
+        cur = await conn.execute("PRAGMA index_list(alert_history)")
+        indexes = {r[1] for r in await cur.fetchall()}
+        if "sqlite_autoindex_alert_history_1" in indexes or "uniq_alert_history_vehicle" in indexes:
+            logger.debug("migrate_dedup_alert_history: UNIQUE constraint already present, skipping")
+            return
+
+        # Step 1: Collapse duplicates into a single row per vehicle+type
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS _alert_history_dedup AS
+            SELECT
+                MIN(id)                AS id,
+                account_id,
+                alert_type,
+                vehicle_id,
+                MAX(vehicle_name)      AS vehicle_name,
+                0                      AS chat_id,
+                0                      AS message_id,
+                MAX(occurrence_count)  AS occurrence_count,
+                MIN(first_seen)        AS first_seen,
+                MAX(last_seen)         AS last_seen,
+                MAX(last_detail)       AS last_detail,
+                MAX(status)            AS status
+            FROM alert_history
+            GROUP BY account_id, alert_type, vehicle_id
+        """)
+
+        # Step 2: Replace the original table
+        await conn.execute("DROP TABLE alert_history")
+        await conn.execute("""
+            CREATE TABLE alert_history (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id        INTEGER NOT NULL,
+                alert_type        TEXT    NOT NULL,
+                vehicle_id        TEXT    NOT NULL,
+                vehicle_name      TEXT    NOT NULL DEFAULT '',
+                chat_id           INTEGER NOT NULL DEFAULT 0,
+                message_id        INTEGER NOT NULL DEFAULT 0,
+                occurrence_count  INTEGER NOT NULL DEFAULT 1,
+                first_seen        TEXT    NOT NULL,
+                last_seen         TEXT    NOT NULL,
+                last_detail       TEXT    NOT NULL DEFAULT '',
+                status            TEXT    NOT NULL DEFAULT 'active',
+                UNIQUE(account_id, alert_type, vehicle_id)
+            )
+        """)
+        await conn.execute("""
+            INSERT INTO alert_history
+                (id, account_id, alert_type, vehicle_id, vehicle_name,
+                 chat_id, message_id, occurrence_count,
+                 first_seen, last_seen, last_detail, status)
+            SELECT
+                id, account_id, alert_type, vehicle_id, vehicle_name,
+                chat_id, message_id, occurrence_count,
+                first_seen, last_seen, last_detail, status
+            FROM _alert_history_dedup
+        """)
+        await conn.execute("DROP TABLE _alert_history_dedup")
+
+        # Step 3: Re-create index (without chat_id)
+        await conn.execute("DROP INDEX IF EXISTS idx_alert_history_active")
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_alert_history_active
+                ON alert_history(account_id, alert_type, vehicle_id, status)
+        """)
+
+        await conn.commit()
+        logger.info("Migration: deduplicated alert_history to one row per vehicle+type"
+                    " and added UNIQUE(account_id, alert_type, vehicle_id) constraint")
+    except Exception as exc:
+        logger.error("migrate_dedup_alert_history failed: %s", exc, exc_info=True)
+
+
+async def migrate_resolve_orphaned_acks(conn) -> None:
+    """Resolve alert_acknowledgments rows that are stuck 'active' after auto-resolve.
+
+    When a vehicle's condition clears, two things must happen atomically:
+      1. alert_history.status → 'cleared'
+      2. alert_acknowledgments.status → 'acknowledged' for all subscribers
+
+    In earlier versions these two steps were sometimes split across different
+    call sites, leaving 'active' ack rows even though history was 'cleared'.
+    This migration finds and fixes those orphans so they don't appear as
+    pending alerts in the dashboard.
+
+    Idempotent — safe to run on every startup.
+    """
+    try:
+        cur = await conn.execute("""
+            UPDATE alert_acknowledgments
+            SET status = 'acknowledged',
+                acknowledged_by = 0,
+                acknowledged_at = datetime('now')
+            WHERE status = 'active'
+              AND id IN (
+                  SELECT a.id
+                  FROM alert_acknowledgments a
+                  JOIN alert_history h
+                       ON  h.account_id = a.account_id
+                       AND h.alert_type = a.alert_type
+                       AND h.vehicle_id = a.vehicle_id
+                  WHERE a.status = 'active'
+                    AND h.status = 'cleared'
+              )
+        """)
+        if cur.rowcount:
+            await conn.commit()
+            logger.info(
+                "Migration: resolved %d orphaned active ack row(s) "
+                "whose alert_history was already cleared",
+                cur.rowcount,
+            )
+    except Exception as exc:
+        logger.error("migrate_resolve_orphaned_acks failed: %s", exc, exc_info=True)

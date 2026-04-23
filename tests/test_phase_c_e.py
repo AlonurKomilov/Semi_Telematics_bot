@@ -82,8 +82,8 @@ class TestServiceSplitFlags:
 
     def test_api_service_unit_exists(self):
         root = os.path.dirname(os.path.dirname(__file__))
-        path = os.path.join(root, "semi-telematics-api.service")
-        assert os.path.exists(path), "semi-telematics-api.service not found"
+        path = os.path.join(root, "4truck-api.service")
+        assert os.path.exists(path), "4truck-api.service not found"
         content = open(path).read()
         assert "ENABLE_API=1"       in content
         assert "ENABLE_BOT=0"       in content
@@ -91,8 +91,8 @@ class TestServiceSplitFlags:
 
     def test_bot_service_unit_has_flags(self):
         root = os.path.dirname(os.path.dirname(__file__))
-        path = os.path.join(root, "semi-telematics-bot.service")
-        assert os.path.exists(path), "semi-telematics-bot.service not found"
+        path = os.path.join(root, "4truck-bot.service")
+        assert os.path.exists(path), "4truck-bot.service not found"
         content = open(path).read()
         assert "ENABLE_BOT=1"       in content
         assert "ENABLE_SCHEDULER=1" in content

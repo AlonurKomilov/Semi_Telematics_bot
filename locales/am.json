@@ -185,14 +185,14 @@
     "back": "◀️ ወደኋላ"
   },
   "welcome": {
-    "title": "🚛  <b>Semi Telematics</b>",
+    "title": "🚛  <b>4truck</b>",
     "subtitle": "በ Samsara የተጎላበተ የቀጥታ ስብስብ ክትትል",
     "api_connected": "📡 Samsara API ተገናኝቷል ✅",
     "api_not_connected": "📡 Samsara API አልተገናኘም",
     "tap_begin": "▸ <b>ለመጀመር ከታች ያለውን አዝራር ይንኩ</b> ▾"
   },
   "welcome_unreg": {
-    "title": "🚛  <b>Semi Telematics Bot</b>",
+    "title": "🚛  <b>4truck Bot</b>",
     "subtitle": "የእርስዎ ሁሉን አቀፍ የስብስብ አስተዳደር ረዳት፣ በቴሌግራም ውስጥ።",
     "reports_title": "<b>📊 የስብስብ ሪፖርቶች</b>",
     "tools_title": "<b>🛠 መሳሪያዎች &amp; ክትትል</b>",
@@ -792,7 +792,7 @@
     "cancel_back": "◀️ ሰርዝ"
   },
   "samsara": {
-    "connect_guide": "━━━━━━━━━━━━━━━━━━━\n  📡  <b>SAMSARA API አገናኝ</b>\n━━━━━━━━━━━━━━━━━━━\n\n  የስብስብ ክትትልን ለመክፈት የ Samsara\n  አካውንትዎን ማገናኘት ያስፈልግዎታል።\n  እነዚህን እርምጃዎች ይከተሉ:\n\n  <b>እርምጃ 1 — ኤፒአይ ቶከንዎን ያግኙ</b>\n  ▸ ወደ <b>cloud.samsara.com</b> ይግቡ\n  ▸ ወደ <b>Settings → API Tokens</b> ይሂዱ\n  ▸ <b>Create API Token</b> ን ጠቅ ያድርጉ\n  ▸ ስም: <i>Semi Telematics Bot</i>\n  ▸ ቶከኑን ይቅዱ (ይጀምራል በ\n     <code>samsara_api_...</code>)\n\n  <b>እርምጃ 2 — የኩባንያ ኮድ ይተይቡ</b>\n  ለኩባንያዎ አጭር ኮድ፣\n  ምሳሌ: <b>PTG</b>, <b>CFT</b>, <b>ACME</b>\n\n  👇 <b>የኩባንያዎን ኮድ ከታች ይተይቡ:</b>",
+    "connect_guide": "━━━━━━━━━━━━━━━━━━━\n  📡  <b>SAMSARA API አገናኝ</b>\n━━━━━━━━━━━━━━━━━━━\n\n  የስብስብ ክትትልን ለመክፈት የ Samsara\n  አካውንትዎን ማገናኘት ያስፈልግዎታል።\n  እነዚህን እርምጃዎች ይከተሉ:\n\n  <b>እርምጃ 1 — ኤፒአይ ቶከንዎን ያግኙ</b>\n  ▸ ወደ <b>cloud.samsara.com</b> ይግቡ\n  ▸ ወደ <b>Settings → API Tokens</b> ይሂዱ\n  ▸ <b>Create API Token</b> ን ጠቅ ያድርጉ\n  ▸ ስም: <i>4truck Bot</i>\n  ▸ ቶከኑን ይቅዱ (ይጀምራል በ\n     <code>samsara_api_...</code>)\n\n  <b>እርምጃ 2 — የኩባንያ ኮድ ይተይቡ</b>\n  ለኩባንያዎ አጭር ኮድ፣\n  ምሳሌ: <b>PTG</b>, <b>CFT</b>, <b>ACME</b>\n\n  👇 <b>የኩባንያዎን ኮድ ከታች ይተይቡ:</b>",
     "not_connected_info": "━━━━━━━━━━━━━━━━━━━\n  ⏳  <b>API እስካሁን አልተገናኘም</b>\n━━━━━━━━━━━━━━━━━━━\n\n  የኩባንያዎ ባለቤት እስካሁን Samsara API\n  ቁልፍ አላገናኘም።\n\n  አንዴ ኤፒአዩን ካገናኙ፣\n  የስብስብ ባህሪዎች በቀጥታ\n  እዚህ ይታያሉ:\n\n  • 🔧 የችግር ኮዶች\n  • 🚨 ወሳኝ ማሳወቂያዎች\n  • ⛽ የነዳጅ ደረጃዎች\n  • 🚛 የጭነት መኪና ፍለጋ\n\n  Samsaraን እንዲያገናኙ የኩባንያዎን ባለቤት ወይም\n  አድሚን ይጠይቁ።"
   },
   "events": {

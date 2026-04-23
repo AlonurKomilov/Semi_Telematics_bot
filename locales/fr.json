@@ -185,14 +185,14 @@
     "back": "◀️ Retour"
   },
   "welcome": {
-    "title": "🚛  <b>Semi Telematics</b>",
+    "title": "🚛  <b>4truck</b>",
     "subtitle": "Surveillance de flotte en temps réel propulsée par Samsara",
     "api_connected": "📡 API Samsara connectée ✅",
     "api_not_connected": "📡 API Samsara non connectée",
     "tap_begin": "▸ <b>Appuyez sur un bouton ci-dessous pour commencer</b> ▾"
   },
   "welcome_unreg": {
-    "title": "🚛  <b>Semi Telematics Bot</b>",
+    "title": "🚛  <b>4truck Bot</b>",
     "subtitle": "Votre assistant de gestion de flotte tout-en-un, directement dans Telegram.",
     "reports_title": "<b>📊 Rapports de flotte</b>",
     "tools_title": "<b>🛠 Outils &amp; Suivi</b>",
@@ -792,7 +792,7 @@
     "cancel_back": "◀️ Annuler"
   },
   "samsara": {
-    "connect_guide": "━━━━━━━━━━━━━━━━━━━\n  📡  <b>CONNECTER L'API SAMSARA</b>\n━━━━━━━━━━━━━━━━━━━\n\n  Pour débloquer la surveillance de flotte,\n  vous devez connecter votre compte\n  Samsara. Suivez ces étapes :\n\n  <b>Étape 1 — Obtenir votre jeton API</b>\n  ▸ Connectez-vous à <b>cloud.samsara.com</b>\n  ▸ Allez dans <b>Settings → API Tokens</b>\n  ▸ Cliquez sur <b>Create API Token</b>\n  ▸ Nom : <i>Semi Telematics Bot</i>\n  ▸ Copiez le jeton (commence par\n     <code>samsara_api_...</code>)\n\n  <b>Étape 2 — Entrez un code d'entreprise</b>\n  Un code court pour votre entreprise,\n  p. ex. <b>PTG</b>, <b>CFT</b>, <b>ACME</b>\n\n  👇 <b>Entrez votre code d'entreprise ci-dessous :</b>",
+    "connect_guide": "━━━━━━━━━━━━━━━━━━━\n  📡  <b>CONNECTER L'API SAMSARA</b>\n━━━━━━━━━━━━━━━━━━━\n\n  Pour débloquer la surveillance de flotte,\n  vous devez connecter votre compte\n  Samsara. Suivez ces étapes :\n\n  <b>Étape 1 — Obtenir votre jeton API</b>\n  ▸ Connectez-vous à <b>cloud.samsara.com</b>\n  ▸ Allez dans <b>Settings → API Tokens</b>\n  ▸ Cliquez sur <b>Create API Token</b>\n  ▸ Nom : <i>4truck Bot</i>\n  ▸ Copiez le jeton (commence par\n     <code>samsara_api_...</code>)\n\n  <b>Étape 2 — Entrez un code d'entreprise</b>\n  Un code court pour votre entreprise,\n  p. ex. <b>PTG</b>, <b>CFT</b>, <b>ACME</b>\n\n  👇 <b>Entrez votre code d'entreprise ci-dessous :</b>",
     "not_connected_info": "━━━━━━━━━━━━━━━━━━━\n  ⏳  <b>API PAS ENCORE CONNECTÉE</b>\n━━━━━━━━━━━━━━━━━━━\n\n  Le propriétaire de votre entreprise n'a pas\n  encore connecté de clé API Samsara.\n\n  Une fois l'API intégrée,\n  les fonctionnalités de flotte apparaîtront\n  ici automatiquement :\n\n  • 🔧 Codes de défaut\n  • 🚨 Alertes critiques\n  • ⛽ Niveaux de carburant\n  • 🚛 Recherche de camions\n\n  Demandez au propriétaire ou à l'administrateur\n  de votre entreprise de connecter Samsara."
   },
   "events": {

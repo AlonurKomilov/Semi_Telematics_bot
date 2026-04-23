@@ -1,5 +1,5 @@
 {
-  "name": "semi-telematics-dashboard",
+  "name": "4truck-dashboard",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -9,10 +9,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tanstack/react-table": "^8.21.3",
     "leaflet": "^1.9.4",
+    "lucide-react": "^1.8.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0"
+    "react-router-dom": "^6.28.0",
+    "recharts": "^3.8.1"
   },
   "devDependencies": {
     "@types/leaflet": "^1.9.21",

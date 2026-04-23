@@ -14,7 +14,7 @@ class AlertsMixin:
         vehicle_id: str, vehicle_name: str, alert_key: str,
         message_id: int, chat_id: int, sent_to: int,
     ) -> int:
-        """Record a sent alert that needs acknowledgment."""
+        """Record a sent CRITICAL/WARNING alert that needs acknowledgment."""
         now = self._now()
         cur = await self._db.execute(
             """INSERT INTO alert_acknowledgments
@@ -26,6 +26,54 @@ class AlertsMixin:
         )
         await self._db.commit()
         return cur.lastrowid
+
+    async def create_info_alert_ack(
+        self, account_id: int, alert_type: str,
+        vehicle_id: str, vehicle_name: str, alert_key: str,
+        message_id: int, chat_id: int, sent_to: int,
+    ) -> int:
+        """Record a sent INFO alert for per-subscriber message tracking.
+
+        Status is 'info' — not shown as pending, not acknowledged.
+        Supersedes older 'info' rows for this subscriber+vehicle+type so only
+        the latest message_id is tracked per subscriber.
+        """
+        now = self._now()
+        # Supersede old info rows for this subscriber+vehicle+type
+        await self._db.execute(
+            "UPDATE alert_acknowledgments SET status = 'superseded' "
+            "WHERE account_id = ? AND vehicle_id = ? AND alert_type = ? "
+            "AND sent_to = ? AND status = 'info'",
+            (account_id, vehicle_id, alert_type, sent_to),
+        )
+        cur = await self._db.execute(
+            """INSERT INTO alert_acknowledgments
+               (account_id, alert_type, vehicle_id, vehicle_name, alert_key,
+                message_id, chat_id, sent_to, created_at, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'info')""",
+            (account_id, alert_type, vehicle_id, vehicle_name, alert_key,
+             message_id, chat_id, sent_to, now),
+        )
+        await self._db.commit()
+        return cur.lastrowid
+
+    async def get_info_alert_ack(
+        self, account_id: int, vehicle_id: str, alert_type: str, sent_to: int,
+    ) -> Optional[dict]:
+        """Get the latest INFO delivery record for a subscriber+vehicle+type.
+
+        Used to retrieve the previous message_id for deletion before sending
+        a new INFO alert to the same subscriber.
+        """
+        cur = await self._db.execute(
+            "SELECT * FROM alert_acknowledgments "
+            "WHERE account_id = ? AND vehicle_id = ? AND alert_type = ? "
+            "AND sent_to = ? AND status = 'info' "
+            "ORDER BY created_at DESC LIMIT 1",
+            (account_id, vehicle_id, alert_type, sent_to),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
 
     async def get_active_vehicle_acks(
         self, account_id: int, vehicle_id: str, sent_to: int,
@@ -101,11 +149,25 @@ class AlertsMixin:
         return [dict(r) for r in rows]
 
     async def get_pending_alerts(self, account_id: int) -> list[dict]:
-        """Get all active (unacknowledged, not expired) alerts for an account."""
+        """Get all active (unacknowledged) alerts for an account.
+
+        Uses a LEFT JOIN with alert_history to exclude ack rows whose shared
+        history record has already been cleared — guarding against orphaned
+        'active' acks left behind by any incomplete auto-resolve path.
+        Acks that have no history row at all are included (conservative: the
+        ack is genuinely active even if history wasn't written yet).
+        """
         cur = await self._db.execute(
-            "SELECT * FROM alert_acknowledgments "
-            "WHERE account_id = ? AND status = 'active' "
-            "ORDER BY created_at DESC",
+            """SELECT a.*
+               FROM alert_acknowledgments a
+               LEFT JOIN alert_history h
+                    ON  h.account_id = a.account_id
+                    AND h.alert_type = a.alert_type
+                    AND h.vehicle_id = a.vehicle_id
+               WHERE a.account_id = ?
+                 AND a.status = 'active'
+                 AND (h.id IS NULL OR h.status = 'active')
+               ORDER BY a.created_at DESC""",
             (account_id,),
         )
         rows = await cur.fetchall()
@@ -171,15 +233,18 @@ class AlertsMixin:
     # ── Alert History (consolidation) ────────────────────────────
 
     async def get_active_alert_history(
-        self, account_id: int, alert_type: str,
-        vehicle_id: str, chat_id: int,
+        self, account_id: int, alert_type: str, vehicle_id: str,
     ) -> Optional[dict]:
-        """Get the active alert history record for a vehicle+type+chat."""
+        """Get the single shared alert history record for a vehicle+type.
+
+        One row per (account_id, alert_type, vehicle_id) — not per subscriber.
+        Per-subscriber Telegram message tracking is in alert_acknowledgments.
+        """
         cur = await self._db.execute(
             "SELECT * FROM alert_history "
             "WHERE account_id = ? AND alert_type = ? "
-            "AND vehicle_id = ? AND chat_id = ? AND status = 'active'",
-            (account_id, alert_type, vehicle_id, chat_id),
+            "AND vehicle_id = ? AND status = 'active'",
+            (account_id, alert_type, vehicle_id),
         )
         row = await cur.fetchone()
         return dict(row) if row else None
@@ -187,58 +252,39 @@ class AlertsMixin:
     async def upsert_alert_history(
         self, account_id: int, alert_type: str,
         vehicle_id: str, vehicle_name: str,
-        chat_id: int, message_id: int,
         last_detail: str = "",
     ) -> dict:
-        """Create or update an alert history record.
+        """Create or update the single shared alert history record for a vehicle+type.
 
-        If an active record exists: increment count, update last_seen
-        and message_id. Otherwise create a new record.
-        Returns the record dict.
+        Uses INSERT OR IGNORE + UPDATE so only one row ever exists per
+        (account_id, alert_type, vehicle_id), regardless of how many
+        subscribers received the alert.  Occurrence count is the total
+        number of times the alert fired fleet-wide, not per-subscriber.
+        Returns the updated record dict.
         """
         now = self._now()
-        existing = await self.get_active_alert_history(
-            account_id, alert_type, vehicle_id, chat_id,
+        # Ensure exactly one row exists (UNIQUE constraint on account+type+vehicle)
+        await self._db.execute(
+            "INSERT OR IGNORE INTO alert_history "
+            "(account_id, alert_type, vehicle_id, vehicle_name, "
+            "chat_id, message_id, occurrence_count, "
+            "first_seen, last_seen, last_detail, status) "
+            "VALUES (?, ?, ?, ?, 0, 0, 0, ?, ?, ?, 'active')",
+            (account_id, alert_type, vehicle_id, vehicle_name, now, now, last_detail),
         )
-        if existing:
-            await self._db.execute(
-                "UPDATE alert_history SET "
-                "occurrence_count = occurrence_count + 1, "
-                "last_seen = ?, message_id = ?, last_detail = ? "
-                "WHERE id = ?",
-                (now, message_id, last_detail, existing["id"]),
-            )
-            await self._db.commit()
-            existing["occurrence_count"] += 1
-            existing["last_seen"] = now
-            existing["message_id"] = message_id
-            existing["last_detail"] = last_detail
-            return existing
-        else:
-            cur = await self._db.execute(
-                "INSERT INTO alert_history "
-                "(account_id, alert_type, vehicle_id, vehicle_name, "
-                "chat_id, message_id, occurrence_count, "
-                "first_seen, last_seen, last_detail, status) "
-                "VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 'active')",
-                (account_id, alert_type, vehicle_id, vehicle_name,
-                 chat_id, message_id, now, now, last_detail),
-            )
-            await self._db.commit()
-            return {
-                "id": cur.lastrowid,
-                "account_id": account_id,
-                "alert_type": alert_type,
-                "vehicle_id": vehicle_id,
-                "vehicle_name": vehicle_name,
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "occurrence_count": 1,
-                "first_seen": now,
-                "last_seen": now,
-                "last_detail": last_detail,
-                "status": "active",
-            }
+        await self._db.execute(
+            "UPDATE alert_history SET "
+            "occurrence_count = occurrence_count + 1, "
+            "vehicle_name = ?, last_seen = ?, last_detail = ? "
+            "WHERE account_id = ? AND alert_type = ? AND vehicle_id = ?",
+            (vehicle_name, now, last_detail, account_id, alert_type, vehicle_id),
+        )
+        await self._db.commit()
+        row = await self._db.execute(
+            "SELECT * FROM alert_history WHERE account_id = ? AND alert_type = ? AND vehicle_id = ?",
+            (account_id, alert_type, vehicle_id),
+        )
+        return dict(await row.fetchone())
 
     async def auto_resolve_alerts_by_vehicle(
         self, account_id: int, alert_type: str, vehicle_id: str,

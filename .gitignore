@@ -20,7 +20,8 @@ env/
 =*
 
 # Build outputs
-dashboard/dist/
+interfaces/dashboard/dist/
+interfaces/miniapp/dist/
 node_modules/
 *.tar.gz
 

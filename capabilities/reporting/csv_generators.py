@@ -473,7 +473,7 @@ def generate_camera_check_csv(results: list[dict]) -> io.BytesIO:
     sio = io.StringIO()
     writer = csv.writer(sio)
 
-    writer.writerow(["Semi Telematics — Camera Check Report"])
+    writer.writerow(["4truck — Camera Check Report"])
     writer.writerow([f"Generated: {_now_et()}"])
     writer.writerow([f"Vehicles Checked: {len(results)}"])
     writer.writerow([])

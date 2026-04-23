@@ -194,16 +194,16 @@ class TestBotRegistry:
 # ═══════════════════════════════════════════════════════════════════
 
 class TestHandlerRegistration:
-    """Verify _register_handlers attaches all expected handlers."""
+    """Verify register_handlers attaches all expected handlers."""
 
     async def test_handlers_attached(self):
-        """_register_handlers adds command, callback, and text handlers."""
-        from core.bot_registry import _register_handlers
+        """register_handlers adds command, callback, and text handlers."""
+        from interfaces.bot.handler_setup import register_handlers
         from telegram.ext import Application
 
         # Build a real Application (but never start it)
         app = Application.builder().token("0:FAKE").build()
-        _register_handlers(app)
+        register_handlers(app)
 
         # Collect all handler types
         all_handlers = []
@@ -248,7 +248,11 @@ class TestBotScoping:
 
     async def test_bot_data_account_id(self):
         """_build_bot_app sets bot_data['account_id']."""
+        import core.bot_registry as _reg_mod
         from core.bot_registry import _build_bot_app
+
+        # Ensure handler setup is injected (normally done by run.py)
+        _reg_mod.set_handler_setup(lambda app: None)
 
         # Mock the Telegram API calls
         with patch("core.bot_registry.Application") as MockAppClass:

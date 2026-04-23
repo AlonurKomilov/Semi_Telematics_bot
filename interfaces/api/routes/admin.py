@@ -5,7 +5,7 @@ import os
 import time
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 
 from interfaces.api.deps import require_permission, get_tenant_db, get_platform_db
@@ -602,6 +602,12 @@ class ScheduleCreate(BaseModel):
     end_hour: int = Field(..., ge=0, le=23)
     target_role: str = "all"
 
+    @model_validator(mode="after")
+    def end_after_start(self) -> "ScheduleCreate":
+        if self.end_hour <= self.start_hour:
+            raise ValueError("end_hour must be greater than start_hour")
+        return self
+
 
 class ScheduleUpdate(BaseModel):
     label: Optional[str] = None
@@ -655,6 +661,10 @@ async def update_schedule(
     kwargs = {k: v for k, v in body.model_dump().items() if v is not None}
     if not kwargs:
         raise HTTPException(status_code=422, detail="No fields to update")
+    # Validate end_hour > start_hour when both are provided in the update
+    if "start_hour" in kwargs and "end_hour" in kwargs:
+        if kwargs["end_hour"] <= kwargs["start_hour"]:
+            raise HTTPException(status_code=422, detail="end_hour must be greater than start_hour")
     ok = await tenant_db.update_work_hour(schedule_id, account_id=user["account_id"], **kwargs)
     if not ok:
         raise HTTPException(status_code=404, detail="Schedule not found")

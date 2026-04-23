@@ -235,14 +235,14 @@
     "sending": "📋 Generating your scheduled <b>{rtype}</b> report..."
   },
   "welcome": {
-    "title": "🚛  <b>Semi Telematics</b>",
+    "title": "🚛  <b>4truck</b>",
     "subtitle": "Real-time fleet monitoring powered by Samsara",
     "api_connected": "📡 Samsara API connected ✅",
     "api_not_connected": "📡 Samsara API not connected",
     "tap_begin": "▸ <b>Tap a button below to begin</b> ▾"
   },
   "welcome_unreg": {
-    "title": "🚛  <b>Semi Telematics Bot</b>",
+    "title": "🚛  <b>4truck Bot</b>",
     "subtitle": "Your all-in-one fleet management assistant, right inside Telegram.",
     "reports_title": "<b>📊 Fleet Reports</b>",
     "tools_title": "<b>🛠 Tools &amp; Tracking</b>",
@@ -850,7 +850,7 @@
     "cancel_back": "◀️ Cancel"
   },
   "samsara": {
-    "connect_guide": "━━━━━━━━━━━━━━━━━━━\n  📡  <b>CONNECT SAMSARA API</b>\n━━━━━━━━━━━━━━━━━━━\n\n  To unlock fleet monitoring you\n  need to connect your Samsara\n  account. Follow these steps:\n\n  <b>Step 1 — Get your API token</b>\n  ▸ Log in to <b>cloud.samsara.com</b>\n  ▸ Go to <b>Settings → API Tokens</b>\n  ▸ Click <b>Create API Token</b>\n  ▸ Name: <i>Semi Telematics Bot</i>\n  ▸ Copy the token (starts with\n     <code>samsara_api_...</code>)\n\n  <b>Step 2 — Type a company code</b>\n  A short code for your company,\n  e.g. <b>PTG</b>, <b>CFT</b>, <b>ACME</b>\n\n  👇 <b>Type your company code below:</b>",
+    "connect_guide": "━━━━━━━━━━━━━━━━━━━\n  📡  <b>CONNECT SAMSARA API</b>\n━━━━━━━━━━━━━━━━━━━\n\n  To unlock fleet monitoring you\n  need to connect your Samsara\n  account. Follow these steps:\n\n  <b>Step 1 — Get your API token</b>\n  ▸ Log in to <b>cloud.samsara.com</b>\n  ▸ Go to <b>Settings → API Tokens</b>\n  ▸ Click <b>Create API Token</b>\n  ▸ Name: <i>4truck Bot</i>\n  ▸ Copy the token (starts with\n     <code>samsara_api_...</code>)\n\n  <b>Step 2 — Type a company code</b>\n  A short code for your company,\n  e.g. <b>PTG</b>, <b>CFT</b>, <b>ACME</b>\n\n  👇 <b>Type your company code below:</b>",
     "not_connected_info": "━━━━━━━━━━━━━━━━━━━\n  ⏳  <b>API NOT YET CONNECTED</b>\n━━━━━━━━━━━━━━━━━━━\n\n  Your company owner hasn't\n  connected a Samsara API key yet.\n\n  Once they integrate the API,\n  fleet features will appear here\n  automatically:\n\n  • 🔧 Fault codes\n  • 🚨 Critical alerts\n  • ⛽ Fuel levels\n  • 🚛 Truck search\n\n  Ask your company owner or admin\n  to connect Samsara."
   },
   "events": {

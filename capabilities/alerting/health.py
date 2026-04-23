@@ -183,18 +183,6 @@ async def _check_health_account(
             if not push_alerts:
                 co = v.get("_org", "?")
                 vid = f"{account_id}:{co}:{v['id']}"
-                cleared = await tenant.clear_alert_history(
-                    account_id, "health", v["id"],
-                )
-                for rec in cleared:
-                    if rec.get("message_id") and rec.get("chat_id"):
-                        try:
-                            await bot_app.bot.delete_message(
-                                chat_id=rec["chat_id"],
-                                message_id=rec["message_id"],
-                            )
-                        except Exception as e:
-                            logger.debug("Could not delete health alert message: %s", e)
                 await _auto_resolve_vehicle_alerts(
                     bot_app, account_id, "health", v["id"],
                     v.get("name", "?"), co,

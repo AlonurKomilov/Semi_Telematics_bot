@@ -123,8 +123,22 @@ async def _auto_resolve_vehicle_alerts(
     check_new_faults / check_low_fuel when they see a vehicle is clear.
     Eliminates waiting for the re-alert cycle to auto-resolve.
     Respects working hours — queues notification if user is outside working hours.
+
+    Self-contained: clears alert_history AND resolves alert_acknowledgments so
+    callers do not need to call clear_alert_history separately.
     """
-    resolved = await (await get_tenant_db(account_id)).auto_resolve_alerts_by_vehicle(
+    tenant = await get_tenant_db(account_id)
+
+    # Fetch first_seen from the shared history record BEFORE clearing it
+    # (get_active_alert_history filters status='active', so must come first)
+    hist = await tenant.get_active_alert_history(account_id, alert_type, vehicle_id)
+    first_seen_str = hist["first_seen"] if hist else ""
+
+    # Clear the single alert_history record (single source of truth)
+    await tenant.clear_alert_history(account_id, alert_type, vehicle_id)
+
+    # Resolve all subscriber ack rows (one per subscriber)
+    resolved = await tenant.auto_resolve_alerts_by_vehicle(
         account_id, alert_type, vehicle_id,
     )
     if not resolved:
@@ -137,10 +151,44 @@ async def _auto_resolve_vehicle_alerts(
         logger.warning("No bot for account %d — skipping auto-resolve", account_id)
         return
 
-    for alert in resolved:
-        vname = vehicle_name or alert.get("vehicle_name", "?")
+    vname = vehicle_name or resolved[0].get("vehicle_name", "?")
+    atype_label = alert_type.replace("_", " ").title()
+    alert_co = co or "?"
 
-        # Delete old alert message from chat
+    # Build resolve detail from the shared alert_key (same for all subscribers)
+    alert_key = resolved[0].get("alert_key", "")
+    key_parts = alert_key.split(":", 2)
+    detail = key_parts[2] if len(key_parts) > 2 else ""
+    detail_lines = _build_resolve_detail(alert_type, detail)
+
+    # Compute duration once from shared first_seen (not per-subscriber created_at)
+    duration_str = ""
+    if first_seen_str:
+        try:
+            first_dt = datetime.fromisoformat(first_seen_str)
+            mins = int((datetime.now(timezone.utc) - first_dt).total_seconds() / 60)
+            if mins >= 60:
+                duration_str = f"  🕐 Active for <b>{mins // 60}h {mins % 60}m</b>\n"
+            else:
+                duration_str = f"  🕐 Active for <b>{mins} min</b>\n"
+        except Exception as e:
+            logger.debug("Could not compute alert duration: %s", e)
+
+    # Build the resolve message template once — same for all subscribers
+    resolve_text = (
+        "━━━━━━━━━━━━━━━━━━━\n"
+        f"  ✅  <b>AUTO-RESOLVED</b>\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        f"\n  🚛 Truck: <b>#{vname}</b>\n"
+        f"\n  {atype_label} alert resolved — condition cleared.\n"
+    )
+    if detail_lines:
+        resolve_text += f"\n  <b>Was alerting:</b>\n{detail_lines}\n"
+    if duration_str:
+        resolve_text += f"\n{duration_str}"
+
+    for alert in resolved:
+        # Delete this subscriber's previous alert message
         if alert.get("message_id") and alert.get("chat_id"):
             try:
                 await bot_app.bot.delete_message(
@@ -156,7 +204,7 @@ async def _auto_resolve_vehicle_alerts(
         if recipient_id:
             recipient = await get_platform_db().get_user_by_telegram_id(recipient_id)
             if recipient and recipient.is_in_quiet_hours():
-                await (await get_tenant_db(account_id)).queue_dnd_alert(
+                await tenant.queue_dnd_alert(
                     account_id=account_id,
                     telegram_id=recipient_id,
                     alert_type=alert_type,
@@ -164,42 +212,6 @@ async def _auto_resolve_vehicle_alerts(
                     alert_text=f"✅ Auto-resolved: {alert_type} alert cleared",
                 )
                 continue
-
-        # Build detailed auto-resolved notification
-        atype_label = alert_type.replace("_", " ").title()
-        alert_co = co or "?"
-
-        # Extract what was originally alerted from alert_key
-        alert_key = alert.get("alert_key", "")
-        key_parts = alert_key.split(":", 2)
-        detail = key_parts[2] if len(key_parts) > 2 else ""
-        detail_lines = _build_resolve_detail(alert_type, detail)
-
-        # Calculate how long the alert was active
-        created = alert.get("created_at", "")
-        duration_str = ""
-        if created:
-            try:
-                created_dt = datetime.fromisoformat(created)
-                mins = int((datetime.now(timezone.utc) - created_dt).total_seconds() / 60)
-                if mins >= 60:
-                    duration_str = f"  🕐 Active for <b>{mins // 60}h {mins % 60}m</b>\n"
-                else:
-                    duration_str = f"  🕐 Active for <b>{mins} min</b>\n"
-            except Exception as e:
-                logger.debug("Could not compute alert duration for display: %s", e)
-
-        resolve_text = (
-            "━━━━━━━━━━━━━━━━━━━\n"
-            f"  ✅  <b>AUTO-RESOLVED</b>\n"
-            "━━━━━━━━━━━━━━━━━━━\n"
-            f"\n  🚛 Truck: <b>#{vname}</b>\n"
-            f"\n  {atype_label} alert resolved — condition cleared.\n"
-        )
-        if detail_lines:
-            resolve_text += f"\n  <b>Was alerting:</b>\n{detail_lines}\n"
-        if duration_str:
-            resolve_text += f"\n{duration_str}"
 
         try:
             await bot_app.bot.send_message(
@@ -215,21 +227,21 @@ async def _auto_resolve_vehicle_alerts(
             )
         except Exception as e:
             logger.debug("Could not send auto-resolve message: %s", e)
-    log_name = vehicle_name or resolved[0].get("vehicle_name", "?")
-    await (await get_tenant_db(account_id)).add_audit_log(
+
+    await tenant.add_audit_log(
         account_id=account_id,
         user_id=None,
         action="alert_auto_resolved",
         target_type="alert",
         target_id=str(resolved[0]["id"]),
         details=(
-            f"{alert_type} alert for Truck {log_name} "
-            f"auto-resolved (source check, {len(resolved)} records)"
+            f"{alert_type} alert for Truck {vname} auto-resolved; "
+            f"{len(resolved)} subscriber(s) notified"
         ),
     )
     logger.info(
-        f"Auto-resolved {len(resolved)} {alert_type} alert(s) "
-        f"for Truck {log_name} (source check)"
+        "Auto-resolved %s alert for Truck %s — notified %d subscriber(s)",
+        alert_type, vname, len(resolved),
     )
 
 async def handle_back_to_alert(update, context, ack_id: int):

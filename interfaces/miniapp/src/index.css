@@ -1,0 +1,161 @@
+/* Global layout for the Mini App */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/*
+ * Bridge Telegram SDK CSS variables (injected on <html> by telegram-web-app.js)
+ * into the --tgui-- namespace so elements outside AppRoot (e.g. Leaflet popups)
+ * also pick up the real Telegram theme. AppRoot overrides these on its own div.
+ */
+:root {
+  --tgui--bg_color: var(--tg-theme-bg-color, #212121);
+  --tgui--secondary_bg_color: var(--tg-theme-secondary-bg-color, #0f0f0f);
+  --tgui--text_color: var(--tg-theme-text-color, #ffffff);
+  --tgui--hint_color: var(--tg-theme-hint-color, #aaa);
+  --tgui--button_color: var(--tg-theme-button-color, #2990ff);
+  --tgui--button_text_color: var(--tg-theme-button-text-color, #ffffff);
+  --tgui--link_color: var(--tg-theme-link-color, #2990ff);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+  /* Use Telegram SDK variables (set on <html>) — not --tgui-- which is scoped to AppRoot */
+  background-color: var(--tg-theme-bg-color, #212121);
+  color: var(--tg-theme-text-color, #ffffff);
+}
+
+/* Full-screen flex column */
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Scrollable content area above the bottom nav */
+.app-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Each page fills the content area */
+.page {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.page--hidden {
+  display: none;
+}
+
+/* Map page: Leaflet container must fill its parent */
+.map-page {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+#map-container {
+  width: 100%;
+  height: 100%;
+}
+
+/* Custom Leaflet truck markers */
+.truck-marker {
+  font-size: 22px;
+  line-height: 1;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.truck-marker:hover {
+  transform: scale(1.2);
+}
+.truck-marker.moving  { filter: drop-shadow(0 0 4px #30d158); }
+.truck-marker.idle    { filter: drop-shadow(0 0 4px #ff9f0a); }
+.truck-marker.stopped { filter: drop-shadow(0 0 4px #ff453a); }
+
+/* Leaflet popup — match Telegram theme */
+.leaflet-popup-content-wrapper {
+  background: var(--tgui--secondary_bg_color, #2c2c2e) !important;
+  color: var(--tgui--text_color, #ffffff) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
+}
+.leaflet-popup-tip {
+  background: var(--tgui--secondary_bg_color, #2c2c2e) !important;
+}
+.leaflet-popup-content {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Popup rows */
+.popup-name {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 6px;
+}
+.popup-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+}
+.popup-label {
+  color: var(--tgui--hint_color, #8e8e93);
+  white-space: nowrap;
+}
+
+/* Status badge (used in popup + truck card subtitle) */
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.status-badge.moving  { background: rgba(48, 209, 88, 0.2);  color: #30d158; }
+.status-badge.idle    { background: rgba(255, 159, 10, 0.2); color: #ff9f0a; }
+.status-badge.stopped { background: rgba(255, 69, 58, 0.2);  color: #ff453a; }
+
+/* Search input inside truck page */
+.search-input {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--tgui--secondary_bg_color, #2c2c2e);
+  color: var(--tgui--text_color, #ffffff);
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  outline: none;
+  margin: 12px 16px;
+  width: calc(100% - 32px);
+}
+.search-input::placeholder {
+  color: var(--tgui--hint_color, #8e8e93);
+}
+
+/* Centered spinner / empty state container */
+.centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 32px;
+  gap: 16px;
+  text-align: center;
+}

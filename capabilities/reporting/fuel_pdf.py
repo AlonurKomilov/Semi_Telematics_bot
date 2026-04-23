@@ -28,7 +28,7 @@ def generate_fuel_report_pdf(
     subtitle = "Fleet Fuel Level Report"
     if company_filter:
         subtitle = f"{get_company_display().get(company_filter, company_filter)} — Fuel Report"
-    _add_header(story, styles, "SEMI TELEMATICS", subtitle, now)
+    _add_header(story, styles, "4TRUCK", subtitle, now)
 
     # ── Classify vehicles ────────────────────────────────────────
     critical_list = []   # <= 15%

@@ -349,7 +349,7 @@ async def auth_config(request: Request):
     _bot_id = ""
     if TELEGRAM_TOKEN and ":" in TELEGRAM_TOKEN:
         _bot_id = TELEGRAM_TOKEN.split(":", 1)[0]
-    return {"bot_username": global_bot_username or "SemiTelematicsBot", "bot_id": _bot_id}
+    return {"bot_username": global_bot_username or "4truckBot", "bot_id": _bot_id}
 
 
 # ── Bot-login: one-time deep-link auth via system bot ─────────

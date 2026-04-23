@@ -68,7 +68,6 @@ bot_username: str = ""                         # set in post_init via getMe
 from interfaces.bot.state import (  # noqa: E402
     db,
     _client_cache,
-    _known_faults,
     _active_messages,
     _rate_limits,
     check_rate_limit,

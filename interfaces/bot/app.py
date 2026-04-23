@@ -262,7 +262,7 @@ def build_app() -> Application:
 
 def main():
     """Standalone bot entry point (blocking — runs polling or webhook)."""
-    logger.info("Starting Semi Telematics Bot — multi-tenant mode")
+    logger.info("Starting 4truck Bot — multi-tenant mode")
 
     app = build_app()
 

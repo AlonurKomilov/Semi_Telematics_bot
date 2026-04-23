@@ -185,14 +185,14 @@
     "back": "◀️ Atrás"
   },
   "welcome": {
-    "title": "🚛  <b>Semi Telematics</b>",
+    "title": "🚛  <b>4truck</b>",
     "subtitle": "Monitoreo de flotas en tiempo real con tecnología Samsara",
     "api_connected": "📡 Samsara API conectada ✅",
     "api_not_connected": "📡 Samsara API no conectada",
     "tap_begin": "▸ <b>Toque un botón para comenzar</b> ▾"
   },
   "welcome_unreg": {
-    "title": "🚛  <b>Semi Telematics Bot</b>",
+    "title": "🚛  <b>4truck Bot</b>",
     "subtitle": "Su asistente integral de gestión de flotas, directamente en Telegram.",
     "reports_title": "<b>📊 Informes de Flota</b>",
     "tools_title": "<b>🛠 Herramientas y Seguimiento</b>",
@@ -792,7 +792,7 @@
     "cancel_back": "◀️ Cancelar"
   },
   "samsara": {
-    "connect_guide": "━━━━━━━━━━━━━━━━━━━\n  📡  <b>CONECTAR API DE SAMSARA</b>\n━━━━━━━━━━━━━━━━━━━\n\n  Para activar el monitoreo de flota\n  necesita conectar su cuenta de\n  Samsara. Siga estos pasos:\n\n  <b>Paso 1 — Obtenga su token de API</b>\n  ▸ Inicie sesión en <b>cloud.samsara.com</b>\n  ▸ Vaya a <b>Settings → API Tokens</b>\n  ▸ Haga clic en <b>Create API Token</b>\n  ▸ Nombre: <i>Semi Telematics Bot</i>\n  ▸ Copie el token (comienza con\n     <code>samsara_api_...</code>)\n\n  <b>Paso 2 — Escriba un código de empresa</b>\n  Un código corto para su empresa,\n  p. ej. <b>PTG</b>, <b>CFT</b>, <b>ACME</b>\n\n  👇 <b>Escriba su código de empresa:</b>",
+    "connect_guide": "━━━━━━━━━━━━━━━━━━━\n  📡  <b>CONECTAR API DE SAMSARA</b>\n━━━━━━━━━━━━━━━━━━━\n\n  Para activar el monitoreo de flota\n  necesita conectar su cuenta de\n  Samsara. Siga estos pasos:\n\n  <b>Paso 1 — Obtenga su token de API</b>\n  ▸ Inicie sesión en <b>cloud.samsara.com</b>\n  ▸ Vaya a <b>Settings → API Tokens</b>\n  ▸ Haga clic en <b>Create API Token</b>\n  ▸ Nombre: <i>4truck Bot</i>\n  ▸ Copie el token (comienza con\n     <code>samsara_api_...</code>)\n\n  <b>Paso 2 — Escriba un código de empresa</b>\n  Un código corto para su empresa,\n  p. ej. <b>PTG</b>, <b>CFT</b>, <b>ACME</b>\n\n  👇 <b>Escriba su código de empresa:</b>",
     "not_connected_info": "━━━━━━━━━━━━━━━━━━━\n  ⏳  <b>API AÚN NO CONECTADA</b>\n━━━━━━━━━━━━━━━━━━━\n\n  El propietario de su empresa aún\n  no ha conectado una clave API de\n  Samsara.\n\n  Una vez que integre la API,\n  las funciones de flota aparecerán\n  aquí automáticamente:\n\n  • 🔧 Códigos de fallo\n  • 🚨 Alertas críticas\n  • ⛽ Niveles de combustible\n  • 🚛 Búsqueda de camiones\n\n  Pida al propietario o administrador\n  de su empresa que conecte Samsara."
   },
   "events": {

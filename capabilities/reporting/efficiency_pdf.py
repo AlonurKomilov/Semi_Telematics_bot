@@ -34,7 +34,7 @@ def generate_fleet_efficiency_pdf(
             f"{get_company_display().get(company_filter, company_filter)} — "
             f"Efficiency ({days} Days)"
         )
-    _add_header(story, styles, "SEMI TELEMATICS", subtitle, now)
+    _add_header(story, styles, "4TRUCK", subtitle, now)
 
     # ── Summary dashboard ────────────────────────────────────────
     total_eng_s = sum(v.get("_engine_s", v["_engine_hours"] * 3600) for v in vehicles)

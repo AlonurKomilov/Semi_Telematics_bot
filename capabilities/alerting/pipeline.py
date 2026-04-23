@@ -162,6 +162,24 @@ async def send_alert(
 
     tenant = await get_tenant_db(account_id)
 
+    # ── ONE shared alert history record per vehicle+type ──────────
+    # Upsert BEFORE the subscriber loop so occurrence_count increments exactly
+    # once per alert event — not once per subscriber.  All subscribers then
+    # receive a notification that shows the same occurrence number and
+    # first_seen timestamp (single source of truth).
+    existing_hist = await tenant.get_active_alert_history(account_id, alert_type, vid)
+    _hist_count = (existing_hist["occurrence_count"] if existing_hist else 0) + 1
+    _hist_first_seen = existing_hist["first_seen"] if existing_hist else ""
+    _now_str = datetime.now(timezone.utc).isoformat()
+    history_footer = format_alert_history_footer(_hist_count, _hist_first_seen, _now_str)
+    await tenant.upsert_alert_history(
+        account_id=account_id,
+        alert_type=alert_type,
+        vehicle_id=vid,
+        vehicle_name=vname,
+        last_detail=alert_key_detail,
+    )
+
     for sub in subscribers:
         # Driver: only alert for their own truck
         if sub.role == Role.DRIVER and sub.truck_num:
@@ -180,24 +198,22 @@ async def send_alert(
             continue
 
         try:
-            # ── History consolidation — delete old, count occurrences ──
-            existing_hist = await tenant.get_active_alert_history(
-                account_id, alert_type, vid, sub.telegram_id,
-            )
-            if existing_hist and existing_hist["message_id"]:
-                try:
-                    await bot_app.bot.delete_message(
-                        chat_id=sub.telegram_id,
-                        message_id=existing_hist["message_id"],
-                    )
-                except Exception:
-                    logger.debug("Failed to delete old alert message %s for user %s",
-                                 existing_hist["message_id"], sub.telegram_id)
-
-            count = (existing_hist["occurrence_count"] if existing_hist else 0) + 1
-            first_seen = existing_hist["first_seen"] if existing_hist else ""
-            now_str = datetime.now(timezone.utc).isoformat()
-            history_footer = format_alert_history_footer(count, first_seen, now_str)
+            # ── Delete this subscriber's previous alert message (per-subscriber lookup) ──
+            # For CRITICAL/WARNING: look in alert_acknowledgments (already fetched later).
+            # For INFO: look up the latest 'info' ack row for this subscriber+vehicle+type.
+            if not needs_ack:
+                old_info_acks = await tenant.get_info_alert_ack(
+                    account_id, vid, alert_type, sub.telegram_id,
+                )
+                if old_info_acks and old_info_acks.get("message_id"):
+                    try:
+                        await bot_app.bot.delete_message(
+                            chat_id=sub.telegram_id,
+                            message_id=old_info_acks["message_id"],
+                        )
+                    except Exception:
+                        logger.debug("Failed to delete old INFO alert message %s for user %s",
+                                     old_info_acks["message_id"], sub.telegram_id)
 
             # Build message text
             send_text = alert_text
@@ -298,7 +314,9 @@ async def send_alert(
                     reply_markup=ack_kb,
                 )
             else:
-                # INFO — no ACK tracking needed
+                # INFO — send alert; store a lightweight delivery record in
+                # alert_acknowledgments (status='info') so the next occurrence
+                # can delete this subscriber's previous message.
                 basic_kb = build_alert_keyboard(
                     severity, co, vname, alert_type=alert_type,
                     vehicle_id=vid, event_id=event_id, event_time=event_time,
@@ -310,17 +328,19 @@ async def send_alert(
                     reply_markup=basic_kb,
                     reply_to_message_id=reply_to,
                 )
+                alert_key = f"{co}:{vid}:{alert_key_detail}"
+                await tenant.create_info_alert_ack(
+                    account_id=account_id,
+                    alert_type=alert_type,
+                    vehicle_id=vid,
+                    vehicle_name=vname,
+                    alert_key=alert_key,
+                    message_id=msg.message_id,
+                    chat_id=sub.telegram_id,
+                    sent_to=sub.telegram_id,
+                )
 
-            # Update alert history
-            await tenant.upsert_alert_history(
-                account_id=account_id,
-                alert_type=alert_type,
-                vehicle_id=vid,
-                vehicle_name=vname,
-                chat_id=sub.telegram_id,
-                message_id=msg.message_id,
-                last_detail=alert_key_detail,
-            )
+            # Track active message for this subscriber
             _active_messages.setdefault(
                 (sub.telegram_id, sub.telegram_id), []
             ).append(msg.message_id)

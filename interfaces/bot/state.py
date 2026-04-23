@@ -91,9 +91,4 @@ db = _LazyDB()       # type: ignore[assignment]
 router = _LazyRouter()  # type: ignore[assignment]
 
 # ── Shared caches (re-exported for backward compat) ──────────────
-# _active_messages lives in core.services (shared with capabilities/alerting)
 from core.services import _active_messages  # noqa: F401, E402
-
-# _known_faults lives in capabilities.alerting.faults (only used there)
-# Kept here as a re-export for backward compat with bot.config
-from capabilities.alerting.faults import _known_faults  # noqa: F401, E402

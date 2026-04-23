@@ -63,7 +63,7 @@ def generate_vehicle_health_pdf(
     subtitle = "Vehicle Health Dashboard"
     if company_filter:
         subtitle = f"{get_company_display().get(company_filter, company_filter)} — Vehicle Health"
-    _add_header(story, styles, "SEMI TELEMATICS", subtitle, now)
+    _add_header(story, styles, "4TRUCK", subtitle, now)
 
     # ── Summary dashboard ────────────────────────────────────────
     alert_count = sum(len(v.get("_health_alerts", [])) for v in vehicles)

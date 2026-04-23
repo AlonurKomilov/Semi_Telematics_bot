@@ -32,6 +32,7 @@ export default function Invites() {
   const [error, setError] = useState('');
   const [showAll, setShowAll] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [botUsername, setBotUsername] = useState('4truckBot');
 
   // Create form
   const [showForm, setShowForm] = useState(false);
@@ -55,6 +56,12 @@ export default function Invites() {
 
   useEffect(() => { load(); }, [showAll]);
 
+  useEffect(() => {
+    apiJSON<{ bot_username: string }>('/auth/bot-info')
+      .then(d => { if (d.bot_username) setBotUsername(d.bot_username); })
+      .catch(() => {});
+  }, []);
+
   async function create() {
     setCreating(true);
     try {
@@ -73,7 +80,7 @@ export default function Invites() {
   }
 
   function copyLink(code: string) {
-    const url = `https://t.me/SemiTelematicsBot?start=join_${code}`;
+    const url = `https://t.me/${botUsername}?start=join_${code}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopied(code);
       setTimeout(() => setCopied(null), 2000);

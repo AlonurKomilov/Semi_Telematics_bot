@@ -92,13 +92,16 @@ async def create_tables(conn) -> None:
             alert_type        TEXT    NOT NULL,
             vehicle_id        TEXT    NOT NULL,
             vehicle_name      TEXT    NOT NULL DEFAULT '',
-            chat_id           INTEGER NOT NULL,
+            -- chat_id kept for backwards compat but not used in queries; always 0
+            chat_id           INTEGER NOT NULL DEFAULT 0,
+            -- message_id not used; per-subscriber tracking is in alert_acknowledgments
             message_id        INTEGER NOT NULL DEFAULT 0,
             occurrence_count  INTEGER NOT NULL DEFAULT 1,
             first_seen        TEXT    NOT NULL,
             last_seen         TEXT    NOT NULL,
             last_detail       TEXT    NOT NULL DEFAULT '',
-            status            TEXT    NOT NULL DEFAULT 'active'
+            status            TEXT    NOT NULL DEFAULT 'active',
+            UNIQUE(account_id, alert_type, vehicle_id)
         );
 
         CREATE TABLE IF NOT EXISTS dnd_alert_queue (
@@ -206,7 +209,7 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_alert_ack_pending
             ON alert_acknowledgments(acknowledged_at, status);
         CREATE INDEX IF NOT EXISTS idx_alert_history_active
-            ON alert_history(account_id, alert_type, vehicle_id, chat_id, status);
+            ON alert_history(account_id, alert_type, vehicle_id, status);
         CREATE INDEX IF NOT EXISTS idx_dnd_queue_pending
             ON dnd_alert_queue(telegram_id, delivered);
         CREATE INDEX IF NOT EXISTS idx_audit_account

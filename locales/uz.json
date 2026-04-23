@@ -185,14 +185,14 @@
     "back": "◀️ Orqaga"
   },
   "welcome": {
-    "title": "🚛  <b>Semi Telematics</b>",
+    "title": "🚛  <b>4truck</b>",
     "subtitle": "Samsara orqali avtoparkni real vaqtda monitoring qilish",
     "api_connected": "📡 Samsara API ulangan ✅",
     "api_not_connected": "📡 Samsara API ulanmagan",
     "tap_begin": "▸ <b>Boshlash uchun pastdagi tugmani bosing</b> ▾"
   },
   "welcome_unreg": {
-    "title": "🚛  <b>Semi Telematics Bot</b>",
+    "title": "🚛  <b>4truck Bot</b>",
     "subtitle": "Telegram ichidagi barcha avtopark boshqaruvi bo'yicha yordamchingiz.",
     "reports_title": "<b>📊 Avtopark Hisobotlari</b>",
     "tools_title": "<b>🛠 Asboblar va Kuzatuv</b>",
@@ -792,7 +792,7 @@
     "cancel_back": "◀️ Bekor Qilish"
   },
   "samsara": {
-    "connect_guide": "━━━━━━━━━━━━━━━━━━━\n  📡  <b>SAMSARA API ULANISHI</b>\n━━━━━━━━━━━━━━━━━━━\n\n  Buni yakunlash uchun o'z Samsara\n  kabinetiga kiring. Buni shunday bajarasiz:\n\n  <b>1-qadam — API Tokenni Olish</b>\n  ▸ <b>cloud.samsara.com</b> saytiga kiring\n  ▸ <b>Settings → API Tokens</b> ga kiring\n  ▸ <b>Create API Token</b> bosing\n  ▸ Name: <i>Semi Telematics Bot</i>\n  ▸ Tokenni <code>samsara_api_...</code> nusxalab oling\n\n  <b>2-qadam — Kompaniyani qisqartma nomi</b>\n  Masalan <b>PTG</b>, <b>CFT</b>, <b>ACME</b>\n\n  👇 <b>Pastga nomni yozing:</b>",
+    "connect_guide": "━━━━━━━━━━━━━━━━━━━\n  📡  <b>SAMSARA API ULANISHI</b>\n━━━━━━━━━━━━━━━━━━━\n\n  Buni yakunlash uchun o'z Samsara\n  kabinetiga kiring. Buni shunday bajarasiz:\n\n  <b>1-qadam — API Tokenni Olish</b>\n  ▸ <b>cloud.samsara.com</b> saytiga kiring\n  ▸ <b>Settings → API Tokens</b> ga kiring\n  ▸ <b>Create API Token</b> bosing\n  ▸ Name: <i>4truck Bot</i>\n  ▸ Tokenni <code>samsara_api_...</code> nusxalab oling\n\n  <b>2-qadam — Kompaniyani qisqartma nomi</b>\n  Masalan <b>PTG</b>, <b>CFT</b>, <b>ACME</b>\n\n  👇 <b>Pastga nomni yozing:</b>",
     "not_connected_info": "━━━━━━━━━━━━━━━━━━━\n  ⏳  <b>API ULANILMAGAN</b>\n━━━━━━━━━━━━━━━━━━━\n\n  Botni ko'p funksiyalari (avtopark xarita, nosozlik xabarlari,\n  kabi) Samsara API-si orkali mavjud bo'ladi.\n\n  Davom etishdan oldin,\n  Kompaniya menejeri uni kiritsin!\n\n  Shu vaqt faqat API-si bilan:\n  • 🔧 Nosozliklar\n  • 🚨 Muhim Ogohlantirishlar\n  • ⛽ Yoqilg'i darajasi\n  • 🚛 Mashina axboroti\n\n  Bizga bog'laning (Admin xaridlari ulanilsin)!"
   },
   "events": {

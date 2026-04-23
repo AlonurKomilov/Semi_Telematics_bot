@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────
-#  Install Semi Telematics Bot as a systemd service
+#  Install 4truck Bot as a systemd service
 #  (auto-start on boot + auto-restart on crash)
 # ─────────────────────────────────────────────────────
 set -euo pipefail
 
-SERVICE_NAME="semi-telematics-bot"
+SERVICE_NAME="4truck-bot"
 SERVICE_FILE="${SERVICE_NAME}.service"
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 

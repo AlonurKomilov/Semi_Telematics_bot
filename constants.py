@@ -1,4 +1,4 @@
-"""Shared constants for the Semi Telematics Bot."""
+"""Shared constants for the 4truck Bot."""
 
 from zoneinfo import ZoneInfo
 

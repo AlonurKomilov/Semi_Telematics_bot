@@ -29,7 +29,7 @@ def generate_truck_detail_pdf(vehicle: dict) -> io.BytesIO:
     subtitle = f"Truck #{truck_name} — Detail Report"
     if co_code:
         subtitle = f"Truck #{truck_name} — {co_name} ({co_code})"
-    _add_header(story, styles, "SEMI TELEMATICS", subtitle, now)
+    _add_header(story, styles, "4TRUCK", subtitle, now)
 
     # ── Gateway warning ──────────────────────────────────────────
     if not vehicle.get("has_gateway", True):

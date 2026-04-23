@@ -1,7 +1,7 @@
-# Semi Telematics Bot — convenience targets
+# 4truck — convenience targets
 # ─────────────────────────────────────────
 
-SERVICE  = semi-telematics-bot
+SERVICE  = 4truck-bot
 PID_FILE = .bot.pid
 LOG_FILE = bot.log
 
@@ -20,7 +20,7 @@ install:
 
 ## Start all services: Redis + bot/API (systemd or nohup fallback)
 start:
-	@echo "🚀 Starting Semi Telematics services..."
+	@echo "🚀 Starting 4truck services..."
 	@# ── 1. Redis ──
 	@if docker ps --format '{{.Names}}' | grep -q $(REDIS_CONTAINER); then \
 		echo "   ✅ Redis already running on port 8002"; \
@@ -30,7 +30,7 @@ start:
 			--name $(REDIS_CONTAINER) \
 			--restart unless-stopped \
 			-p 127.0.0.1:8002:8002 \
-			-v semi-telematics-redis:/data \
+			-v 4truck-redis:/data \
 			redis:7-alpine \
 			redis-server --port 8002 >/dev/null; \
 		echo "   ✅ Redis started on port 8002"; \
@@ -57,10 +57,31 @@ start:
 		fi; \
 		sleep 1; \
 	done
+	@# ── 4. Nginx — 4truck.us config only ──────────────────────────────────────
+	@# Reload is safe for multi-site: only THIS project's conf file changes.
+	@# Other sites (2bot, analyticbot, etc.) are untouched — their conf files
+	@# are separate and are NOT modified by this target.
+	@# Remove old semi-telematics-bot conf if still lingering from before rename
+	@sudo rm -f /etc/nginx/sites-enabled/semi-telematics-bot /etc/nginx/sites-available/semi-telematics-bot 2>/dev/null; true
+	@if [ ! -f /etc/nginx/sites-available/$(NGINX_CONF) ] || \
+			! diff -q $(NGINX_SRC) /etc/nginx/sites-available/$(NGINX_CONF) >/dev/null 2>&1; then \
+		echo "   🔄 Nginx config changed — updating 4truck.us..."; \
+		sudo cp $(NGINX_SRC) /etc/nginx/sites-available/$(NGINX_CONF); \
+		sudo ln -sf /etc/nginx/sites-available/$(NGINX_CONF) /etc/nginx/sites-enabled/$(NGINX_CONF); \
+		if sudo nginx -t >/dev/null 2>&1; then \
+			sudo systemctl reload nginx; \
+			echo "   ✅ Nginx reloaded — 4truck.us config active (other sites unaffected)"; \
+		else \
+			echo "   ❌ Nginx config invalid — not reloaded (run: sudo nginx -t)"; \
+		fi; \
+	else \
+		sudo ln -sf /etc/nginx/sites-available/$(NGINX_CONF) /etc/nginx/sites-enabled/$(NGINX_CONF) 2>/dev/null; \
+		echo "   ✅ Nginx config already up to date (no reload needed)"; \
+	fi
 
 ## Stop all services: bot/API + Redis
 stop:
-	@echo "🛑 Stopping Semi Telematics services..."
+	@echo "🛑 Stopping 4truck services..."
 	@# ── 1. Bot + API ──
 	@if systemctl is-enabled $(SERVICE) >/dev/null 2>&1; then \
 		sudo systemctl stop $(SERVICE); \
@@ -85,6 +106,15 @@ stop:
 		echo "   ⚠️  Redis not running"; \
 	fi
 	@echo "   ✅ All services stopped"
+	@# ── Nginx stays running ─────────────────────────────────────────────────
+	@# nginx is NOT stopped here — it is a shared service that also serves
+	@# 2bot, analyticbot, and any other site on this machine.
+	@# Only the 4truck app process and Redis are stopped above.
+	@if systemctl is-active nginx >/dev/null 2>&1; then \
+		echo "   ℹ️  Nginx: still running (shared — also serves 2bot and other sites)"; \
+	else \
+		echo "   ⚠️  Nginx: not running"; \
+	fi
 
 ## Restart all services
 restart:
@@ -93,7 +123,7 @@ restart:
 
 ## Show status of all services
 status:
-	@echo "📋 Semi Telematics service status:"
+	@echo "📋 4truck service status:"
 	@# ── Bot + API ──
 	@if systemctl is-enabled $(SERVICE) >/dev/null 2>&1; then \
 		if systemctl is-active $(SERVICE) >/dev/null 2>&1; then \
@@ -118,6 +148,17 @@ status:
 	else \
 		echo "   ⚠️  Health endpoint not responding"; \
 	fi
+	@# ── Nginx ──
+	@if systemctl is-active nginx >/dev/null 2>&1; then \
+		echo "   ✅ Nginx: running"; \
+		if [ -L /etc/nginx/sites-enabled/$(NGINX_CONF) ]; then \
+			echo "      4truck.us config: enabled"; \
+		else \
+			echo "      ⚠️  4truck.us config NOT enabled — run: make nginx-install"; \
+		fi; \
+	else \
+		echo "   ❌ Nginx: stopped"; \
+	fi
 
 ## Tail logs
 logs:
@@ -133,9 +174,22 @@ clean:
 	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null; true
 	@find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null; true
 	@find . \( -name "*.pyc" -o -name "*.pyo" \) -delete 2>/dev/null; true
-	@rm -f .bot.pid .pid
+	@rm -f .bot.pid .api.pid .pid
 	@rm -f "=0.5.7"
+	@# Clear miniapp Vite cache
+	@rm -rf interfaces/miniapp/node_modules/.vite 2>/dev/null; true
+	@# Clear dashboard Vite cache
+	@rm -rf interfaces/dashboard/node_modules/.vite 2>/dev/null; true
 	@echo "✅  Cache cleared (DB and source untouched)"
+
+## Build all frontend assets (dashboard + miniapp)
+build: dashboard-build miniapp-build
+
+## Build the dashboard React app
+dashboard-build:
+	@echo "🔨 Building dashboard..."
+	@cd interfaces/dashboard && npm run build
+	@echo "✅  Dashboard built → interfaces/dashboard/dist/"
 
 # ── testing targets ──────────────────────────────────
 
@@ -259,12 +313,14 @@ docker-restart:
 
 # ── Nginx targets ────────────────────────────────────
 
-NGINX_CONF = semi-telematics-bot
-NGINX_SRC  = nginx/semi-telematics-bot.conf
+NGINX_CONF = 4truck
+NGINX_SRC  = nginx/4truck.conf
 
 ## Install/update nginx config (safe — only adds 4truck.us, won't touch other sites)
 nginx-install:
 	@echo "📋 Installing nginx config for 4truck.us..."
+	@# Remove old semi-telematics-bot conf if it exists (leftover from rename)
+	@sudo rm -f /etc/nginx/sites-enabled/semi-telematics-bot /etc/nginx/sites-available/semi-telematics-bot 2>/dev/null; true
 	@sudo cp $(NGINX_SRC) /etc/nginx/sites-available/$(NGINX_CONF)
 	@sudo ln -sf /etc/nginx/sites-available/$(NGINX_CONF) /etc/nginx/sites-enabled/$(NGINX_CONF)
 	@echo "🔍 Testing nginx config..."
@@ -290,8 +346,8 @@ nginx-status:
 
 ## Show port assignments for this project
 ports:
-	@echo "📋 Semi Telematics Bot — Port Layout"
-	@echo "   8000  FastAPI API + static files (webapp, dashboard)"
+	@echo "📋 4truck — Port Layout"
+	@echo "   8000  FastAPI API + static files (miniapp, dashboard)"
 	@echo "   8001  Telegram webhook listener"
 	@echo "   8002  Redis cache (localhost only)"
 	@echo ""
@@ -300,7 +356,7 @@ ports:
 
 # ── Redis standalone (when not using docker-compose) ─
 
-REDIS_CONTAINER = semi-telematics-redis
+REDIS_CONTAINER = 4truck-redis
 
 ## Start Redis on port 8002 (Docker container, standalone)
 redis-start:
@@ -312,7 +368,7 @@ redis-start:
 			--name $(REDIS_CONTAINER) \
 			--restart unless-stopped \
 			-p 127.0.0.1:8002:8002 \
-			-v semi-telematics-redis:/data \
+			-v 4truck-redis:/data \
 			redis:7-alpine \
 			redis-server --port 8002; \
 		echo "✅ Redis started on port 8002"; \
@@ -328,7 +384,7 @@ redis-cli:
 
 # ── Split-service targets (Phase C) ──────────────────
 
-SERVICE_API = semi-telematics-api
+SERVICE_API = 4truck-api
 
 .PHONY: start-api stop-api start-bot stop-bot \
         install-api install-split docker-split-up docker-split-down
@@ -336,14 +392,14 @@ SERVICE_API = semi-telematics-api
 ## Install the API-only systemd unit (runs alongside the bot unit)
 install-api:
 	@echo "📋 Installing API service unit..."
-	@sudo cp semi-telematics-api.service /etc/systemd/system/$(SERVICE_API).service
+	@sudo cp 4truck-api.service /etc/systemd/system/$(SERVICE_API).service
 	@sudo systemctl daemon-reload
 	@sudo systemctl enable $(SERVICE_API)
 	@echo "✅ $(SERVICE_API) installed. Start with: make start-api"
 
 ## Install both split-service units (bot+scheduler + API as separate processes)
 install-split: install-api
-	@sudo cp semi-telematics-bot.service /etc/systemd/system/$(SERVICE).service
+	@sudo cp 4truck-bot.service /etc/systemd/system/$(SERVICE).service
 	@sudo systemctl daemon-reload
 	@echo "✅ Both units installed. Run: make start-api && make start"
 	@echo "   NOTE: update $(SERVICE).service to set ENABLE_API=0 before starting both."
@@ -401,4 +457,25 @@ docker-split-up:
 ## Stop split services
 docker-split-down:
 	docker compose -f docker-compose.services.yml down
+
+# ── Mini App (Telegram Mini App — React + Vite) ──────────────────
+
+.PHONY: miniapp-install miniapp-build miniapp-dev
+
+## Install Mini App npm dependencies
+miniapp-install:
+	@echo "📦 Installing Mini App dependencies..."
+	@cd interfaces/miniapp && npm install
+	@echo "✅ Mini App dependencies installed"
+
+## Build the Mini App for production (output → interfaces/miniapp/dist/)
+miniapp-build:
+	@echo "🔨 Building Mini App..."
+	@cd interfaces/miniapp && npm run build
+	@echo "✅ Mini App built → interfaces/miniapp/dist/"
+
+## Start Mini App dev server (port 8003, API proxied to localhost:8000)
+miniapp-dev:
+	@echo "🚀 Starting Mini App dev server on port 8003..."
+	@cd interfaces/miniapp && npm run dev
 

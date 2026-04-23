@@ -185,14 +185,14 @@
     "back": "◀️ Dib"
   },
   "welcome": {
-    "title": "🚛  <b>Semi Telematics</b>",
+    "title": "🚛  <b>4truck</b>",
     "subtitle": "Kormeerka rac tooska ah ee ay awood siiso Samsara",
     "api_connected": "📡 Samsara API way ku xidhan tahay ✅",
     "api_not_connected": "📡 Samsara API kuma xidhna",
     "tap_begin": "▸ <b>Taabo badhan hoose si aad u bilowdo</b> ▾"
   },
   "welcome_unreg": {
-    "title": "🚛  <b>Bot-ka Semi Telematics</b>",
+    "title": "🚛  <b>Bot-ka 4truck</b>",
     "subtitle": "Caawiyahaaga maamulka rac ee dhammays tiran, kuna dhex jira Telegram-ka.",
     "reports_title": "<b>📊 Warbixinnada Rac</b>",
     "tools_title": "<b>🛠 Qalabka & Raadinta</b>",
@@ -792,7 +792,7 @@
     "cancel_back": "◀️ Jooji"
   },
   "samsara": {
-    "connect_guide": "━━━━━━━━━━━━━━━━━━━\n  📡  <b>KU XIRA SAMSARA API</b>\n━━━━━━━━━━━━━━━━━━━\n\n  Si aad u furto kormeerka rac waa in aad\n  ku xirto akoonkaaga Samsara.\n  Raac tallaabooyinkan:\n\n  <b>Tallaabada 1 — Hel calaamadaada API</b>\n  ▸ Soo gal <b>cloud.samsara.com</b>\n  ▸ Tag <b>Dejinta → Calaamadaha API</b>\n  ▸ Guji <b>Abuur Calaamad API</b>\n  ▸ Magaca: <i>Bot-ka Semi Telematics</i>\n  ▸ Nuqul ka samee calaamadda (waxay ka bilaabmaysaa\n     <code>samsara_api_...</code>)\n\n  <b>Tallaabada 2 — Qor koodhka shirkadda</b>\n  Koodh gaaban ee shirkaddaada,\n  tusaale ahaan <b>PTG</b>, <b>CFT</b>, <b>ACME</b>\n\n  👇 <b>Hoos ku qor koodhka shirkaddaada:</b>",
+    "connect_guide": "━━━━━━━━━━━━━━━━━━━\n  📡  <b>KU XIRA SAMSARA API</b>\n━━━━━━━━━━━━━━━━━━━\n\n  Si aad u furto kormeerka rac waa in aad\n  ku xirto akoonkaaga Samsara.\n  Raac tallaabooyinkan:\n\n  <b>Tallaabada 1 — Hel calaamadaada API</b>\n  ▸ Soo gal <b>cloud.samsara.com</b>\n  ▸ Tag <b>Dejinta → Calaamadaha API</b>\n  ▸ Guji <b>Abuur Calaamad API</b>\n  ▸ Magaca: <i>Bot-ka 4truck</i>\n  ▸ Nuqul ka samee calaamadda (waxay ka bilaabmaysaa\n     <code>samsara_api_...</code>)\n\n  <b>Tallaabada 2 — Qor koodhka shirkadda</b>\n  Koodh gaaban ee shirkaddaada,\n  tusaale ahaan <b>PTG</b>, <b>CFT</b>, <b>ACME</b>\n\n  👇 <b>Hoos ku qor koodhka shirkaddaada:</b>",
     "not_connected_info": "━━━━━━━━━━━━━━━━━━━\n  ⏳  <b>API KUMA XIRNA WELI</b>\n━━━━━━━━━━━━━━━━━━━\n\n  Milkiilaha shirkaddaada kuma uuu xirin\n  furaha Samsara API weli.\n\n  Mar ay isku xiraan API,\n  astaamaha rac ayaa halkaan soo\n  bixi doona si toos ah:\n\n  • 🔧 Koodhka ciladaha\n  • 🚨 Ogeysiisyada halista ah\n  • ⛽ Heerarka shidaalka\n  • 🚛 Raadinta gaariga\n\n  Weydii milkiilaha shirkadda ama maamulaha\n  inuu ku xiro Samsara."
   },
   "events": {

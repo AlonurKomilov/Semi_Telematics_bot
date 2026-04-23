@@ -111,7 +111,7 @@ def _ensure_model(model_name: str | None = None,
     if not project:
         raise RuntimeError(
             "GOOGLE_CLOUD_PROJECT is not set. "
-            "Set it to your GCP project ID (e.g. 'semi-telematics')."
+            "Set it to your GCP project ID (e.g. '4truck')."
         )
     if not creds_path:
         raise RuntimeError(

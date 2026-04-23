@@ -35,7 +35,7 @@ def generate_fault_report_pdf(
     subtitle = "Fleet Fault Code Report"
     if company_filter:
         subtitle = f"{get_company_display().get(company_filter, company_filter)} — Fault Report"
-    _add_header(story, styles, "SEMI TELEMATICS", subtitle, now)
+    _add_header(story, styles, "4TRUCK", subtitle, now)
 
     # ── Fleet Overview (when full fleet data is available) ────────
     if all_vehicles:
@@ -133,7 +133,7 @@ def generate_critical_report_pdf(
     subtitle = "Critical Fault Report"
     if company_filter:
         subtitle = f"{get_company_display().get(company_filter, company_filter)} — Critical Faults"
-    _add_header(story, styles, "SEMI TELEMATICS", subtitle, now,
+    _add_header(story, styles, "4TRUCK", subtitle, now,
                 header_bg=C_CRIT_HEADER)
 
     # ── Critical alert stripe ────────────────────────────────────

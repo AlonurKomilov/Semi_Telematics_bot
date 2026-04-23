@@ -14,7 +14,7 @@ Design goals:
     (needed for schema creation)
 
 Usage — automatic when DATABASE_URL is set:
-    DATABASE_URL=postgresql://user:pass@localhost/semi_telematics
+    DATABASE_URL=postgresql://user:pass@localhost/4truck
 
 The module is imported lazily in _DatabaseCore so the rest of the
 codebase never needs to know which backend is active.

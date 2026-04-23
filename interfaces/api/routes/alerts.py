@@ -17,6 +17,31 @@ async def _filter_own(user: dict, alerts: list[dict]) -> list[dict]:
     return filter_alerts_by_access(alerts, trucks)
 
 
+def _dedup_by_alert_key(alerts: list[dict]) -> list[dict]:
+    """Deduplicate alerts that share the same alert_key.
+
+    The table has one row per subscriber (chat_id) per alert, so the same
+    alert appears N times when N subscribers are signed up. For the dashboard
+    we want one row per logical alert, keeping the row with the highest
+    precedence status (active > acknowledged > expired) and the latest
+    created_at.
+    """
+    STATUS_RANK = {"active": 0, "acknowledged": 1, "expired": 2, "superseded": 3, "info": 4}
+    seen: dict[str, dict] = {}
+    for a in alerts:
+        key = a.get("alert_key") or f"{a.get('vehicle_id')}:{a.get('alert_type')}"
+        if key not in seen:
+            seen[key] = a
+        else:
+            existing = seen[key]
+            # Prefer higher-priority status
+            if STATUS_RANK.get(a.get("status"), 9) < STATUS_RANK.get(existing.get("status"), 9):
+                seen[key] = a
+            elif a.get("created_at", "") > existing.get("created_at", ""):
+                seen[key] = a
+    return list(seen.values())
+
+
 @router.get("/pending")
 async def pending_alerts(
     alert_type: str | None = Query(None, description="Filter: fault, health, fuel, events"),
@@ -29,6 +54,7 @@ async def pending_alerts(
     """Get all pending (unacknowledged) alerts for this account."""
     alerts = await tenant_db.get_pending_alerts(user["account_id"])
     alerts = await _filter_own(user, alerts)
+    alerts = _dedup_by_alert_key(alerts)
 
     if alert_type:
         alerts = [a for a in alerts if a.get("alert_type") == alert_type]
@@ -56,6 +82,7 @@ async def alert_history(
     """Get alert history for this account."""
     alerts = await tenant_db.get_alert_history(user["account_id"], limit=days * 50)
     alerts = await _filter_own(user, alerts)
+    alerts = _dedup_by_alert_key(alerts)
 
     if alert_type:
         alerts = [a for a in alerts if a.get("alert_type") == alert_type]
