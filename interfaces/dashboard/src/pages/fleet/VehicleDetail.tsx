@@ -112,7 +112,7 @@ export default function VehicleDetail() {
               Active Fault Codes ({faultList.length})
             </h2>
             <div className="space-y-2">
-              {faultList.map((f: Record<string, unknown>, i) => {
+              {(faultList as unknown as Record<string, unknown>[]).map((f, i) => {
                 // Raw Samsara DTCs have fields at the top level;
                 // some older data may wrap them in a j1939 sub-object.
                 const j = (f.j1939 as Record<string, unknown> | undefined) ?? {};

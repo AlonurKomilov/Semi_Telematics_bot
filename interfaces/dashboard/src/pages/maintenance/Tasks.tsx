@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiJSON } from '../../api/client';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
@@ -19,6 +19,109 @@ const columns: AnyColumn[] = [
   { key: 'updated_at', label: 'Updated', sortable: true, render: (v) => v ? new Date(String(v)).toLocaleDateString() : '—' },
 ];
 
+// ─── Vehicle Picker ────────────────────────────────────────────
+
+interface FleetVehicle {
+  name: string;
+  company: string;
+  status: string;
+  fuel_percent: number | null;
+  speed_mph: number;
+}
+
+const STATUS_DOT: Record<string, string> = {
+  moving: 'bg-green-500',
+  idle: 'bg-yellow-400',
+  stopped: 'bg-red-500',
+};
+
+function VehiclePicker({
+  value,
+  onChange,
+  vehicles,
+  loading: fleetLoading,
+}: {
+  value: string;
+  onChange: (name: string, vehicle: FleetVehicle | null) => void;
+  vehicles: FleetVehicle[];
+  loading: boolean;
+}) {
+  const [query, setQuery] = useState(value);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Sync when parent clears value
+  useEffect(() => { if (!value) setQuery(''); }, [value]);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = query.trim()
+    ? vehicles.filter(
+        (v) =>
+          v.name.toLowerCase().includes(query.toLowerCase()) ||
+          v.company.toLowerCase().includes(query.toLowerCase()),
+      )
+    : vehicles;
+
+  const select = (v: FleetVehicle) => {
+    setQuery(v.name);
+    setOpen(false);
+    onChange(v.name, v);
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        required
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          onChange(e.target.value, null);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        placeholder={fleetLoading ? 'Loading vehicles…' : 'Search truck or company…'}
+        className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+      />
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-50 mt-1 w-72 max-h-64 overflow-y-auto bg-card border border-border rounded-lg shadow-xl text-sm">
+          {filtered.map((v) => (
+            <li
+              key={v.name}
+              onMouseDown={() => select(v)}
+              className="flex items-center gap-2 px-3 py-2 hover:bg-muted cursor-pointer"
+            >
+              {/* Status dot */}
+              <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${STATUS_DOT[v.status] || 'bg-gray-500'}`} />
+              {/* Truck name */}
+              <span className="font-mono font-semibold flex-shrink-0">{v.name}</span>
+              {/* Company badge */}
+              <span className="px-1.5 py-0.5 bg-muted rounded text-xs text-muted-foreground flex-shrink-0">{v.company}</span>
+              {/* Status label */}
+              <span className="text-xs text-muted-foreground capitalize flex-shrink-0">{v.status}</span>
+              {/* Fuel */}
+              {v.fuel_percent != null && (
+                <span className={`ml-auto text-xs flex-shrink-0 ${v.fuel_percent < 20 ? 'text-red-400' : 'text-green-400'}`}>
+                  ⛽ {Math.round(v.fuel_percent)}%
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────
+
 export default function Tasks() {
   const [tasks, setTasks] = useState<MaintenanceTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,6 +130,10 @@ export default function Tasks() {
   const [showAdd, setShowAdd] = useState(false);
   const [selected, setSelected] = useState<MaintenanceTask | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Fleet vehicle list for the vehicle picker
+  const [fleetVehicles, setFleetVehicles] = useState<FleetVehicle[]>([]);
+  const [fleetLoading, setFleetLoading] = useState(false);
 
   // Add form
   const [fVehicle, setFVehicle] = useState('');
@@ -42,6 +149,17 @@ export default function Tasks() {
   const [eDesc, setEDesc] = useState('');
   const [eDueDate, setEDueDate] = useState('');
   const [eDueMiles, setEDueMiles] = useState('');
+
+  // Load fleet vehicles whenever the add form is opened
+  useEffect(() => {
+    if (!showAdd) return;
+    if (fleetVehicles.length > 0) return; // already loaded
+    setFleetLoading(true);
+    apiJSON<{ vehicles: FleetVehicle[] }>('/fleet/vehicles?page_size=200')
+      .then((d) => setFleetVehicles(d.vehicles || []))
+      .catch(() => setFleetVehicles([]))
+      .finally(() => setFleetLoading(false));
+  }, [showAdd]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchOdometer = async (name: string) => {
     if (!name.trim()) { setFOdometer(null); return; }
@@ -77,7 +195,7 @@ export default function Tasks() {
         due_date: fDueDate || undefined,
         due_miles: fDueMiles ? Number(fDueMiles) : undefined,
       }});
-      setShowAdd(false); setFVehicle(''); setFDesc(''); setFDueDate(''); setFDueMiles(''); setFOdometer(null);
+      setShowAdd(false); setFVehicle(''); setFDesc(''); setFDueDate(''); setFDueMiles(''); setFOdometer(null); setFleetVehicles([]);
       load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     finally { setSaving(false); }
@@ -115,7 +233,7 @@ export default function Tasks() {
             <option value="">All Statuses</option>
             {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
           </select>
-          <button onClick={() => { setShowAdd(!showAdd); setError(''); }} className="px-4 py-2 bg-primary hover:bg-primary/90 rounded-lg text-sm font-medium transition">
+          <button onClick={() => { setShowAdd(!showAdd); setError(''); if (showAdd) setFleetVehicles([]); }} className="px-4 py-2 bg-primary hover:bg-primary/90 rounded-lg text-sm font-medium transition">
             {showAdd ? 'Cancel' : '+ New Task'}
           </button>
         </div>
@@ -126,13 +244,16 @@ export default function Tasks() {
       {showAdd && (
         <form onSubmit={handleAdd} className="bg-card border border-border rounded-xl p-4 mb-6 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
           <div>
-            <label className="block text-xs text-muted-foreground mb-1">Vehicle Name</label>
-            <input
-              required value={fVehicle}
-              onChange={e => { setFVehicle(e.target.value); setFOdometer(null); }}
-              onBlur={e => fetchOdometer(e.target.value)}
-              placeholder="e.g. 131"
-              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+            <label className="block text-xs text-muted-foreground mb-1">Vehicle</label>
+            <VehiclePicker
+              value={fVehicle}
+              vehicles={fleetVehicles}
+              loading={fleetLoading}
+              onChange={(name, vehicle) => {
+                setFVehicle(name);
+                setFOdometer(null);
+                if (vehicle) fetchOdometer(vehicle.name);
+              }}
             />
           </div>
           <div>
@@ -170,7 +291,7 @@ export default function Tasks() {
             />
           </div>
           <div className="flex items-end">
-            <button type="submit" disabled={saving} className="w-full px-4 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded text-sm font-medium transition">
+            <button type="submit" disabled={saving} className="w-full px-4 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded text-sm font-medium text-foreground transition">
               {saving ? 'Saving...' : 'Create'}
             </button>
           </div>
