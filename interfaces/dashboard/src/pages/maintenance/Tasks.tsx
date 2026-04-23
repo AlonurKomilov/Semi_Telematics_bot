@@ -34,11 +34,26 @@ export default function Tasks() {
   const [fDesc, setFDesc] = useState('');
   const [fDueDate, setFDueDate] = useState('');
   const [fDueMiles, setFDueMiles] = useState('');
+  const [fOdometer, setFOdometer] = useState<number | null>(null);
+  const [fOdometerLoading, setFOdometerLoading] = useState(false);
 
   // Edit form
   const [eStatus, setEStatus] = useState('');
   const [eDesc, setEDesc] = useState('');
   const [eDueDate, setEDueDate] = useState('');
+  const [eDueMiles, setEDueMiles] = useState('');
+
+  const fetchOdometer = async (name: string) => {
+    if (!name.trim()) { setFOdometer(null); return; }
+    setFOdometerLoading(true);
+    try {
+      const data = await apiJSON<{ odometer_miles: number | null }>(
+        '/maintenance/odometer/' + encodeURIComponent(name.trim()),
+      );
+      setFOdometer(data.odometer_miles ?? null);
+    } catch { setFOdometer(null); }
+    finally { setFOdometerLoading(false); }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -62,7 +77,7 @@ export default function Tasks() {
         due_date: fDueDate || undefined,
         due_miles: fDueMiles ? Number(fDueMiles) : undefined,
       }});
-      setShowAdd(false); setFVehicle(''); setFDesc(''); setFDueDate(''); setFDueMiles('');
+      setShowAdd(false); setFVehicle(''); setFDesc(''); setFDueDate(''); setFDueMiles(''); setFOdometer(null);
       load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     finally { setSaving(false); }
@@ -75,6 +90,7 @@ export default function Tasks() {
     if (eStatus !== selected.status) body.status = eStatus;
     if (eDesc !== selected.description) body.description = eDesc;
     if (eDueDate !== (selected.due_date || '')) body.due_date = eDueDate || null;
+    if (eDueMiles !== String(selected.due_miles || '')) body.due_miles = eDueMiles ? Number(eDueMiles) : null;
     if (Object.keys(body).length === 0) { setSaving(false); return; }
     try {
       await apiJSON('/maintenance/tasks/' + selected.id, { method: 'PUT', body });
@@ -95,27 +111,33 @@ export default function Tasks() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Maintenance</h1>
         <div className="flex items-center gap-3">
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500">
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-muted border border-border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-ring">
             <option value="">All Statuses</option>
             {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
           </select>
-          <button onClick={() => { setShowAdd(!showAdd); setError(''); }} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition">
+          <button onClick={() => { setShowAdd(!showAdd); setError(''); }} className="px-4 py-2 bg-primary hover:bg-primary/90 rounded-lg text-sm font-medium transition">
             {showAdd ? 'Cancel' : '+ New Task'}
           </button>
         </div>
       </div>
 
-      {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
+      {error && <p className="text-destructive text-sm mb-3">{error}</p>}
 
       {showAdd && (
-        <form onSubmit={handleAdd} className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6 grid grid-cols-5 gap-3">
+        <form onSubmit={handleAdd} className="bg-card border border-border rounded-xl p-4 mb-6 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Vehicle Name</label>
-            <input required value={fVehicle} onChange={e => setFVehicle(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+            <label className="block text-xs text-muted-foreground mb-1">Vehicle Name</label>
+            <input
+              required value={fVehicle}
+              onChange={e => { setFVehicle(e.target.value); setFOdometer(null); }}
+              onBlur={e => fetchOdometer(e.target.value)}
+              placeholder="e.g. 131"
+              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+            />
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Type</label>
-            <select value={fType} onChange={e => setFType(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500">
+            <label className="block text-xs text-muted-foreground mb-1">Type</label>
+            <select value={fType} onChange={e => setFType(e.target.value)} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring">
               <option value="inspection">Inspection</option>
               <option value="oil_change">Oil Change</option>
               <option value="tire_rotation">Tire Rotation</option>
@@ -125,60 +147,79 @@ export default function Tasks() {
             </select>
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Description</label>
-            <input required value={fDesc} onChange={e => setFDesc(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+            <label className="block text-xs text-muted-foreground mb-1">Description</label>
+            <input required value={fDesc} onChange={e => setFDesc(e.target.value)} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Due Date</label>
-            <input type="date" value={fDueDate} onChange={e => setFDueDate(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+            <label className="block text-xs text-muted-foreground mb-1">Due Date</label>
+            <input type="date" value={fDueDate} onChange={e => setFDueDate(e.target.value)} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
+          </div>
+          <div>
+            <label className="block text-xs text-muted-foreground mb-1">
+              Due Miles
+              {fOdometerLoading && <span className="ml-1 text-muted-foreground">(fetching…)</span>}
+              {fOdometer != null && !fOdometerLoading && (
+                <span className="ml-1 text-green-400">current: {fOdometer.toLocaleString()} mi</span>
+              )}
+            </label>
+            <input
+              type="number" min="0" step="1"
+              value={fDueMiles} onChange={e => setFDueMiles(e.target.value)}
+              placeholder={fOdometer != null ? String(Math.round(fOdometer)) : 'miles'}
+              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+            />
           </div>
           <div className="flex items-end">
-            <button type="submit" disabled={saving} className="px-4 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded text-sm font-medium transition">
+            <button type="submit" disabled={saving} className="w-full px-4 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded text-sm font-medium transition">
               {saving ? 'Saving...' : 'Create'}
             </button>
           </div>
         </form>
       )}
 
-      {loading ? <p className="text-gray-500">Loading...</p> : (
+      {loading ? <p className="text-muted-foreground">Loading...</p> : (
         <DataTable columns={columns} data={tasks as unknown as Record<string, unknown>[]} searchKey="vehicle_name" onRowClick={(row) => {
           const t = row as unknown as MaintenanceTask;
-          setSelected(t); setEStatus(t.status); setEDesc(t.description); setEDueDate(t.due_date || '');
+          setSelected(t); setEStatus(t.status); setEDesc(t.description); setEDueDate(t.due_date || ''); setEDueMiles(String(t.due_miles || ''));
         }} />
       )}
 
       {selected && (
         <div className="fixed inset-0 bg-black/60 z-50 flex justify-end" onClick={() => setSelected(null)}>
-          <div className="w-96 bg-gray-900 border-l border-gray-800 p-6 overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="w-96 bg-card border-l border-border p-6 overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">{selected.vehicle_name}</h2>
-              <button onClick={() => setSelected(null)} className="text-gray-500 hover:text-white">✕</button>
+              <button onClick={() => setSelected(null)} className="text-muted-foreground hover:text-foreground">✕</button>
             </div>
             <dl className="space-y-3 text-sm mb-6">
-              <div className="flex justify-between"><dt className="text-gray-400">Type</dt><dd className="capitalize">{selected.task_type.replace(/_/g, ' ')}</dd></div>
-              <div className="flex justify-between"><dt className="text-gray-400">Created</dt><dd>{new Date(selected.created_at).toLocaleDateString()}</dd></div>
-              {selected.due_miles && <div className="flex justify-between"><dt className="text-gray-400">Due Miles</dt><dd>{selected.due_miles.toLocaleString()}</dd></div>}
-              {selected.recur_interval_days && <div className="flex justify-between"><dt className="text-gray-400">Recurrence</dt><dd>Every {selected.recur_interval_days} days</dd></div>}
+              <div className="flex justify-between"><dt className="text-muted-foreground">Type</dt><dd className="capitalize">{selected.task_type.replace(/_/g, ' ')}</dd></div>
+              <div className="flex justify-between"><dt className="text-muted-foreground">Created</dt><dd>{new Date(selected.created_at).toLocaleDateString()}</dd></div>
+              {selected.due_miles && <div className="flex justify-between"><dt className="text-muted-foreground">Due Miles</dt><dd>{selected.due_miles.toLocaleString()}</dd></div>}
+              {selected.recur_interval_days && <div className="flex justify-between"><dt className="text-muted-foreground">Recurrence</dt><dd>Every {selected.recur_interval_days} days</dd></div>}
             </dl>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Status</label>
-                <select value={eStatus} onChange={e => setEStatus(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500">
+                <label className="block text-xs text-muted-foreground mb-1">Status</label>
+                <select value={eStatus} onChange={e => setEStatus(e.target.value)} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring">
                   {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Description</label>
-                <textarea value={eDesc} onChange={e => setEDesc(e.target.value)} rows={3} className="w-full bg-gray-800 border border-gray-700 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+                <label className="block text-xs text-muted-foreground mb-1">Description</label>
+                <textarea value={eDesc} onChange={e => setEDesc(e.target.value)} rows={3} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Due Date</label>
-                <input type="date" value={eDueDate} onChange={e => setEDueDate(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+                <label className="block text-xs text-muted-foreground mb-1">Due Date</label>
+                <input type="date" value={eDueDate} onChange={e => setEDueDate(e.target.value)} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
               </div>
-              <button onClick={handleUpdate} disabled={saving} className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded text-sm font-medium transition">
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Due Miles</label>
+                <input type="number" min="0" step="1" value={eDueMiles} onChange={e => setEDueMiles(e.target.value)} placeholder="miles" className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
+              </div>
+              <button onClick={handleUpdate} disabled={saving} className="w-full py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition">
                 {saving ? 'Saving...' : 'Update Task'}
               </button>
-              <button onClick={() => handleDelete(selected.id)} className="w-full py-2 bg-red-600/80 hover:bg-red-600 rounded text-sm font-medium transition">
+              <button onClick={() => handleDelete(selected.id)} className="w-full py-2 bg-destructive/80 hover:bg-destructive rounded text-sm font-medium transition">
                 Delete Task
               </button>
             </div>

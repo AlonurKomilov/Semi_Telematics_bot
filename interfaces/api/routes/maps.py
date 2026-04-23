@@ -24,13 +24,22 @@ async def map_vehicles(
     vehicles = await filter_by_assigned_trucks(vehicles, user)
     features = []
     for v in vehicles:
-        lat = v.get("latitude")
-        lng = v.get("longitude")
+        # Raw Samsara data: lat/lng are nested inside v["location"], NOT at top level.
+        loc = v.get("location", {})
+        lat = loc.get("latitude")
+        lng = loc.get("longitude")
         if lat is None or lng is None:
             continue
-        speed = v.get("speed_mph", 0) or 0
-        engine = v.get("engineState", "Off")
+        speed = float(loc.get("speedMilesPerHour") or loc.get("speed") or 0)
         status = classify_vehicle_status(v)
+        engine_state = "On" if status == "moving" else "Idle" if status == "idle" else "Off"
+        address = (
+            loc.get("reverseGeo", {}).get("formattedLocation")
+            or loc.get("address")
+            or ""
+        )
+        fuel = v.get("fuel", {})
+        fuel_pct = fuel.get("value") if isinstance(fuel, dict) else None
 
         features.append({
             "type": "Feature",
@@ -40,12 +49,12 @@ async def map_vehicles(
                 "name": v.get("name", ""),
                 "company": v.get("_org", ""),
                 "speed_mph": speed,
-                "address": v.get("formattedAddress", ""),
-                "engine_state": engine,
+                "address": address,
+                "engine_state": engine_state,
                 "status": status,
-                "fuel_percent": v.get("fuelPercent"),
-                "heading": v.get("heading"),
-                "updated_at": v.get("time", ""),
+                "fuel_percent": fuel_pct,
+                "heading": loc.get("heading"),
+                "updated_at": loc.get("time", ""),
             },
         })
     return {

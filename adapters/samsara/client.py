@@ -283,6 +283,32 @@ class SamsaraClient:
                 logger.warning(f"Fuel stats unavailable (non-fatal): {e2}")
                 return []
 
+    async def get_current_odometer_readings(self) -> list[dict]:
+        """Return current odometer readings (in miles) for all vehicles.
+
+        Calls /fleet/vehicles/stats?types=obdOdometerMeters which returns
+        the most recent odometer value per vehicle.
+        Returns a list of dicts: {id, name, odometer_miles, time}
+        """
+        try:
+            data = await self._get("/fleet/vehicles/stats",
+                                   params={"types": "obdOdometerMeters"})
+            results = []
+            for v in data.get("data", []):
+                odo = v.get("obdOdometerMeters", {})
+                if isinstance(odo, dict) and odo.get("value") is not None:
+                    # Samsara returns meters; convert to miles
+                    results.append({
+                        "id": v.get("id", ""),
+                        "name": v.get("name", ""),
+                        "odometer_miles": round(odo["value"] / 1609.344, 1),
+                        "time": odo.get("time", ""),
+                    })
+            return results
+        except Exception as e:
+            logger.warning(f"Odometer stats unavailable (non-fatal): {e}")
+            return []
+
     # ── Drivers ──────────────────────────────────────────────────
 
     async def get_drivers(self) -> list[dict]:
@@ -1822,6 +1848,28 @@ class MultiCompanyClient:
         for code, vehicles in per_co.items():
             combined.extend(self._tag(vehicles, code))
         combined.sort(key=lambda x: x.get("_fuel_pct", 999))
+        await self._cache_set(cache_key, combined)
+        return combined
+
+    async def get_current_odometer_readings(
+        self, company: str | None = None,
+    ) -> list[dict]:
+        """Return current odometer readings (miles) for all vehicles."""
+        cache_key = f"odometer:{company or 'all'}"
+        cached = await self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        async def _fn(c):
+            return await c.get_current_odometer_readings()
+
+        per_co = await self._run_per_company(_fn, company=company)
+        combined = []
+        for code, readings in per_co.items():
+            for r in readings:
+                r["_org"] = code
+            combined.extend(readings)
+        combined.sort(key=lambda x: x.get("name", ""))
         await self._cache_set(cache_key, combined)
         return combined
 

@@ -7,6 +7,7 @@ from typing import Optional
 from interfaces.api.deps import get_current_user, require_permission, get_tenant_db, get_user_truck_nums, paginate
 from capabilities.iam.permissions import can
 from capabilities.maintenance.service import has_maintenance_access
+from core.services import get_client
 
 router = APIRouter(prefix="/maintenance", tags=["maintenance"])
 
@@ -163,3 +164,32 @@ async def delete_task(
         target_type="maintenance", target_id=str(task_id),
     )
     return {"ok": True}
+
+
+@router.get("/odometer/{truck_name}")
+async def get_vehicle_odometer(
+    truck_name: str,
+    user: dict = Depends(get_current_user),
+):
+    """Return current odometer reading for a specific vehicle from Samsara.
+
+    Used by the maintenance form to help users set a sensible 'Due Miles' value.
+    Returns null odometer_miles when the vehicle doesn't report OBD odometer.
+    """
+    if not has_maintenance_access(user["role"]):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    client = await get_client(user["account_id"])
+    readings = await client.get_current_odometer_readings()
+    name_lower = truck_name.strip().lower()
+    match = next(
+        (r for r in readings if r.get("name", "").lower() == name_lower),
+        None,
+    )
+    if not match:
+        return {"vehicle_name": truck_name, "odometer_miles": None, "time": None}
+    return {
+        "vehicle_name": match["name"],
+        "odometer_miles": match.get("odometer_miles"),
+        "time": match.get("time"),
+        "company": match.get("_org", ""),
+    }
