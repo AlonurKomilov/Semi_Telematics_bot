@@ -108,7 +108,7 @@ function VehiclePicker({
               <span className="text-xs text-muted-foreground capitalize flex-shrink-0">{v.status}</span>
               {/* Fuel */}
               {v.fuel_percent != null && (
-                <span className={`ml-auto text-xs flex-shrink-0 ${v.fuel_percent < 20 ? 'text-red-400' : 'text-green-400'}`}>
+                <span className={`ml-auto text-xs flex-shrink-0 ${v.fuel_percent < 20 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
                   ⛽ {Math.round(v.fuel_percent)}%
                 </span>
               )}
@@ -116,6 +116,57 @@ function VehiclePicker({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+// ─── Miles Interval Picker ────────────────────────────────────
+
+const MILE_PRESETS = [3_000, 5_000, 10_000, 15_000, 25_000, 50_000];
+
+function MilesPicker({
+  value,
+  onChange,
+  baseMiles,
+  placeholder = 'miles',
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  baseMiles?: number | null;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <input
+        type="number"
+        min="0"
+        step="1"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+      />
+      <div className="flex flex-wrap gap-1 mt-1.5">
+        {MILE_PRESETS.map(p => {
+          const base = baseMiles != null ? Math.round(baseMiles) : (value ? Number(value) : 0);
+          const target = base + p;
+          const label = p >= 1000 ? `+${p / 1000}k` : `+${p}`;
+          const tip = baseMiles != null
+            ? `${target.toLocaleString()} mi (odometer + ${p.toLocaleString()})`
+            : `${p.toLocaleString()} mi`;
+          return (
+            <button
+              key={p}
+              type="button"
+              title={tip}
+              onClick={() => onChange(String(target))}
+              className="px-1.5 py-0.5 text-xs bg-muted border border-border rounded hover:bg-primary/20 hover:border-primary/50 transition-colors cursor-pointer"
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -280,14 +331,14 @@ export default function Tasks() {
               Due Miles
               {fOdometerLoading && <span className="ml-1 text-muted-foreground">(fetching…)</span>}
               {fOdometer != null && !fOdometerLoading && (
-                <span className="ml-1 text-green-400">current: {fOdometer.toLocaleString()} mi</span>
+                <span className="ml-1 text-green-600 dark:text-green-400">current: {fOdometer.toLocaleString()} mi</span>
               )}
             </label>
-            <input
-              type="number" min="0" step="1"
-              value={fDueMiles} onChange={e => setFDueMiles(e.target.value)}
+            <MilesPicker
+              value={fDueMiles}
+              onChange={setFDueMiles}
+              baseMiles={fOdometer}
               placeholder={fOdometer != null ? String(Math.round(fOdometer)) : 'miles'}
-              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
             />
           </div>
           <div className="flex items-end">
@@ -335,7 +386,7 @@ export default function Tasks() {
               </div>
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">Due Miles</label>
-                <input type="number" min="0" step="1" value={eDueMiles} onChange={e => setEDueMiles(e.target.value)} placeholder="miles" className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
+                <MilesPicker value={eDueMiles} onChange={setEDueMiles} />
               </div>
               <button onClick={handleUpdate} disabled={saving} className="w-full py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition">
                 {saving ? 'Saving...' : 'Update Task'}

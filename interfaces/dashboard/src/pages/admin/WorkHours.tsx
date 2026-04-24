@@ -3,7 +3,7 @@ import { apiJSON } from '../../api/client';
 import type { WorkSchedule } from '../../types';
 
 const ROLE_COLORS: Record<string, string> = {
-  all: 'bg-blue-500/30 border-blue-500',
+  all: 'bg-primary/20 border-primary',
   owner: 'bg-purple-500/30 border-purple-500',
   admin: 'bg-red-500/30 border-red-500',
   fleet: 'bg-green-500/30 border-green-500',
@@ -122,13 +122,13 @@ export default function WorkHours() {
   // Unique roles in the data
   const roles = ['all', ...new Set(schedules.map((s) => s.target_role).filter((r) => r !== 'all'))];
 
-  if (error && schedules.length === 0) return <p className="text-red-400">{error}</p>;
+  if (error && schedules.length === 0) return <p className="text-destructive">{error}</p>;
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">🕐 Working Hours</h1>
-        <button onClick={openCreate} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors">
+        <button onClick={openCreate} className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium transition-colors">
           + New Schedule
         </button>
       </div>
@@ -140,7 +140,7 @@ export default function WorkHours() {
             key={r}
             onClick={() => setRoleFilter(r)}
             className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-              roleFilter === r ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
+              roleFilter === r ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'
             }`}
           >
             {ROLE_LABELS[r] || r}
@@ -149,21 +149,21 @@ export default function WorkHours() {
       </div>
 
       {/* Timeline header */}
-      <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-        <div className="flex border-b border-gray-800">
-          <div className="w-48 shrink-0 px-4 py-2 text-xs text-gray-500 font-medium">Schedule</div>
+      <div className="bg-card rounded-xl border border-border overflow-hidden">
+        <div className="flex border-b border-border">
+          <div className="w-48 shrink-0 px-4 py-2 text-xs text-muted-foreground font-medium">Schedule</div>
           <div className="flex-1 flex">
             {HOURS.filter((_, i) => i % 3 === 0).map((h) => (
-              <div key={h} className="flex-1 text-center text-xs text-gray-600 py-2">{fmtHour(h)}</div>
+              <div key={h} className="flex-1 text-center text-xs text-muted-foreground py-2">{fmtHour(h)}</div>
             ))}
           </div>
           <div className="w-20 shrink-0" />
         </div>
 
-        {loading && <div className="p-8 text-center text-gray-500">Loading...</div>}
+        {loading && <div className="p-8 text-center text-muted-foreground">Loading...</div>}
 
         {!loading && filtered.length === 0 && (
-          <div className="p-8 text-center text-gray-500">No working hours configured</div>
+          <div className="p-8 text-center text-muted-foreground">No working hours configured</div>
         )}
 
         {filtered.map((s) => {
@@ -175,10 +175,10 @@ export default function WorkHours() {
           const widthPct = wraps ? ((24 - start + end) / 24) * 100 : ((end - start) / 24) * 100;
 
           return (
-            <div key={s.id} className="flex items-center border-b border-gray-800/50 hover:bg-gray-800/30">
+            <div key={s.id} className="flex items-center border-b border-border/50 hover:bg-muted/30">
               <div className="w-48 shrink-0 px-4 py-3">
-                <div className="text-sm font-medium text-gray-200 truncate">{s.label}</div>
-                <div className="text-xs text-gray-500">{ROLE_LABELS[s.target_role] || s.target_role}</div>
+                <div className="text-sm font-medium text-foreground/90 truncate">{s.label}</div>
+                <div className="text-xs text-muted-foreground">{ROLE_LABELS[s.target_role] || s.target_role}</div>
               </div>
               <div className="flex-1 relative h-10">
                 {wraps ? (
@@ -199,15 +199,15 @@ export default function WorkHours() {
                     className={`absolute top-1 bottom-1 rounded border ${colorCls}`}
                     style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
                   >
-                    <span className="absolute inset-0 flex items-center justify-center text-xs font-medium text-white/80 truncate px-1">
+                    <span className="absolute inset-0 flex items-center justify-center text-xs font-medium text-foreground/80 truncate px-1">
                       {fmtHour(start)} – {fmtHour(end)}
                     </span>
                   </div>
                 )}
               </div>
               <div className="w-20 shrink-0 flex gap-1 px-2">
-                <button onClick={() => openEdit(s)} className="p-1 text-gray-500 hover:text-blue-400 text-sm" title="Edit">✏️</button>
-                <button onClick={() => remove(s.id)} className="p-1 text-gray-500 hover:text-red-400 text-sm" title="Delete">🗑️</button>
+                <button onClick={() => openEdit(s)} className="p-1 text-muted-foreground hover:text-primary text-sm" title="Edit">✏️</button>
+                <button onClick={() => remove(s.id)} className="p-1 text-muted-foreground hover:text-destructive text-sm" title="Delete">🗑️</button>
               </div>
             </div>
           );
@@ -217,40 +217,40 @@ export default function WorkHours() {
       {/* Create / Edit modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowForm(false)}>
-          <div className="bg-gray-900 rounded-xl border border-gray-700 p-6 w-96" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-card rounded-xl border border-border p-6 w-96" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-4">{editId ? 'Edit Schedule' : 'New Schedule'}</h2>
 
-            <label className="block text-sm text-gray-400 mb-1">Label</label>
+            <label className="block text-sm text-muted-foreground mb-1">Label</label>
             <input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              className="w-full bg-gray-800 rounded px-3 py-2 text-sm text-gray-100 border border-gray-700 mb-3"
+              className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border mb-3"
               placeholder="e.g. Day Shift"
             />
 
             <div className="flex gap-3 mb-3">
               <div className="flex-1">
-                <label className="block text-sm text-gray-400 mb-1">Start</label>
-                <select value={startHour} onChange={(e) => setStartHour(+e.target.value)} className="w-full bg-gray-800 rounded px-3 py-2 text-sm text-gray-100 border border-gray-700">
+                <label className="block text-sm text-muted-foreground mb-1">Start</label>
+                <select value={startHour} onChange={(e) => setStartHour(+e.target.value)} className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border">
                   {HOURS.map((h) => <option key={h} value={h}>{fmtHour(h)}</option>)}
                 </select>
               </div>
               <div className="flex-1">
-                <label className="block text-sm text-gray-400 mb-1">End</label>
-                <select value={endHour} onChange={(e) => setEndHour(+e.target.value)} className="w-full bg-gray-800 rounded px-3 py-2 text-sm text-gray-100 border border-gray-700">
+                <label className="block text-sm text-muted-foreground mb-1">End</label>
+                <select value={endHour} onChange={(e) => setEndHour(+e.target.value)} className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border">
                   {HOURS.map((h) => <option key={h} value={h}>{fmtHour(h)}</option>)}
                 </select>
               </div>
             </div>
 
-            <label className="block text-sm text-gray-400 mb-1">Target Role</label>
-            <select value={targetRole} onChange={(e) => setTargetRole(e.target.value)} className="w-full bg-gray-800 rounded px-3 py-2 text-sm text-gray-100 border border-gray-700 mb-4">
+            <label className="block text-sm text-muted-foreground mb-1">Target Role</label>
+            <select value={targetRole} onChange={(e) => setTargetRole(e.target.value)} className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border mb-4">
               {Object.entries(ROLE_LABELS).map(([val, lbl]) => <option key={val} value={val}>{lbl}</option>)}
             </select>
 
             <div className="flex justify-end gap-2">
-              <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white">Cancel</button>
-              <button onClick={save} disabled={saving || !label.trim()} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50">
+              <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">Cancel</button>
+              <button onClick={save} disabled={saving || !label.trim()} className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium disabled:opacity-50">
                 {saving ? 'Saving...' : editId ? 'Update' : 'Create'}
               </button>
             </div>

@@ -57,27 +57,27 @@ function fmtNum(n: number): string {
 }
 
 function tierColor(tier: string): string {
-  if (tier === 'pro') return 'text-purple-400';
-  if (tier === 'enterprise') return 'text-yellow-400';
-  if (tier === 'starter') return 'text-blue-400';
-  return 'text-gray-400';
+  if (tier === 'pro') return 'text-purple-600 dark:text-purple-400';
+  if (tier === 'enterprise') return 'text-yellow-600 dark:text-yellow-400';
+  if (tier === 'starter') return 'text-primary';
+  return 'text-muted-foreground';
 }
 
 function tierBadge(tier: string): string {
-  if (tier === 'pro') return 'bg-purple-900/40 text-purple-300 border-purple-700';
-  if (tier === 'enterprise') return 'bg-yellow-900/40 text-yellow-300 border-yellow-700';
-  if (tier === 'starter') return 'bg-blue-900/40 text-blue-300 border-blue-700';
-  return 'bg-gray-800 text-gray-400 border-gray-600';
+  if (tier === 'pro') return 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/40';
+  if (tier === 'enterprise') return 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border-yellow-500/40';
+  if (tier === 'starter') return 'bg-primary/15 text-primary border-primary/30';
+  return 'bg-muted text-muted-foreground border-border';
 }
 
 // ── Stat tile ─────────────────────────────────────────────────────
 
 function Stat({ label, value, accent, sub }: { label: string; value: string; accent?: string; sub?: string }) {
   return (
-    <div className="bg-gray-800 rounded-lg p-3">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className={`text-xl font-bold ${accent ?? 'text-white'}`}>{value}</p>
-      {sub && <p className="text-xs text-gray-500 mt-0.5">{sub}</p>}
+    <div className="bg-muted rounded-lg p-3">
+      <p className="text-xs text-muted-foreground mb-1">{label}</p>
+      <p className={`text-xl font-bold ${accent ?? 'text-foreground'}`}>{value}</p>
+      {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
     </div>
   );
 }
@@ -87,19 +87,19 @@ function Stat({ label, value, accent, sub }: { label: string; value: string; acc
 function SummaryCard({ summary }: { summary: BillingSummary }) {
   const isOverLimit = summary.extra_vehicles > 0;
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 mb-4">
+    <div className="bg-card border border-border rounded-xl p-6 mb-4">
       <div className="flex items-start justify-between mb-4">
         <div>
-          <h2 className="text-lg font-semibold text-white">{summary.account_name || 'Current Plan'}</h2>
+          <h2 className="text-lg font-semibold text-foreground">{summary.account_name || 'Current Plan'}</h2>
           {summary.billing_email && (
-            <p className="text-xs text-gray-500 mt-0.5">Billing contact: {summary.billing_email}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Billing contact: {summary.billing_email}</p>
           )}
         </div>
         <div className="flex items-center gap-2">
           <span className={`px-2 py-0.5 rounded text-xs font-medium border ${
-            summary.status === 'active' ? 'bg-green-900/30 text-green-300 border-green-700' :
-            summary.status === 'trialing' ? 'bg-yellow-900/30 text-yellow-300 border-yellow-700' :
-            'bg-gray-800 text-gray-400 border-gray-600'
+            summary.status === 'active' ? 'bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/30' :
+            summary.status === 'trialing' ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-300 border-yellow-500/30' :
+            'bg-muted text-muted-foreground border-border'
           }`}>{summary.status}</span>
           <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${tierBadge(summary.tier)}`}>
             {summary.tier.toUpperCase()}
@@ -111,28 +111,28 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
         <Stat label="Vehicles Active" value={String(summary.vehicle_count)} />
         <Stat label="Included" value={String(summary.base_vehicles)} sub="per plan" />
         <Stat label="Extra Trucks" value={String(summary.extra_vehicles)}
-              accent={isOverLimit ? 'text-yellow-400' : 'text-white'} />
-        <Stat label="Est. Monthly" value={usd(summary.amount_due_cents)} accent="text-green-400" />
+              accent={isOverLimit ? 'text-yellow-700 dark:text-yellow-400' : 'text-foreground'} />
+        <Stat label="Est. Monthly" value={usd(summary.amount_due_cents)} accent="text-green-600 dark:text-green-400" />
       </div>
 
-      <div className="border-t border-gray-800 pt-4 text-sm text-gray-400 space-y-1.5">
+      <div className="border-t border-border pt-4 text-sm text-muted-foreground space-y-1.5">
         <div className="flex justify-between">
           <span>Base plan — {summary.base_vehicles} trucks included</span>
-          <span className="text-white font-medium">{usd(summary.monthly_base_cents)}/mo</span>
+          <span className="text-foreground font-medium">{usd(summary.monthly_base_cents)}/mo</span>
         </div>
         {isOverLimit && (
           <div className="flex justify-between">
             <span>{summary.extra_vehicles} extra truck{summary.extra_vehicles !== 1 ? 's' : ''} x {usd(summary.extra_vehicle_cents)} ea</span>
-            <span className="text-yellow-400">+{usd(summary.extra_vehicles * summary.extra_vehicle_cents)}/mo</span>
+            <span className="text-yellow-600 dark:text-yellow-400">+{usd(summary.extra_vehicles * summary.extra_vehicle_cents)}/mo</span>
           </div>
         )}
-        <div className="flex justify-between font-semibold border-t border-gray-700 pt-2 mt-1">
-          <span className="text-white">Total Estimate</span>
+        <div className="flex justify-between font-semibold border-t border-border pt-2 mt-1">
+          <span className="text-foreground">Total Estimate</span>
           <span className={tierColor(summary.tier)}>{usd(summary.amount_due_cents)}/mo</span>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t border-gray-800 text-xs text-gray-500">
+      <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t border-border text-xs text-muted-foreground">
         {summary.user_count > 0 && (
           <span>👥 {summary.user_count} team member{summary.user_count !== 1 ? 's' : ''}</span>
         )}
@@ -143,7 +143,7 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
           <span className="text-yellow-500">⚠️ Trial ends {new Date(summary.trial_ends_at).toLocaleDateString()}</span>
         )}
         {summary.provider === 'stub' && (
-          <span className="text-blue-400">🧪 Test mode — no real charges</span>
+          <span className="text-primary">🧪 Test mode — no real charges</span>
         )}
       </div>
     </div>
@@ -154,27 +154,27 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
 
 function AiUsageCard({ ai }: { ai: AiUsage }) {
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 mb-4">
+    <div className="bg-card border border-border rounded-xl p-6 mb-4">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-white">AI Usage</h2>
-        <span className="text-xs text-gray-500">Last {ai.days} days</span>
+        <h2 className="text-lg font-semibold text-foreground">AI Usage</h2>
+        <span className="text-xs text-muted-foreground">Last {ai.days} days</span>
       </div>
       <div className="grid grid-cols-2 gap-3 mb-5">
-        <Stat label="Total Requests" value={fmtNum(ai.total_requests)} accent="text-blue-400" />
+        <Stat label="Total Requests" value={fmtNum(ai.total_requests)} accent="text-primary" />
         <Stat label="Total Tokens" value={fmtNum(ai.total_tokens)} accent="text-indigo-400"
               sub="included in plan" />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {Object.keys(ai.by_type).length > 0 && (
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">By Type</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">By Type</p>
             <div className="space-y-1.5">
               {Object.entries(ai.by_type)
                 .sort((a, b) => b[1].requests - a[1].requests)
                 .map(([type, s]) => (
                   <div key={type} className="flex justify-between text-sm">
-                    <span className="text-gray-300 capitalize">{type.replace('_', ' ')}</span>
-                    <span className="text-gray-400 tabular-nums text-xs">
+                    <span className="text-foreground/80 capitalize">{type.replace('_', ' ')}</span>
+                    <span className="text-muted-foreground tabular-nums text-xs">
                       {fmtNum(s.requests)} req · {fmtNum(s.tokens)} tok
                     </span>
                   </div>
@@ -184,14 +184,14 @@ function AiUsageCard({ ai }: { ai: AiUsage }) {
         )}
         {Object.keys(ai.by_model).length > 0 && (
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">By Model</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">By Model</p>
             <div className="space-y-1.5">
               {Object.entries(ai.by_model)
                 .sort((a, b) => b[1].tokens - a[1].tokens)
                 .map(([model, s]) => (
                   <div key={model} className="flex justify-between text-sm">
-                    <span className="text-gray-300 font-mono text-xs">{model}</span>
-                    <span className="text-gray-400 tabular-nums text-xs">
+                    <span className="text-foreground/80 font-mono text-xs">{model}</span>
+                    <span className="text-muted-foreground tabular-nums text-xs">
                       {fmtNum(s.requests)} req · {fmtNum(s.tokens)} tok
                     </span>
                   </div>
@@ -213,23 +213,23 @@ interface PlanCardProps {
 
 function PlanCard({ name, price, included, extraPer, features, current, onUpgrade, loading }: PlanCardProps) {
   return (
-    <div className={`bg-gray-900 border rounded-xl p-5 flex flex-col ${
-      current ? 'border-blue-600 ring-1 ring-blue-600/30' : 'border-gray-700'
+    <div className={`bg-card border rounded-xl p-5 flex flex-col ${
+      current ? 'border-primary ring-1 ring-primary/30' : 'border-border'
     }`}>
       {current && (
-        <span className="text-xs bg-blue-900/40 text-blue-300 border border-blue-700 rounded-full px-2 py-0.5 self-start mb-2">
+        <span className="text-xs bg-primary/15 text-primary border border-primary/30 rounded-full px-2 py-0.5 self-start mb-2">
           Current Plan
         </span>
       )}
-      <h3 className="text-lg font-bold text-white mb-1 capitalize">{name}</h3>
-      <p className="text-2xl font-bold text-green-400 mb-1">
-        {price}<span className="text-sm text-gray-400 font-normal">/mo</span>
+      <h3 className="text-lg font-bold text-foreground mb-1 capitalize">{name}</h3>
+      <p className="text-2xl font-bold text-green-600 dark:text-green-400 mb-1">
+        {price}<span className="text-sm text-muted-foreground font-normal">/mo</span>
       </p>
-      <p className="text-xs text-gray-500 mb-3">{included} trucks included &middot; {extraPer}/extra truck</p>
-      <ul className="text-sm text-gray-300 space-y-1.5 mb-5 flex-1">
+      <p className="text-xs text-muted-foreground mb-3">{included} trucks included &middot; {extraPer}/extra truck</p>
+      <ul className="text-sm text-foreground/80 space-y-1.5 mb-5 flex-1">
         {features.map((f) => (
           <li key={f} className="flex items-start gap-1.5">
-            <span className="text-green-400 mt-0.5 shrink-0">✓</span> {f}
+            <span className="text-green-600 dark:text-green-400 mt-0.5 shrink-0">✓</span> {f}
           </li>
         ))}
       </ul>
@@ -237,7 +237,7 @@ function PlanCard({ name, price, included, extraPer, features, current, onUpgrad
         onClick={onUpgrade}
         disabled={current || loading}
         className={`w-full py-2 rounded-lg text-sm font-semibold transition ${
-          current ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 text-white'
+          current ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-primary hover:bg-primary/90 text-primary-foreground'
         }`}
       >
         {loading ? 'Redirecting…' : current ? 'Current Plan' : `Switch to ${name}`}
@@ -251,7 +251,7 @@ function PlanCard({ name, price, included, extraPer, features, current, onUpgrad
 function UsageTable({ items }: { items: UsageSnapshot[] }) {
   if (items.length === 0) {
     return (
-      <p className="text-sm text-gray-500 text-center py-8">
+      <p className="text-sm text-muted-foreground text-center py-8">
         No billing history yet — snapshots are recorded at the end of each billing period.
       </p>
     );
@@ -260,7 +260,7 @@ function UsageTable({ items }: { items: UsageSnapshot[] }) {
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-gray-500 border-b border-gray-800 text-xs uppercase tracking-wider">
+          <tr className="text-left text-muted-foreground border-b border-border text-xs uppercase tracking-wider">
             <th className="pb-2 pr-4">Period</th>
             <th className="pb-2 pr-4">Vehicles</th>
             <th className="pb-2 pr-4">Extra</th>
@@ -271,17 +271,17 @@ function UsageTable({ items }: { items: UsageSnapshot[] }) {
         </thead>
         <tbody>
           {items.map((row) => (
-            <tr key={row.period_start} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-              <td className="py-2.5 pr-4 text-gray-300 tabular-nums">{row.period_start.slice(0, 7)}</td>
-              <td className="py-2.5 pr-4 text-white">{row.vehicle_count}</td>
+            <tr key={row.period_start} className="border-b border-border/50 hover:bg-muted/30">
+              <td className="py-2.5 pr-4 text-foreground/80 tabular-nums">{row.period_start.slice(0, 7)}</td>
+              <td className="py-2.5 pr-4 text-foreground">{row.vehicle_count}</td>
               <td className="py-2.5 pr-4">
                 {row.extra_vehicles > 0
-                  ? <span className="text-yellow-400">+{row.extra_vehicles}</span>
-                  : <span className="text-gray-600">—</span>}
+                  ? <span className="text-yellow-700 dark:text-yellow-400">+{row.extra_vehicles}</span>
+                  : <span className="text-muted-foreground">—</span>}
               </td>
-              <td className="py-2.5 pr-4 text-gray-400">{row.user_count ?? '—'}</td>
-              <td className="py-2.5 pr-4 text-gray-400">{fmtNum(row.ai_queries)}</td>
-              <td className="py-2.5 text-right font-semibold text-green-400">{usd(row.amount_due_cents)}</td>
+              <td className="py-2.5 pr-4 text-muted-foreground">{row.user_count ?? '—'}</td>
+              <td className="py-2.5 pr-4 text-muted-foreground">{fmtNum(row.ai_queries)}</td>
+              <td className="py-2.5 text-right font-semibold text-green-600 dark:text-green-400">{usd(row.amount_due_cents)}</td>
             </tr>
           ))}
         </tbody>
@@ -349,7 +349,7 @@ export default function Billing() {
 
   if (loadingMain) {
     return (
-      <div className="p-6 text-gray-400 flex items-center gap-2">
+      <div className="p-6 text-muted-foreground flex items-center gap-2">
         <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
@@ -364,8 +364,8 @@ export default function Billing() {
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">Billing &amp; Subscription</h1>
-          <p className="text-sm text-gray-400 mt-1">
+          <h1 className="text-2xl font-bold text-foreground">Billing &amp; Subscription</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             Manage your plan, monitor AI usage, and review billing history.
           </p>
         </div>
@@ -373,7 +373,7 @@ export default function Billing() {
           <button
             onClick={handlePortal}
             disabled={portalLoading}
-            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition"
+            className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground text-sm rounded-lg transition"
           >
             {portalLoading ? 'Opening…' : '🔗 Manage Payment'}
           </button>
@@ -381,7 +381,7 @@ export default function Billing() {
       </div>
 
       {error && (
-        <div className="mb-4 bg-red-900/30 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">
+        <div className="mb-4 bg-destructive/10 border border-destructive/40 text-destructive rounded-lg px-4 py-3 text-sm">
           ⚠ {error}
         </div>
       )}
@@ -393,7 +393,7 @@ export default function Billing() {
       )}
 
       {/* Plans */}
-      <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 mt-6">
+      <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 mt-6">
         Available Plans
       </h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -427,8 +427,8 @@ export default function Billing() {
       </div>
 
       {/* Pricing info */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6 text-sm text-gray-400">
-        <p className="font-medium text-gray-300 mb-1.5">💡 How pricing works</p>
+      <div className="bg-card border border-border rounded-xl p-4 mb-6 text-sm text-muted-foreground">
+        <p className="font-medium text-foreground/80 mb-1.5">💡 How pricing works</p>
         <ul className="space-y-1 list-disc list-inside text-xs">
           <li>Each plan includes 10 trucks. Additional trucks: $2.99/truck/month.</li>
           <li>Vehicle count syncs automatically from Samsara each day.</li>
@@ -438,17 +438,17 @@ export default function Billing() {
       </div>
 
       {/* Billing history */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+      <div className="bg-card border border-border rounded-xl p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white">Billing History</h2>
-          <span className="text-xs text-gray-500">Last 12 periods</span>
+          <h2 className="text-lg font-semibold text-foreground">Billing History</h2>
+          <span className="text-xs text-muted-foreground">Last 12 periods</span>
         </div>
         <UsageTable items={usage} />
       </div>
 
-      <p className="text-xs text-gray-600 mt-6 text-center">
+      <p className="text-xs text-muted-foreground mt-6 text-center">
         Questions?{' '}
-        <a href="mailto:billing@4truck.us" className="underline hover:text-gray-400">
+        <a href="mailto:billing@4truck.us" className="underline hover:text-muted-foreground">
           billing@4truck.us
         </a>
       </p>

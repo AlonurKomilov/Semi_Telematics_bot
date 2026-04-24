@@ -36,7 +36,7 @@ export default function AuditLog() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Audit Log</h1>
-        <select value={limit} onChange={e => setLimit(Number(e.target.value))} className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500">
+        <select value={limit} onChange={e => setLimit(Number(e.target.value))} className="bg-muted border border-border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-ring">
           <option value={50}>Last 50</option>
           <option value={100}>Last 100</option>
           <option value={250}>Last 250</option>
@@ -44,9 +44,9 @@ export default function AuditLog() {
         </select>
       </div>
 
-      {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
+      {error && <p className="text-destructive text-sm mb-3">{error}</p>}
 
-      {loading ? <p className="text-gray-500">Loading...</p> : (
+      {loading ? <p className="text-muted-foreground">Loading...</p> : (
         <DataTable columns={columns} data={entries as unknown as Record<string, unknown>[]} searchKey="action" />
       )}
     </div>

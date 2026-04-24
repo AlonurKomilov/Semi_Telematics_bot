@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { setToken } from '../api/client';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
 import type { TelegramLoginData } from '../types';
 
 type Mode = 'login' | 'register';
@@ -165,20 +167,20 @@ export default function Login() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-950 px-4">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-background px-4">
       <div className="mb-8 text-center">
         <h1 className="text-4xl font-bold mb-2">🚛 4truck</h1>
-        <p className="text-gray-400">Fleet Management Dashboard</p>
+        <p className="text-muted-foreground">Fleet Management Dashboard</p>
       </div>
 
-      <div className="bg-gray-900 rounded-xl p-8 shadow-lg border border-gray-800 w-full max-w-sm">
+      <div className="bg-card rounded-xl p-8 shadow-lg border border-border w-full max-w-sm">
         {/* Tab switcher */}
-        <div className="flex mb-6 border-b border-gray-700">
+        <div className="flex mb-6 border-b border-border">
           <button
             className={`flex-1 pb-2 text-sm font-medium transition-colors ${
               mode === 'login'
-                ? 'text-blue-400 border-b-2 border-blue-400'
-                : 'text-gray-500 hover:text-gray-300'
+                ? 'text-primary border-b-2 border-primary'
+                : 'text-muted-foreground hover:text-foreground/80'
             }`}
             onClick={() => { setMode('login'); setError(''); }}
           >
@@ -187,8 +189,8 @@ export default function Login() {
           <button
             className={`flex-1 pb-2 text-sm font-medium transition-colors ${
               mode === 'register'
-                ? 'text-blue-400 border-b-2 border-blue-400'
-                : 'text-gray-500 hover:text-gray-300'
+                ? 'text-primary border-b-2 border-primary'
+                : 'text-muted-foreground hover:text-foreground/80'
             }`}
             onClick={() => { setMode('register'); setError(''); }}
           >
@@ -200,59 +202,55 @@ export default function Login() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === 'register' && (
             <>
-              <input
+              <Input
                 type="text"
                 placeholder="Display name"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
               />
-              <input
+              <Input
                 type="text"
                 placeholder="Invite code"
                 value={inviteCode}
                 onChange={(e) => setInviteCode(e.target.value)}
                 required
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
               />
             </>
           )}
-          <input
+          <Input
             type="email"
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
           />
-          <input
+          <Input
             type="password"
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             minLength={8}
-            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
           />
 
           {error && (
-            <p className="text-red-400 text-xs">{error}</p>
+            <p className="text-destructive text-xs">{error}</p>
           )}
 
-          <button
+          <Button
             type="submit"
             disabled={loading}
-            className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+            className="w-full"
           >
             {loading ? '...' : mode === 'login' ? 'Sign In' : 'Create Account'}
-          </button>
+          </Button>
         </form>
 
         {/* Divider */}
         <div className="flex items-center my-5">
-          <div className="flex-1 border-t border-gray-700" />
-          <span className="px-3 text-xs text-gray-500">or</span>
-          <div className="flex-1 border-t border-gray-700" />
+          <div className="flex-1 border-t border-border" />
+          <span className="px-3 text-xs text-muted-foreground">or</span>
+          <div className="flex-1 border-t border-border" />
         </div>
 
         {/* Telegram widget */}
@@ -263,47 +261,48 @@ export default function Login() {
             <button
               type="button"
               onClick={() => setShowDisconnect(true)}
-              className="text-xs text-gray-500 hover:text-gray-300 transition-colors underline underline-offset-2"
+              className="text-xs text-muted-foreground hover:text-foreground/80 transition-colors underline underline-offset-2"
             >
               Disconnect Telegram session
             </button>
           </div>
         ) : (
-          <div className="mt-3 p-3 bg-gray-800 border border-gray-700 rounded-lg text-xs text-gray-300 space-y-3">
-            <p className="font-medium text-gray-200">Switch Telegram account:</p>
+          <div className="mt-3 p-3 bg-muted border border-border rounded-lg text-xs text-foreground/80 space-y-3">
+            <p className="font-medium text-foreground/90">Switch Telegram account:</p>
 
-            <ol className="list-decimal list-inside space-y-1.5 text-gray-400">
-              <li>Open your <b className="text-gray-300">Telegram</b> app on phone or desktop</li>
-              <li>Go to <b className="text-gray-300">Telegram</b> service chat — tap the search icon 🔍 and type <b className="text-gray-300">"Telegram"</b>, then select the one with ✅ verified badge that says <b className="text-gray-300">"service notifications"</b></li>
-              <li>Scroll to the message that says <b className="text-gray-300">"You have successfully logged in on 4truck.us via @{botUsername}"</b></li>
-              <li>Tap the <b className="text-blue-400">"Disconnect"</b> button below that message</li>
-              <li>Come back here and press <b className="text-gray-300">"Refresh widget"</b> below</li>
+            <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground">
+              <li>Open your <b className="text-foreground/80">Telegram</b> app on phone or desktop</li>
+              <li>Go to <b className="text-foreground/80">Telegram</b> service chat — tap the search icon 🔍 and type <b className="text-foreground/80">"Telegram"</b>, then select the one with ✅ verified badge that says <b className="text-foreground/80">"service notifications"</b></li>
+              <li>Scroll to the message that says <b className="text-foreground/80">"You have successfully logged in on 4truck.us via @{botUsername}"</b></li>
+              <li>Tap the <b className="text-primary">"Disconnect"</b> button below that message</li>
+              <li>Come back here and press <b className="text-foreground/80">"Refresh widget"</b> below</li>
             </ol>
 
             <div className="flex gap-2 pt-1">
-              <button
+              <Button
                 type="button"
                 onClick={handleRefreshWidget}
-                className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded transition-colors"
+                className="flex-1 text-xs h-8"
               >
                 Refresh widget
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => setShowDisconnect(false)}
-                className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs font-medium rounded transition-colors"
+                className="flex-1 text-xs h-8"
               >
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         )}
 
         {/* Divider before bot login */}
         <div className="flex items-center my-5">
-          <div className="flex-1 border-t border-gray-700" />
-          <span className="px-3 text-xs text-gray-500">or</span>
-          <div className="flex-1 border-t border-gray-700" />
+          <div className="flex-1 border-t border-border" />
+          <span className="px-3 text-xs text-muted-foreground">or</span>
+          <div className="flex-1 border-t border-border" />
         </div>
 
         {/* Bot-login flow */}
@@ -311,7 +310,7 @@ export default function Login() {
           <button
             type="button"
             onClick={startBotLogin}
-            className="w-full py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+            className="w-full py-2.5 bg-muted hover:bg-muted/80 border border-border text-foreground text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
           >
             <span>🤖</span>
             <span>Login via Telegram Bot</span>
@@ -319,21 +318,21 @@ export default function Login() {
         )}
 
         {botLoginStatus === 'pending' && (
-          <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg space-y-3">
+          <div className="p-4 bg-muted border border-border rounded-lg space-y-3">
             <div className="flex items-center gap-2">
-              <div className="animate-spin h-4 w-4 border-2 border-blue-400 border-t-transparent rounded-full" />
-              <span className="text-sm text-gray-200">Waiting for approval...</span>
+              <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
+              <span className="text-sm text-foreground/90">Waiting for approval...</span>
             </div>
-            <p className="text-xs text-gray-400">
-              A link to <b className="text-gray-300">@app_4truck_bot</b> was opened.
-              Tap <b className="text-gray-300">Start</b> in the bot to approve your login.
+            <p className="text-xs text-muted-foreground">
+              A link to <b className="text-foreground/80">@app_4truck_bot</b> was opened.
+              Tap <b className="text-foreground/80">Start</b> in the bot to approve your login.
             </p>
             {botLoginLink && (
               <a
                 href={botLoginLink}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block text-center text-xs text-blue-400 hover:text-blue-300 underline underline-offset-2"
+                className="block text-center text-xs text-primary hover:text-primary/80 underline underline-offset-2"
               >
                 Didn't open? Click here to open the bot
               </a>
@@ -341,7 +340,7 @@ export default function Login() {
             <button
               type="button"
               onClick={cancelBotLogin}
-              className="w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs font-medium rounded transition-colors"
+              className="w-full py-1.5 bg-muted hover:bg-muted/80 text-foreground/80 text-xs font-medium rounded transition-colors"
             >
               Cancel
             </button>
@@ -349,14 +348,14 @@ export default function Login() {
         )}
 
         {(botLoginStatus === 'rejected' || botLoginStatus === 'expired') && (
-          <div className="p-4 bg-gray-800 border border-red-800/50 rounded-lg space-y-3">
-            <p className="text-sm text-red-400">
+          <div className="p-4 bg-muted border border-destructive/30 rounded-lg space-y-3">
+            <p className="text-sm text-red-600 dark:text-red-400">
               {botLoginStatus === 'rejected' ? '❌ Login was rejected' : '⏰ Login link expired'}
             </p>
             <button
               type="button"
               onClick={() => { cancelBotLogin(); }}
-              className="w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs font-medium rounded transition-colors"
+              className="w-full py-1.5 bg-muted hover:bg-muted/80 text-foreground/80 text-xs font-medium rounded transition-colors"
             >
               Try again
             </button>
@@ -364,14 +363,14 @@ export default function Login() {
         )}
 
         {botLoginStatus === 'approved' && (
-          <div className="p-4 bg-gray-800 border border-green-800/50 rounded-lg">
-            <p className="text-sm text-green-400 flex items-center gap-2">
+          <div className="p-4 bg-muted border border-green-600/50 dark:border-green-800/50 rounded-lg">
+            <p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-2">
               <span>✅</span> Login approved — redirecting...
             </p>
           </div>
         )}
 
-        <p className="text-xs text-gray-500 mt-4 text-center">
+        <p className="text-xs text-muted-foreground mt-4 text-center">
           {mode === 'register'
             ? 'Ask your company admin for an invite code.'
             : 'Sign in with your email or Telegram account.'}

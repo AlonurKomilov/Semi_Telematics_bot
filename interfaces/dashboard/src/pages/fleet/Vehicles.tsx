@@ -31,7 +31,7 @@ const columns: AnyColumn[] = [
   {
     key: 'fault_count',
     label: 'Faults',
-    render: (v) => (v as number) > 0 ? <span className="text-orange-400 font-medium">{v as number}</span> : '0',
+    render: (v) => (v as number) > 0 ? <span className="text-orange-600 dark:text-orange-400 font-medium">{v as number}</span> : '0',
   },
 ];
 
@@ -77,7 +77,7 @@ export default function Vehicles() {
         <h1 className="text-2xl font-bold">Vehicles</h1>
         <button
           onClick={fetchVehicles}
-          className="text-sm text-muted-foreground hover:text-white transition"
+          className="text-sm text-muted-foreground hover:text-foreground transition"
         >
           ↻ Refresh
         </button>
@@ -94,7 +94,7 @@ export default function Vehicles() {
               className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize transition ${
                 statusFilter === s
                   ? 'bg-muted/80 text-foreground'
-                  : 'text-muted-foreground hover:text-white hover:bg-muted'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
               }`}
             >
               {label}

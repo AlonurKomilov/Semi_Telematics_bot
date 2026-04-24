@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { apiJSON } from '../../api/client';
 import DataTable from '../../components/DataTable';
 import type { Scorecard, ScorecardsResponse, AnyColumn } from '../../types';
 
 function EcoBadge({ pct }: { pct: number }) {
   const cls =
-    pct >= 80 ? 'bg-green-500/20 text-green-400' :
-    pct >= 60 ? 'bg-yellow-500/20 text-yellow-400' :
-    'bg-red-500/20 text-red-400';
+    pct >= 80 ? 'bg-green-500/15 text-green-700 dark:text-green-400' :
+    pct >= 60 ? 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400' :
+    'bg-red-500/15 text-red-700 dark:text-red-400';
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{pct}%</span>;
 }
 
@@ -30,7 +31,7 @@ const columns: AnyColumn[] = [
     sortable: true,
     render: (v) => {
       const m = v as number;
-      return m > 10 ? <span className="text-red-400">{m}</span> : <span>{m}</span>;
+      return m > 10 ? <span className="text-destructive">{m}</span> : <span>{m}</span>;
     },
   },
   {
@@ -56,7 +57,7 @@ export default function Scorecards() {
       .finally(() => setLoading(false));
   }, [days]);
 
-  if (error && cards.length === 0) return <p className="text-red-400">{error}</p>;
+  if (error && cards.length === 0) return <p className="text-destructive">{error}</p>;
 
   return (
     <div>
@@ -65,7 +66,7 @@ export default function Scorecards() {
         <select
           value={days}
           onChange={(e) => setDays(Number(e.target.value))}
-          className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-300"
+          className="bg-muted border border-border rounded px-3 py-2 text-sm text-foreground/80"
         >
           {[7, 14, 30].map((d) => (
             <option key={d} value={d}>{d} days</option>
@@ -76,22 +77,22 @@ export default function Scorecards() {
       {/* Summary cards */}
       {cards.length > 0 && (
         <div className="grid grid-cols-4 gap-4 mb-6">
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <p className="text-xs text-gray-400">Drivers</p>
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs text-muted-foreground">Drivers</p>
             <p className="text-xl font-bold">{cards.length}</p>
           </div>
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <p className="text-xs text-gray-400">Avg Eco Score</p>
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs text-muted-foreground">Avg Eco Score</p>
             <p className="text-xl font-bold">
               {cards.length ? (cards.reduce((s, c) => s + c.eco_pct, 0) / cards.length).toFixed(0) : 0}%
             </p>
           </div>
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <p className="text-xs text-gray-400">Total Miles</p>
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs text-muted-foreground">Total Miles</p>
             <p className="text-xl font-bold">{cards.reduce((s, c) => s + c.miles, 0).toLocaleString()}</p>
           </div>
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <p className="text-xs text-gray-400">Avg MPG</p>
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs text-muted-foreground">Avg MPG</p>
             <p className="text-xl font-bold">
               {cards.length ? (cards.reduce((s, c) => s + c.mpg, 0) / cards.length).toFixed(1) : 0}
             </p>
@@ -100,28 +101,58 @@ export default function Scorecards() {
       )}
 
       {loading ? (
-        <p className="text-gray-500">Loading...</p>
+        <p className="text-muted-foreground">Loading...</p>
       ) : (
-        <DataTable
+        <>
+          {/* Eco Score bar chart — top 10 drivers */}
+          {cards.length > 0 && (
+            <div className="bg-card border border-border rounded-xl p-5 mb-6">
+              <p className="text-sm text-muted-foreground mb-3 font-medium">Eco Score by Driver</p>
+              <ResponsiveContainer width="100%" height={Math.min(cards.length, 10) * 30 + 40}>
+                <BarChart
+                  layout="vertical"
+                  data={[...cards].sort((a, b) => b.eco_pct - a.eco_pct).slice(0, 10).map((c) => ({
+                    name: c.driver_name,
+                    score: c.eco_pct,
+                  }))}
+                  margin={{ top: 0, right: 30, left: 0, bottom: 0 }}
+                >
+                  <XAxis type="number" domain={[0, 100]} tick={{ fill: '#6b7280', fontSize: 11 }} />
+                  <YAxis type="category" dataKey="name" width={120} tick={{ fill: '#9ca3af', fontSize: 12 }} />
+                  <Tooltip
+                    formatter={(v) => [`${v}%`, 'Eco Score']}
+                    contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, color: '#f9fafb' }}
+                  />
+                  <Bar dataKey="score" radius={[0, 4, 4, 0]}>
+                    {[...cards].sort((a, b) => b.eco_pct - a.eco_pct).slice(0, 10).map((c) => (
+                      <Cell key={c.driver_name} fill={c.eco_pct >= 80 ? '#22c55e' : c.eco_pct >= 60 ? '#eab308' : '#ef4444'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          <DataTable
           columns={columns}
           data={cards as unknown as Record<string, unknown>[]}
           searchKey="driver_name"
           onRowClick={(row) => setDetail(row as unknown as Scorecard)}
         />
+        </>
       )}
 
       {/* Detail drawer */}
       {detail && (
         <div className="fixed inset-0 bg-black/60 z-50 flex justify-end" onClick={() => setDetail(null)}>
           <div
-            className="w-96 bg-gray-900 border-l border-gray-800 p-6 overflow-y-auto"
+            className="w-96 bg-card border-l border-border p-6 overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">{detail.driver_name}</h2>
-              <button onClick={() => setDetail(null)} className="text-gray-500 hover:text-white">✕</button>
+              <button onClick={() => setDetail(null)} className="text-muted-foreground hover:text-foreground">✕</button>
             </div>
-            {detail.company && <p className="text-sm text-gray-400 mb-4">{detail.company}</p>}
+            {detail.company && <p className="text-sm text-muted-foreground mb-4">{detail.company}</p>}
             <dl className="space-y-3 text-sm">
               <Stat label="Eco Score" value={`${detail.eco_pct}%`} />
               <Stat label="Miles Driven" value={detail.miles.toLocaleString()} />
@@ -143,7 +174,7 @@ export default function Scorecards() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between">
-      <dt className="text-gray-400">{label}</dt>
+      <dt className="text-muted-foreground">{label}</dt>
       <dd className="font-medium">{value}</dd>
     </div>
   );

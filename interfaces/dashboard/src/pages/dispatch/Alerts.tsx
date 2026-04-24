@@ -9,13 +9,13 @@ const ALERT_TYPES = ['all', 'fault', 'health', 'fuel', 'events', 'parking'] as c
 
 function TypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
-    fault: 'bg-orange-500/20 text-orange-400',
-    health: 'bg-red-500/20 text-red-400',
-    fuel: 'bg-yellow-500/20 text-yellow-400',
-    events: 'bg-purple-500/20 text-purple-400',
-    parking: 'bg-cyan-500/20 text-cyan-400',
+    fault: 'bg-orange-500/15 text-orange-700 dark:text-orange-400',
+    health: 'bg-red-500/15 text-red-700 dark:text-red-400',
+    fuel: 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400',
+    events: 'bg-purple-500/15 text-purple-700 dark:text-purple-400',
+    parking: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-400',
   };
-  const cls = colors[type] || 'bg-gray-500/20 text-gray-400';
+  const cls = colors[type] || 'bg-gray-500/20 text-muted-foreground';
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{type}</span>;
 }
 
@@ -98,7 +98,7 @@ export default function Alerts() {
     });
   }
 
-  if (error && alerts.length === 0) return <p className="text-red-400">{error}</p>;
+  if (error && alerts.length === 0) return <p className="text-destructive">{error}</p>;
 
   return (
     <div>
@@ -109,14 +109,14 @@ export default function Alerts() {
             <button
               onClick={ackSelected}
               disabled={acking}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm font-medium transition"
+              className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-lg text-sm font-medium transition"
             >
               {acking ? 'Acknowledging...' : `Acknowledge (${selected.size})`}
             </button>
           )}
           <button
             onClick={fetchAlerts}
-            className="text-sm text-gray-400 hover:text-white transition"
+            className="text-sm text-muted-foreground hover:text-foreground transition"
           >
             ↻ Refresh
           </button>
@@ -130,7 +130,7 @@ export default function Alerts() {
             key={t}
             onClick={() => setTab(t)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition capitalize ${
-              tab === t ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+              tab === t ? 'bg-muted/80 text-foreground' : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             {t}
@@ -146,7 +146,7 @@ export default function Alerts() {
               key={at}
               onClick={() => setTypeFilter(at)}
               className={`text-xs px-2.5 py-1 rounded capitalize ${
-                typeFilter === at ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                typeFilter === at ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'
               }`}
             >
               {at}
@@ -158,13 +158,13 @@ export default function Alerts() {
           placeholder="Filter by vehicle..."
           value={vehicleSearch}
           onChange={(e) => setVehicleSearch(e.target.value)}
-          className="bg-gray-800 border border-gray-700 rounded px-2.5 py-1 text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500 w-48"
+          className="bg-muted border border-border rounded px-2.5 py-1 text-sm placeholder-muted-foreground focus:outline-none focus:border-ring w-48"
         />
         {tab === 'history' && (
           <select
             value={days}
             onChange={(e) => setDays(Number(e.target.value))}
-            className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-gray-300"
+            className="bg-muted border border-border rounded px-2 py-1 text-sm text-foreground/80"
           >
             {[7, 14, 30, 60, 90].map((d) => (
               <option key={d} value={d}>{d} days</option>
@@ -174,12 +174,12 @@ export default function Alerts() {
       </div>
 
       {loading && alerts.length === 0 ? (
-        <p className="text-gray-500">Loading...</p>
+        <p className="text-muted-foreground">Loading...</p>
       ) : tab === 'pending' ? (
-        <div className="overflow-x-auto rounded-lg border border-gray-800">
+        <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-900 text-gray-400 text-left">
+              <tr className="bg-card text-muted-foreground text-left">
                 <th className="px-4 py-3 w-8">
                   <input
                     type="checkbox"
@@ -197,10 +197,10 @@ export default function Alerts() {
             </thead>
             <tbody>
               {alerts.length === 0 && (
-                <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-500">No pending alerts</td></tr>
+                <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">No pending alerts</td></tr>
               )}
               {alerts.map((a) => (
-                <tr key={a.id} className="border-t border-gray-800 hover:bg-gray-800/50">
+                <tr key={a.id} className="border-t border-border hover:bg-muted/50">
                   <td className="px-4 py-3">
                     <input
                       type="checkbox"
@@ -210,7 +210,7 @@ export default function Alerts() {
                   </td>
                   <td className="px-4 py-3">{a.vehicle_name}</td>
                   <td className="px-4 py-3"><TypeBadge type={a.alert_type || 'unknown'} /></td>
-                  <td className="px-4 py-3 text-gray-400">{a.created_at ? new Date(a.created_at).toLocaleString() : '—'}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{a.created_at ? new Date(a.created_at).toLocaleString() : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -220,7 +220,7 @@ export default function Alerts() {
         <DataTable columns={historyColumns} data={alerts as unknown as Record<string, unknown>[]} searchKey="vehicle_name" />
       )}
 
-      <p className="text-xs text-gray-500 mt-2">{alerts.length} alert{alerts.length !== 1 ? 's' : ''}</p>
+      <p className="text-xs text-muted-foreground mt-2">{alerts.length} alert{alerts.length !== 1 ? 's' : ''}</p>
     </div>
   );
 }

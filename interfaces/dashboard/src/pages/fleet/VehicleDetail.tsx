@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { apiJSON } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -8,6 +8,7 @@ import type { Vehicle, VehiclesResponse, HealthResponse, FaultsResponse, Fault, 
 export default function VehicleDetail() {
   const { name } = useParams<{ name: string }>();
   const { has } = usePermissions();
+  const navigate = useNavigate();
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [faults, setFaults] = useState<FaultsResponse | null>(null);
@@ -108,9 +109,19 @@ export default function VehicleDetail() {
         {/* Faults card */}
         {faultList.length > 0 && (
           <div className="bg-card border border-border rounded-xl p-5">
-            <h2 className="text-lg font-semibold mb-3">
-              Active Fault Codes ({faultList.length})
-            </h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold">
+                Active Fault Codes ({faultList.length})
+              </h2>
+              {has('can_faults') && (
+                <button
+                  onClick={() => navigate('/ai/chat', { state: { initialMessage: `Diagnose the active fault codes on Truck ${name}` } })}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-primary/15 hover:bg-primary/25 text-primary font-medium transition-colors"
+                >
+                  Diagnose with AI
+                </button>
+              )}
+            </div>
             <div className="space-y-2">
               {(faultList as unknown as Record<string, unknown>[]).map((f, i) => {
                 // Raw Samsara DTCs have fields at the top level;
@@ -124,7 +135,7 @@ export default function VehicleDetail() {
                 return (
                 <div key={i} className="bg-muted rounded-lg p-3 text-sm">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-orange-400">{spn}</span>
+                    <span className="font-mono text-orange-600 dark:text-orange-400">{spn}</span>
                     {fmi && (
                       <span className="text-xs text-muted-foreground">FMI: {fmi}</span>
                     )}
@@ -146,7 +157,7 @@ export default function VehicleDetail() {
         {faultList.length === 0 && faults && (
           <div className="bg-card border border-border rounded-xl p-5">
             <h2 className="text-lg font-semibold mb-3">Fault Codes</h2>
-            <p className="text-green-400 text-sm">No active fault codes</p>
+            <p className="text-green-600 dark:text-green-400 text-sm">No active fault codes</p>
           </div>
         )}
       </div>

@@ -37,9 +37,9 @@ interface PermGroup {
 }
 
 const SCOPE_OPTIONS: { value: ScopeValue; label: string; active: string }[] = [
-  { value: 'none', label: 'None', active: 'bg-gray-600 text-white' },
+  { value: 'none', label: 'None', active: 'bg-muted text-foreground' },
   { value: 'assigned', label: 'Vehicle', active: 'bg-amber-600 text-white' },
-  { value: 'company', label: 'Company', active: 'bg-blue-600 text-white' },
+  { value: 'company', label: 'Company', active: 'bg-primary text-primary-foreground' },
   { value: 'all', label: 'All', active: 'bg-green-600 text-white' },
 ];
 
@@ -327,7 +327,7 @@ export default function RolePermissions() {
       .filter(roles => roles.includes(role)).length;
   }
 
-  if (loading) return <p className="text-gray-500">Loading permissions...</p>;
+  if (loading) return <p className="text-muted-foreground">Loading permissions...</p>;
 
   return (
     <div className="space-y-6">
@@ -336,23 +336,23 @@ export default function RolePermissions() {
         {!resetAllConfirm ? (
           <button
             onClick={() => setResetAllConfirm(true)}
-            className="px-3 py-1.5 text-xs text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 rounded transition"
+            className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-border hover:border-border/80 rounded transition"
           >
             Reset All Roles
           </button>
         ) : (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-red-400">Reset all to defaults?</span>
+            <span className="text-xs text-red-600 dark:text-red-400">Reset all to defaults?</span>
             <button
               onClick={handleResetAll}
               disabled={saving}
-              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded text-xs font-medium transition"
+              className="px-3 py-1.5 bg-destructive hover:bg-destructive/90 disabled:opacity-50 rounded text-xs font-medium text-destructive-foreground transition"
             >
               Confirm
             </button>
             <button
               onClick={() => setResetAllConfirm(false)}
-              className="px-3 py-1.5 text-xs text-gray-400 hover:text-white transition"
+              className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition"
             >
               Cancel
             </button>
@@ -360,17 +360,17 @@ export default function RolePermissions() {
         )}
       </div>
 
-      {error && <p className="text-red-400 text-sm">{error}</p>}
-      {success && <p className="text-green-400 text-sm">{success}</p>}
+      {error && <p className="text-destructive text-sm">{error}</p>}
+      {success && <p className="text-green-600 dark:text-green-400 text-sm">{success}</p>}
 
       {/* Company selector */}
       {hasCompanies && (
         <div className="flex items-center gap-3">
-          <label className="text-sm text-gray-400">Company:</label>
+          <label className="text-sm text-muted-foreground">Company:</label>
           <select
             value={selectedCompany ?? ''}
             onChange={(e) => handleCompanyChange(e.target.value ? Number(e.target.value) : null)}
-            className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+            className="bg-card border border-border rounded-lg px-3 py-2 text-sm focus:border-ring focus:outline-none"
           >
             <option value="">All Companies (account-wide)</option>
             {companies.map((c) => {
@@ -388,8 +388,8 @@ export default function RolePermissions() {
           {selectedCompany !== null && (
             <span className={`text-xs px-2 py-0.5 rounded ${
               hasCompanyOverride
-                ? 'bg-yellow-500/20 text-yellow-400'
-                : 'bg-gray-700/50 text-gray-500'
+                ? 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400'
+                : 'bg-muted/50 text-muted-foreground'
             }`}>
               {hasCompanyOverride ? 'Company Override' : 'Inherited'}
             </span>
@@ -398,7 +398,7 @@ export default function RolePermissions() {
       )}
 
       {/* Role selector tabs */}
-      <div className="flex gap-1 bg-gray-900 border border-gray-800 rounded-xl p-1">
+      <div className="flex gap-1 bg-card border border-border rounded-xl p-1">
         {ROLES.map((role) => {
           const oc = overrideCount(role);
           return (
@@ -407,13 +407,13 @@ export default function RolePermissions() {
               onClick={() => handleRoleChange(role)}
               className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition relative ${
                 selectedRole === role
-                  ? 'bg-gray-700 text-white'
-                  : 'text-gray-400 hover:text-white'
+                  ? 'bg-muted/80 text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               {ROLE_LABELS[role]}
               {oc > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 text-black text-[10px] rounded-full flex items-center justify-center font-bold">
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 text-background text-[10px] rounded-full flex items-center justify-center font-bold">
                   {oc}
                 </span>
               )}
@@ -427,7 +427,7 @@ export default function RolePermissions() {
         {PERM_GROUPS.map((group) => (
           <section
             key={group.title}
-            className="bg-gray-900 border border-gray-800 rounded-xl p-5"
+            className="bg-card border border-border rounded-xl p-5"
           >
             <h3 className="font-semibold mb-3 flex items-center gap-2">
               <span>{group.icon}</span>
@@ -446,7 +446,7 @@ export default function RolePermissions() {
                   return (
                     <div
                       key={flag.allKey}
-                      className="flex items-center justify-between py-1 px-2 rounded hover:bg-gray-800/50"
+                      className="flex items-center justify-between py-1 px-2 rounded hover:bg-muted/50"
                     >
                       <span className="text-sm flex items-center gap-2">
                         {flag.label}
@@ -454,17 +454,17 @@ export default function RolePermissions() {
                           <span className="text-[10px] text-yellow-500/70 uppercase tracking-wider">custom</span>
                         )}
                         {selectedCompany !== null && scope !== acctScope && !isChanged && (
-                          <span className="text-[10px] text-blue-400/70 uppercase tracking-wider">override</span>
+                          <span className="text-[10px] text-primary/70 uppercase tracking-wider">override</span>
                         )}
                       </span>
-                      <div className="flex rounded-lg overflow-hidden border border-gray-700">
+                      <div className="flex rounded-lg overflow-hidden border border-border">
                         {SCOPE_OPTIONS.map((opt) => (
                           <button
                             key={opt.value}
                             type="button"
                             onClick={() => setScope(flag.allKey, flag.ownKey, opt.value)}
                             className={`px-2.5 py-1 text-xs font-medium transition ${
-                              scope === opt.value ? opt.active : 'bg-gray-800 text-gray-500 hover:text-gray-300'
+                              scope === opt.value ? opt.active : 'bg-muted text-muted-foreground hover:text-foreground/80'
                             }`}
                           >
                             {opt.label}
@@ -481,7 +481,7 @@ export default function RolePermissions() {
                 return (
                   <label
                     key={flag.key}
-                    className="flex items-center justify-between py-1 px-2 rounded hover:bg-gray-800/50 cursor-pointer group"
+                    className="flex items-center justify-between py-1 px-2 rounded hover:bg-muted/50 cursor-pointer group"
                   >
                     <span className="text-sm flex items-center gap-2">
                       {flag.label}
@@ -489,7 +489,7 @@ export default function RolePermissions() {
                         <span className="text-[10px] text-yellow-500/70 uppercase tracking-wider">custom</span>
                       )}
                       {selectedCompany !== null && differsFromAccountWide && !isChanged && (
-                        <span className="text-[10px] text-blue-400/70 uppercase tracking-wider">override</span>
+                        <span className="text-[10px] text-primary/70 uppercase tracking-wider">override</span>
                       )}
                     </span>
                     <div className="relative">
@@ -499,8 +499,8 @@ export default function RolePermissions() {
                         checked={enabled}
                         onChange={() => toggleFlag(flag.key)}
                       />
-                      <div className="w-9 h-5 bg-gray-700 rounded-full peer-checked:bg-blue-600 transition-colors" />
-                      <div className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow peer-checked:translate-x-4 transition-transform" />
+                      <div className="w-9 h-5 bg-muted rounded-full peer-checked:bg-primary transition-colors" />
+                      <div className="absolute top-0.5 left-0.5 w-4 h-4 bg-background rounded-full shadow peer-checked:translate-x-4 transition-transform" />
                     </div>
                   </label>
                 );
@@ -511,13 +511,13 @@ export default function RolePermissions() {
       </div>
 
       {/* Action bar */}
-      <div className="flex items-center justify-between bg-gray-900 border border-gray-800 rounded-xl p-4">
+      <div className="flex items-center justify-between bg-card border border-border rounded-xl p-4">
         <div className="flex items-center gap-3">
           {selectedCompany === null && isCustomized && (
             <button
               onClick={handleReset}
               disabled={saving}
-              className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 rounded-lg transition disabled:opacity-50"
+              className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border hover:border-border/80 rounded-lg transition disabled:opacity-50"
             >
               Reset {ROLE_LABELS[selectedRole]} to Defaults
             </button>
@@ -527,23 +527,23 @@ export default function RolePermissions() {
               <button
                 onClick={() => setDeleteOverrideConfirm(true)}
                 disabled={saving}
-                className="px-4 py-2 text-sm text-red-400 hover:text-red-300 border border-red-800 hover:border-red-600 rounded-lg transition disabled:opacity-50"
+                className="px-4 py-2 text-sm text-destructive hover:text-destructive/80 border border-destructive/40 hover:border-red-600 rounded-lg transition disabled:opacity-50"
               >
                 Remove Override
               </button>
             ) : (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-red-400">Remove company override?</span>
+                <span className="text-xs text-red-600 dark:text-red-400">Remove company override?</span>
                 <button
                   onClick={handleDeleteOverride}
                   disabled={saving}
-                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded text-xs font-medium transition"
+                  className="px-3 py-1.5 bg-destructive hover:bg-destructive/90 disabled:opacity-50 rounded text-xs font-medium text-destructive-foreground transition"
                 >
                   Confirm
                 </button>
                 <button
                   onClick={() => setDeleteOverrideConfirm(false)}
-                  className="px-3 py-1.5 text-xs text-gray-400 hover:text-white transition"
+                  className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition"
                 >
                   Cancel
                 </button>
@@ -554,7 +554,7 @@ export default function RolePermissions() {
         <button
           onClick={handleSave}
           disabled={!hasChanges || saving}
-          className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm font-medium transition"
+          className="px-6 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-lg text-sm font-medium transition"
         >
           {saving ? 'Saving...' : selectedCompany !== null ? 'Save Company Override' : 'Save Changes'}
         </button>

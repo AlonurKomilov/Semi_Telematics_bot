@@ -1,4 +1,19 @@
 import { useState, useMemo } from 'react';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+  flexRender,
+  type ColumnDef,
+  type SortingState,
+} from '@tanstack/react-table';
+import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { Input } from './ui/input';
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from './ui/table';
+import { cn } from '../lib/utils';
 import type { AnyColumn } from '../types';
 
 interface DataTableProps {
@@ -9,89 +24,119 @@ interface DataTableProps {
 }
 
 export default function DataTable({ columns, data, onRowClick, searchKey }: DataTableProps) {
-  const [sortCol, setSortCol] = useState<string | null>(null);
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-  const [search, setSearch] = useState('');
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [globalFilter, setGlobalFilter] = useState('');
 
-  const filtered = useMemo(() => {
-    if (!search || !searchKey) return data;
-    const q = search.toLowerCase();
-    return data.filter((row) => {
-      const val = row[searchKey];
-      return val && String(val).toLowerCase().includes(q);
-    });
-  }, [data, search, searchKey]);
+  const tableColumns = useMemo<ColumnDef<Record<string, unknown>>[]>(
+    () =>
+      columns.map((col) => ({
+        id: col.key,
+        accessorKey: col.key,
+        header: col.label,
+        enableSorting: col.sortable !== false,
+        cell: ({ getValue, row }) =>
+          col.render
+            ? col.render(getValue(), row.original)
+            : (getValue() as React.ReactNode) ?? '—',
+      })),
+    [columns],
+  );
 
-  const sorted = useMemo(() => {
-    if (!sortCol) return filtered;
-    return [...filtered].sort((a, b) => {
-      const av = (a[sortCol] as unknown) ?? '';
-      const bv = (b[sortCol] as unknown) ?? '';
-      if (typeof av === 'number' && typeof bv === 'number') {
-        return sortDir === 'asc' ? av - bv : bv - av;
-      }
-      const cmp = String(av).localeCompare(String(bv));
-      return sortDir === 'asc' ? cmp : -cmp;
-    });
-  }, [filtered, sortCol, sortDir]);
+  const table = useReactTable({
+    data,
+    columns: tableColumns,
+    state: {
+      sorting,
+      globalFilter: searchKey ? globalFilter : undefined,
+    },
+    onSortingChange: setSorting,
+    onGlobalFilterChange: setGlobalFilter,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    globalFilterFn: searchKey
+      ? (row, _colId, filterValue) => {
+          const val = row.original[searchKey];
+          return val
+            ? String(val).toLowerCase().includes(String(filterValue).toLowerCase())
+            : false;
+        }
+      : undefined,
+  });
 
-  const toggleSort = (key: string) => {
-    if (sortCol === key) {
-      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortCol(key);
-      setSortDir('asc');
-    }
-  };
+  const rowCount = table.getRowModel().rows.length;
 
   return (
     <div>
       {searchKey && (
-        <input
-          type="text"
+        <Input
           placeholder="Search..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="mb-3 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm w-full max-w-xs focus:outline-none focus:border-blue-500"
+          value={globalFilter}
+          onChange={(e) => setGlobalFilter(e.target.value)}
+          className="mb-3 max-w-xs"
         />
       )}
-      <div className="overflow-x-auto rounded-lg border border-gray-800">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-900 text-gray-400 text-left">
-              {columns.map((col) => (
-                <th
-                  key={col.key}
-                  onClick={() => col.sortable !== false && toggleSort(col.key)}
-                  className={`px-4 py-3 font-medium ${col.sortable !== false ? 'cursor-pointer hover:text-white select-none' : ''}`}
-                >
-                  {col.label}
-                  {sortCol === col.key && (sortDir === 'asc' ? ' ↑' : ' ↓')}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.length === 0 && (
-              <tr><td colSpan={columns.length} className="px-4 py-8 text-center text-gray-500">No data</td></tr>
-            )}
-            {sorted.map((row, i) => (
-              <tr
-                key={(row.id as string) || i}
-                onClick={() => onRowClick?.(row)}
-                className={`border-t border-gray-800 ${onRowClick ? 'cursor-pointer hover:bg-gray-800/50' : ''}`}
-              >
-                {columns.map((col) => (
-                  <td key={col.key} className="px-4 py-3">
-                    {col.render ? col.render(row[col.key], row) : (row[col.key] as React.ReactNode) ?? '—'}
-                  </td>
-                ))}
-              </tr>
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id} className="bg-card hover:bg-card">
+                {headerGroup.headers.map((header) => {
+                  const canSort = header.column.getCanSort();
+                  const sorted = header.column.getIsSorted();
+                  return (
+                    <TableHead
+                      key={header.id}
+                      onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+                      className={cn(
+                        'text-muted-foreground font-medium',
+                        canSort && 'cursor-pointer select-none hover:text-foreground',
+                      )}
+                    >
+                      <div className="flex items-center gap-1">
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        {canSort && (
+                          sorted === 'asc'  ? <ChevronUp size={14} /> :
+                          sorted === 'desc' ? <ChevronDown size={14} /> :
+                          <ChevronsUpDown size={14} className="opacity-30" />
+                        )}
+                      </div>
+                    </TableHead>
+                  );
+                })}
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableHeader>
+          <TableBody>
+            {rowCount === 0 ? (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="py-8 text-center text-muted-foreground">
+                  No data
+                </TableCell>
+              </TableRow>
+            ) : (
+              table.getRowModel().rows.map((row) => (
+                <TableRow
+                  key={row.id}
+                  onClick={() => onRowClick?.(row.original)}
+                  className={onRowClick ? 'cursor-pointer' : ''}
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
       </div>
-      <p className="text-xs text-gray-500 mt-2">{sorted.length} row{sorted.length !== 1 && 's'}</p>
+      <p className="text-xs text-muted-foreground mt-2">
+        {rowCount} row{rowCount !== 1 && 's'}
+      </p>
     </div>
   );
 }
+
+

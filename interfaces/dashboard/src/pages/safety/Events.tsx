@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import type { ElementType } from 'react';
+import { AlertTriangle, Zap, RotateCcw, MoveHorizontal, Truck, OctagonX, TrendingUp } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataTable from '../../components/DataTable';
 import type { SafetyEvent, SafetyEventsResponse, EventsSummary, AnyColumn } from '../../types';
@@ -6,21 +8,39 @@ import type { SafetyEvent, SafetyEventsResponse, EventsSummary, AnyColumn } from
 const EVENT_TYPES = ['all', 'crash', 'braking', 'harshTurn', 'laneDeparture', 'followingDistance', 'rollingStop', 'acceleration'] as const;
 
 const SEVERITY_COLORS: Record<string, string> = {
-  severe: 'bg-red-500/20 text-red-400',
-  harsh: 'bg-orange-500/20 text-orange-400',
-  moderate: 'bg-yellow-500/20 text-yellow-400',
-  mild: 'bg-gray-500/20 text-gray-400',
+  severe: 'bg-red-500/15 text-red-700 dark:text-red-400',
+  harsh: 'bg-orange-500/15 text-orange-700 dark:text-orange-400',
+  moderate: 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400',
+  mild: 'bg-gray-500/20 text-muted-foreground',
 };
 
-const TYPE_ICONS: Record<string, string> = {
-  crash: '💥',
-  braking: '🛑',
-  harshTurn: '🔄',
-  laneDeparture: '↔️',
-  followingDistance: '🚗',
-  rollingStop: '↩️',
-  acceleration: '🏎️',
+type EventIconKey = 'crash' | 'braking' | 'harshTurn' | 'laneDeparture' | 'followingDistance' | 'rollingStop' | 'acceleration';
+
+const TYPE_ICON_COMPONENTS: Record<EventIconKey, ElementType> = {
+  crash:           AlertTriangle,
+  braking:         OctagonX,
+  harshTurn:       RotateCcw,
+  laneDeparture:   MoveHorizontal,
+  followingDistance: Truck,
+  rollingStop:     Zap,
+  acceleration:    TrendingUp,
 };
+
+const TYPE_ICON_COLORS: Record<EventIconKey, string> = {
+  crash:           'text-red-500',
+  braking:         'text-orange-500',
+  harshTurn:       'text-yellow-500',
+  laneDeparture:   'text-blue-500',
+  followingDistance: 'text-purple-500',
+  rollingStop:     'text-cyan-500',
+  acceleration:    'text-green-500',
+};
+
+function EventIcon({ type, size = 14 }: { type: string; size?: number }) {
+  const Icon = TYPE_ICON_COMPONENTS[type as EventIconKey] ?? AlertTriangle;
+  const color = TYPE_ICON_COLORS[type as EventIconKey] ?? 'text-muted-foreground';
+  return <Icon size={size} className={`inline-block shrink-0 ${color}`} />;
+}
 
 function SeverityBadge({ severity }: { severity: string }) {
   const cls = SEVERITY_COLORS[severity] || SEVERITY_COLORS.mild;
@@ -32,7 +52,10 @@ const columns: AnyColumn[] = [
     key: 'event_type',
     label: 'Event',
     render: (v) => (
-      <span>{TYPE_ICONS[v as string] || '⚠️'} <span className="capitalize">{(v as string).replace(/([A-Z])/g, ' $1').trim()}</span></span>
+      <span className="flex items-center gap-1.5">
+        <EventIcon type={v as string} />
+        <span className="capitalize">{(v as string).replace(/([A-Z])/g, ' $1').trim()}</span>
+      </span>
     ),
   },
   {
@@ -60,11 +83,11 @@ const columns: AnyColumn[] = [
     label: 'Video',
     render: (v) =>
       v ? (
-        <a href={v as string} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+        <a href={v as string} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
           View
         </a>
       ) : (
-        <span className="text-gray-600">—</span>
+        <span className="text-muted-foreground">—</span>
       ),
   },
 ];
@@ -93,7 +116,7 @@ export default function Events() {
       .finally(() => setLoading(false));
   }, [days, typeFilter, driverSearch]);
 
-  if (error && events.length === 0) return <p className="text-red-400">{error}</p>;
+  if (error && events.length === 0) return <p className="text-destructive">{error}</p>;
 
   return (
     <div>
@@ -102,7 +125,7 @@ export default function Events() {
         <select
           value={days}
           onChange={(e) => setDays(Number(e.target.value))}
-          className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-300"
+          className="bg-muted border border-border rounded px-3 py-2 text-sm text-foreground/80"
         >
           {[7, 14, 30].map((d) => (
             <option key={d} value={d}>{d} days</option>
@@ -113,13 +136,13 @@ export default function Events() {
       {/* Summary cards */}
       <div className="grid grid-cols-5 gap-3 mb-6">
         {Object.entries(summary.by_severity).map(([sev, count]) => (
-          <div key={sev} className="bg-gray-900 border border-gray-800 rounded-lg p-3">
-            <p className="text-xs text-gray-400 capitalize">{sev}</p>
+          <div key={sev} className="bg-card border border-border rounded-lg p-3">
+            <p className="text-xs text-muted-foreground capitalize">{sev}</p>
             <p className="text-xl font-bold">{count}</p>
           </div>
         ))}
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
-          <p className="text-xs text-gray-400">Total</p>
+        <div className="bg-card border border-border rounded-lg p-3">
+          <p className="text-xs text-muted-foreground">Total</p>
           <p className="text-xl font-bold">{events.length}</p>
         </div>
       </div>
@@ -132,10 +155,11 @@ export default function Events() {
             .map(([t, count]) => (
               <span
                 key={t}
-                className="bg-gray-800 text-gray-300 px-2.5 py-1 rounded text-xs cursor-pointer hover:bg-gray-700"
+                className="inline-flex items-center gap-1.5 bg-muted text-foreground/80 px-2.5 py-1 rounded text-xs cursor-pointer hover:bg-muted/80"
                 onClick={() => setTypeFilter(t === typeFilter ? 'all' : t)}
               >
-                {TYPE_ICONS[t] || '⚠️'} {t.replace(/([A-Z])/g, ' $1').trim()} ({count})
+                <EventIcon type={t} size={12} />
+                {t.replace(/([A-Z])/g, ' $1').trim()} ({count})
               </span>
             ))}
         </div>
@@ -149,7 +173,7 @@ export default function Events() {
               key={t}
               onClick={() => setTypeFilter(t)}
               className={`text-xs px-2.5 py-1 rounded capitalize whitespace-nowrap ${
-                typeFilter === t ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                typeFilter === t ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'
               }`}
             >
               {t === 'all' ? 'All' : t.replace(/([A-Z])/g, ' $1').trim()}
@@ -161,12 +185,12 @@ export default function Events() {
           placeholder="Filter by driver..."
           value={driverSearch}
           onChange={(e) => setDriverSearch(e.target.value)}
-          className="bg-gray-800 border border-gray-700 rounded px-2.5 py-1 text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500 w-48"
+          className="bg-muted border border-border rounded px-2.5 py-1 text-sm placeholder-muted-foreground focus:outline-none focus:border-ring w-48"
         />
       </div>
 
       {loading ? (
-        <p className="text-gray-500">Loading...</p>
+        <p className="text-muted-foreground">Loading...</p>
       ) : (
         <DataTable
           columns={columns}
@@ -175,7 +199,7 @@ export default function Events() {
         />
       )}
 
-      <p className="text-xs text-gray-500 mt-2">{events.length} event{events.length !== 1 ? 's' : ''}</p>
+      <p className="text-xs text-muted-foreground mt-2">{events.length} event{events.length !== 1 ? 's' : ''}</p>
     </div>
   );
 }

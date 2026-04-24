@@ -93,30 +93,30 @@ export default function Subscriptions() {
     }
   }
 
-  if (loading) return <p className="text-gray-500">Loading...</p>;
+  if (loading) return <p className="text-muted-foreground">Loading...</p>;
 
   return (
     <div className="max-w-xl">
       <h1 className="text-2xl font-bold mb-6">📬 Report Subscriptions</h1>
 
-      {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
-      {success && <p className="text-green-400 text-sm mb-3">{success}</p>}
+      {error && <p className="text-destructive text-sm mb-3">{error}</p>}
+      {success && <p className="text-green-600 dark:text-green-400 text-sm mb-3">{success}</p>}
 
       {sub && (
-        <div className="bg-gray-800 rounded-lg p-4 mb-6 flex items-center justify-between">
+        <div className="bg-muted rounded-lg p-4 mb-6 flex items-center justify-between">
           <div>
-            <p className="text-sm text-gray-300">
-              Currently subscribed: <span className="font-medium text-white">{REPORT_TYPES[sub.report_type] || sub.report_type}</span>{' '}
+            <p className="text-sm text-foreground/80">
+              Currently subscribed: <span className="font-medium text-foreground">{REPORT_TYPES[sub.report_type] || sub.report_type}</span>{' '}
               — {sub.frequency} at {fmtHour(sub.send_hour)} ({sub.timezone})
             </p>
           </div>
-          <button onClick={unsubscribe} className="text-red-400 hover:text-red-300 text-sm">Unsubscribe</button>
+          <button onClick={unsubscribe} className="text-destructive hover:text-destructive/80 text-sm">Unsubscribe</button>
         </div>
       )}
 
       <div className="space-y-4">
         <div>
-          <label className="block text-sm text-gray-400 mb-1">Report Type</label>
+          <label className="block text-sm text-muted-foreground mb-1">Report Type</label>
           <div className="grid grid-cols-2 gap-2">
             {Object.entries(REPORT_TYPES).map(([val, label]) => (
               <button
@@ -124,8 +124,8 @@ export default function Subscriptions() {
                 onClick={() => setReportType(val)}
                 className={`px-3 py-2 rounded-lg text-sm text-left transition-colors border ${
                   reportType === val
-                    ? 'bg-blue-600/20 border-blue-500 text-blue-300'
-                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
+                    ? 'bg-primary/15 border-primary text-primary'
+                    : 'bg-muted border-border text-muted-foreground hover:text-foreground'
                 }`}
               >
                 {label}
@@ -135,7 +135,7 @@ export default function Subscriptions() {
         </div>
 
         <div>
-          <label className="block text-sm text-gray-400 mb-1">Frequency</label>
+          <label className="block text-sm text-muted-foreground mb-1">Frequency</label>
           <div className="flex gap-2">
             {FREQUENCIES.map((f) => (
               <button
@@ -143,8 +143,8 @@ export default function Subscriptions() {
                 onClick={() => setFrequency(f)}
                 className={`px-4 py-2 rounded-lg text-sm capitalize transition-colors border ${
                   frequency === f
-                    ? 'bg-blue-600/20 border-blue-500 text-blue-300'
-                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
+                    ? 'bg-primary/15 border-primary text-primary'
+                    : 'bg-muted border-border text-muted-foreground hover:text-foreground'
                 }`}
               >
                 {f}
@@ -155,14 +155,14 @@ export default function Subscriptions() {
 
         <div className="flex gap-4">
           <div className="flex-1">
-            <label className="block text-sm text-gray-400 mb-1">Delivery Hour</label>
-            <select value={sendHour} onChange={(e) => setSendHour(+e.target.value)} className="w-full bg-gray-800 rounded px-3 py-2 text-sm text-gray-100 border border-gray-700">
+            <label className="block text-sm text-muted-foreground mb-1">Delivery Hour</label>
+            <select value={sendHour} onChange={(e) => setSendHour(+e.target.value)} className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border">
               {HOURS.map((h) => <option key={h} value={h}>{fmtHour(h)}</option>)}
             </select>
           </div>
           <div className="flex-1">
-            <label className="block text-sm text-gray-400 mb-1">Timezone</label>
-            <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className="w-full bg-gray-800 rounded px-3 py-2 text-sm text-gray-100 border border-gray-700">
+            <label className="block text-sm text-muted-foreground mb-1">Timezone</label>
+            <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border">
               {COMMON_TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz.replace(/_/g, ' ')}</option>)}
             </select>
           </div>
@@ -171,7 +171,7 @@ export default function Subscriptions() {
         <button
           onClick={save}
           disabled={saving}
-          className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm transition-colors disabled:opacity-50"
+          className="w-full py-3 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-sm transition-colors disabled:opacity-50"
         >
           {saving ? 'Saving...' : sub ? 'Update Subscription' : 'Subscribe'}
         </button>

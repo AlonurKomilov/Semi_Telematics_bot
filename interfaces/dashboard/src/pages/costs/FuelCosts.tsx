@@ -115,7 +115,7 @@ export default function FuelCosts() {
         <h1 className="text-2xl font-bold">Fuel Costs</h1>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition"
+          className="px-4 py-2 bg-primary hover:bg-primary/90 rounded-lg text-sm font-medium transition"
         >
           {showForm ? 'Cancel' : '+ Add Entry'}
         </button>
@@ -123,46 +123,46 @@ export default function FuelCosts() {
 
       {/* Add form */}
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6 grid grid-cols-5 gap-3">
+        <form onSubmit={handleSubmit} className="bg-card border border-border rounded-xl p-4 mb-6 grid grid-cols-5 gap-3">
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Vehicle</label>
+            <label className="block text-xs text-muted-foreground mb-1">Vehicle</label>
             <input
               type="text" required value={fVehicle} onChange={(e) => setFVehicle(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Gallons</label>
+            <label className="block text-xs text-muted-foreground mb-1">Gallons</label>
             <input
               type="number" step="0.1" min="0" required value={fGallons} onChange={(e) => setFGallons(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">$/Gallon</label>
+            <label className="block text-xs text-muted-foreground mb-1">$/Gallon</label>
             <input
               type="number" step="0.001" min="0" required value={fPrice} onChange={(e) => setFPrice(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Odometer</label>
+            <label className="block text-xs text-muted-foreground mb-1">Odometer</label>
             <input
               type="number" step="1" min="0" required value={fOdo} onChange={(e) => setFOdo(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
             />
           </div>
           <div className="flex items-end gap-2">
             <div className="flex-1">
-              <label className="block text-xs text-gray-400 mb-1">Date</label>
+              <label className="block text-xs text-muted-foreground mb-1">Date</label>
               <input
                 type="date" required value={fDate} max={today()} onChange={(e) => setFDate(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+                className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
               />
             </div>
             <button
               type="submit" disabled={saving}
-              className="px-4 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded text-sm font-medium transition whitespace-nowrap"
+              className="px-4 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded text-sm font-medium text-foreground transition whitespace-nowrap"
             >
               {saving ? 'Saving...' : 'Save'}
             </button>
@@ -177,7 +177,7 @@ export default function FuelCosts() {
             key={t}
             onClick={() => setTab(t)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition capitalize ${
-              tab === t ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+              tab === t ? 'bg-muted/80 text-foreground' : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             {t}
@@ -188,16 +188,16 @@ export default function FuelCosts() {
       {/* Summary cards (summary tab) */}
       {tab === 'summary' && summaryData.length > 0 && (
         <div className="grid grid-cols-3 gap-4 mb-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <p className="text-xs text-gray-400">Total Spent</p>
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs text-muted-foreground">Total Spent</p>
             <p className="text-xl font-bold">${fleetCost.toLocaleString()}</p>
           </div>
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <p className="text-xs text-gray-400">Total Gallons</p>
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs text-muted-foreground">Total Gallons</p>
             <p className="text-xl font-bold">{fleetGallons.toLocaleString()}</p>
           </div>
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <p className="text-xs text-gray-400">Avg $/Gallon</p>
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs text-muted-foreground">Avg $/Gallon</p>
             <p className="text-xl font-bold">
               ${fleetGallons > 0 ? (fleetCost / fleetGallons).toFixed(3) : '—'}
             </p>
@@ -205,10 +205,10 @@ export default function FuelCosts() {
         </div>
       )}
 
-      {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
+      {error && <p className="text-destructive text-sm mb-3">{error}</p>}
 
       {loading ? (
-        <p className="text-gray-500">Loading...</p>
+        <p className="text-muted-foreground">Loading...</p>
       ) : (
         <DataTable
           columns={tab === 'entries' ? entryCols : summaryCols}

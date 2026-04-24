@@ -201,14 +201,14 @@ export default function KnowledgeBase() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">📚 Knowledge Base</h1>
-          <p className="text-sm text-gray-400 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             Tips, guides &amp; documentation for your fleet team
           </p>
         </div>
         {canManage && (
           <button
             onClick={() => { resetForm(); setShowForm(true); }}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+            className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg transition-colors"
           >
             + New Article
           </button>
@@ -216,9 +216,9 @@ export default function KnowledgeBase() {
       </div>
 
       {error && (
-        <div className="p-3 bg-red-900/30 border border-red-800 rounded-lg text-sm text-red-400">
+        <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive">
           {error}
-          <button onClick={() => setError('')} className="ml-2 text-red-300 hover:text-white">✕</button>
+          <button onClick={() => setError('')} className="ml-2 text-destructive/60 hover:text-destructive">✕</button>
         </div>
       )}
 
@@ -227,7 +227,7 @@ export default function KnowledgeBase() {
         <select
           value={catFilter}
           onChange={(e) => setCatFilter(e.target.value)}
-          className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white"
+          className="px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
         >
           <option value="">All Categories</option>
           {categories.map((c) => (
@@ -241,11 +241,11 @@ export default function KnowledgeBase() {
             placeholder="Search articles..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 w-56"
+            className="px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground w-56"
           />
           <button
             type="submit"
-            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors"
+            className="px-3 py-2 bg-muted hover:bg-muted/80 text-foreground text-sm rounded-lg transition-colors"
           >
             🔍
           </button>
@@ -253,44 +253,44 @@ export default function KnowledgeBase() {
             <button
               type="button"
               onClick={() => { setSearch(''); setSearchInput(''); }}
-              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded-lg"
+              className="px-3 py-2 bg-muted hover:bg-muted/80 text-foreground/80 text-sm rounded-lg"
             >
               ✕ Clear
             </button>
           )}
         </form>
 
-        <span className="text-sm text-gray-500 ml-auto">
+        <span className="text-sm text-muted-foreground ml-auto">
           {articles.length} article{articles.length !== 1 ? 's' : ''}
         </span>
       </div>
 
       {/* Create / Edit Form */}
       {showForm && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-4">
+        <div className="bg-card border border-border rounded-xl p-6 space-y-4">
           <h2 className="text-lg font-semibold">
             {editing ? 'Edit Article' : 'New Article'}
           </h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Title *</label>
+                <label className="block text-xs text-muted-foreground mb-1">Title *</label>
                 <input
                   type="text"
                   value={fTitle}
                   onChange={(e) => setFTitle(e.target.value)}
                   required
                   maxLength={200}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white"
+                  className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
                   placeholder="How to check battery voltage on Freightliner"
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Category</label>
+                <label className="block text-xs text-muted-foreground mb-1">Category</label>
                 <select
                   value={fCategory}
                   onChange={(e) => setFCategory(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white"
+                  className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
                 >
                   {categories.map((c) => (
                     <option key={c.key} value={c.key}>{c.label}</option>
@@ -300,23 +300,23 @@ export default function KnowledgeBase() {
             </div>
 
             <div>
-              <label className="block text-xs text-gray-400 mb-1">Description</label>
+              <label className="block text-xs text-muted-foreground mb-1">Description</label>
               <textarea
                 value={fDesc}
                 onChange={(e) => setFDesc(e.target.value)}
                 rows={4}
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white resize-y"
+                className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground resize-y"
                 placeholder="Step-by-step guide, notes, or detailed description..."
               />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Media Type</label>
+                <label className="block text-xs text-muted-foreground mb-1">Media Type</label>
                 <select
                   value={fMediaType}
                   onChange={(e) => setFMediaType(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white"
+                  className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
                 >
                   {MEDIA_TYPES.map((m) => (
                     <option key={m.value} value={m.value}>{m.label}</option>
@@ -324,12 +324,12 @@ export default function KnowledgeBase() {
                 </select>
               </div>
               <div className="md:col-span-2">
-                <label className="block text-xs text-gray-400 mb-1">Media URL</label>
+                <label className="block text-xs text-muted-foreground mb-1">Media URL</label>
                 <input
                   type="url"
                   value={fMediaUrl}
                   onChange={(e) => setFMediaUrl(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white"
+                  className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
                   placeholder="https://youtube.com/watch?v=... or PDF link"
                 />
               </div>
@@ -337,21 +337,21 @@ export default function KnowledgeBase() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Tags (comma separated)</label>
+                <label className="block text-xs text-muted-foreground mb-1">Tags (comma separated)</label>
                 <input
                   type="text"
                   value={fTags}
                   onChange={(e) => setFTags(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white"
+                  className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
                   placeholder="freightliner, battery, electrical"
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Visibility</label>
+                <label className="block text-xs text-muted-foreground mb-1">Visibility</label>
                 <select
                   value={fVisibility}
                   onChange={(e) => setFVisibility(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white"
+                  className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
                 >
                   {VISIBILITY_OPTIONS.map((v) => (
                     <option key={v.value} value={v.value}>{v.label}</option>
@@ -360,11 +360,11 @@ export default function KnowledgeBase() {
               </div>
               {fVisibility === 'public' ? (
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1">Target Role</label>
+                  <label className="block text-xs text-muted-foreground mb-1">Target Role</label>
                   <select
                     value={fTargetRole}
                     onChange={(e) => setFTargetRole(e.target.value)}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white"
+                    className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
                   >
                     {TARGET_ROLE_OPTIONS.map((v) => (
                       <option key={v.value} value={v.value}>{v.label}</option>
@@ -373,12 +373,12 @@ export default function KnowledgeBase() {
                 </div>
               ) : (
                 <div className="flex items-end">
-                  <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                  <label className="flex items-center gap-2 text-sm text-foreground/80 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={fPinned}
                       onChange={(e) => setFPinned(e.target.checked)}
-                      className="rounded border-gray-600"
+                      className="rounded border-border"
                     />
                     📌 Pin this article
                   </label>
@@ -388,12 +388,12 @@ export default function KnowledgeBase() {
 
             {fVisibility === 'public' && (
               <div className="flex items-center gap-2">
-                <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                <label className="flex items-center gap-2 text-sm text-foreground/80 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={fPinned}
                     onChange={(e) => setFPinned(e.target.checked)}
-                    className="rounded border-gray-600"
+                    className="rounded border-border"
                   />
                   📌 Pin this article
                 </label>
@@ -401,7 +401,7 @@ export default function KnowledgeBase() {
             )}
 
             {fVisibility === 'public' && (
-              <div className="p-3 bg-yellow-900/20 border border-yellow-800/50 rounded-lg text-sm text-yellow-400">
+              <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-sm text-yellow-700 dark:text-yellow-400">
                 ⚠️ Public articles require admin approval before they become visible to other companies.
                 Only HTTPS links are allowed for security.
               </div>
@@ -411,14 +411,14 @@ export default function KnowledgeBase() {
               <button
                 type="submit"
                 disabled={saving || !fTitle.trim()}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+                className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground text-sm font-medium rounded-lg transition-colors"
               >
                 {saving ? 'Saving...' : editing ? 'Update' : 'Create'}
               </button>
               <button
                 type="button"
                 onClick={resetForm}
-                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded-lg transition-colors"
+                className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground/80 text-sm rounded-lg transition-colors"
               >
                 Cancel
               </button>
@@ -429,11 +429,11 @@ export default function KnowledgeBase() {
 
       {/* Articles list */}
       {loading ? (
-        <div className="text-center py-12 text-gray-500">Loading...</div>
+        <div className="text-center py-12 text-muted-foreground">Loading...</div>
       ) : articles.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-gray-500 text-lg">No articles yet</p>
-          <p className="text-gray-600 text-sm mt-2">
+          <p className="text-muted-foreground text-lg">No articles yet</p>
+          <p className="text-muted-foreground text-sm mt-2">
             {canManage
               ? 'Click "New Article" to add tips, guides, and documentation for your team.'
               : 'Your admin can add helpful tips and guides here.'}
@@ -444,7 +444,7 @@ export default function KnowledgeBase() {
           {articles.map((a) => (
             <div
               key={a.id}
-              className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden hover:border-gray-700 transition-colors"
+              className="bg-card border border-border rounded-xl overflow-hidden hover:border-border transition-colors"
             >
               {/* Article header — clickable */}
               <button
@@ -455,48 +455,48 @@ export default function KnowledgeBase() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     {!!a.pinned && <span className="text-xs">📌</span>}
-                    <span className="font-medium text-white truncate">{a.title}</span>
+                    <span className="font-medium text-foreground truncate">{a.title}</span>
                   </div>
-                  <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                  <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                     <span>{getCatLabel(a.category)}</span>
                     {a.visibility === 'public' ? (
                       a.approved ? (
-                        <span className="px-1.5 py-0.5 bg-green-900/30 border border-green-800/50 rounded text-green-400">
+                        <span className="px-1.5 py-0.5 bg-green-500/10 border border-green-500/30 rounded text-green-700 dark:text-green-400">
                           🌐 Public{a.target_role && a.target_role !== 'all' ? ` · ${a.target_role}` : ''}
                         </span>
                       ) : (
-                        <span className="px-1.5 py-0.5 bg-yellow-900/30 border border-yellow-800/50 rounded text-yellow-400">
+                        <span className="px-1.5 py-0.5 bg-yellow-500/10 border border-yellow-500/30 rounded text-yellow-700 dark:text-yellow-400">
                           ⏳ Pending Approval
                         </span>
                       )
                     ) : (
-                      <span className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-400">
+                      <span className="px-1.5 py-0.5 bg-muted border border-border rounded text-muted-foreground">
                         🔒 Private
                       </span>
                     )}
                     <span>{new Date(a.created_at).toLocaleDateString()}</span>
                     {a.creator_name && (
-                      <span className="text-gray-600">by {a.creator_name}</span>
+                      <span className="text-muted-foreground">by {a.creator_name}</span>
                     )}
                   </div>
                 </div>
-                <span className="text-gray-500 text-sm shrink-0">
+                <span className="text-muted-foreground text-sm shrink-0">
                   {expanded === a.id ? '▲' : '▼'}
                 </span>
               </button>
 
               {/* Expanded details */}
               {expanded === a.id && (
-                <div className="border-t border-gray-800 p-4 space-y-3">
+                <div className="border-t border-border p-4 space-y-3">
                   {a.description && (
-                    <p className="text-sm text-gray-300 whitespace-pre-wrap">{a.description}</p>
+                    <p className="text-sm text-foreground/80 whitespace-pre-wrap">{a.description}</p>
                   )}
                   {a.tags && (
                     <div className="flex flex-wrap gap-1.5">
                       {a.tags.split(',').map((tag, i) => (
                         <span
                           key={i}
-                          className="px-2 py-0.5 bg-gray-800 border border-gray-700 rounded-full text-xs text-gray-400"
+                          className="px-2 py-0.5 bg-muted border border-border rounded-full text-xs text-muted-foreground"
                         >
                           #{tag.trim()}
                         </span>
@@ -508,7 +508,7 @@ export default function KnowledgeBase() {
                       href={a.media_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600/20 border border-blue-800/50 rounded-lg text-sm text-blue-400 hover:bg-blue-600/30 transition-colors"
+                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/15 border border-primary/30 rounded-lg text-sm text-primary hover:bg-primary/25 transition-colors"
                     >
                       {mediaIcon(a.media_type)}
                       {a.media_type === 'video' ? 'Watch Video' :
@@ -520,30 +520,30 @@ export default function KnowledgeBase() {
                     <div className="flex gap-2 pt-2">
                       <button
                         onClick={() => openEdit(a)}
-                        className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded transition-colors"
+                        className="px-3 py-1 bg-muted hover:bg-muted/80 text-foreground/80 text-xs rounded transition-colors"
                       >
                         ✏️ Edit
                       </button>
                       <button
                         onClick={() => handleDelete(a.id)}
-                        className="px-3 py-1 bg-red-900/30 hover:bg-red-900/50 border border-red-800/50 text-red-400 text-xs rounded transition-colors"
+                        className="px-3 py-1 bg-destructive/10 hover:bg-destructive/20 border border-destructive/30 text-destructive text-xs rounded transition-colors"
                       >
                         🗑 Delete
                       </button>
                     </div>
                   )}
                   {isAdmin && a.visibility === 'public' && !a.approved && (
-                    <div className="flex gap-2 pt-2 border-t border-gray-800 mt-2">
-                      <span className="text-xs text-yellow-400 self-center mr-2">⚠️ Needs approval:</span>
+                    <div className="flex gap-2 pt-2 border-t border-border mt-2">
+                      <span className="text-xs text-yellow-600 dark:text-yellow-400 self-center mr-2">⚠️ Needs approval:</span>
                       <button
                         onClick={() => handleApprove(a.id)}
-                        className="px-3 py-1 bg-green-900/30 hover:bg-green-900/50 border border-green-800/50 text-green-400 text-xs rounded transition-colors"
+                        className="px-3 py-1 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-700 dark:text-green-400 text-xs rounded transition-colors"
                       >
                         ✅ Approve
                       </button>
                       <button
                         onClick={() => handleReject(a.id)}
-                        className="px-3 py-1 bg-red-900/30 hover:bg-red-900/50 border border-red-800/50 text-red-400 text-xs rounded transition-colors"
+                        className="px-3 py-1 bg-destructive/10 hover:bg-destructive/20 border border-destructive/30 text-destructive text-xs rounded transition-colors"
                       >
                         ❌ Reject
                       </button>

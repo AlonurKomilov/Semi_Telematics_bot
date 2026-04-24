@@ -7,23 +7,23 @@ import type { ParkingEvent, ParkingEventsResponse, AnyColumn } from '../../types
 
 function ClassBadge({ cls }: { cls: string }) {
   const colors: Record<string, string> = {
-    safe:     'bg-green-500/20 text-green-400',
-    geofence: 'bg-green-500/20 text-green-400',
-    unsafe:   'bg-red-500/20 text-red-400',
-    unknown:  'bg-yellow-500/20 text-yellow-400',
+    safe:     'bg-green-500/15 text-green-700 dark:text-green-400',
+    geofence: 'bg-green-500/15 text-green-700 dark:text-green-400',
+    unsafe:   'bg-red-500/15 text-red-700 dark:text-red-400',
+    unknown:  'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400',
   };
-  const c = colors[cls] || 'bg-gray-500/20 text-gray-400';
+  const c = colors[cls] || 'bg-gray-500/20 text-muted-foreground';
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium uppercase ${c}`}>{cls}</span>;
 }
 
 function AlertBadge({ level }: { level: string }) {
   const colors: Record<string, string> = {
-    critical:  'bg-red-500/20 text-red-400',
-    warning:   'bg-orange-500/20 text-orange-400',
-    breakdown: 'bg-purple-500/20 text-purple-400',
-    none:      'bg-gray-500/20 text-gray-500',
+    critical:  'bg-red-500/15 text-red-700 dark:text-red-400',
+    warning:   'bg-orange-500/15 text-orange-700 dark:text-orange-400',
+    breakdown: 'bg-purple-500/15 text-purple-700 dark:text-purple-400',
+    none:      'bg-gray-500/20 text-muted-foreground',
   };
-  const c = colors[level] || 'bg-gray-500/20 text-gray-400';
+  const c = colors[level] || 'bg-gray-500/20 text-muted-foreground';
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium uppercase ${c}`}>{level}</span>;
 }
 
@@ -145,7 +145,7 @@ export default function Parking() {
     }
   }
 
-  if (error && events.length === 0) return <p className="text-red-400">{error}</p>;
+  if (error && events.length === 0) return <p className="text-destructive">{error}</p>;
 
   return (
     <div>
@@ -153,7 +153,7 @@ export default function Parking() {
         <h1 className="text-2xl font-bold">Parking</h1>
         <button
           onClick={fetchEvents}
-          className="text-sm text-gray-400 hover:text-white transition"
+          className="text-sm text-muted-foreground hover:text-foreground transition"
         >
           ↻ Refresh
         </button>
@@ -166,7 +166,7 @@ export default function Parking() {
             key={t}
             onClick={() => setTab(t)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition capitalize ${
-              tab === t ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+              tab === t ? 'bg-muted/80 text-foreground' : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             {t}
@@ -181,15 +181,15 @@ export default function Parking() {
           placeholder="Filter by vehicle..."
           value={vehicleSearch}
           onChange={(e) => setVehicleSearch(e.target.value)}
-          className="bg-gray-800 border border-gray-700 rounded px-2.5 py-1 text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500 w-48"
+          className="bg-muted border border-border rounded px-2.5 py-1 text-sm placeholder-muted-foreground focus:outline-none focus:border-ring w-48"
         />
         {tab === 'active' && (
-          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
             <input
               type="checkbox"
               checked={showAll}
               onChange={(e) => setShowAll(e.target.checked)}
-              className="rounded bg-gray-800 border-gray-700"
+              className="rounded bg-muted border-border"
             />
             Show safe locations
           </label>
@@ -202,7 +202,7 @@ export default function Parking() {
                   key={c}
                   onClick={() => setClassFilter(c)}
                   className={`text-xs px-2.5 py-1 rounded capitalize ${
-                    classFilter === c ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                    classFilter === c ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'
                   }`}
                 >
                   {c}
@@ -212,7 +212,7 @@ export default function Parking() {
             <select
               value={days}
               onChange={(e) => setDays(Number(e.target.value))}
-              className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-gray-300"
+              className="bg-muted border border-border rounded px-2 py-1 text-sm text-foreground/80"
             >
               {[7, 14, 30, 60, 90].map((d) => (
                 <option key={d} value={d}>{d} days</option>
@@ -224,34 +224,34 @@ export default function Parking() {
 
       {/* Content */}
       {loading && events.length === 0 ? (
-        <p className="text-gray-500">Loading...</p>
+        <p className="text-muted-foreground">Loading...</p>
       ) : tab === 'active' ? (
         events.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-muted-foreground">
             <p className="text-lg mb-1">No active parking events</p>
             <p className="text-sm">All vehicles are parked in safe locations or moving</p>
           </div>
         ) : (
           <div className="space-y-3">
             {events.map((ev) => (
-              <div key={ev.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+              <div key={ev.id} className="bg-card border border-border rounded-xl p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-2">
-                      <span className="font-semibold text-white">{ev.vehicle_name}</span>
-                      <span className="text-xs text-gray-500">{ev.company_code}</span>
+                      <span className="font-semibold text-foreground">{ev.vehicle_name}</span>
+                      <span className="text-xs text-muted-foreground">{ev.company_code}</span>
                       <ClassBadge cls={ev.location_class} />
                       <AlertBadge level={ev.alert_level} />
                     </div>
-                    <div className="text-sm text-gray-400 space-y-1">
+                    <div className="text-sm text-muted-foreground space-y-1">
                       <p>
-                        <span className="text-gray-500">Address:</span>{' '}
+                        <span className="text-muted-foreground">Address:</span>{' '}
                         {ev.address ? (
                           <a
                             href={mapsUrl(ev.latitude, ev.longitude)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-400 hover:underline"
+                            className="text-primary hover:underline"
                           >
                             {ev.address}
                           </a>
@@ -260,18 +260,18 @@ export default function Parking() {
                             href={mapsUrl(ev.latitude, ev.longitude)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-400 hover:underline"
+                            className="text-primary hover:underline"
                           >
                             {ev.latitude.toFixed(5)}, {ev.longitude.toFixed(5)}
                           </a>
                         )}
                       </p>
                       <p>
-                        <span className="text-gray-500">Duration:</span>{' '}
-                        <span className={ev.duration_hours >= 8 ? 'text-red-400 font-medium' : ev.duration_hours >= 2 ? 'text-orange-400' : ''}>
+                        <span className="text-muted-foreground">Duration:</span>{' '}
+                        <span className={ev.duration_hours >= 8 ? 'text-red-600 dark:text-red-400 font-medium' : ev.duration_hours >= 2 ? 'text-orange-600 dark:text-orange-400' : ''}>
                           {formatDuration(ev.duration_hours)}
                         </span>
-                        <span className="text-gray-600 ml-2">
+                        <span className="text-muted-foreground ml-2">
                           (since {new Date(ev.first_stopped).toLocaleString()})
                         </span>
                       </p>
@@ -281,7 +281,7 @@ export default function Parking() {
                       <div className="mt-2">
                         <button
                           onClick={() => toggleExpand(ev)}
-                          className="text-xs text-blue-400 hover:text-blue-300 transition"
+                          className="text-xs text-primary hover:text-primary/80 transition"
                         >
                           {expanded.has(ev.id) ? '▼ Hide AI Analysis' : '▶ Show AI Analysis'}
                         </button>
@@ -289,21 +289,21 @@ export default function Parking() {
                           <div className="mt-2 space-y-3">
                             {ev.map_image_path && (
                               <div>
-                                <p className="text-xs text-gray-500 mb-1">Satellite + Road Map (analyzed by AI):</p>
+                                <p className="text-xs text-muted-foreground mb-1">Satellite + Road Map (analyzed by AI):</p>
                                 {mapUrls[ev.id] ? (
                                   <img
                                     src={mapUrls[ev.id]}
                                     alt={`Parking map for ${ev.vehicle_name}`}
-                                    className="rounded-lg border border-gray-700 max-w-full"
+                                    className="rounded-lg border border-border max-w-full"
                                     style={{ maxHeight: '300px' }}
                                   />
                                 ) : (
-                                  <p className="text-xs text-gray-500">Loading map...</p>
+                                  <p className="text-xs text-muted-foreground">Loading map...</p>
                                 )}
                               </div>
                             )}
                             {ev.ai_analysis && (
-                              <pre className="text-xs text-gray-400 bg-gray-800 rounded p-3 whitespace-pre-wrap max-h-40 overflow-y-auto">
+                              <pre className="text-xs text-muted-foreground bg-muted rounded p-3 whitespace-pre-wrap max-h-40 overflow-y-auto">
                                 {ev.ai_analysis}
                               </pre>
                             )}
@@ -316,7 +316,7 @@ export default function Parking() {
                     <button
                       onClick={() => resolveEvent(ev)}
                       disabled={resolving === ev.id}
-                      className="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded-lg text-xs font-medium transition"
+                      className="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded-lg text-xs font-medium text-foreground transition"
                     >
                       {resolving === ev.id ? 'Resolving...' : 'Resolve'}
                     </button>
@@ -324,7 +324,7 @@ export default function Parking() {
                       href={mapsUrl(ev.latitude, ev.longitude)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs font-medium transition"
+                      className="px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-lg text-xs font-medium transition"
                     >
                       📍 Map
                     </a>
@@ -342,7 +342,7 @@ export default function Parking() {
         />
       )}
 
-      <p className="text-xs text-gray-500 mt-3">
+      <p className="text-xs text-muted-foreground mt-3">
         {events.length} event{events.length !== 1 ? 's' : ''}
       </p>
     </div>

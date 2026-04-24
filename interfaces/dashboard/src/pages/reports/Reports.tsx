@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiJSON, apiFetch } from '../../api/client';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
@@ -21,18 +22,18 @@ const TABS: { key: TabKey; label: string }[] = [
 
 function SeverityBadge({ severity }: { severity: string }) {
   const colors: Record<string, string> = {
-    critical: 'bg-red-500/20 text-red-400',
-    warning: 'bg-orange-500/20 text-orange-400',
-    caution: 'bg-yellow-500/20 text-yellow-400',
-    ok: 'bg-green-500/20 text-green-400',
+    critical: 'bg-red-500/15 text-red-600 dark:text-red-400',
+    warning: 'bg-orange-500/15 text-orange-600 dark:text-orange-400',
+    caution: 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400',
+    ok: 'bg-green-500/15 text-green-600 dark:text-green-400',
   };
-  const cls = colors[severity] || 'bg-gray-500/20 text-gray-400';
+  const cls = colors[severity] || 'bg-gray-500/20 text-muted-foreground';
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${cls}`}>{severity}</span>;
 }
 
 function FuelBadge({ pct }: { pct: number | null }) {
-  if (pct === null) return <span className="text-gray-500">N/A</span>;
-  const cls = pct <= 15 ? 'text-red-400' : pct <= 30 ? 'text-yellow-400' : 'text-green-400';
+  if (pct === null) return <span className="text-muted-foreground">N/A</span>;
+  const cls = pct <= 15 ? 'text-destructive' : pct <= 30 ? 'text-yellow-700 dark:text-yellow-400' : 'text-green-600 dark:text-green-400';
   return <span className={cls}>{pct}%</span>;
 }
 
@@ -64,8 +65,8 @@ const healthCols: AnyColumn[] = [
     render: (v) => {
       const a = v as string[];
       return a && a.length > 0
-        ? <span className="text-red-400 text-xs">{a.join(', ')}</span>
-        : <span className="text-green-400 text-xs">OK</span>;
+        ? <span className="text-destructive text-xs">{a.join(', ')}</span>
+        : <span className="text-green-600 dark:text-green-400 text-xs">OK</span>;
     },
   },
 ];
@@ -90,6 +91,7 @@ const COLUMNS_MAP: Record<TabKey, AnyColumn[]> = {
 
 export default function Reports() {
   const [tab, setTab] = useState<TabKey>('faults');
+  const navigate = useNavigate();
   const [data, setData] = useState<Record<string, unknown>[]>([]);
   const [summary, setSummary] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -159,7 +161,7 @@ export default function Reports() {
             <select
               value={days}
               onChange={(e) => setDays(Number(e.target.value))}
-              className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-300"
+              className="bg-muted border border-border rounded px-2 py-1.5 text-sm text-foreground/80"
             >
               {[7, 14, 30].map((d) => (
                 <option key={d} value={d}>{d} days</option>
@@ -169,7 +171,7 @@ export default function Reports() {
           <button
             onClick={() => downloadReport('pdf')}
             disabled={exporting}
-            className="px-3 py-1.5 bg-red-600/80 hover:bg-red-600 disabled:opacity-50 rounded text-sm font-medium transition"
+            className="px-3 py-1.5 bg-destructive/80 hover:bg-destructive disabled:opacity-50 rounded text-sm font-medium transition"
           >
             PDF
           </button>
@@ -190,7 +192,7 @@ export default function Reports() {
             key={t.key}
             onClick={() => setTab(t.key)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-              tab === t.key ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+              tab === t.key ? 'bg-muted/80 text-foreground' : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             {t.label}
@@ -198,11 +200,23 @@ export default function Reports() {
         ))}
       </div>
 
-      {summary && <p className="text-sm text-gray-400 mb-3">{summary}</p>}
-      {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
+      {summary && (
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm text-muted-foreground">{summary}</p>
+          {tab === 'faults' && (
+            <button
+              onClick={() => navigate('/ai/chat', { state: { initialMessage: 'Analyze the active fleet fault codes and tell me which trucks need attention' } })}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-primary/15 hover:bg-primary/25 text-primary font-medium transition-colors shrink-0 ml-3"
+            >
+              Ask AI about faults
+            </button>
+          )}
+        </div>
+      )}
+      {error && <p className="text-destructive text-sm mb-3">{error}</p>}
 
       {loading ? (
-        <p className="text-gray-500">Loading...</p>
+        <p className="text-muted-foreground">Loading...</p>
       ) : (
         <DataTable
           columns={COLUMNS_MAP[tab]}

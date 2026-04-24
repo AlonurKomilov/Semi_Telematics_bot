@@ -17,12 +17,12 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const ROLE_COLORS: Record<string, string> = {
-  owner: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  admin: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  fleet: 'bg-green-500/20 text-green-400 border-green-500/30',
-  safety: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  dispatcher: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
-  driver: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  owner: 'bg-purple-500/20 text-purple-700 dark:text-purple-400 border-purple-500/30',
+  admin: 'bg-primary/15 text-primary border-primary/30',
+  fleet: 'bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30',
+  safety: 'bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30',
+  dispatcher: 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-400 border-cyan-500/30',
+  driver: 'bg-gray-500/20 text-muted-foreground border-gray-500/30',
 };
 
 function RoleBadge({ role }: { role: string }) {
@@ -63,7 +63,7 @@ function UserAvatar({ userId, name, size = 48, active = true }: { userId: number
   }
   return (
     <div className={`rounded-full flex items-center justify-center font-bold ${
-      active ? 'bg-blue-600/20 text-blue-400' : 'bg-gray-700 text-gray-500'
+      active ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
     }`} style={{ width: px, height: px, fontSize: `${size * 0.375}px` }}>
       {ini}
     </div>
@@ -85,7 +85,7 @@ const userColumns: AnyColumn[] = [
     return (
       <div className="flex items-center gap-2">
         <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold ${
-          u.is_active ? 'bg-blue-600/20 text-blue-400' : 'bg-gray-700 text-gray-500'
+          u.is_active ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
         }`}>{ini}</div>
         <span>{u.display_name}</span>
       </div>
@@ -96,18 +96,18 @@ const userColumns: AnyColumn[] = [
   { key: 'trucks', label: 'Trucks', sortable: false, render: (_v, row) => {
     const u = row as unknown as AdminUser;
     const trucks = u.trucks?.length ? u.trucks : u.truck_num ? [u.truck_num] : [];
-    if (!trucks.length) return <span className="text-gray-500 text-xs">All</span>;
+    if (!trucks.length) return <span className="text-muted-foreground text-xs">All</span>;
     if (trucks.length <= 2) return <span className="text-xs">{trucks.join(', ')}</span>;
     return (
       <span className="text-xs" title={trucks.join(', ')}>
         {trucks[0]}{' '}
-        <span className="px-1.5 py-0.5 bg-gray-700 rounded-full text-[10px] text-gray-400">+{trucks.length - 1}</span>
+        <span className="px-1.5 py-0.5 bg-muted rounded-full text-[10px] text-muted-foreground">+{trucks.length - 1}</span>
       </span>
     );
   }},
   { key: 'allowed_companies', label: 'Companies', sortable: false, render: (_v, row) => {
     const u = row as unknown as AdminUser;
-    if (!u.allowed_companies?.length) return <span className="text-gray-500 text-xs">All</span>;
+    if (!u.allowed_companies?.length) return <span className="text-muted-foreground text-xs">All</span>;
     return <span className="text-xs">{u.allowed_companies.join(', ')}</span>;
   }},
   { key: 'email', label: 'Email' },
@@ -273,11 +273,11 @@ export default function Users() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Team Management</h1>
-        <span className="text-sm text-gray-400">{activeCount} active / {users.length} total</span>
+        <span className="text-sm text-muted-foreground">{activeCount} active / {users.length} total</span>
       </div>
 
-      {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
-      {success && <p className="text-green-400 text-sm mb-3">{success}</p>}
+      {error && <p className="text-destructive text-sm mb-3">{error}</p>}
+      {success && <p className="text-green-600 dark:text-green-400 text-sm mb-3">{success}</p>}
 
       <div className="flex items-center gap-3 mb-4">
         {/* Role filter chips */}
@@ -285,7 +285,7 @@ export default function Users() {
           <button
             onClick={() => setRoleFilter(null)}
             className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
-              !roleFilter ? 'bg-gray-600 text-white' : 'text-gray-500 hover:text-gray-300'
+              !roleFilter ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground/80'
             }`}
           >
             All
@@ -298,7 +298,7 @@ export default function Users() {
                 key={key}
                 onClick={() => setRoleFilter(roleFilter === key ? null : key)}
                 className={`px-2.5 py-1 rounded-full text-xs font-medium transition border ${
-                  roleFilter === key ? ROLE_COLORS[key] : 'border-transparent text-gray-500 hover:text-gray-300'
+                  roleFilter === key ? ROLE_COLORS[key] : 'border-transparent text-muted-foreground hover:text-foreground/80'
                 }`}
               >
                 {label} <span className="opacity-60">{count}</span>
@@ -308,14 +308,14 @@ export default function Users() {
         </div>
       </div>
 
-      {loading && users.length === 0 ? <p className="text-gray-500">Loading...</p> : (
+      {loading && users.length === 0 ? <p className="text-muted-foreground">Loading...</p> : (
         <>
           <DataTable columns={userColumns} data={filteredUsers as unknown as Record<string, unknown>[]} searchKey="display_name" onRowClick={(row) => setSelected(row as unknown as AdminUser)} />
           {selected && (
             <div className="fixed inset-0 bg-black/60 z-50 flex justify-end" onClick={() => setSelected(null)}>
-              <div className="w-[480px] bg-gray-900 border-l border-gray-800 overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="w-[480px] bg-card border-l border-border overflow-y-auto" onClick={e => e.stopPropagation()}>
                 {/* Header with avatar */}
-                <div className="p-6 pb-4 border-b border-gray-800">
+                <div className="p-6 pb-4 border-b border-border">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
                       <UserAvatar userId={selected.id} name={selected.display_name} size={48} active={selected.is_active} />
@@ -323,15 +323,15 @@ export default function Users() {
                         <h2 className="text-lg font-semibold">{selected.display_name}</h2>
                         <div className="flex items-center gap-2 mt-0.5">
                           <RoleBadge role={selected.role} />
-                          <span className="text-xs text-gray-500">{selected.department}</span>
+                          <span className="text-xs text-muted-foreground">{selected.department}</span>
                         </div>
                       </div>
                     </div>
-                    <button onClick={() => setSelected(null)} className="text-gray-500 hover:text-white p-1">✕</button>
+                    <button onClick={() => setSelected(null)} className="text-muted-foreground hover:text-foreground p-1">✕</button>
                   </div>
 
                   {/* Detail tabs */}
-                  <div className="flex gap-1 bg-gray-800/50 rounded-lg p-0.5">
+                  <div className="flex gap-1 bg-muted/50 rounded-lg p-0.5">
                     {([
                       { key: 'profile' as DetailTab, label: 'Profile', icon: '👤' },
                       { key: 'access' as DetailTab, label: 'Access', icon: '🔐' },
@@ -341,7 +341,7 @@ export default function Users() {
                         key={t.key}
                         onClick={() => { setDetailTab(t.key); setConfirmAction(null); }}
                         className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition ${
-                          detailTab === t.key ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'
+                          detailTab === t.key ? 'bg-muted/80 text-foreground' : 'text-muted-foreground hover:text-foreground/80'
                         }`}
                       >
                         {t.icon} {t.label}
@@ -362,15 +362,15 @@ export default function Users() {
                       </dl>
                       {/* Quick summary */}
                       <div className="grid grid-cols-2 gap-3 mt-4">
-                        <div className="bg-gray-800/50 rounded-lg p-3 text-center">
-                          <div className="text-lg font-bold text-blue-400">{editTrucks.length}</div>
-                          <div className="text-xs text-gray-500">Trucks Assigned</div>
+                        <div className="bg-muted/50 rounded-lg p-3 text-center">
+                          <div className="text-lg font-bold text-primary">{editTrucks.length}</div>
+                          <div className="text-xs text-muted-foreground">Trucks Assigned</div>
                         </div>
-                        <div className="bg-gray-800/50 rounded-lg p-3 text-center">
-                          <div className="text-lg font-bold text-blue-400">
+                        <div className="bg-muted/50 rounded-lg p-3 text-center">
+                          <div className="text-lg font-bold text-primary">
                             {unrestricted ? 'All' : editCompanyIds.length}
                           </div>
-                          <div className="text-xs text-gray-500">Companies</div>
+                          <div className="text-xs text-muted-foreground">Companies</div>
                         </div>
                       </div>
                     </div>
@@ -382,13 +382,13 @@ export default function Users() {
                       {/* ── Step 1: Company Access ── */}
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Step 1</span>
-                          <div className="flex-1 border-t border-gray-800" />
+                          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Step 1</span>
+                          <div className="flex-1 border-t border-border" />
                         </div>
-                        <h3 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+                        <h3 className="text-sm font-semibold text-foreground/80 mb-3 flex items-center gap-2">
                           🏢 Company Access
                           {!unrestricted && editCompanyIds.length > 0 && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400">{editCompanyIds.length}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">{editCompanyIds.length}</span>
                           )}
                         </h3>
 
@@ -398,7 +398,7 @@ export default function Users() {
                           className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition mb-3 border ${
                             unrestricted
                               ? 'bg-green-500/10 border-green-500/30'
-                              : 'bg-gray-800/50 border-gray-700 hover:border-gray-600'
+                              : 'bg-muted/50 border-border hover:border-border'
                           }`}
                         >
                           <div className="flex items-center gap-2">
@@ -406,26 +406,26 @@ export default function Users() {
                             <span className="text-sm font-medium">{unrestricted ? 'All Companies' : 'Selected Companies Only'}</span>
                           </div>
                           <div className="relative">
-                            <div className={`w-9 h-5 rounded-full transition ${unrestricted ? 'bg-green-600' : 'bg-gray-700'}`} />
-                            <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${unrestricted ? 'translate-x-4' : ''}`} />
+                            <div className={`w-9 h-5 rounded-full transition ${unrestricted ? 'bg-green-600' : 'bg-muted'}`} />
+                            <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-background rounded-full shadow transition-transform ${unrestricted ? 'translate-x-4' : ''}`} />
                           </div>
                         </div>
 
                         {unrestricted && (
-                          <p className="text-xs text-gray-500 mb-3">This user can access data from all companies.</p>
+                          <p className="text-xs text-muted-foreground mb-3">This user can access data from all companies.</p>
                         )}
 
                         {!unrestricted && allCompanies.length > 0 && (
                           <>
                             <div className="flex items-center justify-between mb-2">
-                              <p className="text-xs text-gray-500">Select which companies this user can access:</p>
+                              <p className="text-xs text-muted-foreground">Select which companies this user can access:</p>
                               <button
                                 type="button"
                                 onClick={() => {
                                   if (editCompanyIds.length === allCompanies.length) setEditCompanyIds([]);
                                   else setEditCompanyIds(allCompanies.map(c => c.id));
                                 }}
-                                className="text-[10px] text-blue-400 hover:text-blue-300 uppercase tracking-wider"
+                                className="text-[10px] text-primary hover:text-primary/80 uppercase tracking-wider"
                               >
                                 {editCompanyIds.length === allCompanies.length ? 'Deselect All' : 'Select All'}
                               </button>
@@ -439,18 +439,18 @@ export default function Users() {
                                     onClick={() => toggleCompany(c.id)}
                                     className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition border ${
                                       checked
-                                        ? 'bg-blue-500/10 border-blue-500/30'
-                                        : 'bg-gray-800/30 border-gray-800 hover:border-gray-700'
+                                        ? 'bg-primary/10 border-primary/30'
+                                        : 'bg-muted/30 border-border hover:border-border'
                                     }`}
                                   >
                                     <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition ${
-                                      checked ? 'bg-blue-600 border-blue-600' : 'border-gray-600'
+                                      checked ? 'bg-primary border-primary' : 'border-border'
                                     }`}>
-                                      {checked && <span className="text-white text-[10px]">✓</span>}
+                                      {checked && <span className="text-foreground text-[10px]">✓</span>}
                                     </div>
                                     <div className="flex-1">
                                       <span className="text-sm font-medium">{c.code}</span>
-                                      {c.display_name && <span className="text-xs text-gray-500 ml-2">{c.display_name}</span>}
+                                      {c.display_name && <span className="text-xs text-muted-foreground ml-2">{c.display_name}</span>}
                                     </div>
                                   </div>
                                 );
@@ -460,23 +460,23 @@ export default function Users() {
                         )}
 
                         {!unrestricted && allCompanies.length === 0 && (
-                          <p className="text-xs text-gray-500 italic py-4 text-center bg-gray-800/30 rounded-lg">No companies configured</p>
+                          <p className="text-xs text-muted-foreground italic py-4 text-center bg-muted/30 rounded-lg">No companies configured</p>
                         )}
                       </div>
 
                       {/* ── Step 2: Vehicle Assignments ── */}
-                      <div className="border-t border-gray-800 pt-5">
+                      <div className="border-t border-border pt-5">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Step 2</span>
-                          <div className="flex-1 border-t border-gray-800" />
+                          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Step 2</span>
+                          <div className="flex-1 border-t border-border" />
                         </div>
-                        <h3 className="text-sm font-semibold text-gray-300 mb-1 flex items-center gap-2">
+                        <h3 className="text-sm font-semibold text-foreground/80 mb-1 flex items-center gap-2">
                           🚛 Vehicle Assignments
                           {editTrucks.length > 0 && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400">{editTrucks.length}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-400">{editTrucks.length}</span>
                           )}
                         </h3>
-                        <p className="text-xs text-gray-500 mb-3">
+                        <p className="text-xs text-muted-foreground mb-3">
                           {unrestricted
                             ? 'Select which vehicles this user can access:'
                             : editCompanyIds.length > 0
@@ -487,8 +487,8 @@ export default function Users() {
 
                         {/* No companies selected warning */}
                         {!unrestricted && editCompanyIds.length === 0 && (
-                          <div className="py-6 text-center bg-gray-800/30 rounded-lg mb-3">
-                            <p className="text-xs text-amber-400/70">⚠ Select at least one company above to assign vehicles</p>
+                          <div className="py-6 text-center bg-muted/30 rounded-lg mb-3">
+                            <p className="text-xs text-amber-600/70 dark:text-amber-400/70">⚠ Select at least one company above to assign vehicles</p>
                           </div>
                         )}
 
@@ -498,9 +498,9 @@ export default function Users() {
                             <div className="flex items-center justify-between mb-2">
                               <div className="flex items-center gap-2">
                                 {editTrucks.length === 0 ? (
-                                  <span className="text-xs text-gray-500 italic">No vehicles assigned — sees all</span>
+                                  <span className="text-xs text-muted-foreground italic">No vehicles assigned — sees all</span>
                                 ) : (
-                                  <span className="text-xs text-gray-500">{editTrucks.length} selected</span>
+                                  <span className="text-xs text-muted-foreground">{editTrucks.length} selected</span>
                                 )}
                               </div>
                               <button
@@ -509,7 +509,7 @@ export default function Users() {
                                   if (editTrucks.length === companyFilteredVehicles.length) setEditTrucks([]);
                                   else setEditTrucks(companyFilteredVehicles.map(v => v.name));
                                 }}
-                                className="text-[10px] text-blue-400 hover:text-blue-300 uppercase tracking-wider"
+                                className="text-[10px] text-primary hover:text-primary/80 uppercase tracking-wider"
                               >
                                 {editTrucks.length === companyFilteredVehicles.length ? 'Deselect All' : 'Select All'}
                               </button>
@@ -520,7 +520,7 @@ export default function Users() {
                               value={newTruck}
                               onChange={e => setNewTruck(e.target.value)}
                               placeholder="Search vehicles..."
-                              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 mb-2"
+                              className="w-full bg-muted border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-ring mb-2"
                             />
 
                             <div className="space-y-1.5 mb-3 max-h-64 overflow-y-auto">
@@ -538,20 +538,20 @@ export default function Users() {
                                       className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition border ${
                                         checked
                                           ? 'bg-amber-500/10 border-amber-500/30'
-                                          : 'bg-gray-800/30 border-gray-800 hover:border-gray-700'
+                                          : 'bg-muted/30 border-border hover:border-border'
                                       }`}
                                     >
                                       <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition ${
-                                        checked ? 'bg-amber-600 border-amber-600' : 'border-gray-600'
+                                        checked ? 'bg-amber-600 border-amber-600' : 'border-border'
                                       }`}>
-                                        {checked && <span className="text-white text-[10px]">✓</span>}
+                                        {checked && <span className="text-primary-foreground text-[10px]">✓</span>}
                                       </div>
                                       <div className="flex-1">
                                         <span className="text-sm font-medium">{v.name}</span>
-                                        {v.company && <span className="text-xs text-gray-500 ml-2">{v.company}</span>}
+                                        {v.company && <span className="text-xs text-muted-foreground ml-2">{v.company}</span>}
                                       </div>
                                       {checked && editTrucks.indexOf(v.name) === 0 && selected.role === 'driver' && (
-                                        <span className="text-[10px] text-blue-400 uppercase tracking-wider">primary</span>
+                                        <span className="text-[10px] text-primary uppercase tracking-wider">primary</span>
                                       )}
                                     </div>
                                   );
@@ -561,7 +561,7 @@ export default function Users() {
                         )}
 
                         {(unrestricted || editCompanyIds.length > 0) && companyFilteredVehicles.length === 0 && (
-                          <p className="text-xs text-gray-500 italic py-4 text-center bg-gray-800/30 rounded-lg mb-3">No vehicles found</p>
+                          <p className="text-xs text-muted-foreground italic py-4 text-center bg-muted/30 rounded-lg mb-3">No vehicles found</p>
                         )}
                       </div>
 
@@ -569,7 +569,7 @@ export default function Users() {
                       <button
                         onClick={() => handleSaveAccess(selected.id)}
                         disabled={savingCompanies || savingTrucks}
-                        className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm font-semibold transition"
+                        className="w-full py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-lg text-sm font-semibold transition"
                       >
                         {savingCompanies || savingTrucks ? 'Saving...' : 'Save Access'}
                       </button>
@@ -581,7 +581,7 @@ export default function Users() {
                     <div className="space-y-6">
                       {/* Role change */}
                       <div>
-                        <h3 className="text-sm font-semibold text-gray-300 mb-3">Change Role</h3>
+                        <h3 className="text-sm font-semibold text-foreground/80 mb-3">Change Role</h3>
                         <div className="grid grid-cols-2 gap-2">
                           {ROLES.map(r => {
                             const isCurrent = selected.role === r;
@@ -594,8 +594,8 @@ export default function Users() {
                                   isCurrent
                                     ? `${ROLE_COLORS[r]} border-current`
                                     : isPending
-                                    ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400'
-                                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300'
+                                    ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-600 dark:text-yellow-400'
+                                    : 'bg-muted border-border text-muted-foreground hover:border-border hover:text-foreground/80'
                                 }`}
                               >
                                 {ROLE_LABELS[r]}
@@ -606,7 +606,7 @@ export default function Users() {
                         </div>
                         {confirmAction === 'role' && pendingRole && (
                           <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-                            <p className="text-sm text-yellow-400 mb-2">
+                            <p className="text-sm text-yellow-600 dark:text-yellow-400 mb-2">
                               Change {selected.display_name}'s role to <strong>{ROLE_LABELS[pendingRole]}</strong>?
                             </p>
                             <div className="flex gap-2">
@@ -618,7 +618,7 @@ export default function Users() {
                               </button>
                               <button
                                 onClick={() => { setConfirmAction(null); setPendingRole(null); }}
-                                className="px-4 py-1.5 text-xs text-gray-400 hover:text-white transition"
+                                className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition"
                               >
                                 Cancel
                               </button>
@@ -628,15 +628,15 @@ export default function Users() {
                       </div>
 
                       {/* Danger zone */}
-                      <div className="border-t border-gray-800 pt-5">
-                        <h3 className="text-sm font-semibold text-red-400/80 mb-3">Danger Zone</h3>
+                      <div className="border-t border-border pt-5">
+                        <h3 className="text-sm font-semibold text-red-600/80 dark:text-red-400/80 mb-3">Danger Zone</h3>
                         {confirmAction !== 'deactivate' && confirmAction !== 'activate' ? (
                           <button
                             onClick={() => setConfirmAction(selected.is_active ? 'deactivate' : 'activate')}
                             className={`w-full py-2.5 rounded-lg text-sm font-medium transition border ${
                               selected.is_active
-                                ? 'border-red-800 text-red-400 hover:bg-red-500/10'
-                                : 'border-green-800 text-green-400 hover:bg-green-500/10'
+                                ? 'border-destructive/40 text-red-600 dark:text-red-400 hover:bg-red-500/10'
+                                : 'border-green-600/50 dark:border-green-800 text-green-600 dark:text-green-400 hover:bg-green-500/10'
                             }`}
                           >
                             {selected.is_active ? 'Deactivate User' : 'Activate User'}
@@ -647,22 +647,22 @@ export default function Users() {
                           }`}>
                             <p className="text-sm mb-2">
                               {selected.is_active
-                                ? <span className="text-red-400">Deactivate <strong>{selected.display_name}</strong>? They will lose access immediately.</span>
-                                : <span className="text-green-400">Activate <strong>{selected.display_name}</strong>? They will regain access.</span>
+                                ? <span className="text-destructive">Deactivate <strong>{selected.display_name}</strong>? They will lose access immediately.</span>
+                                : <span className="text-green-600 dark:text-green-400">Activate <strong>{selected.display_name}</strong>? They will regain access.</span>
                               }
                             </p>
                             <div className="flex gap-2">
                               <button
                                 onClick={() => handleToggleActive(selected.id, !selected.is_active)}
                                 className={`px-4 py-1.5 rounded text-xs font-medium transition ${
-                                  selected.is_active ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
+                                  selected.is_active ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'
                                 }`}
                               >
                                 {selected.is_active ? 'Deactivate' : 'Activate'}
                               </button>
                               <button
                                 onClick={() => setConfirmAction(null)}
-                                className="px-4 py-1.5 text-xs text-gray-400 hover:text-white transition"
+                                className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition"
                               >
                                 Cancel
                               </button>
@@ -685,8 +685,8 @@ export default function Users() {
 function Row({ label, value, status }: { label: string; value: string; status?: 'green' | 'red' }) {
   return (
     <div className="flex justify-between items-center">
-      <dt className="text-gray-400">{label}</dt>
-      <dd className={status === 'green' ? 'text-green-400' : status === 'red' ? 'text-red-400' : ''}>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className={status === 'green' ? 'text-green-600 dark:text-green-400' : status === 'red' ? 'text-destructive' : ''}>
         {value}
       </dd>
     </div>

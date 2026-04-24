@@ -133,11 +133,11 @@ export default function Routes() {
       {/* Controls */}
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Vehicle</label>
+          <label className="block text-xs text-muted-foreground mb-1">Vehicle</label>
           <select
             value={vehicleName}
             onChange={(e) => setVehicleName(e.target.value)}
-            className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-300 min-w-[200px]"
+            className="bg-muted border border-border rounded px-3 py-2 text-sm text-foreground/80 min-w-[200px]"
           >
             <option value="">Select vehicle...</option>
             {vehicles.map((v) => (
@@ -146,46 +146,46 @@ export default function Routes() {
           </select>
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Date</label>
+          <label className="block text-xs text-muted-foreground mb-1">Date</label>
           <input
             type="date"
             value={date}
             max={today()}
             onChange={(e) => setDate(e.target.value)}
-            className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-300"
+            className="bg-muted border border-border rounded px-3 py-2 text-sm text-foreground/80"
           />
         </div>
         <button
           onClick={fetchRoute}
           disabled={loading || !vehicleName}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm font-medium transition"
+          className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-lg text-sm font-medium transition"
         >
           {loading ? 'Loading...' : 'Load Route'}
         </button>
       </div>
 
-      {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
+      {error && <p className="text-destructive text-sm mb-3">{error}</p>}
 
       {/* Summary card */}
       {route && (
         <div className="grid grid-cols-3 gap-4 mb-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <p className="text-xs text-gray-400">Total Distance</p>
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs text-muted-foreground">Total Distance</p>
             <p className="text-xl font-bold">{route.total_miles?.toFixed(1) ?? '—'} mi</p>
           </div>
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <p className="text-xs text-gray-400">Max Speed</p>
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs text-muted-foreground">Max Speed</p>
             <p className="text-xl font-bold">{route.max_speed_mph?.toFixed(0) ?? '—'} mph</p>
           </div>
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <p className="text-xs text-gray-400">GPS Points</p>
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs text-muted-foreground">GPS Points</p>
             <p className="text-xl font-bold">{route.point_count ?? 0}</p>
           </div>
         </div>
       )}
 
       {/* Speed legend */}
-      <div className="flex items-center gap-4 mb-2 text-xs text-gray-400">
+      <div className="flex items-center gap-4 mb-2 text-xs text-muted-foreground">
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-gray-500 inline-block" /> &lt;10 mph</span>
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-green-500 inline-block" /> 10-50 mph</span>
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-yellow-500 inline-block" /> 50-70 mph</span>
@@ -193,7 +193,7 @@ export default function Routes() {
       </div>
 
       {/* Map */}
-      <div ref={mapRef} className="h-[calc(100vh-22rem)] rounded-xl border border-gray-800 z-0" />
+      <div ref={mapRef} className="h-[calc(100vh-22rem)] rounded-xl border border-border z-0" />
     </div>
   );
 }

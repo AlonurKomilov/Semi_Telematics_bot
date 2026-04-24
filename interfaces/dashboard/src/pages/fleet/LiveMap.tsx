@@ -102,18 +102,18 @@ export default function LiveMap() {
   return (
     <div className="flex h-[calc(100vh-8rem)] gap-4">
       {/* Map */}
-      <div ref={mapRef} className="flex-1 rounded-xl overflow-hidden border border-gray-800 z-0" />
+      <div ref={mapRef} className="flex-1 rounded-xl overflow-hidden border border-border z-0" />
 
       {/* Side panel */}
-      <div className="w-80 bg-gray-900 border border-gray-800 rounded-xl overflow-y-auto shrink-0">
-        <div className="p-4 border-b border-gray-800 space-y-3">
+      <div className="w-80 bg-card border border-border rounded-xl overflow-y-auto shrink-0">
+        <div className="p-4 border-b border-border space-y-3">
           <h2 className="font-semibold">Vehicles ({filtered.length})</h2>
           <input
             type="text"
             placeholder="Search vehicles..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500"
+            className="w-full bg-muted border border-border rounded px-2 py-1.5 text-sm placeholder-muted-foreground focus:outline-none focus:border-ring"
           />
           <div className="flex gap-1">
             {[['all', 'All'], ['moving', 'Moving'], ['idle', 'Idle'], ['stopped', 'Stopped']].map(
@@ -121,7 +121,7 @@ export default function LiveMap() {
                 <button
                   key={key}
                   onClick={() => setStatusFilter(key)}
-                  className={`text-xs px-2 py-1 rounded ${statusFilter === key ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
+                  className={`text-xs px-2 py-1 rounded ${statusFilter === key ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
                 >
                   {label} ({counts[key]})
                 </button>
@@ -131,9 +131,9 @@ export default function LiveMap() {
         </div>
         {selected ? (
           <div className="p-4 space-y-2 text-sm">
-            <button onClick={() => setSelected(null)} className="text-blue-400 hover:underline text-xs">← Back</button>
+            <button onClick={() => setSelected(null)} className="text-primary hover:underline text-xs">← Back</button>
             <h3 className="font-bold text-lg">{selected.name}</h3>
-            <p className="text-gray-400">{selected.address || 'Unknown location'}</p>
+            <p className="text-muted-foreground">{selected.address || 'Unknown location'}</p>
             <p>Speed: {selected.speed_mph ?? 0} mph</p>
             <p>Engine: {selected.engine_state || 'Off'}</p>
             {selected.fuel_percent != null && <p>Fuel: {Math.round(selected.fuel_percent)}%</p>}
@@ -151,7 +151,7 @@ export default function LiveMap() {
                     const [lng, lat] = f.geometry.coordinates;
                     leafletMap.current?.setView([lat, lng], 14);
                   }}
-                  className="w-full text-left px-4 py-3 hover:bg-gray-800 transition text-sm"
+                  className="w-full text-left px-4 py-3 hover:bg-muted transition text-sm"
                 >
                   <div className="flex items-center gap-2">
                     <span
@@ -160,7 +160,7 @@ export default function LiveMap() {
                     />
                     <span className="font-medium truncate">{p.name}</span>
                   </div>
-                  <p className="text-xs text-gray-500 ml-5 truncate">{p.address || '—'}</p>
+                  <p className="text-xs text-muted-foreground ml-5 truncate">{p.address || '—'}</p>
                 </button>
               );
             })}

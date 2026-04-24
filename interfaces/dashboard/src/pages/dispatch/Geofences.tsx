@@ -66,37 +66,37 @@ export default function Geofences() {
     <div>
       <h1 className="text-2xl font-bold mb-6">Geofences ({geofences.length})</h1>
       <div className="flex gap-4">
-        <div ref={mapRef} className="flex-1 h-[calc(100vh-12rem)] rounded-xl border border-gray-800 z-0" />
+        <div ref={mapRef} className="flex-1 h-[calc(100vh-12rem)] rounded-xl border border-border z-0" />
 
         {/* Details panel */}
         <div className="w-72 shrink-0">
           {selected ? (
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <div className="bg-card border border-border rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-semibold truncate">{selected.properties?.name || 'Geofence'}</h2>
-                <button onClick={() => setSelected(null)} className="text-gray-500 hover:text-white text-sm">✕</button>
+                <button onClick={() => setSelected(null)} className="text-muted-foreground hover:text-foreground text-sm">✕</button>
               </div>
               <dl className="space-y-2 text-sm">
                 <div>
-                  <dt className="text-gray-400">Type</dt>
+                  <dt className="text-muted-foreground">Type</dt>
                   <dd className="capitalize">{selected.geometry.type === 'Point' ? 'Circle' : 'Polygon'}</dd>
                 </div>
                 {selected.properties?.radius && (
                   <div>
-                    <dt className="text-gray-400">Radius</dt>
+                    <dt className="text-muted-foreground">Radius</dt>
                     <dd>{(selected.properties.radius * 0.000621371).toFixed(2)} mi ({selected.properties.radius.toLocaleString()} m)</dd>
                   </div>
                 )}
                 {selected.geometry.type === 'Polygon' && (
                   <div>
-                    <dt className="text-gray-400">Vertices</dt>
+                    <dt className="text-muted-foreground">Vertices</dt>
                     <dd>{((selected.geometry.coordinates as [number, number][][])[0] || []).length}</dd>
                   </div>
                 )}
               </dl>
             </div>
           ) : (
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-center text-gray-500 text-sm">
+            <div className="bg-card border border-border rounded-xl p-4 text-center text-muted-foreground text-sm">
               <p className="text-2xl mb-2">📍</p>
               <p>Click a geofence on the map to view details</p>
             </div>
@@ -104,15 +104,15 @@ export default function Geofences() {
 
           {/* Geofence list */}
           {geofences.length > 0 && (
-            <div className="mt-4 bg-gray-900 border border-gray-800 rounded-xl p-3 max-h-96 overflow-y-auto">
-              <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-2">All Geofences</h3>
+            <div className="mt-4 bg-card border border-border rounded-xl p-3 max-h-96 overflow-y-auto">
+              <h3 className="text-xs text-muted-foreground uppercase tracking-wide mb-2">All Geofences</h3>
               <ul className="space-y-1">
                 {geofences.map((f, i) => (
                   <li key={i}>
                     <button
                       onClick={() => setSelected(f)}
                       className={`w-full text-left px-2 py-1.5 rounded text-sm transition ${
-                        selected === f ? 'bg-blue-600/20 text-blue-400' : 'text-gray-300 hover:bg-gray-800'
+                        selected === f ? 'bg-primary/15 text-primary' : 'text-foreground/80 hover:bg-muted'
                       }`}
                     >
                       {f.properties?.name || `Geofence ${i + 1}`}
