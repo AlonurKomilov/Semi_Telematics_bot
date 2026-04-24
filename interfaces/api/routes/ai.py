@@ -38,7 +38,7 @@ class ModelSwitchRequest(BaseModel):
 async def _log_usage(account_id: int, user_id: int, action: str):
     """Delegates to the shared logger in capabilities.ai.usage."""
     from core.services import get_platform_db as _gpdb
-    pdb = await _gpdb()
+    pdb = _gpdb()  # synchronous — returns PlatformDB directly
     await _log_ai_usage_fn(ai, pdb, account_id, user_id, action)
 
 

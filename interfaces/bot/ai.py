@@ -46,7 +46,7 @@ def _build_user_context(user) -> dict:
 
 async def _log_ai_usage(account_id: int, telegram_user_id: int, action: str):
     """Delegates to the shared logger in capabilities.ai.usage."""
-    platform_db = await get_platform_db()
+    platform_db = get_platform_db()  # synchronous — returns PlatformDB directly
     await _log_ai_usage_fn(ai, platform_db, account_id, telegram_user_id, action)
 
 
