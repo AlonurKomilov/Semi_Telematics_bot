@@ -672,6 +672,8 @@ export interface ParkingStatsResponse {
 export interface AIChatMessage {
   role: 'user' | 'model';
   text: string;
+  /** Client-side timestamp — not persisted to backend */
+  timestamp?: Date;
 }
 
 export interface AIChatResponse {
