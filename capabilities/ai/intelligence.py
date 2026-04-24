@@ -453,17 +453,33 @@ async def ask_agent(question: str, fleet_context: dict,
                     }
 
                 candidate = response.candidates[0]
-                part = candidate.content.parts[0]
+                # Gemini 2.5 Flash with thinking enabled prepends thought parts
+                # (Parts with thought_signature but no text/function_call) before
+                # the actual content.  Accessing .text on such a part raises
+                # ValueError in the SDK, so we scan all parts safely.
+                _text_part = None
+                _fc_part = None
+                for _p in candidate.content.parts:
+                    if _fc_part is None and _p.function_call:
+                        _fc_part = _p
+                    if _text_part is None:
+                        try:
+                            _pt = _p.text
+                        except (ValueError, AttributeError):
+                            _pt = None
+                        if _pt:
+                            _text_part = _p
 
-                if part.text:
-                    text = part.text.strip()
-                    text = text.replace("**", "").replace("##", "").replace("# ", "")
+                if _text_part is not None:
+                    text = _text_part.text.strip()
                     _capture_usage(response)
                     if user_id is not None:
                         _store_history(user_id, question, text, account_id=account_id or 0)
                     if ck and not has_history:
                         _cache_put(ck, text)
                     return {"text": text, "tool_results": tool_results}
+
+                part = _fc_part if _fc_part is not None else candidate.content.parts[0]
 
                 if part.function_call:
                     fc = part.function_call
@@ -562,8 +578,13 @@ async def ask_agent(question: str, fleet_context: dict,
                     text = response.text.strip()
                 except ValueError:
                     parts_list = response.candidates[0].content.parts
-                    text = ''.join(getattr(p, 'text', '') for p in parts_list).strip()
-                text = text.replace("**", "").replace("##", "").replace("# ", "")
+                    _texts: list[str] = []
+                    for _p in parts_list:
+                        try:
+                            _texts.append(_p.text or '')
+                        except (ValueError, AttributeError):
+                            pass
+                    text = ''.join(_texts).strip()
                 _capture_usage(response)
                 if user_id is not None:
                     _store_history(user_id, question, text, account_id=account_id or 0)
