@@ -1,5 +1,6 @@
 const API_BASE = '/api';
 const REQUEST_TIMEOUT_MS = 30_000; // 30 seconds
+const AI_REQUEST_TIMEOUT_MS = 90_000; // 90 seconds — Gemini agent round-trips can take 30-60s
 
 export function getToken(): string | null {
   return localStorage.getItem('jwt');
@@ -17,7 +18,7 @@ type ApiFetchOpts = Omit<RequestInit, 'body'> & {
   body?: BodyInit | Record<string, unknown> | null;
 };
 
-export async function apiFetch(path: string, opts: ApiFetchOpts = {}): Promise<Response> {
+export async function apiFetch(path: string, opts: ApiFetchOpts = {}, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
   const token = getToken();
   const headers: Record<string, string> = {};
   if (opts.headers) {
@@ -31,7 +32,7 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}): Promise<R
     body = JSON.stringify(body);
   }
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(`${API_BASE}${path}`, { ...opts, headers, body: body as BodyInit, signal: controller.signal });
     if (res.status === 401) {
@@ -45,8 +46,8 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}): Promise<R
   }
 }
 
-export async function apiJSON<T = unknown>(path: string, opts: ApiFetchOpts = {}): Promise<T> {
-  const res = await apiFetch(path, opts);
+export async function apiJSON<T = unknown>(path: string, opts: ApiFetchOpts = {}, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
+  const res = await apiFetch(path, opts, timeoutMs);
   if (!res.ok) {
     const err: { detail?: unknown } = await res.json().catch(() => ({ detail: res.statusText }));
     const detail = err.detail;
@@ -56,4 +57,9 @@ export async function apiJSON<T = unknown>(path: string, opts: ApiFetchOpts = {}
     throw new Error(msg);
   }
   return res.json();
+}
+
+/** apiJSON with 90-second timeout for AI endpoints. */
+export async function apiJSONAI<T = unknown>(path: string, opts: ApiFetchOpts = {}): Promise<T> {
+  return apiJSON<T>(path, opts, AI_REQUEST_TIMEOUT_MS);
 }

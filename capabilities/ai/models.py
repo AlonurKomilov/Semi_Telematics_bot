@@ -161,9 +161,12 @@ def _ensure_model(model_name: str | None = None,
     if target_model.startswith("gemini-2.5"):
         try:
             proto = gen_config._raw_generation_config
-            tc = proto.ThinkingConfig(thinking_budget=2048)
+            # Disable thinking (budget=0) — thinking adds 30-45s per call in the
+            # agentic loop (2 rounds = 60-90s), blowing the nginx/client timeouts.
+            # Tool-calling quality is equivalent without thinking.
+            tc = proto.ThinkingConfig(thinking_budget=0)
             proto.thinking_config = tc
-            logger.info(f"Thinking budget set to 2048 for {target_model}")
+            logger.info(f"Thinking budget set to 0 (disabled) for {target_model}")
         except Exception as e:
             logger.debug(f"Could not set thinking budget: {e}")
 
@@ -208,7 +211,7 @@ def _build_model(model_name: str, location: str, info: dict | None = None):
     if model_name.startswith("gemini-2.5"):
         try:
             proto = gen_config._raw_generation_config
-            tc = proto.ThinkingConfig(thinking_budget=2048)
+            tc = proto.ThinkingConfig(thinking_budget=0)
             proto.thinking_config = tc
         except Exception as e:
             logger.debug("ThinkingConfig proto not supported: %s", e)

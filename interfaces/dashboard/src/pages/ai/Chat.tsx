@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Bot, ChevronDown, Send, Trash2, Copy, Check, RefreshCw, Sparkles, MessageSquare } from 'lucide-react';
-import { apiJSON } from '../../api/client';
+import { apiJSON, apiJSONAI } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import type { AIChatMessage, AIChatResponse, AIHistoryResponse, AISummaryResponse, AIModel, AIModelsResponse } from '../../types';
 import { formatAIResponse } from '../../utils/formatAI';
@@ -163,7 +163,7 @@ export default function Chat() {
     setActiveTab('chat');
 
     try {
-      const data = await apiJSON<AIChatResponse>('/ai/chat', {
+      const data = await apiJSONAI<AIChatResponse>('/ai/chat', {
         method: 'POST',
         body: { message: text.trim() },
       });
@@ -236,7 +236,7 @@ export default function Chat() {
     setBriefingLoading(true);
     setBriefingError('');
     try {
-      const data = await apiJSON<AISummaryResponse>('/ai/summary', { method: 'POST' });
+      const data = await apiJSONAI<AISummaryResponse>('/ai/summary', { method: 'POST' });
       setBriefing(data.summary);
       setBriefingTime(new Date());
       setBriefingSuggestions(data.suggestions || []);
