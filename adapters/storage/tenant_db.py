@@ -15,6 +15,7 @@ from .parking_db import ParkingMixin
 from .camera_db import CameraMixin
 from .schedules import SchedulesMixin
 from .knowledge_db import KnowledgeBaseMixin
+from .geofence_db import GeofenceMixin
 from . import tenant_schema
 from . import tenant_migrations
 
@@ -31,6 +32,7 @@ class TenantDB(
     CameraMixin,
     SchedulesMixin,
     KnowledgeBaseMixin,
+    GeofenceMixin,
     _DatabaseCore,
 ):
     """SQLite database for a single tenant's operational data.

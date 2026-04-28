@@ -1,9 +1,9 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
-import { apiJSON, getToken, setToken, clearToken } from '../api/client';
+import { apiJSON, getToken, setToken, clearToken, isTokenPersistent } from '../api/client';
 import type { User, TelegramLoginData, AuthResponse } from '../types';
 
 /** Refresh the token when less than this many ms remain. */
-const REFRESH_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+const REFRESH_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — refresh in last week of 30-day token
 /** Poll interval for checking token expiry. */
 const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -19,8 +19,8 @@ function getTokenExpiry(token: string): number | null {
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  loginWithTelegram: (tgData: TelegramLoginData) => Promise<void>;
-  loginWithEmail: (email: string, password: string) => Promise<void>;
+  loginWithTelegram: (tgData: TelegramLoginData, rememberMe?: boolean) => Promise<void>;
+  loginWithEmail: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   registerWithEmail: (email: string, password: string, displayName: string, inviteCode: string) => Promise<void>;
   logout: () => void;
 }
@@ -32,19 +32,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchUser = useCallback(async () => {
-    if (!getToken()) { setLoading(false); return; }
-    try {
-      const data = await apiJSON<User>('/user/me');
-      setUser(data);
-    } catch {
-      clearToken();
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   /** Silently refresh the JWT if it's close to expiring. */
   const refreshTokenIfNeeded = useCallback(async () => {
     const token = getToken();
@@ -55,11 +42,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (remaining > REFRESH_THRESHOLD_MS) return;
     try {
       const res = await apiJSON<AuthResponse>('/auth/refresh', { method: 'POST' });
-      setToken(res.access_token);
+      // Preserve the same storage (persistent vs session-only)
+      setToken(res.access_token, isTokenPersistent());
     } catch {
       // Token expired or server error — force logout on next request
     }
   }, []);
+
+  const fetchUser = useCallback(async () => {
+    if (!getToken()) { setLoading(false); return; }
+    // Silently refresh on every page load if token is in its last 7 days
+    await refreshTokenIfNeeded();
+    try {
+      const data = await apiJSON<User>('/user/me');
+      setUser(data);
+    } catch {
+      clearToken();
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [refreshTokenIfNeeded]);
 
   // Set up periodic token refresh check
   useEffect(() => {
@@ -71,21 +74,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { fetchUser(); }, [fetchUser]);
 
-  const loginWithTelegram = useCallback(async (tgData: TelegramLoginData) => {
+  const loginWithTelegram = useCallback(async (tgData: TelegramLoginData, rememberMe = false) => {
     const res = await apiJSON<AuthResponse>('/auth/telegram-login', {
       method: 'POST',
       body: tgData as unknown as Record<string, unknown>,
     });
-    setToken(res.access_token);
+    setToken(res.access_token, rememberMe);
     await fetchUser();
   }, [fetchUser]);
 
-  const loginWithEmail = useCallback(async (email: string, password: string) => {
+  const loginWithEmail = useCallback(async (email: string, password: string, rememberMe = false) => {
     const res = await apiJSON<AuthResponse>('/auth/login', {
       method: 'POST',
       body: { email, password },
     });
-    setToken(res.access_token);
+    setToken(res.access_token, rememberMe);
     await fetchUser();
   }, [fetchUser]);
 

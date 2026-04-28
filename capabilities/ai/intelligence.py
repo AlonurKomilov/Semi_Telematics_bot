@@ -30,6 +30,33 @@ from capabilities.iam.permissions import TOOL_PERMISSIONS, ACCOUNT_WIDE_TOOLS, T
 
 logger = logging.getLogger("bot.ai")
 
+# Human-readable labels for tool calls sent to streaming clients
+_TOOL_LABELS: dict[str, str] = {
+    "get_vehicle_faults":     "Checking fault codes",
+    "get_vehicle_detail":     "Reading vehicle info",
+    "get_vehicle_location":   "Getting location",
+    "get_rolling_stopped":    "Checking rolling status",
+    "get_low_fuel_vehicles":  "Scanning fuel levels",
+    "get_vehicle_fuel_costs": "Analyzing fuel costs",
+    "get_fuel_cost_summary":  "Summarizing fuel costs",
+    "get_vehicle_health":     "Checking vehicle health",
+    "get_vehicle_events":     "Looking up events",
+    "get_events_summary":     "Summarizing events",
+    "get_vehicle_maintenance":"Checking maintenance",
+    "get_maintenance_summary":"Reviewing maintenance",
+    "get_driver_efficiency":  "Analyzing driver efficiency",
+    "get_efficiency_summary": "Summarizing efficiency",
+    "get_driver_scorecard":   "Getting driver scorecard",
+    "get_drivers_list":       "Listing drivers",
+    "check_vehicle_camera":   "Checking camera",
+    "get_geofences":          "Checking geofences",
+    "get_weather":            "Getting weather",
+    "get_vehicle_odometer":   "Reading odometer",
+    "search_vehicles":        "Searching vehicles",
+    "search_knowledge_base":  "Searching knowledge base",
+    "get_account_stats":      "Getting fleet stats",
+}
+
 
 # ── Shared context builder ───────────────────────────────────────
 
@@ -315,7 +342,8 @@ async def ask_agent(question: str, fleet_context: dict,
                     account_id: int | None = None,
                     db=None,
                     language: str = "en",
-                    user_context: dict | None = None) -> dict:
+                    user_context: dict | None = None,
+                    event_callback=None) -> dict:
     """Agent-mode: AI can call Samsara tools to answer questions."""
     import asyncio
 
@@ -514,14 +542,14 @@ async def ask_agent(question: str, fleet_context: dict,
                             assigned_set = {t.strip().lower() for t in assigned_trucks if t}
                             if assigned_set:
                                 if tool_name in TRUCK_SPECIFIC_TOOLS:
-                                    requested = (tool_args.get("truck_name") or "").strip().lower()
+                                    requested = (tool_args.get("vehicle_name") or "").strip().lower()
                                     if requested and requested not in assigned_set:
                                         _blocked = True
                                         result = {
                                             "error": (
                                                 f"Access denied: you can only query your"
-                                                f" assigned truck(s) ({', '.join(assigned_trucks)}),"
-                                                f" not '{tool_args.get('truck_name')}'."
+                                                f" assigned vehicle(s) ({', '.join(assigned_trucks)}),"
+                                                f" not '{tool_args.get('vehicle_name')}'."
                                             ),
                                         }
                                 if tool_name in ACCOUNT_WIDE_TOOLS:
@@ -551,6 +579,11 @@ async def ask_agent(question: str, fleet_context: dict,
                         candidate = response.candidates[0]
                         continue
 
+                    if event_callback is not None:
+                        try:
+                            await event_callback({"type": "tool", "name": tool_name, "label": _TOOL_LABELS.get(tool_name, tool_name)})
+                        except Exception:
+                            pass
                     result = await _execute_tool(
                         tool_name, tool_args, samsara_client,
                         account_id=account_id, db=db,
@@ -619,3 +652,64 @@ async def ask_agent(question: str, fleet_context: dict,
                            account_id=account_id, language=language,
                            user_context=user_context)
     return {"text": text, "tool_results": tool_results}
+
+
+async def ask_agent_stream(question: str, fleet_context: dict,
+                           samsara_client,
+                           user_id: int | None = None,
+                           account_id: int | None = None,
+                           db=None,
+                           language: str = "en",
+                           user_context: dict | None = None):
+    """Async generator version of ask_agent that streams tool events then the final reply.
+
+    Yields dicts:
+      {"type": "tool",  "name": str, "label": str}   — each tool call
+      {"type": "done",  "reply": str, "suggestions": list, "usage": dict | None,
+       "tool_results": list}                          — final result
+      {"type": "error", "message": str}               — on unrecoverable failure
+    """
+    import asyncio as _asyncio
+
+    from capabilities.ai.usage import parse_ai_suggestions as _parse_sug
+
+    queue: _asyncio.Queue = _asyncio.Queue()
+
+    async def _callback(event: dict):
+        await queue.put(event)
+
+    async def _run():
+        try:
+            result = await ask_agent(
+                question, fleet_context, samsara_client,
+                user_id=user_id, account_id=account_id,
+                db=db, language=language, user_context=user_context,
+                event_callback=_callback,
+            )
+            reply = result.get("text", "")
+            from capabilities.ai.generation import get_last_usage
+            clean, suggestions = _parse_sug(reply)
+            await queue.put({
+                "type": "done",
+                "reply": clean,
+                "suggestions": suggestions,
+                "usage": get_last_usage(),
+                "tool_results": result.get("tool_results", []),
+            })
+        except Exception as exc:
+            await queue.put({"type": "error", "message": str(exc)})
+
+    task = _asyncio.create_task(_run())
+    try:
+        while True:
+            event = await queue.get()
+            yield event
+            if event["type"] in ("done", "error"):
+                break
+    finally:
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except _asyncio.CancelledError:
+                pass

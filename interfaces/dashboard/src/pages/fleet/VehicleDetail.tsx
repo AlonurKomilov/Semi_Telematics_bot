@@ -3,7 +3,8 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { apiJSON } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
 import { usePermissions } from '../../hooks/usePermissions';
-import type { Vehicle, VehiclesResponse, HealthResponse, FaultsResponse, Fault, HealthData } from '../../types';
+import type { Vehicle, VehiclesResponse, HealthResponse, FaultsResponse, Fault, HealthData, AIDiagnoseResponse } from '../../types';
+import { formatAIResponse } from '../../utils/formatAI';
 
 export default function VehicleDetail() {
   const { name } = useParams<{ name: string }>();
@@ -13,6 +14,11 @@ export default function VehicleDetail() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [faults, setFaults] = useState<FaultsResponse | null>(null);
   const [error, setError] = useState('');
+
+  // ── Inline AI Diagnosis state ─────────────────────────────
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diagnosis, setDiagnosis] = useState('');
+  const [diagnosisError, setDiagnosisError] = useState('');
 
   useEffect(() => {
     const encoded = encodeURIComponent(name!);
@@ -41,14 +47,33 @@ export default function VehicleDetail() {
 
   const v = vehicle;
   const loc = v.location || {};
-  // Backend normalizes fuel/def/speed/engineState into both flat and nested forms.
-  // fuelPercent / defPercent are added by _normalize_detail() in fleet.py.
   const fuel = v.fuelPercent ?? v.fuel_percent;
   const defPct = v.defPercent ?? v.def_percent;
-  // faults endpoint returns DTC list directly; fallback to fault_codes on vehicle dict.
   const faultList: Fault[] = faults?.faults || [];
   const h: HealthData = health?.health || {};
   const healthAlerts: string[] = health?.alerts || [];
+
+  async function diagnoseFaults() {
+    if (diagnosing || !faultList.length) return;
+    setDiagnosing(true);
+    setDiagnosis('');
+    setDiagnosisError('');
+    try {
+      const data = await apiJSON<AIDiagnoseResponse>('/ai/diagnose', {
+        method: 'POST',
+        body: {
+          vehicle_name: name,
+          dtcs: faultList,
+          lights: health?.health ?? {},
+        },
+      });
+      setDiagnosis(data.diagnosis);
+    } catch (e) {
+      setDiagnosisError(e instanceof Error ? e.message : 'Diagnosis failed');
+    } finally {
+      setDiagnosing(false);
+    }
+  }
 
   return (
     <div>
@@ -115,17 +140,18 @@ export default function VehicleDetail() {
               </h2>
               {has('can_faults') && (
                 <button
-                  onClick={() => navigate('/ai/chat', { state: { initialMessage: `Diagnose the active fault codes on Truck ${name}` } })}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-primary/15 hover:bg-primary/25 text-primary font-medium transition-colors"
+                  onClick={diagnoseFaults}
+                  disabled={diagnosing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-primary/15 hover:bg-primary/25 text-primary font-medium transition-colors disabled:opacity-60"
                 >
-                  Diagnose with AI
+                  {diagnosing ? (
+                    <><span className="inline-flex gap-0.5"><span className="animate-bounce" style={{ animationDelay: '0ms' }}>•</span><span className="animate-bounce" style={{ animationDelay: '150ms' }}>•</span><span className="animate-bounce" style={{ animationDelay: '300ms' }}>•</span></span> Analyzing...</>
+                  ) : diagnosis ? 'Re-diagnose' : '✨ Diagnose with AI'}
                 </button>
               )}
             </div>
             <div className="space-y-2">
               {(faultList as unknown as Record<string, unknown>[]).map((f, i) => {
-                // Raw Samsara DTCs have fields at the top level;
-                // some older data may wrap them in a j1939 sub-object.
                 const j = (f.j1939 as Record<string, unknown> | undefined) ?? {};
                 const spn   = (j.spnDescription   ?? f.spnDescription   ?? f.code ?? 'DTC') as string;
                 const fmi   = (j.fmiDescription   ?? f.fmiDescription)  as string | undefined;
@@ -151,6 +177,28 @@ export default function VehicleDetail() {
                 );
               })}
             </div>
+
+            {/* Inline AI Diagnosis result */}
+            {diagnosisError && (
+              <div className="mt-4 text-destructive text-sm bg-destructive/10 rounded-lg px-3 py-2">{diagnosisError}</div>
+            )}
+            {diagnosis && (
+              <div className="mt-4 bg-primary/5 border border-primary/20 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-semibold text-primary">✨ AI Diagnosis</span>
+                  <button
+                    onClick={() => navigate('/ai/chat', { state: { initialMessage: `Tell me more about the fault codes on Truck ${name}` } })}
+                    className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+                  >
+                    Open in AI Chat
+                  </button>
+                </div>
+                <div
+                  className="text-sm text-foreground/90 leading-relaxed ai-response"
+                  dangerouslySetInnerHTML={{ __html: formatAIResponse(diagnosis) }}
+                />
+              </div>
+            )}
           </div>
         )}
 

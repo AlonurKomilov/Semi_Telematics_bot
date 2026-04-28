@@ -58,7 +58,7 @@ _rate_limits = LRUCache(maxsize=10_000)
 
 # ── Shared UI state (used by both bot/ and capabilities/alerting/) ───
 
-_active_messages: dict = LRUCache(maxsize=5_000)  # (chat_id, user_id) → [msg_ids]
+_active_messages: dict = LRUCache(maxsize=5_000)  # (account_id, chat_id, user_id) → [msg_ids]
 
 
 def check_rate_limit(user_id: int, command: str) -> bool:

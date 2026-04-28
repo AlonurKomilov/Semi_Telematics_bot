@@ -21,6 +21,44 @@ async def run_all(conn) -> None:
     await migrate_seed_driver_trucks(conn)
     await migrate_user_companies_table(conn)
     await migrate_billing_tables(conn)
+    await migrate_ai_chat_history(conn)
+
+
+async def migrate_ai_chat_history(conn) -> None:
+    """Create ai_chat_history table if it doesn't exist yet.
+
+    Idempotent — no-op when table already exists (e.g. fresh installs that
+    picked it up from platform_schema.create_tables()).
+    """
+    try:
+        cur = await conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='ai_chat_history'"
+        )
+        if await cur.fetchone():
+            return  # already exists
+
+        await conn.execute(
+            """CREATE TABLE ai_chat_history (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER NOT NULL,
+                user_id    INTEGER NOT NULL,
+                role       TEXT    NOT NULL,
+                text       TEXT    NOT NULL,
+                created_at TEXT    NOT NULL
+            )"""
+        )
+        await conn.execute(
+            "CREATE INDEX idx_ai_chat_history_user"
+            " ON ai_chat_history(account_id, user_id, created_at)"
+        )
+        await conn.commit()
+        logger.info("Created ai_chat_history table")
+    except Exception as e:
+        logger.error("ai_chat_history migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
 
 
 async def migrate_email_unique_per_account(conn) -> None:

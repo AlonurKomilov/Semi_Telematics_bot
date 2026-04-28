@@ -174,7 +174,7 @@ async def post_init(app: Application):
                 parse_mode=ParseMode.HTML,
                 reply_markup=system_owner_kb(),
             )
-            _active_messages[(soid, soid)] = [msg.message_id]
+            _active_messages[(0, soid, soid)] = [msg.message_id]
         except Exception as e:
             logger.warning(f"Startup msg to system owner {soid}: {e}")
 

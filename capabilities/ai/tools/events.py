@@ -6,41 +6,43 @@ from capabilities.ai.tools.registry import register_tool
 
 
 @register_tool({
-    "name": "get_truck_events",
+    "name": "get_vehicle_events",
     "description": (
         "Get safety events (harsh braking, harsh acceleration, crash, "
         "speeding, rolling stop, distracted driving, etc.) for a specific "
-        "truck over a given number of days. Always state the time period "
+        "vehicle over a given number of days. Always state the time period "
         "you checked in your answer."
     ),
     "parameters": {
         "type": "object",
         "properties": {
-            "truck_name": {
+            "vehicle_name": {
                 "type": "string",
-                "description": "The truck name or number",
+                "description": "The vehicle name or number",
             },
             "days": {
                 "type": "integer",
                 "description": "Number of days to look back (1-30, default 7)",
             },
         },
-        "required": ["truck_name"],
+        "required": [],
     },
 })
-async def get_truck_events(tool_args: dict, samsara_client,
-                           account_id: int | None = None, db=None) -> dict:
-    truck = tool_args.get("truck_name", "")
+async def get_vehicle_events(tool_args: dict, samsara_client,
+                             account_id: int | None = None, db=None) -> dict:
+    vehicle = tool_args.get("vehicle_name", "")
     days = min(max(tool_args.get("days", 7), 1), 30)
+    if not vehicle:
+        return {"error": "Please specify a vehicle name to get its safety events."}
     events = await samsara_client.get_events(days=days)
-    truck_events = [
+    vehicle_events = [
         e for e in events
-        if e.get("vehicle_name", "").lower() == truck.lower()
+        if e.get("vehicle_name", "").lower() == vehicle.lower()
     ]
     return {
-        "truck": truck,
+        "vehicle": vehicle,
         "period_days": days,
-        "total_events": len(truck_events),
+        "total_events": len(vehicle_events),
         "events": [
             {
                 "type": e.get("event_name", "Unknown"),
@@ -49,7 +51,7 @@ async def get_truck_events(tool_args: dict, samsara_client,
                 "g_force": e.get("g_force", 0),
                 "coaching_state": e.get("coaching_state", ""),
             }
-            for e in truck_events[:20]
+            for e in vehicle_events[:20]
         ],
     }
 
@@ -99,7 +101,7 @@ async def get_events_summary(tool_args: dict, samsara_client,
         "most_severe": [
             {
                 "type": e.get("event_name", "Unknown"),
-                "truck": e.get("vehicle_name", "?"),
+                "vehicle": e.get("vehicle_name", "?"),
                 "driver": e.get("driver_name", "Unassigned"),
                 "g_force": e.get("g_force", 0),
                 "time": e.get("time", ""),

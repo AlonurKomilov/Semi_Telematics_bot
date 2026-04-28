@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { apiJSON } from '../../api/client';
+import { useLeafletMap } from '../../hooks/useLeafletMap';
+import { usePoiLayers } from '../../hooks/usePoiLayers';
+import PoiLayerPanel from '../../components/PoiLayerPanel';
 import type { RouteReplayResponse, DispatchVehicle, DispatchVehiclesResponse, RoutePoint } from '../../types';
 import type L from 'leaflet';
 
@@ -15,8 +18,8 @@ function today(): string {
 }
 
 export default function Routes() {
-  const mapRef = useRef<HTMLDivElement>(null);
-  const leafletMap = useRef<L.Map | null>(null);
+  const { mapRef, leafletMap, isReady } = useLeafletMap();
+  const poiHook = usePoiLayers(leafletMap, isReady);
   const layerRef = useRef<L.LayerGroup | null>(null);
   const [vehicles, setVehicles] = useState<DispatchVehicle[]>([]);
   const [vehicleName, setVehicleName] = useState('');
@@ -25,39 +28,16 @@ export default function Routes() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Load Leaflet once
-  const loadLeaflet = useCallback((): Promise<typeof L> =>
-    new Promise((resolve) => {
-      const id = 'leaflet-css';
-      if (!document.getElementById(id)) {
-        const link = document.createElement('link');
-        link.id = id;
-        link.rel = 'stylesheet';
-        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        document.head.appendChild(link);
-      }
-      if (window.L) return resolve(window.L);
-      const s = document.createElement('script');
-      s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-      s.onload = () => resolve(window.L);
-      document.head.appendChild(s);
-    }), []);
-
-  // Init map
+  // Initialise layer group once the shared map is ready
   useEffect(() => {
-    loadLeaflet().then((Leaf) => {
-      if (!mapRef.current || leafletMap.current) return;
-      const map = Leaf.map(mapRef.current).setView([39.8, -98.5], 5);
-      Leaf.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap',
-      }).addTo(map);
-      leafletMap.current = map;
-      layerRef.current = Leaf.layerGroup().addTo(map);
-    });
+    if (!isReady || !leafletMap.current) return;
+    const Leaf = window.L as typeof L;
+    layerRef.current = Leaf.layerGroup().addTo(leafletMap.current);
     return () => {
-      if (leafletMap.current) { leafletMap.current.remove(); leafletMap.current = null; }
+      layerRef.current?.remove();
+      layerRef.current = null;
     };
-  }, [loadLeaflet]);
+  }, [isReady, leafletMap]);
 
   // Load vehicle list
   useEffect(() => {
@@ -117,7 +97,7 @@ export default function Routes() {
         `/dispatch/route/${encodeURIComponent(vehicleName)}?date=${date}`,
       );
       setRoute(data);
-      const Leaf = await loadLeaflet();
+      const Leaf = window.L as typeof L;
       drawRoute(Leaf, data.points || []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load route');
@@ -193,7 +173,10 @@ export default function Routes() {
       </div>
 
       {/* Map */}
-      <div ref={mapRef} className="h-[calc(100vh-22rem)] rounded-xl border border-border z-0" />
+      <div className="relative h-[calc(100vh-22rem)] rounded-xl border border-border overflow-hidden z-0">
+        <div ref={mapRef} className="absolute inset-0" />
+        <PoiLayerPanel poiHook={poiHook} />
+      </div>
     </div>
   );
 }

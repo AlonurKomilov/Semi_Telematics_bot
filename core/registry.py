@@ -61,13 +61,18 @@ class TenantRegistry:
         """Evict the least-recently-used tenant context if over capacity."""
         while len(self._tenants) > self._max_tenants:
             evict_id, evict_ctx = self._tenants.popitem(last=False)
-            self._access_times.pop(evict_id, None)
+            idle = time.monotonic() - self._access_times.pop(evict_id, time.monotonic())
             try:
                 await evict_ctx.close()
             except Exception:
                 logger.exception("Error evicting TenantContext %d", evict_id)
-            logger.info("TenantContext %d evicted (%.0fs idle)",
-                         evict_id, time.monotonic() - self._access_times.get(evict_id, 0))
+            try:
+                # Also release the cached Samsara client so its HTTP sessions are closed
+                from core.services import invalidate_client
+                await invalidate_client(evict_id)
+            except Exception:
+                logger.exception("Error releasing Samsara client for evicted account %d", evict_id)
+            logger.info("TenantContext %d evicted (%.0fs idle)", evict_id, idle)
 
     async def invalidate(self, account_id: int):
         """Remove and close a tenant context (e.g., after config change)."""

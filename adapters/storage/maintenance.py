@@ -69,12 +69,13 @@ class MaintenanceMixin:
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
-    async def get_pending_tasks_by_date(self) -> list[dict]:
-        """Get all pending tasks with a due_date in the past (across all accounts)."""
+    async def get_pending_tasks_by_date(self, account_id: int) -> list[dict]:
+        """Get pending tasks with a due_date in the past for a specific account."""
         now = self._now()
         cur = await self._db.execute(
-            "SELECT * FROM maintenance_tasks WHERE status = 'pending' AND due_date IS NOT NULL AND due_date < ?",
-            (now,),
+            "SELECT * FROM maintenance_tasks"
+            " WHERE account_id = ? AND status = 'pending' AND due_date IS NOT NULL AND due_date < ?",
+            (account_id, now),
         )
         rows = await cur.fetchall()
         return [dict(r) for r in rows]

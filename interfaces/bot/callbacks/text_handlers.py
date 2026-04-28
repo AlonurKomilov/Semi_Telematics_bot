@@ -19,6 +19,7 @@ from interfaces.bot.fuel_costs import handle_fuelcost_text
 from interfaces.bot.maintenance import handle_maintenance_text
 from interfaces.bot.routes import handle_route_text
 from interfaces.bot.ai import cmd_ai_answer
+from interfaces.bot.geofences import handle_add_zone_text
 
 
 async def handle_text(update, context):
@@ -39,6 +40,11 @@ async def handle_text(update, context):
         return
 
     pending = context.user_data.pop("_pending", None)
+
+    # ── Add-zone multi-step conversation ────────────────────────
+    if context.user_data.get("_add_zone_step"):
+        await handle_add_zone_text(update, context)
+        return
 
     if not pending:
         # No pending prompt — route to AI if user is registered & AI configured

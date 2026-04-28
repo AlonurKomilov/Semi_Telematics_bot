@@ -342,7 +342,7 @@ async def send_alert(
 
             # Track active message for this subscriber
             _active_messages.setdefault(
-                (sub.telegram_id, sub.telegram_id), []
+                (account_id, sub.telegram_id, sub.telegram_id), []
             ).append(msg.message_id)
         except Exception as e:
             logger.error("%s alert delivery failed for user %s (account %d): %s",

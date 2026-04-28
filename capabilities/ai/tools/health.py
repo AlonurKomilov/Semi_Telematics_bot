@@ -26,7 +26,7 @@ async def get_vehicle_health(tool_args: dict, samsara_client,
         "vehicles_with_alerts": sum(1 for v in health if v.get("_health_alerts")),
         "vehicles": [
             {
-                "truck": v.get("name"),
+                "vehicle": v.get("name"),
                 "battery_v": v.get("_health", {}).get("battery_v"),
                 "coolant_c": v.get("_health", {}).get("coolant_c"),
                 "oil_psi": v.get("_health", {}).get("oil_psi"),
@@ -42,11 +42,11 @@ async def get_vehicle_health(tool_args: dict, samsara_client,
 
 
 @register_tool({
-    "name": "count_stats",
+    "name": "get_account_stats",
     "description": (
-        "Get quick account-wide counts: total active trucks, trucks with "
-        "faults, trucks with critical faults, low fuel trucks, and "
-        "trucks with health alerts. Fast overview without full details."
+        "Get quick account-wide counts: total active vehicles, vehicles with "
+        "faults, vehicles with critical faults, low fuel vehicles, and "
+        "vehicles with health alerts. Fast overview without full details."
     ),
     "parameters": {
         "type": "object",
@@ -54,7 +54,7 @@ async def get_vehicle_health(tool_args: dict, samsara_client,
         "required": [],
     },
 })
-async def count_stats(tool_args: dict, samsara_client,
+async def get_account_stats(tool_args: dict, samsara_client,
                             account_id: int | None = None, db=None) -> dict:
     fleet = await samsara_client.get_fleet_overview()
     faulted = []
@@ -77,9 +77,9 @@ async def count_stats(tool_args: dict, samsara_client,
     except Exception:
         alerts = 0
     return {
-        "total_active_trucks": len(fleet),
-        "trucks_with_faults": len(faulted),
-        "trucks_critical": len(critical),
-        "trucks_low_fuel": len(low_fuel),
-        "trucks_with_health_alerts": alerts,
+        "total_active_vehicles": len(fleet),
+        "vehicles_with_faults": len(faulted),
+        "vehicles_critical": len(critical),
+        "vehicles_low_fuel": len(low_fuel),
+        "vehicles_with_health_alerts": alerts,
     }

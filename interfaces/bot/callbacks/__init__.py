@@ -54,7 +54,8 @@ from interfaces.bot.maintenance import (
 )
 from interfaces.bot.maps import cmd_livemap
 from interfaces.bot.routes import cmd_route, cmd_route_go
-from interfaces.bot.geofences import cmd_geofences
+from interfaces.bot.geofences import cmd_geofences, cmd_add_zone, cmd_list_zones, cmd_delete_zone
+from interfaces.bot.geofences import handle_delete_zone_callback, handle_add_zone_roles_callback
 from interfaces.bot.events import cmd_events, cmd_events_text, cmd_events_csv
 from interfaces.bot.work_hours import (
     cmd_work_hours, cmd_whours_add, cmd_whours_view,
@@ -143,6 +144,9 @@ _router.exact("scorecard_csv", cmd_scorecards_csv)
 _router.exact("cmd_livemap", cmd_livemap)
 _router.exact("cmd_route", cmd_route)
 _router.exact("cmd_geofences", cmd_geofences)
+_router.exact("cmd_add_zone", cmd_add_zone)
+_router.exact("cmd_list_zones", cmd_list_zones)
+_router.exact("cmd_delete_zone", cmd_delete_zone)
 _router.exact("cmd_events", cmd_events)
 _router.exact("cmd_fuelcost", cmd_fuelcost)
 _router.exact("fuelcost_add", cmd_fuelcost_add)
@@ -700,12 +704,20 @@ _router.prefix("coweather_", _coweather)
 _router.prefix("co_", _co_submenu)
 
 
-# ── Geofence detail ─────────────────────────────────────────────
+# ── Geofence detail & zone management ───────────────────────────
 
 async def _gf_detail(u, c):
     await u.callback_query.answer(t('geofence.detail_coming_soon'), show_alert=False)
 
+async def _del_zone(u, c):
+    await handle_delete_zone_callback(u, c)
+
+async def _zone_roles(u, c):
+    await handle_add_zone_roles_callback(u, c)
+
 _router.prefix("gf_detail_", _gf_detail)
+_router.prefix("del_zone:", _del_zone)
+_router.prefix("zone_roles:", _zone_roles)
 
 
 # ── Route replay ────────────────────────────────────────────────

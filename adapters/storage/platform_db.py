@@ -16,6 +16,7 @@ from .permissions_db import PermissionsMixin
 from .driver_trucks_db import DriverTrucksMixin
 from .user_companies_db import UserCompaniesMixin
 from .billing import BillingMixin
+from .ai_chat_db import AIChatHistoryMixin
 from . import platform_schema
 from . import platform_migrations
 
@@ -32,6 +33,7 @@ class PlatformDB(
     DriverTrucksMixin,
     UserCompaniesMixin,
     BillingMixin,
+    AIChatHistoryMixin,
     _DatabaseCore,
 ):
     """SQLite database for platform-wide tables: accounts, users, invites, chats, ai_usage.

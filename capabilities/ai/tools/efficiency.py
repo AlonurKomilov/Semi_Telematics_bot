@@ -30,7 +30,7 @@ async def get_driver_efficiency(tool_args: dict, samsara_client,
         "period_days": days,
         "drivers": [
             {
-                "name": d["driver_name"],
+                "name": d.get("driver_name", "Unknown"),
                 "miles": d.get("_miles"),
                 "mpg": d.get("_mpg"),
                 "idle_pct": d.get("_idle_pct"),
@@ -67,10 +67,10 @@ async def get_efficiency_summary(tool_args: dict, samsara_client,
     eff = await samsara_client.get_fleet_efficiency(days=days)
     return {
         "period_days": days,
-        "truck_count": len(eff),
-        "trucks": [
+        "vehicle_count": len(eff),
+        "vehicles": [
             {
-                "truck": v.get("name"),
+                "vehicle": v.get("name"),
                 "engine_hours": v.get("_engine_hours"),
                 "driving_hours": v.get("_driving_hours"),
                 "idle_hours": v.get("_idle_hours"),

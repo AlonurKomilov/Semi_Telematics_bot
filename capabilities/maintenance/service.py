@@ -48,7 +48,7 @@ async def mark_overdue_tasks_by_date(account_id: int, tenant_db) -> list[dict]:
     Returns the list of tasks that were just marked overdue so the caller
     (bot scheduler) can send notifications for each.
     """
-    overdue_tasks = await tenant_db.get_pending_tasks_by_date()
+    overdue_tasks = await tenant_db.get_pending_tasks_by_date(account_id)
     newly_overdue: list[dict] = []
     for task in overdue_tasks:
         await tenant_db.update_maintenance_status(

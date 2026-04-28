@@ -1,23 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bot, ChevronDown, Send, Trash2, Copy, Check, RefreshCw, Sparkles, MessageSquare } from 'lucide-react';
-import { apiJSON, apiJSONAI } from '../../api/client';
+import { Bot, ChevronDown, Send, Trash2, Copy, Check, RefreshCw, Sparkles, MessageSquare, Pencil, Download, RotateCcw } from 'lucide-react';
+import { apiJSON, apiJSONAI, apiStreamChat } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
-import type { AIChatMessage, AIChatResponse, AIHistoryResponse, AISummaryResponse, AIModel, AIModelsResponse } from '../../types';
+import type { AIChatMessage, AIChatResponse, AIHistoryResponse, AISummaryResponse, AIModel, AIModelsResponse, AIUsage } from '../../types';
 import { formatAIResponse } from '../../utils/formatAI';
 
 // Extended message type with client-side timestamp
 interface LocalMessage extends AIChatMessage {
   timestamp: Date;
+  usage?: AIUsage;
 }
 
-const LOADING_STATUSES = [
-  'Checking live fleet data\u2026',
-  'Analyzing vehicle status\u2026',
-  'Running diagnostics\u2026',
-  'Calculating metrics\u2026',
-  'Gathering insights\u2026',
-];
+// No hardcoded loading messages — we show real tool activity from the stream
 
 function getSuggestedQuestions(role?: string): string[] {
   switch (role) {
@@ -66,12 +61,20 @@ export default function Chat() {
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [statusIdx, setStatusIdx] = useState(0);
   const [error, setError] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [clearConfirm, setClearConfirm] = useState(false);
   const clearConfirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Streaming state ──────────────────────────────────────────
+  /** Tool labels shown while streaming (e.g. "Checking fault codes") */
+  const [toolActivity, setToolActivity] = useState<string[]>([]);
+  /** Last message that failed — shown in retry button */
+  const [lastFailed, setLastFailed] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  /** Cycling index for pre-tool thinking phrases */
+  const [thinkIdx, setThinkIdx] = useState(0);
 
   // ── Model state ──────────────────────────────────────────────
   const [models, setModels] = useState<AIModel[]>([]);
@@ -122,18 +125,34 @@ export default function Chat() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
-  // Cycle loading status message every 2 s while a request is in flight
+  // Cycle through thinking phrases before first tool fires
+  const THINK_PHRASES = [
+    'Reading your question\u2026',
+    'Figuring out what data I need\u2026',
+    'Preparing to query the fleet\u2026',
+    'Connecting to telematics\u2026',
+  ];
   useEffect(() => {
-    if (!loading) { setStatusIdx(0); return; }
-    const t = setInterval(() => setStatusIdx(i => (i + 1) % LOADING_STATUSES.length), 2000);
+    if (!loading || toolActivity.length > 0) return;
+    setThinkIdx(0);
+    const t = setInterval(() => setThinkIdx((i) => (i + 1) % THINK_PHRASES.length), 1800);
     return () => clearInterval(t);
-  }, [loading]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, toolActivity.length]);
 
   // Sync tab with URL query param (?tab=briefing)
   useEffect(() => {
     const tab = new URLSearchParams(location.search).get('tab');
     setActiveTab(tab === 'briefing' ? 'briefing' : 'chat');
   }, [location.search]);
+
+  // Auto-load Fleet Briefing when switching to that tab (if not already loaded)
+  useEffect(() => {
+    if (activeTab === 'briefing' && !briefing && !briefingLoading && !briefingError) {
+      generateBriefing();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   // Close model dropdown on outside click
   useEffect(() => {
@@ -160,25 +179,52 @@ export default function Chat() {
     setSuggestions([]);
     setLoading(true);
     setError('');
+    setToolActivity([]);
+    setLastFailed(null);
     setActiveTab('chat');
 
+    // Cancel any in-flight request
+    abortRef.current?.abort();
+    const abort = new AbortController();
+    abortRef.current = abort;
+
     try {
-      const data = await apiJSONAI<AIChatResponse>('/ai/chat', {
-        method: 'POST',
-        body: { message: text.trim() },
-      });
-      const aiMsg: LocalMessage = { role: 'model', text: data.reply, timestamp: new Date() };
+      let finalReply = '';
+      let finalSuggestions: string[] = [];
+      let finalUsage: AIUsage | undefined;
+
+      await apiStreamChat(
+        text.trim(),
+        (event) => {
+          if (event.type === 'tool') {
+            setToolActivity((prev) => [...prev, event.label]);
+          } else if (event.type === 'done') {
+            finalReply = event.reply;
+            finalSuggestions = event.suggestions || [];
+            finalUsage = event.usage as unknown as AIUsage | undefined;
+          } else if (event.type === 'error') {
+            throw new Error(event.message);
+          }
+        },
+        abort.signal,
+      );
+
+      if (!finalReply) throw new Error('No response received');
+      const aiMsg: LocalMessage = { role: 'model', text: finalReply, timestamp: new Date(), usage: finalUsage };
       setMessages((prev) => [...prev, aiMsg]);
-      setSuggestions(data.suggestions || []);
+      setSuggestions(finalSuggestions);
     } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') return;
       const msg = e instanceof Error ? e.message : 'Failed to get response';
       if (msg.includes('429') || msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('too many')) {
         setError('Too many messages \u2014 please wait a moment before sending again.');
       } else {
         setError(msg);
       }
+      setLastFailed(text.trim());
     } finally {
       setLoading(false);
+      setToolActivity([]);
       inputRef.current?.focus();
     }
   }
@@ -201,10 +247,13 @@ export default function Chat() {
   }
 
   async function clearChat() {
+    abortRef.current?.abort();
     await apiJSON('/ai/history', { method: 'DELETE' }).catch(() => {});
     setMessages([]);
     setSuggestions([]);
     setError('');
+    setLastFailed(null);
+    setToolActivity([]);
     setClearConfirm(false);
   }
 
@@ -218,8 +267,22 @@ export default function Chat() {
     }
   }
 
+  /** Copy an AI message as clean plain text (no HTML tags). */
   function copyMessage(text: string, idx: number) {
-    navigator.clipboard.writeText(text).catch(() => {});
+    // Parse the raw HTML into a DOM tree, then extract plain text
+    const div = document.createElement('div');
+    div.innerHTML = text;
+    // Replace <br> and block-level tags with newlines before extracting text
+    div.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
+    div.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6').forEach((el) => {
+      el.insertAdjacentText('beforebegin', '');
+      el.insertAdjacentText('afterend', '\n');
+    });
+    // Collapse multiple blank lines
+    const plain = (div.textContent || div.innerText || '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    navigator.clipboard.writeText(plain).catch(() => {});
     setCopiedIdx(idx);
     setTimeout(() => setCopiedIdx(null), 1500);
   }
@@ -229,6 +292,34 @@ export default function Chat() {
       e.preventDefault();
       send(input);
     }
+  }
+
+  function editMessage(text: string) {
+    setInput(text);
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        inputRef.current.style.height = 'auto';
+        inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 120) + 'px';
+      }
+    }, 0);
+  }
+
+  function exportChat() {
+    const lines = messages.map((m) => {
+      const time = m.timestamp.toLocaleString();
+      const who = m.role === 'user' ? 'You' : 'AI';
+      // Strip HTML tags for plain-text export
+      const plainText = m.text.replace(/<[^>]+>/g, '');
+      return `[${time}] ${who}:\n${plainText}\n`;
+    });
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `fleet-chat-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   // ── Briefing functions ───────────────────────────────────────
@@ -257,18 +348,20 @@ export default function Chat() {
   return (
     <div className="flex flex-col h-[calc(100vh-6rem)]">
       {/* ── Header ────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between mb-3 flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Bot size={24} className="text-primary" />
-            AI Assistant
-          </h1>
-          {/* Model selector — all users can pick their preferred model */}
+      <div className="flex items-center justify-between mb-4 flex-shrink-0">
+        <h1 className="text-xl font-semibold flex items-center gap-2">
+          <Bot size={20} className="text-primary" />
+          AI Assistant
+        </h1>
+
+        {/* Right-side controls: model selector + export + clear */}
+        <div className="flex items-center gap-2">
+          {/* Model selector */}
           {currentModel && (
             <div className="relative" ref={modelRef}>
               <button
                 onClick={() => setModelOpen(!modelOpen)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-full border transition-colors bg-muted border-border hover:border-ring text-foreground/80 cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors bg-muted border-border hover:border-ring text-foreground/80 cursor-pointer"
                 title="Switch AI model"
               >
                 <span className="max-w-[140px] truncate">
@@ -277,7 +370,7 @@ export default function Chat() {
                 <ChevronDown size={12} className={`transition-transform shrink-0 ${modelOpen ? 'rotate-180' : ''}`} />
               </button>
               {modelOpen && (
-                <div className="absolute left-0 top-full mt-1 z-50 w-72 max-h-80 overflow-y-auto rounded-lg border border-border bg-card shadow-xl">
+                <div className="absolute right-0 top-full mt-1 z-50 w-72 max-h-80 overflow-y-auto rounded-lg border border-border bg-card shadow-xl">
                   {Object.entries(
                     models.reduce<Record<string, AIModel[]>>((acc, m) => {
                       (acc[m.category] ??= []).push(m);
@@ -310,6 +403,9 @@ export default function Chat() {
                               )}
                             </span>
                           </div>
+                          {m.description && (
+                            <span className="text-[10px] text-muted-foreground block truncate">{m.description}</span>
+                          )}
                           {isAdmin && m.cost_per_request != null && (
                             <span className="text-[10px] text-muted-foreground">${m.cost_per_request}/req</span>
                           )}
@@ -321,22 +417,37 @@ export default function Chat() {
               )}
             </div>
           )}
-        </div>
 
-        {/* Clear button — only shown in Chat tab when there are messages */}
-        {activeTab === 'chat' && messages.length > 0 && (
-          <button
-            onClick={handleClearClick}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
-              clearConfirm
-                ? 'bg-destructive/15 text-destructive border border-destructive/30 hover:bg-destructive/25'
-                : 'bg-muted hover:bg-muted/80 text-muted-foreground'
-            }`}
-          >
-            <Trash2 size={13} />
-            {clearConfirm ? 'Confirm clear?' : 'Clear'}
-          </button>
-        )}
+          {/* Separator */}
+          {activeTab === 'chat' && messages.length > 0 && (
+            <div className="w-px h-5 bg-border" />
+          )}
+
+          {/* Export + Clear — only in Chat tab with messages */}
+          {activeTab === 'chat' && messages.length > 0 && (
+            <>
+              <button
+                onClick={exportChat}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors bg-muted hover:bg-muted/80 text-muted-foreground border border-border"
+                title="Export conversation as .txt"
+              >
+                <Download size={13} />
+                Export
+              </button>
+              <button
+                onClick={handleClearClick}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                  clearConfirm
+                    ? 'bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/25'
+                    : 'bg-muted hover:bg-muted/80 text-muted-foreground border-border'
+                }`}
+              >
+                <Trash2 size={13} />
+                {clearConfirm ? 'Confirm?' : 'Clear'}
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* ── Tabs ──────────────────────────────────────────────── */}
@@ -369,7 +480,7 @@ export default function Chat() {
       {activeTab === 'chat' && (
         <>
           {/* Messages area */}
-          <div className="flex-1 overflow-y-auto space-y-3 pr-2 min-h-0">
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-0">
             {messages.length === 0 && !loading && (
               <div className="text-center text-muted-foreground mt-16">
                 <Bot size={40} className="mx-auto mb-3 text-primary/40" />
@@ -399,27 +510,36 @@ export default function Chat() {
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 {msg.role === 'user' ? (
-                  <div className="max-w-[80%]">
-                    <div className="rounded-xl px-4 py-3 text-sm whitespace-pre-wrap bg-primary/20 text-foreground rounded-br-sm">
+                  <div className="max-w-[80%] group">
+                    <div className="rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap bg-primary text-primary-foreground rounded-br-none">
                       {msg.text}
                     </div>
-                    <p className="text-[10px] text-muted-foreground mt-0.5 text-right">
-                      {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="max-w-[80%] group">
-                    <div
-                      className="rounded-xl px-4 py-3 text-sm bg-muted text-foreground/90 rounded-bl-sm ai-response"
-                      dangerouslySetInnerHTML={{ __html: formatAIResponse(msg.text) }}
-                    />
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <p className="text-[10px] text-muted-foreground">
+                    <div className="flex items-center justify-end gap-2 mt-1">
+                      <button
+                        onClick={() => editMessage(msg.text)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                        title="Edit message"
+                      >
+                        <Pencil size={11} />
+                      </button>
+                      <p className="text-[10px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
                         {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="max-w-[82%] group">
+                    <div
+                      className="rounded-2xl px-4 py-3 text-sm bg-card border border-border text-foreground rounded-bl-none ai-response shadow-sm"
+                      dangerouslySetInnerHTML={{ __html: formatAIResponse(msg.text) }}
+                    />
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] text-muted-foreground/60">
+                        {models.find((m) => m.name === currentModel)?.display || currentModel}
+                      </span>
                       <button
                         onClick={() => copyMessage(msg.text, i)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground ml-auto"
                         title="Copy response"
                       >
                         {copiedIdx === i
@@ -434,20 +554,43 @@ export default function Chat() {
 
             {loading && (
               <div className="flex justify-start">
-                <div className="bg-muted rounded-xl px-4 py-3 text-sm text-muted-foreground rounded-bl-sm">
-                  <span className="inline-flex gap-1 mr-2">
-                    <span className="animate-bounce" style={{ animationDelay: '0ms' }}>&#9679;</span>
-                    <span className="animate-bounce" style={{ animationDelay: '150ms' }}>&#9679;</span>
-                    <span className="animate-bounce" style={{ animationDelay: '300ms' }}>&#9679;</span>
-                  </span>
-                  {LOADING_STATUSES[statusIdx]}
+                <div className="bg-muted rounded-xl px-4 py-3 text-sm rounded-bl-sm max-w-[82%] min-w-[220px]">
+                  {/* Completed steps */}
+                  {toolActivity.slice(0, toolActivity.length > 0 ? toolActivity.length - 1 : 0).map((label, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground/70 mb-1.5">
+                      <Check size={11} className="text-primary/70 flex-shrink-0" />
+                      <span>{label}</span>
+                    </div>
+                  ))}
+                  {/* Active step */}
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex gap-0.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </span>
+                    <span className="text-foreground font-medium">
+                      {toolActivity.length > 0
+                        ? `${toolActivity[toolActivity.length - 1]}\u2026`
+                        : THINK_PHRASES[thinkIdx]}
+                    </span>
+                  </div>
                 </div>
               </div>
             )}
 
             {error && (
-              <div className="flex justify-center">
+              <div className="flex flex-col items-center gap-2">
                 <p className="text-destructive text-sm bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>
+                {lastFailed && (
+                  <button
+                    onClick={() => { setError(''); send(lastFailed!); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground border border-border transition-colors"
+                  >
+                    <RotateCcw size={11} />
+                    Retry
+                  </button>
+                )}
               </div>
             )}
 
@@ -456,13 +599,13 @@ export default function Chat() {
 
           {/* Follow-up suggestions */}
           {suggestions.length > 0 && !loading && (
-            <div className="flex flex-wrap gap-2 mt-2 flex-shrink-0">
+            <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-border/50 flex-shrink-0">
               {suggestions.map((s, i) => (
                 <button
                   key={i}
                   onClick={() => send(s)}
                   disabled={loading}
-                  className="px-3 py-1.5 text-xs rounded-full bg-muted hover:bg-muted/80 text-foreground/80 border border-border transition-colors disabled:opacity-50"
+                  className="px-3 py-1.5 text-xs rounded-full bg-muted hover:bg-primary/10 hover:text-primary hover:border-primary/30 text-foreground/70 border border-border transition-colors disabled:opacity-50"
                 >
                   {s}
                 </button>
@@ -484,7 +627,7 @@ export default function Chat() {
               placeholder={user?.role === 'driver' ? 'Ask about your truck\u2026' : 'Ask about your fleet\u2026'}
               rows={1}
               style={{ maxHeight: '120px' }}
-              className="flex-1 bg-muted text-foreground rounded-lg px-4 py-3 text-sm border border-border focus:border-ring focus:ring-2 focus:ring-ring/20 focus:outline-none resize-none transition-colors"
+              className="flex-1 bg-card text-foreground rounded-xl px-4 py-3 text-sm border border-border focus:border-ring focus:ring-2 focus:ring-ring/20 focus:outline-none resize-none transition-colors placeholder:text-muted-foreground/50"
               disabled={loading}
             />
             <button

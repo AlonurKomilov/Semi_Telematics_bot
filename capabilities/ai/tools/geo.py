@@ -49,10 +49,10 @@ async def get_weather(tool_args: dict, samsara_client,
                             account_id: int | None = None, db=None) -> dict:
     weather = await samsara_client.get_fleet_weather()
     return {
-        "truck_count": len(weather),
-        "trucks": [
+        "vehicle_count": len(weather),
+        "vehicles": [
             {
-                "truck": v.get("name"),
+                "vehicle": v.get("name"),
                 "temp_f": v.get("_weather", {}).get("temp_f"),
                 "temp_c": v.get("_weather", {}).get("temp_c"),
                 "city": v.get("location", {}).get("reverseGeo", {}).get(

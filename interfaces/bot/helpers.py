@@ -82,8 +82,8 @@ def _split_message(text: str, limit: int = MAX_TG_MSG) -> list[str]:
     return chunks
 
 
-def _msg_key(update: Update) -> tuple[int, int]:
-    """Return (chat_id, user_id) key for _active_messages tracking."""
+def _msg_key(update: Update, account_id: int = 0) -> tuple[int, int, int]:
+    """Return (account_id, chat_id, user_id) key for _active_messages tracking."""
     if update.callback_query:
         chat_id = update.callback_query.message.chat.id
         user_id = update.callback_query.from_user.id
@@ -93,13 +93,16 @@ def _msg_key(update: Update) -> tuple[int, int]:
     else:
         chat_id = update.effective_chat.id if update.effective_chat else 0
         user_id = update.effective_user.id if update.effective_user else 0
-    return (chat_id, user_id)
+    return (account_id, chat_id, user_id)
 
 
-async def _delete_old_messages(key: tuple[int, int] | int, bot):
-    # Support both tuple key and plain chat_id (for backward compat with fleet.py)
+async def _delete_old_messages(key: tuple | int, bot):
+    # Supports (account_id, chat_id, user_id), (chat_id, user_id), or plain chat_id
     msg_ids = _active_messages.pop(key, [])
-    chat_id = key[0] if isinstance(key, tuple) else key
+    if isinstance(key, tuple):
+        chat_id = key[1] if len(key) == 3 else key[0]
+    else:
+        chat_id = key
     for mid in msg_ids:
         try:
             await bot.delete_message(chat_id=chat_id, message_id=mid)
@@ -112,7 +115,7 @@ async def _show(update: Update, context: ContextTypes.DEFAULT_TYPE,
     query = update.callback_query
     bot = context.bot
     chat_id = query.message.chat.id if query else update.effective_chat.id
-    key = _msg_key(update)
+    key = _msg_key(update, context.user_data["_db_user"].account_id if context.user_data.get("_db_user") else 0)
 
     # Flatten: split any oversized text pages into Telegram-safe chunks
     pages: list[str] = []
@@ -145,7 +148,7 @@ async def _show(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
 async def _show_loading(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
     query = update.callback_query
-    key = _msg_key(update)
+    key = _msg_key(update, context.user_data["_db_user"].account_id if context.user_data.get("_db_user") else 0)
     if query:
         try:
             await query.answer()

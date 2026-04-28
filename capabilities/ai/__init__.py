@@ -53,6 +53,7 @@ __all__ = [
     "ASSISTANT_SYSTEM", "FAULT_DIAGNOSIS_SYSTEM", "SUMMARY_SYSTEM",
     # intelligence
     "diagnose_faults", "generate_summary", "ask_ai", "ask_agent",
+    "ask_agent_stream",
     "build_context",
     "AI_TOOLS",
     # vision
@@ -165,6 +166,7 @@ from capabilities.ai.intelligence import (                               # noqa:
     generate_summary,
     ask_ai,
     ask_agent,
+    ask_agent_stream,
     build_context,
 )
 

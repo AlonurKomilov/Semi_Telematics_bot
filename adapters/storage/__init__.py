@@ -47,6 +47,7 @@ from .driver_trucks_db import DriverTrucksMixin
 from .user_companies_db import UserCompaniesMixin
 
 from .billing import BillingMixin
+from .geofence_db import GeofenceMixin
 from .platform_db import PlatformDB
 from .tenant_db import TenantDB
 from .tenant_router import TenantRouter, LegacyRouter
@@ -70,6 +71,7 @@ class Database(
     DriverTrucksMixin,
     UserCompaniesMixin,
     BillingMixin,
+    GeofenceMixin,
     _DatabaseCore,
 ):
     """Async SQLite wrapper with typed helpers.

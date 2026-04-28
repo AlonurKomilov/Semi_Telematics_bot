@@ -16,8 +16,8 @@ def _store_history(user_id: int, question: str, answer: str, account_id: int = 0
             del _chat_histories[oldest]
         _chat_histories[key] = []
     history = _chat_histories[key]
-    history.append({"role": "User", "text": question[:300]})
-    history.append({"role": "Assistant", "text": answer[:500]})
+    history.append({"role": "User", "text": question[:1000]})
+    history.append({"role": "Assistant", "text": answer[:2000]})
     if len(history) > _MAX_HISTORY * 2:
         _chat_histories[key] = history[-_MAX_HISTORY * 2:]
 

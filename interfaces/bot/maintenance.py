@@ -17,6 +17,7 @@ from core.bot_registry import get_app_for_account
 from interfaces.bot.config import logger, get_user_company_codes, get_platform_db, get_tenant_db
 from core.isolation import run_account_job
 from capabilities.telemetry.service import get_vehicle_odometer
+from capabilities.vehicle_catalog.service import get_fleet_overview as _svc_fleet_overview
 from capabilities.maintenance.service import (
     mark_overdue_tasks_by_date,
     mark_overdue_tasks_by_mileage,

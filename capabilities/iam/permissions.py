@@ -501,40 +501,47 @@ def is_management_role(role: Role | str) -> bool:
 # If ANY listed permission is True for the user's role, the tool is allowed.
 # None means always allowed.
 TOOL_PERMISSIONS: dict[str, list[str] | None] = {
-    "get_truck_faults":         ["can_faults"],                             # owner/admin/fleet/safety
-    "get_truck_detail":         ["can_truck_all", "can_truck_own"],         # all roles
-    "get_driver_efficiency":    ["can_efficiency"],                         # owner/admin/fleet
-    "get_critical_faults":      ["can_critical"],                           # owner/admin/fleet/safety
-    "get_low_fuel_vehicles":    ["can_fuel"],                               # owner/admin/fleet/dispatcher
-    "get_vehicle_health":       ["can_health"],                             # owner/admin/fleet/safety
-    "get_weather":              ["can_truck_all"],                          # all except driver
-    "get_efficiency_summary":   ["can_efficiency"],                         # owner/admin/fleet
-    "get_truck_location":       ["can_location_map", "can_location_own"],   # all roles
-    "get_geofences":            ["can_geofence_all", "can_geofence_own"],   # all roles
-    "count_stats":              ["can_truck_all"],                          # all except driver
-    "get_truck_events":         ["can_events_all", "can_events_own"],       # owner/admin/fleet/safety/driver(own)
-    "get_events_summary":       ["can_events_all"],                         # owner/admin/fleet/safety
-    "get_truck_maintenance":    ["can_maintenance_all", "can_maintenance_own"],  # owner/admin/fleet/safety/driver(own)
-    "get_maintenance_summary":  ["can_maintenance_all"],                    # owner/admin/fleet/safety
-    "get_truck_fuel_costs":     ["can_fuel_cost"],                          # owner/admin/fleet
-    "get_fuel_cost_summary":    ["can_fuel_cost"],                          # owner/admin/fleet
-    "check_truck_camera":       ["can_truck_all"],                          # all except driver
-    "get_driver_scorecard":     ["can_scorecard_all", "can_scorecard_own"], # all except dispatcher
-    "get_rolling_stopped":      ["can_rolling_stopped"],                    # owner/admin/dispatcher
+    "get_vehicle_faults":       ["can_faults", "can_critical"],              # owner/admin/fleet/safety
+    "get_vehicle_detail":       ["can_truck_all", "can_truck_own"],          # all roles
+    "get_driver_efficiency":    ["can_efficiency"],                          # owner/admin/fleet
+    "get_low_fuel_vehicles":    ["can_fuel"],                                # owner/admin/fleet/dispatcher
+    "get_vehicle_health":       ["can_health"],                              # owner/admin/fleet/safety
+    "get_weather":              ["can_truck_all"],                           # all except driver
+    "get_efficiency_summary":   ["can_efficiency"],                          # owner/admin/fleet
+    "get_vehicle_location":     ["can_location_map", "can_location_own"],    # all roles
+    "get_geofences":            ["can_geofence_all", "can_geofence_own"],    # all roles
+    "get_account_stats":        ["can_truck_all"],                           # all except driver
+    "get_vehicle_events":       ["can_events_all", "can_events_own"],        # owner/admin/fleet/safety/driver(own)
+    "get_events_summary":       ["can_events_all"],                          # owner/admin/fleet/safety
+    "get_vehicle_maintenance":  ["can_maintenance_all", "can_maintenance_own"],  # owner/admin/fleet/safety/driver(own)
+    "get_maintenance_summary":  ["can_maintenance_all"],                     # owner/admin/fleet/safety
+    "get_vehicle_fuel_costs":   ["can_fuel_cost"],                           # owner/admin/fleet
+    "get_fuel_cost_summary":    ["can_fuel_cost"],                           # owner/admin/fleet
+    "check_vehicle_camera":     ["can_truck_all"],                           # all except driver
+    "get_driver_scorecard":     ["can_scorecard_all", "can_scorecard_own"],  # all except dispatcher
+    "get_rolling_stopped":      ["can_rolling_stopped"],                     # owner/admin/dispatcher
+    "get_vehicle_odometer":     ["can_truck_all", "can_truck_own"],          # all roles
+    "get_drivers_list":         ["can_truck_all"],                           # all except driver
+    "search_vehicles":          ["can_truck_all"],                           # all except driver
+    "search_knowledge_base":    None,                                        # all roles
 }
 
 # Tools that are account-wide — driver must NOT call these even if permitted
-# via can_*_own flags (they return data for ALL trucks).
+# via can_*_own flags (they return data for ALL vehicles).
 ACCOUNT_WIDE_TOOLS: frozenset[str] = frozenset({
-    "get_critical_faults", "get_low_fuel_vehicles", "get_vehicle_health",
-    "get_weather", "get_efficiency_summary", "count_stats",
+    "get_low_fuel_vehicles", "get_vehicle_health",
+    "get_weather", "get_efficiency_summary", "get_account_stats",
     "get_events_summary", "get_maintenance_summary",
     "get_fuel_cost_summary", "get_rolling_stopped",
+    "get_drivers_list", "search_vehicles",
 })
 
-# Tools that accept a truck_name param and must enforce driver truck isolation.
-TRUCK_SPECIFIC_TOOLS: frozenset[str] = frozenset({
-    "get_truck_faults", "get_truck_detail", "get_truck_location",
-    "get_truck_events", "get_truck_maintenance", "get_truck_fuel_costs",
-    "check_truck_camera",
+# Tools that accept a vehicle_name param and must enforce driver vehicle isolation.
+VEHICLE_SPECIFIC_TOOLS: frozenset[str] = frozenset({
+    "get_vehicle_faults", "get_vehicle_detail", "get_vehicle_location",
+    "get_vehicle_events", "get_vehicle_maintenance", "get_vehicle_fuel_costs",
+    "check_vehicle_camera", "get_vehicle_odometer",
 })
+
+# Legacy alias — keeps any external code that imports TRUCK_SPECIFIC_TOOLS working.
+TRUCK_SPECIFIC_TOOLS: frozenset[str] = VEHICLE_SPECIFIC_TOOLS

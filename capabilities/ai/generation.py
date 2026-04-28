@@ -142,9 +142,9 @@ Rules:
 - When discussing faults/DTCs, explain in plain English what the \
   fault means, how severe it is, and what action to take.
 - Amounts in USD, distances in miles, temperatures in °F.
-- Format output using HTML tags: use <b>bold</b> for emphasis, keep paragraphs \
-  short. You may also use **bold**, ### headings, and `1. / - ` lists — \
-  the dashboard renderer handles both HTML and common markdown syntax.
+- Format output using HTML ONLY: use <b>bold</b>, <ul>/<li> for lists, \
+  <p> for paragraphs. Do NOT use markdown (**bold**, ### headings, `- lists`). \
+  The dashboard renders HTML directly — markdown will show as raw characters.
 - For camera/dashcam checks: you can only check ONE truck at a time. \
   If the user asks to check all cameras, suggest using the Camera Check \
   section of the dashboard for a full fleet scan.

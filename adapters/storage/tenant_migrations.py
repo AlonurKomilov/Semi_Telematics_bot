@@ -29,6 +29,9 @@ async def run_all(conn) -> None:
     await migrate_drop_escalation_columns(conn)
     await migrate_dedup_alert_history(conn)
     await migrate_resolve_orphaned_acks(conn)
+    await migrate_add_platform_geofences(conn)
+    await migrate_add_geofence_zone_role(conn)
+    await migrate_resolve_orphaned_acks(conn)
 
 
 async def migrate_add_parking_map_image(conn) -> None:
@@ -263,3 +266,49 @@ async def migrate_resolve_orphaned_acks(conn) -> None:
             )
     except Exception as exc:
         logger.error("migrate_resolve_orphaned_acks failed: %s", exc, exc_info=True)
+
+
+async def migrate_add_platform_geofences(conn) -> None:
+    """Create platform_geofences table for user-owned zones (pre-existing tenant DBs)."""
+    cur = await conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='platform_geofences'"
+    )
+    if await cur.fetchone():
+        return  # already exists
+    await conn.executescript("""
+        CREATE TABLE IF NOT EXISTS platform_geofences (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            name            TEXT    NOT NULL,
+            description     TEXT    NOT NULL DEFAULT '',
+            geofence_type   TEXT    NOT NULL DEFAULT 'custom',
+            shape_type      TEXT    NOT NULL DEFAULT 'circle',
+            latitude        REAL,
+            longitude       REAL,
+            radius_meters   REAL,
+            vertices        TEXT    NOT NULL DEFAULT '[]',
+            notify_roles    TEXT    NOT NULL DEFAULT '["owner","admin","fleet","safety","dispatcher","driver"]',
+            is_active       INTEGER NOT NULL DEFAULT 1,
+            created_by      INTEGER NOT NULL DEFAULT 0,
+            created_at      TEXT    NOT NULL DEFAULT '',
+            updated_at      TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_platform_geofences_account
+            ON platform_geofences(account_id, is_active);
+    """)
+    await conn.commit()
+    logger.info("Migration: created platform_geofences table")
+
+
+async def migrate_add_geofence_zone_role(conn) -> None:
+    """Add zone_role column to platform_geofences for role-based zone attribution."""
+    cur = await conn.execute("PRAGMA table_info(platform_geofences)")
+    cols = {r[1] for r in await cur.fetchall()}
+    if "zone_role" in cols:
+        return
+    await conn.execute(
+        "ALTER TABLE platform_geofences ADD COLUMN zone_role TEXT NOT NULL DEFAULT 'all'"
+    )
+    await conn.commit()
+    logger.info("Migration: added zone_role column to platform_geofences")

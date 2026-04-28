@@ -15,7 +15,10 @@ Usage in formatters / reports / anywhere:
 
 from __future__ import annotations
 
+import logging
 from contextvars import ContextVar
+
+logger = logging.getLogger(__name__)
 
 # ── Context variables ────────────────────────────────────────────
 # Default values are ``None``; the getters fall back to the legacy
@@ -57,6 +60,10 @@ def get_company_display() -> dict[str, str]:
     val = _company_display_var.get()
     if val is not None:
         return val
+    logger.warning(
+        "get_company_display() called without set_tenant_display() — "
+        "falling back to module-level COMPANY_DISPLAY (may be stale or wrong account)"
+    )
     from adapters.samsara.client import COMPANY_DISPLAY
     return COMPANY_DISPLAY
 
@@ -70,5 +77,9 @@ def get_org_ids() -> dict[str, str]:
     val = _org_ids_var.get()
     if val is not None:
         return val
+    logger.warning(
+        "get_org_ids() called without set_tenant_display() — "
+        "falling back to module-level ORG_IDS (may be stale or wrong account)"
+    )
     from adapters.samsara.client import ORG_IDS
     return ORG_IDS

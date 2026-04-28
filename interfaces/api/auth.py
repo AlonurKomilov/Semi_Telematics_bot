@@ -33,7 +33,7 @@ else:
         "openssl rand -hex 32"
     )
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRY_SECONDS = 24 * 60 * 60  # 24 hours
+JWT_EXPIRY_SECONDS = 30 * 24 * 60 * 60  # 30 days
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

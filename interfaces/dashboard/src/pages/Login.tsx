@@ -15,6 +15,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [botUsername, setBotUsername] = useState('4truckBot');
@@ -59,7 +60,7 @@ export default function Login() {
           if (result.status === 'approved') {
             if (pollRef.current) clearInterval(pollRef.current);
             setBotLoginStatus('approved');
-            setToken(result.access_token);
+            setToken(result.access_token, rememberMe);
             window.location.reload();
           } else if (result.status === 'rejected') {
             if (pollRef.current) clearInterval(pollRef.current);
@@ -100,7 +101,7 @@ export default function Login() {
     // Telegram Login Widget callback
     window.__onTelegramAuth = async (tgUser: TelegramLoginData) => {
       try {
-        await loginWithTelegram(tgUser);
+        await loginWithTelegram(tgUser, rememberMe);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Telegram login failed');
       }
@@ -135,7 +136,7 @@ export default function Login() {
     })();
 
     return () => { delete window.__onTelegramAuth; };
-  }, [loginWithTelegram, widgetKey]);
+  }, [loginWithTelegram, rememberMe, widgetKey]);
 
   /** Guide the user to disconnect their Telegram Login Widget session.
    *
@@ -155,7 +156,7 @@ export default function Login() {
     setLoading(true);
     try {
       if (mode === 'login') {
-        await loginWithEmail(email, password);
+        await loginWithEmail(email, password, rememberMe);
       } else {
         await registerWithEmail(email, password, displayName, inviteCode);
       }
@@ -232,6 +233,18 @@ export default function Login() {
             required
             minLength={8}
           />
+
+          {mode === 'login' && (
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="w-4 h-4 rounded border-border accent-primary cursor-pointer"
+              />
+              <span className="text-sm text-muted-foreground">Remember me for 30 days</span>
+            </label>
+          )}
 
           {error && (
             <p className="text-destructive text-xs">{error}</p>

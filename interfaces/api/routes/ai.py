@@ -1,7 +1,10 @@
 """AI Assistant API endpoints — chat, summary, diagnosis, model management."""
 
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 import capabilities.ai as ai
@@ -102,12 +105,88 @@ async def ai_chat(
         )
         answer = result["text"]
         await _log_usage(user["account_id"], int(user["sub"]), "question")
+        usage = ai.get_last_usage()
 
         clean, suggestions = _parse_suggestions(answer)
-        return {"reply": clean, "suggestions": suggestions}
+
+        # Persist to DB using clean text so suggestions don't re-appear on reload
+        try:
+            await platform_db.save_chat_messages(
+                account_id, int(user["sub"]), body.message, clean
+            )
+        except Exception:
+            pass  # never block the chat reply on DB failure
+
+        return {"reply": clean, "suggestions": suggestions, "usage": usage}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI error: {type(e).__name__}")
+
+
+# ── Chat (streaming SSE) ─────────────────────────────────────────
+
+@router.post("/chat/stream")
+@limiter.limit("10/minute")
+async def ai_chat_stream(
+    body: ChatRequest,
+    request: Request,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Send a message to the AI fleet assistant; streams SSE tool events then the reply."""
+    if not ai.is_configured():
+        raise HTTPException(status_code=503, detail="AI not configured")
+
+    account_id = user["account_id"]
+    await ai.ensure_account_model(account_id)
+    user_context, truck_filter, language = await _get_user_info(user, platform_db)
+
+    try:
+        snapshot = await ai.build_context(account_id, truck_nums=truck_filter)
+        from core.services import get_client
+        samsara = await get_client(account_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI context error: {type(e).__name__}")
+
+    uid = int(user["sub"])
+
+    async def _event_stream():
+        try:
+            async for event in ai.ask_agent_stream(
+                body.message, snapshot,
+                samsara_client=samsara,
+                user_id=uid,
+                account_id=account_id,
+                db=tenant_db,
+                language=language,
+                user_context=user_context,
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
+                if event.get("type") == "done":
+                    # Persist the final reply to DB
+                    reply = event.get("reply", "")
+                    try:
+                        await platform_db.save_chat_messages(account_id, uid, body.message, reply)
+                    except Exception:
+                        pass
+                    # Log usage
+                    try:
+                        await _log_usage(account_id, uid, "question")
+                    except Exception:
+                        pass
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        _event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",   # disable nginx buffering
+            "Connection": "keep-alive",
+        },
+    )
 
 
 # ── Fleet Summary ────────────────────────────────────────────────
@@ -136,9 +215,10 @@ async def ai_summary(
             language=language, user_context=user_context,
         )
         await _log_usage(account_id, int(user["sub"]), "summary")
+        usage = ai.get_last_usage()
 
         clean, suggestions = _parse_suggestions(summary)
-        return {"summary": clean, "suggestions": suggestions}
+        return {"summary": clean, "suggestions": suggestions, "usage": usage}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI error: {type(e).__name__}")
@@ -204,6 +284,7 @@ async def list_models(
         entry: dict = {
             "name": name,
             "display": info.get("display", name),
+            "description": info.get("description", ""),
             "category": info.get("category", "unknown"),
             "vision": ai.is_vision_capable(name),
         }
@@ -288,25 +369,52 @@ async def switch_user_model(
 @router.get("/history")
 async def get_history(
     user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
 ):
     """Get the current conversation history."""
     uid = int(user["sub"])
     account_id = user["account_id"]
-    history = _chat_histories.get((uid, account_id), [])
+
+    # L1: in-memory cache (already populated for active sessions)
+    history = _chat_histories.get((uid, account_id))
+
+    # L2: on cold start / after restart, reload from DB and warm the cache
+    if not history:
+        try:
+            db_rows = await platform_db.get_chat_history(account_id, uid)
+            if db_rows:
+                _chat_histories[(uid, account_id)] = [
+                    {"role": ("User" if r["role"] == "user" else "Assistant"), "text": r["text"]}
+                    for r in db_rows
+                ]
+                history = _chat_histories[(uid, account_id)]
+        except Exception:
+            history = []
+
+    # Normalise roles for the frontend ('user' | 'model')
+    def _norm_role(r: str) -> str:
+        return "user" if r.lower() in ("user",) else "model"
+
     return {
         "messages": [
-            {"role": h["role"], "text": h["text"]}
-            for h in history
+            {"role": _norm_role(h["role"]), "text": h["text"]}
+            for h in (history or [])
         ],
-        "count": len(history),
+        "count": len(history or []),
     }
 
 
 @router.delete("/history")
 async def clear_history(
     user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
 ):
     """Clear the conversation history."""
     uid = int(user["sub"])
-    ai.clear_history(uid, account_id=user["account_id"])  # sync function
+    account_id = user["account_id"]
+    ai.clear_history(uid, account_id=account_id)  # clear in-memory
+    try:
+        await platform_db.clear_chat_history(account_id, uid)
+    except Exception:
+        pass
     return {"ok": True}

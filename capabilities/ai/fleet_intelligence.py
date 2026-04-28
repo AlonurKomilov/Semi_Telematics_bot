@@ -514,14 +514,14 @@ async def ask_fleet_agent(question: str, fleet_context: dict,
                             assigned_set = {t.strip().lower() for t in assigned_trucks if t}
                             if assigned_set:
                                 if tool_name in TRUCK_SPECIFIC_TOOLS:
-                                    requested = (tool_args.get("truck_name") or "").strip().lower()
+                                    requested = (tool_args.get("vehicle_name") or "").strip().lower()
                                     if requested and requested not in assigned_set:
                                         _blocked = True
                                         result = {
                                             "error": (
                                                 f"Access denied: you can only query your"
-                                                f" assigned truck(s) ({', '.join(assigned_trucks)}),"
-                                                f" not '{tool_args.get('truck_name')}'."
+                                                f" assigned vehicle(s) ({', '.join(assigned_trucks)}),"
+                                                f" not '{tool_args.get('vehicle_name')}'."
                                             ),
                                         }
                                 if tool_name in ACCOUNT_WIDE_TOOLS:

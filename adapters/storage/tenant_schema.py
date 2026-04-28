@@ -222,9 +222,31 @@ async def create_tables(conn) -> None:
             ON parking_events(account_id, resolved);
         CREATE INDEX IF NOT EXISTS idx_work_hours_account
             ON work_hours(account_id);
+        CREATE TABLE IF NOT EXISTS platform_geofences (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            name            TEXT    NOT NULL,
+            description     TEXT    NOT NULL DEFAULT '',
+            geofence_type   TEXT    NOT NULL DEFAULT 'custom',
+            shape_type      TEXT    NOT NULL DEFAULT 'circle',
+            latitude        REAL,
+            longitude       REAL,
+            radius_meters   REAL,
+            vertices        TEXT    NOT NULL DEFAULT '[]',
+            notify_roles    TEXT    NOT NULL DEFAULT '["owner","admin","fleet","safety","dispatcher","driver"]',
+            zone_role       TEXT    NOT NULL DEFAULT 'all',
+            is_active       INTEGER NOT NULL DEFAULT 1,
+            created_by      INTEGER NOT NULL DEFAULT 0,
+            created_at      TEXT    NOT NULL DEFAULT '',
+            updated_at      TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, name)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_kb_account_cat
             ON knowledge_base(account_id, category);
         CREATE INDEX IF NOT EXISTS idx_kb_pinned
             ON knowledge_base(account_id, pinned);
+        CREATE INDEX IF NOT EXISTS idx_platform_geofences_account
+            ON platform_geofences(account_id, is_active);
     """)
     await conn.commit()

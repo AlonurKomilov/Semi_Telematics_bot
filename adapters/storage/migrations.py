@@ -690,3 +690,38 @@ async def migrate_rename_work_schedules_to_work_hours(conn) -> None:
         )
         await conn.commit()
         logger.info("Migration: renamed work_schedules → work_hours")
+
+
+@_register("025_platform_geofences_table")
+async def migrate_platform_geofences_table(conn) -> None:
+    """Create platform_geofences table in legacy (single-DB) mode."""
+    cur = await conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='platform_geofences'"
+    )
+    if await cur.fetchone():
+        return  # already exists
+    await conn.executescript("""
+        CREATE TABLE IF NOT EXISTS platform_geofences (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            name            TEXT    NOT NULL,
+            description     TEXT    NOT NULL DEFAULT '',
+            geofence_type   TEXT    NOT NULL DEFAULT 'custom',
+            shape_type      TEXT    NOT NULL DEFAULT 'circle',
+            latitude        REAL,
+            longitude       REAL,
+            radius_meters   REAL,
+            vertices        TEXT    NOT NULL DEFAULT '[]',
+            notify_roles    TEXT    NOT NULL DEFAULT '["owner","admin","fleet","safety","dispatcher","driver"]',
+            zone_role       TEXT    NOT NULL DEFAULT 'all',
+            is_active       INTEGER NOT NULL DEFAULT 1,
+            created_by      INTEGER NOT NULL DEFAULT 0,
+            created_at      TEXT    NOT NULL DEFAULT '',
+            updated_at      TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_platform_geofences_account
+            ON platform_geofences(account_id, is_active);
+    """)
+    await conn.commit()
+    logger.info("Migration: created platform_geofences table (legacy DB)")

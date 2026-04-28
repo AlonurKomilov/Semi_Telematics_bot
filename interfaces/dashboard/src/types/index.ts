@@ -213,7 +213,10 @@ export interface MapVehicleProperties {
   speed_mph?: number;
   engine_state?: string;
   fuel_percent?: number;
+  def_percent?: number;
   company?: string;
+  heading?: number | null;
+  updated_at?: string;
 }
 
 export interface MapVehicleFeature {
@@ -230,9 +233,29 @@ export interface MapVehiclesResponse {
   features: MapVehicleFeature[];
 }
 
+/** Returned by /map/vehicles/live — position-only fast update. */
+export interface LiveVehiclePosition {
+  lat: number;
+  lng: number;
+  speed_mph: number;
+  heading: number | null;
+  updated_at: string;
+}
+
+export interface LiveVehiclesResponse {
+  positions: Record<string, LiveVehiclePosition>;
+}
+
 export interface GeofenceProperties {
+  id?: number;
   name?: string;
   radius?: number;
+  radius_meters?: number;
+  type?: string;
+  geofence_type?: string;
+  zone_role?: string;
+  company?: string;
+  source?: 'samsara' | 'platform';
 }
 
 export interface GeofenceFeature {
@@ -669,21 +692,32 @@ export interface ParkingStatsResponse {
 
 // ── AI Assistant ──────────────────────────────────────────────────
 
+export interface AIUsage {
+  prompt_tokens: number;
+  reply_tokens: number;
+  total_tokens: number;
+  thinking_tokens?: number;
+}
+
 export interface AIChatMessage {
   role: 'user' | 'model';
   text: string;
   /** Client-side timestamp — not persisted to backend */
   timestamp?: Date;
+  /** Token usage from the backend — only present on model messages */
+  usage?: AIUsage;
 }
 
 export interface AIChatResponse {
   reply: string;
   suggestions: string[];
+  usage?: AIUsage;
 }
 
 export interface AISummaryResponse {
   summary: string;
   suggestions: string[];
+  usage?: AIUsage;
 }
 
 export interface AIDiagnoseResponse {
@@ -694,6 +728,7 @@ export interface AIDiagnoseResponse {
 export interface AIModel {
   name: string;
   display: string;
+  description: string;
   category: string;
   vision: boolean;
   cost_per_request: number | null;

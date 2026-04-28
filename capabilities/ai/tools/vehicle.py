@@ -6,32 +6,32 @@ from capabilities.ai.tools.registry import register_tool
 
 
 @register_tool({
-    "name": "get_truck_detail",
+    "name": "get_vehicle_detail",
     "description": (
-        "Get detailed info for a specific truck: VIN, make/model/year, "
+        "Get detailed info for a specific vehicle: VIN, make/model/year, "
         "fuel level, DEF level, GPS location, and fault summary."
     ),
     "parameters": {
         "type": "object",
         "properties": {
-            "truck_name": {
+            "vehicle_name": {
                 "type": "string",
-                "description": "The truck name or number",
+                "description": "The vehicle name or number",
             },
         },
-        "required": ["truck_name"],
+        "required": ["vehicle_name"],
     },
 })
-async def get_truck_detail(tool_args: dict, samsara_client,
-                           account_id: int | None = None, db=None) -> dict:
-    truck = tool_args.get("truck_name", "")
-    detail = await samsara_client.get_vehicle_detail(truck)
+async def get_vehicle_detail(tool_args: dict, samsara_client,
+                             account_id: int | None = None, db=None) -> dict:
+    vehicle = tool_args.get("vehicle_name", "")
+    detail = await samsara_client.get_vehicle_detail(vehicle)
     if not detail:
-        return {"result": f"Truck {truck} not found."}
+        return {"result": f"Vehicle {vehicle} not found."}
     v = detail[0] if isinstance(detail, list) else detail
     loc = v.get("location", {})
     return {
-        "truck": v.get("name"),
+        "vehicle": v.get("name"),
         "vin": v.get("vin"),
         "make": v.get("make"),
         "model": v.get("model"),
@@ -44,32 +44,32 @@ async def get_truck_detail(tool_args: dict, samsara_client,
 
 
 @register_tool({
-    "name": "get_truck_location",
+    "name": "get_vehicle_location",
     "description": (
-        "Get the current GPS location, city, and speed for a specific truck."
+        "Get the current GPS location, city, and speed for a specific vehicle."
     ),
     "parameters": {
         "type": "object",
         "properties": {
-            "truck_name": {
+            "vehicle_name": {
                 "type": "string",
-                "description": "The truck name or number",
+                "description": "The vehicle name or number",
             },
         },
-        "required": ["truck_name"],
+        "required": ["vehicle_name"],
     },
 })
-async def get_truck_location(tool_args: dict, samsara_client,
-                             account_id: int | None = None, db=None) -> dict:
-    truck = tool_args.get("truck_name", "")
-    detail = await samsara_client.get_vehicle_detail(truck)
+async def get_vehicle_location(tool_args: dict, samsara_client,
+                               account_id: int | None = None, db=None) -> dict:
+    vehicle = tool_args.get("vehicle_name", "")
+    detail = await samsara_client.get_vehicle_detail(vehicle)
     if not detail:
-        return {"result": f"Truck {truck} not found."}
+        return {"result": f"Vehicle {vehicle} not found."}
     v = detail[0] if isinstance(detail, list) else detail
     loc = v.get("location", {})
     geo = loc.get("reverseGeo", {})
     return {
-        "truck": v.get("name"),
+        "vehicle": v.get("name"),
         "city": geo.get("formattedLocation", "Unknown"),
         "latitude": loc.get("latitude"),
         "longitude": loc.get("longitude"),
@@ -82,10 +82,10 @@ async def get_truck_location(tool_args: dict, samsara_client,
 @register_tool({
     "name": "get_rolling_stopped",
     "description": (
-        "Get current engine state for all trucks: which trucks are "
+        "Get current engine state for all vehicles: which vehicles are "
         "rolling (engine on + moving), idling (engine on + stopped), "
-        "or off. Useful for dispatchers and fleet managers to see "
-        "real-time fleet activity."
+        "or off. Useful for owners, admins, and dispatchers to see "
+        "real-time activity."
     ),
     "parameters": {
         "type": "object",
@@ -112,7 +112,7 @@ async def get_rolling_stopped(tool_args: dict, samsara_client,
         speed = loc.get("speed", 0) or 0
         city = loc.get("reverseGeo", {}).get("formattedLocation", "")
         state = state_by_id.get(vid, "Off")
-        entry = {"truck": name, "city": city, "speed_mph": round(speed * 0.621371, 1) if speed else 0}
+        entry = {"vehicle": name, "city": city, "speed_mph": round(speed * 0.621371, 1) if speed else 0}
         if state == "On" and speed > 0:
             rolling.append(entry)
         elif state == "On":
@@ -124,7 +124,93 @@ async def get_rolling_stopped(tool_args: dict, samsara_client,
         "rolling": len(rolling),
         "idling": len(idling),
         "off": len(off),
-        "rolling_trucks": rolling[:30],
-        "idling_trucks": idling[:30],
-        "off_trucks": off[:30],
+        "rolling_vehicles": rolling[:30],
+        "idling_vehicles": idling[:30],
+        "off_vehicles": off[:30],
+    }
+
+
+@register_tool({
+    "name": "search_vehicles",
+    "description": (
+        "Search and filter vehicles by city/location keyword or engine status "
+        "(rolling/idling/off). Optionally filter by a name substring (e.g. company prefix). "
+        "All filters are optional and combinable. "
+        "Useful for 'which trucks are in Dallas?', 'find trucks near Cincinnati', "
+        "'show trucks close to Chicago', 'trucks around Houston', or 'show me all rolling PTG vehicles'. "
+        "When the user asks for trucks near, close to, around, or in a city, use the city parameter "
+        "with just the city name — it does a substring match against each truck's current location."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "name_contains": {
+                "type": "string",
+                "description": "Filter vehicles whose name contains this string (case-insensitive), e.g. 'PTG' or '2'.",
+            },
+            "city": {
+                "type": "string",
+                "description": "City or location keyword to filter by (case-insensitive substring match).",
+            },
+            "status": {
+                "type": "string",
+                "description": "Engine status filter: 'rolling', 'idling', or 'off'.",
+            },
+        },
+        "required": [],
+    },
+})
+async def search_vehicles(tool_args: dict, samsara_client,
+                          account_id: int | None = None, db=None) -> dict:
+    name_filter = (tool_args.get("name_contains") or "").strip().lower()
+    city_filter = (tool_args.get("city") or "").strip().lower()
+    status_filter = (tool_args.get("status") or "").strip().lower()
+
+    fleet = await samsara_client.get_fleet_overview()
+
+    # Only fetch engine states when status filter is requested
+    state_by_id: dict[str, str] = {}
+    if status_filter in ("rolling", "idling", "off"):
+        engine_states = await samsara_client.get_engine_states()
+        for es in engine_states:
+            vid = es.get("id", "")
+            eng = es.get("engineStates", {})
+            val = eng.get("value", "Off") if isinstance(eng, dict) else "Off"
+            state_by_id[vid] = val
+
+    results = []
+    for v in fleet:
+        name = v.get("name", "")
+        loc = v.get("location", {})
+        city_str = loc.get("reverseGeo", {}).get("formattedLocation", "").lower()
+        speed = loc.get("speed", 0) or 0
+
+        if name_filter and name_filter not in name.lower():
+            continue
+        if city_filter and city_filter not in city_str:
+            continue
+        if status_filter in ("rolling", "idling", "off"):
+            v_state = state_by_id.get(v.get("id", ""), "Off")
+            if status_filter == "rolling" and not (v_state == "On" and speed > 0):
+                continue
+            if status_filter == "idling" and not (v_state == "On" and speed == 0):
+                continue
+            if status_filter == "off" and v_state != "Off":
+                continue
+
+        results.append({
+            "vehicle": name,
+            "city": loc.get("reverseGeo", {}).get("formattedLocation", ""),
+            "fuel_pct": v.get("fuel", {}).get("value"),
+            "speed_mph": round(speed * 0.621371, 1) if speed else 0,
+        })
+
+    return {
+        "matched": len(results),
+        "filters": {
+            "name_contains": name_filter or None,
+            "city": city_filter or None,
+            "status": status_filter or None,
+        },
+        "vehicles": results[:30],
     }

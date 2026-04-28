@@ -20,6 +20,9 @@ from capabilities.ai.tools import events as events                        # noqa
 from capabilities.ai.tools import maintenance as maintenance              # noqa: F401
 from capabilities.ai.tools import geo as geo                              # noqa: F401
 from capabilities.ai.tools import camera as camera                        # noqa: F401
+from capabilities.ai.tools import odometer as odometer                    # noqa: F401
+from capabilities.ai.tools import drivers as drivers                      # noqa: F401
+from capabilities.ai.tools import knowledge as knowledge                  # noqa: F401
 
 # Role-neutral alias
 AI_TOOLS = get_all_tool_schemas()

@@ -10,28 +10,28 @@ logger = logging.getLogger("bot.ai.tools")
 
 
 @register_tool({
-    "name": "check_truck_camera",
+    "name": "check_vehicle_camera",
     "description": (
-        "Check the dashcam status for a specific truck: captures the "
+        "Check the dashcam status for a specific vehicle: captures the "
         "latest camera image and analyzes it for obstruction, alignment, "
-        "and image quality. This is per-truck only — for a full fleet "
+        "and image quality. This is per-vehicle only — for a full account "
         "camera check, direct the user to the Camera Check feature "
         "in the main menu."
     ),
     "parameters": {
         "type": "object",
         "properties": {
-            "truck_name": {
+            "vehicle_name": {
                 "type": "string",
-                "description": "The truck name or number",
+                "description": "The vehicle name or number",
             },
         },
-        "required": ["truck_name"],
+        "required": ["vehicle_name"],
     },
 })
-async def check_truck_camera(tool_args: dict, samsara_client,
-                             account_id: int | None = None, db=None) -> dict:
-    truck = tool_args.get("truck_name", "")
+async def check_vehicle_camera(tool_args: dict, samsara_client,
+                               account_id: int | None = None, db=None) -> dict:
+    vehicle = tool_args.get("vehicle_name", "")
     try:
         from adapters.samsara.client import SamsaraClient
         from capabilities.ai.vision import analyze_camera_image
@@ -49,7 +49,7 @@ async def check_truck_camera(tool_args: dict, samsara_client,
                 snaps = await client.get_dashcam_snapshots(days=3)
                 match = [
                     s for s in snaps
-                    if s["vehicle_name"].lower() == truck.lower()
+                    if s["vehicle_name"].lower() == vehicle.lower()
                 ]
                 if match:
                     snap = match[0]
@@ -57,18 +57,18 @@ async def check_truck_camera(tool_args: dict, samsara_client,
             finally:
                 await client.close()
         if not snap or not snap.get("image_bytes"):
-            return {"truck": truck, "result": "No recent camera image found for this truck."}
+            return {"vehicle": vehicle, "result": "No recent camera image found for this vehicle."}
         analysis = await analyze_camera_image(
             snap["image_bytes"],
-            vehicle_name=truck,
+            vehicle_name=vehicle,
             account_id=account_id,
         )
         return {
-            "truck": truck,
+            "vehicle": vehicle,
             "camera_type": snap.get("camera_type", "unknown"),
             "event_time": snap.get("event_time", ""),
             "analysis": analysis,
         }
     except Exception as e:
-        logger.error(f"Camera check tool failed for {truck}: {e}")
-        return {"truck": truck, "error": f"Camera check failed: {e}"}
+        logger.error(f"Camera check tool failed for {vehicle}: {e}")
+        return {"vehicle": vehicle, "error": f"Camera check failed: {e}"}

@@ -142,7 +142,7 @@ async def cmd_truck_report(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         query = update.callback_query
         chat_id = query.message.chat.id if query else update.effective_chat.id
-        key = _msg_key(update)
+        key = _msg_key(update, context.user_data["_db_user"].account_id)
         await _delete_old_messages(key, context.bot)
 
         ts = _dt.now(_TZ_ET).strftime("%Y-%m-%d_%H%M")
@@ -229,7 +229,7 @@ async def cmd_critical(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         query = update.callback_query
         chat_id = query.message.chat.id if query else update.effective_chat.id
-        key = _msg_key(update)
+        key = _msg_key(update, context.user_data["_db_user"].account_id)
         await _delete_old_messages(key, context.bot)
 
         ts = _dt.now(_TZ_ET).strftime("%Y-%m-%d_%H%M")

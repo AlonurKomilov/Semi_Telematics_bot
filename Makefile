@@ -10,7 +10,8 @@ LOG_FILE = bot.log
        backup backup-list backup-restore \
        docker-build docker-up docker-down docker-logs docker-restart \
        nginx-install nginx-test nginx-status ports \
-       redis-start redis-stop redis-cli
+       redis-start redis-stop redis-cli \
+       build dashboard-build dashboard-build-if-needed miniapp-build
 
 # ── systemd-aware targets (preferred) ────────────────
 
@@ -19,13 +20,17 @@ install:
 	@bash install-service.sh
 
 ## Start all services: Redis + bot/API (systemd or nohup fallback)
-start:
+start: dashboard-build-if-needed
 	@echo "🚀 Starting 4truck services..."
+	@# ── 0. Clear stale Python bytecode so live source is always used ──
+	@find . -path ./.git -prune -o -name '*.pyc' -delete 2>/dev/null; true
 	@# ── 1. Redis ──
 	@if docker ps --format '{{.Names}}' | grep -q $(REDIS_CONTAINER); then \
 		echo "   ✅ Redis already running on port 8002"; \
+	elif docker ps -a --format '{{.Names}}' | grep -q $(REDIS_CONTAINER); then \
+		docker start $(REDIS_CONTAINER) >/dev/null; \
+		echo "   ✅ Redis started on port 8002 (existing container)"; \
 	else \
-		docker start $(REDIS_CONTAINER) 2>/dev/null || \
 		docker run -d \
 			--name $(REDIS_CONTAINER) \
 			--restart unless-stopped \
@@ -33,12 +38,15 @@ start:
 			-v 4truck-redis:/data \
 			redis:7-alpine \
 			redis-server --port 8002 >/dev/null; \
-		echo "   ✅ Redis started on port 8002"; \
+		echo "   ✅ Redis started on port 8002 (new container)"; \
 	fi
 	@# ── 2. Bot + API ──
 	@if systemctl is-enabled $(SERVICE) >/dev/null 2>&1; then \
 		sudo systemctl start $(SERVICE); \
 		echo "   ✅ Bot + API started via systemd"; \
+	elif ss -tlnp 2>/dev/null | grep -q ':8000 '; then \
+		echo "   ❌ Port 8000 already in use — run: make stop first"; \
+		exit 1; \
 	elif [ -f $(PID_FILE) ] && kill -0 $$(cat $(PID_FILE)) 2>/dev/null; then \
 		echo "   ⚠️  Bot already running (PID $$(cat $(PID_FILE)))"; \
 	else \
@@ -58,25 +66,27 @@ start:
 		sleep 1; \
 	done
 	@# ── 4. Nginx — 4truck.us config only ──────────────────────────────────────
-	@# Reload is safe for multi-site: only THIS project's conf file changes.
-	@# Other sites (2bot, analyticbot, etc.) are untouched — their conf files
-	@# are separate and are NOT modified by this target.
-	@# Remove old semi-telematics-bot conf if still lingering from before rename
-	@sudo rm -f /etc/nginx/sites-enabled/semi-telematics-bot /etc/nginx/sites-available/semi-telematics-bot 2>/dev/null; true
-	@if [ ! -f /etc/nginx/sites-available/$(NGINX_CONF) ] || \
-			! diff -q $(NGINX_SRC) /etc/nginx/sites-available/$(NGINX_CONF) >/dev/null 2>&1; then \
-		echo "   🔄 Nginx config changed — updating 4truck.us..."; \
-		sudo cp $(NGINX_SRC) /etc/nginx/sites-available/$(NGINX_CONF); \
-		sudo ln -sf /etc/nginx/sites-available/$(NGINX_CONF) /etc/nginx/sites-enabled/$(NGINX_CONF); \
-		if sudo nginx -t >/dev/null 2>&1; then \
-			sudo systemctl reload nginx; \
-			echo "   ✅ Nginx reloaded — 4truck.us config active (other sites unaffected)"; \
+	@# Only updates nginx when sudo credentials are already cached (no password prompt).
+	@# Run `sudo -v` first, or `make nginx-install` separately, to apply config changes.
+	@if sudo -n true 2>/dev/null; then \
+		sudo rm -f /etc/nginx/sites-enabled/semi-telematics-bot /etc/nginx/sites-available/semi-telematics-bot 2>/dev/null; true; \
+		if [ ! -f /etc/nginx/sites-available/$(NGINX_CONF) ] || \
+				! diff -q $(NGINX_SRC) /etc/nginx/sites-available/$(NGINX_CONF) >/dev/null 2>&1; then \
+			echo "   🔄 Nginx config changed — updating 4truck.us..."; \
+			sudo cp $(NGINX_SRC) /etc/nginx/sites-available/$(NGINX_CONF); \
+			sudo ln -sf /etc/nginx/sites-available/$(NGINX_CONF) /etc/nginx/sites-enabled/$(NGINX_CONF); \
+			if sudo -n nginx -t >/dev/null 2>&1; then \
+				sudo systemctl reload nginx; \
+				echo "   ✅ Nginx reloaded — 4truck.us config active"; \
+			else \
+				echo "   ❌ Nginx config invalid — run: sudo nginx -t"; \
+			fi; \
 		else \
-			echo "   ❌ Nginx config invalid — not reloaded (run: sudo nginx -t)"; \
+			sudo ln -sf /etc/nginx/sites-available/$(NGINX_CONF) /etc/nginx/sites-enabled/$(NGINX_CONF) 2>/dev/null; true; \
+			echo "   ✅ Nginx config already up to date"; \
 		fi; \
 	else \
-		sudo ln -sf /etc/nginx/sites-available/$(NGINX_CONF) /etc/nginx/sites-enabled/$(NGINX_CONF) 2>/dev/null; \
-		echo "   ✅ Nginx config already up to date (no reload needed)"; \
+		echo "   ℹ️  Nginx: skipped (no sudo session — run 'sudo -v' then 'make nginx-install' to update)"; \
 	fi
 
 ## Stop all services: bot/API + Redis
@@ -93,11 +103,22 @@ stop:
 		echo "   ⚠️  Bot is not running"; \
 		rm -f $(PID_FILE); \
 	fi
-	@# Kill any orphan run.py processes for this project
-	@ps aux | grep "[p]ython.*$(CURDIR)/run.py" | awk '{print $$2}' | while read pid; do \
-		echo "   🧹 Killing orphan bot process $$pid"; \
-		kill $$pid 2>/dev/null || kill -9 $$pid 2>/dev/null; \
-	done; true
+	@# ── Nuclear port clear: release port 8000 regardless of which process holds it ──────────────────
+	@# fuser -k sends SIGKILL directly to whatever owns the port — no PID file or name matching needed.
+	@# This works for user-owned processes without sudo. If port is still held after (root process),
+	@# the message below will instruct the operator.
+	@if ss -tlnp 2>/dev/null | grep -q ':8000 '; then \
+		echo "   🧹 Clearing port 8000..."; \
+		fuser -k 8000/tcp 2>/dev/null; \
+		sleep 1; \
+		if ss -tlnp 2>/dev/null | grep -q ':8000 '; then \
+			echo "   ⚠️  Port 8000 still held (root process?) — run: sudo fuser -k 8000/tcp"; \
+		else \
+			echo "   ✅ Port 8000 cleared"; \
+		fi; \
+	fi
+	@# Kill any orphan run.py belonging to THIS project directory (catches edge cases)
+	@pgrep -f "$(CURDIR)/run\.py" 2>/dev/null | xargs -r kill 2>/dev/null; true
 	@# ── 2. Redis ──
 	@if docker ps --format '{{.Names}}' | grep -q $(REDIS_CONTAINER); then \
 		docker stop $(REDIS_CONTAINER) >/dev/null; \
@@ -185,11 +206,26 @@ clean:
 ## Build all frontend assets (dashboard + miniapp)
 build: dashboard-build miniapp-build
 
-## Build the dashboard React app
+## Build the dashboard React app (always rebuilds)
 dashboard-build:
 	@echo "🔨 Building dashboard..."
 	@cd interfaces/dashboard && npm run build
 	@echo "✅  Dashboard built → interfaces/dashboard/dist/"
+
+## Build the dashboard only when sources are newer than the last build output.
+## Called automatically by `make start` so fresh code is always deployed.
+dashboard-build-if-needed:
+	@DIST=interfaces/dashboard/dist/index.html; \
+	if [ ! -f "$$DIST" ]; then \
+		echo "📦 Dashboard dist missing — building..."; \
+		$(MAKE) dashboard-build; \
+	elif find interfaces/dashboard/src interfaces/dashboard/index.html interfaces/dashboard/vite.config.* \
+		-newer "$$DIST" -print -quit 2>/dev/null | grep -q .; then \
+		echo "📦 Dashboard sources changed — rebuilding..."; \
+		$(MAKE) dashboard-build; \
+	else \
+		echo "   ✅ Dashboard dist up to date (no rebuild needed)"; \
+	fi
 
 # ── testing targets ──────────────────────────────────
 

@@ -106,6 +106,17 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_ai_usage_account
             ON ai_usage(account_id, created_at);
 
+        CREATE TABLE IF NOT EXISTS ai_chat_history (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            user_id    INTEGER NOT NULL,
+            role       TEXT    NOT NULL,
+            text       TEXT    NOT NULL,
+            created_at TEXT    NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_chat_history_user
+            ON ai_chat_history(account_id, user_id, created_at);
+
         CREATE TABLE IF NOT EXISTS knowledge_base (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id      INTEGER NOT NULL,

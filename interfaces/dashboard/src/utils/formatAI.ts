@@ -2,8 +2,36 @@
  * Sanitize and format AI response text for safe HTML rendering.
  * Handles: bold, italic, headings, bullet lists, numbered lists, tables, line breaks.
  * Processes line-by-line so block elements are never split by stray <br/> tags.
+ *
+ * Two paths:
+ *  1. Content already contains HTML tags (backend returned HTML) →
+ *     strip only dangerous tags/attributes, pass safe markup through.
+ *  2. Plain markdown/text → escape then convert markdown to HTML.
  */
+
+const RE_DANGEROUS_TAGS = /<\/?(script|style|iframe|object|embed|form|input|textarea|select|button|link|meta|base)\b[^>]*>/gi;
+const RE_EVENT_ATTRS = /\s+on\w+="[^"]*"/gi;
+const RE_EVENT_ATTRS2 = /\s+on\w+='[^']*'/gi;
+const RE_JS_HREF = /href\s*=\s*["']javascript:[^"']*["']/gi;
+
+function looksLikeHTML(text: string): boolean {
+  return /<(p|ul|ol|li|h[1-6]|div|br|strong|em|table|thead|tbody|tr|td|th)\b[^>]*>/i.test(text);
+}
+
+function sanitizeHTML(html: string): string {
+  return html
+    .replace(RE_DANGEROUS_TAGS, '')
+    .replace(RE_EVENT_ATTRS, '')
+    .replace(RE_EVENT_ATTRS2, '')
+    .replace(RE_JS_HREF, '');
+}
+
 export function formatAIResponse(text: string): string {
+  // If the backend already returned HTML, sanitize dangerous parts and return
+  if (looksLikeHTML(text)) {
+    return sanitizeHTML(text);
+  }
+
   // Step 1: HTML-escape raw input
   let s = text
     .replace(/&/g, '&amp;')
