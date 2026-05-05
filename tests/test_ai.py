@@ -285,8 +285,8 @@ class TestAIKeyboard:
 
     def test_truck_kb_shows_ai_diagnose_when_configured(self):
         with patch.dict(os.environ, {"GOOGLE_CLOUD_PROJECT": "my-project", "GOOGLE_APPLICATION_CREDENTIALS": "/tmp/sa.json"}):
-            from interfaces.bot.keyboards import truck_kb
-            kb = truck_kb(truck_name="101", company="CO1", show_faults=True)
+            from interfaces.bot.keyboards import vehicle_kb
+            kb = vehicle_kb(vehicle_name="101", company="CO1", show_faults=True)
             callbacks = self._all_callbacks(kb)
             assert "ai_diag_CO1_101" in callbacks
             labels = self._all_labels(kb)
@@ -294,8 +294,8 @@ class TestAIKeyboard:
 
     def test_truck_kb_hides_ai_diagnose_when_not_configured(self):
         with patch.dict(os.environ, {"GOOGLE_CLOUD_PROJECT": "", "GOOGLE_APPLICATION_CREDENTIALS": ""}):
-            from interfaces.bot.keyboards import truck_kb
-            kb = truck_kb(truck_name="101", company="CO1", show_faults=True)
+            from interfaces.bot.keyboards import vehicle_kb
+            kb = vehicle_kb(vehicle_name="101", company="CO1", show_faults=True)
             callbacks = self._all_callbacks(kb)
             assert not any("ai_diag" in c for c in callbacks)
 
@@ -417,8 +417,14 @@ class TestFleetSnapshot:
         mock_client.get_driver_efficiency.return_value = []
         mock_client.get_fleet_weather.return_value = []
 
-        with patch("core.services.get_client", return_value=mock_client), \
-             patch("core.services.get_tenant_db", new_callable=AsyncMock):
+        with patch("infra.services.get_client", return_value=mock_client), \
+             patch("infra.services.get_tenant_db", new_callable=AsyncMock), \
+             patch("capabilities.vehicles.service.get_fleet_overview",
+                   new=AsyncMock(return_value=mock_fleet)), \
+             patch("capabilities.telemetry.service.get_vehicle_health",
+                   new=AsyncMock(return_value=mock_health)), \
+             patch("capabilities.events.service.get_events",
+                   new=AsyncMock(return_value=[])):
             snapshot = await _gather_fleet_snapshot(account_id=1)
 
         assert snapshot["total_vehicles"] == 2
@@ -446,10 +452,16 @@ class TestFleetSnapshot:
         mock_client.get_driver_efficiency.return_value = []
         mock_client.get_fleet_weather.return_value = []
 
-        with patch("core.services.get_client", return_value=mock_client), \
-             patch("core.services.get_tenant_db", new_callable=AsyncMock):
+        with patch("infra.services.get_client", return_value=mock_client), \
+             patch("infra.services.get_tenant_db", new_callable=AsyncMock), \
+             patch("capabilities.vehicles.service.get_fleet_overview",
+                   new=AsyncMock(return_value=mock_fleet)), \
+             patch("capabilities.telemetry.service.get_vehicle_health",
+                   new=AsyncMock(return_value=[])), \
+             patch("capabilities.events.service.get_events",
+                   new=AsyncMock(return_value=[])):
             snapshot = await _gather_fleet_snapshot(
-                account_id=1, truck_num="101"
+                account_id=1, vehicle_num="101"
             )
 
         assert snapshot["total_vehicles"] == 1

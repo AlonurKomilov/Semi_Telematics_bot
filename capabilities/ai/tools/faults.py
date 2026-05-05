@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
+from capabilities.telemetry.service import (
+    get_vehicles_with_faults as _svc_with_faults,
+)
+from capabilities.vehicles.service import get_vehicle_detail as _svc_detail
 
 
 @register_tool({
@@ -36,10 +40,16 @@ async def get_vehicle_faults(tool_args: dict, samsara_client,
 
     if vehicle:
         # Per-vehicle fault detail
-        detail = await samsara_client.get_vehicle_detail(vehicle)
+        if account_id is not None:
+            detail = await _svc_detail(account_id, vehicle)
+        else:
+            detail = await samsara_client.get_vehicle_detail(vehicle)
         if not detail:
             return {"error": f"Vehicle '{vehicle}' not found. Check the name/number and try again."}
-        faulted, _ = await samsara_client.get_vehicles_with_faults()
+        if account_id is not None:
+            faulted, _total, _bd = await _svc_with_faults(account_id)
+        else:
+            faulted, _ = await samsara_client.get_vehicles_with_faults()
         matches = [v for v in faulted if v.get("name", "").lower() == vehicle.lower()]
         if not matches:
             return {
@@ -64,8 +74,12 @@ async def get_vehicle_faults(tool_args: dict, samsara_client,
         }
 
     if critical_only:
-        # Account-wide critical scan
-        critical = await samsara_client.get_critical_faults()
+        # Account-wide critical scan — filter by _severity stamped by get_vehicles_with_faults
+        if account_id is not None:
+            faulted_all, _t, _b = await _svc_with_faults(account_id)
+        else:
+            faulted_all, _t = await samsara_client.get_vehicles_with_faults()
+        critical = [v for v in faulted_all if v.get("_severity") == "critical"]
         return {
             "critical_count": len(critical),
             "vehicles": [
@@ -83,25 +97,21 @@ async def get_vehicle_faults(tool_args: dict, samsara_client,
         }
 
     # Account-wide fault overview
-    faulted, total = await samsara_client.get_vehicles_with_faults()
+    if account_id is not None:
+        faulted, total, _bd = await _svc_with_faults(account_id)
+    else:
+        faulted, total = await samsara_client.get_vehicles_with_faults()
     return {
         "total_active_vehicles": total,
         "vehicles_with_faults": len(faulted),
         "vehicles_critical": sum(
-            1 for v in faulted
-            if v.get("_lights", {}).get("stopIsOn")
-            or v.get("_lights", {}).get("protectIsOn")
-            or v.get("_lights", {}).get("emissionsIsOn")
+            1 for v in faulted if v.get("_severity") == "critical"
         ),
         "fault_summary": [
             {
                 "vehicle": v.get("name"),
                 "fault_count": len(v.get("_dtcs", [])),
-                "critical": bool(
-                    v.get("_lights", {}).get("stopIsOn")
-                    or v.get("_lights", {}).get("protectIsOn")
-                    or v.get("_lights", {}).get("emissionsIsOn")
-                ),
+                "critical": v.get("_severity") == "critical",
             }
             for v in faulted[:20]
         ],

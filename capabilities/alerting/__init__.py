@@ -45,6 +45,7 @@ from capabilities.alerting.escalation import (            # noqa: F401
     handle_alert_ack,
     handle_back_to_alert,
     _auto_resolve_vehicle_alerts,
+    re_escalate_critical_alerts,
 )
 
 # ── events ───────────────────────────────────────────────────────
@@ -53,8 +54,8 @@ from capabilities.alerting.events import (                # noqa: F401
     _event_severity,
 )
 
-# ── parking ──────────────────────────────────────────────────────
-from capabilities.alerting.parking import (               # noqa: F401
+# ── parking (now its own top-level capability) ───────────────────
+from capabilities.parking import (                        # noqa: F401
     check_unsafe_parking,
     classify_parking_location,
     get_parking_classification_reason,
@@ -67,6 +68,8 @@ from capabilities.alerting.parking import (               # noqa: F401
 # ── AI + maintenance ─────────────────────────────────────────────
 from capabilities.alerting.ai_maintenance import (        # noqa: F401
     check_api_health,
+)
+from capabilities.maintenance.service import (            # noqa: F401
     auto_create_maintenance_from_faults,
 )
 

@@ -57,7 +57,7 @@ async def core_platform(tmp_path):
 
     Yields the Database instance.  Restores original core.platform state on teardown.
     """
-    import core.platform as _cp
+    import infra.platform as _cp
     from adapters.storage.tenant_router import LegacyRouter
 
     db_path = str(tmp_path / "core_platform_test.db")
@@ -79,7 +79,7 @@ async def core_platform(tmp_path):
 @pytest_asyncio.fixture
 async def tenant_registry(core_platform):
     """Provide a TenantRegistry backed by the test core_platform."""
-    from core.registry import TenantRegistry
+    from infra.registry import TenantRegistry
 
     registry = TenantRegistry()
     yield registry

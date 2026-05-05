@@ -14,7 +14,7 @@ from capabilities.localization.i18n import t
 from interfaces.bot.auth import _get_user, _group_chat_guard
 from interfaces.bot.registration import cmd_start, cmd_register, cmd_join
 from interfaces.bot.management import cmd_addcompany, cmd_groups
-from interfaces.bot.fleet import cmd_truck
+from interfaces.bot.fleet import cmd_vehicle
 from interfaces.bot.fuel_costs import handle_fuelcost_text
 from interfaces.bot.maintenance import handle_maintenance_text
 from interfaces.bot.routes import handle_route_text
@@ -79,7 +79,7 @@ async def handle_text(update, context):
     # ── Truck lookup ────────────────────────────────────────────
     elif pending == "truck":
         context.args = text.split()
-        await cmd_truck(update, context)
+        await cmd_vehicle(update, context)
 
     # ── Add Company wizard step 1: company code ─────────────────────────
     elif pending == "addcompany_code":
@@ -330,7 +330,7 @@ async def handle_text(update, context):
                 department="operations",
                 truck_num=truck_num,
             )
-            truck_label = truck_num or t('invite.truck_not_assigned')
+            truck_label = truck_num or t('invite.vehicle_not_assigned')
             link = make_invite_link(invite.code, context)
             invite_text = format_invite_created(
                 invite.code, role_display(Role.DRIVER),
@@ -338,7 +338,7 @@ async def handle_text(update, context):
                 invite_link=link,
             )
             if truck_num:
-                invite_text += "\n  " + t('invite.truck_assigned', truck=truck_num)
+                invite_text += "\n  " + t('invite.vehicle_assigned', vehicle=vehicle_num)
             kb = invite_kb(link)
             await _show(update, context, [invite_text], keyboard=kb)
         except Exception as e:
@@ -361,7 +361,7 @@ async def handle_text(update, context):
         await handle_whours_text(update, context)
 
     # ── Route replay truck input ────────────────────────────────
-    elif pending == "route_truck":
+    elif pending == "route_vehicle":
         context.user_data["_pending"] = pending  # restore for handler
         await handle_route_text(update, context)
 

@@ -516,27 +516,62 @@ def generate_camera_check_csv(results: list[dict]) -> io.BytesIO:
 # SCORECARD CSV
 # ══════════════════════════════════════════════════════════════════
 
-def generate_scorecard_csv(drivers: list[dict]) -> io.BytesIO:
-    """Return a BytesIO containing CSV data for the Driver Scorecards report."""
+def generate_scorecard_csv(
+    drivers: list[dict],
+    pillar_by_driver: dict[str, dict] | None = None,
+) -> io.BytesIO:
+    """Return a BytesIO containing CSV data for the Driver Scorecards report.
+
+    *pillar_by_driver* — optional mapping ``driver_id -> composite
+    scorecard dict`` (Audit Option C). When supplied, the CSV gains
+    five trailing columns: ``Safety/50, Efficiency/25, Compliance/25,
+    Total/100, Insufficient Data``. Empty for rows missing composite
+    data so the column count stays stable.
+    """
     sio = io.StringIO()
     writer = csv.writer(sio)
+
+    pillar_by_driver = pillar_by_driver or {}
+    with_pillars = bool(pillar_by_driver)
 
     writer.writerow(["Report", "Driver Scorecards"])
     writer.writerow(["Generated", _now_et()])
     writer.writerow([])
 
-    writer.writerow([
+    header = [
         "Driver", "Company", "Miles", "MPG", "Drive Hours", "Idle Hours",
         "Drive %", "Eco %", "Overspeed Min", "Coast Min", "Cruise Min",
         "Antic Brakes", "Total Brakes", "Antic %",
-    ])
+    ]
+    if with_pillars:
+        header += [
+            "Safety/50", "Efficiency/25", "Compliance/25",
+            "Total/100", "Insufficient Data",
+            "Exposure Miles", "Exposure Drive Hours",
+        ]
+    writer.writerow(header)
     for d in drivers:
-        writer.writerow([
+        row = [
             d["driver_name"], d.get("_org", ""),
             d["_miles"], d["_mpg"], d["_drive_h"], d["_idle_h"],
             d["_drive_pct"], d["_green_pct"], d["_overspeed_min"],
             d["_coast_min"], d["_cruise_min"],
             d["_antic_brakes"], d["_total_brakes"], d["_antic_pct"],
-        ])
+        ]
+        if with_pillars:
+            sc = pillar_by_driver.get(str(d.get("driver_id") or "")) \
+                 or pillar_by_driver.get(d.get("driver_name", "")) or {}
+            pillars = sc.get("pillars") or {}
+            exposure = sc.get("exposure") or {}
+            row += [
+                pillars.get("safety",     {}).get("subtotal", ""),
+                pillars.get("efficiency", {}).get("subtotal", ""),
+                pillars.get("compliance", {}).get("subtotal", ""),
+                sc.get("total", sc.get("score", "")),
+                "yes" if sc.get("insufficient_data") else "",
+                exposure.get("miles", ""),
+                exposure.get("drive_hours", ""),
+            ]
+        writer.writerow(row)
 
     return _to_buf(sio)

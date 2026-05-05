@@ -8,29 +8,49 @@
  */
 
 import { useState } from 'react';
-import { POI_LAYERS, POI_GROUPS } from '../config/poiLayers';
+import type L from 'leaflet';
+import { POI_GROUPS } from '../config/poiLayers';
 import type { PoiLayerDef } from '../config/poiLayers';
 import type { UsePoiLayersResult, PoiFeature } from '../hooks/usePoiLayers';
+import { usePermissions } from '../hooks/usePermissions';
+import { apiFetch } from '../api/client';
+import CustomLayerEditor from './CustomLayerEditor';
 
 interface PoiLayerPanelProps {
   poiHook: UsePoiLayersResult;
+  /** Optional Leaflet map ref — when provided, the custom-layer editor's
+   *  pin-drop tab gains a “Pick on map” button that temporarily hides the
+   *  modal so the admin can click on the map.  Pages that don't pass this
+   *  fall back to manual lat/lng entry. */
+  leafletMap?: React.RefObject<L.Map | null>;
 }
 
-function exportCsv(allFeatures: Record<string, PoiFeature[]>, enabled: Record<string, boolean>) {
+/** Custom layer ids carry the `custom_<dbId>` prefix — use this to detect them. */
+const CUSTOM_ID_RE = /^custom_(\d+)$/;
+
+function exportCsv(
+  layers: PoiLayerDef[],
+  allFeatures: Record<string, PoiFeature[]>,
+  enabled: Record<string, boolean>,
+) {
   const rows = ['Layer,Name,Brand,Lat,Lng,DEF,Diesel,Showers,Phone,Hours'];
-  POI_LAYERS.forEach((def) => {
+  layers.forEach((def) => {
     if (!enabled[def.id]) return;
     (allFeatures[def.id] ?? []).forEach((f) => {
       const p = f.properties as Record<string, string> | null | undefined;
       const [lng, lat] = f.geometry.coordinates;
       const cell = (v: string) => `"${(v ?? '').replace(/"/g, '""')}"`;
+      // The def_station layer is BY DEFINITION an AdBlue-capable subset, so
+      // every row from it should report DEF=Yes even when the upstream
+      // fuel:adblue tag is missing on the OSM node.
+      const hasDef = def.id === 'def_station' || p?.['fuel:adblue'] === 'yes';
       rows.push([
         cell(def.label),
         cell(p?.name || ''),
         cell(p?.brand || p?.operator || ''),
         lat.toFixed(6),
         lng.toFixed(6),
-        cell(p?.['fuel:adblue'] === 'yes' ? 'Yes' : ''),
+        cell(hasDef ? 'Yes' : ''),
         cell(p?.['fuel:diesel'] === 'yes' ? 'Yes' : ''),
         cell(p?.shower === 'yes' ? 'Yes' : ''),
         cell(p?.phone || ''),
@@ -48,13 +68,40 @@ function exportCsv(allFeatures: Record<string, PoiFeature[]>, enabled: Record<st
   URL.revokeObjectURL(url);
 }
 
-export default function PoiLayerPanel({ poiHook }: PoiLayerPanelProps) {
-  const { enabled, toggle, loading, errors, counts, brandFilters, toggleBrand, presentBrands, allFeatures } =
-    poiHook;
+export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProps) {
+  const {
+    enabled, toggle, loading, errors, counts,
+    brandFilters, toggleBrand, presentBrands, allFeatures,
+    effectiveLayers, refreshCustomLayers,
+  } = poiHook;
+  const { has } = usePermissions();
+  const canManage = has('can_manage_poi_layers');
 
   const [collapsed, setCollapsed] = useState(false);
   // Per-layer chips panel open/closed (default: closed so panel stays compact)
   const [chipsOpen, setChipsOpen] = useState<Record<string, boolean>>({});
+  // Custom layer editor modal state — null = closed; { mode: 'create' } or
+  // { mode: 'edit', layerId } depending on the launch action.
+  const [editorState, setEditorState] = useState<
+    | null
+    | { mode: 'create' }
+    | { mode: 'edit'; layerId: number }
+  >(null);
+
+  const customLayers = effectiveLayers.filter((d) => d.group === 'custom');
+
+  /** DELETE a custom layer with confirmation — then refresh the hook so the
+   *  panel re-renders without the row.  Failures are surfaced via alert(). */
+  async function handleDeleteCustom(layerDbId: number, label: string) {
+    if (!window.confirm(`Delete layer “${label}”?  This cannot be undone.`)) return;
+    try {
+      const r = await apiFetch(`/map/custom-layers/${layerDbId}`, { method: 'DELETE' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      await refreshCustomLayers();
+    } catch (e) {
+      alert(`Failed to delete layer: ${(e as Error).message}`);
+    }
+  }
 
   return (
     <div
@@ -77,10 +124,10 @@ export default function PoiLayerPanel({ poiHook }: PoiLayerPanelProps) {
       {!collapsed && Object.values(enabled).some(Boolean) && (
         <div className="border-t border-border px-3 py-1.5">
           <button
-            onClick={() => exportCsv(allFeatures, enabled)}
+            onClick={() => exportCsv(effectiveLayers, allFeatures, enabled)}
             className="w-full text-[10px] text-muted-foreground hover:text-foreground transition text-left flex items-center gap-1"
           >
-            <span>⬇</span><span>Export visible POIs as CSV</span>
+            <span>⬇</span><span>Export all POIs in current area (CSV)</span>
           </button>
         </div>
       )}
@@ -89,12 +136,14 @@ export default function PoiLayerPanel({ poiHook }: PoiLayerPanelProps) {
       {!collapsed && (
         <div className="border-t border-border px-3 py-2 space-y-2.5">
           {/* Ungrouped layers (rendered first, no header) */}
-          {POI_LAYERS.filter((d) => !d.group).map((def) => renderLayerRow(def))}
+          {effectiveLayers.filter((d) => !d.group).map((def) => renderLayerRow(def))}
 
           {/* Grouped layers — one section per POI_GROUPS entry */}
           {POI_GROUPS.map((grp) => {
-            const groupLayers = POI_LAYERS.filter((d) => d.group === grp.id);
-            if (groupLayers.length === 0) return null;
+            const groupLayers = effectiveLayers.filter((d) => d.group === grp.id);
+            // Hide "My Layers" header entirely when there are no custom layers
+            // AND the user lacks management rights (so it stays clean for drivers).
+            if (groupLayers.length === 0 && !(grp.id === 'custom' && canManage)) return null;
             return (
               <div key={grp.id} className="space-y-1.5">
                 {/* Group header — display only, NOT toggleable */}
@@ -102,15 +151,44 @@ export default function PoiLayerPanel({ poiHook }: PoiLayerPanelProps) {
                   {grp.icon && <span className="text-xs leading-none">{grp.icon}</span>}
                   <span>{grp.label}</span>
                   <span className="flex-1 border-t border-border ml-1" />
+                  {/* "+ New" trigger only on the custom group, only for admins */}
+                  {grp.id === 'custom' && canManage && (
+                    <button
+                      type="button"
+                      onClick={() => setEditorState({ mode: 'create' })}
+                      title="Create new POI layer"
+                      className="text-[10px] font-bold text-primary hover:underline normal-case tracking-normal"
+                    >
+                      + New
+                    </button>
+                  )}
                 </div>
                 {/* Layers in this group */}
                 <div className="space-y-1.5">
                   {groupLayers.map((def) => renderLayerRow(def))}
                 </div>
+                {/* Empty-state hint for admins so they know how to start */}
+                {grp.id === 'custom' && groupLayers.length === 0 && canManage && (
+                  <p className="text-[10px] text-muted-foreground italic pl-1">
+                    No custom layers yet. Click “+ New” to add one.
+                  </p>
+                )}
               </div>
             );
           })}
         </div>
+      )}
+
+      {/* Custom-layer editor modal */}
+      {editorState && canManage && (
+        <CustomLayerEditor
+          mode={editorState.mode}
+          layerId={editorState.mode === 'edit' ? editorState.layerId : undefined}
+          existingLayers={customLayers}
+          leafletMap={leafletMap}
+          onClose={() => setEditorState(null)}
+          onSaved={async () => { await refreshCustomLayers(); setEditorState(null); }}
+        />
       )}
     </div>
   );
@@ -126,6 +204,12 @@ export default function PoiLayerPanel({ poiHook }: PoiLayerPanelProps) {
             const availableChips = (def.brandFilters ?? []).filter((bf) => present.has(bf.value));
             const hasChips       = isOn && !isBusy && availableChips.length > 0;
             const isChipsOpen    = chipsOpen[def.id] ?? false;
+            // Custom-layer admin controls (✏ / 🗑) appear only on layers whose id
+            // matches `custom_<dbId>` and only when the current user has the
+            // manage permission — the same gate the backend enforces.
+            const customMatch    = CUSTOM_ID_RE.exec(def.id);
+            const customDbId     = customMatch ? Number(customMatch[1]) : null;
+            const showCustomCtrls = canManage && customDbId !== null;
 
             return (
               <div key={def.id}>
@@ -171,6 +255,32 @@ export default function PoiLayerPanel({ poiHook }: PoiLayerPanelProps) {
                   {/* Spinner */}
                   {isBusy && (
                     <span className="w-3.5 h-3.5 rounded-full border-2 border-muted border-t-primary animate-spin flex-shrink-0" />
+                  )}
+
+                  {/* Custom-layer admin controls */}
+                  {showCustomCtrls && (
+                    <>
+                      <button
+                        type="button"
+                        title="Edit layer"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setEditorState({ mode: 'edit', layerId: customDbId! });
+                        }}
+                        className="text-[10px] text-muted-foreground hover:text-foreground leading-none px-0.5"
+                      >✏</button>
+                      <button
+                        type="button"
+                        title="Delete layer"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleDeleteCustom(customDbId!, def.label);
+                        }}
+                        className="text-[10px] text-muted-foreground hover:text-destructive leading-none px-0.5"
+                      >🗑</button>
+                    </>
                   )}
                 </label>
 

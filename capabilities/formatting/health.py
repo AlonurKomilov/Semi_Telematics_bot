@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 from constants import TZ_ET as _TZ_ET
-from core.context import get_company_display
+from infra.context import get_company_display
 from capabilities.formatting.helpers import (
     _t, _health_icon, _company_tag, _split_message,
 )

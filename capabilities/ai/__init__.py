@@ -1,4 +1,4 @@
-"""Vertex AI Gemini client for fleet intelligence.
+"""Vertex AI Gemini client for telematics intelligence.
 
 Uses the ``google-cloud-aiplatform`` (Vertex AI) SDK so all charges
 go through your Google Cloud billing account (= Cloud credits).

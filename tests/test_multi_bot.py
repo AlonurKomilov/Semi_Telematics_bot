@@ -36,11 +36,11 @@ class TestBotRegistry:
 
     async def test_start_bot_creates_app(self):
         """start_bot() creates and caches an Application."""
-        from core.bot_registry import BotRegistry
+        from infra.bot_registry import BotRegistry
 
         registry = BotRegistry()
 
-        with patch("core.bot_registry._build_bot_app", new_callable=AsyncMock) as mock_build:
+        with patch("infra.bot_registry._build_bot_app", new_callable=AsyncMock) as mock_build:
             fake_app = MagicMock()
             mock_build.return_value = fake_app
 
@@ -56,11 +56,11 @@ class TestBotRegistry:
 
     async def test_start_bot_duplicate_stops_first(self):
         """start_bot() with existing bot stops the old one first."""
-        from core.bot_registry import BotRegistry
+        from infra.bot_registry import BotRegistry
 
         registry = BotRegistry()
 
-        with patch("core.bot_registry._build_bot_app", new_callable=AsyncMock) as mock_build:
+        with patch("infra.bot_registry._build_bot_app", new_callable=AsyncMock) as mock_build:
             app1 = MagicMock()
             app1.updater = MagicMock()
             app1.updater.running = True
@@ -85,7 +85,7 @@ class TestBotRegistry:
 
     async def test_stop_bot_removes(self):
         """stop_bot() stops and removes the application."""
-        from core.bot_registry import BotRegistry
+        from infra.bot_registry import BotRegistry
 
         registry = BotRegistry()
 
@@ -96,7 +96,7 @@ class TestBotRegistry:
         fake_app.stop = AsyncMock()
         fake_app.shutdown = AsyncMock()
 
-        with patch("core.bot_registry._build_bot_app", new_callable=AsyncMock, return_value=fake_app):
+        with patch("infra.bot_registry._build_bot_app", new_callable=AsyncMock, return_value=fake_app):
             await registry.start_bot(1, "token")
 
         await registry.stop_bot(1)
@@ -108,14 +108,14 @@ class TestBotRegistry:
 
     async def test_stop_bot_nonexistent_noop(self):
         """stop_bot() on unknown account is a safe no-op."""
-        from core.bot_registry import BotRegistry
+        from infra.bot_registry import BotRegistry
 
         registry = BotRegistry()
         await registry.stop_bot(999)  # should not raise
 
     async def test_restart_bot(self):
         """restart_bot() stops old and starts new."""
-        from core.bot_registry import BotRegistry
+        from infra.bot_registry import BotRegistry
 
         registry = BotRegistry()
 
@@ -128,7 +128,7 @@ class TestBotRegistry:
 
         app2 = MagicMock()
 
-        with patch("core.bot_registry._build_bot_app", new_callable=AsyncMock) as mock_build:
+        with patch("infra.bot_registry._build_bot_app", new_callable=AsyncMock) as mock_build:
             mock_build.side_effect = [app1, app2]
 
             await registry.start_bot(1, "token_old")
@@ -140,14 +140,14 @@ class TestBotRegistry:
 
     async def test_get_nonexistent(self):
         """get() returns None for unknown account."""
-        from core.bot_registry import BotRegistry
+        from infra.bot_registry import BotRegistry
 
         registry = BotRegistry()
         assert registry.get(999) is None
 
     async def test_stop_all(self):
         """stop_all() stops all running bots."""
-        from core.bot_registry import BotRegistry
+        from infra.bot_registry import BotRegistry
 
         registry = BotRegistry()
 
@@ -161,7 +161,7 @@ class TestBotRegistry:
             app.shutdown = AsyncMock()
             apps[aid] = app
 
-        with patch("core.bot_registry._build_bot_app", new_callable=AsyncMock) as mock_build:
+        with patch("infra.bot_registry._build_bot_app", new_callable=AsyncMock) as mock_build:
             mock_build.side_effect = [apps[1], apps[2], apps[3]]
             await registry.start_bot(1, "t1")
             await registry.start_bot(2, "t2")
@@ -177,11 +177,11 @@ class TestBotRegistry:
 
     async def test_active_accounts(self):
         """active_accounts lists account IDs of running bots."""
-        from core.bot_registry import BotRegistry
+        from infra.bot_registry import BotRegistry
 
         registry = BotRegistry()
 
-        with patch("core.bot_registry._build_bot_app", new_callable=AsyncMock) as mock_build:
+        with patch("infra.bot_registry._build_bot_app", new_callable=AsyncMock) as mock_build:
             mock_build.side_effect = [MagicMock(), MagicMock()]
             await registry.start_bot(10, "t10")
             await registry.start_bot(20, "t20")
@@ -225,7 +225,7 @@ class TestHandlerRegistration:
                 has_text = True
 
         expected_commands = {
-            "start", "help", "register", "join", "faults", "truck",
+            "start", "help", "register", "join", "faults", "vehicle",
             "fuel", "alerts", "health", "efficiency", "events",
             "invite", "account", "users", "setrole", "remove",
             "addorg", "removeorg", "addgroup", "removegroup", "groups",
@@ -248,14 +248,14 @@ class TestBotScoping:
 
     async def test_bot_data_account_id(self):
         """_build_bot_app sets bot_data['account_id']."""
-        import core.bot_registry as _reg_mod
-        from core.bot_registry import _build_bot_app
+        import infra.bot_registry as _reg_mod
+        from infra.bot_registry import _build_bot_app
 
         # Ensure handler setup is injected (normally done by run.py)
         _reg_mod.set_handler_setup(lambda app: None)
 
         # Mock the Telegram API calls
-        with patch("core.bot_registry.Application") as MockAppClass:
+        with patch("infra.bot_registry.Application") as MockAppClass:
             mock_app = MagicMock()
             mock_app.bot_data = {}
             mock_app.bot = MagicMock()
@@ -281,7 +281,7 @@ class TestBotScoping:
 
     async def test_multiple_bots_independent_state(self):
         """Two bots have independent bot_data dictionaries."""
-        from core.bot_registry import BotRegistry
+        from infra.bot_registry import BotRegistry
 
         registry = BotRegistry()
 
@@ -291,7 +291,7 @@ class TestBotScoping:
         app2 = MagicMock()
         app2.bot_data = {"account_id": 2}
 
-        with patch("core.bot_registry._build_bot_app", new_callable=AsyncMock) as mock_build:
+        with patch("infra.bot_registry._build_bot_app", new_callable=AsyncMock) as mock_build:
             mock_build.side_effect = [app1, app2]
             await registry.start_bot(1, "t1")
             await registry.start_bot(2, "t2")
@@ -322,7 +322,7 @@ class TestStartAll:
 
     async def test_start_all_from_db(self):
         """start_all() reads accounts from DB and starts bots."""
-        from core.bot_registry import BotRegistry
+        from infra.bot_registry import BotRegistry
 
         registry = BotRegistry()
 
@@ -340,7 +340,7 @@ class TestStartAll:
         mock_db = AsyncMock()
         mock_db.get_accounts_with_bot_tokens.return_value = [acct1, acct2]
 
-        with patch("core.bot_registry._build_bot_app", new_callable=AsyncMock) as mock_build:
+        with patch("infra.bot_registry._build_bot_app", new_callable=AsyncMock) as mock_build:
             mock_build.side_effect = [MagicMock(), MagicMock()]
 
             started = await registry.start_all(mock_db)
@@ -351,7 +351,7 @@ class TestStartAll:
 
     async def test_start_all_partial_failure(self):
         """start_all() continues if one bot fails to start."""
-        from core.bot_registry import BotRegistry
+        from infra.bot_registry import BotRegistry
 
         registry = BotRegistry()
 
@@ -368,7 +368,7 @@ class TestStartAll:
         mock_db = AsyncMock()
         mock_db.get_accounts_with_bot_tokens.return_value = [acct1, acct2]
 
-        with patch("core.bot_registry._build_bot_app", new_callable=AsyncMock) as mock_build:
+        with patch("infra.bot_registry._build_bot_app", new_callable=AsyncMock) as mock_build:
             mock_build.side_effect = [RuntimeError("Invalid token"), MagicMock()]
 
             started = await registry.start_all(mock_db)
@@ -379,7 +379,7 @@ class TestStartAll:
 
     async def test_start_all_no_accounts(self):
         """start_all() with no bot tokens returns 0."""
-        from core.bot_registry import BotRegistry
+        from infra.bot_registry import BotRegistry
 
         registry = BotRegistry()
 

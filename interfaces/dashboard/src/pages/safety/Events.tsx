@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { ElementType } from 'react';
 import { AlertTriangle, Zap, RotateCcw, MoveHorizontal, Truck, OctagonX, TrendingUp } from 'lucide-react';
 import { apiJSON } from '../../api/client';
@@ -93,28 +94,26 @@ const columns: AnyColumn[] = [
 ];
 
 export default function Events() {
-  const [events, setEvents] = useState<SafetyEvent[]>([]);
-  const [summary, setSummary] = useState<EventsSummary>({ by_type: {}, by_severity: {} });
   const [days, setDays] = useState(7);
   const [typeFilter, setTypeFilter] = useState('all');
   const [driverSearch, setDriverSearch] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
-  useEffect(() => {
-    setLoading(true);
-    const params = new URLSearchParams({ days: String(days) });
-    if (typeFilter !== 'all') params.set('event_type', typeFilter);
-    if (driverSearch) params.set('driver', driverSearch);
+  // React Query (Phase E23): cache events per (days, type, driver) tuple.
+  const { data, isLoading, error: queryError } = useQuery<SafetyEventsResponse>({
+    queryKey: ['safety-events', days, typeFilter, driverSearch],
+    queryFn: () => {
+      const params = new URLSearchParams({ days: String(days) });
+      if (typeFilter !== 'all') params.set('event_type', typeFilter);
+      if (driverSearch) params.set('driver', driverSearch);
+      return apiJSON<SafetyEventsResponse>(`/safety/events?${params}`);
+    },
+    placeholderData: (prev) => prev,
+  });
 
-    apiJSON<SafetyEventsResponse>(`/safety/events?${params}`)
-      .then((d) => {
-        setEvents(d.events || []);
-        setSummary(d.summary || { by_type: {}, by_severity: {} });
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'))
-      .finally(() => setLoading(false));
-  }, [days, typeFilter, driverSearch]);
+  const events  = data?.events ?? [];
+  const summary = data?.summary ?? { by_type: {}, by_severity: {} };
+  const loading = isLoading && !data;
+  const error   = queryError instanceof Error ? queryError.message : (queryError ? 'Failed to load' : '');
 
   if (error && events.length === 0) return <p className="text-destructive">{error}</p>;
 

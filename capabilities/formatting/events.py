@@ -3,7 +3,7 @@
 from datetime import datetime
 from collections import Counter
 from constants import TZ_ET as _TZ_ET
-from core.context import get_company_display
+from infra.context import get_company_display
 from capabilities.formatting.helpers import (
     _t, _fmt_time, _fmt_us_times, _split_message,
 )
@@ -87,13 +87,18 @@ def format_events_dashboard(
     # Top 5 drivers by event count
     driver_counts = Counter(e.get("driver_name", "Unassigned") for e in events)
     top_5 = driver_counts.most_common(5)
-    driver_lines = [f"\n  {_t('events.top_drivers')}"]
-    for dname, cnt in top_5:
-        # Find most common event type for this driver
-        driver_events = [e.get("event_type", "") for e in events if e.get("driver_name") == dname]
-        top_type = Counter(driver_events).most_common(1)[0][0] if driver_events else ""
-        type_label = _EVENT_EMOJI.get(top_type, "")
-        driver_lines.append(f"  👤 {dname}: {cnt} events {type_label}")
+    # Skip the leaderboard when only one driver shows up in the data
+    # (e.g. a driver-role caller filtered to their own truck).  The
+    # "Top Drivers" header is misleading in that case.
+    driver_lines: list[str] = []
+    if len(driver_counts) > 1:
+        driver_lines.append(f"\n  {_t('events.top_drivers')}")
+        for dname, cnt in top_5:
+            # Find most common event type for this driver
+            driver_events = [e.get("event_type", "") for e in events if e.get("driver_name") == dname]
+            top_type = Counter(driver_events).most_common(1)[0][0] if driver_events else ""
+            type_label = _EVENT_EMOJI.get(top_type, "")
+            driver_lines.append(f"  👤 {dname}: {cnt} events {type_label}")
 
     # G-force distribution
     gforce_lines = [f"\n  {_t('events.gforce_header')}"]

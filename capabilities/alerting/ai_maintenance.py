@@ -3,11 +3,101 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ParseMode
+from telegram.ext import Application
+
+import infra.cache as rcache
 from capabilities.formatting.helpers import escape_html
-from core.services import get_tenant_db, get_platform_db
+from infra.services import get_tenant_db, get_platform_db
 from capabilities.alerting.pipeline import SYSTEM_USER_ID
 
 logger = logging.getLogger("bot")
+
+
+# ── API error notifications ─────────────────────────────────────
+# Throttled alert fired when Samsara API errors cause skipped companies.
+# Lives here (capability-shared) so faults / health / fuel can all reuse it.
+
+_API_ALERT_COOLDOWN_S = 6 * 3600
+_api_alert_sent: dict[str, float] = {}
+
+
+async def _notify_api_errors(
+    bot_app: Application,
+    account_id: int,
+    skipped_codes: list[str],
+):
+    """Send a one-time Telegram alert to account admins when one or more
+    company API calls failed.  Throttled per-company via Redis (preferred)
+    or in-memory fallback.
+    """
+    if not skipped_codes:
+        return
+    now = datetime.now(timezone.utc).timestamp()
+    codes_to_alert: list[str] = []
+    for code in skipped_codes:
+        mem_key = f"{account_id}:{code}"
+        redis_key = f"t:{account_id}:api_alert:{code}"
+        if rcache.is_available():
+            if await rcache.exists(redis_key):
+                continue
+            codes_to_alert.append(code)
+            await rcache.setex_flag(redis_key, _API_ALERT_COOLDOWN_S)
+        else:
+            last = _api_alert_sent.get(mem_key, 0.0)
+            if now - last >= _API_ALERT_COOLDOWN_S:
+                codes_to_alert.append(code)
+                _api_alert_sent[mem_key] = now
+
+    if not codes_to_alert:
+        return
+
+    admins = await get_platform_db().get_account_admins(account_id)
+    if not admins:
+        return
+
+    codes_str = ", ".join(codes_to_alert)
+    text = (
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "  🚨  <b>API ERROR</b>\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        f"\n  Company: <b>{escape_html(codes_str)}</b>\n"
+        "\n"
+        "  The Samsara API returned an error\n"
+        "  for this company. Reports will be\n"
+        "  missing data until the issue is fixed.\n"
+        "\n"
+        "  <b>Possible causes:</b>\n"
+        "  • API token expired or revoked\n"
+        "  • Token missing required permissions\n"
+        "  • Samsara service outage\n"
+        "\n"
+        "  Check your Samsara dashboard or\n"
+        "  re-add the API key to resolve."
+    )
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔍 Check Status", callback_data="cmd_api_status")],
+        [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
+    ])
+
+    for admin in admins:
+        try:
+            await bot_app.bot.send_message(
+                chat_id=admin.telegram_id,
+                text=text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=kb,
+            )
+        except Exception as e:
+            logger.error("API alert to admin %s failed: %s", admin.telegram_id, e)
+
+    logger.warning(
+        "API error alert sent for account %d, companies: %s",
+        account_id, codes_str,
+    )
 
 
 def _truncate_at_sentence(text: str, max_len: int) -> str:
@@ -163,80 +253,9 @@ async def _get_ai_health_note(
 
 
 # ── Auto-Maintenance from Critical Faults ────────────────────────
-
-# SPN → maintenance task type mapping
-_SPN_MAINTENANCE_MAP = {
-    110: "custom",   # Coolant temp → custom inspection
-    111: "custom",   # Coolant level
-    100: "oil",      # Oil pressure
-    101: "oil",      # Oil level
-    91: "brakes",    # Brake pressure
-    97: "custom",    # Water in fuel
-    190: "custom",   # Engine speed (overspeed)
-    4331: "custom",  # DEF quality
-    3031: "custom",  # DEF level
-    5246: "custom",  # DEF tank
-}
-
-_SPN_DESCRIPTIONS = {
-    110: "Coolant temperature issue",
-    111: "Coolant level issue",
-    100: "Engine oil pressure issue",
-    101: "Engine oil level issue",
-    91: "Brake system pressure issue",
-    97: "Water-in-fuel detected",
-    190: "Engine overspeed event",
-    4331: "DEF quality issue",
-    3031: "DEF level low",
-    5246: "DEF tank issue",
-}
-
-
-async def auto_create_maintenance_from_faults(
-    account_id: int, vehicle_name: str, dtcs: list[dict],
-):
-    """Auto-create maintenance tasks from critical fault codes.
-
-    Only creates a task if one doesn't already exist (pending/overdue)
-    for the same vehicle and task type.
-    """
-    try:
-        tenant = await get_tenant_db(account_id)
-        existing = await tenant.get_maintenance_tasks(account_id, vehicle_name=vehicle_name)
-        existing_types = {
-            (t["vehicle_name"], t["task_type"])
-            for t in existing
-            if t["status"] in ("pending", "overdue")
-        }
-
-        for dtc in dtcs:
-            spn = dtc.get("spnId")
-            if spn not in _SPN_MAINTENANCE_MAP:
-                continue
-
-            task_type = _SPN_MAINTENANCE_MAP[spn]
-            if (vehicle_name, task_type) in existing_types:
-                continue  # already has a pending task
-
-            desc = _SPN_DESCRIPTIONS.get(spn, f"Auto-created from SPN {spn}")
-            fmi_desc = dtc.get("fmiDescription", "")
-            if fmi_desc:
-                desc += f" ({fmi_desc})"
-
-            await tenant.add_maintenance_task(
-                account_id=account_id,
-                company_code="",
-                vehicle_name=vehicle_name,
-                task_type=task_type,
-                description=f"🤖 Auto-created: {desc}",
-                created_by=0,  # system-generated
-            )
-            existing_types.add((vehicle_name, task_type))
-            logger.info(
-                f"Auto-maintenance: {vehicle_name} → {task_type} (SPN {spn})"
-            )
-    except Exception as e:
-        logger.error(f"Auto-maintenance creation failed: {e}")
+# Canonical implementation lives in capabilities/maintenance/service.py.
+# Re-exported here for backward compatibility.
+from capabilities.maintenance.service import auto_create_maintenance_from_faults  # noqa: F401, E402
 
 
 async def check_api_health(account_id: int) -> dict[str, str]:

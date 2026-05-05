@@ -48,7 +48,7 @@ async def db_and_app(tmp_path):
     token_driver = create_jwt(driver_a.telegram_id, acct_a.id, "driver")
 
     # Patch core.platform so api/deps.py and bot.state lazy proxy resolve correctly
-    import core.platform as _cp
+    import infra.platform as _cp
     from adapters.storage.tenant_router import LegacyRouter
     _old_router = _cp._router
     _old_cp_db = _cp._db

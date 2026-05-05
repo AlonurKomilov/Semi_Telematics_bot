@@ -7,8 +7,13 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 
-from interfaces.api.deps import require_permission, get_user_company_codes, validate_company_access, filter_by_allowed_companies, filter_by_assigned_trucks
-from core.services import get_client
+from interfaces.api.deps import require_permission, require_permission_any, get_user_company_codes, validate_company_access, filter_by_allowed_companies, filter_by_assigned_trucks
+from capabilities.iam.permissions import can as _can
+from infra.services import get_client
+from capabilities.telemetry.service import (
+    get_vehicle_health as _svc_vehicle_health,
+    get_fleet_efficiency as _svc_fleet_efficiency,
+)
 
 from capabilities.reporting import (
     generate_fault_report_pdf,
@@ -95,8 +100,7 @@ async def report_health(
     """Vehicle health — battery, oil, coolant, DEF, engine data."""
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
-    client = await get_client(user["account_id"])
-    vehicles = await client.get_vehicle_health(company=company)
+    vehicles = await _svc_vehicle_health(user["account_id"], company=company)
     vehicles = filter_by_allowed_companies(vehicles, allowed)
     vehicles = await filter_by_assigned_trucks(vehicles, user)
     items = [_simplify_health(v) for v in vehicles]
@@ -112,13 +116,12 @@ async def report_health(
 async def report_efficiency(
     days: int = Query(7, ge=1, le=90),
     company: str | None = Query(None),
-    user: dict = Depends(require_permission("can_faults")),
+    user: dict = Depends(require_permission_any("can_efficiency", "can_vehicle_all")),
 ):
     """Fleet efficiency — miles, fuel, idle/drive time per vehicle."""
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
-    client = await get_client(user["account_id"])
-    vehicles = await client.get_fleet_efficiency(days=days, company=company)
+    vehicles = await _svc_fleet_efficiency(user["account_id"], days=days, company=company)
     vehicles = filter_by_allowed_companies(vehicles, allowed)
     vehicles = await filter_by_assigned_trucks(vehicles, user)
     return {
@@ -153,7 +156,7 @@ EXPORT_TYPES = {
         "pdf": generate_fleet_efficiency_pdf,
         "csv": generate_efficiency_csv,
         "data_method": "get_fleet_efficiency",
-        "perm": "can_faults",
+        "perm": "can_efficiency",
     },
 }
 
@@ -164,17 +167,21 @@ async def export_report(
     fmt: str = Query("pdf", description="pdf or csv"),
     company: str | None = Query(None),
     days: int = Query(7, ge=1, le=90),
-    user: dict = Depends(require_permission("can_faults")),
+    user: dict = Depends(require_permission_any("can_faults", "can_fuel", "can_health", "can_efficiency", "can_vehicle_all")),
 ):
     """Download a report as PDF or CSV file."""
+    from fastapi import HTTPException
     if report_type not in EXPORT_TYPES:
-        from fastapi import HTTPException
         raise HTTPException(400, f"Unknown report type: {report_type}")
 
-    allowed = await get_user_company_codes(user)
+    cfg = EXPORT_TYPES[report_type]
+    # Enforce per-type permission so callers can only export what they can read.
+    type_perm: str = cfg["perm"]  # type: ignore[assignment]
+    if not _can(user["role"], type_perm):
+        raise HTTPException(403, f"Role '{user['role']}' cannot export {report_type} reports")
+
     validate_company_access(allowed, company)
 
-    cfg = EXPORT_TYPES[report_type]
     client = await get_client(user["account_id"])
 
     # Fetch data

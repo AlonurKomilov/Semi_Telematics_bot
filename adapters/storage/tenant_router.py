@@ -28,6 +28,7 @@ from .tenant_db import TenantDB
 
 if TYPE_CHECKING:
     from .core import _DatabaseCore
+    from . import Database
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ class LegacyRouter:
     the old single-DB layout.
     """
 
-    def __init__(self, db: _DatabaseCore):
+    def __init__(self, db: Database):
         self._db = db
 
     async def initialize(self):
@@ -94,10 +95,10 @@ class LegacyRouter:
         pass
 
     @property
-    def platform(self) -> _DatabaseCore:
+    def platform(self) -> Database:
         return self._db
 
-    async def get_tenant(self, account_id: int) -> _DatabaseCore:
+    async def get_tenant(self, account_id: int) -> Database:
         """Return the same DB instance regardless of account_id."""
         return self._db
 

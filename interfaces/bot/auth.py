@@ -5,7 +5,7 @@ from telegram.ext import ContextTypes
 
 from capabilities.iam.permissions import is_system_owner
 
-from core.context import set_tenant_display
+from infra.context import set_tenant_display
 from interfaces.bot.config import SUPPORT_CONTACT, get_platform_db, get_tenant_db
 from interfaces.bot.helpers import _show
 from interfaces.bot.keyboards import system_owner_kb, unregistered_kb, back_kb

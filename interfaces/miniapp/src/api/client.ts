@@ -4,14 +4,54 @@
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
+// Service-worker runtime caches that hold tenant-scoped responses.  These
+// MUST be cleared on login/logout so a different account never sees the
+// previous tenant's cached fleet/alert data.  Names match the
+// `runtimeCaching[].cacheName` values in vite.config.ts.
+const TENANT_CACHE_NAMES = [
+  'driver-scorecard',
+  'st-fleet',
+  'st-alerts-count',
+  'api-get',
+];
+
+async function clearTenantCaches(): Promise<void> {
+  if (typeof caches === 'undefined') return;
+  try {
+    const names = await caches.keys();
+    await Promise.all(
+      names
+        .filter(n => TENANT_CACHE_NAMES.some(p => n.includes(p)))
+        .map(n => caches.delete(n)),
+    );
+  } catch {
+    /* best-effort — never block login on cache eviction */
+  }
+}
+
 let _token: string | null = null;
 
+// Timestamp (ms since epoch) of the last response that actually reached the
+// server (any HTTP status).  Updated in apiFetch so OfflineBanner can show
+// "cached data as of HH:MM" when the device goes offline.
+let _lastFetchAt: number | null = null;
+
+export function getLastFetchAt(): number | null {
+  return _lastFetchAt;
+}
+
 export function setToken(token: string): void {
+  if (_token !== token) {
+    // Auth identity changed — drop runtime SW caches so the new
+    // session never serves the previous account's data.
+    void clearTenantCaches();
+  }
   _token = token;
 }
 
 export function clearToken(): void {
   _token = null;
+  void clearTenantCaches();
 }
 
 type ApiFetchOpts = Omit<RequestInit, 'body'> & {
@@ -47,14 +87,23 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}): Promise<R
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
-    return await fetch(path, {
+    const res = await fetch(path, {
       ...opts,
       headers,
       body: body as BodyInit,
       signal: controller.signal,
     });
+    _lastFetchAt = Date.now();
+    return res;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = 'ApiError';
   }
 }
 
@@ -69,7 +118,7 @@ export async function apiJSON<T = unknown>(path: string, opts: ApiFetchOpts = {}
         : Array.isArray(detail)
         ? detail.map((d: { msg?: string }) => d.msg ?? String(d)).join('; ')
         : res.statusText;
-    throw new Error(msg);
+    throw new ApiError(msg, res.status);
   }
   return res.json() as Promise<T>;
 }

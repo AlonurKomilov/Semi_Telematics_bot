@@ -36,7 +36,7 @@ async def check_vehicle_camera(tool_args: dict, samsara_client,
         from adapters.samsara.client import SamsaraClient
         from capabilities.ai.vision import analyze_camera_image
         # Get snapshots for the specific truck
-        from core.platform import get_tenant_db as _get_tdb
+        from infra.platform import get_tenant_db as _get_tdb
         _tdb = await _get_tdb(account_id) if account_id else None
         companies = await _tdb.get_account_companies(account_id) if _tdb else []
         snap = None

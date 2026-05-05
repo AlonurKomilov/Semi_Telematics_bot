@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
+from capabilities.vehicles.service import (
+    get_fleet_overview as _svc_fleet,
+    get_vehicle_detail as _svc_detail,
+)
 
 
 @register_tool({
@@ -25,7 +29,10 @@ from capabilities.ai.tools.registry import register_tool
 async def get_vehicle_detail(tool_args: dict, samsara_client,
                              account_id: int | None = None, db=None) -> dict:
     vehicle = tool_args.get("vehicle_name", "")
-    detail = await samsara_client.get_vehicle_detail(vehicle)
+    if account_id is not None:
+        detail = await _svc_detail(account_id, vehicle)
+    else:
+        detail = await samsara_client.get_vehicle_detail(vehicle)
     if not detail:
         return {"result": f"Vehicle {vehicle} not found."}
     v = detail[0] if isinstance(detail, list) else detail
@@ -62,7 +69,10 @@ async def get_vehicle_detail(tool_args: dict, samsara_client,
 async def get_vehicle_location(tool_args: dict, samsara_client,
                                account_id: int | None = None, db=None) -> dict:
     vehicle = tool_args.get("vehicle_name", "")
-    detail = await samsara_client.get_vehicle_detail(vehicle)
+    if account_id is not None:
+        detail = await _svc_detail(account_id, vehicle)
+    else:
+        detail = await samsara_client.get_vehicle_detail(vehicle)
     if not detail:
         return {"result": f"Vehicle {vehicle} not found."}
     v = detail[0] if isinstance(detail, list) else detail
@@ -95,7 +105,10 @@ async def get_vehicle_location(tool_args: dict, samsara_client,
 })
 async def get_rolling_stopped(tool_args: dict, samsara_client,
                               account_id: int | None = None, db=None) -> dict:
-    fleet = await samsara_client.get_fleet_overview()
+    if account_id is not None:
+        fleet = await _svc_fleet(account_id)
+    else:
+        fleet = await samsara_client.get_fleet_overview()
     engine_states = await samsara_client.get_engine_states()
     # Index engine states by vehicle ID
     state_by_id: dict[str, str] = {}
@@ -166,7 +179,10 @@ async def search_vehicles(tool_args: dict, samsara_client,
     city_filter = (tool_args.get("city") or "").strip().lower()
     status_filter = (tool_args.get("status") or "").strip().lower()
 
-    fleet = await samsara_client.get_fleet_overview()
+    if account_id is not None:
+        fleet = await _svc_fleet(account_id)
+    else:
+        fleet = await samsara_client.get_fleet_overview()
 
     # Only fetch engine states when status filter is requested
     state_by_id: dict[str, str] = {}

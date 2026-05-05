@@ -12,7 +12,7 @@ from capabilities.ai import _chat_histories
 from capabilities.ai.registry import DEFAULT_LOCATION
 from capabilities.ai.usage import build_user_ai_context, log_ai_usage as _log_ai_usage_fn, parse_ai_suggestions as _parse_suggestions
 from capabilities.iam.permissions import is_management_role
-from interfaces.api.deps import require_permission, get_current_user, get_platform_db, get_tenant_db
+from interfaces.api.deps import require_permission, require_permission_any, get_current_user, get_platform_db, get_tenant_db
 from interfaces.api.rate_limit import limiter
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -40,13 +40,13 @@ class ModelSwitchRequest(BaseModel):
 
 async def _log_usage(account_id: int, user_id: int, action: str):
     """Delegates to the shared logger in capabilities.ai.usage."""
-    from core.services import get_platform_db as _gpdb
+    from infra.services import get_platform_db as _gpdb
     pdb = _gpdb()  # synchronous — returns PlatformDB directly
     await _log_ai_usage_fn(ai, pdb, account_id, user_id, action)
 
 
 async def _get_user_info(user: dict, platform_db) -> tuple[dict | None, list[str] | None, str]:
-    """Fetch full user from DB and build user_context + truck_filter + language."""
+    """Fetch full user from DB and build user_context + vehicle_filter + language."""
     user_obj = await platform_db.get_user_by_telegram_id(
         int(user["sub"]),
     )
@@ -56,16 +56,16 @@ async def _get_user_info(user: dict, platform_db) -> tuple[dict | None, list[str
     user_context = build_user_ai_context(user_obj)
 
     # Get all assigned trucks
-    truck_nums = await platform_db.get_user_truck_nums(user_obj.id)
-    if not truck_nums and user_obj.truck_num:
-        truck_nums = [user_obj.truck_num]
-    user_context["truck_nums"] = truck_nums or []
-    if truck_nums:
-        user_context["truck_num"] = truck_nums[0]
+    vehicle_nums = await platform_db.get_user_vehicle_nums(user_obj.id)
+    if not vehicle_nums and user_obj.truck_num:
+        vehicle_nums = [user_obj.truck_num]
+    user_context["vehicle_nums"] = vehicle_nums or []
+    if vehicle_nums:
+        user_context["vehicle_num"] = vehicle_nums[0]
 
-    truck_filter = truck_nums if user_context["role"] == "driver" and truck_nums else None
+    vehicle_filter = vehicle_nums if user_context["role"] == "driver" and vehicle_nums else None
     language = getattr(user_obj, "language", "en") or "en"
-    return user_context, truck_filter, language
+    return user_context, vehicle_filter, language
 
 
 # ── Chat ─────────────────────────────────────────────────────────
@@ -85,13 +85,13 @@ async def ai_chat(
 
     account_id = user["account_id"]
     await ai.ensure_account_model(account_id)
-    user_context, truck_filter, language = await _get_user_info(user, platform_db)
+    user_context, vehicle_filter, language = await _get_user_info(user, platform_db)
 
     try:
         snapshot = await ai.build_context(
-            account_id, truck_nums=truck_filter,
+            account_id, vehicle_nums=vehicle_filter,
         )
-        from core.services import get_client
+        from infra.services import get_client
         samsara = await get_client(account_id)
 
         result = await ai.ask_agent(
@@ -140,11 +140,11 @@ async def ai_chat_stream(
 
     account_id = user["account_id"]
     await ai.ensure_account_model(account_id)
-    user_context, truck_filter, language = await _get_user_info(user, platform_db)
+    user_context, vehicle_filter, language = await _get_user_info(user, platform_db)
 
     try:
-        snapshot = await ai.build_context(account_id, truck_nums=truck_filter)
-        from core.services import get_client
+        snapshot = await ai.build_context(account_id, vehicle_nums=vehicle_filter)
+        from infra.services import get_client
         samsara = await get_client(account_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI context error: {type(e).__name__}")
@@ -195,7 +195,7 @@ async def ai_chat_stream(
 @limiter.limit("5/minute")
 async def ai_summary(
     request: Request,
-    user: dict = Depends(require_permission("can_faults")),
+    user: dict = Depends(require_permission_any("can_faults", "can_vehicle_all")),
     platform_db=Depends(get_platform_db),
 ):
     """Generate an AI executive fleet briefing."""
@@ -204,11 +204,11 @@ async def ai_summary(
 
     account_id = user["account_id"]
     await ai.ensure_account_model(account_id)
-    user_context, truck_filter, language = await _get_user_info(user, platform_db)
+    user_context, vehicle_filter, language = await _get_user_info(user, platform_db)
 
     try:
         snapshot = await ai.build_context(
-            account_id, truck_nums=truck_filter,
+            account_id, vehicle_nums=vehicle_filter,
         )
         summary = await ai.generate_summary(
             snapshot, account_id=account_id,

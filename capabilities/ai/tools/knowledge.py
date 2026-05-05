@@ -40,7 +40,7 @@ async def search_knowledge_base(tool_args: dict, samsara_client,
         return {"error": "A search query is required"}
 
     try:
-        from core.platform import get_platform_db as _get_pdb
+        from infra.platform import get_platform_db as _get_pdb
         pdb = _get_pdb()
         articles = await pdb.get_kb_articles(
             account_id=account_id,

@@ -3,7 +3,7 @@
 Covers:
 - TenantContext isolation (caches, redis namespacing, rate limits)
 - TenantRegistry lifecycle (lazy creation, invalidation, close_all)
-- Platform init/shutdown via core.startup
+- Platform init/shutdown via infra.startup
 - Fault isolation via run_account_job
 - ContextVar-based company_display / org_ids scoping
 """
@@ -30,14 +30,14 @@ from adapters.storage import Database
 
 @pytest_asyncio.fixture
 async def platform_db(tmp_path):
-    """Provide an initialised platform Database and wire core.platform."""
-    import core.platform as _cp
+    """Provide an initialised platform Database and wire infra.platform."""
+    import infra.platform as _cp
 
     db_path = str(tmp_path / "platform_test.db")
     database = Database(db_path, pool_size=1)
     await database.initialize()
 
-    # Wire core.platform so lookups resolve properly
+    # Wire infra.platform so lookups resolve properly
     _old_db = _cp._db
     _old_router = _cp._router
     _cp._db = database
@@ -75,7 +75,7 @@ class TestTenantContext:
 
     async def test_isolation_basic(self, platform_db):
         """Two TenantContexts have independent caches."""
-        from core.tenant import TenantContext
+        from infra.tenant import TenantContext
 
         ctx1 = TenantContext(1, platform_db)
         ctx2 = TenantContext(2, platform_db)
@@ -90,7 +90,7 @@ class TestTenantContext:
 
     async def test_company_display_isolated(self, platform_db):
         """company_display dict is per-context, not shared."""
-        from core.tenant import TenantContext
+        from infra.tenant import TenantContext
 
         ctx1 = TenantContext(1, platform_db)
         ctx2 = TenantContext(2, platform_db)
@@ -103,7 +103,7 @@ class TestTenantContext:
 
     async def test_redis_key_namespacing(self, platform_db):
         """redis_key() produces account-scoped keys."""
-        from core.tenant import TenantContext
+        from infra.tenant import TenantContext
 
         ctx1 = TenantContext(1, platform_db)
         ctx2 = TenantContext(2, platform_db)
@@ -114,7 +114,7 @@ class TestTenantContext:
 
     async def test_rate_limit_independent(self, platform_db):
         """Rate limits are per-context, not global."""
-        from core.tenant import TenantContext
+        from infra.tenant import TenantContext
 
         ctx1 = TenantContext(1, platform_db)
         ctx2 = TenantContext(2, platform_db)
@@ -130,7 +130,7 @@ class TestTenantContext:
 
     async def test_rate_limit_different_users(self, platform_db):
         """Different users have independent rate limits within same context."""
-        from core.tenant import TenantContext
+        from infra.tenant import TenantContext
 
         ctx = TenantContext(1, platform_db)
 
@@ -144,7 +144,7 @@ class TestTenantContext:
 
     async def test_close_releases_resources(self, platform_db):
         """close() sets samsara client to None."""
-        from core.tenant import TenantContext
+        from infra.tenant import TenantContext
 
         ctx = TenantContext(1, platform_db)
         assert ctx.samsara is None
@@ -155,7 +155,7 @@ class TestTenantContext:
 
     async def test_active_messages_isolated(self, platform_db):
         """active_messages LRU cache is per-context."""
-        from core.tenant import TenantContext
+        from infra.tenant import TenantContext
 
         ctx1 = TenantContext(1, platform_db)
         ctx2 = TenantContext(2, platform_db)
@@ -164,12 +164,12 @@ class TestTenantContext:
         assert (100, 100) not in ctx2.active_messages
 
     async def test_repr(self, platform_db):
-        from core.tenant import TenantContext
+        from infra.tenant import TenantContext
         ctx = TenantContext(42, platform_db)
         assert "42" in repr(ctx)
 
     async def test_redis_prefix(self, platform_db):
-        from core.tenant import TenantContext
+        from infra.tenant import TenantContext
         ctx = TenantContext(7, platform_db)
         assert ctx.redis_prefix == "t:7:"
 
@@ -183,7 +183,7 @@ class TestTenantRegistry:
 
     async def test_lazy_creation(self, platform_db):
         """get() creates TenantContext on first access."""
-        from core.registry import TenantRegistry
+        from infra.registry import TenantRegistry
 
         registry = TenantRegistry()
         assert len(registry) == 0
@@ -195,7 +195,7 @@ class TestTenantRegistry:
 
     async def test_returns_same_instance(self, platform_db):
         """get() returns cached instance on subsequent calls."""
-        from core.registry import TenantRegistry
+        from infra.registry import TenantRegistry
 
         registry = TenantRegistry()
         ctx1 = await registry.get(1)
@@ -204,7 +204,7 @@ class TestTenantRegistry:
 
     async def test_multiple_accounts(self, platform_db):
         """Multiple accounts get separate contexts."""
-        from core.registry import TenantRegistry
+        from infra.registry import TenantRegistry
 
         registry = TenantRegistry()
         ctx1 = await registry.get(1)
@@ -218,7 +218,7 @@ class TestTenantRegistry:
 
     async def test_invalidate(self, platform_db):
         """invalidate() removes and closes context."""
-        from core.registry import TenantRegistry
+        from infra.registry import TenantRegistry
 
         registry = TenantRegistry()
         await registry.get(1)
@@ -230,14 +230,14 @@ class TestTenantRegistry:
 
     async def test_invalidate_nonexistent(self, platform_db):
         """invalidate() on unknown account is a no-op."""
-        from core.registry import TenantRegistry
+        from infra.registry import TenantRegistry
 
         registry = TenantRegistry()
         await registry.invalidate(999)  # should not raise
 
     async def test_close_all(self, platform_db):
         """close_all() removes all contexts."""
-        from core.registry import TenantRegistry
+        from infra.registry import TenantRegistry
 
         registry = TenantRegistry()
         await registry.get(1)
@@ -252,8 +252,8 @@ class TestTenantRegistry:
     async def test_close_all_handles_exceptions(self, platform_db):
         """close_all() continues even if one context.close() fails."""
         from unittest.mock import patch
-        from core.registry import TenantRegistry
-        from core.tenant import TenantContext
+        from infra.registry import TenantRegistry
+        from infra.tenant import TenantContext
 
         registry = TenantRegistry()
         await registry.get(1)
@@ -282,11 +282,11 @@ class TestTenantRegistry:
 # ═══════════════════════════════════════════════════════════════════
 
 class TestPlatformInit:
-    """core.platform initialize/close cycle."""
+    """infra.platform initialize/close cycle."""
 
     async def test_initialize_and_access(self, tmp_path):
         """initialize() makes get_db() and get_router() available."""
-        import core.platform as _cp
+        import infra.platform as _cp
 
         # Save and clear
         _saved_db = _cp._db
@@ -296,11 +296,11 @@ class TestPlatformInit:
 
         try:
             # Set DATABASE_PATH to temp
-            import core.config
-            old_path = core.config.DATABASE_PATH
-            core.config.DATABASE_PATH = str(tmp_path / "init_test.db")
-            old_mt = core.config.MULTI_TENANT
-            core.config.MULTI_TENANT = False
+            import infra.config
+            old_path = infra.config.DATABASE_PATH
+            infra.config.DATABASE_PATH = str(tmp_path / "init_test.db")
+            old_mt = infra.config.MULTI_TENANT
+            infra.config.MULTI_TENANT = False
 
             await _cp.initialize()
 
@@ -310,15 +310,15 @@ class TestPlatformInit:
 
             await _cp.close()
 
-            core.config.DATABASE_PATH = old_path
-            core.config.MULTI_TENANT = old_mt
+            infra.config.DATABASE_PATH = old_path
+            infra.config.MULTI_TENANT = old_mt
         finally:
             _cp._db = _saved_db
             _cp._router = _saved_router
 
     async def test_get_db_before_init_raises(self):
         """get_db() raises AssertionError before initialize()."""
-        import core.platform as _cp
+        import infra.platform as _cp
 
         _saved = _cp._db
         _cp._db = None
@@ -330,7 +330,7 @@ class TestPlatformInit:
 
     async def test_get_router_before_init_raises(self):
         """get_router() raises AssertionError before initialize()."""
-        import core.platform as _cp
+        import infra.platform as _cp
 
         _saved = _cp._router
         _cp._router = None
@@ -342,7 +342,7 @@ class TestPlatformInit:
 
     async def test_close_sets_none(self, tmp_path):
         """close() sets _db and _router to None."""
-        import core.platform as _cp
+        import infra.platform as _cp
 
         _saved_db = _cp._db
         _saved_router = _cp._router
@@ -350,11 +350,11 @@ class TestPlatformInit:
         _cp._router = None
 
         try:
-            import core.config
-            old_path = core.config.DATABASE_PATH
-            core.config.DATABASE_PATH = str(tmp_path / "close_test.db")
-            old_mt = core.config.MULTI_TENANT
-            core.config.MULTI_TENANT = False
+            import infra.config
+            old_path = infra.config.DATABASE_PATH
+            infra.config.DATABASE_PATH = str(tmp_path / "close_test.db")
+            old_mt = infra.config.MULTI_TENANT
+            infra.config.MULTI_TENANT = False
 
             await _cp.initialize()
             await _cp.close()
@@ -362,8 +362,8 @@ class TestPlatformInit:
             assert _cp._db is None
             assert _cp._router is None
 
-            core.config.DATABASE_PATH = old_path
-            core.config.MULTI_TENANT = old_mt
+            infra.config.DATABASE_PATH = old_path
+            infra.config.MULTI_TENANT = old_mt
         finally:
             _cp._db = _saved_db
             _cp._router = _saved_router
@@ -378,7 +378,7 @@ class TestFaultIsolation:
 
     async def test_successful_job(self):
         """Normal job returns True."""
-        from core.isolation import run_account_job
+        from infra.isolation import run_account_job
 
         async def _good_job():
             pass
@@ -390,7 +390,7 @@ class TestFaultIsolation:
 
     async def test_failing_job_returns_false(self):
         """Exception in job returns False (doesn't propagate)."""
-        from core.isolation import run_account_job
+        from infra.isolation import run_account_job
 
         async def _bad_job():
             raise ValueError("something broke")
@@ -402,7 +402,7 @@ class TestFaultIsolation:
 
     async def test_timeout_returns_false(self):
         """Job exceeding timeout returns False."""
-        from core import isolation
+        from infra import isolation
 
         # Temporarily lower timeout for fast test
         _orig = isolation.ACCOUNT_JOB_TIMEOUT
@@ -421,7 +421,7 @@ class TestFaultIsolation:
 
     async def test_one_account_failure_doesnt_block_another(self):
         """Simulate sequential per-account processing — failure isolated."""
-        from core.isolation import run_account_job
+        from infra.isolation import run_account_job
 
         results = {}
 
@@ -448,7 +448,7 @@ class TestContextVars:
 
     async def test_set_and_get(self):
         """set_tenant_display values are readable via getters."""
-        from core.context import set_tenant_display, get_company_display, get_org_ids
+        from infra.context import set_tenant_display, get_company_display, get_org_ids
 
         display = {"ACME": "Acme Trucking"}
         org = {"ACME": "org_123"}
@@ -459,7 +459,7 @@ class TestContextVars:
 
     async def test_isolation_across_tasks(self):
         """Different asyncio tasks see different display dicts."""
-        from core.context import set_tenant_display, get_company_display
+        from infra.context import set_tenant_display, get_company_display
 
         results = {}
 
@@ -483,7 +483,7 @@ class TestContextVars:
 
     async def test_fallback_to_global(self):
         """Without set_tenant_display, getter falls back to samsara_client global."""
-        from core.context import _company_display_var, get_company_display
+        from infra.context import _company_display_var, get_company_display
         from adapters.samsara.client import COMPANY_DISPLAY
 
         # Reset the context var to trigger fallback
@@ -496,33 +496,33 @@ class TestContextVars:
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  Startup (core.startup) integration tests
+#  Startup (infra.startup) integration tests
 # ═══════════════════════════════════════════════════════════════════
 
 class TestStartup:
-    """core.startup.initialize() / shutdown() full cycle."""
+    """infra.startup.initialize() / shutdown() full cycle."""
 
     async def test_full_cycle(self, tmp_path):
         """initialize() → use → shutdown() works end-to-end."""
-        import core.startup
-        import core.platform as _cp
-        import core.config
+        import infra.startup
+        import infra.platform as _cp
+        import infra.config
 
         # Save original state
         _saved_db = _cp._db
         _saved_router = _cp._router
-        _saved_reg = core.startup.tenant_registry
+        _saved_reg = infra.startup.tenant_registry
         _cp._db = None
         _cp._router = None
-        core.startup.tenant_registry = None
+        infra.startup.tenant_registry = None
 
-        old_path = core.config.DATABASE_PATH
-        core.config.DATABASE_PATH = str(tmp_path / "startup_test.db")
-        old_mt = core.config.MULTI_TENANT
-        core.config.MULTI_TENANT = False
+        old_path = infra.config.DATABASE_PATH
+        infra.config.DATABASE_PATH = str(tmp_path / "startup_test.db")
+        old_mt = infra.config.MULTI_TENANT
+        infra.config.MULTI_TENANT = False
 
         try:
-            registry = await core.startup.initialize()
+            registry = await infra.startup.initialize()
 
             # DB layer accessible
             assert _cp.get_db() is not None
@@ -530,41 +530,41 @@ class TestStartup:
 
             # Registry returned and cached
             assert registry is not None
-            assert core.startup.tenant_registry is registry
+            assert infra.startup.tenant_registry is registry
 
             # Can use registry
             ctx = await registry.get(1)
             assert ctx.account_id == 1
 
-            await core.startup.shutdown()
+            await infra.startup.shutdown()
 
             # Cleaned up
             assert _cp._db is None
-            assert core.startup.tenant_registry is None
+            assert infra.startup.tenant_registry is None
 
         finally:
-            core.config.DATABASE_PATH = old_path
-            core.config.MULTI_TENANT = old_mt
+            infra.config.DATABASE_PATH = old_path
+            infra.config.MULTI_TENANT = old_mt
             _cp._db = _saved_db
             _cp._router = _saved_router
-            core.startup.tenant_registry = _saved_reg
+            infra.startup.tenant_registry = _saved_reg
 
     async def test_shutdown_safe_without_init(self):
         """shutdown() is safe to call even before initialize()."""
-        import core.startup
-        import core.platform as _cp
+        import infra.startup
+        import infra.platform as _cp
 
         _saved_db = _cp._db
         _saved_router = _cp._router
-        _saved_reg = core.startup.tenant_registry
+        _saved_reg = infra.startup.tenant_registry
         _cp._db = None
         _cp._router = None
-        core.startup.tenant_registry = None
+        infra.startup.tenant_registry = None
 
         try:
             # Should not raise
-            await core.startup.shutdown()
+            await infra.startup.shutdown()
         finally:
             _cp._db = _saved_db
             _cp._router = _saved_router
-            core.startup.tenant_registry = _saved_reg
+            infra.startup.tenant_registry = _saved_reg

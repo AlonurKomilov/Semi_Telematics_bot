@@ -1,6 +1,6 @@
 """Registration, onboarding, and invite formatters."""
 
-from core.context import get_company_display
+from infra.context import get_company_display
 from capabilities.formatting.helpers import _t
 
 
@@ -23,7 +23,16 @@ def format_help(company_codes: list[str] | None = None,
 
     company_line = ""
     has_api = bool(company_codes)
-    if company_codes and len(company_codes) > 1:
+    # Only show the multi-company block to roles that actually span
+    # multiple companies.  Drivers are scoped to a single truck and
+    # listing every company in the account just leaks fleet structure.
+    is_driver = False
+    if user is not None:
+        try:
+            is_driver = getattr(user.role, "value", str(user.role)) == "driver"
+        except Exception:  # pragma: no cover — defensive
+            is_driver = False
+    if not is_driver and company_codes and len(company_codes) > 1:
         names = [f"{c} ({get_company_display().get(c, c)})" for c in company_codes]
         company_line = (
             "\n"
@@ -162,10 +171,10 @@ def format_org_added(
 ) -> str:
     truck_info = ""
     if total_trucks is not None:
-        truck_info += f"\n  {_t('company.trucks_total').replace('{count}', str(total_trucks))}"
+        truck_info += f"\n  {_t('company.vehicles_total').replace('{count}', str(total_trucks))}"
         if active_trucks is not None:
             truck_info += (
-                f"\n  {_t('company.trucks_active').replace('{count}', str(active_trucks))}"
+                f"\n  {_t('company.vehicles_active').replace('{count}', str(active_trucks))}"
             )
     return (
         "━━━━━━━━━━━━━━━━━━━\n"

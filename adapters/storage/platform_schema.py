@@ -159,6 +159,16 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_role_perms_lookup
             ON role_permissions(account_id, role, company_id);
 
+        CREATE TABLE IF NOT EXISTS role_ai_guidance (
+            account_id  INTEGER NOT NULL REFERENCES accounts(id),
+            role        TEXT    NOT NULL,
+            guidance    TEXT    NOT NULL,
+            updated_at  TEXT    NOT NULL DEFAULT '',
+            PRIMARY KEY (account_id, role)
+        );
+        CREATE INDEX IF NOT EXISTS idx_role_ai_guidance_account
+            ON role_ai_guidance(account_id);
+
         CREATE TABLE IF NOT EXISTS driver_trucks (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id     INTEGER NOT NULL REFERENCES users(id),
@@ -243,5 +253,19 @@ async def create_tables(conn) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_billing_snapshots_account
             ON billing_usage_snapshots(account_id, period_start);
+        CREATE TABLE IF NOT EXISTS error_log (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            source      TEXT    NOT NULL,
+            job_name    TEXT,
+            account_id  INTEGER,
+            error_type  TEXT    NOT NULL,
+            error_msg   TEXT    NOT NULL,
+            traceback   TEXT,
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_error_log_created
+            ON error_log(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_error_log_source
+            ON error_log(source, created_at DESC);
     """)
     await conn.commit()

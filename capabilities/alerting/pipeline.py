@@ -18,16 +18,16 @@ from adapters.storage import Role
 from adapters.samsara.client import (
     samsara_vehicle_url, samsara_event_url, samsara_fault_url,
 )
-from core.context import get_org_ids
-from core.bot_registry import get_app_for_account
+from infra.context import get_org_ids
+from infra.bot_registry import get_app_for_account
 from capabilities.formatting import format_alert_history_footer
 
 import logging
-from core.config import (
+from infra.config import (
     FAULT_ALERT_COOLDOWN_HOURS,
     HEALTH_ALERT_COOLDOWN_HOURS,
 )
-from core.services import get_tenant_db, _active_messages
+from infra.services import get_tenant_db
 
 logger = logging.getLogger("bot")
 
@@ -112,7 +112,7 @@ def build_alert_keyboard(
             url=samsara_url,
         )])
 
-    truck_cb = f"cotruck_{co}_{vehicle_name}"
+    truck_cb = f"covehicle_{co}_{vehicle_name}"
     if ack_id is not None:
         truck_cb += f":{ack_id}"
     rows.append([InlineKeyboardButton(
@@ -181,9 +181,13 @@ async def send_alert(
     )
 
     for sub in subscribers:
-        # Driver: only alert for their own truck
+        # Driver: only alert for their own truck.
+        # Substring match (case-insensitive) to mirror
+        # ``filter_alerts_by_access`` in alerting/service.py — the API +
+        # miniapp use the same shape, so the bot and dashboard stay
+        # consistent for names like "Truck 105" vs assignment "105".
         if sub.role == Role.DRIVER and sub.truck_num:
-            if vname.lower() != sub.truck_num.lower():
+            if sub.truck_num.lower() not in vname.lower():
                 continue
 
         # DND: queue non-critical alerts during quiet hours
@@ -339,11 +343,6 @@ async def send_alert(
                     chat_id=sub.telegram_id,
                     sent_to=sub.telegram_id,
                 )
-
-            # Track active message for this subscriber
-            _active_messages.setdefault(
-                (account_id, sub.telegram_id, sub.telegram_id), []
-            ).append(msg.message_id)
         except Exception as e:
             logger.error("%s alert delivery failed for user %s (account %d): %s",
                          alert_type, sub.telegram_id, account_id, e, exc_info=True)

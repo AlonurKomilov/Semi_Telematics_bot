@@ -4,29 +4,29 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 
 import capabilities.ai as ai
 from adapters.samsara.client import populate_company_display
-from core.services import get_client, get_platform_db, get_tenant_db
-from capabilities.vehicle_catalog.service import prepare_companies
+from adapters.storage.object_store import get_object_store
+from infra.services import get_platform_db, get_tenant_db
 
 logger = logging.getLogger("bot")
 
-# Camera image storage directory (relative to project root)
-_CAMERA_IMG_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "data", "camera_images"
-)
-
 
 async def get_fleet_for_cameras(
-    account_id: str,
+    account_id: int,
     company: str | None = None,
 ) -> list[dict]:
-    """Fetch fleet overview for camera truck selection."""
-    await prepare_companies(account_id)
-    client = await get_client(account_id)
-    return await client.get_fleet_overview(company=company)
+    """Fetch fleet overview for camera truck selection.
+
+    Routes through ``vehicles.service.get_fleet_overview`` so the read
+    is warehouse-first with live-Samsara fallback (same SSOT pattern as
+    every other fleet read).
+    """
+    from capabilities.vehicles.service import (
+        get_fleet_overview as _svc_fleet_overview,
+    )
+    return await _svc_fleet_overview(account_id, company=company)
 
 
 # ── Gather snapshots from all companies ──────────────────────────
@@ -137,15 +137,12 @@ def save_camera_image(
     account_id: int, vehicle_name: str,
     camera_type: str, image_bytes: bytes,
 ) -> str:
-    """Save dashcam screenshot to disk. Returns relative path from project root."""
+    """Save dashcam screenshot to the configured object store.
+    Returns the URL/relative path to persist in DB."""
     try:
-        os.makedirs(_CAMERA_IMG_DIR, exist_ok=True)
         safe_name = vehicle_name.replace("/", "_").replace("\\", "_")
-        fname = f"{account_id}_{safe_name}_{camera_type}.jpg"
-        full = os.path.join(_CAMERA_IMG_DIR, fname)
-        with open(full, "wb") as f:
-            f.write(image_bytes)
-        return os.path.join("data", "camera_images", fname)
+        key = f"{account_id}_{safe_name}_{camera_type}.jpg"
+        return get_object_store().put("camera_images", key, image_bytes)
     except Exception as e:
         logger.debug(f"Camera image save failed: {e}")
         return ""

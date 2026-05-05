@@ -1,7 +1,7 @@
 """Single truck detail PDF generator."""
 from .pdf_base import *  # noqa: F403,F401
 
-def generate_truck_detail_pdf(vehicle: dict) -> io.BytesIO:
+def generate_vehicle_detail_pdf(vehicle: dict) -> io.BytesIO:
     """Generate a professional PDF for a single truck.
 
     Includes: vehicle overview with color-coded indicators,
@@ -23,12 +23,12 @@ def generate_truck_detail_pdf(vehicle: dict) -> io.BytesIO:
 
     co_code = vehicle.get("_org", "")
     co_name = get_company_display().get(co_code, co_code)
-    truck_name = vehicle.get("name", "?")
+    vehicle_name = vehicle.get("name", "?")
 
     # ── Header ───────────────────────────────────────────────────
-    subtitle = f"Truck #{truck_name} — Detail Report"
+    subtitle = f"Truck #{vehicle_name} — Detail Report"
     if co_code:
-        subtitle = f"Truck #{truck_name} — {co_name} ({co_code})"
+        subtitle = f"Truck #{vehicle_name} — {co_name} ({co_code})"
     _add_header(story, styles, "4TRUCK", subtitle, now)
 
     # ── Gateway warning ──────────────────────────────────────────

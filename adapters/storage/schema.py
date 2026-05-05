@@ -155,6 +155,12 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_digest_subs_active
             ON digest_subscriptions(is_active, send_hour);
 
+        -- account_settings: per-tenant key/value store for feature flags,
+        -- AI model preferences, pillar caps, etc.
+        -- NOTE: this table lives in each *tenant* DB, not the platform DB.
+        -- All callers must use get_tenant_db(account_id) to read/write it —
+        -- using the platform DB in multi-tenant mode silently targets the
+        -- wrong (empty) database.
         CREATE TABLE IF NOT EXISTS account_settings (
             account_id  INTEGER NOT NULL REFERENCES accounts(id),
             key         TEXT    NOT NULL,
@@ -281,5 +287,60 @@ async def create_tables(conn) -> None:
             ON user_companies(user_id, company_id);
         CREATE INDEX IF NOT EXISTS idx_user_companies_user
             ON user_companies(user_id);
+
+        -- ── Driver Scorecards (composite scoring engine) ──────────
+        CREATE TABLE IF NOT EXISTS score_rules (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            rule_id         TEXT    NOT NULL,
+            label           TEXT    NOT NULL DEFAULT '',
+            category        TEXT    NOT NULL DEFAULT '',
+            kind            TEXT    NOT NULL DEFAULT 'penalty',
+            points          INTEGER NOT NULL DEFAULT 0,
+            cap             INTEGER,
+            enabled         INTEGER NOT NULL DEFAULT 1,
+            -- Audit Option C: pillar tag + per-rule curve anchors.
+            -- All nullable so older overrides round-trip unchanged.
+            pillar          TEXT    NOT NULL DEFAULT '',
+            curve_x_zero    REAL,
+            curve_x_max     REAL,
+            curve_y_max     INTEGER,
+            updated_at      TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, rule_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_score_rules_account
+            ON score_rules(account_id, enabled);
+
+        CREATE TABLE IF NOT EXISTS score_events (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            subject_type    TEXT    NOT NULL DEFAULT 'driver',
+            subject_id      TEXT    NOT NULL DEFAULT '',
+            rule_id         TEXT    NOT NULL DEFAULT '',
+            points          INTEGER NOT NULL DEFAULT 0,
+            occurred_at     TEXT    NOT NULL DEFAULT '',
+            evidence_type   TEXT    NOT NULL DEFAULT '',
+            evidence_id     TEXT    NOT NULL DEFAULT '',
+            created_at      TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_score_events_subject
+            ON score_events(account_id, subject_type, subject_id, occurred_at);
+
+        CREATE TABLE IF NOT EXISTS daily_scorecard_snapshots (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            snapshot_date   TEXT    NOT NULL,
+            subject_type    TEXT    NOT NULL DEFAULT 'driver',
+            subject_id      TEXT    NOT NULL DEFAULT '',
+            subject_name    TEXT    NOT NULL DEFAULT '',
+            total_score     INTEGER NOT NULL DEFAULT 0,
+            window_days     INTEGER NOT NULL DEFAULT 7,
+            breakdown_json  TEXT    NOT NULL DEFAULT '',
+            source          TEXT    NOT NULL DEFAULT 'live',
+            created_at      TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, snapshot_date, subject_type, subject_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_scorecard_snapshots_lookup
+            ON daily_scorecard_snapshots(account_id, subject_type, subject_id, snapshot_date);
     """)
     await conn.commit()

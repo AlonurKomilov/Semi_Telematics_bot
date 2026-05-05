@@ -2,34 +2,51 @@
 
 from __future__ import annotations
 
-from core.services import get_client
-from capabilities.vehicle_catalog.service import prepare_companies
+from infra.services import get_client
+from capabilities.vehicles.service import prepare_companies
 
 
 async def get_events(
-    account_id: str,
+    account_id: int,
     days: int = 7,
     company: str | None = None,
 ) -> list[dict]:
     """Fetch safety events (hard brakes, speeding, etc.).
 
-    Returns list of event dicts from the Samsara API.
+    Warehouse-first: reads ``safety_event_log`` when WAREHOUSE_READS_ENABLED=1,
+    falls back to live Samsara otherwise (or on cold-start empty warehouse).
     """
     await prepare_companies(account_id)
     client = await get_client(account_id)
-    return await client.get_events(days=days, company=company)
+
+    async def _live():
+        return await client.get_events(days=days, company=company)
+
+    from capabilities.telemetry import warehouse_reader as _wh
+    rows = await _wh.get_safety_events(
+        account_id, days=days, samsara_fallback=_live,
+    )
+    # Warehouse rows wrap the original payload under ``raw``; unwrap so
+    # downstream consumers see the same shape as the live API.
+    events = [r.get("raw", r) for r in rows]
+    if company:
+        events = [
+            e for e in events
+            if (e.get("_org") or e.get("company") or "") == company
+        ]
+    return events
 
 
-def filter_events_by_access(events: list[dict], truck_nums: list[str]) -> list[dict]:
+def filter_events_by_access(events: list[dict], vehicle_nums: list[str]) -> list[dict]:
     """Filter events to only include those belonging to the given trucks.
 
     Matching is case-insensitive substring match on vehicle_name, same as
     the per-driver filter that was previously inline in bot/events.py.
-    Returns an empty list when truck_nums is empty.
+    Returns an empty list when vehicle_nums is empty.
     """
-    if not truck_nums:
+    if not vehicle_nums:
         return []
-    needles = [t.lower() for t in truck_nums]
+    needles = [t.lower() for t in vehicle_nums]
     return [
         e for e in events
         if any(n in e.get("vehicle_name", "").lower() for n in needles)

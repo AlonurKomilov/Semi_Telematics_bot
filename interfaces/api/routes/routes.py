@@ -4,9 +4,9 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query, HTTPException
 
-from interfaces.api.deps import require_permission, require_permission_any, get_user_truck_nums
-from core.services import get_client
+from interfaces.api.deps import require_permission, require_permission_any, get_user_vehicle_nums
 from capabilities.routes.service import total_route_miles, get_vehicle_gps_history
+from capabilities.vehicles.service import get_fleet_overview as _svc_fleet_overview
 
 router = APIRouter(prefix="/dispatch", tags=["dispatch"])
 
@@ -27,7 +27,7 @@ async def route_replay(
     """
     # If user only has _own, verify they're requesting their own truck
     if user.get("_matched_perm") == "can_route_own":
-        trucks = await get_user_truck_nums(user)
+        trucks = await get_user_vehicle_nums(user)
         if not trucks or not any(vehicle_name.lower() == t.lower() for t in trucks):
             raise HTTPException(status_code=403, detail="You can only view routes for your assigned vehicle")
     # Parse date range
@@ -92,8 +92,7 @@ async def dispatch_vehicles(
     user: dict = Depends(require_permission_any("can_route_all", "can_route_own")),
 ):
     """Get vehicle list for route replay picker."""
-    client = await get_client(user["account_id"])
-    overview = await client.get_fleet_overview()
+    overview = await _svc_fleet_overview(user["account_id"])
     vehicles = [
         {"id": v.get("id"), "name": v.get("name", ""), "company": v.get("_org", "")}
         for v in overview
@@ -101,7 +100,7 @@ async def dispatch_vehicles(
 
     # If user only has _own, filter to their assigned truck
     if user.get("_matched_perm") == "can_route_own":
-        trucks = await get_user_truck_nums(user)
+        trucks = await get_user_vehicle_nums(user)
         if trucks:
             needles = [t.lower() for t in trucks]
             vehicles = [v for v in vehicles if any(n in v["name"].lower() for n in needles)]

@@ -1,5 +1,6 @@
 """FastAPI application factory."""
 
+import asyncio
 import logging
 import os
 import uuid
@@ -15,6 +16,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 logger = logging.getLogger(__name__)
 
 from interfaces.api.routes import fleet, maps, alerts, health
+from interfaces.api.routes import vehicles as vehicles_routes
 from interfaces.api.routes import parking as parking_routes
 from interfaces.api.routes import routes as dispatch_routes
 from interfaces.api.routes import safety as safety_routes
@@ -28,6 +30,7 @@ from interfaces.api.routes import ai as ai_routes
 from interfaces.api.routes import knowledge as knowledge_routes
 from interfaces.api.routes import permissions as permissions_routes
 from interfaces.api.routes import billing as billing_routes
+from interfaces.api.routes import files as files_routes
 from interfaces.api.auth import router as auth_router
 from interfaces.api.rate_limit import limiter
 
@@ -91,6 +94,12 @@ def create_api() -> FastAPI:
             request_id, request.method, request.url.path, exc,
             exc_info=True,
         )
+        try:
+            from infra.error_reporter import report_error
+            _path = f"{request.method} {request.url.path}"
+            asyncio.create_task(report_error(exc, source="api", job_name=_path))
+        except Exception:
+            pass
         return JSONResponse(
             status_code=500,
             content={
@@ -121,6 +130,7 @@ def create_api() -> FastAPI:
         app.include_router(user_routes.router, prefix=prefix)
         app.include_router(dashboard_routes.router, prefix=prefix)
         app.include_router(fleet.router, prefix=prefix)
+        app.include_router(vehicles_routes.router, prefix=prefix)
         app.include_router(maps.router, prefix=prefix)
         app.include_router(alerts.router, prefix=prefix)
         app.include_router(parking_routes.router, prefix=prefix)
@@ -134,6 +144,7 @@ def create_api() -> FastAPI:
         app.include_router(ai_routes.router, prefix=prefix)
         app.include_router(knowledge_routes.router, prefix=prefix)
         app.include_router(billing_routes.router, prefix=prefix)
+        app.include_router(files_routes.router, prefix=prefix)
 
     # Serve miniapp static files (Telegram Mini App) — built via `npm run build`
     miniapp_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "miniapp", "dist")
@@ -146,7 +157,12 @@ def create_api() -> FastAPI:
             file_path = os.path.join(miniapp_dir, full_path)
             if os.path.isfile(file_path):
                 return FileResponse(file_path)
-            return FileResponse(miniapp_index)
+            # no-store so the browser always fetches fresh HTML after a deploy
+            # (hashed JS/CSS assets are safe to cache; the HTML must not be)
+            return FileResponse(
+                miniapp_index,
+                headers={"Cache-Control": "no-store, must-revalidate"},
+            )
 
         app.mount("/miniapp", StaticFiles(directory=miniapp_dir, html=True), name="miniapp")
 
@@ -165,8 +181,12 @@ def create_api() -> FastAPI:
             file_path = os.path.join(dashboard_dir, full_path)
             if os.path.isfile(file_path):
                 return FileResponse(file_path)
-            # Otherwise, serve index.html for client-side routing
-            return FileResponse(dashboard_index)
+            # no-store so the browser always fetches fresh HTML after a deploy
+            # (hashed JS/CSS assets are safe to cache; the HTML must not be)
+            return FileResponse(
+                dashboard_index,
+                headers={"Cache-Control": "no-store, must-revalidate"},
+            )
 
         app.mount(
             "/dashboard",

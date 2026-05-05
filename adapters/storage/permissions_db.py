@@ -175,3 +175,64 @@ class PermissionsMixin:
             }
             for r in rows
         ]
+
+    # ── Role AI guidance ────────────────────────────────────────────
+
+    async def get_role_ai_guidance(
+        self, account_id: int, role: str,
+    ) -> Optional[str]:
+        """Return custom AI guidance text for a role, or None if not set."""
+        async with self.acquire() as conn:
+            cur = await conn.execute(
+                "SELECT guidance FROM role_ai_guidance "
+                "WHERE account_id = ? AND role = ?",
+                (account_id, role),
+            )
+            row = await cur.fetchone()
+        return row[0] if row else None
+
+    async def get_all_role_ai_guidance(self, account_id: int) -> dict[str, str]:
+        """Return all custom AI guidance overrides for an account."""
+        async with self.acquire() as conn:
+            cur = await conn.execute(
+                "SELECT role, guidance FROM role_ai_guidance "
+                "WHERE account_id = ? ORDER BY role",
+                (account_id,),
+            )
+            rows = await cur.fetchall()
+        return {row[0]: row[1] for row in rows}
+
+    async def set_role_ai_guidance(
+        self, account_id: int, role: str, guidance: str,
+    ) -> None:
+        """Upsert custom AI guidance text for a role."""
+        now = self._now()
+        async with self.transaction():
+            cur = await self._db.execute(
+                "SELECT 1 FROM role_ai_guidance "
+                "WHERE account_id = ? AND role = ?",
+                (account_id, role),
+            )
+            if await cur.fetchone():
+                await self._db.execute(
+                    "UPDATE role_ai_guidance SET guidance = ?, updated_at = ? "
+                    "WHERE account_id = ? AND role = ?",
+                    (guidance, now, account_id, role),
+                )
+            else:
+                await self._db.execute(
+                    "INSERT INTO role_ai_guidance (account_id, role, guidance, updated_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    (account_id, role, guidance, now),
+                )
+
+    async def delete_role_ai_guidance(
+        self, account_id: int, role: str,
+    ) -> bool:
+        """Delete a custom AI guidance override. Returns True if deleted."""
+        async with self.transaction():
+            cur = await self._db.execute(
+                "DELETE FROM role_ai_guidance WHERE account_id = ? AND role = ?",
+                (account_id, role),
+            )
+        return cur.rowcount > 0

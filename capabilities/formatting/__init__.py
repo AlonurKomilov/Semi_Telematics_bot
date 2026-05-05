@@ -6,11 +6,15 @@ Split into domain submodules; this facade re-exports every public name
 via ``from capabilities.formatting import X``.
 """
 
-# ── trucks ────────────────────────────────────────────────────────
-from capabilities.formatting.trucks import format_truck_detail, format_truck_picker
+# ── vehicles ────────────────────────────────────────────────────────
+from capabilities.formatting.vehicle_formatting import format_vehicle_detail, format_vehicle_picker
 
 # ── faults ────────────────────────────────────────────────────────
-from capabilities.formatting.faults import format_new_fault_alert, format_critical_fault_alert
+from capabilities.formatting.faults import (
+    format_fault_alert,
+    format_new_fault_alert,
+    format_critical_fault_alert,
+)
 
 # ── health ────────────────────────────────────────────────────────
 from capabilities.formatting.health import format_health_alert, format_vehicle_health
@@ -55,9 +59,9 @@ from capabilities.formatting.admin import (
 )
 
 __all__ = [
-    # trucks
-    "format_truck_detail",
-    "format_truck_picker",
+    # vehicles
+    "format_vehicle_detail",
+    "format_vehicle_picker",
     # faults
     "format_new_fault_alert",
     "format_critical_fault_alert",

@@ -62,10 +62,10 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         report_items.append("🔧 Faults · 🚨 Critical · 🏥 Health · 📊 Efficiency · 🌡 Weather")
     if perms.can_fuel:
         report_items.append("⛽ Fuel & DEF levels")
-    if perms.can_truck_all:
-        report_items.append("🚛 Search any truck")
-    elif perms.can_truck_own:
-        report_items.append("🚛 View your truck")
+    if perms.can_vehicle_all:
+        report_items.append("🚛 Search any vehicle")
+    elif perms.can_vehicle_own:
+        report_items.append("🚛 View your vehicle")
     if report_items:
         lines.append(f"\n  {t('help.reports_label')}")
         for item in report_items:
@@ -364,7 +364,7 @@ async def _handle_bot_login(
     If the Telegram user is a registered employee, we write an approved JWT into
     Redis so the frontend polling loop can pick it up.
     """
-    from adapters.cache.redis import get as redis_get, cache_set as redis_set
+    from infra.cache import get as redis_get, cache_set as redis_set
     from interfaces.api.auth import BOT_LOGIN_PREFIX, BOT_LOGIN_TTL, create_jwt
 
     # Validate token exists and is pending

@@ -1,0 +1,102 @@
+"""Phase C — one-shot warehouse backfill.
+
+Runs every ingestor for every active account once, then exits.  Used
+during the cutover window per plan.md C7:
+
+  1. Deploy Phase C with ``WAREHOUSE_READS_ENABLED=0`` (default).
+  2. Run this script in production to populate the warehouse from
+     Samsara.
+  3. Let the APScheduler ingestor run for ~24 h to verify shadow reads
+     match Samsara within tolerance.
+  4. Set ``WAREHOUSE_READS_ENABLED=1`` and restart the API service.
+
+Usage::
+
+    python -m scripts.backfill_warehouse              # all accounts
+    python -m scripts.backfill_warehouse --account 7  # one account
+    python -m scripts.backfill_warehouse --skip-events  # vehicle_state only
+
+Idempotent: re-running just refreshes the data; safety events dedupe
+on samsara_event_id, others upsert.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import logging
+import sys
+
+from capabilities.telemetry.ingestor import (
+    aggregate_telemetry_hourly,
+    ingest_driver_efficiency_daily,
+    ingest_safety_events,
+    ingest_vehicle_state,
+)
+from infra.services import get_platform_db
+from infra.startup import initialize as init_services
+
+
+logger = logging.getLogger("warehouse.backfill")
+
+
+async def _run_for(account_id: int, *, skip_events: bool, skip_efficiency: bool) -> None:
+    """Drive every ingestor once for a single account, logging per-step
+    counts so ops can eyeball that the data actually showed up."""
+    logger.info("\u2500\u2500 backfill account %d \u2500\u2500", account_id)
+
+    n = await ingest_vehicle_state(account_id)
+    logger.info("  vehicle_state          %d rows", n)
+
+    if not skip_events:
+        n = await ingest_safety_events(account_id, days=7)
+        logger.info("  safety_event_log       %d new", n)
+
+    if not skip_efficiency:
+        n = await ingest_driver_efficiency_daily(account_id, days=7)
+        logger.info("  driver_efficiency_daily %d rows", n)
+
+    n = await aggregate_telemetry_hourly(account_id)
+    logger.info("  vehicle_telemetry_hourly %d rows", n)
+
+
+async def main(argv: list[str]) -> int:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--account", type=int, help="Backfill a single account only.")
+    p.add_argument("--skip-events", action="store_true",
+                   help="Skip safety_event_log (slow on first run).")
+    p.add_argument("--skip-efficiency", action="store_true",
+                   help="Skip driver_efficiency_daily (slow on first run).")
+    args = p.parse_args(argv)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+    await init_services()
+
+    if args.account is not None:
+        await _run_for(
+            args.account,
+            skip_events=args.skip_events,
+            skip_efficiency=args.skip_efficiency,
+        )
+        return 0
+
+    accounts = await get_platform_db().list_accounts(active_only=True)
+    logger.info("Backfilling %d active accounts", len(accounts))
+    for acc in accounts:
+        try:
+            await _run_for(
+                acc.id,
+                skip_events=args.skip_events,
+                skip_efficiency=args.skip_efficiency,
+            )
+        except Exception:
+            logger.exception("backfill failed for account %d \u2014 continuing", acc.id)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(asyncio.run(main(sys.argv[1:])))

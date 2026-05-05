@@ -35,14 +35,14 @@ def build_user_ai_context(user_obj) -> dict:
     Accepts a DB user object (ORM row or dataclass).  Normalises role
     to its string value regardless of whether it is an enum or plain str.
 
-    Returns a dict with keys: name, role, department, truck_num, timezone.
+    Returns a dict with keys: name, role, department, vehicle_num, timezone.
     """
     role_val = user_obj.role.value if hasattr(user_obj.role, "value") else user_obj.role
     return {
         "name": getattr(user_obj, "display_name", "") or "",
         "role": role_val,
         "department": getattr(user_obj, "department", "general") or "general",
-        "truck_num": getattr(user_obj, "truck_num", None) or "",
+        "vehicle_num": getattr(user_obj, "truck_num", None) or "",
         "timezone": getattr(user_obj, "timezone", "America/New_York") or "America/New_York",
     }
 

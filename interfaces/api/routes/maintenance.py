@@ -4,10 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import Optional
 
-from interfaces.api.deps import get_current_user, require_permission, get_tenant_db, get_user_truck_nums, paginate
+from interfaces.api.deps import get_current_user, require_permission, get_tenant_db, get_user_vehicle_nums, paginate
 from capabilities.iam.permissions import can
 from capabilities.maintenance.service import has_maintenance_access
-from core.services import get_client
+from infra.services import get_client
 
 router = APIRouter(prefix="/maintenance", tags=["maintenance"])
 
@@ -53,7 +53,7 @@ async def list_tasks(
     )
     # Filter to assigned trucks for _own permission
     if not can(user["role"], "can_maintenance_all"):
-        trucks = await get_user_truck_nums(user)
+        trucks = await get_user_vehicle_nums(user)
         if trucks:
             needles = {t.lower() for t in trucks}
             tasks = [t for t in tasks if any(n in (t.get("vehicle_name") or "").lower() for n in needles)]
@@ -79,7 +79,7 @@ async def get_task(
         raise HTTPException(status_code=404, detail="Task not found")
     # Check truck ownership for _own permission
     if not can(user["role"], "can_maintenance_all"):
-        trucks = await get_user_truck_nums(user)
+        trucks = await get_user_vehicle_nums(user)
         if trucks:
             needles = {t.lower() for t in trucks}
             if not any(n in (task.get("vehicle_name") or "").lower() for n in needles):
@@ -166,9 +166,9 @@ async def delete_task(
     return {"ok": True}
 
 
-@router.get("/odometer/{truck_name}")
+@router.get("/odometer/{vehicle_name}")
 async def get_vehicle_odometer(
-    truck_name: str,
+    vehicle_name: str,
     user: dict = Depends(get_current_user),
 ):
     """Return current odometer reading for a specific vehicle from Samsara.
@@ -178,15 +178,24 @@ async def get_vehicle_odometer(
     """
     if not has_maintenance_access(user["role"]):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    # DRIVER (can_maintenance_own, no can_maintenance_all): enforce truck ownership
+    # so a driver cannot enumerate odometer readings for the entire fleet by
+    # guessing truck names.
+    if not can(user["role"], "can_maintenance_all"):
+        allowed_trucks = await get_user_vehicle_nums(user)
+        if allowed_trucks is not None:
+            name_lower = vehicle_name.strip().lower()
+            if not any(t.strip().lower() == name_lower for t in allowed_trucks):
+                return {"vehicle_name": vehicle_name, "odometer_miles": None, "time": None}
     client = await get_client(user["account_id"])
     readings = await client.get_current_odometer_readings()
-    name_lower = truck_name.strip().lower()
+    name_lower = vehicle_name.strip().lower()
     match = next(
         (r for r in readings if r.get("name", "").lower() == name_lower),
         None,
     )
     if not match:
-        return {"vehicle_name": truck_name, "odometer_miles": None, "time": None}
+        return {"vehicle_name": vehicle_name, "odometer_miles": None, "time": None}
     return {
         "vehicle_name": match["name"],
         "odometer_miles": match.get("odometer_miles"),

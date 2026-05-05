@@ -175,7 +175,7 @@ export default function Routes() {
       {/* Map */}
       <div className="relative h-[calc(100vh-22rem)] rounded-xl border border-border overflow-hidden z-0">
         <div ref={mapRef} className="absolute inset-0" />
-        <PoiLayerPanel poiHook={poiHook} />
+        <PoiLayerPanel poiHook={poiHook} leafletMap={leafletMap} />
       </div>
     </div>
   );

@@ -13,6 +13,9 @@ export interface Vehicle {
   def_percent: number | null;
   fault_count: number;
   status: 'moving' | 'idle' | 'stopped';
+  /** Per-vehicle "as-of" timestamp from Samsara, ISO-8601.  Used by
+   *  RelativeTime to render real signal freshness. */
+  time?: string | null;
 }
 
 export interface VehicleFeature {
@@ -28,8 +31,11 @@ export interface VehicleFeature {
     status: 'moving' | 'idle' | 'stopped';
     speed_mph: number | null;
     fuel_percent: number | null;
+    def_percent: number | null;
+    fault_count: number;
     address: string;
     engine_state: string;
+    heading: number | null;
     updated_at: string | null;
   };
 }
@@ -56,4 +62,4 @@ export interface Alert {
   created_at: string;
 }
 
-export type Page = 'map' | 'trucks' | 'alerts';
+export type Page = 'map' | 'vehicles' | 'alerts' | 'scorecard' | 'profile';

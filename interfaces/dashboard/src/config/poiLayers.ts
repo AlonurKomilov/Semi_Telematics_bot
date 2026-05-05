@@ -78,6 +78,7 @@ export interface PoiGroupDef {
 export const POI_GROUPS: PoiGroupDef[] = [
   { id: 'fuel_plaza',     label: 'Fuel Stops & Plazas', icon: '⛽' },
   { id: 'highway_safety', label: 'Highway & Safety',    icon: '🛣️' },
+  { id: 'custom',         label: 'My Layers',           icon: '🗂️' },
 ];
 
 /**
@@ -176,13 +177,48 @@ export const POI_LAYERS: PoiLayerDef[] = [
   },
   {
     // DEF = Diesel Exhaust Fluid (AdBlue) — SCR trucks derate without it.
-    // Subset of fuel stations where fuel:adblue=yes is explicitly tagged.
+    // Subset of fuel stations where fuel:adblue=yes is explicitly tagged
+    // PLUS major-chain truck plazas whose every location sells DEF
+    // (Pilot/FJ, Love's, TA/Petro, etc.).  Brand chips let drivers narrow
+    // to a specific chain — same client-side filter as Fuel Stations.
     id: 'def_station',
     label: 'DEF / AdBlue Stations',
     color: '#0d9488',
     icon: '🧪',
     defaultOn: false,
     group: 'fuel_plaza',
+    brandFilters: [
+      {
+        value:      'pilot_flyingj',
+        label:      'Pilot / Flying J',
+        icon:       '✈️',
+        matchTerms: ['Pilot Flying J', 'Pilot Travel Center', 'Pilot Travel Centre', 'Pilot', 'Flying J'],
+      },
+      {
+        value:      'loves',
+        label:      "Love's",
+        icon:       '❤️',
+        matchTerms: ["Love's", 'Loves', "Love's Travel Stop", 'Loves Travel Stop'],
+      },
+      {
+        value:      'ta_petro',
+        label:      'TA / Petro',
+        icon:       '🔵',
+        matchTerms: ['TA', 'Petro', 'TravelCenters of America', 'Petro Stopping Centers', 'TA Travel Center'],
+      },
+      {
+        value:      'sapp_bros',
+        label:      'Sapp Bros',
+        icon:       '🟢',
+        matchTerms: ['Sapp Bros', 'Sapp Bros.'],
+      },
+      {
+        value:      'road_ranger',
+        label:      'Road Ranger',
+        icon:       '🛣️',
+        matchTerms: ['Road Ranger'],
+      },
+    ],
   },
   {
     // HOS Hours-of-Service compliance — drivers need parking before clock runs out.

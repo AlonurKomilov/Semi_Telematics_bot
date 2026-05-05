@@ -20,7 +20,7 @@ from telegram.constants import ParseMode
 from capabilities.iam.permissions import can
 from adapters.samsara.client import populate_company_display
 
-from interfaces.bot.config import logger, get_client, get_tenant_db
+from interfaces.bot.config import logger, get_tenant_db
 from interfaces.bot.keyboards import back_kb, cam_company_picker_kb, cam_vehicle_list_kb
 from interfaces.bot.helpers import _show, _show_loading, _safe_error
 from interfaces.bot.auth import _require_registered
@@ -70,12 +70,12 @@ def _camera_check_kb(show_export: bool = False) -> InlineKeyboardMarkup:
 
 # ── Camera Tool — per-truck check flow ───────────────────────────
 
-async def _show_cam_truck_list(update, context, user, company_filter, page=0):
+async def _show_cam_vehicle_list(update, context, user, company_filter, page=0):
     """Show paginated vehicle list for camera analysis tool."""
     await _show_loading(update, context, "⏳ Loading vehicles…")
     try:
-        client = await get_client(user.account_id)
-        fleet = await client.get_fleet_overview(company=company_filter)
+        from capabilities.vehicles.service import get_fleet_overview as _svc_fleet_overview
+        fleet = await _svc_fleet_overview(user.account_id, company=company_filter)
     except Exception as e:
         logger.warning(f"Fleet fetch failed for cam truck list: {e}")
         await _show(update, context, ["❌ Could not load fleet data."],
@@ -106,7 +106,7 @@ async def cmd_cam_tool(update: Update, context: ContextTypes.DEFAULT_TYPE):
     populate_company_display(companies)
     codes = [o.code for o in companies]
     if len(codes) == 1:
-        await _show_cam_truck_list(update, context, user, codes[0])
+        await _show_cam_vehicle_list(update, context, user, codes[0])
     else:
         await _show(update, context, [
             "━━━━━━━━━━━━━━━━━━━\n"
@@ -123,7 +123,7 @@ async def cmd_cam_company_pick(update: Update, context: ContextTypes.DEFAULT_TYP
     user = context.user_data["_db_user"]
     if not can(user.role, "can_faults"):
         return
-    await _show_cam_truck_list(update, context, user, company)
+    await _show_cam_vehicle_list(update, context, user, company)
 
 
 @_require_registered
@@ -133,7 +133,7 @@ async def cmd_cam_page(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = context.user_data["_db_user"]
     if not can(user.role, "can_faults"):
         return
-    await _show_cam_truck_list(update, context, user, company, page=page)
+    await _show_cam_vehicle_list(update, context, user, company, page=page)
 
 
 # ── Build caption for a result ───────────────────────────────────
@@ -328,10 +328,10 @@ async def cmd_camera_check(update: Update, context: ContextTypes.DEFAULT_TYPE,
 # ── Single-vehicle camera analysis (from truck detail) ─────────────
 
 @_require_registered
-async def cmd_camera_check_truck(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                 truck_name: str):
+async def cmd_camera_check_vehicle(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                 vehicle_name: str):
     """Run camera analysis for a single truck."""
-    await cmd_camera_check(update, context, vehicle_name=truck_name)
+    await cmd_camera_check(update, context, vehicle_name=vehicle_name)
 
 
 # ── Camera analysis history ────────────────────────────────────────

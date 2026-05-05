@@ -43,11 +43,13 @@ from .camera_db import CameraMixin
 from .schedules import SchedulesMixin
 from .knowledge_db import KnowledgeBaseMixin
 from .permissions_db import PermissionsMixin
-from .driver_trucks_db import DriverTrucksMixin
+from .driver_vehicles_db import DriverVehiclesMixin
 from .user_companies_db import UserCompaniesMixin
 
 from .billing import BillingMixin
 from .geofence_db import GeofenceMixin
+from .custom_poi_db import CustomPoiMixin
+from .scorecard_db import ScorecardMixin
 from .platform_db import PlatformDB
 from .tenant_db import TenantDB
 from .tenant_router import TenantRouter, LegacyRouter
@@ -68,10 +70,12 @@ class Database(
     SchedulesMixin,
     KnowledgeBaseMixin,
     PermissionsMixin,
-    DriverTrucksMixin,
+    DriverVehiclesMixin,
     UserCompaniesMixin,
     BillingMixin,
     GeofenceMixin,
+    CustomPoiMixin,
+    ScorecardMixin,
     _DatabaseCore,
 ):
     """Async SQLite wrapper with typed helpers.

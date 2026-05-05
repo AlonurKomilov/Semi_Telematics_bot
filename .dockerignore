@@ -18,7 +18,11 @@ env/
 *.tar.gz
 interfaces/dashboard/node_modules/
 interfaces/dashboard/dist/
+interfaces/miniapp/node_modules/
+interfaces/miniapp/dist/
 data/
+scripts/
+mypy.ini
 *.db
 *.db-shm
 *.db-wal

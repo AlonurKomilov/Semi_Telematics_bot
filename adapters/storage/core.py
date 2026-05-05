@@ -18,8 +18,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
-from adapters.crypto import encrypt as _enc, decrypt as _dec
-
 from .models import Role, Account, Company, User, AuthorizedChat, Invite
 from . import schema, migrations
 
@@ -125,6 +123,23 @@ class _DatabaseCore:
             finally:
                 self._read_pool.put_nowait(conn)
 
+    async def read_all(self, sql: str, params: tuple = ()) -> list:
+        """Execute *sql* on a pooled read connection and return all rows.
+
+        Use this for SELECT queries in mixins instead of ``self._db.execute``
+        so reads are load-spread across the read pool and the write
+        connection is reserved for mutations.
+        """
+        async with self.acquire() as conn:
+            cur = await conn.execute(sql, params)
+            return await cur.fetchall()
+
+    async def read_one(self, sql: str, params: tuple = ()):
+        """Execute *sql* on a pooled read connection and return one row or None."""
+        async with self.acquire() as conn:
+            cur = await conn.execute(sql, params)
+            return await cur.fetchone()
+
     async def close(self):
         if self._using_postgres:
             await self._pg_pool.close()
@@ -197,6 +212,7 @@ class _DatabaseCore:
         )
 
     def _row_to_company(self, row) -> Company:
+        from infra.crypto import decrypt as _dec
         return Company(
             id=row["id"], account_id=row["account_id"],
             code=row["code"], display_name=row["display_name"],

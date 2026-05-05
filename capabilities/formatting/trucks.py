@@ -1,13 +1,13 @@
 """Truck detail and picker formatters."""
 
-from core.context import get_company_display
+from infra.context import get_company_display
 from capabilities.formatting.helpers import (
     _t, _fmt_time, _light_badges, _short_location,
     _fuel_bar, _split_message, _company_tag,
 )
 
 
-def format_truck_detail(v: dict, show_company: bool = False,
+def format_vehicle_detail(v: dict, show_company: bool = False,
                        show_faults: bool = True) -> list[str]:
     fc = v.get("fault_codes", {})
     j1939 = fc.get("j1939", {})
@@ -24,7 +24,7 @@ def format_truck_detail(v: dict, show_company: bool = False,
 
     no_device = ""
     if not v.get("has_gateway", True):
-        no_device = f"\n  ⚠️  <i>{_t('truck.no_device')}</i>"
+        no_device = f"\n  ⚠️  <i>{_t('vehicle.no_device')}</i>"
 
     lines = [
         "━━━━━━━━━━━━━━━━━━━",
@@ -51,11 +51,11 @@ def format_truck_detail(v: dict, show_company: bool = False,
         pass
     elif not dtcs:
         lines.append("  ── ── ── ── ── ── ──")
-        lines.append(f"  ✅  <b>{_t('truck.no_faults')}</b>")
-        lines.append(f"  {_t('truck.no_faults_note')}")
+        lines.append(f"  ✅  <b>{_t('vehicle.no_faults')}</b>")
+        lines.append(f"  {_t('vehicle.no_faults_note')}")
     else:
         lines.append(f"  ── ── ── ── ── ── ──")
-        lines.append(f"  🔧  <b>{len(dtcs)} {_t('truck.active_faults')}</b>")
+        lines.append(f"  🔧  <b>{len(dtcs)} {_t('vehicle.active_faults')}</b>")
 
         for i, dtc in enumerate(dtcs, 1):
             spn = dtc.get("spnId", "?")
@@ -76,12 +76,12 @@ def format_truck_detail(v: dict, show_company: bool = False,
                 sev = "⚪"
 
             lines.append(
-                f"\n  {sev}  <b>{_t('truck.fault_label')} #{i}</b>\n"
-                f"     {_t('truck.code_label')}    SPN {spn} / FMI {fmi}\n"
-                f"     {_t('truck.issue_label')}   {spn_desc}\n"
-                f"     {_t('truck.level_label')}   {fmi_desc}\n"
-                f"     {_t('truck.count_label')}   ×{occ}\n"
-                f"     {_t('truck.from_label')}    {source}"
+                f"\n  {sev}  <b>{_t('vehicle.fault_label')} #{i}</b>\n"
+                f"     {_t('vehicle.code_label')}    SPN {spn} / FMI {fmi}\n"
+                f"     {_t('vehicle.issue_label')}   {spn_desc}\n"
+                f"     {_t('vehicle.level_label')}   {fmi_desc}\n"
+                f"     {_t('vehicle.count_label')}   ×{occ}\n"
+                f"     {_t('vehicle.from_label')}    {source}"
             )
 
     fault_time = fc.get("time", "")
@@ -91,15 +91,15 @@ def format_truck_detail(v: dict, show_company: bool = False,
     return _split_message("\n".join(lines))
 
 
-def format_truck_picker(truck_name: str, matches: list[dict]) -> str:
+def format_vehicle_picker(vehicle_name: str, matches: list[dict]) -> str:
     """Show disambiguation when a truck name exists in multiple companies."""
     lines = [
         "━━━━━━━━━━━━━━━━━━━",
-        f"  🔍  <b>#{truck_name}</b>  {_t('truck.found_in')}",
+        f"  🔍  <b>#{vehicle_name}</b>  {_t('vehicle.found_in')}",
         f"       {len(matches)} {_t('common.companies')}",
         "━━━━━━━━━━━━━━━━━━━",
         "",
-        f"  {_t('truck.select_which')}",
+        f"  {_t('vehicle.select_which')}",
         "",
     ]
     for v in matches:

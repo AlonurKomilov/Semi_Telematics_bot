@@ -44,10 +44,10 @@ async def cmd_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Non-driver: ask for truck name
-    context.user_data["_pending"] = "route_truck"
+    context.user_data["_pending"] = "route_vehicle"
     await _show(update, context, [
         f"{t('route.title')}\n\n"
-        f"{t('route.type_truck')}"
+        f"{t('route.type_vehicle')}"
     ], keyboard=back_kb())
 
 
@@ -122,7 +122,7 @@ async def handle_route_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return False
 
     pending = context.user_data.get("_pending", "")
-    if pending != "route_truck":
+    if pending != "route_vehicle":
         return False
 
     text = update.message.text.strip()

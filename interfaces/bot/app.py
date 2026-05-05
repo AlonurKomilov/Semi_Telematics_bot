@@ -26,7 +26,7 @@ from interfaces.bot.config import (
 )
 from interfaces.bot.keyboards import system_owner_kb
 from interfaces.bot.registration import cmd_start, cmd_register, cmd_join, cmd_help
-from interfaces.bot.fleet import cmd_faults, cmd_truck, cmd_fuel, cmd_alerts, cmd_health, cmd_efficiency
+from interfaces.bot.fleet import cmd_faults, cmd_vehicle, cmd_fuel, cmd_alerts, cmd_health, cmd_efficiency
 from interfaces.bot.management import (
     cmd_account, cmd_invite, cmd_users, cmd_setrole,
     cmd_remove, cmd_addcompany, cmd_removecompany,
@@ -96,15 +96,15 @@ async def cmd_audit(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def post_init(app: Application):
     # ── Per-bot initialization ──────────────────────────────────
     # Platform-global init (encryption, DB, router, AI, Redis, key migration)
-    # is handled by core.startup.initialize() — called from run.py BEFORE
+    # is handled by infra.startup.initialize() — called from run.py BEFORE
     # the bot Application is created.
     #
     # If core.platform is not yet initialized (e.g. standalone build_app()
     # call from legacy code paths), fall back to doing it here.
-    from core import platform as _platform
+    from infra import platform as _platform
     if _platform._db is None:
-        import core.startup
-        await core.startup.initialize()
+        import infra.startup
+        await infra.startup.initialize()
 
     # Capture bot username for deep-link generation
     me = await app.bot.get_me()
@@ -143,11 +143,21 @@ async def post_init(app: Application):
             logger.info("Known faults initialized")
         except Exception as e:
             logger.warning("initialize_known_faults failed: %s", e)
+            try:
+                from infra.error_reporter import report_error
+                await report_error(e, source="startup", job_name="initialize_known_faults")
+            except Exception:
+                pass
         try:
             await check_unsafe_parking(app)
             logger.info("Initial parking check done")
         except Exception as e:
             logger.warning("Initial parking check failed: %s", e)
+            try:
+                from infra.error_reporter import report_error
+                await report_error(e, source="startup", job_name="check_unsafe_parking")
+            except Exception:
+                pass
 
     _bg_task = asyncio.create_task(_deferred_init(), name="deferred-init")
     # Store reference on the app to prevent GC of the background task
@@ -184,7 +194,7 @@ async def post_init(app: Application):
 async def post_shutdown(app: Application):
     """Clean up resources on bot shutdown.
 
-    Redis and DB are now closed by core.startup.shutdown() in run.py.
+    Redis and DB are now closed by infra.startup.shutdown() in run.py.
     This hook remains for any per-bot cleanup.
     """
     logger.info("Bot application shut down")
@@ -205,6 +215,17 @@ def build_app() -> Application:
            .post_shutdown(post_shutdown)
            .build())
 
+    # PTB error handler — captures all unhandled bot handler exceptions
+    async def _ptb_error_handler(update: object, context: object) -> None:
+        exc = getattr(context, "error", None)
+        try:
+            from infra.error_reporter import report_error
+            await report_error(exc, source="bot")
+        except Exception:
+            pass
+
+    app.add_error_handler(_ptb_error_handler)
+
     # Registration
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
@@ -213,7 +234,7 @@ def build_app() -> Application:
 
     # Fleet commands
     app.add_handler(CommandHandler("faults", cmd_faults))
-    app.add_handler(CommandHandler("truck", cmd_truck))
+    app.add_handler(CommandHandler("vehicle", cmd_vehicle))
     app.add_handler(CommandHandler("fuel", cmd_fuel))
     app.add_handler(CommandHandler("alerts", cmd_alerts))
     app.add_handler(CommandHandler("health", cmd_health))

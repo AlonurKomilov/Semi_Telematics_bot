@@ -6,15 +6,15 @@ import logging
 
 from telegram.ext import Application
 
-import adapters.cache.redis as rcache
+import infra.cache as rcache
 from capabilities.alerting.pipeline import (
     AlertSeverity, send_alert, is_vehicle_suppressed,
 )
 from capabilities.formatting import format_event_alert
-from core.bot_registry import get_app_for_account
-from core.context import set_tenant_display
-from core.isolation import run_account_job
-from core.services import get_client, get_platform_db, get_tenant_db
+from infra.bot_registry import get_app_for_account
+from infra.context import set_tenant_display
+from infra.isolation import run_account_job
+from infra.services import get_client, get_platform_db, get_tenant_db
 
 logger = logging.getLogger("bot")
 
@@ -27,7 +27,12 @@ _known_event_ids: dict[int, set[str]] = {}  # account_id → set of event IDs
 
 
 def _event_severity(event: dict) -> AlertSeverity:
-    """Map event type + g-force to severity tier."""
+    """Map event type + g-force to AlertSeverity for alert triage.
+
+    Note: capabilities/events/severity.py is the SSOT for API-layer severity
+    labels ("severe"/"moderate"/etc.).  This function maps those same signals
+    to the alerting pipeline's three-tier enum (CRITICAL/WARNING/INFO).
+    """
     etype = event.get("event_type", "")
     gf = event.get("g_force", 0.0)
     if etype == "crash":
@@ -94,7 +99,21 @@ async def _check_events_account(bot_app: Application, account):
     display = {co.code: co.display_name or co.code for co in companies}
     set_tenant_display(display, samsara.org_ids)
 
-    events = await samsara.get_events(days=1)
+    # Warehouse-first read.  ``warehouse_reader.get_safety_events`` returns
+    # rows with the live-shape dict wrapped in ``raw`` (see ingestor
+    # ``_safety_event_to_log_row``); when the flag is off it falls back
+    # to the live ``samsara.get_events`` call we used to have here.
+    from capabilities.telemetry import warehouse_reader as _wh
+
+    async def _live():
+        return await samsara.get_events(days=1)
+
+    wh_rows = await _wh.get_safety_events(
+        account_id, days=1, samsara_fallback=_live,
+    )
+    # Unwrap warehouse rows back to live shape so downstream code that
+    # reads ``event_id`` / ``vehicle_name`` / ``time`` keeps working.
+    events = [(r.get("raw") or r) for r in wh_rows]
 
     if not events:
         if account_id not in _events_warmup_done:

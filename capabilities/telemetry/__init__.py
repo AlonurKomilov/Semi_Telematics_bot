@@ -5,5 +5,6 @@ from capabilities.telemetry.service import (  # noqa: F401
     get_fleet_weather,
     get_fleet_efficiency,
     get_vehicles_with_faults,
+    get_low_fuel_vehicles,
     get_driver_efficiency,
 )

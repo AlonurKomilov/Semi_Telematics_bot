@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
+from capabilities.events.service import get_events as _svc_events
 
 
 @register_tool({
@@ -34,7 +35,10 @@ async def get_vehicle_events(tool_args: dict, samsara_client,
     days = min(max(tool_args.get("days", 7), 1), 30)
     if not vehicle:
         return {"error": "Please specify a vehicle name to get its safety events."}
-    events = await samsara_client.get_events(days=days)
+    if account_id is not None:
+        events = await _svc_events(account_id, days=days)
+    else:
+        events = await samsara_client.get_events(days=days)
     vehicle_events = [
         e for e in events
         if e.get("vehicle_name", "").lower() == vehicle.lower()
@@ -78,7 +82,10 @@ async def get_vehicle_events(tool_args: dict, samsara_client,
 async def get_events_summary(tool_args: dict, samsara_client,
                                    account_id: int | None = None, db=None) -> dict:
     days = min(max(tool_args.get("days", 7), 1), 30)
-    events = await samsara_client.get_events(days=days)
+    if account_id is not None:
+        events = await _svc_events(account_id, days=days)
+    else:
+        events = await samsara_client.get_events(days=days)
     # Counts by type
     by_type: dict[str, int] = {}
     by_driver: dict[str, int] = {}

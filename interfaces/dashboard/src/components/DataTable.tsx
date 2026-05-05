@@ -21,9 +21,20 @@ interface DataTableProps {
   data: Record<string, unknown>[];
   onRowClick?: (row: Record<string, unknown>) => void;
   searchKey?: string;
+  /**
+   * Phase F: when set, the table body scrolls within a fixed-height
+   * container and the header stays pinned to the top.  Useful for
+   * long lists (scorecards, vehicles) where the user otherwise loses
+   * the column labels half-way down.  Pass a CSS length string \u2014 e.g.
+   * ``"60vh"`` or ``"480px"``.  Omit for the legacy non-sticky layout.
+   */
+  stickyHeader?: string;
+  searchPlaceholder?: string;
 }
 
-export default function DataTable({ columns, data, onRowClick, searchKey }: DataTableProps) {
+export default function DataTable({
+  columns, data, onRowClick, searchKey, stickyHeader, searchPlaceholder,
+}: DataTableProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
 
@@ -70,15 +81,20 @@ export default function DataTable({ columns, data, onRowClick, searchKey }: Data
     <div>
       {searchKey && (
         <Input
-          placeholder="Search..."
+          placeholder={searchPlaceholder ?? 'Search...'}
           value={globalFilter}
           onChange={(e) => setGlobalFilter(e.target.value)}
           className="mb-3 max-w-xs"
         />
       )}
-      <div className="overflow-x-auto rounded-lg border border-border">
+      <div
+        className="overflow-auto rounded-lg border border-border"
+        style={stickyHeader ? { maxHeight: stickyHeader } : undefined}
+      >
         <Table>
-          <TableHeader>
+          <TableHeader
+            className={stickyHeader ? 'sticky top-0 z-10 bg-card' : undefined}
+          >
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="bg-card hover:bg-card">
                 {headerGroup.headers.map((header) => {
@@ -91,6 +107,7 @@ export default function DataTable({ columns, data, onRowClick, searchKey }: Data
                       className={cn(
                         'text-muted-foreground font-medium',
                         canSort && 'cursor-pointer select-none hover:text-foreground',
+                        stickyHeader && 'bg-card',
                       )}
                     >
                       <div className="flex items-center gap-1">

@@ -5,7 +5,7 @@ from fastapi import Depends, HTTPException, Header, Query
 from jose import JWTError
 
 from interfaces.api.auth import decode_jwt
-from core.platform import get_router as _get_router
+from infra.platform import get_router as _get_router
 from capabilities.iam.permissions import can, get_account_permissions
 from adapters.storage import Role
 
@@ -52,15 +52,15 @@ async def get_current_user(authorization: str = Header(...)):
     return payload
 
 
-async def get_user_truck_num(user: dict) -> str | None:
+async def get_user_vehicle_num(user: dict) -> str | None:
     """Look up the driver's assigned truck_num from the DB."""
     platform_db = _get_router().platform
     db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
     return db_user.truck_num if db_user else None
 
 
-async def get_user_truck_nums(user: dict) -> list[str]:
-    """Look up all assigned truck_nums for a driver from driver_trucks table.
+async def get_user_vehicle_nums(user: dict) -> list[str]:
+    """Look up all assigned vehicle_nums for a driver from driver_trucks table.
 
     Falls back to users.truck_num if no junction table rows exist.
     """
@@ -68,7 +68,7 @@ async def get_user_truck_nums(user: dict) -> list[str]:
     db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
     if not db_user:
         return []
-    trucks = await platform_db.get_user_truck_nums(db_user.id)
+    trucks = await platform_db.get_user_vehicle_nums(db_user.id)
     if trucks:
         return trucks
     # Fallback: legacy single truck_num
@@ -134,7 +134,7 @@ async def filter_by_assigned_trucks(
     """
     if user.get("role") != "driver":
         return data
-    trucks = await get_user_truck_nums(user)
+    trucks = await get_user_vehicle_nums(user)
     if not trucks:
         return data
     needles = {t.lower() for t in trucks}
@@ -183,7 +183,7 @@ async def enforce_user_quota(account_id: int, platform_db=None) -> None:
     Looks up the account tier, then checks the active user count against
     ``QUOTA_MAX_USERS``.  Call before creating a new user.
     """
-    from core.config import QUOTA_MAX_USERS
+    from infra.config import QUOTA_MAX_USERS
     if platform_db is None:
         platform_db = _get_router().platform
     account = await platform_db.get_account(account_id)
@@ -208,7 +208,7 @@ async def enforce_company_quota(account_id: int, tenant_db=None) -> None:
     Looks up the account tier, then checks the active company count against
     ``QUOTA_MAX_COMPANIES``.  Call before creating a new company.
     """
-    from core.config import QUOTA_MAX_COMPANIES
+    from infra.config import QUOTA_MAX_COMPANIES
     platform_db = _get_router().platform
     account = await platform_db.get_account(account_id)
     tier = (account.tier if account else None) or "free"

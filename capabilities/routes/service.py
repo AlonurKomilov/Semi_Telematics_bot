@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from math import radians, sin, cos, sqrt, atan2
 
-from core.services import get_client
-from capabilities.vehicle_catalog.service import prepare_companies
+from infra.services import get_client
+from capabilities.vehicles.service import prepare_companies
 
 # Earth radius in miles
 _EARTH_RADIUS_MI = 3958.8
@@ -65,7 +65,7 @@ async def get_vehicle_gps_history(
 
 
 async def get_gps_history(
-    account_id: str,
+    account_id: int,
     vehicle_id: str,
     start_time: str,
     end_time: str,

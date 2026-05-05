@@ -9,13 +9,13 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from adapters.samsara.client import populate_company_display
-from core.context import get_company_display
+from infra.context import get_company_display
 from capabilities.formatting import format_help, format_welcome_unregistered, format_system_owner_welcome
 
 from interfaces.bot.config import get_platform_db, get_tenant_db, SUPPORT_CONTACT
 from interfaces.bot.keyboards import (
     main_menu_kb, back_kb, system_owner_kb, unregistered_kb,
-    co_menu_kb, truck_company_picker_kb,
+    co_menu_kb, vehicle_company_picker_kb,
 )
 from interfaces.bot.helpers import _show, _render_audit_log, _safe_error
 from interfaces.bot.auth import _get_user, _group_chat_guard
@@ -27,15 +27,15 @@ from interfaces.bot.callback_router import CallbackRouter
 from interfaces.bot.registration import cmd_start
 from interfaces.bot.fleet import (
     cmd_faults, cmd_faults_pdf, cmd_faults_csv,
-    cmd_truck, cmd_critical,
+    cmd_vehicle, cmd_critical,
     cmd_fuel, cmd_fuel_pdf, cmd_fuel_csv,
     cmd_alerts, cmd_alert_toggle, cmd_ai_alert_toggle, cmd_alert_disable_all,
     cmd_alert_history, cmd_pending_alerts,
-    cmd_truck_report,
+    cmd_vehicle_report,
     cmd_health, cmd_health_pdf, cmd_health_csv,
     cmd_efficiency, cmd_efficiency_pdf, cmd_efficiency_csv,
     cmd_weather, cmd_api_status,
-    cmd_camera_check, cmd_camera_check_truck,
+    cmd_camera_check, cmd_camera_check_vehicle,
     cmd_camera_history, cmd_camera_check_pdf, cmd_camera_check_csv,
     cmd_cam_tool, cmd_cam_company_pick, cmd_cam_page,
 )
@@ -46,11 +46,11 @@ from interfaces.bot.fuel_costs import cmd_fuelcost, cmd_fuelcost_add, cmd_fuelco
 from interfaces.bot.costs import cmd_costmile, cmd_costmile_report
 from interfaces.bot.maintenance import (
     cmd_maintenance, cmd_maint_add, cmd_maint_type, cmd_maint_view, cmd_maint_done,
-    cmd_maint_select_truck, cmd_maint_skip_date, cmd_maint_skip_miles, cmd_maint_skip_desc,
+    cmd_maint_select_vehicle, cmd_maint_skip_date, cmd_maint_skip_miles, cmd_maint_skip_desc,
     cmd_maint_detail, cmd_maint_edit, cmd_maint_delete, cmd_maint_delete_confirm,
     cmd_maint_edit_type, cmd_maint_edit_date, cmd_maint_edit_miles, cmd_maint_edit_desc,
     cmd_maint_set_type, cmd_maint_remove_field,
-    cmd_maint_company_pick, cmd_maint_truck_page,
+    cmd_maint_company_pick, cmd_maint_vehicle_page,
 )
 from interfaces.bot.maps import cmd_livemap
 from interfaces.bot.routes import cmd_route, cmd_route_go
@@ -79,7 +79,7 @@ from interfaces.bot.knowledge import (
     cmd_kb_search, handle_kb_search_input,
 )
 from capabilities.alerting import handle_alert_ack
-from interfaces.bot.vehicles import show_truck_list
+from interfaces.bot.vehicles import show_vehicle_list
 
 # ── Import domain handler submodules ─────────────────────────────
 
@@ -121,7 +121,7 @@ _router.exact("fuel_pdf", cmd_fuel_pdf)
 _router.exact("fuel_csv", cmd_fuel_csv)
 _router.exact("cmd_alerts", cmd_alerts)
 _router.exact("alert_disable_all", cmd_alert_disable_all)
-_router.exact("cmd_mytruck", cmd_truck)
+_router.exact("cmd_myvehicle", cmd_vehicle)
 _router.exact("cmd_health", cmd_health)
 _router.exact("health_pdf", cmd_health_pdf)
 _router.exact("health_csv", cmd_health_csv)
@@ -236,8 +236,8 @@ async def _eff_csv_co(u, c):
     await cmd_efficiency_csv(u, c, company=co)
 
 async def _cam_truck(u, c):
-    truck = u.callback_query.data.replace("cam_truck_", "")
-    await cmd_camera_check_truck(u, c, truck_name=truck)
+    truck = u.callback_query.data.replace("cam_vehicle_", "")
+    await cmd_camera_check_vehicle(u, c, vehicle_name=truck)
 
 async def _scorecard_pdf_co(u, c):
     co = u.callback_query.data.replace("scorecard_pdf_", "")
@@ -282,18 +282,18 @@ async def _maint_co(u, c):
     await cmd_maint_company_pick(u, c, company=co)
 
 async def _maint_truck(u, c):
-    rest = u.callback_query.data.replace("maint_truck_", "")
+    rest = u.callback_query.data.replace("maint_vehicle_", "")
     parts = rest.split("_", 1)
     co = parts[0] if len(parts) >= 1 else ""
     truck = parts[1] if len(parts) >= 2 else ""
-    await cmd_maint_select_truck(u, c, company=co, truck_name=truck)
+    await cmd_maint_select_vehicle(u, c, company=co, vehicle_name=truck)
 
 async def _maint_pg(u, c):
     rest = u.callback_query.data.replace("maint_pg_", "")
     parts = rest.rsplit("_", 1)
     co = parts[0] if len(parts) >= 1 else "ALL"
     page = int(parts[1]) if len(parts) >= 2 else 0
-    await cmd_maint_truck_page(u, c, company=co, page=page)
+    await cmd_maint_vehicle_page(u, c, company=co, page=page)
 
 async def _maint_lpage(u, c):
     page = int(u.callback_query.data.replace("maint_lpage_", ""))
@@ -487,11 +487,11 @@ async def _ai_diag(u, c):
                 pass
         await cmd_ai_diagnose(
             u, c,
-            truck_name=truck_part, company=parts[1],
+            vehicle_name=truck_part, company=parts[1],
             alert_context=parts[0], ack_id=ack_id_arg,
         )
     elif len(parts) == 2:
-        await cmd_ai_diagnose(u, c, truck_name=parts[1], company=parts[0])
+        await cmd_ai_diagnose(u, c, vehicle_name=parts[1], company=parts[0])
 
 async def _costmile_text(u, c):
     await cmd_costmile_report(u, c, fmt="text")
@@ -511,7 +511,7 @@ _router.prefix("health_pdf_", _health_pdf_co)
 _router.prefix("health_csv_", _health_csv_co)
 _router.prefix("eff_pdf_", _eff_pdf_co)
 _router.prefix("eff_csv_", _eff_csv_co)
-_router.prefix("cam_truck_", _cam_truck)
+_router.prefix("cam_vehicle_", _cam_truck)
 _router.prefix("scorecard_pdf_", _scorecard_pdf_co)
 _router.prefix("scorecard_csv_", _scorecard_csv_co)
 _router.prefix("cmd_livemap_", _livemap_co)
@@ -523,7 +523,7 @@ _router.prefix("maint_type_", _maint_type)
 _router.prefix("maint_done_", _maint_done)
 _router.prefix("maint_setype_", _maint_setype)   # must be before maint_*
 _router.prefix("maint_co_", _maint_co)
-_router.prefix("maint_truck_", _maint_truck)
+_router.prefix("maint_vehicle_", _maint_truck)
 _router.prefix("maint_pg_", _maint_pg)
 _router.prefix("maint_lpage_", _maint_lpage)
 _router.prefix("maint_detail_", _maint_detail)
@@ -575,46 +575,46 @@ _router.exact("costmile_csv", _costmile_csv)
 
 async def _truckfaults(u, c):
     await u.callback_query.answer()
-    rest = u.callback_query.data[len("truckfaults_"):]
+    rest = u.callback_query.data[len("vehiclefaults_"):]
     parts = rest.split("_", 1)
     t_org = parts[0] if len(parts) >= 1 else ""
     t_name = parts[1] if len(parts) >= 2 else ""
-    await cmd_truck_report(u, c, truck_name=t_name, company=t_org)
+    await cmd_vehicle_report(u, c, vehicle_name=t_name, company=t_org)
 
-_router.prefix("truckfaults_", _truckfaults)
+_router.prefix("vehiclefaults_", _truckfaults)
 
 
 # ── Truck lookup / browser ───────────────────────────────────────
 
-async def _truck_lookup(u, c):
-    await cmd_truck(u, c)
+async def _vehicle_lookup(u, c):
+    await cmd_vehicle(u, c)
 
-_router.prefix("truck_", _truck_lookup)
-_router.prefix("cotruck_", _truck_lookup)
+_router.prefix("vehicle_", _vehicle_lookup)
+_router.prefix("covehicle_", _vehicle_lookup)
 
 
-async def _truck_prompt(update, context):
+async def _vehicle_prompt(update, context):
     query = update.callback_query
     await query.answer()
     user = context.user_data["_db_user"]
     from capabilities.iam.permissions import can
-    if not can(user.role, "can_truck_all"):
+    if not can(user.role, "can_vehicle_all"):
         await query.answer(t("access.no_access"), show_alert=True)
         return
     companies = context.user_data.get("_companies", [])
     company_codes = [o.code for o in companies]
     if len(company_codes) == 1:
-        await show_truck_list(update, context, user, company_codes[0])
+        await show_vehicle_list(update, context, user, company_codes[0])
     else:
         await _show(update, context, [
-            f"{t('truck.browse_title')}\n\n"
-            f"{t('truck.browse_prompt')}"
-        ], keyboard=truck_company_picker_kb(company_codes))
+            f"{t('vehicle.browse_title')}\n\n"
+            f"{t('vehicle.browse_prompt')}"
+        ], keyboard=vehicle_company_picker_kb(company_codes))
 
-_router.exact("cmd_truck_prompt", _truck_prompt)
+_router.exact("cmd_vehicle_prompt", _vehicle_prompt)
 
 
-async def _trucks_browse(update, context):
+async def _vehicles_browse(update, context):
     query = update.callback_query
     await query.answer()
     data = query.data
@@ -622,12 +622,12 @@ async def _trucks_browse(update, context):
     if company_filter == "ALL":
         company_filter = None
     user = context.user_data["_db_user"]
-    await show_truck_list(update, context, user, company_filter)
+    await show_vehicle_list(update, context, user, company_filter)
 
-_router.prefix("trucks_browse_", _trucks_browse)
+_router.prefix("vehicles_browse_", _vehicles_browse)
 
 
-async def _trucks_page(update, context):
+async def _vehicles_page(update, context):
     query = update.callback_query
     await query.answer()
     data = query.data
@@ -637,9 +637,9 @@ async def _trucks_page(update, context):
     if company_filter == "ALL":
         company_filter = None
     user = context.user_data["_db_user"]
-    await show_truck_list(update, context, user, company_filter, page=page)
+    await show_vehicle_list(update, context, user, company_filter, page=page)
 
-_router.prefix("trucks_page_", _trucks_page)
+_router.prefix("vehicles_page_", _vehicles_page)
 
 
 # ── Company sub-menu (per-company reports) ───────────────────────

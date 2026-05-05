@@ -8,12 +8,12 @@ router = APIRouter(tags=["health"])
 @router.get("/health")
 async def health_check():
     """Basic health check — used by Docker HEALTHCHECK and CI/CD."""
-    import adapters.cache.redis as rcache
+    import infra.cache as rcache
 
     # Check DB
     db_ok = False
     try:
-        from core.platform import get_db
+        from infra.platform import get_db
         db = get_db()
         async with db.acquire() as conn:
             await conn.execute("SELECT 1")

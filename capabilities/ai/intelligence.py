@@ -26,7 +26,7 @@ from capabilities.ai.tools import (  # noqa: E402,F401
     get_cached_vertex_tools as _get_cached_tools,
     AI_TOOLS,  # backward compat re-export
 )
-from capabilities.iam.permissions import TOOL_PERMISSIONS, ACCOUNT_WIDE_TOOLS, TRUCK_SPECIFIC_TOOLS
+from capabilities.iam.permissions import TOOL_PERMISSIONS, ACCOUNT_WIDE_TOOLS, VEHICLE_SPECIFIC_TOOLS
 
 logger = logging.getLogger("bot.ai")
 
@@ -61,31 +61,35 @@ _TOOL_LABELS: dict[str, str] = {
 # ── Shared context builder ───────────────────────────────────────
 
 async def build_context(account_id: int,
-                        truck_num: str | None = None,
-                        truck_nums: list[str] | None = None) -> dict:
+                        vehicle_num: str | None = None,
+                        vehicle_nums: list[str] | None = None) -> dict:
     """Build a compact data snapshot for AI context.
 
     Reused by both the Telegram bot and the web API.
-    If truck_num/truck_nums is provided (Driver role), only those trucks are included.
+    If vehicle_num/vehicle_nums is provided (Driver role), only those trucks are included.
     """
-    from core.services import get_client, get_tenant_db
+    from infra.services import get_tenant_db
 
     # Normalize to a set of lowercase truck names for filtering
-    _truck_set: set[str] | None = None
-    if truck_nums:
-        _truck_set = {t.lower() for t in truck_nums if t}
-    elif truck_num:
-        _truck_set = {truck_num.lower()}
+    _vehicle_set: set[str] | None = None
+    if vehicle_nums:
+        _vehicle_set = {t.lower() for t in vehicle_nums if t}
+    elif vehicle_num:
+        _vehicle_set = {vehicle_num.lower()}
 
-    samsara = await get_client(account_id)
+    # Warehouse-first reads via service layer (falls back to live Samsara on
+    # cold-start or when WAREHOUSE_READS_ENABLED=0).
+    from capabilities.vehicles.service import get_fleet_overview as _svc_fleet_overview
+    from capabilities.telemetry.service import get_vehicle_health as _svc_vehicle_health
+    from capabilities.events.service import get_events as _svc_get_events
     snapshot: dict = {}
 
     try:
-        fleet = await samsara.get_fleet_overview()
-        if _truck_set:
+        fleet = await _svc_fleet_overview(account_id)
+        if _vehicle_set:
             fleet = [
                 v for v in fleet
-                if v.get("name", "").lower() in _truck_set
+                if v.get("name", "").lower() in _vehicle_set
             ]
 
         snapshot["total_vehicles"] = len(fleet)
@@ -127,18 +131,18 @@ async def build_context(account_id: int,
 
     # Health data
     try:
-        health = await samsara.get_vehicle_health()
-        if _truck_set:
+        health = await _svc_vehicle_health(account_id)
+        if _vehicle_set:
             health = [
                 v for v in health
-                if v.get("name", "").lower() in _truck_set
+                if v.get("name", "").lower() in _vehicle_set
             ]
         alerts_summary = []
         for v in health:
             h_alerts = v.get("_health_alerts", [])
             if h_alerts:
                 alerts_summary.append({
-                    "truck": v.get("name", "?"),
+                    "vehicle": v.get("name", "?"),
                     "alerts": h_alerts,
                     "battery_v": v.get("_health", {}).get("battery_v"),
                     "coolant_c": v.get("_health", {}).get("coolant_c"),
@@ -162,18 +166,18 @@ async def build_context(account_id: int,
 
     async def _fetch_health():
         try:
-            health = await samsara.get_vehicle_health()
-            if _truck_set:
+            health = await _svc_vehicle_health(account_id)
+            if _vehicle_set:
                 health = [
                     v for v in health
-                    if v.get("name", "").lower() in _truck_set
+                    if v.get("name", "").lower() in _vehicle_set
                 ]
             alerts_summary = []
             for v in health:
                 h_alerts = v.get("_health_alerts", [])
                 if h_alerts:
                     alerts_summary.append({
-                        "truck": v.get("name", "?"),
+                        "vehicle": v.get("name", "?"),
                         "alerts": h_alerts,
                         "battery_v": v.get("_health", {}).get("battery_v"),
                         "coolant_c": v.get("_health", {}).get("coolant_c"),
@@ -187,11 +191,11 @@ async def build_context(account_id: int,
 
     async def _fetch_events():
         try:
-            events = await samsara.get_events(days=7)
-            if _truck_set:
+            events = await _svc_get_events(account_id, days=7)
+            if _vehicle_set:
                 events = [
                     e for e in events
-                    if e.get("vehicle_name", "").lower() in _truck_set
+                    if e.get("vehicle_name", "").lower() in _vehicle_set
                 ]
             if events:
                 evt_by_type: dict[str, int] = {}
@@ -208,7 +212,7 @@ async def build_context(account_id: int,
                     "total": len(events),
                     "by_type": evt_by_type,
                     "by_truck": [
-                        {"truck": t, "total": sum(types.values()), "types": types}
+                        {"vehicle": t, "total": sum(types.values()), "types": types}
                         for t, types in sorted(
                             by_truck.items(),
                             key=lambda x: sum(x[1].values()),
@@ -223,8 +227,8 @@ async def build_context(account_id: int,
         try:
             tenant = await get_tenant_db(account_id)
             tasks = await tenant.get_maintenance_tasks(account_id)
-            if _truck_set:
-                tasks = [t for t in tasks if t.get("vehicle_name", "").lower() in _truck_set]
+            if _vehicle_set:
+                tasks = [t for t in tasks if t.get("vehicle_name", "").lower() in _vehicle_set]
             active = [t for t in tasks if t.get("status") in ("pending", "overdue")]
             if active:
                 snapshot["maintenance"] = {
@@ -232,7 +236,7 @@ async def build_context(account_id: int,
                     "overdue": sum(1 for t in active if t["status"] == "overdue"),
                     "tasks": [
                         {
-                            "truck": t.get("vehicle_name", "?"),
+                            "vehicle": t.get("vehicle_name", "?"),
                             "type": t.get("task_type", "custom"),
                             "status": t.get("status"),
                             "due_date": t.get("due_date"),
@@ -248,10 +252,10 @@ async def build_context(account_id: int,
         try:
             tenant_fuel = await get_tenant_db(account_id)
             fuel_summary = await tenant_fuel.get_fuel_summary(account_id)
-            if _truck_set:
+            if _vehicle_set:
                 fuel_summary = [
                     s for s in fuel_summary
-                    if s.get("vehicle_name", "").lower() in _truck_set
+                    if s.get("vehicle_name", "").lower() in _vehicle_set
                 ]
             if fuel_summary:
                 items = []
@@ -261,7 +265,7 @@ async def build_context(account_id: int,
                     miles = last_odo - first_odo if last_odo > first_odo else 0
                     total_cost = s.get("total_cost") or 0
                     items.append({
-                        "truck": s.get("vehicle_name", "?"),
+                        "vehicle": s.get("vehicle_name", "?"),
                         "total_gallons": round(s.get("total_gallons") or 0, 1),
                         "total_cost": round(total_cost, 2),
                         "avg_price": round(s.get("avg_price") or 0, 3),
@@ -287,7 +291,7 @@ async def diagnose_faults(vehicle_name: str,
                           user_context: dict | None = None) -> str:
     """AI-powered fault code diagnosis for a specific vehicle."""
     context = {
-        "truck": vehicle_name,
+        "vehicle": vehicle_name,
         "check_engine_lights": lights or {},
         "active_faults": [
             {
@@ -401,28 +405,30 @@ async def ask_agent(question: str, fleet_context: dict,
             profile_lines.append(f"- Role: {uc['role']}")
         if uc.get("department") and uc["department"] != "general":
             profile_lines.append(f"- Department: {uc['department']}")
-        if uc.get("truck_nums") and len(uc["truck_nums"]) > 0:
-            profile_lines.append(f"- Assigned trucks: {', '.join(uc['truck_nums'])}")
-        elif uc.get("truck_num"):
-            profile_lines.append(f"- Assigned truck: {uc['truck_num']}")
+        if uc.get("vehicle_nums") and len(uc["vehicle_nums"]) > 0:
+            profile_lines.append(f"- Assigned trucks: {', '.join(uc['vehicle_nums'])}")
+        elif uc.get("vehicle_num"):
+            profile_lines.append(f"- Assigned vehicle: {uc['vehicle_num']}")
         if uc.get("timezone"):
             profile_lines.append(f"- Timezone: {uc['timezone']}")
-        # Dynamic permission guidance from ROLE_PERMISSIONS
+        # Dynamic permission guidance from ROLE_PERMISSIONS (with per-account override)
         if uc.get("role"):
-            from capabilities.iam.permissions import build_role_guidance
-            guidance = build_role_guidance(uc["role"])
+            from capabilities.iam.permissions import build_role_guidance_for_account
+            _db = user_context.get("_db")
+            _account_id = account_id or 0
+            guidance = await build_role_guidance_for_account(_db, _account_id, uc["role"])
             profile_lines.append(f"\n{guidance}")
 
         # Driver isolation: strict truck access
-        if uc.get("role") == "driver" and (uc.get("truck_nums") or uc.get("truck_num")):
-            trucks = uc.get("truck_nums") or [uc["truck_num"]]
+        if uc.get("role") == "driver" and (uc.get("vehicle_nums") or uc.get("vehicle_num")):
+            trucks = uc.get("vehicle_nums") or [uc["vehicle_num"]]
             trucks_str = ", ".join(trucks)
             profile_lines.append(
                 f"\nCRITICAL DRIVER RESTRICTION:"
                 f"\nYou are a driver assigned to truck(s): {trucks_str} ONLY."
                 f"\n- You MUST ONLY query data for your assigned trucks."
                 f"\n- NEVER look up, mention, or reveal data about any other truck."
-                f"\n- When calling any tool, always use truck_name for one of your assigned trucks."
+                f"\n- When calling any tool, always use vehicle_name for one of your assigned trucks."
                 f"\n- Do NOT call fleet-wide tools (fleet summary, all trucks, etc.)."
                 f"\n- If the user asks about another truck or fleet totals, politely decline."
             )
@@ -536,12 +542,12 @@ async def ask_agent(question: str, fleet_context: dict,
                             except (ValueError, KeyError, ImportError) as e:
                                 logger.debug("Tool dispatch error for %s: %s", tool_name, e)
                         if not _blocked and user_role == "driver" and user_context:
-                            assigned_trucks = user_context.get("truck_nums") or []
-                            if not assigned_trucks and user_context.get("truck_num"):
-                                assigned_trucks = [user_context["truck_num"]]
+                            assigned_trucks = user_context.get("vehicle_nums") or []
+                            if not assigned_trucks and user_context.get("vehicle_num"):
+                                assigned_trucks = [user_context["vehicle_num"]]
                             assigned_set = {t.strip().lower() for t in assigned_trucks if t}
                             if assigned_set:
-                                if tool_name in TRUCK_SPECIFIC_TOOLS:
+                                if tool_name in VEHICLE_SPECIFIC_TOOLS:
                                     requested = (tool_args.get("vehicle_name") or "").strip().lower()
                                     if requested and requested not in assigned_set:
                                         _blocked = True

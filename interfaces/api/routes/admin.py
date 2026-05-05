@@ -31,7 +31,7 @@ async def list_users(
     truck_map: dict[int, list[str]] = {}
     company_map: dict[int, list[str]] = {}
     for u in users:
-        trucks = await platform_db.get_user_truck_nums(u.id)
+        trucks = await platform_db.get_user_vehicle_nums(u.id)
         if trucks:
             truck_map[u.id] = trucks
         codes = await platform_db.get_user_company_codes(u.id)
@@ -63,7 +63,6 @@ async def list_users(
 
 # ── User avatar (Telegram profile photo) ─────────────────────
 
-AVATAR_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "avatars")
 AVATAR_MAX_AGE = 86400  # re-fetch after 24 hours
 
 
@@ -78,16 +77,18 @@ async def get_user_avatar(
     if not target or target.account_id != user["account_id"]:
         raise HTTPException(status_code=404, detail="User not found")
 
-    os.makedirs(AVATAR_DIR, exist_ok=True)
-    cached = os.path.join(AVATAR_DIR, f"{target.telegram_id}.jpg")
+    from adapters.storage.object_store import get_object_store
+    store = get_object_store()
+    key = f"{target.telegram_id}.jpg"
 
     # Serve from cache if fresh
-    if os.path.exists(cached) and (time.time() - os.path.getmtime(cached)) < AVATAR_MAX_AGE:
+    cached = store.local_path("avatars", key)
+    if cached and (time.time() - os.path.getmtime(cached)) < AVATAR_MAX_AGE:
         return FileResponse(cached, media_type="image/jpeg")
 
     # Fetch from Telegram
     try:
-        from core.config import TELEGRAM_TOKEN as _token
+        from infra.config import TELEGRAM_TOKEN as _token
         import telegram
         bot = telegram.Bot(token=_token)
         photos = await bot.get_user_profile_photos(user_id=target.telegram_id, limit=1)
@@ -98,9 +99,16 @@ async def get_user_avatar(
         photo_sizes = photos.photos[0]
         best = max(photo_sizes, key=lambda s: s.width * s.height)
         file = await bot.get_file(best.file_id)
-        await file.download_to_drive(cached)
-
-        return FileResponse(cached, media_type="image/jpeg")
+        # Download into a bytearray then persist via the object store so
+        # the backend (disk / future S3) is the single source of truth.
+        import io
+        buf = io.BytesIO()
+        await file.download_to_memory(out=buf)
+        store.put("avatars", key, buf.getvalue())
+        served = store.local_path("avatars", key)
+        if not served:
+            raise HTTPException(status_code=404, detail="Could not fetch avatar")
+        return FileResponse(served, media_type="image/jpeg")
     except HTTPException:
         raise
     except Exception as exc:
@@ -179,47 +187,47 @@ async def update_user_status(
     return {"ok": ok}
 
 
-# ── Truck assignments ─────────────────────────────────────────
+# ── Vehicle assignments ─────────────────────────────────────────
 
-class TruckAssignment(BaseModel):
-    trucks: list[str] = Field(..., max_length=200)
+class VehicleAssignment(BaseModel):
+    trucks: list[str] = Field(..., max_length=200)  # kept as 'trucks' for API compat
 
 
 @router.get("/users/{user_id}/trucks")
-async def get_user_trucks(
+async def get_user_vehicles(
     user_id: int,
     user: dict = Depends(require_permission("can_manage_users")),
     platform_db=Depends(get_platform_db),
 ):
-    """Get all truck assignments for a user."""
+    """Get all vehicle assignments for a user."""
     target = await platform_db.get_user(user_id)
     if not target or target.account_id != user["account_id"]:
         raise HTTPException(status_code=404, detail="User not found")
 
-    trucks = await platform_db.get_user_trucks(user_id)
+    vehicles = await platform_db.get_user_vehicles(user_id)
     return {
         "user_id": user_id,
         "trucks": [
             {
-                "truck_num": t.truck_num,
+                "vehicle_num": t.vehicle_num,
                 "is_primary": t.is_primary,
                 "assigned_at": t.assigned_at,
             }
-            for t in trucks
+            for t in vehicles
         ],
         "legacy_truck_num": target.truck_num,
     }
 
 
 @router.put("/users/{user_id}/trucks")
-async def set_user_trucks(
+async def set_user_vehicles(
     user_id: int,
-    body: TruckAssignment,
+    body: VehicleAssignment,
     user: dict = Depends(require_permission("can_manage_users")),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Set truck assignments for a user. First truck in list is primary."""
+    """Set vehicle assignments for a user. First vehicle in list is primary."""
     target = await platform_db.get_user(user_id)
     if not target or target.account_id != user["account_id"]:
         raise HTTPException(status_code=404, detail="User not found")
@@ -227,24 +235,24 @@ async def set_user_trucks(
     # Validate: non-empty strings only
     cleaned = [t.strip() for t in body.trucks if t.strip()]
     if len(cleaned) != len(set(cleaned)):
-        raise HTTPException(status_code=400, detail="Duplicate truck numbers")
+        raise HTTPException(status_code=400, detail="Duplicate vehicle numbers")
 
-    trucks = await platform_db.set_user_trucks(
+    vehicles = await platform_db.set_user_vehicles(
         user_id, target.account_id, cleaned, assigned_by=int(user["sub"]),
     )
 
     await tenant_db.add_audit_log(
         user["account_id"], int(user["sub"]),
-        "truck_assignment",
+        "vehicle_assignment",
         target_type="user", target_id=str(user_id),
-        details=f"Trucks: {', '.join(cleaned) or 'none'}",
+        details=f"Vehicles: {', '.join(cleaned) or 'none'}",
     )
 
     return {
         "ok": True,
         "trucks": [
-            {"truck_num": t.truck_num, "is_primary": t.is_primary}
-            for t in trucks
+            {"vehicle_num": t.vehicle_num, "is_primary": t.is_primary}
+            for t in vehicles
         ],
     }
 
@@ -550,7 +558,8 @@ async def get_settings(
     """Get all account settings + AI usage stats."""
     # Fetch common settings
     settings: dict[str, str] = {}
-    for key in ("account_name", "alert_defaults", "timezone", "language", "digest_hour"):
+    for key in ("account_name", "alert_defaults", "timezone", "language",
+                "digest_hour", "scorecard_default_subject"):
         val = await tenant_db.get_account_setting(user["account_id"], key)
         if val:
             settings[key] = val
@@ -713,7 +722,7 @@ async def update_bot_config(
         raise HTTPException(status_code=403, detail="Only the account owner can configure the bot")
 
     import aiohttp
-    from adapters.crypto import encrypt
+    from infra.crypto import encrypt
 
     # Validate token with Telegram API
     try:
@@ -749,7 +758,7 @@ async def update_bot_config(
 
     # Hot-reload: start or restart per-account bot
     try:
-        from core.bot_registry import get_registry
+        from infra.bot_registry import get_registry
         registry = get_registry()
         if registry:
             await registry.restart_bot(
@@ -795,7 +804,7 @@ async def delete_bot_config(
 
     # Hot-reload: stop per-account bot
     try:
-        from core.bot_registry import get_registry
+        from infra.bot_registry import get_registry
         registry = get_registry()
         if registry:
             await registry.stop_bot(user["account_id"])
@@ -825,7 +834,7 @@ async def get_bot_config(
 
     # Check if bot is running in the registry
     try:
-        from core.bot_registry import get_registry
+        from infra.bot_registry import get_registry
         registry = get_registry()
         result["is_running"] = bool(registry and registry.get(user["account_id"]))
     except Exception:
@@ -833,7 +842,7 @@ async def get_bot_config(
 
     # Fetch live bot info from Telegram
     try:
-        from adapters.crypto import decrypt
+        from infra.crypto import decrypt
         import aiohttp
 
         token = decrypt(account.bot_token_encrypted)
@@ -851,3 +860,67 @@ async def get_bot_config(
         logger.debug("Telegram getMe failed (partial result returned): %s", e)
 
     return result
+
+
+# ── Role AI guidance ──────────────────────────────────────────────────────────
+
+class RoleGuidanceIn(BaseModel):
+    guidance: str = Field(..., min_length=10, max_length=4000)
+
+
+@router.get("/role-guidance")
+async def get_all_role_guidance(
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+):
+    """Return all per-account AI guidance overrides.
+
+    Each entry describes how the AI should behave for a given role within
+    this account.  Missing roles fall back to the built-in defaults.
+    """
+    account_id = user["account_id"]
+    overrides = await platform_db.get_all_role_ai_guidance(account_id)
+
+    # Return the hardcoded defaults merged with any overrides so callers
+    # can see every role with its active guidance in one response.
+    from capabilities.iam.permissions import Role as RoleEnum, build_role_guidance
+    result = {}
+    for role in RoleEnum:
+        result[role.value] = {
+            "guidance": overrides.get(role.value) or build_role_guidance(role.value),
+            "is_custom": role.value in overrides,
+        }
+    return result
+
+
+@router.put("/role-guidance/{role}")
+async def set_role_guidance(
+    role: str,
+    body: RoleGuidanceIn,
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+):
+    """Set a custom AI guidance override for a role in this account."""
+    from capabilities.iam.permissions import Role as RoleEnum
+    valid_roles = {r.value for r in RoleEnum}
+    if role not in valid_roles:
+        raise HTTPException(status_code=422, detail=f"Unknown role '{role}'. Valid: {sorted(valid_roles)}")
+
+    account_id = user["account_id"]
+    await platform_db.set_role_ai_guidance(account_id, role, body.guidance)
+    return {"status": "ok", "role": role, "guidance": body.guidance}
+
+
+@router.delete("/role-guidance/{role}")
+async def delete_role_guidance(
+    role: str,
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+):
+    """Remove a custom AI guidance override for a role (reverts to built-in default)."""
+    account_id = user["account_id"]
+    deleted = await platform_db.delete_role_ai_guidance(account_id, role)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"No custom guidance found for role '{role}'")
+    return {"status": "ok", "role": role}
+

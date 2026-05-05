@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { apiJSON } from '../api/client';
@@ -30,7 +31,7 @@ function Card({ label, value, color, onClick, subtitle }: CardProps) {
 // ── Driver Overview ──────────────────────────────────────────
 
 function DriverOverview({ stats, navigate }: { stats: DashboardStats; navigate: ReturnType<typeof useNavigate> }) {
-  const truck = stats.my_truck;
+  const truck = stats.my_vehicle;
   const statusColor = truck?.status === 'Moving' ? 'text-green-600 dark:text-green-400' : truck?.status === 'Idle' ? 'text-yellow-600 dark:text-yellow-400' : 'text-destructive';
 
   return (
@@ -146,7 +147,7 @@ function FleetOverview({ stats, navigate, has }: {
           label="Total Vehicles"
           value={f.total}
           color="text-foreground"
-          onClick={has('can_truck_all') ? () => navigate('/fleet/vehicles') : undefined}
+          onClick={has('can_vehicle_all') ? () => navigate('/fleet/vehicles') : undefined}
         />
         <Card label="Moving" value={f.moving} color="text-green-600 dark:text-green-400" />
         <Card label="Idle" value={f.idle} color="text-yellow-700 dark:text-yellow-400" />
@@ -239,18 +240,19 @@ function FleetOverview({ stats, navigate, has }: {
 // ── Main component ───────────────────────────────────────────
 
 export default function Overview() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [error, setError] = useState('');
   const navigate = useNavigate();
   const { has } = usePermissions();
   const { user } = useAuth();
   const isDriver = user?.role === 'driver';
 
-  useEffect(() => {
-    apiJSON<DashboardStats>('/dashboard/stats')
-      .then(setStats)
-      .catch((e) => setError(e.message));
-  }, []);
+  // React Query (Phase E23): cache /dashboard/stats with a short stale
+  // window so navigating back to Overview is instant; refetch is
+  // automatic when the cached value passes ``staleTime``.
+  const { data: stats, error: queryError } = useQuery<DashboardStats>({
+    queryKey: ['dashboard-stats'],
+    queryFn: () => apiJSON<DashboardStats>('/dashboard/stats'),
+  });
+  const error = queryError instanceof Error ? queryError.message : (queryError ? 'Failed to load' : '');
 
   if (error) return <p className="text-destructive">{error}</p>;
   if (!stats) return <p className="text-muted-foreground">Loading...</p>;

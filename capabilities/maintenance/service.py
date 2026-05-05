@@ -11,7 +11,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 
 from constants import METERS_PER_MILE
-from core.services import get_client
+from infra.services import get_client
 from capabilities.iam.permissions import can
 from adapters.storage import Role
 
@@ -124,3 +124,82 @@ async def mark_overdue_tasks_by_mileage(
                 newly_overdue.append(task)
 
     return newly_overdue
+
+
+# ── Auto-maintenance from critical fault codes ────────────────────────────────
+
+# J1939 SPN → maintenance task-type mapping (SSOT).
+# Moved here from capabilities/alerting/ai_maintenance.py so maintenance
+# domain logic is not scattered inside the alerting layer.
+_SPN_MAINTENANCE_MAP: dict[int, str] = {
+    110: "custom",   # Coolant temp
+    111: "custom",   # Coolant level
+    100: "oil",      # Oil pressure
+    101: "oil",      # Oil level
+    91: "brakes",    # Brake pressure
+    97: "custom",    # Water in fuel
+    190: "custom",   # Engine overspeed
+    4331: "custom",  # DEF quality
+    3031: "custom",  # DEF level
+    5246: "custom",  # DEF tank
+}
+
+_SPN_DESCRIPTIONS: dict[int, str] = {
+    110: "Coolant temperature issue",
+    111: "Coolant level issue",
+    100: "Engine oil pressure issue",
+    101: "Engine oil level issue",
+    91: "Brake system pressure issue",
+    97: "Water-in-fuel detected",
+    190: "Engine overspeed event",
+    4331: "DEF quality issue",
+    3031: "DEF level low",
+    5246: "DEF tank issue",
+}
+
+
+async def auto_create_maintenance_from_faults(
+    account_id: int, vehicle_name: str, dtcs: list[dict],
+) -> None:
+    """Auto-create maintenance tasks from critical fault codes.
+
+    Only creates a task if one doesn't already exist (pending/overdue)
+    for the same vehicle and task type.
+    """
+    from infra.services import get_tenant_db  # local import avoids circular deps
+
+    try:
+        tenant = await get_tenant_db(account_id)
+        existing = await tenant.get_maintenance_tasks(account_id, vehicle_name=vehicle_name)
+        existing_types = {
+            (t["vehicle_name"], t["task_type"])
+            for t in existing
+            if t["status"] in ("pending", "overdue")
+        }
+
+        for dtc in dtcs:
+            spn = dtc.get("spnId")
+            if spn not in _SPN_MAINTENANCE_MAP:
+                continue
+
+            task_type = _SPN_MAINTENANCE_MAP[spn]
+            if (vehicle_name, task_type) in existing_types:
+                continue  # already has a pending task
+
+            desc = _SPN_DESCRIPTIONS.get(spn, f"Auto-created from SPN {spn}")
+            fmi_desc = dtc.get("fmiDescription", "")
+            if fmi_desc:
+                desc += f" ({fmi_desc})"
+
+            await tenant.add_maintenance_task(
+                account_id=account_id,
+                company_code="",
+                vehicle_name=vehicle_name,
+                task_type=task_type,
+                description=f"🤖 Auto-created: {desc}",
+                created_by=0,  # system-generated
+            )
+            existing_types.add((vehicle_name, task_type))
+            logger.info("Auto-maintenance: %s → %s (SPN %s)", vehicle_name, task_type, spn)
+    except Exception as e:
+        logger.error("Auto-maintenance creation failed: %s", e)

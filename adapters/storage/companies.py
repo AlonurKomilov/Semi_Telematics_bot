@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-from adapters.crypto import encrypt as _enc
-
 from .models import Company
 
 
@@ -19,6 +17,7 @@ class CompaniesMixin:
         """Add a Samsara company to an account."""
         now = self._now()
         code = code.strip().upper()
+        from infra.crypto import encrypt as _enc
         encrypted_key = _enc(samsara_api_key)
         cur = await self._db.execute(
             """INSERT INTO companies
@@ -94,6 +93,7 @@ class CompaniesMixin:
         if not updates:
             return False
         if "samsara_api_key" in updates:
+            from infra.crypto import encrypt as _enc
             updates["samsara_api_key"] = _enc(updates["samsara_api_key"])
         set_clause = ", ".join(f"{k} = ?" for k in updates)
         if account_id:

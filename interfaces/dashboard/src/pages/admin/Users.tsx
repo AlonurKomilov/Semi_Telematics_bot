@@ -93,7 +93,7 @@ const userColumns: AnyColumn[] = [
   }},
   { key: 'role', label: 'Role', sortable: true, render: (v) => <RoleBadge role={String(v)} /> },
   { key: 'department', label: 'Department', sortable: true },
-  { key: 'trucks', label: 'Trucks', sortable: false, render: (_v, row) => {
+  { key: 'vehicles', label: 'Trucks', sortable: false, render: (_v, row) => {
     const u = row as unknown as AdminUser;
     const trucks = u.trucks?.length ? u.trucks : u.truck_num ? [u.truck_num] : [];
     if (!trucks.length) return <span className="text-muted-foreground text-xs">All</span>;
@@ -127,9 +127,9 @@ export default function Users() {
   const [roleFilter, setRoleFilter] = useState<string | null>(null);
 
   // Truck assignment
-  const [editTrucks, setEditTrucks] = useState<string[]>([]);
-  const [newTruck, setNewTruck] = useState('');
-  const [savingTrucks, setSavingTrucks] = useState(false);
+  const [editVehicles, setEditTrucks] = useState<string[]>([]);
+  const [newVehicle, setNewTruck] = useState('');
+  const [savingVehicles, setSavingTrucks] = useState(false);
   const [fleetVehicles, setFleetVehicles] = useState<FleetVehicle[]>([]);
 
   // Company assignment
@@ -154,7 +154,7 @@ export default function Users() {
   // Load fleet vehicles for truck autocomplete
   const loadFleetVehicles = useCallback(async () => {
     try {
-      const data = await apiJSON<{ vehicles: FleetVehicle[] }>('/fleet/vehicles');
+      const data = await apiJSON<{ vehicles: FleetVehicle[] }>('/vehicles');
       setFleetVehicles(data.vehicles || []);
     } catch { /* ignore - autocomplete just won't work */ }
   }, []);
@@ -210,7 +210,7 @@ export default function Users() {
     });
   }, [fleetVehicles, unrestricted, editCompanyIds, allCompanies]);
 
-  // Sync editTrucks when selecting a user
+  // Sync editVehicles when selecting a user
   useEffect(() => {
     if (selected) {
       const trucks = selected.trucks?.length ? [...selected.trucks] : selected.truck_num ? [selected.truck_num] : [];
@@ -239,7 +239,7 @@ export default function Users() {
         method: 'PUT',
         body: { company_ids: unrestricted ? [] : editCompanyIds },
       });
-      const uniqueTrucks = [...new Set(editTrucks)];
+      const uniqueTrucks = [...new Set(editVehicles)];
       await apiJSON('/admin/users/' + userId + '/trucks', { method: 'PUT', body: { trucks: uniqueTrucks } });
       setSuccess('Access saved');
       await loadUsers();
@@ -363,7 +363,7 @@ export default function Users() {
                       {/* Quick summary */}
                       <div className="grid grid-cols-2 gap-3 mt-4">
                         <div className="bg-muted/50 rounded-lg p-3 text-center">
-                          <div className="text-lg font-bold text-primary">{editTrucks.length}</div>
+                          <div className="text-lg font-bold text-primary">{editVehicles.length}</div>
                           <div className="text-xs text-muted-foreground">Trucks Assigned</div>
                         </div>
                         <div className="bg-muted/50 rounded-lg p-3 text-center">
@@ -472,8 +472,8 @@ export default function Users() {
                         </div>
                         <h3 className="text-sm font-semibold text-foreground/80 mb-1 flex items-center gap-2">
                           🚛 Vehicle Assignments
-                          {editTrucks.length > 0 && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-400">{editTrucks.length}</span>
+                          {editVehicles.length > 0 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-400">{editVehicles.length}</span>
                           )}
                         </h3>
                         <p className="text-xs text-muted-foreground mb-3">
@@ -497,27 +497,27 @@ export default function Users() {
                           <>
                             <div className="flex items-center justify-between mb-2">
                               <div className="flex items-center gap-2">
-                                {editTrucks.length === 0 ? (
+                                {editVehicles.length === 0 ? (
                                   <span className="text-xs text-muted-foreground italic">No vehicles assigned — sees all</span>
                                 ) : (
-                                  <span className="text-xs text-muted-foreground">{editTrucks.length} selected</span>
+                                  <span className="text-xs text-muted-foreground">{editVehicles.length} selected</span>
                                 )}
                               </div>
                               <button
                                 type="button"
                                 onClick={() => {
-                                  if (editTrucks.length === companyFilteredVehicles.length) setEditTrucks([]);
+                                  if (editVehicles.length === companyFilteredVehicles.length) setEditTrucks([]);
                                   else setEditTrucks(companyFilteredVehicles.map(v => v.name));
                                 }}
                                 className="text-[10px] text-primary hover:text-primary/80 uppercase tracking-wider"
                               >
-                                {editTrucks.length === companyFilteredVehicles.length ? 'Deselect All' : 'Select All'}
+                                {editVehicles.length === companyFilteredVehicles.length ? 'Deselect All' : 'Select All'}
                               </button>
                             </div>
 
                             {/* Search filter */}
                             <input
-                              value={newTruck}
+                              value={newVehicle}
                               onChange={e => setNewTruck(e.target.value)}
                               placeholder="Search vehicles..."
                               className="w-full bg-muted border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-ring mb-2"
@@ -525,15 +525,15 @@ export default function Users() {
 
                             <div className="space-y-1.5 mb-3 max-h-64 overflow-y-auto">
                               {companyFilteredVehicles
-                                .filter(v => !newTruck.trim() || v.name.toLowerCase().includes(newTruck.toLowerCase()))
+                                .filter(v => !newVehicle.trim() || v.name.toLowerCase().includes(newVehicle.toLowerCase()))
                                 .map(v => {
-                                  const checked = editTrucks.includes(v.name);
+                                  const checked = editVehicles.includes(v.name);
                                   return (
                                     <div
                                       key={v.name}
                                       onClick={() => {
-                                        if (checked) setEditTrucks(editTrucks.filter(t => t !== v.name));
-                                        else setEditTrucks([...editTrucks, v.name]);
+                                        if (checked) setEditTrucks(editVehicles.filter(t => t !== v.name));
+                                        else setEditTrucks([...editVehicles, v.name]);
                                       }}
                                       className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition border ${
                                         checked
@@ -550,7 +550,7 @@ export default function Users() {
                                         <span className="text-sm font-medium">{v.name}</span>
                                         {v.company && <span className="text-xs text-muted-foreground ml-2">{v.company}</span>}
                                       </div>
-                                      {checked && editTrucks.indexOf(v.name) === 0 && selected.role === 'driver' && (
+                                      {checked && editVehicles.indexOf(v.name) === 0 && selected.role === 'driver' && (
                                         <span className="text-[10px] text-primary uppercase tracking-wider">primary</span>
                                       )}
                                     </div>
@@ -568,10 +568,10 @@ export default function Users() {
                       {/* Single save button for companies + vehicles */}
                       <button
                         onClick={() => handleSaveAccess(selected.id)}
-                        disabled={savingCompanies || savingTrucks}
+                        disabled={savingCompanies || savingVehicles}
                         className="w-full py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-lg text-sm font-semibold transition"
                       >
-                        {savingCompanies || savingTrucks ? 'Saving...' : 'Save Access'}
+                        {savingCompanies || savingVehicles ? 'Saving...' : 'Save Access'}
                       </button>
                     </div>
                   )}

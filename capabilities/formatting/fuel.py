@@ -1,6 +1,6 @@
 """Fuel report and low-fuel alert formatters."""
 
-from core.context import get_company_display
+from infra.context import get_company_display
 from capabilities.formatting.helpers import (
     _t, _short_location, _fuel_bar, _company_tag,
 )

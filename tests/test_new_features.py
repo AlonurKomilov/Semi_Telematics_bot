@@ -1450,7 +1450,7 @@ class TestParkingMapRender:
             "REASON: Truck is on the highway shoulder near an interchange."
         )
 
-        with patch("capabilities.alerting.parking._render_parking_map", return_value=mock_map), \
+        with patch("capabilities.parking.ai_vision._render_parking_map", return_value=mock_map), \
              patch("capabilities.ai.is_configured", return_value=True), \
              patch("capabilities.ai.generate_with_vision", new_callable=AsyncMock,
                    return_value=mock_vision_response) as mock_gv, \
@@ -1472,7 +1472,7 @@ class TestParkingMapRender:
         from capabilities.alerting import _get_ai_parking_analysis
         from unittest.mock import patch, AsyncMock
 
-        with patch("capabilities.alerting.parking._render_parking_map", return_value=None), \
+        with patch("capabilities.parking.ai_vision._render_parking_map", return_value=None), \
              patch("capabilities.ai.is_configured", return_value=True), \
              patch("capabilities.ai.generate", new_callable=AsyncMock,
                    return_value="SAFE. This is a truck stop.") as mock_gen, \

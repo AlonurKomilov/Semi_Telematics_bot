@@ -133,7 +133,7 @@ html, body {
 }
 
 /* Custom map markers */
-.truck-marker {
+.vehicle-marker {
     width: 32px;
     height: 32px;
     border-radius: 50%;
@@ -146,13 +146,13 @@ html, body {
     transition: transform 0.2s;
 }
 
-.truck-marker:hover {
+.vehicle-marker:hover {
     transform: scale(1.2);
 }
 
-.truck-marker.moving { background: var(--status-moving); }
-.truck-marker.idle { background: var(--status-idle); }
-.truck-marker.stopped { background: var(--status-stopped); }
+.vehicle-marker.moving { background: var(--status-moving); }
+.vehicle-marker.idle { background: var(--status-idle); }
+.vehicle-marker.stopped { background: var(--status-stopped); }
 
 /* Marker cluster overrides */
 .marker-cluster-small {

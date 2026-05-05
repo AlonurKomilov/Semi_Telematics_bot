@@ -68,8 +68,8 @@ class FeatureSet:
     can_fuel: bool = False           # /fuel
     can_efficiency: bool = False     # /efficiency
     can_health: bool = False         # /health
-    can_truck_all: bool = False      # /truck <any>
-    can_truck_own: bool = False      # /truck <own> (driver)
+    can_vehicle_all: bool = False      # /vehicle <any>
+    can_vehicle_own: bool = False      # /vehicle <own> (driver)
 
     # Alerts
     can_alerts_all: bool = False     # new fault alerts (all trucks)
@@ -90,8 +90,8 @@ class FeatureSet:
     can_digest: bool = False            # auto reports subscription
     can_maintenance_all: bool = False   # maintenance scheduler (all trucks)
     can_maintenance_own: bool = False   # maintenance scheduler (own truck)
-    can_scorecard_all: bool = False     # driver scorecards (all drivers)
-    can_scorecard_own: bool = False     # driver scorecards (own only)
+    can_scorecard_all: bool = False     # scorecards for all subjects (driver or vehicle)
+    can_scorecard_own: bool = False     # scorecards for own assigned truck(s) only
     can_location_map: bool = False      # live location map (all trucks)
     can_location_own: bool = False      # live location map (own truck)
     can_fuel_cost: bool = False         # fuel cost tracker
@@ -101,6 +101,7 @@ class FeatureSet:
     can_events_all: bool = False        # safety events (all trucks)
     can_events_own: bool = False        # safety events (own truck)
     can_manage_billing: bool = False    # billing & subscription management (owner + admin)
+    can_manage_poi_layers: bool = False # create/edit/delete custom POI map layers (owner/admin/fleet)
 
 
 # ─── Role → Permission Map ───────────────────────────────────────
@@ -109,7 +110,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
     Role.OWNER: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=True,
         can_efficiency=True, can_health=True,
-        can_truck_all=True, can_truck_own=True,
+        can_vehicle_all=True, can_vehicle_own=True,
         can_alerts_all=True, can_alerts_own=True,
         can_invite=True, can_manage_users=True,
         can_manage_companies=True, can_manage_account=True,
@@ -124,11 +125,12 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_cost_per_mile=True,
         can_events_all=True, can_events_own=True,
         can_manage_billing=True,
+        can_manage_poi_layers=True,
     ),
     Role.ADMIN: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=True,
         can_efficiency=True, can_health=True,
-        can_truck_all=True, can_truck_own=True,
+        can_vehicle_all=True, can_vehicle_own=True,
         can_alerts_all=True, can_alerts_own=True,
         can_invite=True, can_manage_users=True,
         can_manage_companies=False, can_manage_account=False,
@@ -143,11 +145,12 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_cost_per_mile=True,
         can_events_all=True, can_events_own=True,
         can_manage_billing=True,
+        can_manage_poi_layers=True,
     ),
     Role.FLEET: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=True,
         can_efficiency=True, can_health=True,
-        can_truck_all=True, can_truck_own=True,
+        can_vehicle_all=True, can_vehicle_own=True,
         can_alerts_all=True, can_alerts_own=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
@@ -161,11 +164,12 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_route_all=True, can_route_own=True,
         can_cost_per_mile=True,
         can_events_all=True, can_events_own=True,
+        can_manage_poi_layers=True,
     ),
     Role.SAFETY: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=False,
         can_efficiency=False, can_health=True,
-        can_truck_all=True, can_truck_own=True,
+        can_vehicle_all=True, can_vehicle_own=True,
         can_alerts_all=True, can_alerts_own=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
@@ -183,7 +187,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
     Role.DISPATCHER: FeatureSet(
         can_faults=False, can_critical=False, can_fuel=True,
         can_efficiency=False, can_health=False,
-        can_truck_all=True, can_truck_own=True,
+        can_vehicle_all=True, can_vehicle_own=True,
         can_alerts_all=False, can_alerts_own=False,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
@@ -201,7 +205,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
     Role.DRIVER: FeatureSet(
         can_faults=False, can_critical=False, can_fuel=False,
         can_efficiency=False, can_health=False,
-        can_truck_all=False, can_truck_own=True,
+        can_vehicle_all=False, can_vehicle_own=True,
         can_alerts_all=False, can_alerts_own=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
@@ -247,7 +251,7 @@ async def get_account_permissions(
         return cached
 
     try:
-        from core.platform import get_platform_db
+        from infra.platform import get_platform_db
         pdb = get_platform_db()
         role_str = role.value if hasattr(role, "value") else role
         perm_dict = await pdb.get_role_permissions(account_id, role_str, company_id)
@@ -335,8 +339,8 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_fuel": "fuel levels",
     "can_efficiency": "driver efficiency",
     "can_health": "vehicle health",
-    "can_truck_all": "all trucks",
-    "can_truck_own": "own truck only",
+    "can_vehicle_all": "all vehicles",
+    "can_vehicle_own": "own vehicle only",
     "can_alerts_all": "alerts for all trucks",
     "can_alerts_own": "alerts for own truck",
     "can_invite": "invite users",
@@ -372,7 +376,9 @@ def build_role_guidance(role_str: str) -> str:
     try:
         role = Role(role_str)
     except (ValueError, KeyError):
-        return "Unknown role — give a general fleet-level answer."
+        # Unknown role: use the most restrictive safe default — do not
+        # assume fleet-manager scope for an unrecognised identity.
+        return "Unknown role — answer only with publicly visible information and avoid disclosing any user, vehicle, or operational data."
 
     perms = get_permissions(role)
     allowed: list[str] = []
@@ -409,10 +415,29 @@ def build_role_guidance(role_str: str) -> str:
         )
     elif role == Role.FLEET:
         lines.append(
-            "Focus on vehicle health, maintenance, fault trends."
+            "Focus on vehicle health, maintenance, fault trends, safety events, "
+            "scorecards, compliance, live locations, routes, geofences, and alerts. "
+            "This role has full operational visibility but cannot manage users or account settings."
         )
 
     return "\n".join(lines)
+
+
+async def build_role_guidance_for_account(db, account_id: int, role_str: str) -> str:
+    """Like build_role_guidance() but checks for a per-account DB override first.
+
+    If the account has set a custom guidance string for *role_str*, that string
+    is returned instead of the auto-generated one.  Falls back to the default
+    sync implementation when no override exists or when db is None.
+    """
+    if db is not None and account_id:
+        try:
+            override = await db.get_role_ai_guidance(account_id, role_str)
+            if override:
+                return override
+        except Exception:
+            pass  # any DB error → fall back to defaults
+    return build_role_guidance(role_str)
 
 
 # ─── Menu visibility — which buttons to show per role ─────────────
@@ -502,27 +527,27 @@ def is_management_role(role: Role | str) -> bool:
 # None means always allowed.
 TOOL_PERMISSIONS: dict[str, list[str] | None] = {
     "get_vehicle_faults":       ["can_faults", "can_critical"],              # owner/admin/fleet/safety
-    "get_vehicle_detail":       ["can_truck_all", "can_truck_own"],          # all roles
+    "get_vehicle_detail":       ["can_vehicle_all", "can_vehicle_own"],          # all roles
     "get_driver_efficiency":    ["can_efficiency"],                          # owner/admin/fleet
     "get_low_fuel_vehicles":    ["can_fuel"],                                # owner/admin/fleet/dispatcher
     "get_vehicle_health":       ["can_health"],                              # owner/admin/fleet/safety
-    "get_weather":              ["can_truck_all"],                           # all except driver
+    "get_weather":              ["can_vehicle_all"],                           # all except driver
     "get_efficiency_summary":   ["can_efficiency"],                          # owner/admin/fleet
     "get_vehicle_location":     ["can_location_map", "can_location_own"],    # all roles
     "get_geofences":            ["can_geofence_all", "can_geofence_own"],    # all roles
-    "get_account_stats":        ["can_truck_all"],                           # all except driver
+    "get_account_stats":        ["can_vehicle_all"],                           # all except driver
     "get_vehicle_events":       ["can_events_all", "can_events_own"],        # owner/admin/fleet/safety/driver(own)
     "get_events_summary":       ["can_events_all"],                          # owner/admin/fleet/safety
     "get_vehicle_maintenance":  ["can_maintenance_all", "can_maintenance_own"],  # owner/admin/fleet/safety/driver(own)
     "get_maintenance_summary":  ["can_maintenance_all"],                     # owner/admin/fleet/safety
     "get_vehicle_fuel_costs":   ["can_fuel_cost"],                           # owner/admin/fleet
     "get_fuel_cost_summary":    ["can_fuel_cost"],                           # owner/admin/fleet
-    "check_vehicle_camera":     ["can_truck_all"],                           # all except driver
+    "check_vehicle_camera":     ["can_vehicle_all"],                           # all except driver
     "get_driver_scorecard":     ["can_scorecard_all", "can_scorecard_own"],  # all except dispatcher
     "get_rolling_stopped":      ["can_rolling_stopped"],                     # owner/admin/dispatcher
-    "get_vehicle_odometer":     ["can_truck_all", "can_truck_own"],          # all roles
-    "get_drivers_list":         ["can_truck_all"],                           # all except driver
-    "search_vehicles":          ["can_truck_all"],                           # all except driver
+    "get_vehicle_odometer":     ["can_vehicle_all", "can_vehicle_own"],          # all roles
+    "get_drivers_list":         ["can_vehicle_all"],                           # all except driver
+    "search_vehicles":          ["can_vehicle_all"],                           # all except driver
     "search_knowledge_base":    None,                                        # all roles
 }
 

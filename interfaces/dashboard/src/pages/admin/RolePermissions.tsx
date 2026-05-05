@@ -48,7 +48,7 @@ const PERM_GROUPS: PermGroup[] = [
     title: 'Core',
     icon: '📊',
     flags: [
-      { allKey: 'can_truck_all', ownKey: 'can_truck_own', label: 'Vehicles', scoped: true },
+      { allKey: 'can_vehicle_all', ownKey: 'can_vehicle_own', label: 'Vehicles', scoped: true },
       { allKey: 'can_alerts_all', ownKey: 'can_alerts_own', label: 'Alerts', scoped: true },
       { allKey: 'can_geofence_all', ownKey: 'can_geofence_own', label: 'Geofences', scoped: true },
       { key: 'can_digest', label: 'Report Subscriptions' },

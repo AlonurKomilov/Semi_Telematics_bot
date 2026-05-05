@@ -35,7 +35,7 @@ async def user_me(
     }
 
     # Get multi-truck assignments
-    trucks = await platform_db.get_user_truck_nums(db_user.id)
+    trucks = await platform_db.get_user_vehicle_nums(db_user.id)
     if not trucks and db_user.truck_num:
         trucks = [db_user.truck_num]
 

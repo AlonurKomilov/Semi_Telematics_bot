@@ -1,4 +1,9 @@
 /**
+ * @deprecated  This file is dead code — the canonical miniapp map is
+ * interfaces/miniapp/src/pages/MapPage.tsx, loaded by Vite via index.html →
+ * src/main.tsx.  This pre-React implementation is only referenced by
+ * js/app.js (also dead).  Safe to delete in a follow-up cleanup PR.
+ *
  * Interactive Fleet Map — Leaflet.js with vehicle markers, clustering, popups.
  */
 const FleetMap = (() => {

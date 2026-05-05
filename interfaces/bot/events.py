@@ -62,8 +62,8 @@ async def cmd_events_text(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         # Driver role: filter to own vehicle events only
         if user.role == Role.DRIVER and not can(user.role, "can_events_all"):
-            truck_nums = [user.truck_num] if user.truck_num else []
-            events = _filter_events_by_access(events, truck_nums)
+            vehicle_nums = [user.truck_num] if user.truck_num else []
+            events = _filter_events_by_access(events, vehicle_nums)
 
         if not events:
             await _show(update, context,
@@ -98,8 +98,8 @@ async def cmd_events_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         # Driver role: filter to own vehicle events only
         if user.role == Role.DRIVER and not can(user.role, "can_events_all"):
-            truck_nums = [user.truck_num] if user.truck_num else []
-            events = _filter_events_by_access(events, truck_nums)
+            vehicle_nums = [user.truck_num] if user.truck_num else []
+            events = _filter_events_by_access(events, vehicle_nums)
 
         from capabilities.reporting import generate_events_csv
         csv_buf = await asyncio.to_thread(generate_events_csv, events, days)

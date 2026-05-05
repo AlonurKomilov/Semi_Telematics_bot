@@ -25,7 +25,7 @@ const NAV_GROUPS: NavGroup[] = [
     title: null,
     items: [
       { label: 'Overview',             path: '/',                      icon: LayoutDashboard, permission: null },
-      { label: 'Vehicles',             path: '/fleet/vehicles',        icon: Truck,           permission: ['can_truck_all', 'can_truck_own'] },
+      { label: 'Vehicles',             path: '/fleet/vehicles',        icon: Truck,           permission: ['can_vehicle_all', 'can_vehicle_own'] },
       { label: 'Alerts',               path: '/dispatch/alerts',       icon: Bell,            permission: ['can_alerts_all', 'can_alerts_own'] },
       { label: 'AI Assistant',         path: '/ai/chat',               icon: Bot,             permission: 'can_faults' },
       { label: 'Reports',              path: '/reports',               icon: FileText,        permission: null },
@@ -37,7 +37,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: 'Fleet',
     items: [
-      { label: 'Weather',     path: '/fleet/weather', icon: Thermometer, permission: ['can_truck_all', 'can_truck_own'] },
+      { label: 'Weather',     path: '/fleet/weather', icon: Thermometer, permission: ['can_vehicle_all', 'can_vehicle_own'] },
       { label: 'Maintenance', path: '/maintenance',   icon: Wrench,      permission: ['can_maintenance_all', 'can_maintenance_own'] },
     ],
   },
@@ -64,6 +64,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Team Management',  path: '/admin/users',       icon: Users,         permission: ['can_manage_users'] },
       { label: 'Role Permissions', path: '/admin/permissions', icon: Shield,        permission: ['can_manage_account'] },
+      { label: 'Scorecard Rules',  path: '/admin/scorecard-rules', icon: Trophy,    permission: ['can_manage_account'] },
       { label: 'Companies',        path: '/admin/companies',   icon: Building2,     permission: ['can_manage_companies'] },
       { label: 'Invites',          path: '/admin/invites',     icon: Link,          permission: ['can_invite'] },
       { label: 'Audit Log',        path: '/admin/audit',       icon: ClipboardList, permission: ['can_manage_users'] },

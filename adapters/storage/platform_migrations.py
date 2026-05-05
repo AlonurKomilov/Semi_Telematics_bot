@@ -22,6 +22,8 @@ async def run_all(conn) -> None:
     await migrate_user_companies_table(conn)
     await migrate_billing_tables(conn)
     await migrate_ai_chat_history(conn)
+    await migrate_add_role_ai_guidance(conn)
+    await migrate_add_error_log(conn)
 
 
 async def migrate_ai_chat_history(conn) -> None:
@@ -427,3 +429,48 @@ async def migrate_billing_tables(conn) -> None:
         logger.info("Billing tables created/verified")
     except Exception as e:
         logger.debug("billing_tables migration skipped: %s", e)
+
+
+async def migrate_add_role_ai_guidance(conn) -> None:
+    """Create role_ai_guidance table for per-account AI behaviour overrides."""
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS role_ai_guidance (
+                account_id  INTEGER NOT NULL REFERENCES accounts(id),
+                role        TEXT    NOT NULL,
+                guidance    TEXT    NOT NULL,
+                updated_at  TEXT    NOT NULL DEFAULT '',
+                PRIMARY KEY (account_id, role)
+            );
+            CREATE INDEX IF NOT EXISTS idx_role_ai_guidance_account
+                ON role_ai_guidance(account_id);
+        """)
+        await conn.commit()
+        logger.info("role_ai_guidance table created/verified")
+    except Exception as e:
+        logger.debug("role_ai_guidance migration skipped: %s", e)
+
+
+async def migrate_add_error_log(conn) -> None:
+    """Create error_log table for built-in error reporter."""
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS error_log (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                source      TEXT    NOT NULL,
+                job_name    TEXT,
+                account_id  INTEGER,
+                error_type  TEXT    NOT NULL,
+                error_msg   TEXT    NOT NULL,
+                traceback   TEXT,
+                created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_error_log_created
+                ON error_log(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_error_log_source
+                ON error_log(source, created_at DESC);
+        """)
+        await conn.commit()
+        logger.info("error_log table created/verified")
+    except Exception as e:
+        logger.debug("error_log migration skipped: %s", e)

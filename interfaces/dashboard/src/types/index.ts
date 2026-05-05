@@ -1,8 +1,8 @@
 // ── User & Auth ──────────────────────────────────────────────
 
 export interface Permissions {
-  can_truck_all: boolean;
-  can_truck_own: boolean;
+  can_vehicle_all: boolean;
+  can_vehicle_own: boolean;
   can_location_map: boolean;
   can_location_own: boolean;
   can_alerts_all: boolean;
@@ -31,6 +31,7 @@ export interface Permissions {
   can_efficiency: boolean;
   can_rolling_stopped: boolean;
   can_digest: boolean;
+  can_manage_poi_layers: boolean;
   [key: string]: boolean;
 }
 
@@ -143,7 +144,7 @@ export interface Fault {
 }
 
 export interface FaultsResponse {
-  truck: string;
+  vehicle: string;
   faults: Fault[];
 }
 
@@ -167,7 +168,7 @@ export interface DashboardStats {
   maintenance_due?: number;
   // Driver-specific
   truck_num?: string;
-  my_truck?: {
+  my_vehicle?: {
     name: string;
     status: string;
     speed_mph: number;
@@ -212,6 +213,10 @@ export interface MapVehicleProperties {
   address?: string;
   speed_mph?: number;
   engine_state?: string;
+  // Authoritative status computed server-side from CAN-bus engineStates +
+  // speed (see capabilities/location/service.py).  LiveMap reads this
+  // directly; the local heuristic is a fallback for old payloads/tests.
+  status?: 'moving' | 'idle' | 'stopped' | string;
   fuel_percent?: number;
   def_percent?: number;
   company?: string;
@@ -335,6 +340,117 @@ export interface ScorecardsResponse {
   scorecards: Scorecard[];
   count: number;
   days: number;
+}
+
+// ── Composite (feature-driven) scorecards ────────────────────
+
+export interface ScoreEventBreakdown {
+  rule_id: string;
+  label: string;
+  category: string;       // 'safety' | 'fleet' | 'efficiency' | … (legacy UI grouping)
+  pillar?: PillarKey;     // 'safety' | 'efficiency' | 'compliance' (new)
+  kind: string;           // 'bonus' | 'penalty'
+  points: number;         // signed
+  occurrences: number;
+  source: string;         // 🅢 / 🅘 / 🅜 badge
+}
+
+// ── Audit Option C: pillar-aware shape ─────────────────────────
+
+export type PillarKey = 'safety' | 'efficiency' | 'compliance';
+
+export interface PillarSummary {
+  cap: number;            // pillar budget (50/25/25)
+  subtotal: number;       // 0..cap, clamped
+  bonus_total: number;
+  penalty_total: number;  // signed (≤ 0)
+  events: ScoreEventBreakdown[];
+  has_data: boolean;      // false ⇒ render "n/a"
+}
+
+export interface RuleCurve {
+  curve_kind: string | null;
+  curve_x_zero: number | null;
+  curve_x_max:  number | null;
+  curve_y_max:  number | null;
+}
+
+export interface CompositeScorecard {
+  driver_id: string;
+  driver_name: string;
+  /** Phase B — canonical subject identity.  ``driver_id``/``driver_name``
+   *  are kept as aliases that always carry the same value. */
+  subject_id?: string;
+  subject_name?: string;
+  subject_type?: 'driver' | 'vehicle';
+  company: string;
+  /** Phase F (driver-inline) — populated only when ``subject_type``
+   *  is ``vehicle``.  Samsara-paired driver wins; ``assigned_driver_name``
+   *  is the manual fallback from the per-account driver→truck map. */
+  paired_driver_name?: string | null;
+  assigned_driver_name?: string | null;
+  /** Phase F (sparkline) — last ~14 daily totals (oldest → newest)
+   *  pulled from ``daily_scorecard_snapshots``.  Empty array when the
+   *  subject has no snapshots yet (new tenants, or trucks added mid-window). */
+  score_trend?: number[];
+  // ── New canonical fields (Audit Option C) ─────────────────
+  total?: number;                                 // 0-100, sum of pillar subtotals
+  pillars?: Record<PillarKey, PillarSummary>;     // optional during one-release transition
+  exposure?: {
+    miles: number;
+    drive_hours: number;
+    idle_hours: number;
+  };
+  insufficient_data?: boolean;
+  // ── Legacy aliases (kept for one release) ─────────────────
+  score: number;          // = total when new shape present
+  base: number;           // 0 in new shape
+  bonus_total: number;
+  penalty_total: number;
+  bonuses: ScoreEventBreakdown[];
+  penalties: ScoreEventBreakdown[];
+  inputs: {
+    miles: number;
+    mpg: number;
+    drive_hours: number;
+    idle_hours: number;
+    drive_pct: number;
+    idle_pct: number;
+    eco_pct: number;
+    overspeed_min: number;
+    coast_min: number;
+    cruise_min: number;
+    anticipatory_braking_pct: number;
+    _source: string;
+  };
+}
+
+export interface CompositeScorecardsResponse {
+  scorecards: CompositeScorecard[];
+  count: number;
+  days: number;
+  /** Phase B — echoes back the ?subject= the request used. */
+  subject?: 'driver' | 'vehicle';
+}
+
+export interface ScoreHistoryPoint {
+  date: string;
+  score: number;
+  /**
+   * Audit Option C — present when the row was filtered to a specific
+   * pillar (`?pillar=safety|efficiency|compliance`).  ``false`` means
+   * the snapshot existed but the pillar didn't have enough exposure
+   * data to produce a score.
+   */
+  has_data?: boolean;
+}
+
+export interface ScoreHistoryResponse {
+  driver_id: string;
+  /** Audit Option C — echoed when the request used `?pillar=`. */
+  pillar?: 'safety' | 'efficiency' | 'compliance' | null;
+  history: ScoreHistoryPoint[];
+  count: number;
 }
 
 export interface SafetyEvent {

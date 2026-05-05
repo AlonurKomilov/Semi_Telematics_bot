@@ -2,10 +2,23 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    class _MixinBase:
+        """Typing stub — attributes provided by the concrete DB class at runtime."""
+        _db: Any
+
+        async def read_all(self, sql: str, params: tuple = ()) -> list: ...
+        async def read_one(self, sql: str, params: tuple = ()) -> Any: ...
+        @staticmethod
+        def _now() -> str: ...
+else:
+    _MixinBase = object
 
 
-class AlertsMixin:
+class AlertsMixin(_MixinBase):
 
     # ── Alert Acknowledgments ─────────────────────────────────────
 
@@ -65,27 +78,25 @@ class AlertsMixin:
         Used to retrieve the previous message_id for deletion before sending
         a new INFO alert to the same subscriber.
         """
-        cur = await self._db.execute(
+        row = await self.read_one(
             "SELECT * FROM alert_acknowledgments "
             "WHERE account_id = ? AND vehicle_id = ? AND alert_type = ? "
             "AND sent_to = ? AND status = 'info' "
             "ORDER BY created_at DESC LIMIT 1",
             (account_id, vehicle_id, alert_type, sent_to),
         )
-        row = await cur.fetchone()
         return dict(row) if row else None
 
     async def get_active_vehicle_acks(
         self, account_id: int, vehicle_id: str, sent_to: int,
     ) -> list[dict]:
         """Get active (unacked) alert acks for a vehicle/subscriber pair."""
-        cur = await self._db.execute(
+        rows = await self.read_all(
             "SELECT * FROM alert_acknowledgments "
             "WHERE account_id = ? AND vehicle_id = ? AND sent_to = ? "
             "AND acknowledged_at IS NULL AND status = 'active'",
             (account_id, vehicle_id, sent_to),
         )
-        rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
     async def supersede_alert_ack(self, ack_id: int, account_id: int = 0):
@@ -140,12 +151,11 @@ class AlertsMixin:
         self, account_id: int, limit: int = 50,
     ) -> list[dict]:
         """Get alert acknowledgment history for an account (all statuses)."""
-        cur = await self._db.execute(
+        rows = await self.read_all(
             "SELECT * FROM alert_acknowledgments WHERE account_id = ? "
             "ORDER BY created_at DESC LIMIT ?",
             (account_id, limit),
         )
-        rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
     async def get_pending_alerts(self, account_id: int) -> list[dict]:
@@ -157,7 +167,7 @@ class AlertsMixin:
         Acks that have no history row at all are included (conservative: the
         ack is genuinely active even if history wasn't written yet).
         """
-        cur = await self._db.execute(
+        rows = await self.read_all(
             """SELECT a.*
                FROM alert_acknowledgments a
                LEFT JOIN alert_history h
@@ -170,7 +180,6 @@ class AlertsMixin:
                ORDER BY a.created_at DESC""",
             (account_id,),
         )
-        rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
     async def get_alert_ack_by_id(self, ack_id: int, account_id: int = 0) -> dict | None:
@@ -179,15 +188,14 @@ class AlertsMixin:
         If account_id is provided, the row must belong to that account.
         """
         if account_id:
-            cur = await self._db.execute(
+            row = await self.read_one(
                 "SELECT * FROM alert_acknowledgments WHERE id = ? AND account_id = ?",
                 (ack_id, account_id),
             )
         else:
-            cur = await self._db.execute(
+            row = await self.read_one(
                 "SELECT * FROM alert_acknowledgments WHERE id = ?", (ack_id,),
             )
-        row = await cur.fetchone()
         if not row:
             return None
         return dict(row)
@@ -211,13 +219,12 @@ class AlertsMixin:
 
     async def get_pending_dnd_alerts(self, telegram_id: int) -> list[dict]:
         """Get all undelivered DND-queued alerts for a user."""
-        cur = await self._db.execute(
+        rows = await self.read_all(
             "SELECT * FROM dnd_alert_queue "
             "WHERE telegram_id = ? AND delivered = 0 "
             "ORDER BY created_at",
             (telegram_id,),
         )
-        rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
     async def mark_dnd_alerts_delivered(self, telegram_id: int) -> int:
@@ -240,13 +247,12 @@ class AlertsMixin:
         One row per (account_id, alert_type, vehicle_id) — not per subscriber.
         Per-subscriber Telegram message tracking is in alert_acknowledgments.
         """
-        cur = await self._db.execute(
+        row = await self.read_one(
             "SELECT * FROM alert_history "
             "WHERE account_id = ? AND alert_type = ? "
             "AND vehicle_id = ? AND status = 'active'",
             (account_id, alert_type, vehicle_id),
         )
-        row = await cur.fetchone()
         return dict(row) if row else None
 
     async def upsert_alert_history(
@@ -340,3 +346,46 @@ class AlertsMixin:
             )
             await self._db.commit()
         return rows
+
+    async def get_active_fault_history_for_account(self, account_id: int) -> list[dict]:
+        """Return all active fault alert_history rows for an account.
+
+        Used by the fault check loop to find vehicles whose faults cleared
+        while alerts were tracked in Redis (where the in-memory _known_faults
+        dict is never populated and cannot be iterated for stale-key detection).
+        """
+        cur = await self._db.execute(
+            "SELECT * FROM alert_history "
+            "WHERE account_id = ? AND alert_type = 'fault' AND status = 'active'",
+            (account_id,),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def get_stale_unacked_alerts(
+        self,
+        account_id: int,
+        older_than_minutes: int,
+        severity: str = "critical",  # noqa: ARG002 — reserved for future filter
+    ) -> list[dict]:
+        """Return active acks created more than ``older_than_minutes`` ago.
+
+        Used by the re-escalation job to find CRITICAL/WARNING alerts that
+        nobody has acknowledged yet.  Severity is not currently stored on
+        the row (it lives on the originating check); the caller decides
+        which alert types qualify for re-escalation.
+        """
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(minutes=older_than_minutes)
+        ).isoformat()
+        cur = await self._db.execute(
+            "SELECT * FROM alert_acknowledgments "
+            "WHERE account_id = ? "
+            "AND status = 'active' "
+            "AND acknowledged_at IS NULL "
+            "AND created_at < ? "
+            "ORDER BY created_at ASC",
+            (account_id, cutoff),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]

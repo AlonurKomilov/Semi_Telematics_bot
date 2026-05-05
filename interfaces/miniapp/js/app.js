@@ -79,7 +79,7 @@ const App = (() => {
         list.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
 
         try {
-            const data = await Auth.apiJSON('/api/fleet/vehicles');
+            const data = await Auth.apiJSON('/api/vehicles/');
             const vehicles = data.vehicles || [];
 
             if (vehicles.length === 0) {

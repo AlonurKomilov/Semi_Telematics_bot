@@ -11,13 +11,13 @@ from telegram.constants import ParseMode
 from adapters.storage import Role
 from capabilities.iam.permissions import can
 from adapters.samsara.client import populate_company_display
-from core.context import get_company_display
-from core.bot_registry import get_app_for_account
+from infra.context import get_company_display
+from infra.bot_registry import get_app_for_account
 
 from interfaces.bot.config import logger, get_user_company_codes, get_platform_db, get_tenant_db
-from core.isolation import run_account_job
+from infra.isolation import run_account_job
 from capabilities.telemetry.service import get_vehicle_odometer
-from capabilities.vehicle_catalog.service import get_fleet_overview as _svc_fleet_overview
+from capabilities.vehicles.service import get_fleet_overview as _svc_fleet_overview
 from capabilities.maintenance.service import (
     mark_overdue_tasks_by_date,
     mark_overdue_tasks_by_mileage,
@@ -85,7 +85,7 @@ async def cmd_maint_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Driver with assigned truck — auto-fill and skip to type selection
     if user.role == Role.DRIVER and user.truck_num:
-        context.user_data["_maint"]["truck"] = user.truck_num
+        context.user_data["_maint"]["vehicle"] = user.truck_num
         context.user_data["_maint"]["vehicle_id"] = ""
         context.user_data["_maint"]["company"] = ""
         await _show(update, context, [
@@ -102,7 +102,7 @@ async def cmd_maint_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if len(codes) == 1:
         # Single company — go straight to truck list
-        await _show_maint_truck_list(update, context, user, codes[0])
+        await _show_maint_vehicle_list(update, context, user, codes[0])
     else:
         await _show(update, context, [
             f"{t('maintenance.add_title')}\n\n"
@@ -110,7 +110,7 @@ async def cmd_maint_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ], keyboard=maint_company_picker_kb(codes))
 
 
-async def _show_maint_truck_list(update, context, user, company_filter, page=0):
+async def _show_maint_vehicle_list(update, context, user, company_filter, page=0):
     """Show paginated truck list for maintenance task creation."""
     await _show_loading(update, context, "⏳ Loading trucks…")
 
@@ -134,11 +134,11 @@ async def _show_maint_truck_list(update, context, user, company_filter, page=0):
 
 
 @_require_registered
-async def cmd_maint_select_truck(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                  company: str = "", truck_name: str = ""):
+async def cmd_maint_select_vehicle(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                  company: str = "", vehicle_name: str = ""):
     """Truck selected — store and show type picker."""
     wiz = context.user_data.setdefault("_maint", {})
-    wiz["truck"] = truck_name
+    wiz["vehicle"] = vehicle_name
     wiz["company"] = company
     wiz["vehicle_id"] = ""  # will try to find it
 
@@ -148,14 +148,14 @@ async def cmd_maint_select_truck(update: Update, context: ContextTypes.DEFAULT_T
             user = context.user_data["_db_user"]
             fleet = await _svc_fleet_overview(user.account_id, company=company)
             for v in fleet:
-                if v["name"] == truck_name:
+                if v["name"] == vehicle_name:
                     wiz["vehicle_id"] = v.get("id", "")
                     break
         except Exception as e:
             logger.debug(f"Vehicle ID lookup failed: {e}")
 
     await _show(update, context, [
-        f"🚛 Truck: <b>#{truck_name}</b>"
+        f"🚛 Truck: <b>#{vehicle_name}</b>"
         + (f" — {get_company_display().get(company, company)}" if company else "")
         + f"\n\n<b>Step 2/5</b> — Select task type:"
     ], keyboard=maint_type_kb())
@@ -172,7 +172,7 @@ async def cmd_maint_type(update: Update, context: ContextTypes.DEFAULT_TYPE,
     # Show current odometer if we can
     odo_text = ""
     company = wiz.get("company", "")
-    truck = wiz.get("truck", "")
+    truck = wiz.get("vehicle", "")
     if company and truck:
         try:
             user = context.user_data["_db_user"]
@@ -251,7 +251,7 @@ async def _finalize_task(update, context):
             account_id=user.account_id,
             company_code=wiz.get("company", ""),
             vehicle_id=wiz.get("vehicle_id", ""),
-            vehicle_name=wiz.get("truck", "Unknown"),
+            vehicle_name=wiz.get("vehicle", "Unknown"),
             task_type=wiz.get("type", "custom"),
             description=wiz.get("description", ""),
             due_date=wiz.get("due_date"),
@@ -613,17 +613,17 @@ async def cmd_maint_company_pick(update: Update, context: ContextTypes.DEFAULT_T
     user = context.user_data["_db_user"]
     if not _check_perm(user):
         return
-    await _show_maint_truck_list(update, context, user, company)
+    await _show_maint_vehicle_list(update, context, user, company)
 
 
 @_require_registered
-async def cmd_maint_truck_page(update: Update, context: ContextTypes.DEFAULT_TYPE,
+async def cmd_maint_vehicle_page(update: Update, context: ContextTypes.DEFAULT_TYPE,
                                 company: str = "", page: int = 0):
     """Paginate the truck list in add-task flow."""
     user = context.user_data["_db_user"]
     if not _check_perm(user):
         return
-    await _show_maint_truck_list(update, context, user, company, page=page)
+    await _show_maint_vehicle_list(update, context, user, company, page=page)
 
 
 # ══════════════════════════════════════════════════════════════════

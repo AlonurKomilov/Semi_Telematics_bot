@@ -1,5 +1,5 @@
 """
-Samsara API Client — async wrapper for fleet telematics data.
+Samsara API Client — async wrapper for vehicle telematics data.
 
 Supports multi-company: each SamsaraClient wraps one company's API key.
 MultiCompanyClient orchestrates parallel queries across all companies.
@@ -11,7 +11,6 @@ v3 — Database-driven: company display names and API keys come from the
 
 import asyncio
 import copy
-import json
 import re
 import aiohttp
 import logging
@@ -48,7 +47,7 @@ def populate_company_display(companies: list) -> dict[str, str]:
 
     Returns the current display dict for callers that want a local reference.
     """
-    from core.context import get_company_display, set_tenant_display
+    from infra.context import set_tenant_display
     # Build a tenant-scoped dict
     display = {}
     for co in companies:
@@ -81,7 +80,7 @@ def samsara_vehicle_url(
     if not org_id:
         return None
     if not dashboard_base:
-        from core.config import SAMSARA_DASHBOARD_URL
+        from infra.config import SAMSARA_DASHBOARD_URL
         dashboard_base = SAMSARA_DASHBOARD_URL
     return f"{dashboard_base}/o/{org_id}/devices/{vehicle_id}/vehicle"
 
@@ -95,7 +94,7 @@ def samsara_event_url(
     if not org_id or not event_id:
         return None
     if not dashboard_base:
-        from core.config import SAMSARA_DASHBOARD_URL
+        from infra.config import SAMSARA_DASHBOARD_URL
         dashboard_base = SAMSARA_DASHBOARD_URL
     return f"{dashboard_base}/o/{org_id}/fleet/reports/safety/event/{event_id}"
 
@@ -109,7 +108,7 @@ def samsara_fault_url(
     if not org_id:
         return None
     if not dashboard_base:
-        from core.config import SAMSARA_DASHBOARD_URL
+        from infra.config import SAMSARA_DASHBOARD_URL
         dashboard_base = SAMSARA_DASHBOARD_URL
     return f"{dashboard_base}/o/{org_id}/devices/{vehicle_id}/vehicle"
 
@@ -503,7 +502,7 @@ class SamsaraClient:
         enriched.sort(key=lambda x: x["name"])
         return enriched
 
-    async def get_vehicle_detail(self, truck_name: str) -> Optional[dict]:
+    async def get_vehicle_detail(self, vehicle_name: str) -> Optional[dict]:
         """
         Get enriched data for a single vehicle by truck name/number.
 
@@ -531,7 +530,7 @@ class SamsaraClient:
                     "time": d.get("time", ""),
                 }
 
-        truck_name_lower = truck_name.strip().lower()
+        truck_name_lower = vehicle_name.strip().lower()
         for v in vehicles_raw:
             name = v.get("name", "?")
             if name.lower() != truck_name_lower:
@@ -583,34 +582,6 @@ class SamsaraClient:
                 v["_fault_time"] = fc.get("time", "")
                 result.append(v)
         return result, total
-
-    async def get_critical_faults(self) -> list[dict]:
-        """
-        Return vehicles with critical faults:
-        - STOP light on
-        - PROTECT light on
-        - EMISSIONS light on
-        - Any FMI with 'most severe' in description
-        """
-        faulted, total = await self.get_vehicles_with_faults()
-        critical = []
-        for v in faulted:
-            lights = v.get("_lights", {})
-            is_critical = (
-                lights.get("stopIsOn", False)
-                or lights.get("protectIsOn", False)
-                or lights.get("emissionsIsOn", False)
-            )
-            # Also check for severe FMI descriptions
-            if not is_critical:
-                for dtc in v.get("_dtcs", []):
-                    fmi_desc = dtc.get("fmiDescription", "").lower()
-                    if "most severe" in fmi_desc:
-                        is_critical = True
-                        break
-            if is_critical:
-                critical.append(v)
-        return critical
 
     async def get_low_fuel_vehicles(self, threshold: int = 20) -> list[dict]:
         """Return vehicles with fuel level below the threshold %."""
@@ -889,6 +860,53 @@ class SamsaraClient:
 
     # ── Driver Efficiency ────────────────────────────────────────
 
+    @staticmethod
+    def _summarize_efficiency(s: dict) -> dict:
+        """Distil one Samsara efficiency record into our internal shape.
+
+        Accepts EITHER a driver-level ``driverSummaries[i]`` (keys prefixed
+        ``total*``) or a per-vehicle ``vehicleSummaries[i]`` (no prefix), so
+        the same conversions live in one place — fixes drift bugs where the
+        driver and vehicle merges grew slightly different fields.
+
+        All time conversions and unit conversions happen here; callers just
+        merge the result.  Percentages are rounded to one decimal **once**
+        — callers (route, CSV, PDF) are free to re-round but won't lose
+        precision the way the previous double-rounding did.
+        """
+        dist_m       = s.get("totalDistanceDrivenMeters")  or s.get("distanceDrivenMeters", 0)
+        drive_ms     = s.get("totalDriveTimeDurationMs")   or s.get("driveTimeDurationMs", 0)
+        idle_ms      = s.get("totalIdleTimeDurationMs", 0)
+        fuel_ml      = s.get("totalFuelConsumedMl")        or s.get("fuelConsumedMl", 0)
+        green_ms     = s.get("greenBandDrivingDurationMs", 0)
+        coast_ms     = s.get("coastingDurationMs", 0)
+        cruise_ms    = s.get("cruiseControlDurationMs", 0)
+        antic_brk    = s.get("anticipationBrakeEventCount", 0)
+        total_brk    = s.get("totalBrakeEventCount", 0)
+        hi_torque_ms = s.get("highTorqueMs", 0)
+        overspeed_ms = s.get("overSpeedMs", 0)
+
+        miles    = dist_m / METERS_PER_MILE
+        fuel_gal = fuel_ml / 3785.41
+        mpg      = miles / fuel_gal if fuel_gal > 0 else 0
+        return {
+            "_miles":         round(miles, 1),
+            "_drive_h":       round(drive_ms / 3600000, 1),
+            "_idle_h":        round(idle_ms / 3600000, 1),
+            "_fuel_gal":      round(fuel_gal, 1),
+            "_mpg":           round(mpg, 1),
+            "_green_pct":     round(green_ms / drive_ms * 100, 1) if drive_ms > 0 else 0,
+            "_coast_min":     round(coast_ms / 60000, 1),
+            "_cruise_min":    round(cruise_ms / 60000, 1),
+            "_overspeed_min": round(overspeed_ms / 60000, 1),
+            "_hi_torque_min": round(hi_torque_ms / 60000, 1),
+            "_antic_brakes":  antic_brk,
+            "_total_brakes":  total_brk,
+            "_antic_pct":     round(antic_brk / total_brk * 100, 1) if total_brk > 0 else 0,
+            # Internal: caller decides whether to drop zero-activity rows
+            "_total_active_ms": drive_ms + idle_ms,
+        }
+
     async def get_driver_efficiency(self, days: int = 7) -> list[dict]:
         """Get driver efficiency data for the specified time range.
 
@@ -907,48 +925,22 @@ class SamsaraClient:
         results: list[dict] = []
 
         for s in summaries:
-            driver = s.get("driver", {})
-            dist_m = s.get("totalDistanceDrivenMeters", 0)
-            drive_ms = s.get("totalDriveTimeDurationMs", 0)
-            idle_ms = s.get("totalIdleTimeDurationMs", 0)
-            fuel_ml = s.get("totalFuelConsumedMl", 0)
-            green_ms = s.get("greenBandDrivingDurationMs", 0)
-            coast_ms = s.get("coastingDurationMs", 0)
-            cruise_ms = s.get("cruiseControlDurationMs", 0)
-            antic_brk = s.get("anticipationBrakeEventCount", 0)
-            total_brk = s.get("totalBrakeEventCount", 0)
-            hi_torque_ms = s.get("highTorqueMs", 0)
-            overspeed_ms = s.get("overSpeedMs", 0)
-
-            total_ms = drive_ms + idle_ms
+            summary = self._summarize_efficiency(s)
+            total_ms = summary.pop("_total_active_ms")
             if total_ms <= 0:
                 continue
 
-            miles = dist_m / METERS_PER_MILE
-            fuel_gal = fuel_ml / 3785.41
-            mpg = miles / fuel_gal if fuel_gal > 0 else 0
+            drive_ms  = s.get("totalDriveTimeDurationMs", 0)
             drive_pct = round(drive_ms / total_ms * 100)
-            idle_pct = 100 - drive_pct
-            green_pct = round(green_ms / drive_ms * 100) if drive_ms > 0 else 0
+            idle_pct  = 100 - drive_pct
 
+            driver = s.get("driver", {})
             results.append({
-                "driver_id": driver.get("id", ""),
-                "driver_name": driver.get("name", "?"),
-                "_miles": round(miles, 1),
-                "_drive_h": round(drive_ms / 3600000, 1),
-                "_idle_h": round(idle_ms / 3600000, 1),
-                "_drive_pct": drive_pct,
-                "_idle_pct": idle_pct,
-                "_fuel_gal": round(fuel_gal, 1),
-                "_mpg": round(mpg, 1),
-                "_green_pct": green_pct,
-                "_coast_min": round(coast_ms / 60000, 1),
-                "_cruise_min": round(cruise_ms / 60000, 1),
-                "_overspeed_min": round(overspeed_ms / 60000, 1),
-                "_hi_torque_min": round(hi_torque_ms / 60000, 1),
-                "_antic_brakes": antic_brk,
-                "_total_brakes": total_brk,
-                "_antic_pct": round(antic_brk / total_brk * 100) if total_brk > 0 else 0,
+                "driver_id":          driver.get("id", ""),
+                "driver_name":        driver.get("name", "?"),
+                "_drive_pct":         drive_pct,
+                "_idle_pct":          idle_pct,
+                **summary,
                 "_vehicle_summaries": s.get("vehicleSummaries", []),
             })
 
@@ -982,7 +974,7 @@ class SamsaraClient:
             vehicles = await eng_task
             drivers = []
 
-        # Build lookup: truck_name (lowercase) → driver efficiency per-vehicle
+        # Build lookup: vehicle_name (lowercase) → driver efficiency per-vehicle
         driver_by_truck: dict[str, dict] = {}
         for drv in drivers:
             for vs in drv.get("_vehicle_summaries", []):
@@ -990,28 +982,13 @@ class SamsaraClient:
                 vname = (veh.get("name") or "").strip().lower()
                 if not vname:
                     continue
-                fuel_ml = vs.get("fuelConsumedMl", 0)
-                dist_m = vs.get("distanceDrivenMeters", 0)
-                drive_ms = vs.get("driveTimeDurationMs", 0)
-                fuel_gal = fuel_ml / 3785.41
-                miles = dist_m / METERS_PER_MILE
-                mpg = miles / fuel_gal if fuel_gal > 0 else 0
-                green_ms = vs.get("greenBandDrivingDurationMs", 0)
-                green_pct = round(green_ms / drive_ms * 100) if drive_ms > 0 else 0
-                overspeed_ms = vs.get("overSpeedMs", 0)
-                antic_brk = vs.get("anticipationBrakeEventCount", 0)
-                total_brk = vs.get("totalBrakeEventCount", 0)
-
-                driver_by_truck[vname] = {
-                    "_driver_name": drv["driver_name"],
-                    "_fuel_gal": round(fuel_gal, 1),
-                    "_mpg": round(mpg, 1),
-                    "_green_pct": green_pct,
-                    "_overspeed_min": round(overspeed_ms / 60000, 1),
-                    "_antic_brakes": antic_brk,
-                    "_total_brakes": total_brk,
-                    "_antic_pct": round(antic_brk / total_brk * 100) if total_brk > 0 else 0,
-                }
+                summary = self._summarize_efficiency(vs)
+                summary.pop("_total_active_ms", None)
+                # Drop fields that don't apply at the per-vehicle level
+                for k in ("_drive_h", "_idle_h"):
+                    summary.pop(k, None)
+                summary["_driver_name"] = drv["driver_name"]
+                driver_by_truck[vname] = summary
 
         # Merge driver data into truck records
         for v in vehicles:
@@ -1020,14 +997,18 @@ class SamsaraClient:
             if drv_data:
                 v.update(drv_data)
             else:
-                v["_driver_name"] = None
-                v["_fuel_gal"] = None
-                v["_mpg"] = None
-                v["_green_pct"] = None
-                v["_overspeed_min"] = None
-                v["_antic_brakes"] = None
-                v["_total_brakes"] = None
-                v["_antic_pct"] = None
+                v["_driver_name"]    = None
+                v["_fuel_gal"]       = None
+                v["_mpg"]            = None
+                v["_green_pct"]      = None
+                v["_overspeed_min"]  = None
+                v["_coast_min"]      = None
+                v["_cruise_min"]     = None
+                v["_hi_torque_min"]  = None
+                v["_miles"]          = None
+                v["_antic_brakes"]   = None
+                v["_total_brakes"]   = None
+                v["_antic_pct"]      = None
 
         vehicles.sort(key=lambda x: x["name"])
         return vehicles
@@ -1634,7 +1615,7 @@ class MultiCompanyClient:
         rkey = f"t:{self.account_id}:samsara:{key}" if self.account_id is not None else f"samsara:{key}"
         # Try Redis first
         try:
-            from adapters.cache.redis import is_available as _redis_ok, get as _redis_get
+            from infra.cache import is_available as _redis_ok, get as _redis_get
             if _redis_ok():
                 raw = await _redis_get(rkey)
                 if raw is not None:
@@ -1663,7 +1644,7 @@ class MultiCompanyClient:
 
         # Try Redis first
         try:
-            from adapters.cache.redis import is_available as _redis_ok, cache_set as _redis_set
+            from infra.cache import is_available as _redis_ok, cache_set as _redis_set
             if _redis_ok():
                 payload = {"data": result, "_skipped": skipped}
                 await _redis_set(rkey, payload, ttl=ttl)
@@ -1818,24 +1799,6 @@ class MultiCompanyClient:
         await self._cache_set(cache_key, result)
         return result
 
-    # ── critical faults ──────────────────────────────────────────
-
-    async def get_critical_faults(self, company: str | None = None) -> list[dict]:
-        cache_key = f"critical:{company or 'all'}"
-        cached = await self._cache_get(cache_key)
-        if cached is not None:
-            return cached
-
-        async def _fn(c):
-            return await c.get_critical_faults()
-
-        per_co = await self._run_per_company(_fn, company=company)
-        combined = []
-        for code, vehicles in per_co.items():
-            combined.extend(self._tag(vehicles, code))
-        await self._cache_set(cache_key, combined)
-        return combined
-
     # ── low fuel ─────────────────────────────────────────────────
 
     async def get_low_fuel_vehicles(
@@ -1882,13 +1845,13 @@ class MultiCompanyClient:
     # ── single truck lookup ──────────────────────────────────────
 
     async def get_vehicle_detail(
-        self, truck_name: str, company: str | None = None,
+        self, vehicle_name: str, company: str | None = None,
     ) -> list[dict]:
         """Search all (or one) company for a truck name.
         Returns a list — may contain 0, 1, or 2+ matches.
         """
         async def _fn(c):
-            return await c.get_vehicle_detail(truck_name)
+            return await c.get_vehicle_detail(vehicle_name)
 
         per_co = await self._run_per_company(_fn, company=company)
         matches = []
@@ -1968,7 +1931,12 @@ class MultiCompanyClient:
     async def get_driver_efficiency(
         self, days: int = 7, company: str | None = None,
     ) -> list[dict]:
-        """Get driver efficiency across companies."""
+        """Get driver efficiency across companies (cached)."""
+        cache_key = f"driver_efficiency:{days}:{company or 'all'}"
+        cached = await self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         async def _fn(c):
             return await c.get_driver_efficiency(days)
 
@@ -1979,6 +1947,7 @@ class MultiCompanyClient:
                 d["_org"] = code
             combined.extend(drivers)
         combined.sort(key=lambda x: (x.get("_org", ""), x["driver_name"]))
+        await self._cache_set(cache_key, combined)
         return combined
 
     # ── fleet efficiency (merged) ────────────────────────────────

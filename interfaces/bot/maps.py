@@ -11,7 +11,7 @@ from telegram.ext import ContextTypes
 from adapters.storage import Role
 from capabilities.iam.permissions import can
 from adapters.samsara.client import populate_company_display
-from core.context import get_company_display
+from infra.context import get_company_display
 from capabilities.location.service import classify_vehicle_status, STATUS_COLORS, get_fleet_for_map as _svc_fleet_for_map
 from capabilities.reporting.map_renderer import render_fleet_map as _render_map
 

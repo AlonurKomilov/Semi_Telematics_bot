@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
+from capabilities.telemetry.service import get_vehicle_health as _svc_health
+from capabilities.vehicles.service import get_fleet_overview as _svc_fleet
 
 
 @register_tool({
@@ -20,7 +22,10 @@ from capabilities.ai.tools.registry import register_tool
 })
 async def get_vehicle_health(tool_args: dict, samsara_client,
                              account_id: int | None = None, db=None) -> dict:
-    health = await samsara_client.get_vehicle_health()
+    if account_id is not None:
+        health = await _svc_health(account_id)
+    else:
+        health = await samsara_client.get_vehicle_health()
     return {
         "total_vehicles": len(health),
         "vehicles_with_alerts": sum(1 for v in health if v.get("_health_alerts")),
@@ -56,7 +61,10 @@ async def get_vehicle_health(tool_args: dict, samsara_client,
 })
 async def get_account_stats(tool_args: dict, samsara_client,
                             account_id: int | None = None, db=None) -> dict:
-    fleet = await samsara_client.get_fleet_overview()
+    if account_id is not None:
+        fleet = await _svc_fleet(account_id)
+    else:
+        fleet = await samsara_client.get_fleet_overview()
     faulted = []
     critical = []
     for v in fleet:
@@ -72,7 +80,10 @@ async def get_account_stats(tool_args: dict, samsara_client,
     low_fuel = [v for v in fleet
                 if (v.get("fuel", {}).get("value") or 100) <= 20]
     try:
-        health = await samsara_client.get_vehicle_health()
+        if account_id is not None:
+            health = await _svc_health(account_id)
+        else:
+            health = await samsara_client.get_vehicle_health()
         alerts = sum(1 for v in health if v.get("_health_alerts"))
     except Exception:
         alerts = 0

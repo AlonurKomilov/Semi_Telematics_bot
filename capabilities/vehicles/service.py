@@ -1,0 +1,79 @@
+"""Vehicle catalog service — Single Source of Truth for fleet vehicle data.
+
+Both bot handlers and API routes call these methods instead of
+duplicating Samsara client interaction + company-display setup.
+
+Reads route through the per-tenant warehouse (vehicle_state table) when
+``WAREHOUSE_READS_ENABLED=1``; otherwise fall back to live Samsara.
+The ingestor (capabilities/telemetry/ingestor.py) keeps the warehouse
+fresh on a 60s cadence.
+"""
+
+from __future__ import annotations
+
+from infra.context import is_companies_prepared, mark_companies_prepared
+from infra.services import get_client, get_tenant_db
+from adapters.samsara.client import populate_company_display
+
+
+async def prepare_companies(account_id: int) -> list:
+    """Load companies from tenant DB and populate display-name mapping.
+
+    Returns the list of Company objects (with .code, .display_name).
+
+    Idempotent within the current async-task context: subsequent calls
+    for the same *account_id* skip the DB round-trip and return the
+    cached result directly.
+    """
+    if is_companies_prepared(account_id):
+        tenant = await get_tenant_db(account_id)
+        return await tenant.get_account_companies(account_id)
+    tenant = await get_tenant_db(account_id)
+    companies = await tenant.get_account_companies(account_id)
+    populate_company_display(companies)
+    mark_companies_prepared(account_id)
+    return companies
+
+
+async def get_company_codes(account_id: int) -> list[str]:
+    """Return company codes for an account (after populating display names)."""
+    companies = await prepare_companies(account_id)
+    return [c.code for c in companies]
+
+
+async def get_fleet_overview(
+    account_id: int,
+    company: str | None = None,
+) -> list[dict]:
+    """Fetch fleet overview vehicles, optionally filtered by company.
+
+    Warehouse-first: reads ``vehicle_state`` (60s-fresh) when
+    WAREHOUSE_READS_ENABLED=1, falls back to live Samsara otherwise
+    (or on cold-start empty warehouse).
+    """
+    await prepare_companies(account_id)
+    client = await get_client(account_id)
+
+    async def _live():
+        return await client.get_fleet_overview(company=company)
+
+    # Lazy import avoids circular dependency
+    # (warehouse_reader → telemetry.service → vehicles.service)
+    from capabilities.telemetry import warehouse_reader as _wh
+    return await _wh.get_current_vehicles(
+        account_id, company=company, samsara_fallback=_live,
+    )
+
+
+async def get_vehicle_detail(
+    account_id: int,
+    vehicle_name: str,
+    company: str | None = None,
+) -> list[dict]:
+    """Look up a single vehicle by name. Returns list of matches."""
+    await prepare_companies(account_id)
+    client = await get_client(account_id)
+    return await client.get_vehicle_detail(vehicle_name, company=company)
+
+
+

@@ -50,7 +50,7 @@ export default function Weather() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiJSON<WeatherResponse>('/fleet/weather')
+    apiJSON<WeatherResponse>('/weather/fleet')
       .then((d) => {
         setVehicles(d.vehicles || []);
         setSummary(d.summary || null);

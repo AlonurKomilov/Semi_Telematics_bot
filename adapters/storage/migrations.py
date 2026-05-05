@@ -308,7 +308,7 @@ async def migrate_encrypt_api_keys(conn) -> int:
     Skips keys that are already encrypted (start with 'enc::').
     Returns the number of keys that were encrypted.
     """
-    from adapters.crypto import is_enabled, encrypt as _encrypt, _ENC_PREFIX
+    from infra.crypto import is_enabled, encrypt as _encrypt, _ENC_PREFIX
 
     if not is_enabled():
         logger.info("Encryption not enabled — skipping key migration")
@@ -539,7 +539,6 @@ async def migrate_seed_role_permissions(conn) -> None:
             return
 
         from capabilities.iam.permissions import ROLE_PERMISSIONS
-        from adapters.storage import Role
 
         cur = await conn.execute("SELECT id FROM accounts WHERE is_active = 1")
         accounts = [r[0] for r in await cur.fetchall()]
@@ -725,3 +724,83 @@ async def migrate_platform_geofences_table(conn) -> None:
     """)
     await conn.commit()
     logger.info("Migration: created platform_geofences table (legacy DB)")
+
+
+@_register("026_custom_poi_layers")
+async def migrate_custom_poi_layers_legacy(conn) -> None:
+    """Create custom_poi_layers + custom_poi_points tables (legacy DB).
+
+    Mirrors the same migration in tenant_migrations.py so the single-DB
+    Database class also exposes the storage backing for custom POI layers.
+    """
+    cur = await conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='custom_poi_layers'"
+    )
+    if await cur.fetchone():
+        return
+    await conn.executescript("""
+        CREATE TABLE IF NOT EXISTS custom_poi_layers (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            layer_key       TEXT    NOT NULL,
+            label           TEXT    NOT NULL,
+            color           TEXT    NOT NULL DEFAULT '#3b82f6',
+            icon            TEXT    NOT NULL DEFAULT '⚫',
+            source_type     TEXT    NOT NULL DEFAULT 'overpass',
+            overpass_query  TEXT    NOT NULL DEFAULT '',
+            brand_filters   TEXT    NOT NULL DEFAULT '[]',
+            default_on      INTEGER NOT NULL DEFAULT 0,
+            is_active       INTEGER NOT NULL DEFAULT 1,
+            created_by      INTEGER NOT NULL DEFAULT 0,
+            created_at      TEXT    NOT NULL DEFAULT '',
+            updated_at      TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, layer_key)
+        );
+        CREATE INDEX IF NOT EXISTS idx_custom_poi_layers_account
+            ON custom_poi_layers(account_id, is_active);
+        CREATE TABLE IF NOT EXISTS custom_poi_points (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id  INTEGER NOT NULL,
+            layer_id    INTEGER NOT NULL,
+            name        TEXT    NOT NULL DEFAULT '',
+            brand       TEXT    NOT NULL DEFAULT '',
+            lat         REAL    NOT NULL,
+            lng         REAL    NOT NULL,
+            properties  TEXT    NOT NULL DEFAULT '',
+            FOREIGN KEY (layer_id) REFERENCES custom_poi_layers(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_custom_poi_points_layer
+            ON custom_poi_points(layer_id, account_id);
+        CREATE INDEX IF NOT EXISTS idx_custom_poi_points_bbox
+            ON custom_poi_points(layer_id, lat, lng);
+    """)
+    await conn.commit()
+    logger.info("Migration: created custom_poi_layers + custom_poi_points tables (legacy DB)")
+
+
+@_register("027_score_rules_pillar_curves")
+async def migrate_score_rules_pillar_curves(conn) -> None:
+    """Add pillar + curve columns to score_rules (Audit Option C).
+
+    All four columns are nullable / default-empty so existing override
+    rows continue to behave exactly as before — the engine falls back
+    to the legacy flat ``points × occurrences`` path when curve fields
+    are NULL.
+    """
+    new_cols = [
+        ("pillar",       "TEXT NOT NULL DEFAULT ''"),
+        ("curve_x_zero", "REAL"),
+        ("curve_x_max",  "REAL"),
+        ("curve_y_max",  "INTEGER"),
+    ]
+    cur = await conn.execute("PRAGMA table_info(score_rules)")
+    existing = {row[1] for row in await cur.fetchall()}
+    for name, ddl in new_cols:
+        if name in existing:
+            continue
+        try:
+            await conn.execute(f"ALTER TABLE score_rules ADD COLUMN {name} {ddl}")
+            await conn.commit()
+            logger.info("Added column score_rules.%s", name)
+        except Exception:
+            logger.exception("Failed to add score_rules.%s", name)

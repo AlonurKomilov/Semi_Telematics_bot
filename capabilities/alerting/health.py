@@ -5,30 +5,37 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
+from cachetools import LRUCache
 from telegram.ext import Application
 
-import adapters.cache.redis as rcache
+import infra.cache as rcache
 from adapters.samsara.client import populate_company_display
-from capabilities.alerting.ai_maintenance import _get_ai_health_note
+from capabilities.alerting.ai_maintenance import _get_ai_health_note, _notify_api_errors
 from capabilities.alerting.escalation import _auto_resolve_vehicle_alerts
 from capabilities.alerting.pipeline import (
     AlertSeverity, COOLANT_SPNS, _warmup_done,
     send_alert, is_vehicle_suppressed,
 )
 from capabilities.formatting import format_health_alert
-from core.bot_registry import get_app_for_account
-from core.config import HEALTH_ALERT_COOLDOWN_HOURS
-from core.context import set_tenant_display
-from core.isolation import run_account_job
-from core.services import get_client, get_platform_db, get_tenant_db
+from capabilities.telemetry.service import (
+    get_vehicle_health as _svc_vehicle_health,
+    get_vehicles_with_faults as _svc_get_faults,
+)
+from infra.bot_registry import get_app_for_account
+from infra.config import HEALTH_ALERT_COOLDOWN_HOURS
+from infra.context import set_tenant_display
+from infra.isolation import run_account_job
+from infra.services import get_client, get_platform_db, get_tenant_db
 
 logger = logging.getLogger("bot")
 
 
-# ── Health-alert dedup state dicts ───────────────────────────────
+# ── Health-alert dedup state (bounded LRU caches) ────────────────
+# Bounded to 10k keys to avoid unbounded growth across many tenants.
+# Redis is the primary store; these are fallbacks when Redis is offline.
 
-_known_health: dict[str, set[str]] = {}
-_health_last_sent: dict[str, float] = {}
+_known_health: LRUCache = LRUCache(maxsize=10_000)
+_health_last_sent: LRUCache = LRUCache(maxsize=10_000)
 
 # Health-alert severity classification
 _CRITICAL_HEALTH = {"low_oil_pressure", "high_coolant_temp"}
@@ -128,8 +135,11 @@ async def _check_health_account(
     bot_app: Application, account_id: int, subs: list, is_warmup: bool,
 ):
     """Process health alerts for a single account."""
-    samsara = await get_client(account_id)
-    vehicles = await samsara.get_vehicle_health()
+    samsara = await get_client(account_id)  # needed for ensure_org_ids / org_ids
+    vehicles = await _svc_vehicle_health(account_id)
+
+    if samsara.last_skipped:
+        await _notify_api_errors(bot_app, account_id, samsara.last_skipped)
 
     if is_warmup:
         for v in vehicles:
@@ -154,7 +164,7 @@ async def _check_health_account(
     company_codes = [o.code for o in acct_companies]
 
     try:
-        faulted, _, _ = await samsara.get_vehicles_with_faults()
+        faulted, _, _ = await _svc_get_faults(account_id)
         faulted_by_id = {v["id"]: v for v in faulted}
     except Exception:
         faulted_by_id = {}

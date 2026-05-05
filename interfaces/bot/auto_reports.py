@@ -28,9 +28,9 @@ from capabilities.reporting import (
 
 from capabilities.localization.i18n import t
 from interfaces.bot.config import logger, get_platform_db, get_tenant_db
-from core.bot_registry import get_app_for_account
-from core.isolation import run_account_job
-from capabilities.vehicle_catalog.service import (
+from infra.bot_registry import get_app_for_account
+from infra.isolation import run_account_job
+from capabilities.vehicles.service import (
     prepare_companies,
     get_fleet_overview as _svc_fleet_overview,
 )

@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiJSON } from '../../api/client';
 import DataTable from '../../components/DataTable';
@@ -36,30 +37,27 @@ const columns: AnyColumn[] = [
 ];
 
 export default function Vehicles() {
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  const fetchVehicles = useCallback(() => {
-    setLoading(true);
-    const params = new URLSearchParams();
-    if (statusFilter !== 'all') params.set('status', statusFilter);
-    // Request up to 200 vehicles per page so the list shows the full fleet.
-    // For very large fleets, replace this with a proper pagination UI.
-    params.set('page_size', '200');
-    apiJSON<VehiclesResponse>(`/fleet/vehicles?${params}`)
-      .then((d) => {
-        setVehicles(d.vehicles || []);
-        setTotalCount((d as unknown as { count: number }).count ?? d.vehicles?.length ?? 0);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [statusFilter]);
+  // React Query (Phase E23): cache the vehicle list per status filter.
+  // ``placeholderData: prev`` keeps the previous list visible while a new
+  // filter is being fetched so the table doesn't flash blank.
+  const { data, isLoading, error: queryError, refetch } = useQuery<VehiclesResponse>({
+    queryKey: ['fleet-vehicles', statusFilter],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (statusFilter !== 'all') params.set('status', statusFilter);
+      params.set('page_size', '200');
+      return apiJSON<VehiclesResponse>(`/vehicles?${params}`);
+    },
+    placeholderData: (prev) => prev,
+  });
 
-  useEffect(() => { fetchVehicles(); }, [fetchVehicles]);
+  const vehicles  = data?.vehicles ?? [];
+  const totalCount = (data as unknown as { count?: number } | undefined)?.count ?? vehicles.length;
+  const loading   = isLoading && !data;
+  const error     = queryError instanceof Error ? queryError.message : (queryError ? String(queryError) : '');
 
   // Summary counters — computed from the loaded vehicles.
   // When filtering by status the API returns only those vehicles,
@@ -76,7 +74,7 @@ export default function Vehicles() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Vehicles</h1>
         <button
-          onClick={fetchVehicles}
+          onClick={() => refetch()}
           className="text-sm text-muted-foreground hover:text-foreground transition"
         >
           ↻ Refresh

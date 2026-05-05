@@ -13,7 +13,7 @@ from telegram.ext import ContextTypes
 from capabilities.iam.permissions import can
 from capabilities.costs.service import compute_fleet_cpm
 from adapters.samsara.client import populate_company_display
-from core.context import get_company_display
+from infra.context import get_company_display
 
 from interfaces.bot.config import logger, get_client, get_tenant_db
 from interfaces.bot.keyboards import back_kb, costmile_format_kb
@@ -78,7 +78,7 @@ async def cmd_costmile_report(update: Update, context: ContextTypes.DEFAULT_TYPE
             writer = csv.writer(buf)
             writer.writerow(["Truck", "Company", "Miles", "Total Cost", "Gallons", "$/Mile", "MPG"])
             for r in results:
-                writer.writerow([r["truck"], r["company"], r["miles"],
+                writer.writerow([r["vehicle"], r["company"], r["miles"],
                                 r["cost"], r["gallons"], r["cpm"], r["mpg"]])
             out = io.BytesIO(buf.getvalue().encode("utf-8"))
             out.name = "cost_per_mile.csv"

@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
+from capabilities.telemetry.service import (
+    get_driver_efficiency as _svc_drv_eff,
+    get_fleet_efficiency as _svc_fleet_eff,
+)
 
 
 @register_tool({
@@ -25,7 +29,10 @@ from capabilities.ai.tools.registry import register_tool
 async def get_driver_efficiency(tool_args: dict, samsara_client,
                                 account_id: int | None = None, db=None) -> dict:
     days = tool_args.get("days", 7)
-    drivers = await samsara_client.get_driver_efficiency(days=days)
+    if account_id is not None:
+        drivers = await _svc_drv_eff(account_id, days=days)
+    else:
+        drivers = await samsara_client.get_driver_efficiency(days=days)
     return {
         "period_days": days,
         "drivers": [
@@ -64,7 +71,10 @@ async def get_driver_efficiency(tool_args: dict, samsara_client,
 async def get_efficiency_summary(tool_args: dict, samsara_client,
                                account_id: int | None = None, db=None) -> dict:
     days = tool_args.get("days", 7)
-    eff = await samsara_client.get_fleet_efficiency(days=days)
+    if account_id is not None:
+        eff = await _svc_fleet_eff(account_id, days=days)
+    else:
+        eff = await samsara_client.get_fleet_efficiency(days=days)
     return {
         "period_days": days,
         "vehicle_count": len(eff),
@@ -112,7 +122,10 @@ async def get_driver_scorecard(tool_args: dict, samsara_client,
                                account_id: int | None = None, db=None) -> dict:
     days = tool_args.get("days", 7)
     driver_filter = tool_args.get("driver_name", "").strip().lower()
-    drivers = await samsara_client.get_driver_efficiency(days=days)
+    if account_id is not None:
+        drivers = await _svc_drv_eff(account_id, days=days)
+    else:
+        drivers = await samsara_client.get_driver_efficiency(days=days)
     if driver_filter:
         drivers = [
             d for d in drivers

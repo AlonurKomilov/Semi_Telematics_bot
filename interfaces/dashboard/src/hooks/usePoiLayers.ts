@@ -18,8 +18,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { apiFetch } from '../api/client';
+import { apiFetch, apiJSON } from '../api/client';
 import { POI_LAYERS } from '../config/poiLayers';
+import type { PoiLayerDef } from '../config/poiLayers';
 import type L from 'leaflet';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -35,6 +36,21 @@ interface PoisResponse {
   features: PoiFeature[];
 }
 
+/** Server-side custom POI layer DTO (from GET /map/custom-layers). */
+export interface CustomLayerDto {
+  id: number;
+  layer_key: string;
+  label: string;
+  color: string;
+  icon: string;
+  source_type: 'overpass' | 'csv';
+  overpass_query: string;
+  brand_filters: { value: string; label: string; icon?: string; matchTerms?: string[] }[];
+  default_on: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface UsePoiLayersResult {
   enabled: Record<string, boolean>;
   toggle: (id: string) => void;
@@ -47,6 +63,10 @@ export interface UsePoiLayersResult {
   presentBrands: Record<string, Set<string>>;
   /** All loaded features per layer (before brand filter) — used for nearest-POI and CSV export. */
   allFeatures: Record<string, PoiFeature[]>;
+  /** Combined built-in + custom layer definitions in display order. */
+  effectiveLayers: PoiLayerDef[];
+  /** Re-fetch the custom layer list from the server (call after create/edit/delete). */
+  refreshCustomLayers: () => Promise<void>;
 }
 
 // ── localStorage persistence ──────────────────────────────────────────────────
@@ -103,17 +123,33 @@ function lsPrune(): void {
 /**
  * Word-boundary-aware substring match (case-insensitive).
  *
- * Why not plain `.includes()`?
- *   'station'.includes('ta') === true  → false positive for 'TA' brand filter
- *   wordMatch('station', 'ta') === false ✓  (no word boundary around the 't','a')
- *   wordMatch('TA Travel Center', 'ta') === true ✓
- *   wordMatch('Pilot Flying J', 'pilot') === true ✓
+ *   wordMatch('station',          'TA')    === false  ✓  (no boundary inside word)
+ *   wordMatch('TA Travel Center', 'TA')    === true   ✓
+ *   wordMatch('TA-Petro #145',    'TA')    === true   ✓  (hyphen is a boundary)
+ *   wordMatch('Pilot Flying J',   'Pilot') === true   ✓
  *
- * Technique: pad both haystack and needle with spaces, then use includes().
- * This makes the needle only match at word boundaries on both sides.
+ * Uses a real \b regex (cached per needle).  Treats spaces, hyphens, slashes,
+ * commas, periods all as boundaries — so brands embedded in compound names
+ * like "TA-Petro" or "Pilot/Flying J" still match.  The previous pad-with-
+ * spaces trick missed those cases.
  */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const _wordMatchCache = new Map<string, RegExp>();
+function needleRegex(needle: string): RegExp {
+  let re = _wordMatchCache.get(needle);
+  if (!re) {
+    re = new RegExp('\\b' + escapeRegExp(needle) + '\\b', 'i');
+    _wordMatchCache.set(needle, re);
+  }
+  return re;
+}
+
 function wordMatch(haystack: string, needle: string): boolean {
-  return (' ' + haystack + ' ').includes(' ' + needle + ' ');
+  if (!haystack || !needle) return false;
+  return needleRegex(needle).test(haystack);
 }
 
 /** Returns true when any of the given terms word-matches any of the text fields. */
@@ -131,25 +167,39 @@ function snapToGrid(v: number, step: number): number {
 }
 
 /** Expand the snapped bbox by one grid cell in each direction so the current
- * view is always fully contained in the fetched area. */
-function bboxKey(map: L.Map): string {
+ * view is always fully contained in the fetched area.
+ *
+ * Antimeridian: clamp longitude to [-180, 180].  Maps that straddle the date
+ * line (Alaska/Hawaii fleets) would otherwise produce a degenerate bbox the
+ * server rejects.  Clamping splits at ±180 — the cached entry on each side
+ * still works for typical US use.
+ */
+function _expandedBbox(map: L.Map): Bbox4 {
   const b    = map.getBounds();
   const step = 1.0; // 1° ≈ 111km
-  const s = snapToGrid(b.getSouth(), step) - step;
-  const w = snapToGrid(b.getWest(),  step) - step;
-  const n = snapToGrid(b.getNorth(), step) + step;
-  const e = snapToGrid(b.getEast(),  step) + step;
+  let s = snapToGrid(b.getSouth(), step) - step;
+  let n = snapToGrid(b.getNorth(), step) + step;
+  let w = snapToGrid(b.getWest(),  step) - step;
+  let e = snapToGrid(b.getEast(),  step) + step;
+  // Clamp into valid coordinate ranges
+  s = Math.max(s, -90);
+  n = Math.min(n,  90);
+  w = Math.max(w, -180);
+  e = Math.min(e,  180);
+  // Defensive: ensure n>s and e>w (Leaflet should guarantee this, but be safe)
+  if (n <= s) n = Math.min(s + step, 90);
+  if (e <= w) e = Math.min(w + step, 180);
+  return [s, w, n, e];
+}
+
+function bboxKey(map: L.Map): string {
+  const [s, w, n, e] = _expandedBbox(map);
   return [s.toFixed(0), w.toFixed(0), n.toFixed(0), e.toFixed(0)].join(',');
 }
 
 function bboxParam(map: L.Map): string {
   // Use the same snapped+expanded bbox for the API call so cache keys match
-  const b    = map.getBounds();
-  const step = 1.0;
-  const s = snapToGrid(b.getSouth(), step) - step;
-  const w = snapToGrid(b.getWest(),  step) - step;
-  const n = snapToGrid(b.getNorth(), step) + step;
-  const e = snapToGrid(b.getEast(),  step) + step;
+  const [s, w, n, e] = _expandedBbox(map);
   return [s, w, n, e].join(',');
 }
 
@@ -208,10 +258,51 @@ function lsFindCovering(layerId: string, s: number, w: number, n: number, e: num
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
+/** Convert a server custom-layer DTO to the same `PoiLayerDef` shape as
+ *  built-in layers so the render loop can treat them uniformly.  The id is
+ *  prefixed with `custom_` so it dispatches to the per-tenant /pois branch
+ *  on the backend and lives alongside built-ins in the localStorage cache.
+ */
+function customDtoToDef(dto: CustomLayerDto): PoiLayerDef {
+  return {
+    id: `custom_${dto.id}`,
+    label: dto.label,
+    color: dto.color,
+    icon: dto.icon,
+    defaultOn: dto.default_on,
+    group: 'custom',
+    brandFilters: (dto.brand_filters || []).map((bf) => ({
+      value: bf.value,
+      label: bf.label,
+      icon: bf.icon,
+      matchTerms: bf.matchTerms,
+    })),
+  };
+}
+
 export function usePoiLayers(
   leafletMap: React.RefObject<L.Map | null>,
   isReady: boolean,
 ): UsePoiLayersResult {
+  // ── effective layer set: built-ins + custom (fetched from /map/custom-layers)
+  const [customLayers, setCustomLayers] = useState<PoiLayerDef[]>([]);
+  const effectiveLayers: PoiLayerDef[] = [...POI_LAYERS, ...customLayers];
+  // Ref version so async callbacks always read the current list without
+  // forcing every callback to re-create when custom layers change.
+  const layersRef = useRef<PoiLayerDef[]>(effectiveLayers);
+  useEffect(() => { layersRef.current = effectiveLayers; }, [effectiveLayers]);
+
+  // Helper: ensure a record has an entry for every layer id (preserves existing
+  // values, adds default for new ids when custom layers arrive after mount).
+  const fillRecord = <V,>(prev: Record<string, V>, mk: (id: string) => V): Record<string, V> => {
+    const next: Record<string, V> = { ...prev };
+    let mutated = false;
+    layersRef.current.forEach((l) => {
+      if (!(l.id in next)) { next[l.id] = mk(l.id); mutated = true; }
+    });
+    return mutated ? next : prev;
+  };
+
   const [enabled, setEnabled] = useState<Record<string, boolean>>(
     () => Object.fromEntries(POI_LAYERS.map((l) => [l.id, l.defaultOn])),
   );
@@ -238,6 +329,19 @@ export function usePoiLayers(
     () => Object.fromEntries(POI_LAYERS.map((l) => [l.id, []])),
   );
 
+  // Whenever the custom layer list changes, extend each per-layer state record
+  // with default values for the newly-added ids (preserving existing entries).
+  useEffect(() => {
+    setEnabled((prev)       => fillRecord(prev, (id) => layersRef.current.find((l) => l.id === id)?.defaultOn ?? false));
+    setLoading((prev)       => fillRecord(prev, () => false));
+    setErrors((prev)        => fillRecord(prev, () => undefined));
+    setCounts((prev)        => fillRecord(prev, () => 0));
+    setBrandFilters((prev)  => fillRecord(prev, () => new Set<string>()));
+    setPresentBrands((prev) => fillRecord(prev, () => new Set<string>()));
+    setAllFeatures((prev)   => fillRecord(prev, () => []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customLayers]);
+
   // One LayerGroup per POI type, stored by id
   const layerGroups = useRef<Record<string, L.LayerGroup>>({});
 
@@ -247,9 +351,11 @@ export function usePoiLayers(
   // Last rendered bboxKey per layer (for moveend re-renders)
   const lastBbox = useRef<Record<string, string>>({});
 
-  // Deduplication: tracks `${id}::${bboxKey}` strings for in-flight network fetches.
-  // Prevents duplicate API calls when moveend fires before the previous fetch resolves.
-  const fetchingRef = useRef<Set<string>>(new Set());
+  // Per-layer in-flight fetch tracking.  Stores AbortController per
+  // `${id}::${bboxKey}` so we can:
+  //   1. dedupe concurrent fetches for the same bbox (existing behaviour)
+  //   2. cancel in-flight fetches when the layer is toggled off or unmounted
+  const fetchingRef = useRef<Map<string, AbortController>>(new Map());
 
   // enabledRef mirrors enabled state so async callbacks always see the current
   // value without needing to be re-created on every toggle.
@@ -257,13 +363,26 @@ export function usePoiLayers(
   const enabledRef = useRef(enabled);
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
 
+  // ── custom layer fetch / refresh ──────────────────────────────────────────
+
+  const refreshCustomLayers = useCallback(async () => {
+    try {
+      const data = await apiJSON<{ layers: CustomLayerDto[] }>('/map/custom-layers');
+      setCustomLayers((data.layers || []).map(customDtoToDef));
+    } catch {
+      // 401 / 403 / network — keep current set, don't break built-ins
+    }
+  }, []);
+
+  useEffect(() => { refreshCustomLayers(); }, [refreshCustomLayers]);
+
   // ── render helpers ─────────────────────────────────────────────────────────
 
   const renderLayer = useCallback((id: string, features: PoiFeature[]) => {
     const map = leafletMap.current;
     if (!map) return;
     const Leaf = window.L as typeof L;
-    const def = POI_LAYERS.find((l) => l.id === id);
+    const def = layersRef.current.find((l) => l.id === id);
     if (!def) return;
 
     // Apply active brand sub-filters (client-side, no new network request).
@@ -297,6 +416,8 @@ export function usePoiLayers(
 
     // Compute which hardcoded brand filters actually have matching features in this dataset
     // so the panel only shows chips for brands that exist in the current view.
+    // ALWAYS write a fresh Set (even when empty) so chips disappear when panning
+    // to an area where the brand has no presence.
     if (def.brandFilters?.length) {
       const present = new Set<string>();
       features.forEach((f) => {
@@ -304,6 +425,7 @@ export function usePoiLayers(
         const br = ((f.properties?.brand    as string) || '').toLowerCase();
         const op = ((f.properties?.operator as string) || '').toLowerCase();
         def.brandFilters!.forEach((bf) => {
+          if (present.has(bf.value)) return;
           const terms = (bf.matchTerms ?? [bf.value]).map((t) => t.toLowerCase());
           if (brandMatch(terms, nm, br, op)) present.add(bf.value);
         });
@@ -311,13 +433,77 @@ export function usePoiLayers(
       setPresentBrands((prev) => ({ ...prev, [id]: present }));
     }
 
-    // Ensure layer group exists and is attached to map
+    // Ensure layer group exists and is attached to map.
+    //
+    // For dense layers (fuel stations, parking) the bbox can return 1000+
+    // features.  Adding that many DOM-backed markers to a plain LayerGroup
+    // makes pan/zoom unusable: every drag re-positions every marker, and
+    // Leaflet creates real DOM nodes even for off-screen ones.  When the
+    // markercluster plugin is loaded we use it instead — it bundles distant
+    // markers into a cluster bubble at lower zooms, removes off-screen
+    // markers from DOM via removeOutsideVisibleBounds, and adds new markers
+    // in chunks so the UI stays responsive even with thousands of POIs.
     if (!layerGroups.current[id]) {
-      layerGroups.current[id] = Leaf.layerGroup().addTo(map);
+      const LExtra = window.L as unknown as {
+        markerClusterGroup?: (o?: object) => L.LayerGroup;
+      };
+      // Per-layer cluster icon: use the layer's own color (def.color) instead
+      // of markercluster's default green/yellow/red palette.  When the user
+      // has multiple layers turned on at the same time, the screenshot from
+      // QA showed every layer's clusters drawing in the same green/red so
+      // they were indistinguishable.  By colouring the bubble with the
+      // layer's brand colour and matching the icon emoji we let the user
+      // see at a glance which layer a cluster belongs to.
+      const iconCreateFunction = (cluster: { getChildCount: () => number }) => {
+        const n = cluster.getChildCount();
+        // Two compact size buckets — small for ≤10, large otherwise — so the
+        // bubble stays readable at state-zoom without ever growing into the
+        // gigantic 60 px circles markercluster ships by default.
+        const size = n < 10 ? 32 : n < 100 ? 38 : 44;
+        const fontSize = n < 100 ? 11 : 10;
+        return Leaf.divIcon({
+          className: 'poi-layer-cluster',
+          html: `<div style="
+            display:flex;align-items:center;justify-content:center;
+            width:${size}px;height:${size}px;border-radius:50%;
+            background:${def.color};color:#fff;font-weight:700;
+            font-size:${fontSize}px;line-height:1;
+            border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45);
+            gap:2px;
+          "><span style="font-size:${fontSize - 1}px">${def.icon}</span><span>${n}</span></div>`,
+          iconSize: [size, size],
+          iconAnchor: [size / 2, size / 2],
+        });
+      };
+      layerGroups.current[id] = (LExtra.markerClusterGroup
+        ? LExtra.markerClusterGroup({
+            // 60 px is dense enough to merge a row of 5 highway exits at
+            // state-zoom while still showing individual pumps street-level.
+            maxClusterRadius: 60,
+            // Above zoom 13 (city level) every POI renders individually,
+            // matching the previous LayerGroup behaviour.
+            disableClusteringAtZoom: 13,
+            showCoverageOnHover: false,
+            spiderfyOnMaxZoom: true,
+            // Remove off-viewport DOM nodes — biggest single win for drag
+            // performance with 1000+ markers.
+            removeOutsideVisibleBounds: true,
+            chunkedLoading: true,
+            chunkInterval: 50,
+            chunkDelay: 25,
+            iconCreateFunction,
+          })
+        : Leaf.layerGroup()
+      ).addTo(map);
     }
     const group = layerGroups.current[id];
     group.clearLayers();
 
+    // Build all markers off-DOM, then bulk-insert.  markerClusterGroup
+    // exposes addLayers() (note plural) which is dramatically faster than
+    // calling addTo() per feature because it triggers a single index rebuild
+    // instead of N.  The plain LayerGroup fallback also accepts addLayers().
+    const markers: L.Layer[] = [];
     visible.forEach((f) => {
       const [lng, lat] = f.geometry.coordinates;
       const p = f.properties as Record<string, string> | null | undefined;
@@ -369,17 +555,19 @@ export function usePoiLayers(
         ? `<div style="color:#9ca3af;font-size:10px;margin-top:4px">${meta.join(' &nbsp;·&nbsp; ')}</div>`
         : '';
 
-      Leaf.marker([lat, lng], { icon })
-        .bindPopup(
-          `<div style="min-width:160px;max-width:240px">`
-          + `<div style="font-weight:600;font-size:13px">${name}</div>`
-          + `<div style="color:#9ca3af;font-size:11px">${subtitle}</div>`
-          + amenityHtml
-          + metaHtml
-          + `</div>`,
-        )
-        .addTo(group);
+      // Defer attach: we'll bulk-add via addLayers() after the loop.
+      markers.push(Leaf.marker([lat, lng], { icon }).bindPopup(
+        `<div style="min-width:160px;max-width:240px">`
+        + `<div style="font-weight:600;font-size:13px">${name}</div>`
+        + `<div style="color:#9ca3af;font-size:11px">${subtitle}</div>`
+        + amenityHtml
+        + metaHtml
+        + `</div>`,
+      ));
     });
+    (group as L.LayerGroup & { addLayers?: (l: L.Layer[]) => void }).addLayers
+      ? (group as L.LayerGroup & { addLayers: (l: L.Layer[]) => void }).addLayers(markers)
+      : markers.forEach((m) => group.addLayer(m));
   }, [leafletMap]);
 
   const clearLayer = useCallback((id: string) => {
@@ -458,11 +646,22 @@ export function usePoiLayers(
     // 5. Network fetch — deduplicated to prevent concurrent calls for the same layer+bbox
     const fetchKey = `${id}::${key}`;
     if (fetchingRef.current.has(fetchKey)) return;
-    fetchingRef.current.add(fetchKey);
+    const controller = new AbortController();
+    fetchingRef.current.set(fetchKey, controller);
 
     if (showSpinner) setLoading((prev) => ({ ...prev, [id]: true }));
     try {
-      const res = await apiFetch(`/map/pois?type=${encodeURIComponent(id)}&bbox=${bbox}`);
+      // 90 s timeout: Overpass queries on CONUS-scale bboxes (fuel +
+      // brand-allowlist, weigh-station tag union) can legitimately take
+      // 30-45 s before the backend returns.  The default 30 s apiFetch
+      // timeout was clipping these requests with AbortError, which the
+      // catch block below silently swallows (intended for user-toggled-off
+      // aborts) — leaving the layer empty with no error indicator.
+      const res = await apiFetch(
+        `/map/pois?type=${encodeURIComponent(id)}&bbox=${bbox}`,
+        { signal: controller.signal },
+        90_000,
+      );
       if (!res.ok) {
         // Extract the detail message (FastAPI 422 includes {detail: string})
         let msg = 'Failed to load layer';
@@ -485,7 +684,22 @@ export function usePoiLayers(
       lsWrite(id, key, features);
       // Guard: layer may have been disabled while the request was in flight
       if (enabledRef.current[id]) renderLayer(id, features);
-    } catch { /* ignore network errors silently */ }
+    } catch (err) {
+      // Distinguish three abort/error cases:
+      //   1. Caller-aborted (user toggled the layer off / unmounted) — our
+      //      `controller` was aborted explicitly.  Swallow silently.
+      //   2. Timeout-aborted (apiFetch's internal 90s timer fired) — surface
+      //      a useful error so the panel doesn't show stale "zoom in to load".
+      //   3. Network/other — same: surface so the user sees what's wrong.
+      const isAbort = (err as { name?: string })?.name === 'AbortError';
+      if (isAbort && controller.signal.aborted) {
+        // (1) — silent
+      } else if (isAbort) {
+        setErrors((prev) => ({ ...prev, [id]: 'Layer request timed out — try zooming in or panning to refresh' }));
+      } else {
+        setErrors((prev) => ({ ...prev, [id]: (err as Error)?.message || 'Network error' }));
+      }
+    }
     finally {
       fetchingRef.current.delete(fetchKey);
       if (showSpinner) setLoading((prev) => ({ ...prev, [id]: false }));
@@ -506,9 +720,20 @@ export function usePoiLayers(
     } else {
       clearLayer(id);
       setErrors((prev) => ({ ...prev, [id]: undefined }));
-      // Clear spinner immediately — the in-flight fetch may still complete but
-      // renderLayer is guarded by enabledRef so markers will NOT reappear.
       setLoading((prev) => ({ ...prev, [id]: false }));
+      // Cancel any in-flight fetches for this layer so a slow response can't
+      // pollute caches or re-render markers after the user disabled the layer.
+      for (const [k, ctrl] of fetchingRef.current.entries()) {
+        if (k.startsWith(`${id}::`)) {
+          ctrl.abort();
+          fetchingRef.current.delete(k);
+        }
+      }
+      // Reset brand chip selection so re-enabling the layer doesn't carry over
+      // a chip selection from a previous viewport (which would silently hide
+      // markers and confuse the user).
+      setBrandFilters((prev) => prev[id]?.size ? { ...prev, [id]: new Set<string>() } : prev);
+      setPresentBrands((prev) => prev[id]?.size ? { ...prev, [id]: new Set<string>() } : prev);
     }
   }, [fetchAndRender, clearLayer]);
 
@@ -525,7 +750,7 @@ export function usePoiLayers(
   // Re-render the layer whenever its brand filters change so markers update instantly
   // without a new network call — the full feature list is already in cache.
   useEffect(() => {
-    POI_LAYERS.forEach((l) => {
+    layersRef.current.forEach((l) => {
       if (!enabledRef.current[l.id]) return;
       const map = leafletMap.current;
       if (!map) return;
@@ -536,15 +761,36 @@ export function usePoiLayers(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [brandFilters, renderLayer]);
 
-  // ── initial load for defaultOn layers ─────────────────────────────────────
+  // ── initial load for defaultOn layers ─────────────────────────────────
+  //
+  // Stagger initial fetches so we don't hit Overpass with N concurrent
+  // requests — the public mirrors block clients that issue ≥3 parallel
+  // queries.  Two-deep concurrency keeps the UI snappy without tripping limits.
+  //
+  // Tracks which layer ids have already been "kicked off" so the effect
+  // remains idempotent across customLayers refreshes — fetching the same
+  // built-in layer twice on mount would race the AbortController dedup logic
+  // and surface as "Failed to load layer" in the UI.
+  const initialLoadedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!isReady) return;
-    POI_LAYERS.forEach((l) => {
-      if (l.defaultOn) fetchAndRender(l.id);
-    });
+    const queue = layersRef.current
+      .filter((l) => l.defaultOn && !initialLoadedRef.current.has(l.id))
+      .map((l) => l.id);
+    queue.forEach((id) => initialLoadedRef.current.add(id));
+    if (queue.length === 0) return;
+    let active = 0;
+    const runNext = () => {
+      while (active < 2 && queue.length) {
+        const id = queue.shift()!;
+        active++;
+        fetchAndRender(id).finally(() => { active--; runNext(); });
+      }
+    };
+    runNext();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isReady]);
+  }, [isReady, customLayers]);
 
   // ── re-fetch on map pan/zoom ───────────────────────────────────────────────
   // Use a ref for enabled so the handler always sees current state without
@@ -555,20 +801,28 @@ export function usePoiLayers(
     if (!isReady || !leafletMap.current) return;
     const map = leafletMap.current;
 
+    // Debounce moveend: the user can cross several 1° grid cells while panning,
+    // each firing moveend.  Wait 400ms after the last movement before fetching
+    // so we don't hit Overpass with a cascade of requests.
+    let moveTimer: ReturnType<typeof setTimeout> | null = null;
     const onMoveEnd = () => {
-      const key = bboxKey(map);
-      POI_LAYERS.forEach((l) => {
-        if (enabledRef.current[l.id] && lastBbox.current[l.id] !== key) {
-          fetchAndRender(l.id);
-        }
-      });
+      if (moveTimer) clearTimeout(moveTimer);
+      moveTimer = setTimeout(() => {
+        moveTimer = null;
+        const key = bboxKey(map);
+        layersRef.current.forEach((l) => {
+          if (enabledRef.current[l.id] && lastBbox.current[l.id] !== key) {
+            fetchAndRender(l.id);
+          }
+        });
+      }, 400);
     };
 
     map.on('moveend', onMoveEnd);
 
     // Re-render on zoom to update icon sizes (no network request — uses cached features)
     const onZoomEnd = () => {
-      POI_LAYERS.forEach((l) => {
+      layersRef.current.forEach((l) => {
         if (!enabledRef.current[l.id]) return;
         const lastKey = lastBbox.current[l.id];
         if (!lastKey) return;
@@ -578,7 +832,11 @@ export function usePoiLayers(
     };
     map.on('zoomend', onZoomEnd);
 
-    return () => { map.off('moveend', onMoveEnd); map.off('zoomend', onZoomEnd); };
+    return () => {
+      if (moveTimer) clearTimeout(moveTimer);
+      map.off('moveend', onMoveEnd);
+      map.off('zoomend', onZoomEnd);
+    };
   // fetchAndRender is stable (useCallback with no deps that change);
   // enabledRef is a ref so we intentionally exclude it from deps.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -587,12 +845,22 @@ export function usePoiLayers(
   // ── cleanup on unmount ────────────────────────────────────────────────────
 
   useEffect(() => {
+    const fetching = fetchingRef.current;
+    const groups = layerGroups.current;
     return () => {
-      Object.values(layerGroups.current).forEach((g) => g.remove());
+      // Abort any in-flight POI fetches so they don't write to caches after
+      // the component is gone.
+      for (const ctrl of fetching.values()) ctrl.abort();
+      fetching.clear();
+      Object.values(groups).forEach((g) => g.remove());
       layerGroups.current = {};
       cache.current = {};
     };
   }, []);
 
-  return { enabled, toggle, loading, errors, counts, brandFilters, toggleBrand, presentBrands, allFeatures };
+  return {
+    enabled, toggle, loading, errors, counts,
+    brandFilters, toggleBrand, presentBrands, allFeatures,
+    effectiveLayers, refreshCustomLayers,
+  };
 }

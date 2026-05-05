@@ -19,7 +19,7 @@ from interfaces.api.rate_limit import limiter
 import adapters.storage as database
 import logging
 
-from core.config import TELEGRAM_TOKEN
+from infra.config import TELEGRAM_TOKEN
 
 # JWT settings
 _jwt_env = os.getenv("JWT_SECRET", "")
@@ -118,7 +118,7 @@ async def refresh_token(request: Request, authorization: str = __import__("fasta
     (e.g., when less than 1 hour remains).
     """
     from jose import JWTError as _JE
-    from core.platform import get_platform_db; db = get_platform_db()
+    from infra.platform import get_platform_db; db = get_platform_db()
 
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid authorization header")
@@ -156,8 +156,8 @@ async def auth_telegram(request: Request, body: AuthRequest):
     account's bot token.  Falls back to the global TELEGRAM_TOKEN for legacy
     single-bot setups.
     """
-    from core.platform import get_platform_db; db = get_platform_db()
-    from adapters.crypto import decrypt
+    from infra.platform import get_platform_db; db = get_platform_db()
+    from infra.crypto import decrypt
 
     # Pre-parse user ID from initData (before HMAC validation)
     parsed = parse_qs(body.init_data, keep_blank_values=True)
@@ -252,8 +252,8 @@ async def auth_telegram_login(request: Request, body: LoginWidgetRequest):
     Supports per-account bot tokens: looks up user → account → bot token
     before validating the login widget hash.
     """
-    from core.platform import get_platform_db; db = get_platform_db()
-    from adapters.crypto import decrypt
+    from infra.platform import get_platform_db; db = get_platform_db()
+    from infra.crypto import decrypt
 
     user = await db.get_user_by_telegram_id(body.id)
 
@@ -314,8 +314,8 @@ async def auth_config(request: Request):
             payload = decode_jwt(auth_header[7:])
             account_id = payload.get("account_id")
             if account_id:
-                from core.platform import get_platform_db; db = get_platform_db()
-                from adapters.crypto import decrypt
+                from infra.platform import get_platform_db; db = get_platform_db()
+                from infra.crypto import decrypt
                 account = await db.get_account(account_id)
                 if account and account.bot_username:
                     acct_bot_id = ""
@@ -331,8 +331,8 @@ async def auth_config(request: Request):
             logging.getLogger("api.auth").debug("JWT account lookup failed, falling through: %s", e)
     # (account bots handle user auth; system bot is for platform admin only)
     try:
-        from core.platform import get_platform_db; db = get_platform_db()
-        from adapters.crypto import decrypt
+        from infra.platform import get_platform_db; db = get_platform_db()
+        from infra.crypto import decrypt
         accounts = await db.list_accounts()
         for acct in accounts:
             if acct.bot_token_encrypted and acct.bot_username:
@@ -368,7 +368,7 @@ async def bot_login_init(request: Request):
     The frontend polls /bot-login/check/{token} until approved or expired.
     """
     from interfaces.bot.config import bot_username as sys_bot_username
-    from adapters.cache.redis import cache_set as redis_set
+    from infra.cache import cache_set as redis_set
 
     token = secrets.token_urlsafe(32)
     await redis_set(
@@ -393,7 +393,7 @@ async def bot_login_check(request: Request, token: str):
       - {"status": "rejected", "reason": "..."} — user not registered
       - {"status": "expired"} — token gone from Redis
     """
-    from adapters.cache.redis import get as redis_get
+    from infra.cache import get as redis_get
 
     if not token or len(token) > 64:
         raise HTTPException(status_code=400, detail="Invalid token")
@@ -404,12 +404,12 @@ async def bot_login_check(request: Request, token: str):
 
     if data.get("status") == "approved":
         # Clean up the token — one-time use
-        from adapters.cache.redis import delete as redis_del
+        from infra.cache import delete as redis_del
         await redis_del(f"{BOT_LOGIN_PREFIX}{token}")
         return data
 
     if data.get("status") == "rejected":
-        from adapters.cache.redis import delete as redis_del
+        from infra.cache import delete as redis_del
         await redis_del(f"{BOT_LOGIN_PREFIX}{token}")
         return {"status": "rejected", "reason": data.get("reason", "Not authorized")}
 
@@ -440,7 +440,7 @@ class EmailRegisterRequest(BaseModel):
 @limiter.limit("10/minute")
 async def auth_email_login(request: Request, body: EmailLoginRequest):
     """Authenticate via email + password."""
-    from core.platform import get_platform_db; db = get_platform_db()
+    from infra.platform import get_platform_db; db = get_platform_db()
 
     user = await db.get_user_by_email(body.email)
     if not user or not user.password_hash:
@@ -465,7 +465,7 @@ async def auth_email_login(request: Request, body: EmailLoginRequest):
 @limiter.limit("10/minute")
 async def auth_email_register(request: Request, body: EmailRegisterRequest):
     """Register a new user via email + password + invite code."""
-    from core.platform import get_platform_db; db = get_platform_db()
+    from infra.platform import get_platform_db; db = get_platform_db()
 
     # Validate email format
     if not _EMAIL_RE.match(body.email):
@@ -542,7 +542,7 @@ async def auth_set_password(body: EmailLoginRequest):
     """
     from fastapi import Request
     from interfaces.api.deps import get_current_user
-    from core.platform import get_platform_db; db = get_platform_db()
+    from infra.platform import get_platform_db; db = get_platform_db()
 
     # Manually parse the auth header since we can't use Depends() here
     # (the router is defined at module level, deps imported at call time)
@@ -574,7 +574,7 @@ async def auth_register_account(request: Request, body: RegisterAccountRequest):
     The owner can then configure their Telegram bot in admin settings.
     No Telegram interaction required for initial registration.
     """
-    from core.platform import get_platform_db; db = get_platform_db()
+    from infra.platform import get_platform_db; db = get_platform_db()
 
     # Validate email format
     if not _EMAIL_RE.match(body.email):

@@ -84,11 +84,11 @@ class TestMainMenu:
 
     def test_driver_sees_my_truck(self):
         kb = main_menu_kb(Role.DRIVER, ["CO1"])
-        assert _has_callback(kb, "cmd_mytruck")
+        assert _has_callback(kb, "cmd_myvehicle")
 
     def test_driver_no_my_truck_when_no_api(self):
         kb = main_menu_kb(Role.DRIVER, [])
-        assert not _has_callback(kb, "cmd_mytruck")
+        assert not _has_callback(kb, "cmd_myvehicle")
 
     def test_no_api_shows_integration_prompt_for_owner(self):
         kb = main_menu_kb(Role.OWNER, [])
@@ -141,7 +141,7 @@ class TestSubMenuReports:
         assert "cmd_health" in callbacks
         assert "cmd_efficiency" in callbacks
         assert "cmd_events" in callbacks
-        assert "cmd_truck_prompt" in callbacks
+        assert "cmd_vehicle_prompt" in callbacks
         assert "cmd_auto_reports" in callbacks
 
     def test_has_back_button(self):
@@ -344,7 +344,7 @@ class TestMaintVehicleList:
         kb = maint_vehicle_list_kb(vehicles, page=0, company_filter="CO1")
         callbacks = _all_callbacks(kb)
         # 8 trucks on first page
-        truck_cbs = [c for c in callbacks if c.startswith("maint_truck_")]
+        truck_cbs = [c for c in callbacks if c.startswith("maint_vehicle_")]
         assert len(truck_cbs) == 8
         # Has Next, no Prev
         assert any("Next" in lbl for lbl in _all_labels(kb))
@@ -353,7 +353,7 @@ class TestMaintVehicleList:
         vehicles = [{"name": f"T{i}", "_org": "CO1"} for i in range(12)]
         kb = maint_vehicle_list_kb(vehicles, page=1, company_filter="CO1")
         callbacks = _all_callbacks(kb)
-        truck_cbs = [c for c in callbacks if c.startswith("maint_truck_")]
+        truck_cbs = [c for c in callbacks if c.startswith("maint_vehicle_")]
         assert len(truck_cbs) == 4  # remaining 4
         assert any("Prev" in lbl for lbl in _all_labels(kb))
 

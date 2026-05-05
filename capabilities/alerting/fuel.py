@@ -4,28 +4,32 @@ from __future__ import annotations
 
 import logging
 
+from cachetools import LRUCache
 from telegram.ext import Application
 
-import adapters.cache.redis as rcache
+import infra.cache as rcache
 from adapters.samsara.client import populate_company_display
+from capabilities.alerting.ai_maintenance import _notify_api_errors
 from capabilities.alerting.escalation import _auto_resolve_vehicle_alerts
 from capabilities.alerting.pipeline import (
     AlertSeverity, _warmup_done,
     send_alert, is_vehicle_suppressed,
 )
 from capabilities.formatting import format_low_fuel_alert
-from core.bot_registry import get_app_for_account
-from core.config import FUEL_THRESHOLD, FUEL_HYSTERESIS_PERCENT
-from core.context import set_tenant_display
-from core.isolation import run_account_job
-from core.services import get_client, get_platform_db, get_tenant_db
+from capabilities.telemetry.service import get_low_fuel_vehicles as _svc_low_fuel
+from infra.bot_registry import get_app_for_account
+from infra.config import FUEL_THRESHOLD, FUEL_HYSTERESIS_PERCENT
+from infra.context import set_tenant_display
+from infra.isolation import run_account_job
+from infra.services import get_client, get_platform_db, get_tenant_db
 
 logger = logging.getLogger("bot")
 
 
-# ── Low fuel dedup state ─────────────────────────────────────────
+# ── Low fuel dedup state (bounded LRU cache) ─────────────────────
+# Bounded to 10k keys; Redis is the primary store, this is the fallback.
 
-_known_low_fuel: dict[str, bool] = {}
+_known_low_fuel: LRUCache = LRUCache(maxsize=10_000)
 
 # Fuel severity threshold: below this percentage → CRITICAL
 FUEL_CRITICAL_PCT = 10
@@ -105,7 +109,10 @@ async def _check_fuel_account(
 ):
     """Process fuel alerts for a single account."""
     samsara = await get_client(account_id)
-    low_fuel = await samsara.get_low_fuel_vehicles(FUEL_THRESHOLD)
+    low_fuel = await _svc_low_fuel(account_id, FUEL_THRESHOLD)
+
+    if samsara.last_skipped:
+        await _notify_api_errors(bot_app, account_id, samsara.last_skipped)
 
     if is_warmup:
         for v in low_fuel:
@@ -169,9 +176,7 @@ async def _check_fuel_account(
     ]
     if stale_keys:
         try:
-            all_vehicles = await samsara.get_low_fuel_vehicles(
-                clear_threshold
-            )
+            all_vehicles = await _svc_low_fuel(account_id, clear_threshold)
             still_below_clear = {
                 f"{account_id}:{v.get('_org', '?')}:{v['id']}"
                 for v in all_vehicles

@@ -2,28 +2,44 @@
 
 from __future__ import annotations
 
-from core.services import get_client
-from capabilities.vehicle_catalog.service import prepare_companies
+from infra.services import get_client
+from capabilities.vehicles.service import prepare_companies
 
 
 async def get_geofences(
-    account_id: str,
+    account_id: int,
     company: str | None = None,
 ) -> list[dict]:
-    """Fetch geofence definitions from Samsara."""
+    """Fetch geofence definitions.
+
+    Warehouse-first: reads ``geofence_definitions`` (hourly-fresh) when
+    WAREHOUSE_READS_ENABLED=1, falls back to live Samsara otherwise
+    (or on cold-start empty cache).
+    """
     await prepare_companies(account_id)
     client = await get_client(account_id)
-    return await client.get_geofences(company=company)
+
+    async def _live():
+        return await client.get_geofences(company=company)
+
+    from capabilities.telemetry import warehouse_reader as _wh
+    return await _wh.get_geofences(
+        account_id, company=company, samsara_fallback=_live,
+    )
 
 
 async def get_fleet_for_geofence_check(
-    account_id: str,
+    account_id: int,
     company: str | None = None,
 ) -> list[dict]:
-    """Fetch fleet overview for geofence proximity checks."""
-    await prepare_companies(account_id)
-    client = await get_client(account_id)
-    return await client.get_fleet_overview(company=company)
+    """Fetch fleet overview for geofence proximity checks.
+
+    Warehouse-first via vehicles.service.get_fleet_overview (60s-fresh) —
+    geofence proximity tolerates the small lag and avoids hammering Samsara
+    every check cycle.
+    """
+    from capabilities.vehicles.service import get_fleet_overview as _svc
+    return await _svc(account_id, company=company)
 
 
 async def get_platform_geofences(account_id: int, db) -> list[dict]:

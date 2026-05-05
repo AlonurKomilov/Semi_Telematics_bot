@@ -6,26 +6,25 @@ import logging
 from datetime import datetime, timezone
 
 from cachetools import LRUCache
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.constants import ParseMode
 from telegram.ext import Application
 
-import adapters.cache.redis as rcache
+import infra.cache as rcache
 from adapters.samsara.client import populate_company_display
 from capabilities.alerting.ai_maintenance import (
-    _get_ai_diagnosis_note, auto_create_maintenance_from_faults,
+    _get_ai_diagnosis_note, _notify_api_errors, auto_create_maintenance_from_faults,
 )
 from capabilities.alerting.escalation import _auto_resolve_vehicle_alerts
 from capabilities.alerting.pipeline import (
     AlertSeverity, COOLANT_SPNS,
     send_alert, is_vehicle_suppressed,
 )
-from capabilities.formatting import format_new_fault_alert, format_critical_fault_alert
-from core.bot_registry import get_app_for_account
-from core.config import FAULT_ALERT_COOLDOWN_HOURS
-from core.context import set_tenant_display
-from core.isolation import run_account_job
-from core.services import get_client, get_platform_db, get_tenant_db
+from capabilities.formatting import format_fault_alert
+from capabilities.telemetry.service import get_vehicles_with_faults as _svc_get_faults
+from infra.bot_registry import get_app_for_account
+from infra.config import FAULT_ALERT_COOLDOWN_HOURS
+from infra.context import set_tenant_display
+from infra.isolation import run_account_job
+from infra.services import get_client, get_platform_db, get_tenant_db
 
 logger = logging.getLogger("bot")
 
@@ -53,9 +52,68 @@ async def _set_known_faults(account_id: int, vid: str, codes: set[str]):
         _known_faults[f"{account_id}:{vid}"] = codes
 
 
+# ── Phase 3 — DB dedup shadow (parallel run) ─────────────────────
+#
+# The plan replaces Redis ``_known_faults`` with the DB query
+# ``vehicle_fault_detail.cleared_at IS NULL``.  We run both in
+# parallel for one release: Redis remains authoritative for the
+# alerting decision (so behaviour is bit-for-bit identical), and the
+# DB-backed view is sampled for divergence so we can flip authority
+# in the next release with confidence.
+#
+# Divergence is logged at INFO once per (account, vehicle) per cycle
+# so a noisy fleet doesn't flood the log.
+
+async def _shadow_compare_dedup(
+    account_id: int, vehicle_id: str, redis_codes: set[str],
+) -> None:
+    """Compare Redis dedup against ``vehicle_fault_detail`` and log diff.
+
+    Pure observation — never raises, never affects alerting.  The DB
+    set comes from the *active* (``cleared_at IS NULL``) DTC ids; the
+    Redis set is the ``spnId-fmiId`` pairs the alert-loop tracks.  Both
+    keys are derived from the same Samsara payload so they should
+    match for any vehicle the warehouse ingest has touched.
+    """
+    try:
+        tenant = await get_tenant_db(account_id)
+        if tenant is None:
+            return
+        db_ids = await tenant.get_active_fault_dtc_ids(
+            account_id, vehicle_id=vehicle_id,
+        )
+    except Exception:
+        # Shadow mode must never break the alert loop.
+        return
+
+    # Redis stores "spn-fmi" pairs; the warehouse stores either the
+    # Samsara DTC id or our fallback "spn:N-fmi:N".  Normalise both
+    # sides to the spn/fmi tuple form before comparing.
+    def _norm(s: str) -> str:
+        s = s.strip()
+        if s.startswith("spn:") and "-fmi:" in s:
+            spn = s.split("spn:", 1)[1].split("-", 1)[0]
+            fmi = s.split("-fmi:", 1)[1]
+            return f"{spn}-{fmi}"
+        return s
+
+    norm_db = {_norm(x) for x in db_ids}
+    norm_redis = {_norm(x) for x in redis_codes}
+    if norm_db != norm_redis:
+        only_db = norm_db - norm_redis
+        only_redis = norm_redis - norm_db
+        logger.info(
+            "fault dedup shadow diff acct=%d vid=%s only_db=%s only_redis=%s",
+            account_id, vehicle_id,
+            sorted(only_db)[:5], sorted(only_redis)[:5],
+        )
+
+
 # ── Fault alert cooldown helpers ─────────────────────────────────
 
-_fault_last_sent: dict[str, float] = {}
+# LRUCache caps in-memory growth when Redis is unavailable.
+# Faults LRU is consistent with _known_faults above.
+_fault_last_sent: dict = LRUCache(maxsize=10_000)
 
 
 async def _get_fault_last_sent(account_id: int, vid: str) -> float:
@@ -85,84 +143,8 @@ def _is_fault_on_cooldown(last_sent: float) -> bool:
 
 
 # ── API Health Notifications ────────────────────────────────────
-
-_API_ALERT_COOLDOWN_S = 6 * 3600
-_api_alert_sent: dict[str, float] = {}
-
-
-async def _notify_api_errors(
-    bot_app: Application,
-    account_id: int,
-    skipped_codes: list[str],
-):
-    """Send a one-time Telegram alert to account owners/admins when
-    a company's Samsara API call fails.  Throttled to one alert per
-    company per _API_ALERT_COOLDOWN_S seconds.
-    """
-    now = datetime.now(timezone.utc).timestamp()
-    codes_to_alert = []
-    for code in skipped_codes:
-        mem_key = f"{account_id}:{code}"
-        redis_key = f"t:{account_id}:api_alert:{code}"
-
-        # Check cooldown — Redis first, then in-memory fallback
-        if rcache.is_available():
-            if await rcache.exists(redis_key):
-                continue
-            codes_to_alert.append(code)
-            await rcache.setex_flag(redis_key, _API_ALERT_COOLDOWN_S)
-        else:
-            last = _api_alert_sent.get(mem_key, 0)
-            if now - last >= _API_ALERT_COOLDOWN_S:
-                codes_to_alert.append(code)
-                _api_alert_sent[mem_key] = now
-
-    if not codes_to_alert:
-        return
-
-    admins = await get_platform_db().get_account_admins(account_id)
-    if not admins:
-        return
-
-    codes_str = ", ".join(codes_to_alert)
-    text = (
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "  🚨  <b>API ERROR</b>\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        f"\n  Company: <b>{codes_str}</b>\n"
-        "\n"
-        "  The Samsara API returned an error\n"
-        "  for this company. Reports will be\n"
-        "  missing data until the issue is fixed.\n"
-        "\n"
-        "  <b>Possible causes:</b>\n"
-        "  • API token expired or revoked\n"
-        "  • Token missing required permissions\n"
-        "  • Samsara service outage\n"
-        "\n"
-        "  Check your Samsara dashboard or\n"
-        "  re-add the API key to resolve."
-    )
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔍 Check Status", callback_data="cmd_api_status")],
-        [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
-    ])
-
-    for admin in admins:
-        try:
-            await bot_app.bot.send_message(
-                chat_id=admin.telegram_id,
-                text=text,
-                parse_mode=ParseMode.HTML,
-                reply_markup=kb,
-            )
-        except Exception as e:
-            logger.error(f"API alert to admin {admin.telegram_id}: {e}")
-
-    logger.warning(
-        f"API error alert sent for account {account_id}, "
-        f"companies: {codes_str}"
-    )
+# Implementation lives in capabilities.alerting.ai_maintenance so that
+# faults / health / fuel can all share the same throttled notifier.
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -202,8 +184,8 @@ async def check_new_faults(app: Application):
 
 async def _check_faults_account(bot_app: Application, account_id: int, subs: list):
     """Process fault alerts for a single account."""
-    samsara = await get_client(account_id)
-    faulted, _, _ = await samsara.get_vehicles_with_faults()
+    samsara = await get_client(account_id)  # needed for last_skipped / ensure_org_ids
+    faulted, _, _ = await _svc_get_faults(account_id)
 
     if samsara.last_skipped:
         await _notify_api_errors(bot_app, account_id, samsara.last_skipped)
@@ -232,31 +214,28 @@ async def _check_faults_account(bot_app: Application, account_id: int, subs: lis
             previously_known = await _get_known_faults(account_id, vid)
             new_codes = current_codes - previously_known
 
+            # Phase 3 shadow: compare Redis dedup vs DB warehouse view.
+            # No behaviour change — just observability ahead of the
+            # planned authority swap in the next release.
+            await _shadow_compare_dedup(account_id, v["id"], previously_known)
+
             if new_codes:
                 new_dtcs = [
                     dtc for dtc in v.get("_dtcs", [])
                     if f"{dtc.get('spnId', '?')}-{dtc.get('fmiId', '?')}" in new_codes
                 ]
                 if new_dtcs:
-                    # ── Classify severity ────────────────
-                    lights = v.get("_lights", {})
-                    is_critical = (
-                        lights.get("stopIsOn", False)
-                        or lights.get("protectIsOn", False)
-                        or lights.get("emissionsIsOn", False)
-                    )
-                    if not is_critical:
-                        for dtc in new_dtcs:
-                            fmi_desc = dtc.get("fmiDescription", "").lower()
-                            if "most severe" in fmi_desc:
-                                is_critical = True
-                                break
+                    # ── Classify severity (pre-stamped by get_vehicles_with_faults) ──
+                    _sev = v.get("_severity", "warning")
+                    if _sev == "critical":
+                        severity = AlertSeverity.CRITICAL
+                    elif _sev == "info":
+                        severity = AlertSeverity.INFO
+                    else:
+                        severity = AlertSeverity.WARNING
 
-                    severity = (AlertSeverity.CRITICAL if is_critical
-                                else AlertSeverity.WARNING)
-
-                    # Cooldown: skip WARNING faults if recently alerted
-                    if severity != AlertSeverity.CRITICAL:
+                    # Cooldown: skip WARNING/INFO faults if recently alerted
+                    if severity == AlertSeverity.WARNING or severity == AlertSeverity.INFO:
                         last_sent = await _get_fault_last_sent(account_id, vid)
                         if _is_fault_on_cooldown(last_sent):
                             await _set_known_faults(account_id, vid, current_codes)
@@ -269,14 +248,10 @@ async def _check_faults_account(bot_app: Application, account_id: int, subs: lis
                     )
 
                     show_co = len(company_codes) > 1
-                    if severity == AlertSeverity.CRITICAL:
-                        alert_text = format_critical_fault_alert(
-                            v, new_dtcs, lights, show_company=show_co,
-                        )
-                    else:
-                        alert_text = format_new_fault_alert(
-                            v, new_dtcs, show_company=show_co,
-                        )
+                    lights = v.get("_lights", {})
+                    alert_text = format_fault_alert(
+                        v, new_dtcs, severity=severity, lights=lights, show_company=show_co,
+                    )
 
                     if has_coolant_dtc:
                         alert_text += (
@@ -325,28 +300,75 @@ async def _check_faults_account(bot_app: Application, account_id: int, subs: lis
             logger.warning(f"Fault check for vehicle {v.get('name', '?')}: {e}")
             continue
 
-    # Clear fault alert history for vehicles that no longer
-    # have faults — delete old messages from chat
-    current_faulted_vids = {
+    # ── Auto-resolve alerts for vehicles whose faults have cleared ─────────
+    #
+    # We cannot rely solely on _known_faults.keys() for stale-key detection
+    # because _known_faults (in-memory LRU) is never populated when Redis is
+    # available — all dedup state lives in Redis, so the local dict stays empty.
+    # Instead we query alert_history (always in the DB) for all active fault
+    # alerts belonging to this account and resolve any whose vehicle_id is not
+    # in the set currently returned by Samsara.
+    #
+    # The in-memory dict scan is kept as a secondary pass to handle the
+    # no-Redis (development/testing) case where the DB may not have a history
+    # row yet for a just-seen vehicle.
+
+    # Build a set of Samsara vehicle IDs (raw, not compound key) that are
+    # currently faulted so we can match against alert_history.vehicle_id.
+    current_faulted_raw_ids = {v["id"] for v in faulted}
+
+    tenant = await get_tenant_db(account_id)
+
+    # Primary: DB-based scan (works when Redis is available)
+    try:
+        active_fault_histories = await tenant.get_active_fault_history_for_account(account_id)
+        for hist in active_fault_histories:
+            v_id = hist["vehicle_id"]       # raw Samsara vehicle ID
+            v_name = hist.get("vehicle_name", "")
+            if v_id not in current_faulted_raw_ids:
+                # Determine co from the compound _known_faults key if present,
+                # otherwise fall back to empty string (auto-resolve still works).
+                co_guess = ""
+                compound = f"{account_id}:*:{v_id}"  # pattern — not used directly
+                for k in list(_known_faults.keys()):
+                    if k.endswith(f":{v_id}") and k.startswith(f"{account_id}:"):
+                        parts = k.split(":", 2)
+                        co_guess = parts[1] if len(parts) == 3 else ""
+                        break
+                await _auto_resolve_vehicle_alerts(
+                    bot_app, account_id, "fault", v_id, v_name, co_guess,
+                    bot_app=bot_app,
+                )
+                # Clear dedup so the fault is treated as new if it returns.
+                # Pass v_id directly — _set_known_faults builds the compound
+                # key internally as f"{account_id}:{vid}".
+                await _set_known_faults(account_id, v_id, set())
+    except Exception as e:
+        logger.error("DB-based fault auto-resolve scan failed for account %d: %s", account_id, e)
+
+    # Secondary: in-memory scan (no-Redis path — dict will be non-empty here)
+    current_faulted_compound = {
         f"{account_id}:{v.get('_org', '?')}:{v['id']}"
         for v in faulted
     }
-    stale_fault_keys = [
+    stale_mem_keys = [
         k for k in list(_known_faults.keys())
         if k.startswith(f"{account_id}:")
-        and k not in current_faulted_vids
+        and k not in current_faulted_compound
     ]
-    tenant = await get_tenant_db(account_id)
-    for k in stale_fault_keys:
+    for k in stale_mem_keys:
         parts = k.split(":", 2)
         if len(parts) == 3:
             co = parts[1]
-            v_id = parts[2]
+            vid = parts[2]   # raw Samsara vehicle ID — correct arg for _set_known_faults
             await _auto_resolve_vehicle_alerts(
-                bot_app, account_id, "fault", v_id, "", co,
+                bot_app, account_id, "fault", vid, "", co,
                 bot_app=bot_app,
             )
-        await _set_known_faults(account_id, k, set())
+            # FIX (Bug 3): pass vid (raw vehicle ID), not k (full compound key).
+            # _set_known_faults builds the internal key as f"{account_id}:{vid}"
+            # so passing k would produce a double-prefixed key that never matches.
+            await _set_known_faults(account_id, vid, set())
 
 
 async def initialize_known_faults():
@@ -357,8 +379,7 @@ async def initialize_known_faults():
 
         for account_id in account_ids:
             try:
-                samsara = await get_client(account_id)
-                faulted, _, _ = await samsara.get_vehicles_with_faults()
+                faulted, _, _ = await _svc_get_faults(account_id)
                 for v in faulted:
                     co = v.get("_org", "?")
                     vid = f"{account_id}:{co}:{v['id']}"

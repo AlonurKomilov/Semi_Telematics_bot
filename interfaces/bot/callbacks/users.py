@@ -49,7 +49,7 @@ async def _handle_user_menu(update, context, user, target_tid):
         f"👤 <b>User <a href='tg://user?id={target_tid}'>{target_user.label}</a></b>\n"
         f"{t('user_mgmt.role_label')} {role_display(target_user.role)}\n"
         f"{t('user_mgmt.dept_label')} {target_user.department or '—'}\n"
-        f"{t('user_mgmt.truck_label_short')} {target_user.truck_num or '—'}\n"
+        f"{t('user_mgmt.vehicle_label_short')} {target_user.truck_num or '—'}\n"
         f"{t('user_mgmt.alerts_status_label')} {alerts_icon} {alerts_label}"
     ], keyboard=InlineKeyboardMarkup(rows))
 

@@ -8,7 +8,7 @@ from the interface layer.
 
 Usage (in run.py or startup code)::
 
-    import core.bot_registry as _registry
+    import infra.bot_registry as _registry
     from interfaces.bot.handler_setup import register_handlers
     _registry.set_handler_setup(register_handlers)
 """
@@ -27,7 +27,7 @@ def register_handlers(app: Application) -> None:
     from interfaces.bot.app import cmd_chatid, cmd_settings, cmd_audit
     from interfaces.bot.registration import cmd_start, cmd_register, cmd_join, cmd_help
     from interfaces.bot.fleet import (
-        cmd_faults, cmd_truck, cmd_fuel, cmd_alerts,
+        cmd_faults, cmd_vehicle, cmd_fuel, cmd_alerts,
         cmd_health, cmd_efficiency,
     )
     from interfaces.bot.management import (
@@ -52,7 +52,7 @@ def register_handlers(app: Application) -> None:
 
     # Fleet commands
     app.add_handler(CommandHandler("faults", cmd_faults))
-    app.add_handler(CommandHandler("truck", cmd_truck))
+    app.add_handler(CommandHandler("vehicle", cmd_vehicle))
     app.add_handler(CommandHandler("fuel", cmd_fuel))
     app.add_handler(CommandHandler("alerts", cmd_alerts))
     app.add_handler(CommandHandler("health", cmd_health))

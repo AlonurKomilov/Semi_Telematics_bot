@@ -2,9 +2,9 @@
 
 from fastapi import APIRouter, Depends, Query
 
-from interfaces.api.deps import get_current_user, get_tenant_db, get_user_truck_nums, get_user_company_codes, validate_company_access, filter_by_allowed_companies
-from core.services import get_client
+from interfaces.api.deps import get_current_user, get_tenant_db, get_user_vehicle_nums, get_user_company_codes, validate_company_access, filter_by_allowed_companies
 from capabilities.iam.permissions import can
+from capabilities.location.service import classify_vehicle_status, get_fleet_for_map
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -25,16 +25,20 @@ async def dashboard_stats(
     """
     account_id = user["account_id"]
     role = user.get("role", "driver")
-    client = await get_client(account_id)
 
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
-    overview = await client.get_fleet_overview(company=company)
+    # Use get_fleet_for_map (not client.get_fleet_overview) so each vehicle
+    # has the authoritative CAN-bus engineState merged in — without it the
+    # Idle bucket is always 0 because fleet_overview alone exposes only
+    # speed, and a parked truck with the engine running looks identical
+    # to a fully off truck.
+    overview = await get_fleet_for_map(account_id, company=company)
     overview = filter_by_allowed_companies(overview, allowed)
 
     # ── Driver: own truck only ──────────────────────────────────
     if role == "driver":
-        trucks = await get_user_truck_nums(user)
+        trucks = await get_user_vehicle_nums(user)
         truck_num = trucks[0] if trucks else None
         my_truck = None
         if trucks:
@@ -57,11 +61,9 @@ async def dashboard_stats(
             "my_truck": {
                 "name": my_truck.get("name", truck_num or "—") if my_truck else (truck_num or "—"),
                 "status": (
-                    "Moving" if my_truck and (
-                        (my_truck.get("location", {}).get("speedMilesPerHour") or
-                         my_truck.get("location", {}).get("speed") or 0) > 2
+                    {"moving": "Moving", "idle": "Idle", "stopped": "Stopped"}.get(
+                        classify_vehicle_status(my_truck), "Unknown"
                     )
-                    else "Stopped"
                 ) if my_truck else "Unknown",
                 "speed_mph": round(
                     my_truck.get("location", {}).get("speedMilesPerHour")
@@ -90,18 +92,20 @@ async def dashboard_stats(
     # ── All other roles: fleet-wide stats ───────────────────────
     total = len(overview)
 
-    # Speed is nested inside v["location"]["speedMilesPerHour"] (or "speed")
-    # — the raw Samsara fleet_overview data is NOT flattened at the top level.
-    def _spd(v: dict) -> float:
-        loc = v.get("location", {})
-        return float(loc.get("speedMilesPerHour") or loc.get("speed") or 0)
-
-    moving  = sum(1 for v in overview if _spd(v) > 2)
-    # "Idle" = engine on but speed at or near zero.  Engine state is not
-    # available in fleet_overview (would need a separate API call), so we
-    # use the low-speed window (0 < speed <= 2 mph) as a proxy.
-    idle    = sum(1 for v in overview if 0 < _spd(v) <= 2)
-    stopped = total - moving - idle
+    # Use the same authoritative classifier as the live map: prefers the
+    # CAN-bus engineState ('On'/'Idle'/'Off') merged in by get_fleet_for_map,
+    # falls back to a speed heuristic.  Without this Idle was always 0 because
+    # fleet_overview alone exposes only speed, so a parked truck with the
+    # engine running was indistinguishable from a fully off truck.
+    moving = idle = stopped = 0
+    for v in overview:
+        s = classify_vehicle_status(v)
+        if s == "moving":
+            moving += 1
+        elif s == "idle":
+            idle += 1
+        else:
+            stopped += 1
 
     result: dict = {
         "role": role,

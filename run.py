@@ -11,13 +11,13 @@ To run only the API: ENABLE_BOT=0 ENABLE_SCHEDULER=0 ENABLE_API=1
 To run only bot+scheduler: ENABLE_API=0 ENABLE_BOT=1 ENABLE_SCHEDULER=1
 
 Startup order:
-  1. core.startup.initialize()  — encryption, DB, AI, Redis, key migration
+  1. infra.startup.initialize()  — encryption, DB, AI, Redis, key migration
   2. build_app()                — Telegram Application with all handlers (if ENABLE_BOT)
   3. APScheduler                — scheduled alert/report jobs (if ENABLE_SCHEDULER)
   4. run_api()                  — FastAPI uvicorn server (if ENABLE_API)
   5. run_bot()                  — Telegram polling or webhook (if ENABLE_BOT)
   6. await stop_event           — block until SIGINT/SIGTERM
-  7. core.startup.shutdown()    — Redis, DB, caches
+  7. infra.startup.shutdown()    — Redis, DB, caches
 """
 
 import asyncio
@@ -33,7 +33,7 @@ _ENABLE_API       = os.getenv("ENABLE_API",       "1") == "1"
 _ENABLE_BOT       = os.getenv("ENABLE_BOT",       "1") == "1"
 _ENABLE_SCHEDULER = os.getenv("ENABLE_SCHEDULER", "1") == "1"
 
-import core.startup                                # noqa: E402
+import infra.startup                                # noqa: E402
 
 if _ENABLE_BOT or _ENABLE_SCHEDULER:
     from telegram import Update                    # noqa: E402
@@ -44,7 +44,7 @@ if _ENABLE_BOT or _ENABLE_SCHEDULER:
         logger,
     )
     from interfaces.bot.scheduler import register_all as _register_jobs  # noqa: E402
-    from core.bot_registry import init_registry, set_handler_setup  # noqa: E402
+    from infra.bot_registry import init_registry, set_handler_setup  # noqa: E402
     from interfaces.bot.handler_setup import register_handlers as _bot_handlers  # noqa: E402
     set_handler_setup(_bot_handlers)
 else:
@@ -109,7 +109,7 @@ async def main():
     logger.info("Starting 4truck — services: %s", "+".join(mode_parts) or "none")
 
     # ── 1. Platform infrastructure (always required) ─────────────
-    await core.startup.initialize()
+    await infra.startup.initialize()
 
     # ── Graceful shutdown wiring ─────────────────────────────────
     stop_event = asyncio.Event()
@@ -129,7 +129,7 @@ async def main():
         # Per-account bot registry
         registry = init_registry(system_app=tg_app)
         try:
-            from core.platform import get_platform_db
+            from infra.platform import get_platform_db
             started = await registry.start_all(get_platform_db())
             if started:
                 logger.info("Started %d per-account bot(s) from database", started)
@@ -146,7 +146,7 @@ async def main():
             )
         else:
             # Acquire distributed lock so only one scheduler instance runs across deploys
-            import adapters.cache.redis as _rcache
+            import infra.cache as _rcache
             lock_acquired = await _rcache.acquire_lock("scheduler:global", ttl_secs=90)
             if lock_acquired:
                 scheduler = AsyncIOScheduler()
@@ -160,9 +160,31 @@ async def main():
     if _ENABLE_API:
         api_task = asyncio.create_task(run_api())
 
+        # Surface silent task crashes to the error reporter
+        def _api_task_done(t: asyncio.Task) -> None:
+            if not t.cancelled():
+                exc = t.exception()
+                if exc:
+                    try:
+                        from infra.error_reporter import report_error
+                        asyncio.get_event_loop().create_task(
+                            report_error(exc, source="task", job_name="run_api")
+                        )
+                    except Exception:
+                        pass
+        api_task.add_done_callback(_api_task_done)
+
     # ── 5. Start bot ─────────────────────────────────────────────
     if _ENABLE_BOT and tg_app:
-        await run_bot(tg_app)
+        try:
+            await run_bot(tg_app)
+        except Exception as exc:
+            logger.exception("Bot polling crashed")
+            try:
+                from infra.error_reporter import report_error
+                await report_error(exc, source="task", job_name="run_bot")
+            except Exception:
+                pass
 
     # ── 6. Wait for shutdown signal ──────────────────────────────
     await stop_event.wait()
@@ -183,11 +205,11 @@ async def main():
 
     if scheduler:
         scheduler.shutdown(wait=False)
-        import adapters.cache.redis as _rcache
+        import infra.cache as _rcache
         await _rcache.release_lock("scheduler:global")
 
     # Platform shutdown (Redis, DB, caches)
-    await core.startup.shutdown()
+    await infra.startup.shutdown()
     logger.info("Shutdown complete")
 
 

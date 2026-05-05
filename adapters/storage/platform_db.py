@@ -13,7 +13,7 @@ from .invites import InvitesMixin
 from .chats import ChatsMixin
 from .knowledge_db import KnowledgeBaseMixin
 from .permissions_db import PermissionsMixin
-from .driver_trucks_db import DriverTrucksMixin
+from .driver_vehicles_db import DriverVehiclesMixin
 from .user_companies_db import UserCompaniesMixin
 from .billing import BillingMixin
 from .ai_chat_db import AIChatHistoryMixin
@@ -30,7 +30,7 @@ class PlatformDB(
     ChatsMixin,
     KnowledgeBaseMixin,
     PermissionsMixin,
-    DriverTrucksMixin,
+    DriverVehiclesMixin,
     UserCompaniesMixin,
     BillingMixin,
     AIChatHistoryMixin,
@@ -58,6 +58,28 @@ class PlatformDB(
             "Platform DB ready at %s (writer + %d readers)",
             self.path, self._pool_size,
         )
+
+    # ── Error log (built-in error reporter) ─────────────────────
+
+    async def log_error(
+        self,
+        source: str,
+        error_type: str,
+        error_msg: str,
+        traceback_text: str = "",
+        *,
+        job_name: str | None = None,
+        account_id: int | None = None,
+    ) -> None:
+        """Persist one row to error_log.  Called from infra.error_reporter."""
+        now = self._now()
+        await self._db.execute(
+            """INSERT INTO error_log
+               (source, job_name, account_id, error_type, error_msg, traceback, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (source, job_name, account_id, error_type, error_msg, traceback_text or None, now),
+        )
+        await self._db.commit()
 
     # ── AI usage (lives in platform DB alongside accounts) ────────
 

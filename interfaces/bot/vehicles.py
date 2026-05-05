@@ -11,18 +11,18 @@ from telegram.constants import ParseMode
 
 from adapters.storage import Role
 from capabilities.iam.permissions import can
-from core.context import get_company_display
-from capabilities.formatting import format_truck_detail, format_truck_picker
-from capabilities.reporting import generate_critical_report_pdf, generate_truck_detail_pdf
-from capabilities.vehicle_catalog.service import (
+from infra.context import get_company_display
+from capabilities.formatting import format_vehicle_detail, format_vehicle_picker
+from capabilities.reporting import generate_critical_report_pdf, generate_vehicle_detail_pdf
+from capabilities.vehicles.service import (
     prepare_companies, get_company_codes as _get_company_codes,
     get_fleet_overview as _svc_fleet_overview,
     get_vehicle_detail as _svc_vehicle_detail,
-    get_critical_faults as _svc_critical_faults,
 )
+from capabilities.telemetry.service import get_vehicles_with_faults as _svc_with_faults
 
 from interfaces.bot.config import logger, _active_messages, get_client
-from interfaces.bot.keyboards import back_kb, truck_kb, truck_picker_kb, vehicle_list_kb
+from interfaces.bot.keyboards import back_kb, vehicle_kb, vehicle_picker_kb, vehicle_list_kb
 from interfaces.bot.helpers import (
     _show, _show_loading, _delete_old_messages, _company_line, _user_menu_kb,
     _msg_key, _safe_error,
@@ -32,28 +32,28 @@ from interfaces.bot.reports import _skipped_warning
 
 
 @_require_registered
-async def cmd_truck(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                    truck_name: str | None = None, company: str | None = None,
+async def cmd_vehicle(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                    vehicle_name: str | None = None, company: str | None = None,
                     ack_id: int | None = None):
     """Look up a single truck."""
     user = context.user_data["_db_user"]
 
     # Parse truck name from args or callback
-    if truck_name is None:
+    if vehicle_name is None:
         if context.args:
-            truck_name = " ".join(context.args)
+            vehicle_name = " ".join(context.args)
         elif update.callback_query:
             data = update.callback_query.data
-            if data.startswith("truck_"):
-                truck_name = data.replace("truck_", "")
-            elif data.startswith("cotruck_"):
+            if data.startswith("vehicle_"):
+                vehicle_name = data.replace("vehicle_", "")
+            elif data.startswith("covehicle_"):
                 parts = data.split("_", 2)
                 if len(parts) == 3:
                     company = parts[1]
-                    truck_name = parts[2]
+                    vehicle_name = parts[2]
                     # Check for :ack_id suffix
-                    if ":" in truck_name:
-                        truck_name, ack_str = truck_name.rsplit(":", 1)
+                    if ":" in vehicle_name:
+                        vehicle_name, ack_str = vehicle_name.rsplit(":", 1)
                         try:
                             ack_id = int(ack_str)
                         except ValueError:
@@ -63,51 +63,51 @@ async def cmd_truck(update: Update, context: ContextTypes.DEFAULT_TYPE,
     if user.role == Role.DRIVER:
         if not user.truck_num:
             await _show(update, context,
-                        [t('truck.no_truck_assigned')],
+                        [t('vehicle.no_vehicle_assigned')],
                         keyboard=back_kb())
             return
-        truck_name = user.truck_num
-    elif not can(user.role, "can_truck_all"):
+        vehicle_name = user.truck_num
+    elif not can(user.role, "can_vehicle_all"):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    if not truck_name:
+    if not vehicle_name:
         await _show(update, context,
-                    [t('truck.usage_prompt')],
+                    [t('vehicle.usage_prompt')],
                     keyboard=back_kb())
         return
 
     company_codes = await _get_company_codes(user.account_id)
 
-    await _show_loading(update, context, t('truck.loading_lookup').format(name=truck_name))
+    await _show_loading(update, context, t('vehicle.loading_lookup').format(name=vehicle_name))
 
     try:
-        matches = await _svc_vehicle_detail(user.account_id, truck_name, company=company)
+        matches = await _svc_vehicle_detail(user.account_id, vehicle_name, company=company)
 
         if not matches:
             await _show(update, context,
-                        [t('truck.not_found').format(name=truck_name)],
+                        [t('vehicle.not_found').format(name=vehicle_name)],
                         keyboard=back_kb())
             return
 
         if len(matches) == 1:
             vehicle = matches[0]
             _show_faults = can(user.role, "can_faults")
-            messages = format_truck_detail(
+            messages = format_vehicle_detail(
                 vehicle,
                 show_company=len(company_codes) > 1,
                 show_faults=_show_faults,
             )
             v_org = vehicle.get("_org", company or "")
             await _show(update, context, messages,
-                        keyboard=truck_kb(truck_name, v_org,
+                        keyboard=vehicle_kb(vehicle_name, v_org,
                                           show_faults=_show_faults,
                                           ack_id=ack_id))
         else:
-            text = format_truck_picker(truck_name, matches)
+            text = format_vehicle_picker(vehicle_name, matches)
             await _show(update, context, [text],
-                        keyboard=truck_picker_kb(matches))
+                        keyboard=vehicle_picker_kb(matches))
 
     except Exception as e:
         logger.error(f"Error in /truck: {e}", exc_info=True)
@@ -115,8 +115,8 @@ async def cmd_truck(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
 
 @_require_registered
-async def cmd_truck_report(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                          truck_name: str = "", company: str = ""):
+async def cmd_vehicle_report(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                          vehicle_name: str = "", company: str = ""):
     """Generate a single-truck fault detail PDF."""
     user = context.user_data["_db_user"]
     if not can(user.role, "can_faults"):
@@ -127,18 +127,18 @@ async def cmd_truck_report(update: Update, context: ContextTypes.DEFAULT_TYPE,
     await prepare_companies(user.account_id)
 
     await _show_loading(update, context,
-                        t('truck.loading_report').format(name=truck_name))
+                        t('vehicle.loading_report').format(name=vehicle_name))
     try:
-        matches = await _svc_vehicle_detail(user.account_id, truck_name, company=company)
+        matches = await _svc_vehicle_detail(user.account_id, vehicle_name, company=company)
         if not matches:
             await _show(update, context,
-                        [t('truck.not_found').format(name=truck_name)],
+                        [t('vehicle.not_found').format(name=vehicle_name)],
                         keyboard=back_kb())
             return
 
         vehicle = matches[0]
 
-        pdf_buf = await asyncio.to_thread(generate_truck_detail_pdf, vehicle)
+        pdf_buf = await asyncio.to_thread(generate_vehicle_detail_pdf, vehicle)
 
         query = update.callback_query
         chat_id = query.message.chat.id if query else update.effective_chat.id
@@ -154,32 +154,32 @@ async def cmd_truck_report(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         if dtcs:
             sev_parts = []
-            if lights.get("stopIsOn"):    sev_parts.append(t('truck.severity_stop'))
-            if lights.get("protectIsOn"): sev_parts.append(t('truck.severity_protect'))
-            if lights.get("emissionsIsOn"): sev_parts.append(t('truck.severity_emissions'))
-            if lights.get("warningIsOn"): sev_parts.append(t('truck.severity_warning'))
-            sev_line = "  ".join(sev_parts) if sev_parts else t('truck.severity_minor')
+            if lights.get("stopIsOn"):    sev_parts.append(t('vehicle.severity_stop'))
+            if lights.get("protectIsOn"): sev_parts.append(t('vehicle.severity_protect'))
+            if lights.get("emissionsIsOn"): sev_parts.append(t('vehicle.severity_emissions'))
+            if lights.get("warningIsOn"): sev_parts.append(t('vehicle.severity_warning'))
+            sev_line = "  ".join(sev_parts) if sev_parts else t('vehicle.severity_minor')
 
             caption = (
                 f"━━━━━━━━━━━━━━━━━━━\n"
-                f"  {t('truck.detail_header').format(name=truck_name)}\n"
+                f"  {t('vehicle.detail_header').format(name=vehicle_name)}\n"
                 f"━━━━━━━━━━━━━━━━━━━\n"
-                f"\n  {t('truck.active_fault_count').format(count=len(dtcs))}\n"
+                f"\n  {t('vehicle.active_fault_count').format(count=len(dtcs))}\n"
                 f"  {sev_line}"
             )
         else:
             caption = (
                 f"━━━━━━━━━━━━━━━━━━━\n"
-                f"  {t('truck.detail_header').format(name=truck_name)}\n"
+                f"  {t('vehicle.detail_header').format(name=vehicle_name)}\n"
                 f"━━━━━━━━━━━━━━━━━━━\n"
-                f"\n  {t('truck.no_active_faults_caption')}"
+                f"\n  {t('vehicle.no_active_faults_caption')}"
             )
 
-        kb = truck_kb(truck_name, company, show_faults=can(user.role, "can_faults"))
+        kb = vehicle_kb(vehicle_name, company, show_faults=can(user.role, "can_faults"))
         msg = await context.bot.send_document(
             chat_id=chat_id,
             document=pdf_buf,
-            filename=f"Truck_{truck_name}_{ts}.pdf",
+            filename=f"Truck_{vehicle_name}_{ts}.pdf",
             caption=caption,
             parse_mode=ParseMode.HTML,
             reply_markup=kb,
@@ -205,18 +205,19 @@ async def cmd_critical(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
     company_label = get_company_display().get(company, t('common.all_companies')) if company else t('common.all_companies')
     await _show_loading(update, context,
-                        t('truck.loading_critical').format(company=company_label))
+                        t('vehicle.loading_critical').format(company=company_label))
     try:
-        critical, total, breakdown = await _svc_critical_faults(user.account_id, company=company)
+        critical, total, breakdown = await _svc_with_faults(user.account_id, company=company)
+        critical = [v for v in critical if v.get("_severity") == "critical"]
 
         if not critical:
             kb = await _user_menu_kb(user)
             await _show(update, context, [
                 f"━━━━━━━━━━━━━━━━━━━\n"
-                f"  ✅  <b>{t('truck.all_clear_title')}</b>\n"
+                f"  ✅  <b>{t('vehicle.all_clear_title')}</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━\n"
                 f"\n"
-                f"  {t('truck.all_clear_msg')}"
+                f"  {t('vehicle.all_clear_msg')}"
             ], keyboard=kb)
             return
 
@@ -247,12 +248,12 @@ async def cmd_critical(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         caption = (
             f"━━━━━━━━━━━━━━━━━━━\n"
-            f"  🚨  <b>{t('truck.critical_title')}</b>\n"
+            f"  🚨  <b>{t('vehicle.critical_title')}</b>\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
-            f"\n  {t('truck.critical_trucks').format(affected=len(critical), total=total)}\n"
-            f"  {t('truck.critical_codes').format(count=total_dtcs)}\n"
-            f"  {t('truck.critical_health').format(pct=health_pct)}\n"
-            f"\n  {t('truck.critical_severity').format(stop=stop, protect=protect, emis=emis)}"
+            f"\n  {t('vehicle.critical_vehicles').format(affected=len(critical), total=total)}\n"
+            f"  {t('vehicle.critical_codes').format(count=total_dtcs)}\n"
+            f"  {t('vehicle.critical_health').format(pct=health_pct)}\n"
+            f"\n  {t('vehicle.critical_severity').format(stop=stop, protect=protect, emis=emis)}"
             f"{company_info}"
         )
 
@@ -278,30 +279,30 @@ async def cmd_critical(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
 # ── Truck browser (used by callbacks) ────────────────────────────
 
-async def show_truck_list(update, context, user, company_filter, page=0):
+async def show_vehicle_list(update, context, user, company_filter, page=0):
     """Fetch all trucks and show a paginated button list."""
     company_codes = await _get_company_codes(user.account_id)
     show_org = len(company_codes) > 1
 
-    await _show_loading(update, context, t('truck.loading_list'))
+    await _show_loading(update, context, t('vehicle.loading_list'))
     try:
         vehicles = await _svc_fleet_overview(user.account_id, company=company_filter)
         if not vehicles:
             label = company_filter or t('common.all_companies')
             await _show(update, context,
-                        [t('truck.no_trucks_for').format(label=label)],
+                        [t('vehicle.no_vehicles_for').format(label=label)],
                         keyboard=back_kb())
             return
 
         total = len(vehicles)
         header = (
-            f"{t('truck.browse_header').format(count=total)}\n"
+            f"{t('vehicle.browse_header').format(count=total)}\n"
         )
         if company_filter:
             header += f"  📡 {get_company_display().get(company_filter, company_filter)}\n"
 
         kb = vehicle_list_kb(vehicles, page=page, company_filter=company_filter)
-        await _show(update, context, [header + f"\n{t('truck.browse_tap')}"],
+        await _show(update, context, [header + f"\n{t('vehicle.browse_tap')}"],
                     keyboard=kb)
     except Exception as e:
         await _show(update, context, [_safe_error(e)], keyboard=back_kb())

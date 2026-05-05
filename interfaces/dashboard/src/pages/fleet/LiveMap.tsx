@@ -22,22 +22,36 @@ const LIVE_REFRESH_MS =  5_000;   // position-only fast refresh
 //   • Bearing is computed from previous→current GPS fix (geometrically exact)
 //   • Velocity is EMA-blended with the new target (smooth direction changes)
 //   • Position is corrected toward the confirmed GPS fix:
-//       <25 m drift → 60% correction (smooth)
-//       ≥25 m drift → 80% correction (fast snap back to road)
-//   • Target heading is updated (the loop smoothly rotates the icon toward it)
-// Between fixes the loop simply advances lat/lng by velocity × dt every frame.
+//       — Replaces the previous dead-reckoning approach which extrapolated
+//       at constant velocity from the latest fix.  On road curves, the
+//       extrapolation overshoots the road on the OUTSIDE of the turn for ~5 s
+//       then snaps back when the next fix arrives — a visible jitter the user
+//       reported.  Interpolation tween-drives the marker between two known
+//       on-road points so it always traces the actual GPS path.
+//   • Per-frame lerp:  pos = from + (to − from) × progress, progress ∈ [0,1]
+//   • Heading also tweens smoothly (6% of remaining angle/frame).
+// On every new GPS fix the loop rebases:
+//   from = currently rendered pos, to = new fix, startMs = now,
+//   duration = elapsed since previous fix (clamped 1500–8000 ms).
+// This makes the trade-off ~5 s of motion latency in exchange for no overshoot.
 interface VehiclePhysics {
-  lat: number;           // current rendered latitude
-  lng: number;           // current rendered longitude
-  prevLat: number;       // confirmed GPS lat from PREVIOUS poll
-  prevLng: number;       // confirmed GPS lng from PREVIOUS poll
-  velLat: number;        // velocity in degrees-lat per ms  (north/south)
-  velLng: number;        // velocity in degrees-lng per ms  (east/west)
+  // ── Currently rendered position (read by external code) ────────────────
+  lat: number;
+  lng: number;
+  // ── Animation segment endpoints ────────────────────────────────────────
+  fromLat: number;
+  fromLng: number;
+  toLat: number;
+  toLng: number;
+  startMs: number;       // performance.now() when this segment began
+  duration: number;      // ms over which to tween from→to (~last poll interval)
+  lastFixMs: number;     // perf.now() of last received GPS fix (for next segment's duration)
+  // ── Heading state ──────────────────────────────────────────────────────
   headingDeg: number;    // currently rendered heading (rotates smoothly each frame)
   targetHeading: number; // latest GPS bearing  (physics loop approaches this)
+  // ── Status ─────────────────────────────────────────────────────────────
   isMoving: boolean;
   engineState: string;   // 'On' | 'Idle' | 'Off' — kept fresh from 30 s full poll
-  lastTs: number;        // previous rAF timestamp — used for dt calculation
 }
 
 /** Shortest signed angle difference, handles 359° → 1° wrap-around. */
@@ -45,20 +59,6 @@ function shortestAngleDiff(from: number, to: number): number {
   let diff = ((to - from) % 360 + 360) % 360;
   if (diff > 180) diff -= 360;
   return diff;
-}
-
-/** Convert speed (mph) + heading (°CW from N) → lat/lng velocity (deg/ms). */
-function speedHeadingToVelocity(
-  speedMph: number, headingDeg: number, atLat: number,
-): { velLat: number; velLng: number } {
-  const speedMs    = speedMph * 0.44704;                          // mph → m/s
-  const headingRad = (headingDeg * Math.PI) / 180;
-  const mPerDegLat = 111_111;
-  const mPerDegLng = 111_111 * Math.cos((atLat * Math.PI) / 180);
-  return {
-    velLat: (Math.cos(headingRad) * speedMs) / mPerDegLat / 1000, // deg/ms
-    velLng: (Math.sin(headingRad) * speedMs) / mPerDegLng / 1000,
-  };
 }
 
 /**
@@ -90,8 +90,17 @@ type VehicleId = string | number;
 
 function vehicleStatus(f: MapVehicleFeature): VehicleStatus {
   const p = f.properties;
+  // Trust the authoritative status computed server-side from CAN-bus
+  // engineStates (On/Idle/Off) merged with speed.  Only fall back to a
+  // local heuristic when the field is missing (very old payloads or
+  // tests).  Without this, a truck with engine_state='Idle' but speed=0
+  // was being classified 'stopped' on the dashboard while the backend
+  // reported 'idle' — leaving the Idle bucket empty.
+  if (p.status === 'moving' || p.status === 'idle' || p.status === 'stopped') {
+    return p.status;
+  }
   if ((p.speed_mph || 0) > 0) return 'moving';
-  if (p.engine_state === 'On') return 'idle';
+  if (p.engine_state === 'On' || p.engine_state === 'Idle') return 'idle';
   return 'stopped';
 }
 
@@ -189,6 +198,13 @@ export default function LiveMap() {
   // markersRef stores one Marker per vehicle, keyed by vehicle id.
   // The filter effect controls which markers are visible in clusterRef.
   const markersRef = useRef<Map<VehicleId, L.Marker>>(new Map());
+  // Live count of vehicles, read by markerClusterGroup's maxClusterRadius
+  // callback so clustering dynamically turns OFF for small fleets (<200) and
+  // ON for large ones — without recreating the group.
+  const vehicleCountRef = useRef<number>(0);
+  // Threshold above which we cluster.  Below this, every truck renders as
+  // its own marker at every zoom.
+  const CLUSTER_THRESHOLD = 200;
 
   const [vehicles, setVehicles]     = useState<MapVehicleFeature[]>([]);
   const [selected, setSelected]     = useState<MapVehicleProperties | null>(null);
@@ -212,6 +228,9 @@ export default function LiveMap() {
   const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch]         = useState('');
+  // Phase E26 — 30-day safety-event heat layer toggle.
+  const [heatOn, setHeatOn] = useState(false);
+  const heatLayerRef = useRef<L.Layer | null>(null);
 
   // ── Map initialization + polling ──────────────────────────────────────────
 
@@ -223,8 +242,18 @@ export default function LiveMap() {
     // Use clustering when the plugin loaded successfully, plain layer otherwise
     const group = LExtra.markerClusterGroup
       ? LExtra.markerClusterGroup({
-          maxClusterRadius: 50,
-          disableClusteringAtZoom: 14,
+          // Radius is a callback so it adapts to fleet size at runtime.
+          //   - Fleet < 200  → radius 0  → MarkerCluster keeps every marker
+          //                                separate at every zoom level
+          //                                (effectively disables clustering).
+          //   - Fleet >= 200 → radius 50 → standard clustering to keep big
+          //                                fleets responsive.
+          maxClusterRadius: () =>
+            vehicleCountRef.current >= CLUSTER_THRESHOLD ? 50 : 0,
+          // Keep clustering enabled at city zooms — at z14 a yard with 200
+          // trucks renders as 200 separate markers and Leaflet drops frames.
+          // z16 (street level) is a better cutoff; spiderfy handles the rest.
+          disableClusteringAtZoom: 16,
           showCoverageOnHover: false,
           spiderfyOnMaxZoom: true,
         })
@@ -266,6 +295,57 @@ export default function LiveMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady]);
 
+  // ── Phase E26 — safety-event heat layer ────────────────────────────────
+  useEffect(() => {
+    if (!isReady || !leafletMap.current) return;
+    let cancelled = false;
+    const Leaf = window.L as typeof L;
+    const LHeat = window.L as unknown as {
+      heatLayer?: (points: Array<[number, number, number]>, opts?: object) => L.Layer;
+    };
+
+    function clearHeat() {
+      if (heatLayerRef.current) {
+        heatLayerRef.current.remove();
+        heatLayerRef.current = null;
+      }
+    }
+
+    if (!heatOn) {
+      clearHeat();
+      return;
+    }
+    if (typeof LHeat.heatLayer !== 'function') {
+      // Plugin failed to load — silently no-op so the toggle is a noop
+      // instead of crashing.
+      return;
+    }
+
+    apiJSON<{ points: Array<[number, number, number]> }>(
+      '/safety/events/heatmap?days=30',
+    )
+      .then((d) => {
+        if (cancelled || !heatOn || !leafletMap.current) return;
+        clearHeat();
+        const layer = LHeat.heatLayer!(d.points || [], {
+          radius: 25,
+          blur: 18,
+          maxZoom: 12,
+        });
+        layer.addTo(leafletMap.current);
+        heatLayerRef.current = layer;
+      })
+      .catch(() => { /* heatmap is best-effort */ });
+
+    return () => {
+      cancelled = true;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _ = Leaf;
+      clearHeat();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heatOn, isReady]);
+
   // ── Filter→map sync ────────────────────────────────────────────────────────
   // When a vehicle is selected: show ONLY that vehicle's marker (focus mode).
   // When no selection: show all that match statusFilter + search.
@@ -273,6 +353,10 @@ export default function LiveMap() {
   useEffect(() => {
     const group = clusterRef.current;
     if (!group) return;
+    // Keep cluster radius callback in sync with current fleet size before
+    // we re-add markers, otherwise the first render after crossing the
+    // threshold uses the stale value.
+    vehicleCountRef.current = vehicles.length;
     group.clearLayers();
     const focusId = selectedIdRef.current;
     vehicles.forEach((f) => {
@@ -346,16 +430,14 @@ export default function LiveMap() {
   // ── Continuous per-vehicle physics loop ──────────────────────────────────────
   //
   // Each moving vehicle has ONE persistent rAF loop that runs until the vehicle
-  // stops.  The loop advances the marker's lat/lng by velocity × dt every frame
-  // and smoothly rotates the heading icon toward the target bearing.
+  // stops.  The loop interpolates the marker's lat/lng between (fromLat,fromLng)
+  // and (toLat,toLng) over `duration` ms, and smoothly rotates the heading icon
+  // toward the latest target bearing.
   //
-  // GPS fixes (every 5 s) update the physics state — they don't restart the loop:
-  //   • Velocity is EMA-blended (α=0.35) for smooth direction transitions
-  //   • Position is nudged 35% toward the confirmed GPS fix (corrects drift)
-  //   • Target heading is updated; the loop rotates 6% of remaining angle/frame
-  //
-  // This means the vehicle never stops between polls — there is no "lerp end
-  // point" — and direction changes look like gradual curves, not kinks.
+  // GPS fixes (every ~5 s) update the segment endpoints — they don't restart
+  // the loop.  Because both endpoints are GPS-confirmed on-road positions, the
+  // marker traces the road faithfully on curves: there is no straight-line
+  // extrapolation that could overshoot the outside of a turn.
 
   function startPhysicsLoop(vid: string, Leaf: typeof L) {
     const prevRaf = animFramesRef.current.get(vid);
@@ -372,13 +454,12 @@ export default function LiveMap() {
         return;
       }
 
-      // Cap dt to 100 ms — prevents huge jump if the tab was hidden
-      const dt = Math.min(ts - p.lastTs, 100);
-      p.lastTs = ts;
-
-      // Advance position by current velocity
-      p.lat += p.velLat * dt;
-      p.lng += p.velLng * dt;
+      // Linear interpolation along the segment between consecutive GPS fixes.
+      // Clamping to [0,1] holds the marker at the latest fix when a new one
+      // is overdue (network hiccup) instead of overshooting past it.
+      const tNorm = p.duration > 0 ? Math.min(1, (ts - p.startMs) / p.duration) : 1;
+      p.lat = p.fromLat + (p.toLat - p.fromLat) * tNorm;
+      p.lng = p.fromLng + (p.toLng - p.fromLng) * tNorm;
       m.setLatLng([p.lat, p.lng]);
 
       // Smoothly rotate heading toward the GPS target (shortest-path)
@@ -396,8 +477,6 @@ export default function LiveMap() {
       animFramesRef.current.set(vid, requestAnimationFrame(frame));
     }
 
-    const p = vehiclePhysRef.current.get(vid);
-    if (p) p.lastTs = performance.now();
     animFramesRef.current.set(vid, requestAnimationFrame(frame));
   }
 
@@ -419,16 +498,17 @@ export default function LiveMap() {
 
         if (!existing) {
           // ── First time we see this vehicle ──────────────────────────────
-          const { velLat: initVelLat, velLng: initVelLng } =
-            speedHeadingToVelocity(pos.speed_mph, headingDeg, pos.lat);
+          const nowMs = performance.now();
           vehiclePhysRef.current.set(vid, {
             lat: pos.lat, lng: pos.lng,
-            prevLat: pos.lat, prevLng: pos.lng,
-            velLat: initVelLat, velLng: initVelLng,
+            fromLat: pos.lat, fromLng: pos.lng,
+            toLat:   pos.lat, toLng:   pos.lng,
+            startMs: nowMs,
+            duration: 0,             // no segment yet — next fix sets this
+            lastFixMs: nowMs,
             headingDeg, targetHeading: headingDeg,
             isMoving: nowMoving,
-            engineState: 'Off',   // will be overwritten by the next 30 s full poll
-            lastTs: performance.now(),
+            engineState: 'Off',      // will be overwritten by the next 30 s full poll
           });
           const color = nowMoving ? '#22c55e' : '#ef4444';
           m.setIcon(makeIcon(Leaf, color, false, pos.speed_mph, headingDeg));
@@ -437,41 +517,35 @@ export default function LiveMap() {
         }
 
         const wasMoving = existing.isMoving;
-        existing.isMoving      = nowMoving;
-        existing.targetHeading = headingDeg;
+        existing.isMoving = nowMoving;
 
         if (nowMoving) {
           // ── Vehicle is moving ───────────────────────────────────────────
           //
-          // Use bearing from previous→current GPS fix instead of Samsara's
-          // heading field.  The track-derived bearing is geometrically exact
-          // and always up-to-date; Samsara heading can lag on turns.
-          const moved = distMetres(existing.prevLat, existing.prevLng, pos.lat, pos.lng);
+          // Heading: prefer the bearing derived from the GPS track (prev fix
+          // → current fix) over Samsara's heading field, which can lag on
+          // turns.  Track bearing is geometrically exact for the segment we
+          // are about to animate, which keeps the icon aligned with motion.
+          const moved = distMetres(existing.toLat, existing.toLng, pos.lat, pos.lng);
           const trackBearing = moved > 2
-            ? bearingBetween(existing.prevLat, existing.prevLng, pos.lat, pos.lng)
+            ? bearingBetween(existing.toLat, existing.toLng, pos.lat, pos.lng)
             : headingDeg;  // fell back to Samsara heading when barely moved
           existing.targetHeading = trackBearing;
 
-          // Recompute target velocity from track bearing (not Samsara heading)
-          const { velLat: tvl, velLng: tvg } = speedHeadingToVelocity(pos.speed_mph, trackBearing, pos.lat);
-
-          // EMA-blend velocity — α=0.60 means new fix gets 60% weight.
-          // Higher α = faster response to turns = vehicle follows road curves sooner.
-          const α = 0.60;
-          existing.velLat = α * tvl + (1 - α) * existing.velLat;
-          existing.velLng = α * tvg + (1 - α) * existing.velLng;
-
-          // Position correction: snap toward the confirmed GPS fix.
-          // If the vehicle has drifted >25 m off the road, correct aggressively (80%).
-          // Otherwise use 60% — smooth but keeps the marker close to the road.
-          const drift = distMetres(existing.lat, existing.lng, pos.lat, pos.lng);
-          const corrStrength = drift > 25 ? 0.80 : 0.60;
-          existing.lat += (pos.lat - existing.lat) * corrStrength;
-          existing.lng += (pos.lng - existing.lng) * corrStrength;
-
-          // Remember this fix as "previous" for the next poll's bearing calculation
-          existing.prevLat = pos.lat;
-          existing.prevLng = pos.lng;
+          // Rebase the animation segment to start from the current rendered
+          // position and end at the new GPS fix.  Duration is the actual time
+          // since the last fix (clamped to a sane range so a paused tab or
+          // missed poll doesn't produce a jarring instant jump or a glacial
+          // crawl).  Marker glides along the GPS-traced path — no straight-
+          // line extrapolation that could overshoot road curves.
+          const nowMs = performance.now();
+          existing.fromLat = existing.lat;
+          existing.fromLng = existing.lng;
+          existing.toLat   = pos.lat;
+          existing.toLng   = pos.lng;
+          existing.startMs = nowMs;
+          existing.duration = Math.min(8000, Math.max(1500, nowMs - existing.lastFixMs));
+          existing.lastFixMs = nowMs;
 
           // Only rebuild icon when transitioning stopped→moving (avoids flicker)
           if (!wasMoving) {
@@ -480,14 +554,15 @@ export default function LiveMap() {
           }
         } else {
           // ── Vehicle stopped ─────────────────────────────────────────────
-          existing.velLat = 0;
-          existing.velLng = 0;
-          existing.lat    = pos.lat;
-          existing.lng    = pos.lng;
-          existing.prevLat = pos.lat;
-          existing.prevLng = pos.lng;
-          // Stop the rAF loop — the isMoving=false check in frame() will exit it
-          // but we also cancel explicitly to be safe
+          existing.lat = pos.lat;
+          existing.lng = pos.lng;
+          existing.fromLat = pos.lat;
+          existing.fromLng = pos.lng;
+          existing.toLat = pos.lat;
+          existing.toLng = pos.lng;
+          existing.lastFixMs = performance.now();
+          // Stop the rAF loop — the isMoving=false check in frame() will exit
+          // it but we also cancel explicitly to be safe
           const prevRaf = animFramesRef.current.get(vid);
           if (prevRaf !== undefined) cancelAnimationFrame(prevRaf);
           animFramesRef.current.delete(vid);
@@ -597,7 +672,7 @@ export default function LiveMap() {
       {/* Map — relative so the POI panel can be absolutely positioned inside it */}
       <div className="flex-1 relative rounded-xl overflow-hidden border border-border z-0">
         <div ref={mapRef} className="absolute inset-0" />
-        <PoiLayerPanel poiHook={poiHook} />
+        <PoiLayerPanel poiHook={poiHook} leafletMap={leafletMap} />
         <MapTypeControl
           mapType={mapType}
           showLabels={showLabels}
@@ -631,6 +706,16 @@ export default function LiveMap() {
               ),
             )}
           </div>
+          {/* Phase E26 — safety-event heat layer toggle */}
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={heatOn}
+              onChange={(e) => setHeatOn(e.target.checked)}
+              className="accent-primary"
+            />
+            Show 30-day safety heat
+          </label>
         </div>
 
         {selected ? (

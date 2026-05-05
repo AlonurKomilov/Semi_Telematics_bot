@@ -13,7 +13,7 @@ from telegram import (
 from capabilities.localization.i18n import SUPPORTED_LANGUAGES, LANGUAGE_NAMES, LANGUAGE_FLAGS, t
 from adapters.storage import Role
 from capabilities.iam.permissions import get_permissions, can_access_company_submenu
-from core.context import get_company_display
+from infra.context import get_company_display
 
 
 def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKeyboardMarkup:
@@ -31,7 +31,7 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
     if has_api:
         # ── Grouped sub-menus (only when API is connected) ──────
         has_reports = (perms.can_faults or perms.can_fuel
-                       or perms.can_truck_all or perms.can_truck_own
+                       or perms.can_vehicle_all or perms.can_vehicle_own
                        or perms.can_events_all or perms.can_events_own)
         has_tools = (perms.can_scorecard_all or perms.can_scorecard_own
                      or perms.can_location_map or perms.can_location_own
@@ -71,7 +71,7 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
 
         # Driver: show truck shortcut
         if role == Role.DRIVER:
-            rows.append([InlineKeyboardButton("🚛 My Truck", callback_data="cmd_mytruck")])
+            rows.append([InlineKeyboardButton("🚛 My Vehicle", callback_data="cmd_myvehicle")])
 
         # Per-company buttons (only when >1 company and role can filter)
         if len(company_codes) > 1 and can_access_company_submenu(role):
@@ -138,8 +138,8 @@ def submenu_reports_kb(role: Role, company_codes: list[str] | None = None) -> In
     if perms.can_faults:
         rows.append([InlineKeyboardButton("📷 Cameras", callback_data="cmd_camera_report")])
 
-    if perms.can_truck_all:
-        rows.append([InlineKeyboardButton(t("reports_menu.search_truck"), callback_data="cmd_truck_prompt")])
+    if perms.can_vehicle_all:
+        rows.append([InlineKeyboardButton(t("reports_menu.search_truck"), callback_data="cmd_vehicle_prompt")])
 
     if perms.can_digest:
         rows.append([InlineKeyboardButton(t("menu.digest"), callback_data="cmd_auto_reports")])
@@ -346,8 +346,8 @@ def skip_name_kb() -> InlineKeyboardMarkup:
     ])
 
 
-def truck_kb(
-    truck_name: str | None = None,
+def vehicle_kb(
+    vehicle_name: str | None = None,
     company: str | None = None,
     show_faults: bool = True,
     ack_id: int | None = None,
@@ -360,18 +360,18 @@ def truck_kb(
     *ack_id* — when set, shows a Back to Alert button instead of Main Menu.
     """
     rows = []
-    if show_faults and truck_name and company:
+    if show_faults and vehicle_name and company:
         rows.append([
-            InlineKeyboardButton("📄 PDF Report", callback_data=f"truckfaults_{company}_{truck_name}"),
+            InlineKeyboardButton("📄 PDF Report", callback_data=f"vehiclefaults_{company}_{vehicle_name}"),
         ])
-    if truck_name and company:
+    if vehicle_name and company:
         import capabilities.ai as ai
         if ai.is_configured():
             rows.append([
-                InlineKeyboardButton("🔧 AI Diagnose", callback_data=f"ai_diag_{company}_{truck_name}"),
+                InlineKeyboardButton("🔧 AI Diagnose", callback_data=f"ai_diag_{company}_{vehicle_name}"),
             ])
         rows.append([
-            InlineKeyboardButton("📷 Camera Check", callback_data=f"cam_truck_{truck_name}"),
+            InlineKeyboardButton("📷 Camera Check", callback_data=f"cam_vehicle_{vehicle_name}"),
         ])
     if ack_id is not None:
         rows.append([InlineKeyboardButton("↩️ Back to Alert", callback_data=f"back_alert_{ack_id}")])
@@ -380,13 +380,13 @@ def truck_kb(
     return InlineKeyboardMarkup(rows)
 
 
-def truck_picker_kb(matches: list[dict]) -> InlineKeyboardMarkup:
+def vehicle_picker_kb(matches: list[dict]) -> InlineKeyboardMarkup:
     rows = []
     for v in matches:
         co = v.get("_org", "?")
         name = v["name"]
         label = f"#{name} — {get_company_display().get(co, co)} ({co})"
-        rows.append([InlineKeyboardButton(label, callback_data=f"cotruck_{co}_{name}")])
+        rows.append([InlineKeyboardButton(label, callback_data=f"covehicle_{co}_{name}")])
     rows.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
 
@@ -482,7 +482,7 @@ def cam_vehicle_list_kb(
         label = f"#{name}"
         if co:
             label += f" — {co}"
-        rows.append([InlineKeyboardButton(label, callback_data=f"cam_truck_{name}")])
+        rows.append([InlineKeyboardButton(label, callback_data=f"cam_vehicle_{name}")])
 
     # Pagination
     nav = []
@@ -498,17 +498,17 @@ def cam_vehicle_list_kb(
     return InlineKeyboardMarkup(rows)
 
 
-def truck_company_picker_kb(company_codes: list[str]) -> InlineKeyboardMarkup:
+def vehicle_company_picker_kb(company_codes: list[str]) -> InlineKeyboardMarkup:
     """Let user pick a company before browsing trucks, or show all."""
     rows = []
     if len(company_codes) > 1:
         rows.append([InlineKeyboardButton(
-            "🚛 All Companies", callback_data="trucks_browse_ALL",
+            "🚛 All Companies", callback_data="vehicles_browse_ALL",
         )])
     for code in company_codes:
         display = get_company_display().get(code, code)
         rows.append([InlineKeyboardButton(
-            f"🚛 {display} ({code})", callback_data=f"trucks_browse_{code}",
+            f"🚛 {display} ({code})", callback_data=f"vehicles_browse_{code}",
         )])
     rows.append([InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
@@ -532,11 +532,11 @@ def vehicle_list_kb(
         label = f"#{name}"
         if co:
             label += f" — {co}"
-        rows.append([InlineKeyboardButton(label, callback_data=f"cotruck_{co}_{name}")])
+        rows.append([InlineKeyboardButton(label, callback_data=f"covehicle_{co}_{name}")])
 
     # Pagination
     nav = []
-    prefix = f"trucks_page_{company_filter or 'ALL'}"
+    prefix = f"vehicles_page_{company_filter or 'ALL'}"
     if page > 0:
         nav.append(InlineKeyboardButton("◀️ Prev", callback_data=f"{prefix}_{page - 1}"))
     nav.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="noop"))
@@ -618,7 +618,7 @@ def maint_vehicle_list_kb(
         label = f"#{name}"
         if co:
             label += f" — {co}"
-        rows.append([InlineKeyboardButton(label, callback_data=f"maint_truck_{co}_{name}")])
+        rows.append([InlineKeyboardButton(label, callback_data=f"maint_vehicle_{co}_{name}")])
 
     # Pagination
     nav = []

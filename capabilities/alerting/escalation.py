@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import Application
 
 from capabilities.alerting.pipeline import (
-    AlertSeverity, SYSTEM_USER_ID,
+    AlertSeverity,
     build_alert_keyboard,
 )
-from core.bot_registry import get_app_for_account
-from core.context import get_company_display
-from core.services import get_db, get_platform_db, get_tenant_db
+from infra.bot_registry import get_app_for_account
+from infra.context import get_company_display
+from infra.services import get_db, get_platform_db, get_tenant_db
 
 logger = logging.getLogger("bot")
 
@@ -221,7 +221,7 @@ async def _auto_resolve_vehicle_alerts(
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton(
                         f"📋 View Truck #{vname}",
-                        callback_data=f"cotruck_{alert_co}_{vname}",
+                        callback_data=f"covehicle_{alert_co}_{vname}",
                     )],
                 ]),
             )
@@ -317,3 +317,128 @@ async def handle_back_to_alert(update, context, ack_id: int):
         )
     except Exception as e:
         logger.error(f"Back to alert {ack_id}: {e}")
+
+
+# ── Re-escalation of unacknowledged CRITICAL alerts ──────────────
+
+async def re_escalate_critical_alerts(app: Application):
+    """Hourly job: re-notify subscribers about CRITICAL alerts that have
+    been sitting unacknowledged for more than ``REESCALATE_AFTER_MINUTES``.
+
+    Behaviour
+    ---------
+    * Pings each original recipient with a short reminder message that
+      links back to the original alert (via ``back_alert_<ack_id>``).
+    * Does **not** create a new ack row — the original ack stays the
+      single source of truth.  We bump ``last_seen`` on the corresponding
+      alert_history row so an ops dashboard can observe the reminder.
+    * Sends at most one reminder per hour per ack: we mark the row as
+      seen via ``last_seen`` and skip rows whose ``last_seen`` is within
+      the same window.
+    * Respects DND: queues the reminder for later delivery if the
+      recipient is currently in quiet hours.
+    """
+    from infra.config import REESCALATE_AFTER_MINUTES, REESCALATE_ALERT_TYPES
+    from infra.services import get_platform_db as _get_platform_db
+
+    if REESCALATE_AFTER_MINUTES <= 0 or not REESCALATE_ALERT_TYPES:
+        return
+
+    platform = _get_platform_db()
+    try:
+        accounts = await platform.list_accounts()
+    except Exception as e:
+        logger.error("re_escalate: failed to list accounts: %s", e)
+        return
+
+    qualified_types = set(REESCALATE_ALERT_TYPES)
+    sent = 0
+    for acct in accounts:
+        account_id = getattr(acct, "id", None)
+        if not account_id:
+            continue
+        try:
+            tenant = await get_tenant_db(account_id)
+            stale = await tenant.get_stale_unacked_alerts(
+                account_id, REESCALATE_AFTER_MINUTES,
+            )
+        except Exception as e:
+            logger.debug("re_escalate: tenant fetch failed for %s: %s", account_id, e)
+            continue
+        if not stale:
+            continue
+
+        bot_app = get_app_for_account(account_id) or app
+        if not bot_app:
+            continue
+
+        for alert in stale:
+            if alert.get("alert_type") not in qualified_types:
+                continue
+            recipient_id = alert.get("sent_to")
+            if not recipient_id:
+                continue
+            ack_id = alert.get("id")
+            vname = alert.get("vehicle_name", "?")
+            atype = alert.get("alert_type", "alert")
+            try:
+                created = datetime.fromisoformat(alert["created_at"])
+                age_min = int(
+                    (datetime.now(timezone.utc) - created).total_seconds() / 60,
+                )
+            except Exception:
+                age_min = REESCALATE_AFTER_MINUTES
+            if age_min >= 60:
+                age_str = f"{age_min // 60}h {age_min % 60}m"
+            else:
+                age_str = f"{age_min} min"
+
+            text = (
+                "━━━━━━━━━━━━━━━━━━━\n"
+                "  🔴  <b>UNACKNOWLEDGED ALERT</b>\n"
+                "━━━━━━━━━━━━━━━━━━━\n"
+                f"\n  🚛 Truck: <b>#{vname}</b>"
+                f"\n  🩺 {atype.title()} alert active for <b>{age_str}</b>"
+                "\n\n  Please acknowledge or escalate."
+            )
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(
+                    "🔎 Open alert",
+                    callback_data=f"back_alert_{ack_id}",
+                ),
+            ]])
+
+            # Respect DND
+            try:
+                recipient = await _get_platform_db().get_user_by_telegram_id(recipient_id)
+            except Exception:
+                recipient = None
+            if recipient and recipient.is_in_quiet_hours():
+                try:
+                    await tenant.queue_dnd_alert(
+                        account_id=account_id,
+                        telegram_id=recipient_id,
+                        alert_type=atype,
+                        vehicle_name=vname,
+                        alert_text=text,
+                    )
+                except Exception as e:
+                    logger.debug("re_escalate: DND queue failed: %s", e)
+                continue
+
+            try:
+                await bot_app.bot.send_message(
+                    chat_id=recipient_id,
+                    text=text,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=kb,
+                )
+                sent += 1
+            except Exception as e:
+                logger.debug(
+                    "re_escalate: send failed for ack %s -> %s: %s",
+                    ack_id, recipient_id, e,
+                )
+
+    if sent:
+        logger.info("re_escalate: sent %d reminder(s)", sent)

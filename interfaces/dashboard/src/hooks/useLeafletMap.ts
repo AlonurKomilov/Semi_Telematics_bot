@@ -16,6 +16,7 @@ import type L from 'leaflet';
 
 const LEAFLET_VERSION  = '1.9.4';
 const CLUSTER_VERSION  = '1.5.3';
+const HEAT_VERSION     = '0.2.0';
 const LEAFLET_CSS_ID   = 'leaflet-css';
 const CLUSTER_CSS_ID   = 'leaflet-cluster-css';
 const CLUSTER_CSS2_ID  = 'leaflet-cluster-default-css';
@@ -143,6 +144,29 @@ function loadClusterJS(): Promise<void> {
   });
 }
 
+/**
+ * Load leaflet.heat from CDN after window.L is set.
+ * Bundling it via `import` causes its UMD wrapper to emit a bare `L`
+ * global reference before window.L exists, throwing ReferenceError.
+ */
+function loadHeatJS(): Promise<void> {
+  return new Promise((resolve) => {
+    if ((window.L as unknown as { heatLayer?: unknown })?.heatLayer) {
+      return resolve();
+    }
+    const existing = document.getElementById('leaflet-heat-js');
+    if (existing) {
+      existing.addEventListener('load', () => resolve());
+      return;
+    }
+    const s = document.createElement('script');
+    s.id  = 'leaflet-heat-js';
+    s.src = `https://unpkg.com/leaflet.heat@${HEAT_VERSION}/dist/leaflet-heat.js`;
+    s.onload = () => resolve();
+    document.head.appendChild(s);
+  });
+}
+
 export function useLeafletMap(options: UseLeafletMapOptions = {}): UseLeafletMapResult {
   const { center = [39.8, -98.5], zoom = 5 } = options;
 
@@ -215,9 +239,10 @@ export function useLeafletMap(options: UseLeafletMapOptions = {}): UseLeafletMap
 
     ensureLeafletCSS();
     ensureClusterCSS();
-    // Load Leaflet first, then the cluster plugin (which depends on window.L)
+    // Load Leaflet first, then plugins that depend on window.L being set
     loadLeafletJS()
       .then(() => loadClusterJS())
+      .then(() => loadHeatJS())
       .then(() => {
         if (cancelled || !mapRef.current || leafletMap.current) return;
         const Leaf = window.L as typeof L;

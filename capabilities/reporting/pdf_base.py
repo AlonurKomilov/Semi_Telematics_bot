@@ -16,7 +16,7 @@ from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 from reportlab.graphics.shapes import Drawing, Rect
 from reportlab.pdfgen.canvas import Canvas
 
-from core.context import get_company_display
+from infra.context import get_company_display
 
 
 # ── Color Palette ────────────────────────────────────────────────
@@ -746,7 +746,7 @@ def _drive_idle_bar(drv_pct: float, width: float = 70, height: float = 10) -> Dr
 
 # ── Per-Truck Fault Card ────────────────────────────────────────
 
-def _build_truck_card(v: dict, styles, show_org: bool = False) -> list:
+def _build_vehicle_card(v: dict, styles, show_org: bool = False) -> list:
     """One truck card: structured info table + DTC table with per-row severity."""
     elements = []
     page_w = 7.1 * inch
@@ -1284,7 +1284,7 @@ __all__ = [
     "_make_section_header_table",
     "_build_action_items",
     "_drive_idle_bar",
-    "_build_truck_card",
+    "_build_vehicle_card",
     "_add_fleet_health_overview",
     "_add_fleet_status_grid",
 ]

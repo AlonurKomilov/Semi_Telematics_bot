@@ -45,11 +45,11 @@ async def cmd_fuelcost_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
 
-    context.user_data["_pending"] = "fuelcost_truck"
+    context.user_data["_pending"] = "fuelcost_vehicle"
     context.user_data["_fuelcost"] = {}
     await _show(update, context, [
         f"{t('fuel_costs.add_title')}\n\n"
-        f"{t('fuel_costs.step1_truck')}"
+        f"{t('fuel_costs.step1_vehicle')}"
     ], keyboard=back_kb())
 
 
@@ -63,8 +63,8 @@ async def handle_fuelcost_text(update: Update, context: ContextTypes.DEFAULT_TYP
     wiz = context.user_data.get("_fuelcost", {})
     text = update.message.text.strip()
 
-    if pending == "fuelcost_truck":
-        wiz["truck"] = text
+    if pending == "fuelcost_vehicle":
+        wiz["vehicle"] = text
         context.user_data["_pending"] = "fuelcost_gallons"
         await _show(update, context, [
             f"{t('fuel_costs.step2_confirm').format(truck=text)}\n\n"
@@ -108,7 +108,7 @@ async def handle_fuelcost_text(update: Update, context: ContextTypes.DEFAULT_TYP
             return True
 
         # Save entry
-        truck = wiz.get("truck", "Unknown")
+        truck = wiz.get("vehicle", "Unknown")
         gallons = wiz.get("gallons", 0)
         price = wiz.get("price", 0)
         total = round(gallons * price, 2)

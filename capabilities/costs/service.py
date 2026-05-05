@@ -21,7 +21,7 @@ def compute_vehicle_cpm(fuel_summary_row: dict) -> dict:
     mpg = miles / total_gal if total_gal > 0 and miles > 0 else 0
 
     return {
-        "truck": fuel_summary_row.get("vehicle_name", ""),
+        "vehicle": fuel_summary_row.get("vehicle_name", ""),
         "company": fuel_summary_row.get("company_code", ""),
         "miles": round(miles),
         "cost": round(total_cost, 2),

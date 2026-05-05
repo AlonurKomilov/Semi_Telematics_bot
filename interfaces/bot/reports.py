@@ -11,8 +11,8 @@ from telegram.constants import ParseMode
 
 from capabilities.iam.permissions import can
 from adapters.samsara.client import SamsaraPermissionError
-from core.context import get_company_display
-from capabilities.vehicle_catalog.service import (
+from infra.context import get_company_display
+from capabilities.vehicles.service import (
     prepare_companies,
     get_fleet_overview as _svc_fleet_overview,
     get_company_codes as _svc_get_company_codes,
@@ -209,7 +209,7 @@ def _faults_caption(stats, breakdown, company, companies, skipped=None):
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"  {t('reports.faults_title')}\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
-        f"\n  {t('report_captions.faults_trucks_scanned').format(count=stats['total'])}"
+        f"\n  {t('report_captions.faults_vehicles_scanned').format(count=stats['total'])}"
         f"{f' ({len(breakdown)} companies)' if len(breakdown) > 1 and not company else ''}\n"
         f"  {t('report_captions.faults_with_faults').format(faulted=stats['faulted'], clean=stats['clean'])}\n"
         f"  {t('report_captions.faults_total_codes').format(count=stats['total_dtcs'])}\n"
@@ -266,7 +266,7 @@ async def cmd_fuel_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE,
         all_fleet = await _svc_fleet_overview(user.account_id, company=company)
         if not all_fleet:
             await _show(update, context, [
-                t('reports.no_trucks')
+                t('reports.no_vehicles')
             ], keyboard=back_kb())
             return
 
@@ -306,7 +306,7 @@ async def cmd_fuel_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
         all_fleet = await _svc_fleet_overview(user.account_id, company=company)
         if not all_fleet:
             await _show(update, context, [
-                t('reports.no_trucks')
+                t('reports.no_vehicles')
             ], keyboard=back_kb())
             return
 
@@ -345,7 +345,7 @@ def _fuel_caption(all_fleet, company, company_codes, skipped=None):
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"  {t('reports.fuel_title')}\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
-        f"\n  {t('report_captions.fuel_trucks_scanned').format(count=len(all_fleet))}\n"
+        f"\n  {t('report_captions.fuel_vehicles_scanned').format(count=len(all_fleet))}\n"
         f"  {t('report_captions.fuel_average').format(pct=f'{avg_fuel:.0f}%')}\n"
         f"  {t('report_captions.fuel_breakdown').format(critical=crit, low=low, good=good)}\n"
         f"  {t('report_captions.fuel_def').format(pct=f'{avg_def:.0f}%', count=low_def)}"
@@ -510,7 +510,7 @@ def _efficiency_caption(vehicles, company, company_codes):
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"  {t('reports.efficiency_title')}\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
-        f"\n  {t('report_captions.efficiency_trucks').format(trucks=len(vehicles), drivers=len(with_driver))}\n"
+        f"\n  {t('report_captions.efficiency_vehicles').format(vehicles=len(vehicles), drivers=len(with_driver))}\n"
         f"  {t('report_captions.efficiency_hours').format(engine=f'{total_eng:,.1f}h', drive=f'{total_drv:,.1f}h', idle=f'{total_idle:,.1f}h')}\n"
         f"  {t('report_captions.efficiency_miles').format(miles=f'{total_miles:,}', driving_pct=f'{avg_drv_pct:.0f}%', mpg=f'{fleet_mpg:.1f}')}"
         f"{company_info}\n"
@@ -670,7 +670,7 @@ def _health_caption(vehicles, company, company_codes, skipped=None):
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"  {t('reports.health_title')}\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
-        f"\n  {t('report_captions.health_trucks_scanned').format(count=len(vehicles))}\n"
+        f"\n  {t('report_captions.health_vehicles_scanned').format(count=len(vehicles))}\n"
         f"  {t('report_captions.health_engine_status').format(on=eng_on, off=eng_off)}\n"
         f"  {t('report_captions.health_alerts').format(vehicles=alert_vehicles, total=alerts_count)}"
         f"{company_info}\n"
@@ -745,7 +745,7 @@ async def cmd_weather(update: Update, context: ContextTypes.DEFAULT_TYPE,
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"  {t('reports.weather_title')}\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
-            f"\n  {t('report_captions.weather_trucks').format(count=len(vehicles))}\n"
+            f"\n  {t('report_captions.weather_vehicles').format(count=len(vehicles))}\n"
             f"  {t('report_captions.weather_temp').format(avg=f'{avg_temp:.0f}', low=f'{min_temp:.0f}', high=f'{max_temp:.0f}')}"
             f"{freeze_line}{heat_line}"
             f"{company_info}\n"

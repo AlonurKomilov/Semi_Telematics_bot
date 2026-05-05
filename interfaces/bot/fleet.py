@@ -24,12 +24,12 @@ from interfaces.bot.alerts import (  # noqa: F401
 
 # Re-export trucks
 from interfaces.bot.vehicles import (  # noqa: F401
-    cmd_truck, cmd_truck_report, cmd_critical,
+    cmd_vehicle, cmd_vehicle_report, cmd_critical,
 )
 
 # Re-export cameras
 from interfaces.bot.cameras import (  # noqa: F401
-    cmd_camera_check, cmd_camera_check_truck,
+    cmd_camera_check, cmd_camera_check_vehicle,
     cmd_camera_history, cmd_camera_check_pdf, cmd_camera_check_csv,
     cmd_cam_tool, cmd_cam_company_pick, cmd_cam_page,
 )

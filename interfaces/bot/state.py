@@ -17,7 +17,7 @@ from adapters.storage import Database, TenantRouter, LegacyRouter
 
 # Service functions (canonical home: core.services).
 # Re-exported here so ``from interfaces.bot.state import get_client`` keeps working.
-from core.services import (  # noqa: F401
+from infra.services import (  # noqa: F401
     _client_cache,
     _rate_limits,
     check_rate_limit,
@@ -28,7 +28,7 @@ from core.services import (  # noqa: F401
     get_tenant_db,
 )
 
-from core.config import SAMSARA_BASE_URL, RATE_LIMIT_SECONDS  # noqa: F401
+from infra.config import SAMSARA_BASE_URL, RATE_LIMIT_SECONDS  # noqa: F401
 
 # ── Database ─────────────────────────────────────────────────────
 # Lazy delegation to core.platform — unified DB layer (Phase 8).
@@ -43,13 +43,13 @@ MULTI_TENANT = bool(os.getenv("MULTI_TENANT_DB"))
 
 def _get_db() -> Database:
     """Return the platform Database via core.platform (lazy)."""
-    from core.platform import get_db
+    from infra.platform import get_db
     return get_db()
 
 
 def _get_router() -> Union[TenantRouter, LegacyRouter]:
     """Return the platform router via core.platform (lazy)."""
-    from core.platform import get_router
+    from infra.platform import get_router
     return get_router()
 
 
@@ -91,4 +91,4 @@ db = _LazyDB()       # type: ignore[assignment]
 router = _LazyRouter()  # type: ignore[assignment]
 
 # ── Shared caches (re-exported for backward compat) ──────────────
-from core.services import _active_messages  # noqa: F401, E402
+from infra.services import _active_messages  # noqa: F401, E402

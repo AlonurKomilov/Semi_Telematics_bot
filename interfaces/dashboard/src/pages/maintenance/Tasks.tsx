@@ -206,7 +206,7 @@ export default function Tasks() {
     if (!showAdd) return;
     if (fleetVehicles.length > 0) return; // already loaded
     setFleetLoading(true);
-    apiJSON<{ vehicles: FleetVehicle[] }>('/fleet/vehicles?page_size=200')
+    apiJSON<{ vehicles: FleetVehicle[] }>('/vehicles?page_size=200')
       .then((d) => setFleetVehicles(d.vehicles || []))
       .catch(() => setFleetVehicles([]))
       .finally(() => setFleetLoading(false));

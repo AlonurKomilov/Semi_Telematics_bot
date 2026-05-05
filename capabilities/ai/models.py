@@ -35,9 +35,12 @@ _db = None
 
 
 def set_db(db_instance):
-    """Set the database reference for account model persistence."""
-    global _db
-    _db = db_instance
+    """Deprecated — kept for backward compat only.
+
+    AI model persistence now looks up the per-tenant DB via
+    ``get_tenant_db(account_id)`` so settings are always stored in the
+    correct tenant DB regardless of single- vs. multi-tenant deployment.
+    """
 
 
 def get_account_model_name(account_id: int) -> str | None:
@@ -158,12 +161,13 @@ def _ensure_model(model_name: str | None = None,
         top_p=0.8,
     )
 
-    if target_model.startswith("gemini-2.5"):
+    if target_model.startswith("gemini-2.5-flash"):
         try:
             proto = gen_config._raw_generation_config
             # Disable thinking (budget=0) — thinking adds 30-45s per call in the
             # agentic loop (2 rounds = 60-90s), blowing the nginx/client timeouts.
-            # Tool-calling quality is equivalent without thinking.
+            # Only flash variants accept budget=0; gemini-2.5-pro requires
+            # thinking and rejects the request with a 400 if we set it.
             tc = proto.ThinkingConfig(thinking_budget=0)
             proto.thinking_config = tc
             logger.info(f"Thinking budget set to 0 (disabled) for {target_model}")
@@ -208,7 +212,7 @@ def _build_model(model_name: str, location: str, info: dict | None = None):
         top_p=0.8,
     )
 
-    if model_name.startswith("gemini-2.5"):
+    if model_name.startswith("gemini-2.5-flash"):
         try:
             proto = gen_config._raw_generation_config
             tc = proto.ThinkingConfig(thinking_budget=0)
@@ -279,19 +283,32 @@ def switch_vision_model(model_name: str, location: str | None = None,
 
 
 # ── DB persistence ───────────────────────────────────────────────
+# All settings are stored in the *per-tenant* DB, not the platform DB,
+# so they are correctly isolated per account in multi-tenant deployments.
+
+
+async def _get_tenant(account_id: int):
+    """Return the tenant DB for *account_id*, or None on failure."""
+    try:
+        from infra.services import get_tenant_db
+        return await get_tenant_db(account_id)
+    except Exception:
+        return None
 
 
 async def save_account_model(account_id: int, model_name: str,
                              location: str):
-    if _db:
-        await _db.set_account_setting(account_id, "ai_model", model_name)
-        await _db.set_account_setting(account_id, "ai_location", location)
+    tenant = await _get_tenant(account_id)
+    if tenant:
+        await tenant.set_account_setting(account_id, "ai_model", model_name)
+        await tenant.set_account_setting(account_id, "ai_location", location)
 
 
 async def load_account_model(account_id: int) -> tuple[str, str]:
-    if _db:
-        model = await _db.get_account_setting(account_id, "ai_model", "")
-        loc = await _db.get_account_setting(account_id, "ai_location", "")
+    tenant = await _get_tenant(account_id)
+    if tenant:
+        model = await tenant.get_account_setting(account_id, "ai_model", "")
+        loc = await tenant.get_account_setting(account_id, "ai_location", "")
         if model and model in MODEL_REGISTRY:
             loc = loc or DEFAULT_LOCATION
             return model, loc
@@ -300,9 +317,10 @@ async def load_account_model(account_id: int) -> tuple[str, str]:
 
 async def save_account_vision_model(account_id: int, model_name: str,
                                     location: str):
-    if _db:
-        await _db.set_account_setting(account_id, "ai_vision_model", model_name)
-        await _db.set_account_setting(account_id, "ai_vision_location", location)
+    tenant = await _get_tenant(account_id)
+    if tenant:
+        await tenant.set_account_setting(account_id, "ai_vision_model", model_name)
+        await tenant.set_account_setting(account_id, "ai_vision_location", location)
 
 
 # ── Per-user model persistence ────────────────────────────────────
@@ -310,19 +328,21 @@ async def save_account_vision_model(account_id: int, model_name: str,
 async def save_user_model(account_id: int, user_id: int,
                           model_name: str, location: str):
     """Persist user's model preference via account_settings (keyed by user_id)."""
-    if _db:
-        await _db.set_account_setting(
+    tenant = await _get_tenant(account_id)
+    if tenant:
+        await tenant.set_account_setting(
             account_id, f"user:{user_id}:ai_model", model_name)
-        await _db.set_account_setting(
+        await tenant.set_account_setting(
             account_id, f"user:{user_id}:ai_location", location)
 
 
 async def load_user_model(account_id: int, user_id: int) -> tuple[str, str] | None:
     """Load user's model preference. Returns None if not set."""
-    if _db:
-        model = await _db.get_account_setting(
+    tenant = await _get_tenant(account_id)
+    if tenant:
+        model = await tenant.get_account_setting(
             account_id, f"user:{user_id}:ai_model", "")
-        loc = await _db.get_account_setting(
+        loc = await tenant.get_account_setting(
             account_id, f"user:{user_id}:ai_location", "")
         if model and model in MODEL_REGISTRY:
             return model, loc or DEFAULT_LOCATION
@@ -357,9 +377,10 @@ async def ensure_user_model(account_id: int, user_id: int):
 
 
 async def load_account_vision_model(account_id: int) -> tuple[str, str]:
-    if _db:
-        model = await _db.get_account_setting(account_id, "ai_vision_model", "")
-        loc = await _db.get_account_setting(account_id, "ai_vision_location", "")
+    tenant = await _get_tenant(account_id)
+    if tenant:
+        model = await tenant.get_account_setting(account_id, "ai_vision_model", "")
+        loc = await tenant.get_account_setting(account_id, "ai_vision_location", "")
         if model and model in MODEL_REGISTRY and is_vision_capable(model):
             loc = loc or DEFAULT_VISION_LOCATION
             return model, loc

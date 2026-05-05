@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
 
-from interfaces.api.deps import require_permission, require_permission_any, get_tenant_db, get_user_truck_nums, paginate
+from interfaces.api.deps import require_permission_any, get_tenant_db, get_user_vehicle_nums, paginate
 from capabilities.alerting.service import filter_alerts_by_access
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
@@ -13,7 +13,7 @@ async def _filter_own(user: dict, alerts: list[dict]) -> list[dict]:
     """If user has only _own permission, filter alerts to their assigned vehicles."""
     if user.get("_matched_perm") != "can_alerts_own":
         return alerts
-    trucks = await get_user_truck_nums(user)
+    trucks = await get_user_vehicle_nums(user)
     return filter_alerts_by_access(alerts, trucks)
 
 
@@ -66,6 +66,22 @@ async def pending_alerts(
     return {"alerts": paged["items"], "count": paged["total"],
             "page": paged["page"], "page_size": paged["page_size"],
             "total_pages": paged["total_pages"]}
+
+
+@router.get("/pending/count")
+async def pending_alerts_count(
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Lightweight count of pending alerts respecting driver isolation.
+
+    Used by the miniapp tab badge poll — avoids serialising the full
+    paginated list when only the count is needed.
+    """
+    alerts = await tenant_db.get_pending_alerts(user["account_id"])
+    alerts = await _filter_own(user, alerts)
+    alerts = _dedup_by_alert_key(alerts)
+    return {"count": len(alerts)}
 
 
 @router.get("/history")

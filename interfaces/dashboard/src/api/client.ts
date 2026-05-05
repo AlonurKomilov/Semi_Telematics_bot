@@ -47,8 +47,18 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}, timeoutMs 
     headers['Content-Type'] = 'application/json';
     body = JSON.stringify(body);
   }
+  // Chain caller's signal (if any) with our timeout signal so either can abort the request.
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const externalSignal = opts.signal as AbortSignal | undefined;
+  let externalAbortHandler: (() => void) | null = null;
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else {
+      externalAbortHandler = () => controller.abort();
+      externalSignal.addEventListener('abort', externalAbortHandler);
+    }
+  }
   try {
     const res = await fetch(`${API_BASE}${path}`, { ...opts, headers, body: body as BodyInit, signal: controller.signal });
     if (res.status === 401) {
@@ -59,6 +69,9 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}, timeoutMs 
     return res;
   } finally {
     clearTimeout(timeout);
+    if (externalSignal && externalAbortHandler) {
+      externalSignal.removeEventListener('abort', externalAbortHandler);
+    }
   }
 }
 
@@ -77,6 +90,11 @@ export async function apiJSON<T = unknown>(path: string, opts: ApiFetchOpts = {}
 
 /** apiJSON with 90-second timeout for AI endpoints. */
 export async function apiJSONAI<T = unknown>(path: string, opts: ApiFetchOpts = {}): Promise<T> {
+  return apiJSON<T>(path, opts, AI_REQUEST_TIMEOUT_MS);
+}
+
+/** apiJSON with 90-second timeout for heavy compute endpoints (scorecards, reports). */
+export async function apiJSONSlow<T = unknown>(path: string, opts: ApiFetchOpts = {}): Promise<T> {
   return apiJSON<T>(path, opts, AI_REQUEST_TIMEOUT_MS);
 }
 

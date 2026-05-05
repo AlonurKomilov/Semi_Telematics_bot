@@ -2,12 +2,44 @@
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+from adapters.storage import Role
 from capabilities.iam.permissions import can
 
 from interfaces.bot.config import get_tenant_db
 from interfaces.bot.keyboards import back_kb, parking_events_kb, parking_history_kb
 from interfaces.bot.helpers import _show
 from capabilities.localization.i18n import t
+
+
+def _own_only(user) -> bool:
+    """True when this caller may only see parking events for their own truck.
+
+    A driver who lacks ``can_geofence_all`` (the fleet-wide flag) but holds
+    ``can_geofence_own`` falls into this branch.  The list/history/detail
+    callbacks must filter results to the user's assigned truck before they
+    are rendered or the bot will leak the entire fleet's parking activity.
+    """
+    return (
+        user.role == Role.DRIVER
+        and not can(user.role, "can_geofence_all")
+        and can(user.role, "can_geofence_own")
+    )
+
+
+def _filter_to_own_vehicles(events: list[dict], user) -> list[dict]:
+    """Keep only events whose ``vehicle_name`` matches the user's truck(s).
+
+    Mirrors the substring match used by the API layer
+    (``interfaces/api/routes/parking.py``) so the bot and miniapp see the
+    same row-set for the same caller.
+    """
+    truck = (user.truck_num or "").strip().lower()
+    if not truck:
+        return []
+    return [
+        e for e in events
+        if truck in (e.get("vehicle_name") or "").lower()
+    ]
 
 
 async def _handle_parking_events(update, context, user, show_all: bool = False):
@@ -23,10 +55,25 @@ async def _handle_parking_events(update, context, user, show_all: bool = False):
     events = await tenant.get_active_parking_events(
         user.account_id, attention_only=not show_all,
     )
+    own_only = _own_only(user)
+    if own_only:
+        events = _filter_to_own_vehicles(events, user)
 
     if not events:
-        label = "stopped vehicles" if show_all else "vehicles needing attention"
-        text = f"✅ No {label} right now."
+        if own_only:
+            label = "stopped" if show_all else "needing attention"
+            text = f"✅ Your truck is not {label} right now."
+        else:
+            label = "stopped vehicles" if show_all else "vehicles needing attention"
+            text = f"✅ No {label} right now."
+    elif own_only:
+        text = (
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            f"  🅿️  <b>Your Parking</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            f"\n  Your truck — recent stop\n"
+            "  Tap for details."
+        )
     else:
         count = len(events)
         label = "all stopped vehicles" if show_all else "vehicles needing attention"
@@ -53,13 +100,17 @@ async def _handle_parking_history(update, context, user, days: int = 7):
 
     tenant = await get_tenant_db(user.account_id)
     history = await tenant.get_parking_history(user.account_id, days=days)
+    own_only = _own_only(user)
+    if own_only:
+        history = _filter_to_own_vehicles(history, user)
 
     if not history:
         text = f"📅 No resolved parking events in the last {days} days."
     else:
+        title = "Your Parking History" if own_only else f"Parking History — {days}d"
         lines = [
             "━━━━━━━━━━━━━━━━━━━━━",
-            f"  📅  <b>Parking History — {days}d</b>",
+            f"  📅  <b>{title}</b>",
             "━━━━━━━━━━━━━━━━━━━━━",
             "",
         ]
@@ -95,6 +146,18 @@ async def _handle_parking_detail(update, context, user, event_id: int):
         await _show(update, context, ["❌ Parking event not found."],
                     keyboard=back_kb())
         return
+
+    # Drivers without fleet-wide access may only inspect events for the
+    # truck they are assigned to.  Without this gate any driver could
+    # enumerate other vehicles' parking history just by guessing event
+    # ids in the parking_detail_<id> callback.
+    if _own_only(user):
+        truck = (user.truck_num or "").strip().lower()
+        ev_truck = (event.get("vehicle_name") or "").lower()
+        if not truck or truck not in ev_truck:
+            await _show(update, context, ["❌ Parking event not found."],
+                        keyboard=back_kb())
+            return
 
     vname = event.get("vehicle_name", "?")
     address = event.get("address", "Unknown")
@@ -150,7 +213,7 @@ async def _handle_parking_detail(update, context, user, event_id: int):
     rows = [
         [InlineKeyboardButton(
             f"📋 View Truck #{vname}",
-            callback_data=f"cotruck_{co}_{vname}",
+            callback_data=f"covehicle_{co}_{vname}",
         )],
         [InlineKeyboardButton("◀️ Back", callback_data="cmd_parking_events")],
     ]

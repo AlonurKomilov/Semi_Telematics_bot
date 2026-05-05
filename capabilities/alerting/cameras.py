@@ -9,9 +9,9 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import Application
 
-from core.bot_registry import get_app_for_account
-from core.isolation import run_account_job, CAMERA_JOB_TIMEOUT
-from core.services import get_platform_db
+from infra.bot_registry import get_app_for_account
+from infra.isolation import run_account_job, CAMERA_JOB_TIMEOUT
+from infra.services import get_platform_db
 
 logger = logging.getLogger("bot")
 

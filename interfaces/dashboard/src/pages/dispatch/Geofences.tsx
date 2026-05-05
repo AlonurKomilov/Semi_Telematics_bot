@@ -366,7 +366,7 @@ export default function Geofences() {
         {/* Map — always visible */}
         <div className="flex-1 relative rounded-xl border border-border overflow-hidden z-0 min-h-[400px]">
           <div ref={mapRef} className="absolute inset-0" />
-          <PoiLayerPanel poiHook={poiHook} />
+          <PoiLayerPanel poiHook={poiHook} leafletMap={leafletMap} />
         </div>
 
         {/* Right panel */}

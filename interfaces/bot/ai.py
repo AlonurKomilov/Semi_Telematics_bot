@@ -1,4 +1,4 @@
-"""AI-powered fleet intelligence commands.
+"""AI-powered telematics intelligence commands.
 
 Features:
 - 🤖 AI Assistant: natural language Q&A about fleet data
@@ -91,12 +91,12 @@ async def _dtcs_from_ack(account_id: int, ack_id: int) -> list[dict]:
 
 
 async def _gather_fleet_snapshot(account_id: int,
-                                 truck_num: str | None = None) -> dict:
+                                 vehicle_num: str | None = None) -> dict:
     """Build a compact fleet data snapshot for AI context.
 
     Delegates to the shared builder in ai.intelligence.
     """
-    return await ai.build_context(account_id, truck_num=truck_num)
+    return await ai.build_context(account_id, vehicle_num=vehicle_num)
 
 
 def _ai_menu_kb(user_role=None, account_id=None) -> InlineKeyboardMarkup:
@@ -246,12 +246,12 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
     suggestions = []
     try:
         # Driver: only sees their own truck
-        truck_filter = None
+        vehicle_filter = None
         if user.role == Role.DRIVER and user.truck_num:
-            truck_filter = user.truck_num
+            vehicle_filter = user.truck_num
 
         snapshot = await _gather_fleet_snapshot(
-            user.account_id, truck_num=truck_filter,
+            user.account_id, vehicle_num=vehicle_filter,
         )
         samsara = await get_client(user.account_id)
         tenant_db = await get_tenant_db(user.account_id)
@@ -310,12 +310,12 @@ async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _show_loading(update, context, "📊  <i>Generating fleet briefing...</i>")
 
     try:
-        truck_filter = None
+        vehicle_filter = None
         if user.role == Role.DRIVER and user.truck_num:
-            truck_filter = user.truck_num
+            vehicle_filter = user.truck_num
 
         snapshot = await _gather_fleet_snapshot(
-            user.account_id, truck_num=truck_filter,
+            user.account_id, vehicle_num=vehicle_filter,
         )
         summary = await ai.generate_summary(
             snapshot, account_id=user.account_id,
@@ -351,7 +351,7 @@ async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @_require_registered
 async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                          truck_name: str, company: str | None = None,
+                          vehicle_name: str, company: str | None = None,
                           alert_context: str = "fault",
                           ack_id: int | None = None):
     """AI-diagnose a truck from the alert context.
@@ -372,11 +372,17 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
     await _show_loading(update, context, t('ai.diagnose_thinking'))
 
     try:
-        samsara = await get_client(user.account_id)
-        matches = await samsara.get_vehicle_detail(truck_name, company=company)
+        # Route through service layer (SSOT) — warehouse-aware when available,
+        # falls back to live Samsara otherwise.
+        from capabilities.vehicles.service import (
+            get_vehicle_detail as _svc_vehicle_detail,
+        )
+        matches = await _svc_vehicle_detail(
+            user.account_id, vehicle_name, company=company,
+        )
 
         if not matches:
-            text = f"  {t('ai.truck_not_found').replace('{name}', truck_name)}"
+            text = f"  {t('ai.vehicle_not_found').replace('{name}', vehicle_name)}"
             await _show(update, context, [text], keyboard=_ai_back_kb())
             return
 
@@ -390,15 +396,16 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
         lights = v.get("_lights") or j1939.get("checkEngineLights", {})
 
         # ── Build context-aware prompt and fetch extra data ──────
-        context_data: dict = {"truck": truck_name}
+        context_data: dict = {"truck": vehicle_name}
         prompt_parts: list[str] = []
         header_lines: list[str] = []
 
         if alert_context == "health":
-            health_vehicles = await samsara.get_vehicle_health(company=company)
+            from capabilities.telemetry.service import get_vehicle_health as _svc_health
+            health_vehicles = await _svc_health(user.account_id, company=company)
             health = {}
             for hv in health_vehicles:
-                if hv.get("name", "").lower() == truck_name.lower():
+                if hv.get("name", "").lower() == vehicle_name.lower():
                     health = hv.get("_health", {})
                     break
 
@@ -424,7 +431,7 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 "DEF Level": "< 10% is low",
             }
             prompt_parts.append(
-                f"Diagnose the health condition of Truck #{truck_name}. "
+                f"Diagnose the health condition of Truck #{vehicle_name}. "
                 f"Current readings: {', '.join(f'{k}: {v}' for k, v in readings.items())}. "
                 "Are any readings abnormal? What should the driver do?"
             )
@@ -444,7 +451,7 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
             context_data["fuel_data"] = fuel_data
             prompt_parts.append(
-                f"Assess the fuel situation on Truck #{truck_name}. "
+                f"Assess the fuel situation on Truck #{vehicle_name}. "
                 f"Fuel level: {fuel_pct:.0f}% "
                 + (f", DEF level: {def_pct}%" if def_pct is not None else "")
                 + ". How urgent is this? Estimate remaining range. "
@@ -476,13 +483,13 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 if historical:
                     prompt_parts.insert(0, (
                         f"Diagnose these faults that were recently reported on "
-                        f"Truck #{truck_name} (they may have since auto-resolved). "
+                        f"Truck #{vehicle_name} (they may have since auto-resolved). "
                         f"There were {len(dtcs)} fault code(s)."
                     ))
                     header_lines.insert(0, f"  ⚙️ {len(dtcs)} reported fault(s) (recently cleared)")
                 else:
                     prompt_parts.insert(0, (
-                        f"Diagnose the active faults on Truck #{truck_name}. "
+                        f"Diagnose the active faults on Truck #{vehicle_name}. "
                         f"There are {len(dtcs)} active fault code(s)."
                     ))
                     header_lines.insert(0, f"  ⚙️ {len(dtcs)} active fault(s)")
@@ -509,7 +516,7 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 "━━━━━━━━━━━━━━━━━━━\n"
                 f"  ✅  <b>{t('ai.diagnose_no_issues_title')}</b>\n"
                 "━━━━━━━━━━━━━━━━━━━\n"
-                f"\n  {t('ai.diagnose_no_issues_msg').replace('{truck}', f'Truck #{truck_name}')}"
+                f"\n  {t('ai.diagnose_no_issues_msg').replace('{truck}', f'Truck #{vehicle_name}')}"
             )
             await _show(update, context, [text], keyboard=_ai_back_kb())
             return
@@ -532,7 +539,7 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
             "━━━━━━━━━━━━━━━━━━━\n"
             f"  🔧  <b>{t('ai.diagnose_title')}</b>\n"
             "━━━━━━━━━━━━━━━━━━━\n"
-            f"\n  🚛  <b>Truck #{truck_name}</b>\n"
+            f"\n  🚛  <b>Truck #{vehicle_name}</b>\n"
             f"{header_info}\n"
             f"\n{_sanitize_ai_html(diagnosis)}"
         )
@@ -542,11 +549,11 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
             kb_rows.append([InlineKeyboardButton(
                 t('alert_actions.acknowledge'), callback_data=f"ack_alert_{ack_id}",
             )])
-        truck_cb = f"cotruck_{co}_{truck_name}"
+        truck_cb = f"covehicle_{co}_{vehicle_name}"
         if ack_id is not None:
             truck_cb += f":{ack_id}"
         kb_rows.append([InlineKeyboardButton(
-            t('truck.view_truck').replace('{name}', truck_name),
+            t('vehicle.view_vehicle').replace('{name}', vehicle_name),
             callback_data=truck_cb,
         )])
         if ack_id is not None:
@@ -558,13 +565,13 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
             kb_rows.append([InlineKeyboardButton(t('common.main_menu'), callback_data="cmd_menu")])
         kb = InlineKeyboardMarkup(kb_rows)
     except Exception as e:
-        logger.error(f"AI diagnosis failed for {truck_name}: {e}")
+        logger.error(f"AI diagnosis failed for {vehicle_name}: {e}")
         text = (
             "━━━━━━━━━━━━━━━━━━━\n"
             f"  ❌  <b>{t('ai.error_title')}</b>\n"
             "━━━━━━━━━━━━━━━━━━━\n"
             "\n"
-            f"  {t('ai.diagnose_error_msg').replace('{name}', truck_name)}\n"
+            f"  {t('ai.diagnose_error_msg').replace('{name}', vehicle_name)}\n"
             f"\n  <i>{type(e).__name__}</i>"
         )
         kb = _ai_back_kb()

@@ -11,7 +11,7 @@ LOG_FILE = bot.log
        docker-build docker-up docker-down docker-logs docker-restart \
        nginx-install nginx-test nginx-status ports \
        redis-start redis-stop redis-cli \
-       build dashboard-build dashboard-build-if-needed miniapp-build
+       build dashboard-build dashboard-build-if-needed miniapp-build miniapp-build-if-needed
 
 # ── systemd-aware targets (preferred) ────────────────
 
@@ -20,7 +20,7 @@ install:
 	@bash install-service.sh
 
 ## Start all services: Redis + bot/API (systemd or nohup fallback)
-start: dashboard-build-if-needed
+start: dashboard-build-if-needed miniapp-build-if-needed
 	@echo "🚀 Starting 4truck services..."
 	@# ── 0. Clear stale Python bytecode so live source is always used ──
 	@find . -path ./.git -prune -o -name '*.pyc' -delete 2>/dev/null; true
@@ -28,8 +28,27 @@ start: dashboard-build-if-needed
 	@if docker ps --format '{{.Names}}' | grep -q $(REDIS_CONTAINER); then \
 		echo "   ✅ Redis already running on port 8002"; \
 	elif docker ps -a --format '{{.Names}}' | grep -q $(REDIS_CONTAINER); then \
-		docker start $(REDIS_CONTAINER) >/dev/null; \
-		echo "   ✅ Redis started on port 8002 (existing container)"; \
+		if docker start $(REDIS_CONTAINER) >/dev/null 2>&1; then \
+			echo "   ✅ Redis started on port 8002 (existing container)"; \
+		else \
+			echo "   🔄 Port 8002 race — waiting 3s for Docker to release..."; \
+			sleep 3; \
+			if docker start $(REDIS_CONTAINER) >/dev/null 2>&1; then \
+				echo "   ✅ Redis started on port 8002 (existing container — retry ok)"; \
+			else \
+				echo "   🔄 Recreating Redis container (port still held)..."; \
+				docker rm $(REDIS_CONTAINER) >/dev/null 2>&1 || true; \
+				sleep 1; \
+				docker run -d \
+					--name $(REDIS_CONTAINER) \
+					--restart unless-stopped \
+					-p 127.0.0.1:8002:8002 \
+					-v 4truck-redis:/data \
+					redis:7-alpine \
+					redis-server --port 8002 >/dev/null; \
+				echo "   ✅ Redis started on port 8002 (container recreated)"; \
+			fi; \
+		fi; \
 	else \
 		docker run -d \
 			--name $(REDIS_CONTAINER) \
@@ -45,8 +64,14 @@ start: dashboard-build-if-needed
 		sudo systemctl start $(SERVICE); \
 		echo "   ✅ Bot + API started via systemd"; \
 	elif ss -tlnp 2>/dev/null | grep -q ':8000 '; then \
-		echo "   ❌ Port 8000 already in use — run: make stop first"; \
-		exit 1; \
+		echo "   🧹 Port 8000 in use — clearing (race after stop)..."; \
+		fuser -k 8000/tcp 2>/dev/null; sleep 2; \
+		if ss -tlnp 2>/dev/null | grep -q ':8000 '; then \
+			echo "   ❌ Port 8000 still held (root process?) — run: sudo fuser -k 8000/tcp"; \
+			exit 1; \
+		fi; \
+		nohup python3 run.py >> $(LOG_FILE) 2>&1 & echo $$! > $(PID_FILE); \
+		echo "   ✅ Bot + API started (PID $$(cat $(PID_FILE))) — logs: $(LOG_FILE)"; \
 	elif [ -f $(PID_FILE) ] && kill -0 $$(cat $(PID_FILE)) 2>/dev/null; then \
 		echo "   ⚠️  Bot already running (PID $$(cat $(PID_FILE)))"; \
 	else \
@@ -211,6 +236,20 @@ dashboard-build:
 	@echo "🔨 Building dashboard..."
 	@cd interfaces/dashboard && npm run build
 	@echo "✅  Dashboard built → interfaces/dashboard/dist/"
+
+## Build the miniapp only when sources are newer than the last build output.
+miniapp-build-if-needed:
+	@DIST=interfaces/miniapp/dist/index.html; \
+	if [ ! -f "$$DIST" ]; then \
+		echo "📦 Miniapp dist missing — building..."; \
+		$(MAKE) miniapp-build; \
+	elif find interfaces/miniapp/src interfaces/miniapp/index.html interfaces/miniapp/vite.config.* \
+		-newer "$$DIST" -print -quit 2>/dev/null | grep -q .; then \
+		echo "📦 Miniapp sources changed — rebuilding..."; \
+		$(MAKE) miniapp-build; \
+	else \
+		echo "   ✅ Miniapp dist up to date (no rebuild needed)"; \
+	fi
 
 ## Build the dashboard only when sources are newer than the last build output.
 ## Called automatically by `make start` so fresh code is always deployed.

@@ -10,10 +10,33 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import Application
 
-from core.bot_registry import get_app_for_account
-from core.services import get_platform_db, get_tenant_db
+from adapters.storage import Role
+from infra.bot_registry import get_app_for_account
+from infra.services import get_platform_db, get_tenant_db
 
 logger = logging.getLogger("bot")
+
+
+def _filter_handoff_for_driver(
+    items: list[dict], vehicle_nums: list[str], *, name_key: str = "vehicle_name",
+) -> list[dict]:
+    """Keep only items whose ``vehicle_name`` matches one of the driver's trucks.
+
+    Mirrors the substring match used elsewhere (API/bot parking filters and the
+    ``send_alert`` subscriber loop) so a driver receiving a shift-handoff PDF
+    or summary never sees rows for trucks they aren't assigned to.  Returns
+    an empty list when ``vehicle_nums`` is empty (defensive: a driver with no
+    assignment should not see fleet-wide data either).
+    """
+    if not vehicle_nums:
+        return []
+    needles = [t.lower() for t in vehicle_nums if t]
+    if not needles:
+        return []
+    return [
+        i for i in items
+        if any(n in (i.get(name_key) or "").lower() for n in needles)
+    ]
 
 
 async def deliver_dnd_alerts(app: Application):
@@ -58,6 +81,20 @@ async def deliver_dnd_alerts(app: Application):
             resolved = handoff["resolved_alerts"]
             maint = handoff["pending_maintenance"]
             history = handoff.get("recent_history", [])
+
+            # Drivers must only see shift-handoff content for their own truck.
+            # ``pending_alerts``/``resolved_alerts`` are already scoped to the
+            # subscriber via ``alert_acknowledgments.sent_to`` (the per-driver
+            # filter in ``send_alert`` blocks fleet rows from ever being
+            # written for them).  ``pending_maintenance`` and
+            # ``recent_history``, however, are pulled at account scope and
+            # would leak the rest of the fleet's data into the PDF/summary.
+            if sub.role == Role.DRIVER:
+                trucks = await get_platform_db().get_user_vehicle_nums(sub.id)
+                if not trucks and sub.truck_num:
+                    trucks = [sub.truck_num]
+                maint = _filter_handoff_for_driver(maint, trucks)
+                history = _filter_handoff_for_driver(history, trucks)
 
             if not queued and not pending and not resolved and not maint and not history:
                 continue
@@ -193,5 +230,7 @@ def _generate_pdf(sub, queued, pending, resolved, maint, history, now_local):
             timezone_name=sub.timezone,
         )
     except Exception as e:
-        logger.error(f"Shift PDF generation failed: {e}")
+        logger.error(
+            "Shift report PDF generation failed: %s", e, exc_info=True,
+        )
         return None

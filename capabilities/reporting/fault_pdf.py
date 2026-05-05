@@ -93,7 +93,7 @@ def generate_fault_report_pdf(
                             len(co_vehicles), co_dtcs)
 
         for v in co_vehicles:
-            story.extend(_build_truck_card(v, styles, show_org=multi_org))
+            story.extend(_build_vehicle_card(v, styles, show_org=multi_org))
             story.append(Spacer(1, 10))
 
     # ── Action Items (STOP / PROTECT / EMISSIONS trucks) ─────────
@@ -229,7 +229,7 @@ def generate_critical_report_pdf(
                             banner_color=C_CRIT_BANNER)
 
         for v in co_vehicles:
-            story.extend(_build_truck_card(v, styles, show_org=multi_org))
+            story.extend(_build_vehicle_card(v, styles, show_org=multi_org))
             story.append(Spacer(1, 10))
 
     # ── Action Items (STOP / PROTECT / EMISSIONS trucks) ─────────

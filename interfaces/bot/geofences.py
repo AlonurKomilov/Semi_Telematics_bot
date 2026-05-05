@@ -12,15 +12,15 @@ from telegram.ext import ContextTypes, Application
 from capabilities.iam.permissions import can
 from adapters.samsara.client import populate_company_display
 
-from interfaces.bot.config import logger, get_client, get_platform_db, get_tenant_db
-from core.isolation import run_account_job
-from core.bot_registry import get_app_for_account
+from interfaces.bot.config import logger, get_platform_db, get_tenant_db
+from infra.isolation import run_account_job
+from infra.bot_registry import get_app_for_account
 from interfaces.bot.keyboards import back_kb, geofence_list_kb
 from interfaces.bot.helpers import _show, _show_loading, _safe_error
 from interfaces.bot.auth import _require_registered
 
 try:
-    import adapters.cache.redis as rcache
+    import infra.cache as rcache
 except ImportError:
     rcache = None
 
@@ -40,12 +40,12 @@ async def cmd_geofences(update: Update, context: ContextTypes.DEFAULT_TYPE,
     tenant = await get_tenant_db(user.account_id)
     companies = await tenant.get_account_companies(user.account_id)
     populate_company_display(companies)
-    samsara = await get_client(user.account_id)
 
     await _show_loading(update, context, t('geofence.loading'))
 
     try:
-        samsara_zones = await samsara.get_geofences(company=company)
+        from capabilities.geofencing.service import get_geofences as _svc_geofences
+        samsara_zones = await _svc_geofences(user.account_id, company=company)
         platform_zones = await tenant.get_platform_geofences(user.account_id, is_active=True)
 
         now_et = _dt.now(_TZ_ET)
@@ -425,10 +425,10 @@ async def _check_geofences_account(bot_app: Application, account):
     if not platform_zones:
         return
 
-    # GPS from Samsara
+    # GPS from warehouse (60s-fresh) with live-Samsara fallback
     try:
-        samsara = await get_client(account.id)
-        vehicles = await samsara.get_fleet_overview()
+        from capabilities.geofencing.service import get_fleet_for_geofence_check
+        vehicles = await get_fleet_for_geofence_check(account.id)
     except Exception as e:
         logger.debug("Geofence GPS fetch for account %d: %s", account.id, e)
         return

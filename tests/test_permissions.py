@@ -50,7 +50,7 @@ class TestRolePermissions:
         assert can(Role.ADMIN, "can_invite")
 
     def test_admin_has_all_fleet_features(self):
-        for feat in ("can_faults", "can_critical", "can_fuel", "can_truck_all"):
+        for feat in ("can_faults", "can_critical", "can_fuel", "can_vehicle_all"):
             assert can(Role.ADMIN, feat), f"Admin should have {feat}"
 
     # ── Fleet Manager: no management ──────────────────────────────
@@ -60,7 +60,7 @@ class TestRolePermissions:
             assert not can(Role.FLEET, feat), f"Fleet should NOT have {feat}"
 
     def test_fleet_has_fleet_features(self):
-        for feat in ("can_faults", "can_critical", "can_fuel", "can_truck_all",
+        for feat in ("can_faults", "can_critical", "can_fuel", "can_vehicle_all",
                       "can_maintenance_all", "can_scorecard_all"):
             assert can(Role.FLEET, feat), f"Fleet should have {feat}"
 
@@ -72,7 +72,7 @@ class TestRolePermissions:
 
     def test_dispatcher_has_fuel_and_location(self):
         assert can(Role.DISPATCHER, "can_fuel")
-        assert can(Role.DISPATCHER, "can_truck_all")
+        assert can(Role.DISPATCHER, "can_vehicle_all")
         assert can(Role.DISPATCHER, "can_location_map")
 
     def test_dispatcher_no_management(self):
@@ -86,8 +86,8 @@ class TestRolePermissions:
     # ── Driver: own-only access ───────────────────────────────────
 
     def test_driver_own_truck_only(self):
-        assert can(Role.DRIVER, "can_truck_own")
-        assert not can(Role.DRIVER, "can_truck_all")
+        assert can(Role.DRIVER, "can_vehicle_own")
+        assert not can(Role.DRIVER, "can_vehicle_all")
 
     def test_driver_own_alerts_only(self):
         assert can(Role.DRIVER, "can_alerts_own")
