@@ -107,6 +107,48 @@ export class ApiError extends Error {
   }
 }
 
+/** UI-friendly classification of a failed apiJSON/apiFetch call.
+ *
+ * Pages should branch on this kind so the user gets the right next step:
+ *   - 'auth'     → 401/403 → JWT expired → re-launch from the bot
+ *   - 'server'   → 5xx → backend / Samsara hiccup → retry
+ *   - 'network'  → no response (offline, DNS, TLS, AbortError) → check connection
+ *   - 'unknown'  → other 4xx (route gone, validation) → report to admin
+ */
+export type ApiErrorKind = 'auth' | 'server' | 'network' | 'unknown';
+
+export interface ClassifiedError {
+  kind: ApiErrorKind;
+  message: string;
+  /** Original status when known (HTTP code) — pages may want it for telemetry. */
+  status?: number;
+}
+
+export function classifyError(e: unknown): ClassifiedError {
+  if (e instanceof ApiError) {
+    if (e.status === 401 || e.status === 403) {
+      return {
+        kind: 'auth',
+        status: e.status,
+        message: 'Your session has expired. Reopen this app from the Telegram bot to continue.',
+      };
+    }
+    if (e.status >= 500) {
+      return {
+        kind: 'server',
+        status: e.status,
+        message: 'The server is having trouble. Try again in a moment.',
+      };
+    }
+    return { kind: 'unknown', status: e.status, message: e.message || 'Request failed.' };
+  }
+  // TypeError / AbortError / generic fetch failures → no response reached us.
+  return {
+    kind: 'network',
+    message: 'No connection. Check your network and try again.',
+  };
+}
+
 export async function apiJSON<T = unknown>(path: string, opts: ApiFetchOpts = {}): Promise<T> {
   const res = await apiFetch(path, opts);
   if (!res.ok) {

@@ -88,9 +88,29 @@ async def evaluate_subjects(
     if subject not in ("driver", "vehicle"):
         raise ValueError(f"unknown subject {subject!r}; expected driver|vehicle")
 
+    # Structured timing — emits one log line per stage so prod logs can
+    # show which call was the bottleneck (e.g. Samsara vs DB) without
+    # needing a separate APM. Each stage logs ms; the closing line
+    # breaks down the total. The overhead is sub-millisecond.
+    import time as _time
+    _t0 = _time.perf_counter()
+    _stage: dict[str, float] = {}
+
+    # Phase 6 observability — record each stage as a Prometheus
+    # histogram alongside the structured-log line. Stays a no-op when
+    # prometheus_client isn't installed.
+    from infra import observability as _obs
+
+    def _mark(stage: str, since: float) -> None:
+        elapsed = _time.perf_counter() - since
+        _stage[stage] = round(elapsed * 1000, 1)
+        _obs.record_scorecard_stage(stage=stage, subject=subject, seconds=elapsed)
+
     # ── 1. Pull signals shared between subjects ──────────────────
     # Warm up company display names (idempotent — no-op if already done).
+    _t = _time.perf_counter()
     await prepare_companies(account_id)
+    _mark("prepare_companies", _t)
 
     tenant = await get_tenant_db(account_id)
 
@@ -135,6 +155,7 @@ async def evaluate_subjects(
         return result
 
     # Fire all eight I/O-bound fetches concurrently.
+    _t = _time.perf_counter()
     gathered = await asyncio.gather(
         get_events(account_id, days=days, company=company),
         _get_maint(),
@@ -146,6 +167,7 @@ async def evaluate_subjects(
         _get_faults(),
         return_exceptions=True,
     )
+    _mark("signals_gather", _t)
 
     def _ok_list(idx: int, label: str) -> list[dict]:
         v = gathered[idx]
@@ -179,6 +201,7 @@ async def evaluate_subjects(
     rules = apply_overrides(get_default_rules(), overrides)
 
     # ── 2. Per-subject signal aggregation ────────────────────────
+    _t = _time.perf_counter()
     if subject == "driver":
         drivers = await get_driver_efficiency(
             account_id, days=days, company=company, vehicle_nums=vehicle_nums,
@@ -199,8 +222,10 @@ async def evaluate_subjects(
             ]
         eff_by_subject = veh_eff_signals.from_vehicle_records(vehicles)
         events_by_subject = safety_signals.from_events_by_vehicle(events)
+    _mark("efficiency_fetch", _t)
 
     # ── 3. Score each subject ────────────────────────────────────
+    _t = _time.perf_counter()
     scorecards: list[Scorecard] = []
     for sid, eff in eff_by_subject.items():
         truck_names = eff["_vehicle_names"]
@@ -238,6 +263,7 @@ async def evaluate_subjects(
             pillar_caps=pillar_caps,
         )
         scorecards.append(sc)
+    _mark("scoring_loop", _t)
 
     # ── 3b. Write evidence trail (nightly only) ──────────────────
     if write_evidence and tenant is not None:
@@ -347,6 +373,23 @@ async def evaluate_subjects(
         })
 
     out.sort(key=lambda r: r["score"], reverse=True)
+
+    # Structured timing — one log line per request, easy to grep in prod
+    # to tell whether the slow step is Samsara, the DB, or our scoring
+    # loop. Logs at INFO when total ≥ 1s, DEBUG otherwise to keep noise
+    # down on warm-cache hits.
+    _total_ms = round((_time.perf_counter() - _t0) * 1000, 1)
+    _stage["total"] = _total_ms
+    _payload = " ".join(f"{k}={v}ms" for k, v in _stage.items())
+    _msg = (
+        "scorecard.timing acct=%d subject=%s days=%d cards=%d %s"
+    )
+    _args = (account_id, subject, days, len(out), _payload)
+    if _total_ms >= 1000:
+        logger.info(_msg, *_args)
+    else:
+        logger.debug(_msg, *_args)
+
     return out
 
 

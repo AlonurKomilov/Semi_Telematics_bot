@@ -859,5 +859,64 @@
     "back_reports": "◀️ Звіти",
     "error_content": "📋 <b>Підписка на Звіт</b>\n\n⚠️ Не вдалося сформувати звіт.",
     "sending": "📋 Формуємо ваш запланований звіт <b>{rtype}</b>..."
+  },
+  "risk_report": {
+    "title": "Звіт про ризики для зацікавлених сторін",
+    "usage": "Використання: /risk_report <вантажівка> [insurance|owner|broker|auditor|payroll]",
+    "not_assigned": "Ви можете запитувати звіти про ризики лише для закріплених за вами вантажівок.",
+    "loading": "Готую звіт про ризики для {vehicle}…",
+    "caption": "<b>Звіт про ризики</b>\nВантажівка: {vehicle}\nАудиторія: {audience}\nОцінка: {score}",
+    "audience": {
+      "insurance": "Страхова",
+      "owner": "Власник",
+      "broker": "Брокер",
+      "auditor": "Аудитор",
+      "payroll": "Зарплата"
+    }
+  },
+  "payroll": {
+    "title": "Оплата за результат",
+    "disabled_for_account": "Функція розрахунку зарплати не ввімкнена для цього акаунта.",
+    "my_pay": {
+      "title": "Моя оплата",
+      "period": "Період: {start} → {end}",
+      "status": "Статус: {status}",
+      "base": "Базова оплата: {amount}",
+      "bonuses": "Бонуси",
+      "total": "Разом: {amount}",
+      "history": "Історія",
+      "no_driver_mapping": "Не вдалося знайти запис водія для вашого акаунта.",
+      "no_history": "Поки немає жодного розрахункового листка."
+    }
+  },
+  "coaching": {
+    "title": "Авто-коучинг",
+    "disabled_for_account": "Коучинг не увімкнено для цього акаунта.",
+    "topics": {
+      "hard_brake": "Різке гальмування",
+      "harsh_accel": "Різке прискорення",
+      "speeding": "Перевищення швидкості",
+      "distraction": "Відволікання",
+      "following_distance": "Дистанція",
+      "fatigue": "Втома"
+    },
+    "severity": {
+      "low": "Низька",
+      "medium": "Середня",
+      "high": "Висока"
+    },
+    "status": {
+      "pending": "Очікує",
+      "acknowledged": "Прийнято",
+      "cancelled": "Скасовано"
+    },
+    "my": {
+      "title": "Мій коучинг",
+      "no_pending": "Немає очікуваних завдань коучингу.",
+      "no_driver_mapping": "Не вдалося зіставити ваш акаунт з водієм.",
+      "ack_button": "Прийняти",
+      "ack_done": "Прийнято. Дякуємо!",
+      "ack_failed": "Не вдалося прийняти завдання."
+    }
   }
 }

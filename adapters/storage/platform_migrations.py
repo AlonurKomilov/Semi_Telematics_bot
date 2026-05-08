@@ -24,6 +24,9 @@ async def run_all(conn) -> None:
     await migrate_ai_chat_history(conn)
     await migrate_add_role_ai_guidance(conn)
     await migrate_add_error_log(conn)
+    await migrate_add_payroll_enabled_flag(conn)
+    await migrate_add_coaching_enabled_flag(conn)
+    await migrate_add_users_samsara_driver_id(conn)
 
 
 async def migrate_ai_chat_history(conn) -> None:
@@ -266,7 +269,6 @@ async def migrate_seed_role_permissions(conn) -> None:
             return
 
         from capabilities.iam.permissions import ROLE_PERMISSIONS
-        from adapters.storage import Role
 
         cur = await conn.execute("SELECT id FROM accounts WHERE is_active = 1")
         accounts = [r[0] for r in await cur.fetchall()]
@@ -474,3 +476,65 @@ async def migrate_add_error_log(conn) -> None:
         logger.info("error_log table created/verified")
     except Exception as e:
         logger.debug("error_log migration skipped: %s", e)
+
+
+async def migrate_add_payroll_enabled_flag(conn) -> None:
+    """Add accounts.payroll_enabled (Phase 2 P4P kill-switch). Default OFF."""
+    try:
+        cur = await conn.execute("PRAGMA table_info(accounts)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "payroll_enabled" not in cols:
+            await conn.execute(
+                "ALTER TABLE accounts ADD COLUMN payroll_enabled INTEGER NOT NULL DEFAULT 0"
+            )
+            await conn.commit()
+            logger.info("Migration: added accounts.payroll_enabled column")
+    except Exception as e:
+        logger.error("payroll_enabled flag migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_add_coaching_enabled_flag(conn) -> None:
+    """Add accounts.coaching_enabled (Phase 3 Auto Coaching kill-switch). Default OFF."""
+    try:
+        cur = await conn.execute("PRAGMA table_info(accounts)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "coaching_enabled" not in cols:
+            await conn.execute(
+                "ALTER TABLE accounts ADD COLUMN coaching_enabled INTEGER NOT NULL DEFAULT 0"
+            )
+            await conn.commit()
+            logger.info("Migration: added accounts.coaching_enabled column")
+    except Exception as e:
+        logger.error("coaching_enabled flag migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_add_users_samsara_driver_id(conn) -> None:
+    """Add users.samsara_driver_id — explicit Telegram-user ↔ Samsara-driver
+    binding. Required for /coaching/me and /payroll/me; without it those
+    endpoints can't safely return per-driver data because the prior heuristic
+    (most-recent safety event by truck) would leak data after vehicle reassignment.
+    Default NULL: existing rows must be linked by an admin before the driver
+    can use the self-service endpoints."""
+    try:
+        cur = await conn.execute("PRAGMA table_info(users)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "samsara_driver_id" not in cols:
+            await conn.execute(
+                "ALTER TABLE users ADD COLUMN samsara_driver_id TEXT"
+            )
+            await conn.commit()
+            logger.info("Migration: added users.samsara_driver_id column")
+    except Exception as e:
+        logger.error("samsara_driver_id migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass

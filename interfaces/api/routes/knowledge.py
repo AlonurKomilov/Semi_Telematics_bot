@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 from interfaces.api.deps import get_current_user, get_platform_db
-from adapters.storage.knowledge_db import (
+from adapters.storage.knowledge import (
     KB_CATEGORIES, KB_MEDIA_TYPES, KB_VISIBILITY, KB_TARGET_ROLES,
     validate_media_url,
 )

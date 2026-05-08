@@ -1,0 +1,52 @@
+# Prometheus scrape config for the 4truck stack.
+#
+# Targets: every 4truck-api gunicorn pod's /metrics. The endpoint is
+# served on the same port as the API itself (8000 by default), so
+# scraping any host that runs the API hits its metrics directly.
+#
+# Single-host (systemd) deployment uses static_configs. K8s deployments
+# should swap to ``kubernetes_sd_configs`` and rely on pod annotations
+# (prometheus.io/scrape=true).
+#
+# Drop me at /etc/prometheus/prometheus.yml and run:
+#   docker run -p 9090:9090 \
+#     -v $PWD/observability/prometheus:/etc/prometheus \
+#     prom/prometheus
+
+global:
+  scrape_interval:     15s
+  scrape_timeout:      10s
+  evaluation_interval: 15s
+  external_labels:
+    deployment: production
+
+# Alert rule files — see observability/alerts/.
+rule_files:
+  - "/etc/prometheus/alerts/*.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            # AlertManager — wires alerts to Slack/PagerDuty/email.
+            # Comment out if you don't run AlertManager yet.
+            # - "alertmanager:9093"
+            []
+
+scrape_configs:
+  - job_name: '4truck-api'
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          # Single-host: the API runs on port 8000.
+          # If you scale to multiple API hosts, list each here or
+          # use file_sd_configs / kubernetes_sd_configs.
+          - 'localhost:8000'
+        labels:
+          service: api
+          env: production
+
+  # ARQ workers don't expose /metrics directly — the API queues
+  # `arq_queue_depth` via the lifespan poller, so scraping the API is
+  # enough for queue observability. If you later add a worker-side
+  # metrics server, list it here.

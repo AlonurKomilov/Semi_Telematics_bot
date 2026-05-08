@@ -69,18 +69,55 @@ PLATFORM_TABLES = [
 ]
 
 TENANT_TABLES = [
-    ("companies",             "id"),
-    ("settings",              "id"),
-    ("fault_alerts",          "id"),
-    ("health_alerts",         "id"),
-    ("fuel_alerts",           "id"),
-    ("geofence_alerts",       "id"),
-    ("parking_spots",         "id"),
-    ("parking_events",        "id"),
-    ("camera_events",         "id"),
-    ("maintenance_records",   "id"),
-    ("fuel_records",          "id"),
-    ("schedules",             "id"),
+    # ── Reference / configuration ──────────────────────────────
+    ("companies",                  "id"),
+    ("account_settings",           None),     # composite PK
+    ("knowledge_base",             "id"),
+
+    # ── Audit + alerting ───────────────────────────────────────
+    ("audit_log",                  "id"),
+    ("alert_history",              "id"),
+    ("alert_acknowledgments",      "id"),
+    ("dnd_alert_queue",            "id"),
+
+    # ── Operations ─────────────────────────────────────────────
+    ("camera_checks",              "id"),
+    ("custom_poi_layers",          "id"),
+    ("custom_poi_points",          "id"),
+    ("digest_subscriptions",       "id"),
+    ("fuel_entries",               "id"),
+    ("geofence_definitions",       "id"),
+    ("maintenance_tasks",          "id"),
+    ("parking_events",             "id"),
+    ("platform_geofences",         "id"),
+    ("vehicle_fault_detail",       "id"),
+    ("work_hours",                 "id"),
+
+    # ── Scoring + coaching + payroll ───────────────────────────
+    ("score_events",               "id"),
+    ("score_rules",                None),     # rule_id is PK (TEXT)
+    ("daily_scorecard_snapshots",  "id"),
+    ("bonus_rules",                "id"),
+    ("coaching_topics",            None),     # composite PK
+    ("coaching_rules",             "id"),
+    ("coaching_assignments",       "id"),
+    ("coaching_acknowledgments",   "id"),
+    ("driver_pay_settings",        None),     # composite PK
+    ("payroll_runs",               "id"),
+    ("payroll_run_items",          "id"),
+
+    # ── Warehouse (Phase C ingestor sinks) ─────────────────────
+    # Pure cache tables — backfill is OPTIONAL (the ingestor will
+    # repopulate them within 60s-30min after migration). Listed so
+    # ``--include-warehouse`` runs can move them too.
+    ("vehicle_state",              None),     # vehicle_id (TEXT) PK
+    ("vehicle_health_snapshot",    None),
+    ("vehicle_fault_snapshot",     None),
+    ("fleet_weather_snapshot",     None),
+    ("fleet_efficiency_snapshot",  None),
+    ("safety_event_log",           None),
+    ("driver_efficiency_daily",    None),
+    ("vehicle_telemetry_hourly",   None),
 ]
 
 

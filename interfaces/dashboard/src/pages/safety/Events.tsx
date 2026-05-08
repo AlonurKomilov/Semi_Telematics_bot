@@ -4,6 +4,14 @@ import type { ElementType } from 'react';
 import { AlertTriangle, Zap, RotateCcw, MoveHorizontal, Truck, OctagonX, TrendingUp } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataTable from '../../components/DataTable';
+import {
+  PageHeader,
+  EmptyState,
+  ErrorState,
+  TableSkeleton,
+  FilterBar,
+  FilterChips,
+} from '../../components/shell';
 import type { SafetyEvent, SafetyEventsResponse, EventsSummary, AnyColumn } from '../../types';
 
 const EVENT_TYPES = ['all', 'crash', 'braking', 'harshTurn', 'laneDeparture', 'followingDistance', 'rollingStop', 'acceleration'] as const;
@@ -115,22 +123,37 @@ export default function Events() {
   const loading = isLoading && !data;
   const error   = queryError instanceof Error ? queryError.message : (queryError ? 'Failed to load' : '');
 
-  if (error && events.length === 0) return <p className="text-destructive">{error}</p>;
+  if (error && events.length === 0) {
+    return (
+      <div>
+        <PageHeader
+          icon={AlertTriangle}
+          title="Safety Events"
+          description="Harsh braking, lane departures, crashes, and other unsafe behaviour reported by the dashcam AI."
+        />
+        <ErrorState message={error} />
+      </div>
+    );
+  }
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Safety Events</h1>
-        <select
-          value={days}
-          onChange={(e) => setDays(Number(e.target.value))}
-          className="bg-muted border border-border rounded px-3 py-2 text-sm text-foreground/80"
-        >
-          {[7, 14, 30].map((d) => (
-            <option key={d} value={d}>{d} days</option>
-          ))}
-        </select>
-      </div>
+      <PageHeader
+        icon={AlertTriangle}
+        title="Safety Events"
+        description="Harsh braking, lane departures, crashes, and other unsafe behaviour reported by the dashcam AI. Click a chip below to drill into a specific event type."
+        actions={
+          <select
+            value={days}
+            onChange={(e) => setDays(Number(e.target.value))}
+            className="bg-background border border-border rounded-md px-2 py-1.5 text-sm text-foreground/80"
+          >
+            {[7, 14, 30].map((d) => (
+              <option key={d} value={d}>{d} days</option>
+            ))}
+          </select>
+        }
+      />
 
       {/* Summary cards */}
       <div className="grid grid-cols-5 gap-3 mb-6">
@@ -189,7 +212,17 @@ export default function Events() {
       </div>
 
       {loading ? (
-        <p className="text-muted-foreground">Loading...</p>
+        <TableSkeleton rows={6} cols={5} />
+      ) : events.length === 0 ? (
+        <EmptyState
+          icon={AlertTriangle}
+          title={typeFilter !== 'all' || driverSearch ? 'No events match your filter' : 'No safety events in this window'}
+          description={
+            typeFilter !== 'all' || driverSearch
+              ? 'Clear filters or widen the date range.'
+              : 'Try widening the date range — events accrue as drivers operate.'
+          }
+        />
       ) : (
         <DataTable
           columns={columns}
@@ -198,7 +231,9 @@ export default function Events() {
         />
       )}
 
-      <p className="text-xs text-muted-foreground mt-2">{events.length} event{events.length !== 1 ? 's' : ''}</p>
+      {events.length > 0 && (
+        <p className="text-xs text-muted-foreground mt-2">{events.length} event{events.length !== 1 ? 's' : ''}</p>
+      )}
     </div>
   );
 }

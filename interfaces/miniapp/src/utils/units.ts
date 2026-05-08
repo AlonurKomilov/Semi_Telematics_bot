@@ -45,3 +45,9 @@ export function fmtDistance(miles: number | null | undefined, units: UnitSystem 
   if (units === 'metric') return `${(miles * 1.60934).toFixed(1)} km`;
   return `${miles.toFixed(1)} mi`;
 }
+
+/** Tiny English pluralizer: pluralize(1, 'alert') → '1 alert'.
+ * Pass an explicit plural form when the rule isn't just +s. */
+export function pluralize(n: number, single: string, plural?: string): string {
+  return `${n} ${n === 1 ? single : (plural ?? `${single}s`)}`;
+}

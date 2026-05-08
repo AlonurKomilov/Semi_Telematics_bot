@@ -11,12 +11,12 @@ from .accounts import AccountsMixin
 from .users import UsersMixin
 from .invites import InvitesMixin
 from .chats import ChatsMixin
-from .knowledge_db import KnowledgeBaseMixin
-from .permissions_db import PermissionsMixin
-from .driver_vehicles_db import DriverVehiclesMixin
-from .user_companies_db import UserCompaniesMixin
+from .knowledge import KnowledgeBaseMixin
+from .permissions import PermissionsMixin
+from .driver_vehicles import DriverVehiclesMixin
+from .user_companies import UserCompaniesMixin
 from .billing import BillingMixin
-from .ai_chat_db import AIChatHistoryMixin
+from .ai_chat import AIChatHistoryMixin
 from . import platform_schema
 from . import platform_migrations
 

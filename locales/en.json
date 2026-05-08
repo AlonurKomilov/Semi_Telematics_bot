@@ -906,5 +906,64 @@
     "alert_critical": "🚨  <b>UNSAFE PARKING — CRITICAL</b>",
     "refresh": "🔄 Refresh",
     "back": "◀️ Back"
+  },
+  "risk_report": {
+    "title": "Stakeholder Risk Summary",
+    "usage": "Usage: /risk_report <vehicle> [insurance|owner|broker|auditor|payroll]",
+    "not_assigned": "You can only request risk summaries for trucks assigned to you.",
+    "loading": "Building risk summary for {vehicle}…",
+    "caption": "<b>Risk Summary</b>\nVehicle: {vehicle}\nAudience: {audience}\nScore: {score}",
+    "audience": {
+      "insurance": "Insurance",
+      "owner": "Owner",
+      "broker": "Broker",
+      "auditor": "Auditor",
+      "payroll": "Payroll"
+    }
+  },
+  "payroll": {
+    "title": "Pay-for-Performance",
+    "disabled_for_account": "Payroll feature is not enabled for this account.",
+    "my_pay": {
+      "title": "My Pay",
+      "period": "Period: {start} → {end}",
+      "status": "Status: {status}",
+      "base": "Base pay: {amount}",
+      "bonuses": "Bonuses",
+      "total": "Total: {amount}",
+      "history": "Recent history",
+      "no_driver_mapping": "We couldn't match your account to a driver record yet.",
+      "no_history": "No paystubs are available yet."
+    }
+  },
+  "coaching": {
+    "title": "Auto Coaching",
+    "disabled_for_account": "Coaching is not enabled for this account.",
+    "topics": {
+      "hard_brake": "Hard braking",
+      "harsh_accel": "Harsh acceleration",
+      "speeding": "Speeding",
+      "distraction": "Distraction",
+      "following_distance": "Following distance",
+      "fatigue": "Fatigue"
+    },
+    "severity": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    },
+    "status": {
+      "pending": "Pending",
+      "acknowledged": "Acknowledged",
+      "cancelled": "Cancelled"
+    },
+    "my": {
+      "title": "My Coaching",
+      "no_pending": "No pending coaching assignments.",
+      "no_driver_mapping": "Could not map your account to a driver.",
+      "ack_button": "Acknowledge",
+      "ack_done": "Acknowledged. Thank you!",
+      "ack_failed": "Could not acknowledge this assignment."
+    }
   }
 }

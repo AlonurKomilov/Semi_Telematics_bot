@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { Clock, Plus } from 'lucide-react';
 import { apiJSON } from '../../api/client';
+import { PageHeader, ErrorState } from '../../components/shell';
 import type { WorkSchedule } from '../../types';
 
 const ROLE_COLORS: Record<string, string> = {
@@ -122,16 +124,35 @@ export default function WorkHours() {
   // Unique roles in the data
   const roles = ['all', ...new Set(schedules.map((s) => s.target_role).filter((r) => r !== 'all'))];
 
-  if (error && schedules.length === 0) return <p className="text-destructive">{error}</p>;
+  if (error && schedules.length === 0) {
+    return (
+      <div>
+        <PageHeader
+          icon={Clock}
+          title="Working Hours"
+          description="Define active hours per role — alerts pause outside these windows so the team isn't paged off-shift."
+        />
+        <ErrorState message={error} />
+      </div>
+    );
+  }
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">🕐 Working Hours</h1>
-        <button onClick={openCreate} className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium transition-colors">
-          + New Schedule
-        </button>
-      </div>
+      <PageHeader
+        icon={Clock}
+        title="Working Hours"
+        description="Define active hours per role — alerts pause outside these windows so the team isn't paged off-shift. Schedules use the account time zone."
+        actions={
+          <button
+            onClick={openCreate}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
+          >
+            <Plus size={13} />
+            New schedule
+          </button>
+        }
+      />
 
       {/* Role filter */}
       <div className="flex gap-2 mb-4">

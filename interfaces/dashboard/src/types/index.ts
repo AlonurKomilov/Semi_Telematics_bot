@@ -32,6 +32,10 @@ export interface Permissions {
   can_rolling_stopped: boolean;
   can_digest: boolean;
   can_manage_poi_layers: boolean;
+  can_payroll_admin: boolean;
+  can_payroll_view_own: boolean;
+  can_coaching_admin: boolean;
+  can_coaching_view_own: boolean;
   [key: string]: boolean;
 }
 
@@ -41,6 +45,8 @@ export interface User {
   role: string;
   department?: string;
   account_id?: number;
+  payroll_enabled?: boolean;
+  coaching_enabled?: boolean;
   truck_num?: string;
   trucks?: string[];
   allowed_companies?: string[];

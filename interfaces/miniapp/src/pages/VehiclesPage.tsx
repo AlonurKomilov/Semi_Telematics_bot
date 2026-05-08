@@ -23,6 +23,8 @@ import {
   Icon24DropsOutline,
   Icon24WaterDropOutline,
   Icon24WarningTriangleOutline,
+  Icon24LockOutline,
+  Icon24GlobeOutline,
   Icon24LocationMapOutline,
   Icon24LocationOutline,
   Icon24DocumentListOutline,
@@ -33,7 +35,7 @@ import {
   Icon24ServicesOutline,
   Icon24ArrowRightOutline,
 } from '@vkontakte/icons';
-import { apiJSON } from '../api/client';
+import { apiJSON, classifyError, type ClassifiedError } from '../api/client';
 import type { Vehicle } from '../types';
 import { VehicleCardSkeleton, ListRowsSkeleton } from '../components/Skeleton';
 import { RelativeTime } from '../components/RelativeTime';
@@ -95,7 +97,7 @@ export function VehiclesPage({ active, onGoToMap, timezone }: Props) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<ClassifiedError | null>(null);
   const [search, setSearch] = useState('');
   const [sortOrder, setSortOrder] = useState<SortOrder>('status');
   const [detailName, setDetailName] = useState<string | null>(null);
@@ -105,13 +107,13 @@ export function VehiclesPage({ active, onGoToMap, timezone }: Props) {
   const debouncedSearch = useDebouncedValue(search, 200);
 
   const load = useCallback(async () => {
-    setError(false);
+    setError(null);
     try {
       const data = await apiJSON<{ vehicles: Vehicle[] }>('/api/vehicles/');
       setVehicles(data.vehicles ?? []);
       setUpdatedAt(new Date().toISOString());
-    } catch {
-      setError(true);
+    } catch (e) {
+      setError(classifyError(e));
     }
   }, []);
 
@@ -129,13 +131,26 @@ export function VehiclesPage({ active, onGoToMap, timezone }: Props) {
   if (loading) return <div><VehicleCardSkeleton /><ListRowsSkeleton count={2} /></div>;
 
   if (error) {
+    const ErrIcon =
+      error.kind === 'auth'    ? Icon24LockOutline
+      : error.kind === 'network' ? Icon24GlobeOutline
+      : Icon24WarningTriangleOutline;
+    const header =
+      error.kind === 'auth'    ? 'Session expired'
+      : error.kind === 'server'  ? 'Server error'
+      : error.kind === 'network' ? 'No connection'
+      : 'Failed to load';
     return (
       <div className="centered">
         <Placeholder
-          header="Failed to load"
-          description="Could not refresh vehicle data. Check your connection and retry."
-          action={<button className="retry-btn" onClick={() => { setLoading(true); load().finally(() => setLoading(false)); }}>Retry</button>}
-        >⚠️</Placeholder>
+          header={header}
+          description={error.message}
+          action={error.kind === 'auth' ? null : (
+            <button className="retry-btn" onClick={() => { setLoading(true); load().finally(() => setLoading(false)); }}>Retry</button>
+          )}
+        >
+          <ErrIcon width={48} height={48} aria-label={header} style={{ opacity: 0.4 }} />
+        </Placeholder>
       </div>
     );
   }

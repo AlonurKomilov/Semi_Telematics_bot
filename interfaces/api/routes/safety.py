@@ -11,8 +11,6 @@ from infra.services import get_client
 from capabilities.telemetry.service import get_driver_efficiency as _svc_driver_efficiency
 from capabilities.events.severity import classify_event_severity as _classify_severity
 from capabilities.scoring.service import evaluate_subjects as _svc_evaluate_subjects
-from capabilities.scoring.rules import get_default_rules as _get_default_rules
-from pydantic import BaseModel, Field
 import infra.cache as _redis_cache
 
 router = APIRouter(prefix="/safety", tags=["safety"])
@@ -121,29 +119,15 @@ async def scorecards_composite(
     own_perm = user.get("_matched_perm") == "can_scorecard_own"
     vehicle_filter: list[str] | None = await get_user_vehicle_nums(user) if own_perm else None
 
-    # ── Redis cache read (skip for own-only users — their results are
-    # filtered by truck and must not leak cross-user cached data) ──
-    if not own_perm:
-        # Resolve subject early enough to build the cache key.  We replicate
-        # the setting-lookup logic below so cache misses still do the full
-        # path; on cache hit the setting lookup is avoided entirely.
-        _subj_for_cache = subject
-        if _subj_for_cache is None:
-            try:
-                _subj_for_cache = (await tenant.get_account_setting(
-                    user["account_id"], tenant.KEY_SCORECARD_DEFAULT_SUBJECT, "vehicle",
-                )) or "vehicle"
-                if _subj_for_cache not in ("driver", "vehicle"):
-                    _subj_for_cache = "vehicle"
-            except Exception:
-                _subj_for_cache = "vehicle"
-        _cache_key = (
-            f"scorecards:composite:{user['account_id']}:"
-            f"{_subj_for_cache}:{days}:{company or '_'}"
-        )
-        cached = await _redis_cache.get(_cache_key)
-        if cached is not None:
-            return cached
+    # ── Cache strategy: stale-while-revalidate (SWR) ─────────────
+    # Skip the shared cache for own-only users — their results are
+    # filtered by truck assignment and must not leak across drivers.
+    # For everyone else we use a SWR wrapper so the second user inside
+    # ``fresh_for`` seconds gets the cached payload instantly, and within
+    # ``max_stale`` they still get cached data while a single background
+    # task refreshes. Combined with the in-process single-flight
+    # collapser this kills the cache-stampede + cold-start tail latency
+    # that was producing 504s under load.
 
     # Phase F: vehicle is now the canonical default subject \u2014 the
     # dashboard no longer offers a driver/truck toggle and per-vehicle
@@ -162,17 +146,48 @@ async def scorecards_composite(
             pref = "vehicle"
         subject = pref if pref in ("driver", "vehicle") else "vehicle"
 
-    cards = await _svc_evaluate_subjects(
-        user["account_id"], subject=subject, days=days,
-        company=company, vehicle_nums=vehicle_filter,
-    )
-    cards = filter_by_allowed_companies(cards, allowed, key="company")
+    # SWR-cached path (account-wide reads).
+    if not own_perm:
+        async def _compute_payload() -> dict:
+            return await _build_scorecards_payload(
+                account_id=user["account_id"],
+                subject=subject,
+                days=days,
+                company=company,
+                vehicle_nums=None,
+                allowed=allowed,
+                tenant=tenant,
+                platform_db=platform_db,
+            )
 
-    # Driver-role hardening: defence in depth.  ``_svc_evaluate_subjects``
-    # already filters by ``vehicle_nums`` but the post-filter here ensures
-    # no roster info leaks even if upstream filtering regresses.
-    if own_perm and vehicle_filter is not None:
+        _cache_key = (
+            f"scorecards:composite:{user['account_id']}:"
+            f"{subject}:{days}:{company or '_'}"
+        )
+        return await _redis_cache.get_or_compute(
+            _cache_key, _compute_payload,
+            fresh_for=120, max_stale=600, lock_ttl=45,
+        )
+
+    # Own-perm path bypasses the shared SWR cache because results are
+    # filtered per-user by truck assignment. Same builder, scoped input.
+    payload = await _build_scorecards_payload(
+        account_id=user["account_id"],
+        subject=subject,
+        days=days,
+        company=company,
+        vehicle_nums=vehicle_filter,
+        allowed=allowed,
+        tenant=tenant,
+        platform_db=platform_db,
+    )
+
+    # Driver-role hardening: defence in depth. ``_svc_evaluate_subjects``
+    # already filters by ``vehicle_nums``; this post-filter ensures no
+    # roster info leaks even if upstream filtering regresses.
+    if vehicle_filter is not None:
         own_set = {t.strip().lower() for t in vehicle_filter if t}
+        cards = payload["scorecards"]
         if subject == "vehicle":
             cards = [
                 c for c in cards
@@ -187,71 +202,70 @@ async def scorecards_composite(
                     if t
                 )
             ]
+        payload["scorecards"] = cards
+        payload["count"] = len(cards)
 
-    # Phase F (driver-inline + sparkline) \u2014 enrich the response with:
-    #
-    #   * ``assigned_driver_name``  manual driver\u2192truck assignment
-    #     (admin Users page) for vehicle rows whose Samsara feed has
-    #     no paired driver.  One batch query, one map, one lookup.
-    #   * ``score_trend``  the last 14 daily totals from
-    #     ``daily_scorecard_snapshots`` so the table can render an
-    #     in-row sparkline without N parallel history calls.
-    #
-    # Both lookups are best-effort \u2014 if the underlying DB call fails
-    # we leave the field empty rather than failing the whole response.
+    return payload
+
+
+async def _build_scorecards_payload(
+    *,
+    account_id: int,
+    subject: str,
+    days: int,
+    company: str | None,
+    vehicle_nums: list[str] | None,
+    allowed: list[str],
+    tenant,
+    platform_db,
+) -> dict:
+    """Cache-friendly payload builder.
+
+    Pulled out of the request handler so the SWR cache layer can call it
+    in the background to refresh stale entries without holding a request
+    open. Pure function of (account_id, subject, days, company) plus the
+    allowed-company filter — no FastAPI dependencies, no user context
+    leakage. Own-perm callers should not use this path because their
+    ``vehicle_nums`` filter scopes the result per-user and would poison
+    the shared cache.
+    """
+    cards = await _svc_evaluate_subjects(
+        account_id, subject=subject, days=days,
+        company=company, vehicle_nums=vehicle_nums,
+    )
+    cards = filter_by_allowed_companies(cards, allowed, key="company")
+
     manual_map: dict[str, str] = {}
     if subject == "vehicle":
         try:
-            manual_map = await platform_db.get_account_driver_vehicle_map(
-                user["account_id"],
-            )
-        except Exception:  # pragma: no cover \u2014 defensive
+            manual_map = await platform_db.get_account_driver_vehicle_map(account_id)
+        except Exception:  # pragma: no cover — defensive
             manual_map = {}
+
+    _trend_days = max(14, min(int(days), 30))
     trends_map: dict[str, list[int]] = {}
     try:
         trends_map = await tenant.get_scorecard_trends_batch(
-            user["account_id"], subject_type=subject, days=14,
+            account_id, subject_type=subject, days=_trend_days,
         )
-    except Exception:  # pragma: no cover \u2014 defensive
+    except Exception:  # pragma: no cover — defensive
         trends_map = {}
 
     for c in cards:
         sid = str(c.get("subject_id") or c.get("driver_id") or "")
         trend = trends_map.get(sid, [])
         c["score_trend"] = trend
-        # Week delta: compare live total against snapshot ~7 days ago.
-        # The trend list holds up to 14 daily totals (newest last); the
-        # entry at index 0 (oldest) is roughly 14 days ago, index 7 is
-        # roughly 7 days ago.  We pick the oldest available entry that
-        # is at least 6 positions back so short histories still work.
         if len(trend) >= 2:
-            ref_idx = max(0, len(trend) - 8)  # ~7 days back
+            ref_idx = max(0, len(trend) - 8)
             c["week_delta"] = int(c.get("total") or 0) - int(trend[ref_idx])
         else:
             c["week_delta"] = None
         if subject == "vehicle":
-            # Manual fallback only fires when Samsara has no paired
-            # driver of its own — avoids overriding the authoritative
-            # source with a stale local assignment.
             if not c.get("paired_driver_name"):
                 truck_key = (c.get("subject_name") or c.get("driver_name") or "").strip().lower()
                 c["assigned_driver_name"] = manual_map.get(truck_key) or None
             else:
                 c["assigned_driver_name"] = None
-
-    # ── Cache the result in Redis (2-minute TTL) ─────────────────
-    # Key includes account + subject + days + company so different
-    # query params get different cache slots.
-    _cache_key = (
-        f"scorecards:composite:{user['account_id']}:"
-        f"{subject}:{days}:{company or '_'}"
-    )
-    await _redis_cache.cache_set(_cache_key, {
-        "scorecards": cards,
-        "count":      len(cards),
-        "days":       days,
-        "subject":    subject,
-    }, ttl=120)
 
     return {
         "scorecards": cards,
@@ -609,169 +623,67 @@ async def scorecards_summary(
     }
 
 
-# ── Scorecard rules admin (Phase 3) ───────────────────────────
+# ── Scorecard rules + pillar caps ──────────────────────────────────────────────
+# Tenant-level scoring config moved to /admin/scorecard-rules and
+# /admin/scorecard-pillar-caps. Legacy /safety/scorecards/rules and
+# /safety/scorecards/pillar-caps aliases are mounted in app.py via
+# `legacy_router` below to keep old bookmarks working.
+
+from interfaces.api.routes import admin as _admin_routes  # noqa: E402
+
+legacy_router = APIRouter(tags=["safety"], include_in_schema=False)
 
 
-class ScoreRuleUpdate(BaseModel):
-    points: int = Field(..., ge=-100, le=100)
-    cap: int | None = Field(None, ge=-200, le=200)
-    enabled: bool = True
-    # ── Audit Option C: optional per-rule curve anchors. NULL leaves
-    # the code-defined default in place; admins only override the
-    # numeric ramp, never the curve kind or the signal source.
-    curve_x_zero: float | None = Field(None, ge=-1000, le=10000)
-    curve_x_max:  float | None = Field(None, ge=-1000, le=10000)
-    curve_y_max:  int   | None = Field(None, ge=-200, le=200)
-
-
-@router.get("/scorecards/rules")
-async def list_score_rules(
+@legacy_router.get("/safety/scorecards/rules")
+async def _legacy_list_score_rules(
     user: dict = Depends(require_permission("can_manage_account")),
     tenant=Depends(get_tenant_db),
 ):
-    """Return every default rule merged with this account's overrides.
-
-    Each item carries the rule's metadata (id, label, category, **pillar**,
-    kind, curve fields), its **effective** values, and an ``overridden``
-    flag so the UI can render a "reset to default" button per row.
-    """
-    overrides = await tenant.get_score_rule_overrides(user["account_id"])
-    out: list[dict] = []
-    for r in _get_default_rules():
-        ov = overrides.get(r.id) or {}
-        out.append({
-            "id":         r.id,
-            "label":      r.label,
-            "category":   r.category,
-            "pillar":     r.pillar,
-            "kind":       r.kind,
-            "default_points":  r.points,
-            "default_cap":     r.cap,
-            "points":     int(ov["points"])  if "points"  in ov else r.points,
-            "cap":        (ov["cap"] if ov.get("cap") is not None else r.cap)
-                          if "cap" in ov else r.cap,
-            "enabled":    bool(ov["enabled"]) if "enabled" in ov else r.enabled,
-            # Curve metadata — null kind ⇒ legacy flat rule (no curve UI).
-            "curve_kind":          r.curve_kind,
-            "default_curve_x_zero": r.curve_x_zero,
-            "default_curve_x_max":  r.curve_x_max,
-            "default_curve_y_max":  r.curve_y_max,
-            "curve_x_zero": (ov["curve_x_zero"]
-                             if ov.get("curve_x_zero") is not None else r.curve_x_zero),
-            "curve_x_max":  (ov["curve_x_max"]
-                             if ov.get("curve_x_max")  is not None else r.curve_x_max),
-            "curve_y_max":  (ov["curve_y_max"]
-                             if ov.get("curve_y_max")  is not None else r.curve_y_max),
-            "overridden": bool(ov),
-        })
-    return {"rules": out, "count": len(out)}
+    return await _admin_routes.list_score_rules(user=user, tenant=tenant)
 
 
-@router.put("/scorecards/rules/{rule_id}")
-async def update_score_rule(
+@legacy_router.put("/safety/scorecards/rules/{rule_id}")
+async def _legacy_update_score_rule(
     rule_id: str,
-    body: ScoreRuleUpdate,
+    body: _admin_routes.ScoreRuleUpdate,
     user: dict = Depends(require_permission("can_manage_account")),
     tenant=Depends(get_tenant_db),
 ):
-    """Override a default rule's points / cap / enabled / curve anchors."""
-    defaults = {r.id: r for r in _get_default_rules()}
-    rule = defaults.get(rule_id)
-    if rule is None:
-        raise HTTPException(status_code=404, detail="Unknown rule_id")
-    await tenant.upsert_score_rule(
-        user["account_id"], rule_id,
-        label=rule.label, category=rule.category, kind=rule.kind,
-        points=body.points, cap=body.cap, enabled=body.enabled,
-        pillar=rule.pillar,
-        curve_x_zero=body.curve_x_zero,
-        curve_x_max=body.curve_x_max,
-        curve_y_max=body.curve_y_max,
-    )
-    return {"ok": True, "rule_id": rule_id}
+    return await _admin_routes.update_score_rule(rule_id=rule_id, body=body, user=user, tenant=tenant)
 
 
-@router.delete("/scorecards/rules/{rule_id}")
-async def reset_score_rule(
+@legacy_router.delete("/safety/scorecards/rules/{rule_id}")
+async def _legacy_reset_score_rule(
     rule_id: str,
     user: dict = Depends(require_permission("can_manage_account")),
     tenant=Depends(get_tenant_db),
 ):
-    """Drop the per-account override → rule reverts to built-in default."""
-    deleted = await tenant.delete_score_rule(user["account_id"], rule_id)
-    return {"ok": True, "rule_id": rule_id, "deleted": deleted}
+    return await _admin_routes.reset_score_rule(rule_id=rule_id, user=user, tenant=tenant)
 
 
-# ── Pillar caps ────────────────────────────────────────────────────────────────
-
-
-class PillarCapsUpdate(BaseModel):
-    safety:     int = Field(..., ge=0, le=100)
-    efficiency: int = Field(..., ge=0, le=100)
-    compliance: int = Field(..., ge=0, le=100)
-
-    @property
-    def total(self) -> int:
-        return self.safety + self.efficiency + self.compliance
-
-
-@router.get("/scorecards/pillar-caps")
-async def get_pillar_caps(
+@legacy_router.get("/safety/scorecards/pillar-caps")
+async def _legacy_get_pillar_caps(
     user: dict = Depends(require_permission("can_manage_account")),
     tenant=Depends(get_tenant_db),
 ):
-    """Return current pillar cap weights for this account.
-
-    Defaults (50/25/25) are returned when no override has been set.
-    """
-    from capabilities.scoring.engine import PILLAR_CAPS
-    raw = await tenant.get_account_setting(
-        user["account_id"], tenant.KEY_SCORECARD_PILLAR_CAPS, "",
-    )
-    if raw:
-        try:
-            caps = json.loads(raw)
-            return {"safety": caps.get("safety", PILLAR_CAPS["safety"]),
-                    "efficiency": caps.get("efficiency", PILLAR_CAPS["efficiency"]),
-                    "compliance": caps.get("compliance", PILLAR_CAPS["compliance"]),
-                    "is_custom": True}
-        except Exception:
-            pass
-    return {**PILLAR_CAPS, "is_custom": False}
+    return await _admin_routes.get_pillar_caps(user=user, tenant=tenant)
 
 
-@router.put("/scorecards/pillar-caps")
-async def set_pillar_caps(
-    body: PillarCapsUpdate,
+@legacy_router.put("/safety/scorecards/pillar-caps")
+async def _legacy_set_pillar_caps(
+    body: _admin_routes.PillarCapsUpdate,
     user: dict = Depends(require_permission("can_manage_account")),
     tenant=Depends(get_tenant_db),
 ):
-    """Set per-tenant pillar cap weights. Must sum to exactly 100."""
-    if body.total != 100:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Pillar caps must sum to 100 (got {body.total}).",
-        )
-    caps = {"safety": body.safety, "efficiency": body.efficiency, "compliance": body.compliance}
-    await tenant.set_account_setting(
-        user["account_id"],
-        tenant.KEY_SCORECARD_PILLAR_CAPS,
-        json.dumps(caps),
-    )
-    return {"ok": True, "caps": caps}
+    return await _admin_routes.set_pillar_caps(body=body, user=user, tenant=tenant)
 
 
-@router.delete("/scorecards/pillar-caps")
-async def reset_pillar_caps(
+@legacy_router.delete("/safety/scorecards/pillar-caps")
+async def _legacy_reset_pillar_caps(
     user: dict = Depends(require_permission("can_manage_account")),
     tenant=Depends(get_tenant_db),
 ):
-    """Remove pillar cap override — reverts to built-in defaults (50/25/25)."""
-    from capabilities.scoring.engine import PILLAR_CAPS
-    await tenant.set_account_setting(
-        user["account_id"], tenant.KEY_SCORECARD_PILLAR_CAPS, "",
-    )
-    return {"ok": True, "caps": PILLAR_CAPS, "is_custom": False}
+    return await _admin_routes.reset_pillar_caps(user=user, tenant=tenant)
 
 
 # ── Single-subject scorecard detail ──────────────────────────────────────────

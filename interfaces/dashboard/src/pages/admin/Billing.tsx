@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { CreditCard, ExternalLink } from 'lucide-react';
 import { apiJSON } from '../../api/client';
+import { PageHeader, CardSkeleton } from '../../components/shell';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -349,36 +351,39 @@ export default function Billing() {
 
   if (loadingMain) {
     return (
-      <div className="p-6 text-muted-foreground flex items-center gap-2">
-        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-        </svg>
-        Loading billing info…
+      <div className="p-6 max-w-4xl mx-auto">
+        <PageHeader
+          icon={CreditCard}
+          title="Billing & Subscription"
+          description="Manage your plan, monitor AI usage, and review billing history."
+        />
+        <div className="space-y-3">
+          <CardSkeleton height="h-32" />
+          <CardSkeleton height="h-48" />
+        </div>
       </div>
     );
   }
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Billing &amp; Subscription</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage your plan, monitor AI usage, and review billing history.
-          </p>
-        </div>
-        {summary?.provider === 'stripe' && (
-          <button
-            onClick={handlePortal}
-            disabled={portalLoading}
-            className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground text-sm rounded-lg transition"
-          >
-            {portalLoading ? 'Opening…' : '🔗 Manage Payment'}
-          </button>
-        )}
-      </div>
+      <PageHeader
+        icon={CreditCard}
+        title="Billing & Subscription"
+        description="Manage your plan, monitor AI usage, and review billing history. Stripe customers can update card details and download invoices in the customer portal."
+        actions={
+          summary?.provider === 'stripe' ? (
+            <button
+              onClick={handlePortal}
+              disabled={portalLoading}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background border border-border rounded-md text-xs font-medium hover:bg-muted transition disabled:opacity-60"
+            >
+              <ExternalLink size={12} />
+              {portalLoading ? 'Opening…' : 'Manage payment'}
+            </button>
+          ) : undefined
+        }
+      />
 
       {error && (
         <div className="mb-4 bg-destructive/10 border border-destructive/40 text-destructive rounded-lg px-4 py-3 text-sm">

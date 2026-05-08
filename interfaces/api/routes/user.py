@@ -28,6 +28,7 @@ async def user_me(
 
     role_enum = Role(user["role"])
     account_id = user["account_id"]
+    acct = await platform_db.get_account(account_id)
     perms = await get_account_permissions(role_enum, account_id)
     perm_dict = {
         field: getattr(perms, field)
@@ -58,6 +59,8 @@ async def user_me(
         "email": db_user.email,
         "has_password": db_user.password_hash is not None,
         "permissions": perm_dict,
+        "payroll_enabled": bool(getattr(acct, "payroll_enabled", False)),
+        "coaching_enabled": bool(getattr(acct, "coaching_enabled", False)),
     }
 
 

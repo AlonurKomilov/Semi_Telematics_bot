@@ -17,8 +17,29 @@ python-multipart>=0.0.9
 # API server
 fastapi>=0.115
 uvicorn[standard]>=0.30
+# Multi-worker production runner — fronts uvicorn workers in prod.
+# `python run.py` still uses uvicorn directly for single-process dev.
+gunicorn>=22.0
 python-jose[cryptography]>=3.3
 slowapi>=0.1.9
+
+# Async job queue (Phase 3) — Redis-backed task queue used for cache
+# pre-warming, async report generation, and any deferred heavy work.
+# Worker process: `arq capabilities.jobs.worker.WorkerSettings`.
+arq>=0.26
+
+# Observability (Phase 6) — Prometheus /metrics endpoint + OpenTelemetry
+# auto-instrumentation. All four are optional infra: when not installed,
+# infra/observability.py degrades to a no-op so the app keeps running.
+prometheus-client>=0.20
+prometheus-fastapi-instrumentator>=7.0
+opentelemetry-api>=1.27
+opentelemetry-sdk>=1.27
+opentelemetry-instrumentation-fastapi>=0.48b0
+opentelemetry-instrumentation-aiohttp-client>=0.48b0
+opentelemetry-instrumentation-asyncpg>=0.48b0
+opentelemetry-instrumentation-redis>=0.48b0
+opentelemetry-exporter-otlp-proto-http>=1.27
 
 # PostgreSQL (optional — only needed when DATABASE_URL is set)
 asyncpg>=0.29

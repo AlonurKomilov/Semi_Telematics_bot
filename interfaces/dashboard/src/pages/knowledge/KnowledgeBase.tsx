@@ -1,7 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { BookOpen, Plus } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useAuth } from '../../context/AuthContext';
+import {
+  PageHeader,
+  EmptyState,
+  ErrorState,
+} from '../../components/shell';
 
 interface KBArticle {
   id: number;
@@ -56,9 +63,7 @@ export default function KnowledgeBase() {
   const isAdmin = ['owner', 'admin'].includes(role || '');
   const myTelegramId = user?.telegram_id || 0;
 
-  const [articles, setArticles] = useState<KBArticle[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
   const [error, setError] = useState('');
   const [catFilter, setCatFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -81,27 +86,29 @@ export default function KnowledgeBase() {
   // Expanded article
   const [expanded, setExpanded] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
+  // Articles depend on category + search filters; categories are global.
+  // Splitting into two queries means flipping the search box doesn't refetch
+  // categories that haven't changed.
+  const { data: articlesData, isLoading: articlesLoading, error: articlesErr } = useQuery({
+    queryKey: ['kb-articles', catFilter, search],
+    queryFn: () => {
       const params = new URLSearchParams();
       if (catFilter) params.set('category', catFilter);
       if (search) params.set('search', search);
       const qs = params.toString() ? '?' + params.toString() : '';
-      const [articlesRes, catsRes] = await Promise.all([
-        apiJSON<{ articles: KBArticle[] }>('/knowledge/articles' + qs),
-        apiJSON<{ categories: Category[] }>('/knowledge/categories'),
-      ]);
-      setArticles(articlesRes.articles || []);
-      setCategories(catsRes.categories || []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load');
-    } finally {
-      setLoading(false);
-    }
-  }, [catFilter, search]);
-
-  useEffect(() => { load(); }, [load]);
+      return apiJSON<{ articles: KBArticle[] }>('/knowledge/articles' + qs);
+    },
+    placeholderData: (prev) => prev,
+  });
+  const { data: catsData } = useQuery({
+    queryKey: ['kb-categories'],
+    queryFn: () => apiJSON<{ categories: Category[] }>('/knowledge/categories'),
+  });
+  const articles = articlesData?.articles ?? [];
+  const categories = catsData?.categories ?? [];
+  const loading = articlesLoading;
+  const fetchError = articlesErr instanceof Error ? articlesErr.message : '';
+  const load = () => qc.invalidateQueries({ queryKey: ['kb-articles'] });
 
   const resetForm = () => {
     setFTitle(''); setFDesc(''); setFCategory('general'); setFMediaUrl('');
@@ -197,29 +204,28 @@ export default function KnowledgeBase() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">📚 Knowledge Base</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Tips, guides &amp; documentation for your fleet team
-          </p>
-        </div>
-        {canManage && (
-          <button
-            onClick={() => { resetForm(); setShowForm(true); }}
-            className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg transition-colors"
-          >
-            + New Article
-          </button>
-        )}
-      </div>
+      <PageHeader
+        icon={BookOpen}
+        title="Knowledge Base"
+        description="Tips, guides and SOPs your team can search and reference — drivers, dispatch, safety, and admins. Pin the most important articles to keep them at the top."
+        actions={
+          canManage ? (
+            <button
+              onClick={() => { resetForm(); setShowForm(true); }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
+            >
+              <Plus size={13} />
+              New article
+            </button>
+          ) : undefined
+        }
+      />
 
-      {error && (
-        <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive">
-          {error}
-          <button onClick={() => setError('')} className="ml-2 text-destructive/60 hover:text-destructive">✕</button>
-        </div>
+      {(error || fetchError) && (
+        <ErrorState
+          message={error || fetchError}
+          onRetry={() => setError('')}
+        />
       )}
 
       {/* Filters */}
@@ -429,16 +435,36 @@ export default function KnowledgeBase() {
 
       {/* Articles list */}
       {loading ? (
-        <div className="text-center py-12 text-muted-foreground">Loading...</div>
-      ) : articles.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground text-lg">No articles yet</p>
-          <p className="text-muted-foreground text-sm mt-2">
-            {canManage
-              ? 'Click "New Article" to add tips, guides, and documentation for your team.'
-              : 'Your admin can add helpful tips and guides here.'}
-          </p>
+        <div className="space-y-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="bg-card border border-border rounded-xl p-5 animate-pulse">
+              <div className="h-4 w-1/3 bg-muted rounded mb-3" />
+              <div className="h-3 w-2/3 bg-muted rounded mb-2" />
+              <div className="h-3 w-1/2 bg-muted rounded" />
+            </div>
+          ))}
         </div>
+      ) : articles.length === 0 ? (
+        <EmptyState
+          icon={BookOpen}
+          title={search || catFilter ? 'No articles match your filters' : 'No articles yet'}
+          description={
+            canManage
+              ? 'Add tips, guides and SOPs for your team — text, video, PDF or links are all supported.'
+              : 'Your admin can add helpful guides for your team here.'
+          }
+          action={
+            canManage ? (
+              <button
+                onClick={() => { resetForm(); setShowForm(true); }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
+              >
+                <Plus size={13} />
+                New article
+              </button>
+            ) : undefined
+          }
+        />
       ) : (
         <div className="space-y-3">
           {articles.map((a) => (

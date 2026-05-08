@@ -1,4 +1,4 @@
-"""Dispatch API endpoints — route replay with GPS history."""
+"""Route-replay API endpoints — GPS history per vehicle, lives under /fleet/routes."""
 
 from datetime import datetime, timezone
 
@@ -8,10 +8,10 @@ from interfaces.api.deps import require_permission, require_permission_any, get_
 from capabilities.routes.service import total_route_miles, get_vehicle_gps_history
 from capabilities.vehicles.service import get_fleet_overview as _svc_fleet_overview
 
-router = APIRouter(prefix="/dispatch", tags=["dispatch"])
+router = APIRouter(prefix="/fleet/routes", tags=["routes"])
 
 
-@router.get("/route/{vehicle_name}")
+@router.get("/{vehicle_name}")
 async def route_replay(
     vehicle_name: str,
     date: str | None = Query(
@@ -87,11 +87,11 @@ async def route_replay(
     }
 
 
-@router.get("/vehicles")
-async def dispatch_vehicles(
+@router.get("")
+async def routes_vehicles(
     user: dict = Depends(require_permission_any("can_route_all", "can_route_own")),
 ):
-    """Get vehicle list for route replay picker."""
+    """Vehicle picker list for route replay (used by frontend dropdown)."""
     overview = await _svc_fleet_overview(user["account_id"])
     vehicles = [
         {"id": v.get("id"), "name": v.get("name", ""), "company": v.get("_org", "")}
@@ -109,3 +109,22 @@ async def dispatch_vehicles(
 
     vehicles.sort(key=lambda v: v["name"])
     return {"vehicles": vehicles}
+
+
+legacy_router = APIRouter(prefix="/dispatch", tags=["dispatch"], include_in_schema=False)
+
+
+@legacy_router.get("/route/{vehicle_name}")
+async def _legacy_route_replay(
+    vehicle_name: str,
+    date: str | None = Query(None),
+    user: dict = Depends(require_permission_any("can_route_all", "can_route_own")),
+):
+    return await route_replay(vehicle_name=vehicle_name, date=date, user=user)
+
+
+@legacy_router.get("/vehicles")
+async def _legacy_dispatch_vehicles(
+    user: dict = Depends(require_permission_any("can_route_all", "can_route_own")),
+):
+    return await routes_vehicles(user=user)

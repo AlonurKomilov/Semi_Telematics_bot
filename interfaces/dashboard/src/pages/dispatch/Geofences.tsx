@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { MapPin, Plus } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useLeafletMap } from '../../hooks/useLeafletMap';
 import { usePoiLayers } from '../../hooks/usePoiLayers';
 import PoiLayerPanel from '../../components/PoiLayerPanel';
+import { PageHeader, EmptyState } from '../../components/shell';
 import type { GeofenceFeature, GeofencesResponse } from '../../types';
 import type L from 'leaflet';
 
@@ -120,7 +122,7 @@ export default function Geofences() {
   };
 
   const fetchGeofences = async (Leaf?: typeof L) => {
-    const data = await apiJSON<GeofencesResponse>('/map/geofences');
+    const data = await apiJSON<GeofencesResponse>('/fleet/geofences');
     const features = data.features || [];
     setGeofences(features);
     const leaf = Leaf ?? window.L;
@@ -275,7 +277,7 @@ export default function Geofences() {
     const zoneRole = isOwner ? form.zone_role : undefined;
     setSaving(true);
     try {
-      await apiJSON('/map/geofences', {
+      await apiJSON('/fleet/geofences', {
         method: 'POST',
         body: {
           name: form.name.trim(),
@@ -301,7 +303,7 @@ export default function Geofences() {
   const handleDelete = async (zoneId: number) => {
     setDeletingId(zoneId);
     try {
-      const res = await apiFetch(`/map/geofences/${zoneId}`, { method: 'DELETE' });
+      const res = await apiFetch(`/fleet/geofences/${zoneId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
       if (selected?.properties?.id === zoneId) { setSelected(null); setPanelMode('list'); }
       await fetchGeofences();
@@ -333,23 +335,41 @@ export default function Geofences() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4 shrink-0">
-        <div>
-          <h1 className="text-2xl font-bold">Geofences ({geofences.length})</h1>
-          <div className="flex gap-3 mt-0.5 text-xs text-muted-foreground">
-            {samsaraCount > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />{samsaraCount} Samsara</span>}
-            {platformCount > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />{platformCount} Platform</span>}
-          </div>
-        </div>
-        {canManage && panelMode !== 'add' && (
-          <button
-            onClick={openAddPanel}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition"
-          >
-            + Add Zone
-          </button>
-        )}
+      <div className="shrink-0">
+        <PageHeader
+          icon={MapPin}
+          title={`Geofences (${geofences.length})`}
+          description="Zones that trigger arrival/exit alerts. Pick from the map or paste an address — radius can be tuned in miles."
+          meta={
+            (samsaraCount > 0 || platformCount > 0) && (
+              <div className="flex gap-3 text-xs text-muted-foreground">
+                {samsaraCount > 0 && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+                    {samsaraCount} Samsara
+                  </span>
+                )}
+                {platformCount > 0 && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+                    {platformCount} Platform
+                  </span>
+                )}
+              </div>
+            )
+          }
+          actions={
+            canManage && panelMode !== 'add' ? (
+              <button
+                onClick={openAddPanel}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
+              >
+                <Plus size={13} />
+                Add zone
+              </button>
+            ) : null
+          }
+        />
       </div>
 
       {/* Map-pick tip banner (shown inside map area so map stays visible) */}
@@ -626,11 +646,26 @@ export default function Geofences() {
 
           {/* Empty state when no zones and not in add mode */}
           {geofences.length === 0 && panelMode !== 'add' && (
-            <div className="bg-card border border-border rounded-xl p-6 text-center text-muted-foreground text-sm">
-              <p className="text-2xl mb-2">📍</p>
-              <p>No geofences yet.</p>
-              {canManage && <p className="mt-1 text-xs">Click "Add Zone" to create your first zone.</p>}
-            </div>
+            <EmptyState
+              icon={MapPin}
+              title="No geofences yet"
+              description={
+                canManage
+                  ? "Click \"Add zone\" to create your first geofence — pick a location on the map or paste an address."
+                  : 'Ask an admin to create geofences for your team.'
+              }
+              action={
+                canManage ? (
+                  <button
+                    onClick={openAddPanel}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
+                  >
+                    <Plus size={13} />
+                    Add zone
+                  </button>
+                ) : undefined
+              }
+            />
           )}
 
           {/* Hint when list has items and none selected */}

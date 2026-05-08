@@ -25,7 +25,7 @@ from adapters.samsara.client import MultiCompanyClient, build_multi_company_clie
 from .config import SAMSARA_BASE_URL, RATE_LIMIT_SECONDS
 
 if TYPE_CHECKING:
-    from adapters.storage.tenant_db import TenantDB
+    from adapters.storage.tenant import TenantDB
 
 logger = logging.getLogger(__name__)
 

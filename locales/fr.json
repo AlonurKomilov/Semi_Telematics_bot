@@ -859,5 +859,64 @@
     "back_reports": "◀️ Rapports",
     "error_content": "📋 <b>Abonnement au Rapport</b>\n\n⚠️ Impossible de générer le rapport.",
     "sending": "📋 Génération de votre rapport planifié <b>{rtype}</b>..."
+  },
+  "risk_report": {
+    "title": "Résumé des risques pour les parties prenantes",
+    "usage": "Utilisation : /risk_report <véhicule> [insurance|owner|broker|auditor|payroll]",
+    "not_assigned": "Vous ne pouvez demander des résumés de risque que pour les véhicules qui vous sont assignés.",
+    "loading": "Génération du résumé de risque pour {vehicle}…",
+    "caption": "<b>Résumé des risques</b>\nVéhicule : {vehicle}\nAudience : {audience}\nScore : {score}",
+    "audience": {
+      "insurance": "Assurance",
+      "owner": "Propriétaire",
+      "broker": "Courtier",
+      "auditor": "Auditeur",
+      "payroll": "Paie"
+    }
+  },
+  "payroll": {
+    "title": "Paie à la performance",
+    "disabled_for_account": "La fonctionnalité de paie n'est pas activée pour ce compte.",
+    "my_pay": {
+      "title": "Ma paie",
+      "period": "Période : {start} → {end}",
+      "status": "Statut : {status}",
+      "base": "Paie de base : {amount}",
+      "bonuses": "Bonus",
+      "total": "Total : {amount}",
+      "history": "Historique",
+      "no_driver_mapping": "Impossible d'associer votre compte à un conducteur.",
+      "no_history": "Aucune fiche de paie pour le moment."
+    }
+  },
+  "coaching": {
+    "title": "Coaching automatique",
+    "disabled_for_account": "Le coaching n'est pas activé pour ce compte.",
+    "topics": {
+      "hard_brake": "Freinage brusque",
+      "harsh_accel": "Accélération brusque",
+      "speeding": "Excès de vitesse",
+      "distraction": "Distraction",
+      "following_distance": "Distance de suivi",
+      "fatigue": "Fatigue"
+    },
+    "severity": {
+      "low": "Faible",
+      "medium": "Moyenne",
+      "high": "Élevée"
+    },
+    "status": {
+      "pending": "En attente",
+      "acknowledged": "Reconnu",
+      "cancelled": "Annulé"
+    },
+    "my": {
+      "title": "Mon coaching",
+      "no_pending": "Aucune affectation de coaching en attente.",
+      "no_driver_mapping": "Impossible d'associer votre compte à un conducteur.",
+      "ack_button": "Reconnaître",
+      "ack_done": "Reconnu. Merci !",
+      "ack_failed": "Impossible de reconnaître l'affectation."
+    }
   }
 }

@@ -24,6 +24,8 @@ async def create_tables(conn) -> None:
             bot_token_encrypted TEXT,
             bot_username        TEXT    NOT NULL DEFAULT '',
             webhook_secret      TEXT    NOT NULL DEFAULT '',
+            payroll_enabled     INTEGER NOT NULL DEFAULT 0,
+            coaching_enabled    INTEGER NOT NULL DEFAULT 0,
             created_at          TEXT    NOT NULL
         );
 
@@ -57,6 +59,7 @@ async def create_tables(conn) -> None:
             last_shift_report TEXT,
             email           TEXT,
             password_hash   TEXT,
+            samsara_driver_id TEXT,
             UNIQUE(account_id, email)
         );
 

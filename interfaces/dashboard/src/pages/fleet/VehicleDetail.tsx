@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import { ChevronLeft } from 'lucide-react';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
 } from 'recharts';
 import { apiJSON } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
 import { usePermissions } from '../../hooks/usePermissions';
+import { ErrorState, CardSkeleton } from '../../components/shell';
 import type { Vehicle, VehiclesResponse, HealthResponse, FaultsResponse, Fault, HealthData, AIDiagnoseResponse } from '../../types';
 import { formatAIResponse } from '../../utils/formatAI';
 
@@ -46,8 +48,18 @@ export default function VehicleDetail() {
     }
   }, [name, has]);
 
-  if (error) return <p className="text-destructive">{error}</p>;
-  if (!vehicle) return <p className="text-muted-foreground">Loading...</p>;
+  if (error) return <ErrorState message={error} />;
+  if (!vehicle) {
+    return (
+      <div>
+        <CardSkeleton height="h-12" />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+          <CardSkeleton height="h-64" />
+          <CardSkeleton height="h-64" />
+        </div>
+      </div>
+    );
+  }
 
   const v = vehicle;
   const loc = v.location || {};
@@ -81,10 +93,19 @@ export default function VehicleDetail() {
 
   return (
     <div>
-      <Link to="/fleet/vehicles" className="text-primary hover:underline text-sm mb-4 inline-block">
-        ← Back to vehicles
+      <Link
+        to="/fleet/vehicles"
+        className="inline-flex items-center gap-1 text-primary hover:underline text-sm mb-4"
+      >
+        <ChevronLeft size={14} />
+        Back to vehicles
       </Link>
-      <h1 className="text-2xl font-bold mb-6">{v.name}</h1>
+      <div className="flex items-baseline gap-3 mb-6">
+        <h1 className="text-2xl font-bold">{v.name}</h1>
+        {v.company && (
+          <span className="text-sm text-muted-foreground">{v.company}</span>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Info card */}

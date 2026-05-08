@@ -149,7 +149,7 @@ class UsersMixin:
                    "alert_camera",
                    "ai_fault", "ai_health", "ai_fuel", "ai_events", "ai_parking",
                    "quiet_start", "quiet_end", "timezone", "display_name",
-                   "language"}
+                   "language", "samsara_driver_id"}
         updates = {}
         for k, v in kwargs.items():
             if k not in allowed:

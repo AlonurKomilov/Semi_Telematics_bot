@@ -30,7 +30,12 @@ import sys
 from capabilities.telemetry.ingestor import (
     aggregate_telemetry_hourly,
     ingest_driver_efficiency_daily,
+    ingest_fleet_efficiency,
+    ingest_fleet_weather,
+    ingest_geofence_definitions,
     ingest_safety_events,
+    ingest_vehicle_faults,
+    ingest_vehicle_health,
     ingest_vehicle_state,
 )
 from infra.services import get_platform_db
@@ -42,19 +47,61 @@ logger = logging.getLogger("warehouse.backfill")
 
 async def _run_for(account_id: int, *, skip_events: bool, skip_efficiency: bool) -> None:
     """Drive every ingestor once for a single account, logging per-step
-    counts so ops can eyeball that the data actually showed up."""
+    counts so ops can eyeball that the data actually showed up.
+
+    All 9 ingestors run by default \u2014 covers every warehouse-backed
+    reader. ``--skip-events`` and ``--skip-efficiency`` skip the two
+    slowest (paginated Samsara endpoints) for quick smoke-tests.
+    """
     logger.info("\u2500\u2500 backfill account %d \u2500\u2500", account_id)
 
+    # State (60s in prod) \u2014 vehicle_state table powers /vehicles + map.
     n = await ingest_vehicle_state(account_id)
-    logger.info("  vehicle_state          %d rows", n)
+    logger.info("  vehicle_state            %d rows", n)
+
+    # Health (5min in prod) \u2014 vehicle_health_snapshot powers Reports.
+    try:
+        n = await ingest_vehicle_health(account_id)
+        logger.info("  vehicle_health_snapshot  %d rows", n)
+    except Exception:
+        logger.exception("  vehicle_health_snapshot  FAILED \u2014 continuing")
+
+    # Faults (2min in prod) \u2014 vehicle_fault_snapshot powers fault badges.
+    try:
+        n = await ingest_vehicle_faults(account_id)
+        logger.info("  vehicle_fault_snapshot   %d rows", n)
+    except Exception:
+        logger.exception("  vehicle_fault_snapshot   FAILED \u2014 continuing")
+
+    # Weather (10min in prod) \u2014 fleet_weather_snapshot powers Weather page.
+    try:
+        n = await ingest_fleet_weather(account_id)
+        logger.info("  fleet_weather_snapshot   %d rows", n)
+    except Exception:
+        logger.exception("  fleet_weather_snapshot   FAILED \u2014 continuing")
+
+    # Fleet efficiency (30min in prod) \u2014 fleet_efficiency_snapshot
+    # powers Cost-per-Mile + Scorecards.
+    try:
+        n = await ingest_fleet_efficiency(account_id, days=7)
+        logger.info("  fleet_efficiency_snapshot %d rows", n)
+    except Exception:
+        logger.exception("  fleet_efficiency_snapshot FAILED \u2014 continuing")
+
+    # Geofences (1h in prod) \u2014 geofence_definitions powers map overlays.
+    try:
+        n = await ingest_geofence_definitions(account_id)
+        logger.info("  geofence_definitions     %d rows", n)
+    except Exception:
+        logger.exception("  geofence_definitions     FAILED \u2014 continuing")
 
     if not skip_events:
         n = await ingest_safety_events(account_id, days=7)
-        logger.info("  safety_event_log       %d new", n)
+        logger.info("  safety_event_log         %d new", n)
 
     if not skip_efficiency:
         n = await ingest_driver_efficiency_daily(account_id, days=7)
-        logger.info("  driver_efficiency_daily %d rows", n)
+        logger.info("  driver_efficiency_daily  %d rows", n)
 
     n = await aggregate_telemetry_hourly(account_id)
     logger.info("  vehicle_telemetry_hourly %d rows", n)

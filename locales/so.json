@@ -859,5 +859,64 @@
     "back_reports": "◀️ Warbixinaha",
     "error_content": "📋 <b>Rukunka Warbixinta</b>\n\n⚠️ Warbixinta lama samayn karin.",
     "sending": "📋 Warbixintaada <b>{rtype}</b> ee la qorsheeyay waa la sameynayaa..."
+  },
+  "risk_report": {
+    "title": "Soo-koobida Khatarta ee Daneeyayaasha",
+    "usage": "Isticmaalka: /risk_report <gaari> [insurance|owner|broker|auditor|payroll]",
+    "not_assigned": "Waxaad codsan kartaa soo-koobida khatarta gaadiidka adiga kuu xilsaaran kaliya.",
+    "loading": "Soo-koobida khatarta {vehicle} waa la diyaarinayaa…",
+    "caption": "<b>Soo-koobida Khatarta</b>\nGaariga: {vehicle}\nDhagaystaha: {audience}\nDhibcaha: {score}",
+    "audience": {
+      "insurance": "Caymis",
+      "owner": "Mulkiilaha",
+      "broker": "Dilaaliga",
+      "auditor": "Hubinta",
+      "payroll": "Mushahar"
+    }
+  },
+  "payroll": {
+    "title": "Mushahar lagu Bixiyo Waxqabad",
+    "disabled_for_account": "Adeegga mushaharka kuma shaqeeyo akoonkan.",
+    "my_pay": {
+      "title": "Mushahaarkayga",
+      "period": "Muddo: {start} → {end}",
+      "status": "Xaalada: {status}",
+      "base": "Mushahar aasaasi ah: {amount}",
+      "bonuses": "Bonus",
+      "total": "Wadarta: {amount}",
+      "history": "Taariikh",
+      "no_driver_mapping": "Akoonkaaga lama xidhi karin diiwaan darawal.",
+      "no_history": "Wali ma jiraan jeegag mushahar."
+    }
+  },
+  "coaching": {
+    "title": "Tababar Otomaatik ah",
+    "disabled_for_account": "Tababarka kuma shaqeeyo akoonkan.",
+    "topics": {
+      "hard_brake": "Joojin adag",
+      "harsh_accel": "Xawaarayn adag",
+      "speeding": "Xawaare dheeraad",
+      "distraction": "Mashquul",
+      "following_distance": "Masaafada raacaya",
+      "fatigue": "Daalka"
+    },
+    "severity": {
+      "low": "Hoose",
+      "medium": "Dhexe",
+      "high": "Sare"
+    },
+    "status": {
+      "pending": "Sugaya",
+      "acknowledged": "La aqbalay",
+      "cancelled": "La joojiyay"
+    },
+    "my": {
+      "title": "Tababarkayga",
+      "no_pending": "Ma jiraan hawlo tababar oo sugaya.",
+      "no_driver_mapping": "Lama xidhi karo akoonkaaga darawal.",
+      "ack_button": "Aqbal",
+      "ack_done": "La aqbalay. Mahadsanid!",
+      "ack_failed": "Lama aqbali karin hawsha."
+    }
   }
 }

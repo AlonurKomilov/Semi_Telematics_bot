@@ -1,8 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { FileText, Download, Sparkles } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
+import {
+  PageHeader,
+  EmptyState,
+  ErrorState,
+  TableSkeleton,
+} from '../../components/shell';
 import type {
   FaultVehicle, FaultReportResponse,
   FuelVehicle, FuelReportResponse,
@@ -154,36 +161,42 @@ export default function Reports() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Reports</h1>
-        <div className="flex items-center gap-2">
-          {tab === 'efficiency' && (
-            <select
-              value={days}
-              onChange={(e) => setDays(Number(e.target.value))}
-              className="bg-muted border border-border rounded px-2 py-1.5 text-sm text-foreground/80"
+      <PageHeader
+        icon={FileText}
+        title="Reports"
+        description="On-demand snapshots of vehicle faults, fuel/DEF levels, vehicle health, and driving efficiency. Export to PDF for stakeholders or CSV for spreadsheets."
+        actions={
+          <div className="flex items-center gap-2">
+            {tab === 'efficiency' && (
+              <select
+                value={days}
+                onChange={(e) => setDays(Number(e.target.value))}
+                className="bg-background border border-border rounded-md px-2 py-1.5 text-sm text-foreground/80"
+              >
+                {[7, 14, 30].map((d) => (
+                  <option key={d} value={d}>{d} days</option>
+                ))}
+              </select>
+            )}
+            <button
+              onClick={() => downloadReport('pdf')}
+              disabled={exporting}
+              className="inline-flex items-center gap-1 px-3 py-1.5 bg-background border border-border rounded-md text-xs font-medium hover:bg-muted disabled:opacity-50 transition"
             >
-              {[7, 14, 30].map((d) => (
-                <option key={d} value={d}>{d} days</option>
-              ))}
-            </select>
-          )}
-          <button
-            onClick={() => downloadReport('pdf')}
-            disabled={exporting}
-            className="px-3 py-1.5 bg-destructive/80 hover:bg-destructive disabled:opacity-50 rounded text-sm font-medium transition"
-          >
-            PDF
-          </button>
-          <button
-            onClick={() => downloadReport('csv')}
-            disabled={exporting}
-            className="px-3 py-1.5 bg-green-600/80 hover:bg-green-600 disabled:opacity-50 rounded text-sm font-medium transition"
-          >
-            CSV
-          </button>
-        </div>
-      </div>
+              <Download size={12} />
+              PDF
+            </button>
+            <button
+              onClick={() => downloadReport('csv')}
+              disabled={exporting}
+              className="inline-flex items-center gap-1 px-3 py-1.5 bg-background border border-border rounded-md text-xs font-medium hover:bg-muted disabled:opacity-50 transition"
+            >
+              <Download size={12} />
+              CSV
+            </button>
+          </div>
+        }
+      />
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4">
@@ -205,18 +218,25 @@ export default function Reports() {
           <p className="text-sm text-muted-foreground">{summary}</p>
           {tab === 'faults' && (
             <button
-              onClick={() => navigate('/ai/chat', { state: { initialMessage: 'Analyze the active fleet fault codes and tell me which trucks need attention' } })}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-primary/15 hover:bg-primary/25 text-primary font-medium transition-colors shrink-0 ml-3"
+              onClick={() => navigate('/ai/chat', { state: { initialMessage: 'Analyze the active vehicle fault codes and tell me which trucks need attention' } })}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-primary/15 hover:bg-primary/25 text-primary font-medium transition shrink-0 ml-3"
             >
+              <Sparkles size={12} />
               Ask AI about faults
             </button>
           )}
         </div>
       )}
-      {error && <p className="text-destructive text-sm mb-3">{error}</p>}
+      {error && <div className="mb-3"><ErrorState message={error} /></div>}
 
       {loading ? (
-        <p className="text-muted-foreground">Loading...</p>
+        <TableSkeleton rows={6} cols={5} />
+      ) : data.length === 0 ? (
+        <EmptyState
+          icon={FileText}
+          title="No data for this report"
+          description="Try a different tab or widen the date range — reports populate as soon as the underlying telematics data arrives."
+        />
       ) : (
         <DataTable
           columns={COLUMNS_MAP[tab]}

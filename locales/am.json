@@ -859,5 +859,64 @@
     "back_reports": "◀️ ሪፖርቶች",
     "error_content": "📋 <b>የሪፖርት ደንበኝነት</b>\n\n⚠️ ሪፖርቱን ማዘጋጀት አልተቻለም።",
     "sending": "📋 የታቀደው <b>{rtype}</b> ሪፖርትዎ እየተዘጋጀ ነው..."
+  },
+  "risk_report": {
+    "title": "የድርሻ ባለቤቶች የአደጋ ማጠቃለያ",
+    "usage": "አጠቃቀም፡ /risk_report <መኪና> [insurance|owner|broker|auditor|payroll]",
+    "not_assigned": "ለእርስዎ ለተመደቡ መኪኖች ብቻ የአደጋ ማጠቃለያ መጠየቅ ይችላሉ።",
+    "loading": "ለ{vehicle} የአደጋ ማጠቃለያ እየተዘጋጀ ነው…",
+    "caption": "<b>የአደጋ ማጠቃለያ</b>\nመኪና: {vehicle}\nተቀባይ: {audience}\nውጤት: {score}",
+    "audience": {
+      "insurance": "ኢንሹራንስ",
+      "owner": "ባለቤት",
+      "broker": "ደላላ",
+      "auditor": "ኦዲተር",
+      "payroll": "ደመወዝ"
+    }
+  },
+  "payroll": {
+    "title": "በአፈጻጸም ላይ የተመሰረተ ክፍያ",
+    "disabled_for_account": "ለዚህ መለያ የክፍያ ሥርዓት አልነቃም።",
+    "my_pay": {
+      "title": "የእኔ ክፍያ",
+      "period": "ጊዜ፡ {start} → {end}",
+      "status": "ሁኔታ፡ {status}",
+      "base": "መሠረታዊ ክፍያ፡ {amount}",
+      "bonuses": "ቦነሶች",
+      "total": "ድምር፡ {amount}",
+      "history": "ታሪክ",
+      "no_driver_mapping": "መለያዎን ከአሽከርካሪ መዝገብ ጋር ማዛመድ አልተቻለም።",
+      "no_history": "እስካሁን የክፍያ ሰነድ የለም።"
+    }
+  },
+  "coaching": {
+    "title": "ራስ-ሰር ኮቺንግ",
+    "disabled_for_account": "ኮቺንግ ለዚህ መለያ አልነቃም።",
+    "topics": {
+      "hard_brake": "ጠንካራ ብሬክ",
+      "harsh_accel": "ጠንካራ ማፋጠን",
+      "speeding": "ፍጥነት ማለፍ",
+      "distraction": "መረበሽ",
+      "following_distance": "የተከተለ ርቀት",
+      "fatigue": "ድካም"
+    },
+    "severity": {
+      "low": "ዝቅተኛ",
+      "medium": "መካከለኛ",
+      "high": "ከፍተኛ"
+    },
+    "status": {
+      "pending": "በመጠበቅ",
+      "acknowledged": "ተቀብሏል",
+      "cancelled": "ተሰርዟል"
+    },
+    "my": {
+      "title": "የእኔ ኮቺንግ",
+      "no_pending": "በመጠበቅ ላይ ያለ ኮቺንግ የለም።",
+      "no_driver_mapping": "መለያዎን ከአሽከርካሪ ጋር ማገናኘት አልተቻለም።",
+      "ack_button": "ተቀበል",
+      "ack_done": "ተቀብሏል። አመሰግናለሁ!",
+      "ack_failed": "ምድብን መቀበል አልተቻለም።"
+    }
   }
 }

@@ -8,7 +8,7 @@ Public articles are visible cross-account (optionally role-filtered).
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from adapters.storage.knowledge_db import KB_CATEGORIES
+from adapters.storage.knowledge import KB_CATEGORIES
 from capabilities.knowledge.service import can_view_article as _can_view_article_fn
 from interfaces.bot.config import logger, get_platform_db
 from interfaces.bot.helpers import _show

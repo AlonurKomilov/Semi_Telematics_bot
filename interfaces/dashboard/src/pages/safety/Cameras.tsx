@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
+import { Camera, Filter } from 'lucide-react';
 import { apiFetch, apiJSON } from '../../api/client';
 import DataTable from '../../components/DataTable';
+import {
+  PageHeader,
+  EmptyState,
+  ErrorState,
+  TableSkeleton,
+} from '../../components/shell';
 import type { CameraCheck, CameraChecksResponse, AnyColumn } from '../../types';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -104,32 +111,48 @@ export default function Cameras() {
   const statusCounts: Record<string, number> = { OK: 0, WARNING: 0, PROBLEM: 0 };
   checks.forEach((c) => { statusCounts[c.status] = (statusCounts[c.status] || 0) + 1; });
 
-  if (error && checks.length === 0) return <p className="text-destructive">{error}</p>;
+  if (error && checks.length === 0) {
+    return (
+      <div>
+        <PageHeader
+          icon={Camera}
+          title="Cameras"
+          description="Health checks for in-cab dashcams. Diagnose obstructed lenses, lost connections, and dirty cameras at a glance."
+        />
+        <ErrorState message={error} />
+      </div>
+    );
+  }
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Cameras</h1>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowHistory(!showHistory)}
-            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-              showHistory
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {showHistory ? '📋 All History' : '📷 Latest Only'}
-          </button>
-          <input
-            type="text"
-            placeholder="Filter by vehicle..."
-            value={vehicleFilter}
-            onChange={(e) => setVehicleFilter(e.target.value)}
-            className="bg-muted border border-border rounded px-3 py-2 text-sm placeholder-muted-foreground focus:outline-none focus:border-ring w-56"
-          />
-        </div>
-      </div>
+      <PageHeader
+        icon={Camera}
+        title="Cameras"
+        description="Health checks for in-cab dashcams. Diagnose obstructed lenses, lost connections, and dirty cameras — click a row for the latest snapshot."
+        actions={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition border ${
+                showHistory
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-background border-border text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Filter size={12} />
+              {showHistory ? 'All history' : 'Latest only'}
+            </button>
+            <input
+              type="text"
+              placeholder="Filter by vehicle…"
+              value={vehicleFilter}
+              onChange={(e) => setVehicleFilter(e.target.value)}
+              className="bg-background border border-border rounded-md px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:border-ring w-48"
+            />
+          </div>
+        }
+      />
 
       {/* Status summary */}
       <div className="grid grid-cols-3 gap-4 mb-6">
@@ -157,7 +180,13 @@ export default function Cameras() {
       </div>
 
       {loading ? (
-        <p className="text-muted-foreground">Loading...</p>
+        <TableSkeleton rows={6} cols={5} />
+      ) : checks.length === 0 ? (
+        <EmptyState
+          icon={Camera}
+          title={vehicleFilter ? 'No cameras match this filter' : 'No camera checks yet'}
+          description="Camera checks accrue automatically once Samsara dashcams report status. Try widening the filter."
+        />
       ) : (
         <DataTable
           columns={columns}

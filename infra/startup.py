@@ -47,6 +47,12 @@ async def initialize() -> TenantRegistry:
     import infra.cache as rcache
     await rcache.init_redis()
 
+    # 5b. Initialize ARQ job-queue pool (optional — graceful fallback if
+    # arq isn't installed or Redis is unreachable). Lets API handlers
+    # call ``infra.jobs.enqueue(...)`` without per-call setup.
+    import infra.jobs as rjobs
+    await rjobs.init_jobs()
+
     # 6. Error reporter — Telegram notifications + error_log DB table
     from infra.error_reporter import init_error_reporter
     from infra.config import TELEGRAM_TOKEN, ERROR_REPORT_CHAT_ID
@@ -62,6 +68,14 @@ async def initialize() -> TenantRegistry:
 async def shutdown():
     """Shut down platform infrastructure.  Call on exit."""
     global tenant_registry
+
+    # Close ARQ pool first so any in-flight enqueue calls don't race
+    # with the Redis pool teardown that follows.
+    try:
+        import infra.jobs as rjobs
+        await rjobs.close_jobs()
+    except Exception as e:
+        logger.warning("ARQ pool close error: %s", e)
 
     # Close Redis
     try:

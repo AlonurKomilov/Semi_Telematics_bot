@@ -227,6 +227,30 @@ class ScorecardMixin(_MixinBase):
             d["breakdown"] = {}
         return d
 
+    async def get_latest_scorecard_snapshots(
+        self, account_id: int, *, subject_type: str = "driver",
+    ) -> list[dict]:
+        rows = await self.read_all(
+            """SELECT * FROM daily_scorecard_snapshots
+               WHERE account_id = ? AND subject_type = ?
+                 AND snapshot_date = (
+                     SELECT MAX(snapshot_date)
+                     FROM daily_scorecard_snapshots
+                     WHERE account_id = ? AND subject_type = ?
+                 )
+               ORDER BY total_score DESC, subject_name ASC""",
+            (account_id, subject_type, account_id, subject_type),
+        )
+        out: list[dict] = []
+        for row in rows:
+            d = dict(row)
+            try:
+                d["breakdown"] = json.loads(d.get("breakdown_json") or "{}")
+            except json.JSONDecodeError:
+                d["breakdown"] = {}
+            out.append(d)
+        return out
+
     async def get_scorecard_snapshot_history(
         self, account_id: int, *,
         subject_type: str = "driver",

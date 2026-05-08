@@ -1,6 +1,17 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ParkingSquare } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import DataTable from '../../components/DataTable';
+import {
+  PageHeader,
+  EmptyState,
+  ErrorState,
+  TableSkeleton,
+  LastUpdated,
+  FilterBar,
+  FilterChips,
+} from '../../components/shell';
 import type { ParkingEvent, ParkingEventsResponse, AnyColumn } from '../../types';
 
 /* ── Badge helpers ─────────────────────────────────────────── */
@@ -75,9 +86,8 @@ const historyColumns: AnyColumn[] = [
 /* ── Main Component ────────────────────────────────────────── */
 
 export default function Parking() {
+  const qc = useQueryClient();
   const [tab, setTab] = useState<'active' | 'history'>('active');
-  const [events, setEvents] = useState<ParkingEvent[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [vehicleSearch, setVehicleSearch] = useState('');
   const [classFilter, setClassFilter] = useState('all');
@@ -87,37 +97,32 @@ export default function Parking() {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [mapUrls, setMapUrls] = useState<Record<number, string>>({});
 
-  const fetchEvents = useCallback(() => {
-    setLoading(true);
-    setError('');
-    const params = new URLSearchParams();
-    if (vehicleSearch) params.set('vehicle', vehicleSearch);
-
-    if (tab === 'active') {
-      if (showAll) params.set('attention_only', 'false');
-      const qs = params.toString();
-      apiJSON<ParkingEventsResponse>(`/parking/active${qs ? `?${qs}` : ''}`)
-        .then((d) => setEvents(d.events || []))
-        .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'))
-        .finally(() => setLoading(false));
-    } else {
+  const queryKey = ['parking', tab, vehicleSearch, tab === 'active' ? showAll : null, tab === 'history' ? days : null, tab === 'history' ? classFilter : null] as const;
+  const { data, isLoading: loading, isFetching, error: queryError, refetch, dataUpdatedAt } = useQuery<ParkingEventsResponse>({
+    queryKey,
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (vehicleSearch) params.set('vehicle', vehicleSearch);
+      if (tab === 'active') {
+        if (showAll) params.set('attention_only', 'false');
+        const qs = params.toString();
+        return apiJSON<ParkingEventsResponse>(`/parking/active${qs ? `?${qs}` : ''}`);
+      }
       params.set('days', String(days));
       if (classFilter !== 'all') params.set('location_class', classFilter);
       const qs = params.toString();
-      apiJSON<ParkingEventsResponse>(`/parking/history${qs ? `?${qs}` : ''}`)
-        .then((d) => setEvents(d.events || []))
-        .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'))
-        .finally(() => setLoading(false));
-    }
-  }, [tab, vehicleSearch, showAll, days, classFilter]);
-
-  useEffect(() => { fetchEvents(); }, [fetchEvents]);
+      return apiJSON<ParkingEventsResponse>(`/parking/history${qs ? `?${qs}` : ''}`);
+    },
+    placeholderData: (prev) => prev,
+  });
+  const events: ParkingEvent[] = data?.events ?? [];
+  const fetchError = queryError instanceof Error ? queryError.message : '';
 
   async function resolveEvent(event: ParkingEvent) {
     setResolving(event.id);
     try {
       await apiJSON(`/parking/${event.id}/resolve`, { method: 'POST' });
-      setEvents((prev) => prev.filter((e) => e.id !== event.id));
+      qc.invalidateQueries({ queryKey: ['parking'] });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Resolve failed');
     } finally {
@@ -145,28 +150,36 @@ export default function Parking() {
     }
   }
 
-  if (error && events.length === 0) return <p className="text-destructive">{error}</p>;
+  const displayError = error || fetchError;
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Parking</h1>
-        <button
-          onClick={fetchEvents}
-          className="text-sm text-muted-foreground hover:text-foreground transition"
-        >
-          ↻ Refresh
-        </button>
-      </div>
+      <PageHeader
+        icon={ParkingSquare}
+        title="Parking"
+        description={
+          tab === 'active'
+            ? 'Vehicles currently parked. Resolve events when drivers move on, or open the AI analysis to see why a stop was flagged.'
+            : 'Past parking stops. Filter by classification to find unsafe parking patterns over time.'
+        }
+        actions={
+          <LastUpdated
+            fetchedAt={dataUpdatedAt}
+            isFetching={isFetching}
+            onRefresh={refetch}
+          />
+        }
+      />
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-4">
+      <div className="flex gap-1 mb-4 border-b border-border">
         {(['active', 'history'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition capitalize ${
-              tab === t ? 'bg-muted/80 text-foreground' : 'text-muted-foreground hover:text-foreground'
+            className={`px-4 py-2 text-sm font-medium transition capitalize border-b-2 -mb-px ${
+              tab === t
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
             {t}
@@ -174,14 +187,13 @@ export default function Parking() {
         ))}
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+      <FilterBar>
         <input
           type="text"
-          placeholder="Filter by vehicle..."
+          placeholder="Vehicle name…"
           value={vehicleSearch}
           onChange={(e) => setVehicleSearch(e.target.value)}
-          className="bg-muted border border-border rounded px-2.5 py-1 text-sm placeholder-muted-foreground focus:outline-none focus:border-ring w-48"
+          className="bg-background border border-border rounded-md px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:border-ring w-44"
         />
         {tab === 'active' && (
           <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
@@ -196,23 +208,15 @@ export default function Parking() {
         )}
         {tab === 'history' && (
           <>
-            <div className="flex gap-1">
-              {['all', 'safe', 'unsafe', 'unknown'].map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setClassFilter(c)}
-                  className={`text-xs px-2.5 py-1 rounded capitalize ${
-                    classFilter === c ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                  }`}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
+            <FilterChips
+              options={['all', 'safe', 'unsafe', 'unknown'] as const}
+              value={classFilter as 'all' | 'safe' | 'unsafe' | 'unknown'}
+              onChange={(v) => setClassFilter(v)}
+            />
             <select
               value={days}
               onChange={(e) => setDays(Number(e.target.value))}
-              className="bg-muted border border-border rounded px-2 py-1 text-sm text-foreground/80"
+              className="bg-background border border-border rounded-md px-2 py-1.5 text-sm text-foreground/80"
             >
               {[7, 14, 30, 60, 90].map((d) => (
                 <option key={d} value={d}>{d} days</option>
@@ -220,17 +224,23 @@ export default function Parking() {
             </select>
           </>
         )}
-      </div>
+      </FilterBar>
 
-      {/* Content */}
-      {loading && events.length === 0 ? (
-        <p className="text-muted-foreground">Loading...</p>
+      {displayError && events.length === 0 ? (
+        <ErrorState
+          title="Couldn't load parking events"
+          message={displayError}
+          onRetry={() => refetch()}
+        />
+      ) : loading && events.length === 0 ? (
+        <TableSkeleton rows={6} cols={5} />
       ) : tab === 'active' ? (
         events.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <p className="text-lg mb-1">No active parking events</p>
-            <p className="text-sm">All vehicles are parked in safe locations or moving</p>
-          </div>
+          <EmptyState
+            icon={ParkingSquare}
+            title="No active parking events"
+            description="All vehicles are parked in safe locations or are currently moving."
+          />
         ) : (
           <div className="space-y-3">
             {events.map((ev) => (

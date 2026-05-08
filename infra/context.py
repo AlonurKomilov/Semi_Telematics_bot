@@ -35,27 +35,47 @@ _org_ids_var: ContextVar[dict[str, str] | None] = ContextVar(
 # ── prepare_companies idempotency guard ──────────────────────────
 # Tracks which account_ids have already been prepared in the current
 # async task so repeated calls to prepare_companies() become no-ops.
-# The default is an empty frozenset; we store a plain set in the var.
+# We cache the companies list itself per-account so the second call
+# can return it without re-hitting the DB — measurable since hot
+# routes call prepare_companies 5-6 times per request via every signal
+# fetcher (events, vehicle_health, fuel, fleet_efficiency, …).
 
-_companies_prepared_var: ContextVar[set[int]] = ContextVar(
-    "companies_prepared", default=set()
+_companies_cache_var: ContextVar[dict[int, list]] = ContextVar(
+    "companies_cache", default={},
 )
 
 
 def is_companies_prepared(account_id: int) -> bool:
     """Return True if prepare_companies() was already called for this account
     in the current async task context."""
-    return account_id in _companies_prepared_var.get()
+    return account_id in _companies_cache_var.get()
 
 
-def mark_companies_prepared(account_id: int) -> None:
+def get_cached_companies(account_id: int) -> list | None:
+    """Return the cached companies list for *account_id* if any, else None.
+
+    The list was stored by ``mark_companies_prepared`` on the first
+    ``prepare_companies()`` call in this async task. Letting callers
+    reuse it skips the DB roundtrip on repeat calls.
+    """
+    return _companies_cache_var.get().get(account_id)
+
+
+def mark_companies_prepared(account_id: int, companies: list | None = None) -> None:
     """Record that prepare_companies() completed for *account_id* in this context.
 
-    Creates a new set copy so ContextVar isolation is maintained — each
-    async task gets its own set and changes don't bleed across tasks.
+    *companies* is the list returned by ``tenant.get_account_companies``
+    so subsequent ``prepare_companies()`` calls in the same task can
+    return it without another DB query. Passing ``None`` keeps the
+    legacy "marker only" behaviour for callers that don't have the list
+    handy.
+
+    Creates a new dict copy so ContextVar isolation is maintained — each
+    async task gets its own dict and changes don't bleed across tasks.
     """
-    current = _companies_prepared_var.get()
-    _companies_prepared_var.set(current | {account_id})
+    current = _companies_cache_var.get()
+    new = {**current, account_id: companies if companies is not None else []}
+    _companies_cache_var.set(new)
 
 
 # ── Setters ──────────────────────────────────────────────────────

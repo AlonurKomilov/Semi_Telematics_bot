@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -8,13 +8,22 @@ import {
   type ColumnDef,
   type SortingState,
 } from '@tanstack/react-table';
-import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { ChevronUp, ChevronDown, ChevronsUpDown, Rows3, Rows2, Rows4 } from 'lucide-react';
 import { Input } from './ui/input';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from './ui/table';
 import { cn } from '../lib/utils';
 import type { AnyColumn } from '../types';
+
+type Density = 'compact' | 'default' | 'roomy';
+const DENSITY_KEY = '4truck.table.density';
+
+const DENSITY_PADDING: Record<Density, string> = {
+  compact: 'py-1.5',
+  default: 'py-3',
+  roomy: 'py-4',
+};
 
 interface DataTableProps {
   columns: AnyColumn[];
@@ -37,6 +46,17 @@ export default function DataTable({
 }: DataTableProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
+  const [density, setDensity] = useState<Density>(() => {
+    try {
+      const v = localStorage.getItem(DENSITY_KEY);
+      if (v === 'compact' || v === 'default' || v === 'roomy') return v;
+    } catch { /* ignore */ }
+    return 'default';
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem(DENSITY_KEY, density); } catch { /* ignore */ }
+  }, [density]);
 
   const tableColumns = useMemo<ColumnDef<Record<string, unknown>>[]>(
     () =>
@@ -77,16 +97,42 @@ export default function DataTable({
 
   const rowCount = table.getRowModel().rows.length;
 
+  const padding = DENSITY_PADDING[density];
+
   return (
     <div>
-      {searchKey && (
-        <Input
-          placeholder={searchPlaceholder ?? 'Search...'}
-          value={globalFilter}
-          onChange={(e) => setGlobalFilter(e.target.value)}
-          className="mb-3 max-w-xs"
-        />
-      )}
+      <div className="flex items-center justify-between mb-3 gap-3">
+        {searchKey ? (
+          <Input
+            placeholder={searchPlaceholder ?? 'Search...'}
+            value={globalFilter}
+            onChange={(e) => setGlobalFilter(e.target.value)}
+            className="max-w-xs"
+          />
+        ) : <span />}
+        <div className="inline-flex items-center gap-0.5 p-0.5 bg-muted/50 border border-border rounded-md" role="group" aria-label="Row density">
+          {([
+            { v: 'compact', icon: Rows4, label: 'Compact' },
+            { v: 'default', icon: Rows3, label: 'Default' },
+            { v: 'roomy', icon: Rows2, label: 'Roomy' },
+          ] as const).map(({ v, icon: Icon, label }) => (
+            <button
+              key={v}
+              onClick={() => setDensity(v)}
+              aria-label={label}
+              aria-pressed={density === v}
+              title={label}
+              className={`p-1.5 rounded ${
+                density === v
+                  ? 'bg-card text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Icon size={13} />
+            </button>
+          ))}
+        </div>
+      </div>
       <div
         className="overflow-auto rounded-lg border border-border"
         style={stickyHeader ? { maxHeight: stickyHeader } : undefined}
@@ -139,7 +185,7 @@ export default function DataTable({
                   className={onRowClick ? 'cursor-pointer' : ''}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell key={cell.id} className={padding}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}

@@ -1,11 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Trophy, Download, X } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   LineChart, Line, CartesianGrid, ReferenceLine,
 } from 'recharts';
 import { apiJSON, apiJSONSlow } from '../../api/client';
 import DataTable from '../../components/DataTable';
+import DriverInsights from '../../components/DriverInsights';
+import {
+  PageHeader,
+  EmptyState,
+  ErrorState,
+  TableSkeleton,
+  DateRangePresets,
+} from '../../components/shell';
 import type {
   CompositeScorecard,
   CompositeScorecardsResponse,
@@ -174,20 +183,20 @@ interface MergedHistoryPoint {
   compliance?: number | null;
 }
 
-function HistoryChart({ driverId }: { driverId: string }) {
-  // React Query (Phase E23): caches each driver's 30-day history under a
-  // per-driver key so opening the same drawer again is instant.  The four
-  // pillar variants are still fanned out in parallel inside one
-  // ``queryFn`` so we keep a single cache entry per driver.
+function HistoryChart({ driverId, days }: { driverId: string; days: number }) {
+  // React Query (Phase E23): caches each driver's history under a
+  // per-driver+days key so opening the same drawer again is instant.
+  // The four pillar variants fan out in parallel inside one ``queryFn``.
   const enc = encodeURIComponent(driverId);
+  const histDays = Math.max(7, Math.min(days, 180));
   const { data, isLoading } = useQuery<MergedHistoryPoint[]>({
-    queryKey: ['scorecard-history', driverId],
+    queryKey: ['scorecard-history', driverId, histDays],
     queryFn: async () => {
       const [total, s, e, c] = await Promise.all([
-        apiJSONSlow<ScoreHistoryResponse>(`/safety/scorecards/history?driver_id=${enc}&days=30`),
-        apiJSONSlow<ScoreHistoryResponse>(`/safety/scorecards/history?driver_id=${enc}&days=30&pillar=safety`).catch(() => null),
-        apiJSONSlow<ScoreHistoryResponse>(`/safety/scorecards/history?driver_id=${enc}&days=30&pillar=efficiency`).catch(() => null),
-        apiJSONSlow<ScoreHistoryResponse>(`/safety/scorecards/history?driver_id=${enc}&days=30&pillar=compliance`).catch(() => null),
+        apiJSONSlow<ScoreHistoryResponse>(`/safety/scorecards/history?driver_id=${enc}&days=${histDays}`),
+        apiJSONSlow<ScoreHistoryResponse>(`/safety/scorecards/history?driver_id=${enc}&days=${histDays}&pillar=safety`).catch(() => null),
+        apiJSONSlow<ScoreHistoryResponse>(`/safety/scorecards/history?driver_id=${enc}&days=${histDays}&pillar=efficiency`).catch(() => null),
+        apiJSONSlow<ScoreHistoryResponse>(`/safety/scorecards/history?driver_id=${enc}&days=${histDays}&pillar=compliance`).catch(() => null),
       ]);
       const safetyByDate     = new Map((s?.history ?? []).map((p) => [p.date, p.score]));
       const efficiencyByDate = new Map((e?.history ?? []).map((p) => [p.date, p.score]));
@@ -511,7 +520,22 @@ export default function Scorecards() {
     });
   }, [cards, pillarFilter]);
 
-  if (error && cards.length === 0) return <p className="text-destructive">{error}</p>;
+  if (error && cards.length === 0) {
+    return (
+      <div>
+        <PageHeader
+          icon={Trophy}
+          title="Vehicle Scorecards"
+          description="Composite 0-100 score per truck — driver shown when paired."
+        />
+        <ErrorState
+          title="Couldn't load scorecards"
+          message={error}
+          onRetry={() => window.location.reload()}
+        />
+      </div>
+    );
+  }
 
   // CSV export (audit L1) — driven from the already-loaded cards array so
   // it reflects the current days filter without an extra API round-trip.
@@ -576,37 +600,29 @@ export default function Scorecards() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Vehicle Scorecards</h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            Composite 0-100 score per truck — driver shown when paired · 🅢 Samsara · 🅘 Internal · 🅜 Manual
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {loading && cards.length > 0 && (
-            <span className="text-[10px] text-muted-foreground animate-pulse">refreshing…</span>
-          )}
-          <button
-            type="button"
-            onClick={exportCsv}
-            disabled={cards.length === 0}
-            className="text-xs px-3 py-2 rounded border border-border bg-muted hover:bg-muted/70 disabled:opacity-40 disabled:cursor-not-allowed"
-            title="Download current scorecards as CSV"
-          >
-            ⬇ CSV
-          </button>
-          <select
-            value={days}
-            onChange={(e) => setDays(Number(e.target.value))}
-            className="bg-muted border border-border rounded px-3 py-2 text-sm text-foreground/80"
-          >
-            {[7, 14, 30, 60, 90].map((d) => (
-              <option key={d} value={d}>{d} days</option>
-            ))}
-          </select>
-        </div>
-      </div>
+      <PageHeader
+        icon={Trophy}
+        title="Vehicle Scorecards"
+        description="Composite 0-100 score per truck. Click any row for the full breakdown — pillars, trend, bonuses and penalties."
+        actions={
+          <div className="flex items-center gap-2">
+            {loading && cards.length > 0 && (
+              <span className="text-[10px] text-muted-foreground animate-pulse">refreshing…</span>
+            )}
+            <button
+              type="button"
+              onClick={exportCsv}
+              disabled={cards.length === 0}
+              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border bg-background hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition"
+              title="Download current scorecards as CSV"
+            >
+              <Download size={12} />
+              CSV
+            </button>
+            <DateRangePresets value={days} onChange={setDays} />
+          </div>
+        }
+      />
 
       {/* KPI strip */}
       {cards.length > 0 && (
@@ -636,7 +652,13 @@ export default function Scorecards() {
       )}
 
       {loading && cards.length === 0 ? (
-        <p className="text-muted-foreground">Loading…</p>
+        <TableSkeleton rows={8} cols={6} />
+      ) : cards.length === 0 ? (
+        <EmptyState
+          icon={Trophy}
+          title="No scorecards in this window"
+          description="Try widening the date range — composite scores need at least a few hours of drive activity."
+        />
       ) : (
         <>
           {cards.length > 0 && (
@@ -702,6 +724,7 @@ export default function Scorecards() {
           rank={cards.findIndex((c) => c.driver_id === detail.driver_id) + 1}
           total={cards.length}
           fleetAvg={stats.avgScore}
+          days={days}
           onClose={() => setDetail(null)}
         />
       )}
@@ -723,11 +746,15 @@ function KpiCard({ label, value, sub, color }: { label: string; value: string; s
   );
 }
 
-function DetailDrawer({ card, rank, total, fleetAvg, onClose }: {
+function DetailDrawer({ card, rank, total, fleetAvg, days, onClose }: {
   card: CompositeScorecard;
   rank: number;
   total: number;
   fleetAvg: number;
+  /** Page-level date range (in days) — propagates to the trend chart
+      and the period-comparison cells inside DriverInsights so the
+      drawer always reflects the same window the user picked at the top. */
+  days: number;
   onClose: () => void;
 }) {
   // Audit L4: keyboard a11y — close on Esc and announce as a modal dialog.
@@ -764,9 +791,21 @@ function DetailDrawer({ card, rank, total, fleetAvg, onClose }: {
           <button
             onClick={onClose}
             aria-label="Close detail panel"
-            className="text-muted-foreground hover:text-foreground text-xl"
-          >✕</button>
+            className="text-muted-foreground hover:text-foreground p-1"
+          >
+            <X size={18} />
+          </button>
         </div>
+
+        {/* Risk Summary deep-link */}
+        <RiskSummaryLink card={card} />
+
+        {/* Risk band, trend, severity buckets, period compare, top issue,
+             AI insights, coaching action, full categories matrix —
+             closes the gap with the competitor's per-driver detail page.
+             ``days`` flows through so the period compare adapts to the
+             window the user selected upstream. */}
+        <DriverInsights card={card} days={days} />
 
         {/* Gauge + rank + fleet delta */}
         <div className="flex items-center gap-5 mb-5">
@@ -789,34 +828,11 @@ function DetailDrawer({ card, rank, total, fleetAvg, onClose }: {
           </div>
         </div>
 
-        {/* Pillar breakdown — progress bars (Audit Option C) */}
-        {card.pillars ? (
-          <div className="mb-5 space-y-2">
-            {(['safety', 'efficiency', 'compliance'] as const).map((k) => {
-              const p = card.pillars![k];
-              const pct = p.cap && p.has_data ? Math.round((p.subtotal / p.cap) * 100) : 0;
-              const perfColor = p.has_data ? scoreColor(pct) : '#6b7280';
-              const LABELS: Record<string, string> = { safety: '🛡 Safety', efficiency: '⚡ Efficiency', compliance: '🛠 Compliance' };
-              return (
-                <div key={k}>
-                  <div className="flex justify-between text-[11px] mb-0.5">
-                    <span className="text-muted-foreground">{LABELS[k]}</span>
-                    {p.has_data
-                      ? <span className="font-semibold tabular-nums" style={{ color: perfColor }}>{p.subtotal}/{p.cap}</span>
-                      : <span className="italic text-muted-foreground">n/a</span>}
-                  </div>
-                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{ width: `${pct}%`, background: perfColor }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          /* Legacy: Base+Bonuses+Penalties math when no pillar data */
+        {/* Pillar breakdown lives inside DriverInsights now (one block
+             per pillar showing the score subtotal AND its events). The
+             legacy Base/Bonuses/Penalties math is still useful for cards
+             that haven't been re-scored under the pillar shape yet. */}
+        {!card.pillars && (
           <div className="mb-5 text-xs space-y-1">
             <ScoreMath label="Base"      value={card.base.toString()} />
             <ScoreMath label="Bonuses"   value={`+${card.bonus_total}`} positive />
@@ -837,9 +853,9 @@ function DetailDrawer({ card, rank, total, fleetAvg, onClose }: {
         {/* History trend */}
         <div className="mb-6">
           <p className="text-[10px] font-semibold text-muted-foreground tracking-wide mb-1">
-            30-DAY TREND
+            {`${Math.max(7, Math.min(days, 180))}-DAY TREND`}
           </p>
-          <HistoryChart driverId={card.driver_id || card.driver_name} />
+          <HistoryChart driverId={card.driver_id || card.driver_name} days={days} />
         </div>
 
         {/* Bonus / Penalty breakdown */}
@@ -912,6 +928,36 @@ function ScoreMath({ label, value, positive, negative }: {
     <div className="flex justify-between">
       <span className="text-muted-foreground">{label}</span>
       <span className={`font-semibold tabular-nums ${cls}`}>{value}</span>
+    </div>
+  );
+}
+
+
+// ── Stakeholder Risk Summary deep-link ──────────────────────────────
+function RiskSummaryLink({ card }: { card: CompositeScorecard }) {
+  const subjectType = card.subject_type === 'vehicle' ? 'vehicle' : 'driver';
+  const subjectId =
+    subjectType === 'vehicle'
+      ? (card.subject_name || '')
+      : (card.driver_id || '');
+  if (!subjectId) return null;
+  const params = new URLSearchParams({
+    subject_type: subjectType,
+    subject_id: subjectId,
+    audience: 'owner',
+    days: '30',
+  });
+  if (card.company) params.set('company', card.company);
+  return (
+    <div className="mb-4">
+      <a
+        href={`/reports/risk-summary?${params.toString()}`}
+        className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded
+                   border border-primary/40 text-primary hover:bg-primary/10 transition"
+        title="Generate Stakeholder Risk Summary report"
+      >
+        📄 Generate Risk Summary
+      </a>
     </div>
   );
 }

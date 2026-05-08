@@ -1,7 +1,12 @@
 [Unit]
-Description=4truck API Server
+Description=4truck API (gunicorn + uvicorn workers)
+# After=4truck-bot.service so the platform (DB, Redis) is reachable when
+# the API boots. Wants= means "soft dependency" — API can still start
+# even if bot is down.
 After=network-online.target 4truck-bot.service
 Wants=network-online.target
+
+# Restart-storm guard
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
@@ -10,13 +15,27 @@ Type=simple
 User=abcdev
 Group=abcdev
 WorkingDirectory=/home/abcdev/projects/Semi_Telematics_bot
-ExecStart=/usr/bin/python3 /home/abcdev/projects/Semi_Telematics_bot/run.py
+
+# Gunicorn arbiter spawns N uvicorn workers per ``GUNICORN_WORKERS``
+# (defaults to 2*CPU+1 if unset — see gunicorn.conf.py for tuning).
+# Each worker is a separate Python process; they share Redis + the DB
+# but each has its own asyncio event loop.
+ExecStart=/usr/bin/python3 -m gunicorn -c /home/abcdev/projects/Semi_Telematics_bot/gunicorn.conf.py interfaces.api.app:app
+
+# Send SIGTERM to gunicorn arbiter; it propagates to workers and waits
+# `graceful_timeout` (30s, see gunicorn.conf.py) before SIGKILL.
+KillSignal=SIGTERM
+TimeoutStopSec=45
+
 Restart=always
 RestartSec=5
-TimeoutStopSec=10
 StandardOutput=append:/home/abcdev/projects/Semi_Telematics_bot/api.log
 StandardError=append:/home/abcdev/projects/Semi_Telematics_bot/api.log
+
 EnvironmentFile=/home/abcdev/projects/Semi_Telematics_bot/.env
+# Service-split flags: this unit ONLY serves HTTP. The bot + scheduler
+# live in 4truck-bot.service so they can stay single-instance for
+# things like APScheduler global lock + Telegram polling.
 Environment=ENABLE_API=1
 Environment=ENABLE_BOT=0
 Environment=ENABLE_SCHEDULER=0

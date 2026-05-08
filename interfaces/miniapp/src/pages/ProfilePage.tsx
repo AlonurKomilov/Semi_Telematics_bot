@@ -39,8 +39,8 @@ interface UserMe {
   allowed_companies: string[];
   language: string | null;
   timezone: string | null;
-  quiet_start: string | null;
-  quiet_end: string | null;
+  quiet_start: number | null;
+  quiet_end: number | null;
   email: string | null;
   has_password: boolean;
   permissions: Record<string, boolean>;
@@ -102,9 +102,23 @@ function initials(name: string): string {
     .join('') || '?';
 }
 
-function quietLabel(start: string | null, end: string | null): string {
-  if (!start || !end) return 'Off';
-  return `${start} – ${end}`;
+// Backend stores quiet hours as integer hour (0–23). HTML <input type="time">
+// expects "HH:mm". Convert at the boundary so the picker doesn't warn and the
+// label reads naturally.
+function hourToHHMM(h: number | null): string {
+  if (h === null || h === undefined) return '';
+  return `${String(h).padStart(2, '0')}:00`;
+}
+
+function hhmmToHour(s: string): number | null {
+  if (!s) return null;
+  const h = parseInt(s.slice(0, 2), 10);
+  return Number.isFinite(h) ? h : null;
+}
+
+function quietLabel(start: number | null, end: number | null): string {
+  if (start === null || end === null) return 'Off';
+  return `${hourToHHMM(start)} – ${hourToHHMM(end)}`;
 }
 
 export function ProfilePage() {
@@ -131,6 +145,12 @@ export function ProfilePage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
+  // In-flight flags so Save buttons disable while the PUT is pending —
+  // protects against double-tap submitting the same payload twice.
+  const [savingQuiet, setSavingQuiet] = useState(false);
+  const [savingCreds, setSavingCreds] = useState(false);
+  const [savingLang, setSavingLang] = useState(false);
+
   const photoUrl = useMemo<string | null>(() => {
     try {
       return (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.photo_url ?? null;
@@ -142,8 +162,8 @@ export function ProfilePage() {
     try {
       const data = await apiJSON<UserMe>('/api/user/me');
       setMe(data);
-      setQuietStart(data.quiet_start ?? '');
-      setQuietEnd(data.quiet_end ?? '');
+      setQuietStart(hourToHHMM(data.quiet_start));
+      setQuietEnd(hourToHHMM(data.quiet_end));
       setEmail(data.email ?? '');
     } catch (e) {
       console.error('Failed to load profile:', e);
@@ -166,6 +186,8 @@ export function ProfilePage() {
     haptics.selection();
     setLangSheetOpen(false);
     if (next === me?.language) return;
+    if (savingLang) return;
+    setSavingLang(true);
     try {
       await apiFetch('/api/user/preferences', {
         method: 'PUT',
@@ -178,16 +200,22 @@ export function ProfilePage() {
       console.error('Save language failed:', e);
       haptics.error();
       toast('Failed to save language', 'error');
+    } finally {
+      setSavingLang(false);
     }
   }
 
   async function saveQuietHours() {
+    if (savingQuiet) return;
+    const startHour = hhmmToHour(quietStart);
+    const endHour = hhmmToHour(quietEnd);
+    setSavingQuiet(true);
     try {
       await apiFetch('/api/user/preferences', {
         method: 'PUT',
-        body: { quiet_start: quietStart || null, quiet_end: quietEnd || null },
+        body: { quiet_start: startHour, quiet_end: endHour },
       });
-      setMe(m => (m ? { ...m, quiet_start: quietStart || null, quiet_end: quietEnd || null } : m));
+      setMe(m => (m ? { ...m, quiet_start: startHour, quiet_end: endHour } : m));
       setQuietSheetOpen(false);
       haptics.success();
       toast('Quiet hours saved');
@@ -195,11 +223,15 @@ export function ProfilePage() {
       console.error('Save quiet hours failed:', e);
       haptics.error();
       toast('Failed to save quiet hours', 'error');
+    } finally {
+      setSavingQuiet(false);
     }
   }
 
   async function saveCredentials() {
+    if (savingCreds) return;
     if (!email || password.length < 8) return;
+    setSavingCreds(true);
     try {
       await apiFetch('/api/user/credentials', {
         method: 'PUT',
@@ -215,6 +247,8 @@ export function ProfilePage() {
       console.error('Save credentials failed:', e);
       haptics.error();
       toast('Failed to save credentials', 'error');
+    } finally {
+      setSavingCreds(false);
     }
   }
 
@@ -424,11 +458,19 @@ export function ProfilePage() {
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
           <button
             className="profile-secondary-btn"
+            disabled={savingQuiet}
             onClick={() => { setQuietStart(''); setQuietEnd(''); saveQuietHours(); }}
           >
             Turn off
           </button>
-          <button className="profile-save-btn" style={{ flex: 1 }} onClick={saveQuietHours}>Save</button>
+          <button
+            className="profile-save-btn"
+            style={{ flex: 1 }}
+            disabled={savingQuiet}
+            onClick={saveQuietHours}
+          >
+            {savingQuiet ? 'Saving…' : 'Save'}
+          </button>
         </div>
       </BottomSheet>
 
@@ -487,10 +529,12 @@ export function ProfilePage() {
         <button
           className="profile-save-btn"
           style={{ width: '100%', marginTop: 16 }}
-          disabled={!email || password.length < 8}
+          disabled={!email || password.length < 8 || savingCreds}
           onClick={saveCredentials}
         >
-          {me.has_password ? 'Update credentials' : 'Save credentials'}
+          {savingCreds
+            ? 'Saving…'
+            : me.has_password ? 'Update credentials' : 'Save credentials'}
         </button>
       </BottomSheet>
 

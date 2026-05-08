@@ -859,5 +859,64 @@
     "back_reports": "◀️ Reportes",
     "error_content": "📋 <b>Suscripción de Reporte</b>\n\n⚠️ No se pudo generar el reporte.",
     "sending": "📋 Generando su reporte programado de <b>{rtype}</b>..."
+  },
+  "risk_report": {
+    "title": "Resumen de riesgo para partes interesadas",
+    "usage": "Uso: /risk_report <vehículo> [insurance|owner|broker|auditor|payroll]",
+    "not_assigned": "Solo puede solicitar resúmenes de riesgo para vehículos asignados a usted.",
+    "loading": "Generando resumen de riesgo para {vehicle}…",
+    "caption": "<b>Resumen de Riesgo</b>\nVehículo: {vehicle}\nAudiencia: {audience}\nPuntuación: {score}",
+    "audience": {
+      "insurance": "Seguro",
+      "owner": "Propietario",
+      "broker": "Broker",
+      "auditor": "Auditor",
+      "payroll": "Nómina"
+    }
+  },
+  "payroll": {
+    "title": "Pago por rendimiento",
+    "disabled_for_account": "La función de nómina no está habilitada para esta cuenta.",
+    "my_pay": {
+      "title": "Mi pago",
+      "period": "Período: {start} → {end}",
+      "status": "Estado: {status}",
+      "base": "Pago base: {amount}",
+      "bonuses": "Bonos",
+      "total": "Total: {amount}",
+      "history": "Historial",
+      "no_driver_mapping": "No pudimos vincular tu cuenta a un registro de conductor.",
+      "no_history": "Aún no hay recibos de pago."
+    }
+  },
+  "coaching": {
+    "title": "Coaching automático",
+    "disabled_for_account": "El coaching no está habilitado para esta cuenta.",
+    "topics": {
+      "hard_brake": "Frenado brusco",
+      "harsh_accel": "Aceleración brusca",
+      "speeding": "Exceso de velocidad",
+      "distraction": "Distracción",
+      "following_distance": "Distancia de seguimiento",
+      "fatigue": "Fatiga"
+    },
+    "severity": {
+      "low": "Baja",
+      "medium": "Media",
+      "high": "Alta"
+    },
+    "status": {
+      "pending": "Pendiente",
+      "acknowledged": "Reconocido",
+      "cancelled": "Cancelado"
+    },
+    "my": {
+      "title": "Mi coaching",
+      "no_pending": "Sin asignaciones de coaching pendientes.",
+      "no_driver_mapping": "No se pudo asociar su cuenta a un conductor.",
+      "ack_button": "Reconocer",
+      "ack_done": "Reconocido. ¡Gracias!",
+      "ack_failed": "No se pudo reconocer la asignación."
+    }
   }
 }

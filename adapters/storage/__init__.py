@@ -36,22 +36,24 @@ from .invites import InvitesMixin
 from .chats import ChatsMixin
 from .maintenance import MaintenanceMixin
 from .fuel import FuelMixin
-from .alerts_db import AlertsMixin
+from .alerts import AlertsMixin
 from .settings import SettingsMixin
-from .parking_db import ParkingMixin
-from .camera_db import CameraMixin
+from .parking import ParkingMixin
+from .camera import CameraMixin
 from .schedules import SchedulesMixin
-from .knowledge_db import KnowledgeBaseMixin
-from .permissions_db import PermissionsMixin
-from .driver_vehicles_db import DriverVehiclesMixin
-from .user_companies_db import UserCompaniesMixin
+from .knowledge import KnowledgeBaseMixin
+from .permissions import PermissionsMixin
+from .driver_vehicles import DriverVehiclesMixin
+from .user_companies import UserCompaniesMixin
 
 from .billing import BillingMixin
-from .geofence_db import GeofenceMixin
-from .custom_poi_db import CustomPoiMixin
-from .scorecard_db import ScorecardMixin
-from .platform_db import PlatformDB
-from .tenant_db import TenantDB
+from .geofence import GeofenceMixin
+from .custom_poi import CustomPoiMixin
+from .scorecard import ScorecardMixin
+from .payroll import PayrollMixin
+from .coaching import CoachingMixin
+from .platform import PlatformDB
+from .tenant import TenantDB
 from .tenant_router import TenantRouter, LegacyRouter
 
 
@@ -76,6 +78,8 @@ class Database(
     GeofenceMixin,
     CustomPoiMixin,
     ScorecardMixin,
+    PayrollMixin,
+    CoachingMixin,
     _DatabaseCore,
 ):
     """Async SQLite wrapper with typed helpers.

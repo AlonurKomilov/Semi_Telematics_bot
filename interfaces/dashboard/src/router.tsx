@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense, type ReactNode } from 'react';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -21,6 +21,7 @@ const Cameras          = lazy(() => import('./pages/safety/Cameras'));
 const Parking          = lazy(() => import('./pages/safety/Parking'));
 const Reports          = lazy(() => import('./pages/reports/Reports'));
 const Subscriptions    = lazy(() => import('./pages/reports/Subscriptions'));
+const RiskSummary      = lazy(() => import('./pages/reports/RiskSummary'));
 const FuelCosts        = lazy(() => import('./pages/costs/FuelCosts'));
 const CostPerMile      = lazy(() => import('./pages/costs/CostPerMile'));
 const Maintenance      = lazy(() => import('./pages/maintenance/Tasks'));
@@ -34,6 +35,8 @@ const Invites          = lazy(() => import('./pages/admin/Invites'));
 const RolePermissions  = lazy(() => import('./pages/admin/RolePermissions'));
 const ScorecardRules   = lazy(() => import('./pages/admin/ScorecardRules'));
 const Billing          = lazy(() => import('./pages/admin/Billing'));
+const Payroll          = lazy(() => import('./pages/payroll/Payroll'));
+const Coaching         = lazy(() => import('./pages/coaching/Coaching'));
 const AIChat           = lazy(() => import('./pages/ai/Chat'));
 const AISummary        = lazy(() => import('./pages/ai/Summary'));
 const NotFound         = lazy(() => import('./pages/NotFound'));
@@ -75,16 +78,22 @@ export default function AppRouter() {
         <Route path="fleet/map" element={L(<P perm={['can_location_map', 'can_location_own']}><LiveMap /></P>)} />
         <Route path="fleet/weather" element={L(<P perm="can_faults"><Weather /></P>)} />
 
-        {/* Dispatch */}
-        <Route path="dispatch/alerts" element={L(<P perm={['can_alerts_all', 'can_alerts_own']}><Alerts /></P>)} />
-        <Route path="dispatch/geofences" element={L(<P perm={['can_geofence_all', 'can_geofence_own']}><Geofences /></P>)} />
-        <Route path="dispatch/routes" element={L(<P perm={['can_route_all', 'can_route_own']}><RoutesPage /></P>)} />
+        {/* Fleet (cont.) — routes & geofences live with fleet operations */}
+        <Route path="fleet/routes" element={L(<P perm={['can_route_all', 'can_route_own']}><RoutesPage /></P>)} />
+        <Route path="fleet/geofences" element={L(<P perm={['can_geofence_all', 'can_geofence_own']}><Geofences /></P>)} />
+        <Route path="fleet/parking" element={L(<P perm={['can_alerts_all', 'can_alerts_own']}><Parking /></P>)} />
 
         {/* Safety */}
         <Route path="safety/scorecards" element={L(<P perm={['can_scorecard_all', 'can_scorecard_own']}><Scorecards /></P>)} />
         <Route path="safety/events" element={L(<P perm={['can_events_all', 'can_events_own']}><Events /></P>)} />
         <Route path="safety/cameras" element={L(<P perm="can_faults"><Cameras /></P>)} />
-        <Route path="safety/parking" element={L(<P perm={['can_alerts_all', 'can_alerts_own']}><Parking /></P>)} />
+        <Route path="safety/alerts" element={L(<P perm={['can_alerts_all', 'can_alerts_own']}><Alerts /></P>)} />
+
+        {/* Legacy URL redirects (preserve bookmarks) */}
+        <Route path="dispatch/alerts" element={<Navigate to="/safety/alerts" replace />} />
+        <Route path="dispatch/routes" element={<Navigate to="/fleet/routes" replace />} />
+        <Route path="dispatch/geofences" element={<Navigate to="/fleet/geofences" replace />} />
+        <Route path="safety/parking" element={<Navigate to="/fleet/parking" replace />} />
 
         {/* AI */}
         <Route path="ai/chat" element={L(<P perm="can_faults"><AIChat /></P>)} />
@@ -93,6 +102,7 @@ export default function AppRouter() {
         {/* Reports */}
         <Route path="reports" element={L(<P perm="can_faults"><Reports /></P>)} />
         <Route path="reports/subscriptions" element={L(<Subscriptions />)} />
+        <Route path="reports/risk-summary" element={L(<P perm={['can_risk_report_all', 'can_risk_report_own']}><RiskSummary /></P>)} />
 
         {/* Costs */}
         <Route path="costs/fuel" element={L(<P perm="can_fuel_cost"><FuelCosts /></P>)} />
@@ -114,6 +124,8 @@ export default function AppRouter() {
         <Route path="admin/permissions" element={L(<P perm="can_manage_account"><RolePermissions /></P>)} />
         <Route path="admin/scorecard-rules" element={L(<P perm="can_manage_account"><ScorecardRules /></P>)} />
         <Route path="admin/billing" element={L(<P perm="can_manage_billing"><Billing /></P>)} />
+        <Route path="payroll" element={L(<P perm="can_payroll_admin"><Payroll /></P>)} />
+        <Route path="coaching" element={L(<P perm="can_coaching_admin"><Coaching /></P>)} />
         <Route path="*" element={L(<NotFound />)} />
       </Route>
     </Routes>

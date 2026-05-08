@@ -123,6 +123,22 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         max_instances=1, coalesce=True,
     )
 
+    # ── Phase 2: monthly Pay-for-Performance payroll job ─────────
+    from capabilities.payroll.jobs import run_monthly_payroll_job
+    scheduler.add_job(
+        run_monthly_payroll_job, "cron",
+        day=1, hour=2, minute=0, args=[app], id="payroll_monthly",
+        max_instances=1, coalesce=True,
+    )
+
+    # ── Phase 3: nightly Auto Coaching evaluation ─────────────────
+    from capabilities.coaching.jobs import run_nightly_coaching_job
+    scheduler.add_job(
+        run_nightly_coaching_job, "cron",
+        hour=3, minute=30, args=[app], id="coaching_nightly",
+        max_instances=1, coalesce=True,
+    )
+
     # ── Phase C: telemetry warehouse ingestion ─────────────────────
     # Imported lazily so non-warehouse deployments (older installs that
     # haven't run migrations yet) can still boot the scheduler.

@@ -38,4 +38,25 @@ EXPOSE 8000 8001
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD curl -f http://localhost:8000/api/health || exit 1
 
+# Default entrypoint runs the legacy single-process model (API + bot +
+# scheduler in one Python process). For multi-worker production deploys,
+# split into THREE containers and override CMD:
+#
+#   API container (multiple workers, horizontally scalable):
+#     CMD ["python3", "-m", "gunicorn", "-c", "gunicorn.conf.py",
+#          "interfaces.api.app:app"]
+#     ENV ENABLE_API=1 ENABLE_BOT=0 ENABLE_SCHEDULER=0
+#
+#   Bot/scheduler container (single instance — owns Telegram polling
+#   + APScheduler, holds the global scheduler lock in Redis):
+#     CMD ["python3", "run.py"]
+#     ENV ENABLE_API=0 ENABLE_BOT=1 ENABLE_SCHEDULER=1
+#
+#   ARQ worker container (Phase 3 — horizontally scalable, runs
+#   background jobs enqueued by the API or by ARQ cron):
+#     CMD ["python3", "-m", "arq", "capabilities.jobs.worker.WorkerSettings"]
+#     ENV ENABLE_API=0 ENABLE_BOT=0 ENABLE_SCHEDULER=0
+#
+# All three containers share the same Redis + DB so the API can enqueue
+# jobs the worker picks up.
 CMD ["python3", "run.py"]

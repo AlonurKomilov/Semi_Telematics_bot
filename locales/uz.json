@@ -859,5 +859,64 @@
     "back_reports": "◀️ Hisobotlar",
     "error_content": "📋 <b>Hisobot Obunasi</b>\n\n⚠️ Hisobotni yaratib bolmadi.",
     "sending": "📋 Rejalashtirilgan <b>{rtype}</b> hisobotingiz yaratilmoqda..."
+  },
+  "risk_report": {
+    "title": "Manfaatdor tomonlar uchun xavf hisoboti",
+    "usage": "Foydalanish: /risk_report <yuk mashinasi> [insurance|owner|broker|auditor|payroll]",
+    "not_assigned": "Faqat sizga biriktirilgan yuk mashinalari uchun xavf hisobotini so‘rashingiz mumkin.",
+    "loading": "{vehicle} uchun xavf hisoboti tayyorlanmoqda…",
+    "caption": "<b>Xavf hisoboti</b>\nMashina: {vehicle}\nAuditoriya: {audience}\nBall: {score}",
+    "audience": {
+      "insurance": "Sug‘urta",
+      "owner": "Egasi",
+      "broker": "Broker",
+      "auditor": "Auditor",
+      "payroll": "Ish haqi"
+    }
+  },
+  "payroll": {
+    "title": "Natija uchun to'lov",
+    "disabled_for_account": "Bu akkaunt uchun ish haqi xizmati yoqilmagan.",
+    "my_pay": {
+      "title": "Mening to'lovim",
+      "period": "Davr: {start} → {end}",
+      "status": "Holat: {status}",
+      "base": "Asosiy to'lov: {amount}",
+      "bonuses": "Bonuslar",
+      "total": "Jami: {amount}",
+      "history": "Tarix",
+      "no_driver_mapping": "Akkauntingizni haydovchi yozuvi bilan moslab bo'lmadi.",
+      "no_history": "Hozircha to'lov varaqasi yo'q."
+    }
+  },
+  "coaching": {
+    "title": "Avto-kouching",
+    "disabled_for_account": "Kouching ushbu hisob uchun yoqilmagan.",
+    "topics": {
+      "hard_brake": "Keskin tormozlash",
+      "harsh_accel": "Keskin tezlanish",
+      "speeding": "Tezlikdan oshish",
+      "distraction": "Chalg'ish",
+      "following_distance": "Masofa",
+      "fatigue": "Charchoq"
+    },
+    "severity": {
+      "low": "Past",
+      "medium": "O'rta",
+      "high": "Yuqori"
+    },
+    "status": {
+      "pending": "Kutilmoqda",
+      "acknowledged": "Qabul qilindi",
+      "cancelled": "Bekor qilindi"
+    },
+    "my": {
+      "title": "Mening kouchingim",
+      "no_pending": "Kutilayotgan kouching topshiriqlari yo'q.",
+      "no_driver_mapping": "Hisobingizni haydovchi bilan bog'lab bo'lmadi.",
+      "ack_button": "Qabul qilish",
+      "ack_done": "Qabul qilindi. Rahmat!",
+      "ack_failed": "Topshiriqni qabul qilib bo'lmadi."
+    }
   }
 }

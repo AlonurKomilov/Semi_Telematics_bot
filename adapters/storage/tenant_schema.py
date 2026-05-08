@@ -402,6 +402,8 @@ async def create_tables(conn) -> None:
             ON safety_event_log(account_id, occurred_at DESC);
         CREATE INDEX IF NOT EXISTS idx_safety_event_log_vehicle
             ON safety_event_log(account_id, vehicle_id, occurred_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_safety_event_log_vehicle_name
+            ON safety_event_log(account_id, vehicle_name, occurred_at DESC);
         CREATE INDEX IF NOT EXISTS idx_safety_event_log_driver
             ON safety_event_log(account_id, driver_id, occurred_at DESC);
         CREATE INDEX IF NOT EXISTS idx_safety_event_log_type
@@ -550,5 +552,136 @@ async def create_tables(conn) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_geofence_definitions_company
             ON geofence_definitions(account_id, company_code);
+
+        -- ── Payroll (Pay-for-Performance) ─────────────────────────
+        -- Per-account configurable bonus rules.  ``kind`` selects how
+        -- the rule is evaluated:
+        --   'score_threshold'  — triggers when driver's avg score over
+        --                        ``period_days`` is >= ``score_min``.
+        --   'incident_count'   — triggers when count of safety events
+        --                        of ``event_type`` over period is
+        --                        <= ``max_count``.
+        CREATE TABLE IF NOT EXISTS bonus_rules (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            name            TEXT    NOT NULL,
+            kind            TEXT    NOT NULL DEFAULT 'score_threshold',
+            score_min       REAL,
+            event_type      TEXT,
+            max_count       INTEGER,
+            period_days     INTEGER NOT NULL DEFAULT 30,
+            amount_cents    INTEGER NOT NULL DEFAULT 0,
+            active          INTEGER NOT NULL DEFAULT 1,
+            created_at      TEXT    NOT NULL DEFAULT '',
+            updated_at      TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_bonus_rules_account
+            ON bonus_rules(account_id, active);
+
+        CREATE TABLE IF NOT EXISTS driver_pay_settings (
+            account_id      INTEGER NOT NULL,
+            driver_id       TEXT    NOT NULL,
+            base_pay_cents  INTEGER NOT NULL DEFAULT 0,
+            opt_in          INTEGER NOT NULL DEFAULT 1,
+            updated_at      TEXT    NOT NULL DEFAULT '',
+            PRIMARY KEY (account_id, driver_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS payroll_runs (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            period_start    TEXT    NOT NULL,
+            period_end      TEXT    NOT NULL,
+            status          TEXT    NOT NULL DEFAULT 'draft',
+            created_by      INTEGER NOT NULL DEFAULT 0,
+            created_at      TEXT    NOT NULL DEFAULT '',
+            finalized_at    TEXT,
+            total_cents     INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(account_id, period_start, period_end)
+        );
+        CREATE INDEX IF NOT EXISTS idx_payroll_runs_account
+            ON payroll_runs(account_id, period_start);
+
+        CREATE TABLE IF NOT EXISTS payroll_run_items (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id            INTEGER NOT NULL REFERENCES payroll_runs(id),
+            driver_id         TEXT    NOT NULL,
+            driver_name       TEXT    NOT NULL DEFAULT '',
+            base_pay_cents    INTEGER NOT NULL DEFAULT 0,
+            bonus_total_cents INTEGER NOT NULL DEFAULT 0,
+            total_cents       INTEGER NOT NULL DEFAULT 0,
+            breakdown_json    TEXT    NOT NULL DEFAULT '[]',
+            created_at        TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_payroll_items_run
+            ON payroll_run_items(run_id);
+        CREATE INDEX IF NOT EXISTS idx_payroll_items_driver
+            ON payroll_run_items(driver_id);
+
+        -- ── Coaching (Auto Coaching) ──────────────────────────────
+        -- Per-account topic catalogue.  Seeded with defaults by
+        -- ``tenant_migrations.migrate_seed_coaching_topics``.
+        CREATE TABLE IF NOT EXISTS coaching_topics (
+            account_id       INTEGER NOT NULL,
+            key              TEXT    NOT NULL,
+            label            TEXT    NOT NULL DEFAULT '',
+            default_message  TEXT    NOT NULL DEFAULT '',
+            active           INTEGER NOT NULL DEFAULT 1,
+            updated_at       TEXT    NOT NULL DEFAULT '',
+            PRIMARY KEY (account_id, key)
+        );
+
+        -- Coaching rules — score-threshold or incident-count triggers.
+        CREATE TABLE IF NOT EXISTS coaching_rules (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            name            TEXT    NOT NULL,
+            kind            TEXT    NOT NULL DEFAULT 'score_threshold',
+            score_max       REAL,
+            event_type      TEXT,
+            min_count       INTEGER,
+            period_days     INTEGER NOT NULL DEFAULT 7,
+            topic_key       TEXT    NOT NULL DEFAULT '',
+            severity        TEXT    NOT NULL DEFAULT 'medium',
+            message         TEXT    NOT NULL DEFAULT '',
+            active          INTEGER NOT NULL DEFAULT 1,
+            created_at      TEXT    NOT NULL DEFAULT '',
+            updated_at      TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_coaching_rules_account
+            ON coaching_rules(account_id, active);
+
+        -- One row per assigned coaching action.  ``rule_id`` is NULL
+        -- for manual assignments.  Idempotency: engine refuses to
+        -- create another pending row for the same (driver, topic_key)
+        -- within ``period_days``.
+        CREATE TABLE IF NOT EXISTS coaching_assignments (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            driver_id       TEXT    NOT NULL,
+            rule_id         INTEGER,
+            topic_key       TEXT    NOT NULL DEFAULT '',
+            severity        TEXT    NOT NULL DEFAULT 'medium',
+            reason          TEXT    NOT NULL DEFAULT '',
+            status          TEXT    NOT NULL DEFAULT 'pending',
+            assigned_by     INTEGER NOT NULL DEFAULT 0,
+            assigned_at     TEXT    NOT NULL DEFAULT '',
+            due_at          TEXT,
+            acknowledged_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_coaching_assignments_account
+            ON coaching_assignments(account_id, status);
+        CREATE INDEX IF NOT EXISTS idx_coaching_assignments_driver
+            ON coaching_assignments(account_id, driver_id, status);
+
+        CREATE TABLE IF NOT EXISTS coaching_acknowledgments (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            assignment_id   INTEGER NOT NULL REFERENCES coaching_assignments(id),
+            driver_id       TEXT    NOT NULL,
+            acked_at        TEXT    NOT NULL DEFAULT '',
+            note            TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_coaching_acks_assignment
+            ON coaching_acknowledgments(assignment_id);
     """)
     await conn.commit()

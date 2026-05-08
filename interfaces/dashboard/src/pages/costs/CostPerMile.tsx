@@ -1,8 +1,17 @@
-import { useEffect, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { DollarSign } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataTable from '../../components/DataTable';
+import {
+  PageHeader,
+  EmptyState,
+  ErrorState,
+  TableSkeleton,
+} from '../../components/shell';
 import type { CPMVehicle, CPMResponse, AnyColumn } from '../../types';
+
+// recharts is ~120 KB gzipped — defer it so the table paints first.
+const CpmChart = lazy(() => import('../../components/CpmChart'));
 
 const cols: AnyColumn[] = [
   { key: 'vehicle_name', label: 'Vehicle', sortable: true },
@@ -59,7 +68,11 @@ export default function CostPerMile() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Cost per Mile</h1>
+      <PageHeader
+        icon={DollarSign}
+        title="Cost per Mile"
+        description="Operating cost per mile by vehicle, calculated from your fuel entries and odometer readings. Compare to fleet average to spot outliers."
+      />
 
       {/* Fleet summary cards */}
       {fleet && (
@@ -83,16 +96,16 @@ export default function CostPerMile() {
         </div>
       )}
 
-      {error && <p className="text-destructive text-sm mb-3">{error}</p>}
+      {error && <div className="mb-3"><ErrorState message={error} /></div>}
 
       {loading ? (
-        <p className="text-muted-foreground">Loading...</p>
+        <TableSkeleton rows={6} cols={6} />
       ) : vehicles.length === 0 ? (
-        <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground">
-          <p className="text-4xl mb-3">📊</p>
-          <p>No cost-per-mile data yet.</p>
-          <p className="text-sm mt-1">Add at least 2 fuel entries per vehicle with odometer readings.</p>
-        </div>
+        <EmptyState
+          icon={DollarSign}
+          title="No cost-per-mile data yet"
+          description="Add at least 2 fuel entries per vehicle with odometer readings — we'll compute CPM as soon as we have enough samples."
+        />
       ) : (
         <>
           <p className="text-sm text-muted-foreground mb-2">{vehicles.length} vehicle{vehicles.length !== 1 && 's'} tracked</p>
@@ -100,25 +113,9 @@ export default function CostPerMile() {
           {/* CPM bar chart */}
           <div className="bg-card border border-border rounded-xl p-5 mb-6">
             <p className="text-sm text-muted-foreground mb-3 font-medium">Cost per Mile by Vehicle</p>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart
-                data={vehicles.slice(0, 15).map((v) => ({ name: v.vehicle_name, cpm: v.cpm }))}
-                margin={{ top: 4, right: 20, left: 0, bottom: 40 }}
-              >
-                <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 11 }} angle={-35} textAnchor="end" interval={0} />
-                <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={(v) => `$${v.toFixed(2)}`} />
-                <Tooltip
-                  formatter={(v) => [`$${(v as number).toFixed(3)}`, 'CPM']}
-                  contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, color: '#f9fafb' }}
-                />
-                {fleet && <ReferenceLine y={fleet.avg_cpm} stroke="#6b7280" strokeDasharray="4 4" label={{ value: 'avg', fill: '#6b7280', fontSize: 11 }} />}
-                <Bar dataKey="cpm" radius={[4, 4, 0, 0]}>
-                  {vehicles.slice(0, 15).map((v) => (
-                    <Cell key={v.vehicle_name} fill={v.cpm > 0.6 ? '#ef4444' : v.cpm > 0.4 ? '#eab308' : '#22c55e'} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <Suspense fallback={<div className="h-[220px] bg-muted/40 rounded animate-pulse" />}>
+              <CpmChart vehicles={vehicles} avgCpm={fleet?.avg_cpm ?? null} />
+            </Suspense>
           </div>
 
           <DataTable

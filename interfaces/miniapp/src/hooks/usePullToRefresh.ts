@@ -15,6 +15,11 @@ export function usePullToRefresh<T extends HTMLElement>({ onRefresh, threshold =
   const [pulling, setPulling] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const startY = useRef<number | null>(null);
+  // Live mirror of `pulling` so onEnd reads the current value without
+  // having to be a dep of the touch-listener effect.  Without this mirror,
+  // every onMove → setPulling re-runs the effect mid-gesture and tears
+  // the listeners down/up ~60×/s, which made PTR fire randomly.
+  const pullingRef = useRef(0);
   const cbRef = useRef(onRefresh);
   cbRef.current = onRefresh;
 
@@ -30,13 +35,16 @@ export function usePullToRefresh<T extends HTMLElement>({ onRefresh, threshold =
       if (startY.current === null) return;
       const dy = e.touches[0].clientY - startY.current;
       if (dy > 0) {
-        setPulling(Math.min(dy, threshold * 1.5));
+        const next = Math.min(dy, threshold * 1.5);
+        pullingRef.current = next;
+        setPulling(next);
       }
     };
     const onEnd = async () => {
-      if (startY.current === null) { setPulling(0); return; }
-      const final = pulling;
+      if (startY.current === null) { pullingRef.current = 0; setPulling(0); return; }
+      const final = pullingRef.current;
       startY.current = null;
+      pullingRef.current = 0;
       setPulling(0);
       if (final >= threshold) {
         setRefreshing(true);
@@ -55,7 +63,7 @@ export function usePullToRefresh<T extends HTMLElement>({ onRefresh, threshold =
       el.removeEventListener('touchend', onEnd);
       el.removeEventListener('touchcancel', onEnd);
     };
-  }, [enabled, threshold, pulling]);
+  }, [enabled, threshold]);
 
   return { ref, pulling, refreshing };
 }

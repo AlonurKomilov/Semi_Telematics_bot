@@ -40,6 +40,8 @@ async def run_all(conn) -> None:
     await migrate_add_vehicle_health_snapshot(conn)
     await migrate_add_fault_weather_efficiency(conn)
     await migrate_add_geofence_definitions(conn)
+    await migrate_add_payroll_tables(conn)
+    await migrate_add_coaching_tables(conn)
 
 
 async def migrate_add_parking_map_image(conn) -> None:
@@ -459,6 +461,8 @@ async def migrate_warehouse_tables(conn) -> None:
             ON safety_event_log(account_id, occurred_at DESC);
         CREATE INDEX IF NOT EXISTS idx_safety_event_log_vehicle
             ON safety_event_log(account_id, vehicle_id, occurred_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_safety_event_log_vehicle_name
+            ON safety_event_log(account_id, vehicle_name, occurred_at DESC);
         CREATE INDEX IF NOT EXISTS idx_safety_event_log_driver
             ON safety_event_log(account_id, driver_id, occurred_at DESC);
         CREATE INDEX IF NOT EXISTS idx_safety_event_log_type
@@ -669,3 +673,154 @@ async def migrate_add_geofence_definitions(conn) -> None:
     """)
     await conn.commit()
     logger.info("Migration: geofence_definitions ensured")
+
+
+async def migrate_add_payroll_tables(conn) -> None:
+    """Create the 4 payroll tables on existing tenant DBs (Phase 2 P4P).
+
+    Idempotent — uses CREATE TABLE IF NOT EXISTS.
+    """
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS bonus_rules (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                name            TEXT    NOT NULL,
+                kind            TEXT    NOT NULL DEFAULT 'score_threshold',
+                score_min       REAL,
+                event_type      TEXT,
+                max_count       INTEGER,
+                period_days     INTEGER NOT NULL DEFAULT 30,
+                amount_cents    INTEGER NOT NULL DEFAULT 0,
+                active          INTEGER NOT NULL DEFAULT 1,
+                created_at      TEXT    NOT NULL DEFAULT '',
+                updated_at      TEXT    NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_bonus_rules_account
+                ON bonus_rules(account_id, active);
+
+            CREATE TABLE IF NOT EXISTS driver_pay_settings (
+                account_id      INTEGER NOT NULL,
+                driver_id       TEXT    NOT NULL,
+                base_pay_cents  INTEGER NOT NULL DEFAULT 0,
+                opt_in          INTEGER NOT NULL DEFAULT 1,
+                updated_at      TEXT    NOT NULL DEFAULT '',
+                PRIMARY KEY (account_id, driver_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS payroll_runs (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                period_start    TEXT    NOT NULL,
+                period_end      TEXT    NOT NULL,
+                status          TEXT    NOT NULL DEFAULT 'draft',
+                created_by      INTEGER NOT NULL DEFAULT 0,
+                created_at      TEXT    NOT NULL DEFAULT '',
+                finalized_at    TEXT,
+                total_cents     INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(account_id, period_start, period_end)
+            );
+            CREATE INDEX IF NOT EXISTS idx_payroll_runs_account
+                ON payroll_runs(account_id, period_start);
+
+            CREATE TABLE IF NOT EXISTS payroll_run_items (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id            INTEGER NOT NULL,
+                driver_id         TEXT    NOT NULL,
+                driver_name       TEXT    NOT NULL DEFAULT '',
+                base_pay_cents    INTEGER NOT NULL DEFAULT 0,
+                bonus_total_cents INTEGER NOT NULL DEFAULT 0,
+                total_cents       INTEGER NOT NULL DEFAULT 0,
+                breakdown_json    TEXT    NOT NULL DEFAULT '[]',
+                created_at        TEXT    NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_payroll_items_run
+                ON payroll_run_items(run_id);
+            CREATE INDEX IF NOT EXISTS idx_payroll_items_driver
+                ON payroll_run_items(driver_id);
+        """)
+        await conn.commit()
+        logger.info("Migration: payroll tables ensured")
+    except Exception as e:
+        logger.error("Payroll tables migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_add_coaching_tables(conn) -> None:
+    """Create the 4 coaching tables on existing tenant DBs (Phase 3 Auto Coaching).
+
+    Idempotent — uses CREATE TABLE IF NOT EXISTS.  Also seeds the default
+    topic catalogue per (account_id) lazily — engine.evaluate handles
+    seeding for known account ids when first invoked.
+    """
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS coaching_topics (
+                account_id       INTEGER NOT NULL,
+                key              TEXT    NOT NULL,
+                label            TEXT    NOT NULL DEFAULT '',
+                default_message  TEXT    NOT NULL DEFAULT '',
+                active           INTEGER NOT NULL DEFAULT 1,
+                updated_at       TEXT    NOT NULL DEFAULT '',
+                PRIMARY KEY (account_id, key)
+            );
+
+            CREATE TABLE IF NOT EXISTS coaching_rules (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                name            TEXT    NOT NULL,
+                kind            TEXT    NOT NULL DEFAULT 'score_threshold',
+                score_max       REAL,
+                event_type      TEXT,
+                min_count       INTEGER,
+                period_days     INTEGER NOT NULL DEFAULT 7,
+                topic_key       TEXT    NOT NULL DEFAULT '',
+                severity        TEXT    NOT NULL DEFAULT 'medium',
+                message         TEXT    NOT NULL DEFAULT '',
+                active          INTEGER NOT NULL DEFAULT 1,
+                created_at      TEXT    NOT NULL DEFAULT '',
+                updated_at      TEXT    NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_coaching_rules_account
+                ON coaching_rules(account_id, active);
+
+            CREATE TABLE IF NOT EXISTS coaching_assignments (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                driver_id       TEXT    NOT NULL,
+                rule_id         INTEGER,
+                topic_key       TEXT    NOT NULL DEFAULT '',
+                severity        TEXT    NOT NULL DEFAULT 'medium',
+                reason          TEXT    NOT NULL DEFAULT '',
+                status          TEXT    NOT NULL DEFAULT 'pending',
+                assigned_by     INTEGER NOT NULL DEFAULT 0,
+                assigned_at     TEXT    NOT NULL DEFAULT '',
+                due_at          TEXT,
+                acknowledged_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_coaching_assignments_account
+                ON coaching_assignments(account_id, status);
+            CREATE INDEX IF NOT EXISTS idx_coaching_assignments_driver
+                ON coaching_assignments(account_id, driver_id, status);
+
+            CREATE TABLE IF NOT EXISTS coaching_acknowledgments (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                assignment_id   INTEGER NOT NULL,
+                driver_id       TEXT    NOT NULL,
+                acked_at        TEXT    NOT NULL DEFAULT '',
+                note            TEXT    NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_coaching_acks_assignment
+                ON coaching_acknowledgments(assignment_id);
+        """)
+        await conn.commit()
+        logger.info("Migration: coaching tables ensured")
+    except Exception as e:
+        logger.error("Coaching tables migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass

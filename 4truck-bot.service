@@ -1,5 +1,5 @@
 [Unit]
-Description=4truck Telegram Bot
+Description=4truck Telegram bot + scheduler (single-instance worker)
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=60
@@ -17,7 +17,14 @@ TimeoutStopSec=10
 StandardOutput=append:/home/abcdev/projects/Semi_Telematics_bot/bot.log
 StandardError=append:/home/abcdev/projects/Semi_Telematics_bot/bot.log
 EnvironmentFile=/home/abcdev/projects/Semi_Telematics_bot/.env
-Environment=ENABLE_API=1
+# Service-split flags: this unit owns the Telegram bot + APScheduler
+# jobs. ENABLE_API=0 because the multi-worker API runs in
+# 4truck-api.service. Keeping bot + scheduler in ONE process is
+# intentional — Telegram polling needs a single consumer, and
+# APScheduler uses a Redis-backed global lock to ensure only one
+# instance runs jobs (so even if this unit is accidentally launched
+# twice, only one wins the lock).
+Environment=ENABLE_API=0
 Environment=ENABLE_BOT=1
 Environment=ENABLE_SCHEDULER=1
 

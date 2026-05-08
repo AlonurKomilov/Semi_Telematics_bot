@@ -11,8 +11,30 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet.markercluster';
 import { Placeholder } from '@telegram-apps/telegram-ui';
-import { Icon24TargetOutline, Icon24ReplayOutline, Icon24Replay } from '@vkontakte/icons';
-import { apiJSON } from '../api/client';
+import {
+  Icon24TargetOutline,
+  Icon24ReplayOutline,
+  Icon24Replay,
+  Icon24SpeedometerMiddleOutline,
+  Icon24DropsOutline,
+  Icon24WaterDropOutline,
+  Icon24WarningTriangleOutline,
+  Icon24KeyOutline,
+  Icon24LocationOutline,
+  Icon24RecentOutline,
+  Icon24CheckCircleOutline,
+  Icon24TruckOutline,
+  Icon24LockOutline,
+  Icon24GlobeOutline,
+} from '@vkontakte/icons';
+import type { ComponentType } from 'react';
+
+// Loose icon type — VK Icon components accept a width/height number.
+// Don't include `aria-hidden` here because VK uses Booleanish ("true" |
+// "false" | boolean), which narrows incompatibly with React.SVGProps;
+// JSX spread accepts it fine without the type intersection.
+type IconCmp = ComponentType<{ width?: number; height?: number }>;
+import { apiJSON, classifyError, type ClassifiedError } from '../api/client';
 import type { VehicleFeature, GeofenceFeature } from '../types';
 import { BottomSheet } from '../components/BottomSheet';
 import { RelativeTime } from '../components/RelativeTime';
@@ -47,8 +69,28 @@ interface Props {
  * Moving trucks with a heading render a directional arrow circle
  * (rotated to the direction of travel). All other states render a
  * teardrop pin with a truck silhouette.
+ *
+ * Results are memoized by (status, headingBucket) so a 30s refresh of
+ * 50 vehicles doesn't allocate 50 fresh L.divIcon objects when nothing
+ * has actually changed.  Heading is bucketed to 15° so a tiny GPS
+ * jitter doesn't bust the cache.
  */
-function createIcon(status: string, heading?: number | null) {
+const ICON_CACHE = new Map<string, L.DivIcon>();
+const HEADING_BUCKET_DEG = 15;
+
+function iconKey(status: string, heading?: number | null): string {
+  if (status === 'moving' && heading != null) {
+    const bucket = Math.round(heading / HEADING_BUCKET_DEG) * HEADING_BUCKET_DEG;
+    return `moving:${((bucket % 360) + 360) % 360}`;
+  }
+  return status;
+}
+
+function createIcon(status: string, heading?: number | null): L.DivIcon {
+  const key = iconKey(status, heading);
+  const cached = ICON_CACHE.get(key);
+  if (cached) return cached;
+
   const FILL: Record<string, string> = {
     moving:  '#30d158',
     idle:    '#ff9f0a',
@@ -58,18 +100,22 @@ function createIcon(status: string, heading?: number | null) {
 
   // ── Directional arrow for moving trucks ──────────────────────────
   if (status === 'moving' && heading != null) {
+    const bucket = Math.round(heading / HEADING_BUCKET_DEG) * HEADING_BUCKET_DEG;
+    const rot = ((bucket % 360) + 360) % 360;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36"
-        style="transform:rotate(${heading}deg);transform-origin:50% 50%;display:block">
+        style="transform:rotate(${rot}deg);transform-origin:50% 50%;display:block">
       <circle cx="18" cy="18" r="15" fill="${fill}" stroke="white" stroke-width="2.5"/>
       <path d="M18 7 L26.5 26 L18 21.5 L9.5 26 Z" fill="white" opacity="0.95"/>
     </svg>`;
-    return L.divIcon({
+    const icon = L.divIcon({
       className: `vehicle-pin ${status}`,
       html: svg,
       iconSize:    [36, 36],
       iconAnchor:  [18, 18],
       popupAnchor: [0, -20],
     });
+    ICON_CACHE.set(key, icon);
+    return icon;
   }
 
   // ── Teardrop pin with truck silhouette for idle / stopped ────────
@@ -89,13 +135,15 @@ function createIcon(status: string, heading?: number | null) {
       <circle cx="18" cy="10.5" r="2.5"/>
     </g>
   </svg>`;
-  return L.divIcon({
+  const icon = L.divIcon({
     className: `vehicle-pin ${status}`,
     html: svg,
     iconSize:    [38, 47],
     iconAnchor:  [19, 45],
     popupAnchor: [0, -47],
   });
+  ICON_CACHE.set(key, icon);
+  return icon;
 }
 
 function truncate(s: string, max: number) {
@@ -140,7 +188,7 @@ export function MapPage({ active }: Props) {
 
   const [sheet, setSheet] = useState<SheetVehicle | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<ClassifiedError | null>(null);
   const [vehicleCount, setVehicleCount] = useState(0);
   const [primary, setPrimary] = useState<SheetVehicle | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
@@ -275,16 +323,16 @@ export function MapPage({ active }: Props) {
         }
         firstLoadRef.current = false;
       }
-      setError(false);
+      setError(null);
     } catch (e) {
       console.error('Failed to load vehicles:', e);
-      setError(true);
+      setError(classifyError(e));
     }
   }
 
   async function loadGeofences(layer: L.LayerGroup) {
     try {
-      const data = await apiJSON<{ features: GeofenceFeature[] }>('/api/map/geofences');
+      const data = await apiJSON<{ features: GeofenceFeature[] }>('/api/fleet/geofences');
       layer.clearLayers();
 
       const style = { color: '#5eaaf0', weight: 2, opacity: 0.6, fillOpacity: 0.1 };
@@ -339,7 +387,7 @@ export function MapPage({ active }: Props) {
     try {
       const encoded = encodeURIComponent(primary.name);
       const data = await apiJSON<{ points: { lat: number; lng: number; speed_mph: number; time: string }[] }>(
-        `/api/dispatch/route/${encoded}`
+        `/api/fleet/routes/${encoded}`
       );
       const pts = data.points ?? [];
       if (pts.length < 2) {
@@ -481,76 +529,107 @@ export function MapPage({ active }: Props) {
         </div>
       )}
 
-      {!loading && error && (
-        <div className="centered" style={{ position: 'absolute', inset: 0 }}>
-          <Placeholder
-            header="No Connection"
-            description="Could not refresh truck locations. Check your network and try again."
-            action={
-              <button
-                className="retry-btn"
-                onClick={() => {
-                  const map = mapRef.current;
-                  const cluster = clusterRef.current;
-                  const geo = geofenceRef.current;
-                  if (!map || !cluster) return;
-                  setError(false);
-                  setLoading(true);
-                  Promise.all([
-                    loadVehicles(map, cluster),
-                    geo ? loadGeofences(geo) : Promise.resolve(),
-                  ]).finally(() => setLoading(false));
-                }}
-              >Retry</button>
-            }
-          >📡</Placeholder>
-        </div>
-      )}
+      {!loading && error && (() => {
+        // Pick a kind-appropriate icon so screen readers announce the
+        // right thing ("lock" → auth, "globe" → no connection, "warning"
+        // → server / generic).
+        const ErrIcon =
+          error.kind === 'auth'    ? Icon24LockOutline
+          : error.kind === 'network' ? Icon24GlobeOutline
+          : Icon24WarningTriangleOutline;
+        const header =
+          error.kind === 'auth'    ? 'Session expired'
+          : error.kind === 'server'  ? 'Server error'
+          : error.kind === 'network' ? 'No connection'
+          : 'Could not load map';
+        return (
+          <div className="centered" style={{ position: 'absolute', inset: 0 }}>
+            <Placeholder
+              header={header}
+              description={error.message}
+              action={error.kind === 'auth' ? null : (
+                <button
+                  className="retry-btn"
+                  onClick={() => {
+                    const map = mapRef.current;
+                    const cluster = clusterRef.current;
+                    const geo = geofenceRef.current;
+                    if (!map || !cluster) return;
+                    setError(null);
+                    setLoading(true);
+                    Promise.all([
+                      loadVehicles(map, cluster),
+                      geo ? loadGeofences(geo) : Promise.resolve(),
+                    ]).finally(() => setLoading(false));
+                  }}
+                >Retry</button>
+              )}
+            >
+              <ErrIcon width={48} height={48} aria-label={header} style={{ opacity: 0.4 }} />
+            </Placeholder>
+          </div>
+        );
+      })()}
 
       {/* Truck detail bottom sheet */}
       <BottomSheet
         open={!!sheet}
         onClose={() => setSheet(null)}
-        title={sheet ? `🚛 ${sheet.name}` : ''}
+        title={sheet ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <Icon24TruckOutline width={20} height={20} />
+            {sheet.name}
+          </span>
+        ) : ''}
       >
-        {sheet && (
-          <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ fontSize: 14, color: 'var(--tgui--hint_color)' }}>{sheet.company || '—'}</span>
-              <span className={`status-badge ${sheet.status}`}>{sheet.status}</span>
-            </div>
-            {[
-              ['⚡ Speed',    fmtSpeed(sheet.speed_mph, units)],
-              ['⛽ Fuel',     sheet.fuel_percent != null ? `${Math.round(sheet.fuel_percent)}%` : '—'],
-              ['🧪 DEF',      sheet.def_percent != null ? `${Math.round(sheet.def_percent)}%` : '—'],
-              ['⚠️ Faults',   sheet.fault_count > 0 ? String(sheet.fault_count) : '✓ None'],
-              ['🔑 Engine',   sheet.engine_state],
-              ['📍 Location', truncate(sheet.address || 'Unknown', 80)],
-              ['🕒 Updated',  sheet.updated_at ? new Date(sheet.updated_at).toLocaleString() : '—'],
-            ].map(([label, value]) => (
-              <div key={label} style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                padding: '10px 0',
-                borderBottom: '1px solid rgba(128,128,128,0.14)',
-                gap: 12,
-              }}>
-                <span style={{ color: 'var(--tgui--hint_color)', fontSize: 14, flexShrink: 0 }}>{label}</span>
-                <span style={{ fontSize: 14, textAlign: 'right' }}>{value}</span>
+        {sheet && (() => {
+          // Icon-prefixed sheet rows.  Switched from emoji prefixes
+          // (⚡ ⛽ 🧪 ⚠️ 🔑 📍 🕒) to VK icons for visual consistency
+          // with the rest of the app and stable widths across iOS/Android.
+          type Row = {
+            key: string;
+            icon: IconCmp;
+            label: string;
+            value: string;
+          };
+          const rows: Row[] = [
+            { key: 'speed',    icon: Icon24SpeedometerMiddleOutline, label: 'Speed',    value: fmtSpeed(sheet.speed_mph, units) },
+            { key: 'fuel',     icon: Icon24DropsOutline,             label: 'Fuel',     value: sheet.fuel_percent != null ? `${Math.round(sheet.fuel_percent)}%` : '—' },
+            { key: 'def',      icon: Icon24WaterDropOutline,         label: 'DEF',      value: sheet.def_percent != null ? `${Math.round(sheet.def_percent)}%` : '—' },
+            { key: 'faults',   icon: sheet.fault_count > 0 ? Icon24WarningTriangleOutline : Icon24CheckCircleOutline,
+              label: 'Faults', value: sheet.fault_count > 0 ? String(sheet.fault_count) : 'None' },
+            { key: 'engine',   icon: Icon24KeyOutline,               label: 'Engine',   value: sheet.engine_state },
+            { key: 'location', icon: Icon24LocationOutline,          label: 'Location', value: truncate(sheet.address || 'Unknown', 80) },
+            { key: 'updated',  icon: Icon24RecentOutline,            label: 'Updated',  value: sheet.updated_at ? new Date(sheet.updated_at).toLocaleString() : '—' },
+          ];
+          return (
+            <>
+              <div className="sheet-row sheet-row--header">
+                <span className="sheet-row__label">{sheet.company || '—'}</span>
+                <span className={`status-badge ${sheet.status}`}>{sheet.status}</span>
               </div>
-            ))}
-            <button
-              className="retry-btn"
-              style={{ width: '100%', marginTop: 16 }}
-              onClick={() => {
-                if (sheet.latitude != null && sheet.longitude != null) {
-                  mapRef.current?.setView([sheet.latitude, sheet.longitude], 16, { animate: true });
-                }
-                setSheet(null);
-              }}
-            >Center on truck</button>
-          </>
-        )}
+              {rows.map(({ key, icon: Icon, label, value }) => (
+                <div key={key} className="sheet-row">
+                  <span className="sheet-row__label">
+                    <Icon width={16} height={16} aria-hidden />
+                    {label}
+                  </span>
+                  <span className="sheet-row__value">{value}</span>
+                </div>
+              ))}
+              <button
+                className="retry-btn"
+                style={{ width: '100%', marginTop: 16 }}
+                onClick={() => {
+                  if (sheet.latitude != null && sheet.longitude != null) {
+                    mapRef.current?.setView([sheet.latitude, sheet.longitude], 16, { animate: true });
+                  }
+                  setSheet(null);
+                }}
+              >Center on truck</button>
+            </>
+          );
+        })()}
       </BottomSheet>
     </div>
   );

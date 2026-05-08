@@ -1,7 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Settings as SettingsIcon } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import type { SettingsResponse, WorkSchedule, User, BotConfig } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import {
+  PageHeader,
+  ErrorState,
+  CardSkeleton,
+} from '../../components/shell';
 
 const ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'driver'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -26,8 +33,7 @@ const TIMEZONES = [
 
 export default function Settings() {
   const { user: authUser } = useAuth();
-  const [data, setData] = useState<SettingsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -44,7 +50,6 @@ export default function Settings() {
   const [edits, setEdits] = useState<Record<string, string>>({});
 
   // Bot configuration (owner only)
-  const [botConfig, setBotConfig] = useState<BotConfig | null>(null);
   const [botToken, setBotToken] = useState('');
   const [botSaving, setBotSaving] = useState(false);
   const [botSuccess, setBotSuccess] = useState('');
@@ -58,23 +63,25 @@ export default function Settings() {
   const [sEnd, setSEnd] = useState(17);
   const [sRole, setSRole] = useState('driver');
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const d = await apiJSON<SettingsResponse>('/admin/settings');
-      setData(d);
-      setEdits(d.settings || {});
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
-    finally { setLoading(false); }
-  }, []);
+  const { data, isLoading: loading, error: queryError } = useQuery({
+    queryKey: ['admin-settings'],
+    queryFn: () => apiJSON<SettingsResponse>('/admin/settings'),
+  });
+  const fetchError = queryError instanceof Error ? queryError.message : '';
+  const load = () => qc.invalidateQueries({ queryKey: ['admin-settings'] });
 
-  useEffect(() => { load(); }, [load]);
+  // Sync edits to fetched settings whenever they arrive.
+  useEffect(() => { if (data) setEdits(data.settings || {}); }, [data]);
 
-  // Load bot config (owner only)
-  useEffect(() => {
-    if (authUser?.role !== 'owner') return;
-    apiJSON<BotConfig>('/admin/bot-config').then(setBotConfig).catch(() => {});
-  }, [authUser?.role]);
+  // Bot config — only fetched for owners. Mutations write into the cache
+  // directly so we don't need a separate `setBotConfig` setter.
+  const isOwner = authUser?.role === 'owner';
+  const { data: botConfig } = useQuery({
+    queryKey: ['admin-bot-config'],
+    queryFn: () => apiJSON<BotConfig>('/admin/bot-config'),
+    enabled: isOwner,
+  });
+  const setBotConfig = (next: BotConfig | null) => qc.setQueryData(['admin-bot-config'], next);
 
   const handleConnectBot = async () => {
     setBotSaving(true); setBotError(''); setBotSuccess('');
@@ -152,12 +159,30 @@ export default function Settings() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
   };
 
-  if (loading) return <p className="text-muted-foreground">Loading...</p>;
+  if (loading) {
+    return (
+      <div>
+        <PageHeader
+          icon={SettingsIcon}
+          title="Settings"
+          description="Account preferences, language, time zone, and Telegram bot configuration."
+        />
+        <div className="space-y-4">
+          <CardSkeleton height="h-40" />
+          <CardSkeleton height="h-40" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-bold">Settings</h1>
-      {error && <p className="text-destructive text-sm">{error}</p>}
+      <PageHeader
+        icon={SettingsIcon}
+        title="Settings"
+        description="Account preferences, language, time zone, and Telegram bot configuration. Each section saves independently."
+      />
+      {(error || fetchError) && <ErrorState message={error || fetchError} />}
 
       {/* My Preferences */}
       <section className="bg-card border border-border rounded-xl p-5">

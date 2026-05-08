@@ -1,11 +1,24 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Bell, CheckCircle2 } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
+import {
+  PageHeader,
+  EmptyState,
+  ErrorState,
+  TableSkeleton,
+  LastUpdated,
+  FilterBar,
+  FilterChips,
+} from '../../components/shell';
 import type { Alert, AlertsResponse, BulkAckResponse } from '../../types';
 import type { AnyColumn } from '../../types';
 
 const ALERT_TYPES = ['all', 'fault', 'health', 'fuel', 'events', 'parking'] as const;
+type AlertType = typeof ALERT_TYPES[number];
+type Tab = 'pending' | 'history';
 
 function TypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
@@ -34,43 +47,48 @@ const historyColumns: AnyColumn[] = [
   {
     key: 'created_at',
     label: 'Created',
-    render: (v) => v ? new Date(v as string).toLocaleString() : '—',
+    render: (v) => (v ? new Date(v as string).toLocaleString() : '—'),
   },
   {
     key: 'acknowledged_at',
     label: 'Acknowledged',
-    render: (v) => v ? new Date(v as string).toLocaleString() : '—',
+    render: (v) => (v ? new Date(v as string).toLocaleString() : '—'),
   },
 ];
 
 export default function Alerts() {
-  const [tab, setTab] = useState<'pending' | 'history'>('pending');
-  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const qc = useQueryClient();
+  const [tab, setTab] = useState<Tab>('pending');
   const [selected, setSelected] = useState<Set<string | number>>(new Set());
-  const [typeFilter, setTypeFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState<AlertType>('all');
   const [vehicleSearch, setVehicleSearch] = useState('');
   const [days, setDays] = useState(7);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [bulkError, setBulkError] = useState('');
   const [acking, setAcking] = useState(false);
 
-  const fetchAlerts = useCallback(() => {
-    setLoading(true);
-    setError('');
-    const params = new URLSearchParams();
-    if (typeFilter !== 'all') params.set('alert_type', typeFilter);
-    if (vehicleSearch) params.set('vehicle', vehicleSearch);
-    if (tab === 'history') params.set('days', String(days));
-
-    const path = tab === 'pending' ? '/alerts/pending' : '/alerts/history';
-    const qs = params.toString();
-    apiJSON<AlertsResponse>(`${path}${qs ? `?${qs}` : ''}`)
-      .then((d) => { setAlerts(d.alerts || []); setSelected(new Set()); })
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load alerts'))
-      .finally(() => setLoading(false));
-  }, [tab, typeFilter, vehicleSearch, days]);
-
-  useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
+  const queryKey = ['alerts', tab, typeFilter, vehicleSearch, tab === 'history' ? days : null] as const;
+  const {
+    data,
+    isLoading: loading,
+    isFetching,
+    error: queryError,
+    refetch,
+    dataUpdatedAt,
+  } = useQuery<AlertsResponse>({
+    queryKey,
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (typeFilter !== 'all') params.set('alert_type', typeFilter);
+      if (vehicleSearch) params.set('vehicle', vehicleSearch);
+      if (tab === 'history') params.set('days', String(days));
+      const path = tab === 'pending' ? '/alerts/pending' : '/alerts/history';
+      const qs = params.toString();
+      return apiJSON<AlertsResponse>(`${path}${qs ? `?${qs}` : ''}`);
+    },
+    placeholderData: (prev) => prev,
+  });
+  const alerts: Alert[] = data?.alerts ?? [];
+  const fetchError = queryError instanceof Error ? queryError.message : '';
 
   async function ackSelected() {
     if (selected.size === 0) return;
@@ -81,10 +99,10 @@ export default function Alerts() {
         method: 'POST',
         body: { ids },
       });
-      setAlerts((prev) => prev.filter((a) => !selected.has(a.id)));
       setSelected(new Set());
+      qc.invalidateQueries({ queryKey: ['alerts'] });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Bulk acknowledge failed');
+      setBulkError(e instanceof Error ? e.message : 'Bulk acknowledge failed');
     } finally {
       setAcking(false);
     }
@@ -98,39 +116,46 @@ export default function Alerts() {
     });
   }
 
-  if (error && alerts.length === 0) return <p className="text-destructive">{error}</p>;
-
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Alerts</h1>
-        <div className="flex items-center gap-3">
-          {tab === 'pending' && selected.size > 0 && (
-            <button
-              onClick={ackSelected}
-              disabled={acking}
-              className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-lg text-sm font-medium transition"
-            >
-              {acking ? 'Acknowledging...' : `Acknowledge (${selected.size})`}
-            </button>
-          )}
-          <button
-            onClick={fetchAlerts}
-            className="text-sm text-muted-foreground hover:text-foreground transition"
-          >
-            ↻ Refresh
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        icon={Bell}
+        title="Alerts"
+        description={
+          tab === 'pending'
+            ? 'Notifications that still need acknowledgement. Tick rows to bulk-acknowledge.'
+            : 'Past alerts and how they were resolved. Use filters to narrow down by vehicle or type.'
+        }
+        actions={
+          <div className="flex items-center gap-3">
+            {tab === 'pending' && selected.size > 0 && (
+              <button
+                onClick={ackSelected}
+                disabled={acking}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-md text-xs font-medium text-primary-foreground transition"
+              >
+                <CheckCircle2 size={13} />
+                {acking ? 'Acknowledging…' : `Acknowledge (${selected.size})`}
+              </button>
+            )}
+            <LastUpdated
+              fetchedAt={dataUpdatedAt}
+              isFetching={isFetching}
+              onRefresh={refetch}
+            />
+          </div>
+        }
+      />
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-4">
+      <div className="flex gap-1 mb-4 border-b border-border">
         {(['pending', 'history'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition capitalize ${
-              tab === t ? 'bg-muted/80 text-foreground' : 'text-muted-foreground hover:text-foreground'
+            className={`px-4 py-2 text-sm font-medium transition capitalize border-b-2 -mb-px ${
+              tab === t
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
             {t}
@@ -138,43 +163,52 @@ export default function Alerts() {
         ))}
       </div>
 
-      {/* Filters bar */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div className="flex gap-1">
-          {ALERT_TYPES.map((at) => (
-            <button
-              key={at}
-              onClick={() => setTypeFilter(at)}
-              className={`text-xs px-2.5 py-1 rounded capitalize ${
-                typeFilter === at ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'
-              }`}
-            >
-              {at}
-            </button>
-          ))}
-        </div>
+      <FilterBar>
+        <FilterChips options={ALERT_TYPES} value={typeFilter} onChange={setTypeFilter} />
         <input
           type="text"
-          placeholder="Filter by vehicle..."
+          placeholder="Vehicle name…"
           value={vehicleSearch}
           onChange={(e) => setVehicleSearch(e.target.value)}
-          className="bg-muted border border-border rounded px-2.5 py-1 text-sm placeholder-muted-foreground focus:outline-none focus:border-ring w-48"
+          className="bg-background border border-border rounded-md px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:border-ring w-44"
         />
         {tab === 'history' && (
           <select
             value={days}
             onChange={(e) => setDays(Number(e.target.value))}
-            className="bg-muted border border-border rounded px-2 py-1 text-sm text-foreground/80"
+            className="bg-background border border-border rounded-md px-2 py-1.5 text-sm text-foreground/80"
           >
             {[7, 14, 30, 60, 90].map((d) => (
               <option key={d} value={d}>{d} days</option>
             ))}
           </select>
         )}
-      </div>
+      </FilterBar>
 
-      {loading && alerts.length === 0 ? (
-        <p className="text-muted-foreground">Loading...</p>
+      {bulkError && (
+        <div className="mb-3">
+          <ErrorState message={bulkError} />
+        </div>
+      )}
+
+      {fetchError && alerts.length === 0 ? (
+        <ErrorState
+          title="Couldn't load alerts"
+          message={fetchError}
+          onRetry={() => refetch()}
+        />
+      ) : loading && alerts.length === 0 ? (
+        <TableSkeleton rows={6} cols={5} />
+      ) : alerts.length === 0 ? (
+        <EmptyState
+          icon={Bell}
+          title={tab === 'pending' ? 'No pending alerts' : 'No alerts in this window'}
+          description={
+            tab === 'pending'
+              ? 'You\'re all caught up — every alert has been acknowledged.'
+              : 'Try widening the date range or removing filters.'
+          }
+        />
       ) : tab === 'pending' ? (
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full text-sm">
@@ -196,9 +230,6 @@ export default function Alerts() {
               </tr>
             </thead>
             <tbody>
-              {alerts.length === 0 && (
-                <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">No pending alerts</td></tr>
-              )}
               {alerts.map((a) => (
                 <tr key={a.id} className="border-t border-border hover:bg-muted/50">
                   <td className="px-4 py-3">
@@ -210,17 +241,27 @@ export default function Alerts() {
                   </td>
                   <td className="px-4 py-3">{a.vehicle_name}</td>
                   <td className="px-4 py-3"><TypeBadge type={a.alert_type || 'unknown'} /></td>
-                  <td className="px-4 py-3 text-muted-foreground">{a.created_at ? new Date(a.created_at).toLocaleString() : '—'}</td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {a.created_at ? new Date(a.created_at).toLocaleString() : '—'}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : (
-        <DataTable columns={historyColumns} data={alerts as unknown as Record<string, unknown>[]} searchKey="vehicle_name" />
+        <DataTable
+          columns={historyColumns}
+          data={alerts as unknown as Record<string, unknown>[]}
+          searchKey="vehicle_name"
+        />
       )}
 
-      <p className="text-xs text-muted-foreground mt-2">{alerts.length} alert{alerts.length !== 1 ? 's' : ''}</p>
+      {alerts.length > 0 && (
+        <p className="text-xs text-muted-foreground mt-2">
+          {alerts.length} alert{alerts.length !== 1 ? 's' : ''}
+        </p>
+      )}
     </div>
   );
 }

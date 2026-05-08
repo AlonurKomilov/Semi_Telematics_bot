@@ -24,7 +24,7 @@ import pytest_asyncio
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from adapters.storage.tenant_db import TenantDB
+from adapters.storage.tenant import TenantDB
 from capabilities.telemetry import warehouse_reader, ingestor
 
 
@@ -132,11 +132,11 @@ class TestSafetyEventLog:
         old = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat(timespec="seconds")
         recent = _now_iso()
         await tenant.insert_safety_events(1, [
-            {"samsara_event_id": "old1", "vehicle_id": "v1", "occurred_at": old,
+            {"samsara_event_id": "old1", "vehicle_id": "v1", "vehicle_name": "TRK-1", "occurred_at": old,
              "event_type": "harsh_brake"},
-            {"samsara_event_id": "new1", "vehicle_id": "v1", "occurred_at": recent,
+            {"samsara_event_id": "new1", "vehicle_id": "v1", "vehicle_name": "TRK-1", "occurred_at": recent,
              "event_type": "harsh_brake", "driver_id": "d1"},
-            {"samsara_event_id": "new2", "vehicle_id": "v2", "occurred_at": recent,
+            {"samsara_event_id": "new2", "vehicle_id": "v2", "vehicle_name": "TRK-2", "occurred_at": recent,
              "event_type": "speeding"},
         ])
         rows = await tenant.get_safety_events_warehouse(1, days=7)
@@ -149,6 +149,9 @@ class TestSafetyEventLog:
 
         only_v2 = await tenant.get_safety_events_warehouse(1, days=7, vehicle_id="v2")
         assert {r["samsara_event_id"] for r in only_v2} == {"new2"}
+
+        only_trk2 = await tenant.get_safety_events_warehouse(1, days=7, vehicle_name="TRK-2")
+        assert {r["samsara_event_id"] for r in only_trk2} == {"new2"}
 
     @pytest.mark.asyncio
     async def test_raw_json_round_trip(self, tenant):

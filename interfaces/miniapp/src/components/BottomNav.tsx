@@ -37,7 +37,7 @@ export function BottomNav({ page, onNavigate, alertCount = 0, userPerms = {} }: 
     : ALL_TABS; // show all tabs while perms are still loading
 
   return (
-    <div className="tabbar-wrap">
+    <nav className="tabbar-wrap" aria-label="Primary">
       <Tabbar>
         {tabs.map(tab => (
           <Tabbar.Item
@@ -61,6 +61,6 @@ export function BottomNav({ page, onNavigate, alertCount = 0, userPerms = {} }: 
           </Tabbar.Item>
         ))}
       </Tabbar>
-    </div>
+    </nav>
   );
 }

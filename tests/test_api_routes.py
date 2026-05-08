@@ -110,6 +110,8 @@ class TestAuth:
             assert r.status_code == 200
             data = r.json()
             assert data["role"] == "owner"
+            assert data["payroll_enabled"] is False
+            assert data["coaching_enabled"] is False
 
     async def test_refresh_token(self, db_and_app):
         app = db_and_app["app"]

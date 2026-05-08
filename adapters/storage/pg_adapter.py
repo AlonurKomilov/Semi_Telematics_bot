@@ -22,6 +22,7 @@ codebase never needs to know which backend is active.
 
 from __future__ import annotations
 
+import os
 import re
 import logging
 from typing import Any, AsyncIterator
@@ -39,6 +40,91 @@ _INT_PK_RE = re.compile(
     r"\bINTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT\b", re.IGNORECASE
 )
 
+# SQLite ``datetime('now')`` / ``datetime('now', '-7 days')`` and ``date('now', ...)``
+# Both literal-offset and parameterised forms are matched. The parameterised
+# form preserves the ``?`` so the subsequent ``? → $N`` pass picks it up.
+#   datetime('now')                    → NOW()
+#   datetime('now', '-7 days')         → (NOW() + INTERVAL '-7 days')
+#   datetime('now', ?)                 → (NOW() + (?::interval))
+#   date('now', ...)                   → (NOW() + ...)::date  (same shape)
+_DATETIME_NOW_BARE_RE = re.compile(
+    r"\bdatetime\(\s*'now'\s*\)", re.IGNORECASE,
+)
+_DATE_NOW_BARE_RE = re.compile(
+    r"\bdate\(\s*'now'\s*\)", re.IGNORECASE,
+)
+_DATETIME_NOW_OFFSET_LITERAL_RE = re.compile(
+    r"\bdatetime\(\s*'now'\s*,\s*'([^']*)'\s*\)", re.IGNORECASE,
+)
+_DATE_NOW_OFFSET_LITERAL_RE = re.compile(
+    r"\bdate\(\s*'now'\s*,\s*'([^']*)'\s*\)", re.IGNORECASE,
+)
+_DATETIME_NOW_OFFSET_PARAM_RE = re.compile(
+    r"\bdatetime\(\s*'now'\s*,\s*\?\s*\)", re.IGNORECASE,
+)
+_DATE_NOW_OFFSET_PARAM_RE = re.compile(
+    r"\bdate\(\s*'now'\s*,\s*\?\s*\)", re.IGNORECASE,
+)
+
+# ``INSERT OR IGNORE INTO foo (...) VALUES (...)`` is SQLite-specific.
+# PostgreSQL equivalent is ``INSERT INTO foo (...) VALUES (...) ON CONFLICT DO NOTHING``.
+# We split the translation into two steps:
+#   (1) strip the ``OR IGNORE`` modifier so the row reads as plain INSERT
+#   (2) append ``ON CONFLICT DO NOTHING`` to the end of the statement
+# That way the existing ``RETURNING id`` augmentation in execute() still applies
+# and we don't have to teach the rest of the adapter about the modifier.
+_INSERT_OR_IGNORE_RE = re.compile(
+    r"\bINSERT\s+OR\s+IGNORE\b", re.IGNORECASE,
+)
+# ``INSERT OR REPLACE`` is harder — PG's ``ON CONFLICT DO UPDATE`` requires
+# explicitly enumerating columns to set. We don't currently have any callers
+# using OR REPLACE (everyone uses ``ON CONFLICT DO UPDATE`` directly), but
+# detect it so we can warn instead of producing silent corruption.
+_INSERT_OR_REPLACE_RE = re.compile(
+    r"\bINSERT\s+OR\s+REPLACE\b", re.IGNORECASE,
+)
+
+# Patterns that we *recognise* as SQLite-specific but don't currently handle.
+# When detected we emit a WARNING log line tagged ``pg_adapter:untranslated``
+# so prod logs surface every query the adapter passed through unchanged that
+# might fail in PG. Keep this list minimal — false positives create noise.
+_UNTRANSLATED_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\bjson_extract\b", re.IGNORECASE),
+     "json_extract — use PG's '->' / '->>' / 'jsonb_path_query' instead"),
+    (re.compile(r"\bjulianday\b", re.IGNORECASE),
+     "julianday — use EXTRACT(EPOCH FROM ...) / 86400.0 in PG"),
+    (re.compile(r"\bstrftime\b", re.IGNORECASE),
+     "strftime — use to_char() in PG"),
+    (re.compile(r"\bprintf\(", re.IGNORECASE),
+     "printf — use format() / concat() in PG"),
+    (re.compile(r"\bWITHOUT\s+ROWID\b", re.IGNORECASE),
+     "WITHOUT ROWID — silently dropped; PG always has implicit row identity"),
+    (re.compile(r"\brandom\(\)", re.IGNORECASE),
+     "random() — works in PG but returns float in [0, 1) not int (use random()::int * N)"),
+]
+
+# Compatibility-mode flag — set when we're actually running against PG.
+# Tests can monkeypatch this.
+_LOG_UNTRANSLATED = os.getenv("PG_ADAPTER_DEBUG", "").lower() in ("1", "true", "yes")
+
+
+def _warn_if_untranslated(sql: str) -> None:
+    """Surface SQL patterns we recognise but don't translate.
+
+    Log level is INFO so it shows in normal production logs without spamming
+    DEBUG; `PG_ADAPTER_DEBUG=1` raises to WARNING for the dual-write phase.
+    """
+    if not _LOG_UNTRANSLATED:
+        return
+    for pat, msg in _UNTRANSLATED_PATTERNS:
+        if pat.search(sql):
+            logger.warning(
+                "pg_adapter:untranslated %s | sql=%s",
+                msg,
+                sql[:200] + ("…" if len(sql) > 200 else ""),
+            )
+            break  # one warning per query is enough
+
 
 def _sqlite_to_pg_sql(sql: str) -> str:
     """Translate a single SQLite SQL statement to PostgreSQL-compatible SQL.
@@ -47,32 +133,103 @@ def _sqlite_to_pg_sql(sql: str) -> str:
       - ? → $N positional parameters
       - AUTOINCREMENT → (removed; SERIAL handles it)
       - INTEGER PRIMARY KEY AUTOINCREMENT → SERIAL PRIMARY KEY
-      - datetime('now') → NOW()
+      - datetime('now') / date('now') → NOW() / NOW()::date
+      - datetime('now', '-7 days') / date('now', '-7 days')
+        → (NOW() + INTERVAL '-7 days') / ((NOW() + INTERVAL '-7 days')::date)
+      - datetime('now', ?) / date('now', ?)
+        → (NOW() + ($N::interval)) / ((NOW() + ($N::interval))::date)
+      - INSERT OR IGNORE → INSERT … ON CONFLICT DO NOTHING
       - PRAGMA → empty string (caller should skip)
       - IF NOT EXISTS on indexes → kept (PG supports it)
+
+    Recognised-but-untranslated patterns (json_extract, julianday, strftime,
+    printf, WITHOUT ROWID, random()) emit an INFO log so the dual-write
+    phase can catch them in prod logs.
     """
     if _PRAGMA_RE.match(sql):
         return ""  # caller skips empty strings
+
+    _warn_if_untranslated(sql)
 
     # SERIAL primary key
     sql = _INT_PK_RE.sub("SERIAL PRIMARY KEY", sql)
     sql = _AUTOINCREMENT_RE.sub("", sql)
 
-    # SQLite datetime() → PG NOW()
-    sql = re.sub(r"datetime\('now'\)", "NOW()", sql, flags=re.IGNORECASE)
+    # ── datetime() / date() rewrites ────────────────────────
+    # Order matters: handle the offset forms (literal + param) before the
+    # bare form so the bare-form regex doesn't eat the wrapping quotes.
+    sql = _DATETIME_NOW_OFFSET_LITERAL_RE.sub(
+        lambda m: f"(NOW() + INTERVAL '{m.group(1)}')", sql,
+    )
+    sql = _DATE_NOW_OFFSET_LITERAL_RE.sub(
+        lambda m: f"((NOW() + INTERVAL '{m.group(1)}')::date)", sql,
+    )
+    sql = _DATETIME_NOW_OFFSET_PARAM_RE.sub("(NOW() + (?::interval))", sql)
+    sql = _DATE_NOW_OFFSET_PARAM_RE.sub("((NOW() + (?::interval))::date)", sql)
+    sql = _DATETIME_NOW_BARE_RE.sub("NOW()", sql)
+    sql = _DATE_NOW_BARE_RE.sub("(NOW()::date)", sql)
 
-    # ? → $1, $2, …
+    # ``datetime(col)`` / ``date(col)`` — column-coercion form. SQLite uses
+    # this to normalise a TEXT-stored timestamp for comparison; PG has no
+    # ``datetime()`` function, so we cast the column to ``timestamptz`` /
+    # ``date`` instead. Runs AFTER the ``datetime('now', …)`` rewrites so
+    # those don't get matched by the column regex below.
+    _COL = r"[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)?"
+    sql = re.sub(
+        rf"\bdatetime\(\s*({_COL})\s*\)",
+        r"(\1::timestamptz)",
+        sql,
+        flags=re.IGNORECASE,
+    )
+    sql = re.sub(
+        rf"\bdate\(\s*({_COL})\s*\)",
+        r"(\1::date)",
+        sql,
+        flags=re.IGNORECASE,
+    )
+
+    # ── INSERT OR IGNORE ────────────────────────────────────
+    is_insert_or_ignore = bool(_INSERT_OR_IGNORE_RE.search(sql))
+    if is_insert_or_ignore:
+        sql = _INSERT_OR_IGNORE_RE.sub("INSERT", sql)
+
+    # INSERT OR REPLACE → log warning; we don't auto-translate because it
+    # requires column enumeration the regex can't reliably extract.
+    if _INSERT_OR_REPLACE_RE.search(sql):
+        logger.warning(
+            "pg_adapter: INSERT OR REPLACE not auto-translated — "
+            "rewrite to ON CONFLICT DO UPDATE manually | sql=%s",
+            sql[:200],
+        )
+
+    # ── ? → $1, $2, … ────────────────────────────────────────
     count = 0
     result = []
     i = 0
+    in_string = False
     while i < len(sql):
-        if sql[i] == "?" and (i == 0 or sql[i - 1] != "'"):
+        ch = sql[i]
+        if ch == "'":
+            in_string = not in_string
+        if ch == "?" and not in_string:
             count += 1
             result.append(f"${count}")
         else:
-            result.append(sql[i])
+            result.append(ch)
         i += 1
-    return "".join(result)
+    sql = "".join(result)
+
+    # ── Append ON CONFLICT DO NOTHING for INSERT OR IGNORE ──
+    # Done after parameter rewrite so we don't accidentally inject extra
+    # placeholders or trip the simple ``startswith("INSERT")`` check
+    # later in execute(). Strip a trailing semicolon if present.
+    if is_insert_or_ignore:
+        trimmed = sql.rstrip().rstrip(";").rstrip()
+        # Avoid double-appending if someone already wrote ON CONFLICT.
+        if "ON CONFLICT" not in trimmed.upper():
+            sql = trimmed + " ON CONFLICT DO NOTHING"
+
+    return sql
 
 
 # ── asyncpg cursor shim ────────────────────────────────────────────

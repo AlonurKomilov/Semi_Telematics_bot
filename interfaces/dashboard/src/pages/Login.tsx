@@ -171,7 +171,7 @@ export default function Login() {
     <div className="flex flex-col items-center justify-center min-h-screen bg-background px-4">
       <div className="mb-8 text-center">
         <h1 className="text-4xl font-bold mb-2">🚛 4truck</h1>
-        <p className="text-muted-foreground">Fleet Management Dashboard</p>
+        <p className="text-muted-foreground">Telematics platform for drivers, dispatch, safety & operations</p>
       </div>
 
       <div className="bg-card rounded-xl p-8 shadow-lg border border-border w-full max-w-sm">

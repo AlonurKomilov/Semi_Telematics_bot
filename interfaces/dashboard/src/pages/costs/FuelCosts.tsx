@@ -1,6 +1,13 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Fuel, Plus } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataTable from '../../components/DataTable';
+import {
+  PageHeader,
+  EmptyState,
+  ErrorState,
+  TableSkeleton,
+} from '../../components/shell';
 import type {
   FuelEntry, FuelEntriesResponse,
   FuelSummaryVehicle, FuelSummaryResponse,
@@ -111,15 +118,20 @@ export default function FuelCosts() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Fuel Costs</h1>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 bg-primary hover:bg-primary/90 rounded-lg text-sm font-medium transition"
-        >
-          {showForm ? 'Cancel' : '+ Add Entry'}
-        </button>
-      </div>
+      <PageHeader
+        icon={Fuel}
+        title="Fuel Costs"
+        description="Log fuel purchases and track per-vehicle spend over time. Combined with odometer readings this powers the Cost-per-Mile report."
+        actions={
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
+          >
+            <Plus size={13} />
+            {showForm ? 'Cancel' : 'Add entry'}
+          </button>
+        }
+      />
 
       {/* Add form */}
       {showForm && (
@@ -205,10 +217,27 @@ export default function FuelCosts() {
         </div>
       )}
 
-      {error && <p className="text-destructive text-sm mb-3">{error}</p>}
+      {error && <div className="mb-3"><ErrorState message={error} /></div>}
 
       {loading ? (
-        <p className="text-muted-foreground">Loading...</p>
+        <TableSkeleton rows={6} cols={5} />
+      ) : (tab === 'entries' ? entries : summaryData).length === 0 ? (
+        <EmptyState
+          icon={Fuel}
+          title={tab === 'entries' ? 'No fuel entries yet' : 'No fuel data to summarize'}
+          description={tab === 'entries' ? 'Log your first fill-up — gallons, price, and odometer reading.' : 'Add fuel entries to see per-vehicle totals.'}
+          action={
+            tab === 'entries' ? (
+              <button
+                onClick={() => setShowForm(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
+              >
+                <Plus size={13} />
+                Add entry
+              </button>
+            ) : undefined
+          }
+        />
       ) : (
         <DataTable
           columns={tab === 'entries' ? entryCols : summaryCols}

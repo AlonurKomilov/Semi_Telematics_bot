@@ -1,7 +1,15 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Wrench, Plus, X } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
+import {
+  PageHeader,
+  EmptyState,
+  ErrorState,
+  TableSkeleton,
+} from '../../components/shell';
 import type { MaintenanceTask, AnyColumn } from '../../types';
 
 const STATUS_OPTIONS = ['pending', 'in_progress', 'completed', 'cancelled'];
@@ -174,17 +182,12 @@ function MilesPicker({
 // ── Main component ─────────────────────────────────────────────
 
 export default function Tasks() {
-  const [tasks, setTasks] = useState<MaintenanceTask[]>([]);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
   const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [selected, setSelected] = useState<MaintenanceTask | null>(null);
   const [saving, setSaving] = useState(false);
-
-  // Fleet vehicle list for the vehicle picker
-  const [fleetVehicles, setFleetVehicles] = useState<FleetVehicle[]>([]);
-  const [fleetLoading, setFleetLoading] = useState(false);
 
   // Add form
   const [fVehicle, setFVehicle] = useState('');
@@ -201,16 +204,15 @@ export default function Tasks() {
   const [eDueDate, setEDueDate] = useState('');
   const [eDueMiles, setEDueMiles] = useState('');
 
-  // Load fleet vehicles whenever the add form is opened
-  useEffect(() => {
-    if (!showAdd) return;
-    if (fleetVehicles.length > 0) return; // already loaded
-    setFleetLoading(true);
-    apiJSON<{ vehicles: FleetVehicle[] }>('/vehicles?page_size=200')
-      .then((d) => setFleetVehicles(d.vehicles || []))
-      .catch(() => setFleetVehicles([]))
-      .finally(() => setFleetLoading(false));
-  }, [showAdd]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Fleet vehicle list for the vehicle picker — only fetched once the
+  // add form opens (the picker is the only consumer). Cached for 60s by
+  // the global QueryClient default so reopening the form is instant.
+  const { data: fleetData, isLoading: fleetLoading } = useQuery({
+    queryKey: ['maintenance-fleet-vehicles'],
+    queryFn: () => apiJSON<{ vehicles: FleetVehicle[] }>('/vehicles?page_size=200'),
+    enabled: showAdd,
+  });
+  const fleetVehicles = fleetData?.vehicles ?? [];
 
   const fetchOdometer = async (name: string) => {
     if (!name.trim()) { setFOdometer(null); return; }
@@ -224,17 +226,18 @@ export default function Tasks() {
     finally { setFOdometerLoading(false); }
   };
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const qs = statusFilter ? '?status=' + statusFilter : '';
-    try {
-      const data = await apiJSON<{ tasks: MaintenanceTask[] }>('/maintenance/tasks' + qs);
-      setTasks(data.tasks || []);
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
-    finally { setLoading(false); }
-  }, [statusFilter]);
-
-  useEffect(() => { load(); }, [load]);
+  const tasksKey = ['maintenance-tasks', statusFilter] as const;
+  const { data: tasksData, isLoading: loading, error: queryError } = useQuery({
+    queryKey: tasksKey,
+    queryFn: () => {
+      const qs = statusFilter ? '?status=' + statusFilter : '';
+      return apiJSON<{ tasks: MaintenanceTask[] }>('/maintenance/tasks' + qs);
+    },
+    placeholderData: (prev) => prev,
+  });
+  const tasks = tasksData?.tasks ?? [];
+  const fetchError = queryError instanceof Error ? queryError.message : '';
+  const load = () => qc.invalidateQueries({ queryKey: ['maintenance-tasks'] });
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true); setError('');
@@ -246,7 +249,7 @@ export default function Tasks() {
         due_date: fDueDate || undefined,
         due_miles: fDueMiles ? Number(fDueMiles) : undefined,
       }});
-      setShowAdd(false); setFVehicle(''); setFDesc(''); setFDueDate(''); setFDueMiles(''); setFOdometer(null); setFleetVehicles([]);
+      setShowAdd(false); setFVehicle(''); setFDesc(''); setFDueDate(''); setFDueMiles(''); setFOdometer(null);
       load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     finally { setSaving(false); }
@@ -277,20 +280,29 @@ export default function Tasks() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Maintenance</h1>
-        <div className="flex items-center gap-3">
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-muted border border-border rounded px-3 py-1.5 text-sm focus:outline-none focus:border-ring">
-            <option value="">All Statuses</option>
-            {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
-          </select>
-          <button onClick={() => { setShowAdd(!showAdd); setError(''); if (showAdd) setFleetVehicles([]); }} className="px-4 py-2 bg-primary hover:bg-primary/90 rounded-lg text-sm font-medium transition">
-            {showAdd ? 'Cancel' : '+ New Task'}
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        icon={Wrench}
+        title="Maintenance"
+        description="Scheduled service tasks across all vehicles — inspections, oil changes, tire rotations and more. Click a row to update status."
+        actions={
+          <div className="flex items-center gap-2">
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-background border border-border rounded-md px-2 py-1.5 text-sm focus:outline-none focus:border-ring">
+              <option value="">All statuses</option>
+              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+            </select>
+            <button onClick={() => { setShowAdd(!showAdd); setError(''); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-md text-xs font-medium text-primary-foreground transition">
+              <Plus size={13} />
+              {showAdd ? 'Cancel' : 'New task'}
+            </button>
+          </div>
+        }
+      />
 
-      {error && <p className="text-destructive text-sm mb-3">{error}</p>}
+      {(error || fetchError) && (
+        <div className="mb-3">
+          <ErrorState message={error || fetchError} />
+        </div>
+      )}
 
       {showAdd && (
         <form onSubmit={handleAdd} className="bg-card border border-border rounded-xl p-4 mb-6 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
@@ -349,7 +361,21 @@ export default function Tasks() {
         </form>
       )}
 
-      {loading ? <p className="text-muted-foreground">Loading...</p> : (
+      {loading && tasks.length === 0 ? (
+        <TableSkeleton rows={6} cols={7} />
+      ) : tasks.length === 0 ? (
+        <EmptyState
+          icon={Wrench}
+          title={statusFilter ? `No ${statusFilter.replace(/_/g, ' ')} tasks` : 'No maintenance tasks yet'}
+          description="Create your first task — set a due date, due miles, or both, and we'll alert you as it approaches."
+          action={
+            <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition">
+              <Plus size={13} />
+              New task
+            </button>
+          }
+        />
+      ) : (
         <DataTable columns={columns} data={tasks as unknown as Record<string, unknown>[]} searchKey="vehicle_name" onRowClick={(row) => {
           const t = row as unknown as MaintenanceTask;
           setSelected(t); setEStatus(t.status); setEDesc(t.description); setEDueDate(t.due_date || ''); setEDueMiles(String(t.due_miles || ''));
@@ -361,7 +387,7 @@ export default function Tasks() {
           <div className="w-96 bg-card border-l border-border p-6 overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">{selected.vehicle_name}</h2>
-              <button onClick={() => setSelected(null)} className="text-muted-foreground hover:text-foreground">✕</button>
+              <button onClick={() => setSelected(null)} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1"><X size={16} /></button>
             </div>
             <dl className="space-y-3 text-sm mb-6">
               <div className="flex justify-between"><dt className="text-muted-foreground">Type</dt><dd className="capitalize">{selected.task_type.replace(/_/g, ' ')}</dd></div>

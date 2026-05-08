@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { Route as RouteIcon } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useLeafletMap } from '../../hooks/useLeafletMap';
 import { usePoiLayers } from '../../hooks/usePoiLayers';
 import PoiLayerPanel from '../../components/PoiLayerPanel';
+import { PageHeader } from '../../components/shell';
 import type { RouteReplayResponse, DispatchVehicle, DispatchVehiclesResponse, RoutePoint } from '../../types';
 import type L from 'leaflet';
 
@@ -41,7 +43,7 @@ export default function Routes() {
 
   // Load vehicle list
   useEffect(() => {
-    apiJSON<DispatchVehiclesResponse>('/dispatch/vehicles')
+    apiJSON<DispatchVehiclesResponse>('/fleet/routes')
       .then((d) => setVehicles(d.vehicles || []))
       .catch(() => {});
   }, []);
@@ -94,7 +96,7 @@ export default function Routes() {
     setRoute(null);
     try {
       const data = await apiJSON<RouteReplayResponse>(
-        `/dispatch/route/${encodeURIComponent(vehicleName)}?date=${date}`,
+        `/fleet/routes/${encodeURIComponent(vehicleName)}?date=${date}`,
       );
       setRoute(data);
       const Leaf = window.L as typeof L;
@@ -108,7 +110,11 @@ export default function Routes() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Routes</h1>
+      <PageHeader
+        icon={RouteIcon}
+        title="Routes"
+        description="Replay any vehicle's trip on a map. Pick a truck and date — we'll plot the route colored by speed and surface stops along the way."
+      />
 
       {/* Controls */}
       <div className="flex flex-wrap items-end gap-3 mb-4">

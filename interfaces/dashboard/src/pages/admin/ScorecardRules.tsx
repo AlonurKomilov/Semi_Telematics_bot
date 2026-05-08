@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Trophy } from 'lucide-react';
 import { apiJSON } from '../../api/client';
+import {
+  PageHeader,
+  ErrorState,
+  CardSkeleton,
+  EmptyState,
+} from '../../components/shell';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -75,7 +82,7 @@ export default function ScorecardRules() {
   const load = () => {
     setLoading(true);
     setError('');
-    apiJSON<RulesResponse>('/safety/scorecards/rules')
+    apiJSON<RulesResponse>('/admin/scorecard-rules')
       .then((d) => setRules(d.rules || []))
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load rules'))
       .finally(() => setLoading(false));
@@ -135,7 +142,7 @@ export default function ScorecardRules() {
     const d = draftFor(r);
     setSavingId(r.id);
     try {
-      await apiJSON(`/safety/scorecards/rules/${encodeURIComponent(r.id)}`, {
+      await apiJSON(`/admin/scorecard-rules/${encodeURIComponent(r.id)}`, {
         method: 'PUT',
         body: JSON.stringify({
           points: d.points,
@@ -160,7 +167,7 @@ export default function ScorecardRules() {
     if (!window.confirm(`Reset "${r.label}" to defaults?`)) return;
     setSavingId(r.id);
     try {
-      await apiJSON(`/safety/scorecards/rules/${encodeURIComponent(r.id)}`, { method: 'DELETE' });
+      await apiJSON(`/admin/scorecard-rules/${encodeURIComponent(r.id)}`, { method: 'DELETE' });
       setDrafts((prev) => { const { [r.id]: _, ...rest } = prev; return rest; });
       load();
     } catch (e) {
@@ -174,14 +181,11 @@ export default function ScorecardRules() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Scorecard Rules</h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            Tune how driver scores are calculated. Changes apply on the next evaluation.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon={Trophy}
+        title="Scorecard Rules"
+        description="Tune how driver scores are calculated — adjust point values and caps for each behaviour. Changes apply at the next evaluation cycle."
+      />
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
@@ -220,10 +224,19 @@ export default function ScorecardRules() {
         />
       </div>
 
-      {error && <p className="text-destructive text-sm mb-4">{error}</p>}
+      {error && <div className="mb-4"><ErrorState message={error} /></div>}
 
       {loading ? (
-        <p className="text-muted-foreground">Loading rules…</p>
+        <div className="space-y-3">
+          <CardSkeleton height="h-32" />
+          <CardSkeleton height="h-32" />
+        </div>
+      ) : Object.keys(grouped).length === 0 ? (
+        <EmptyState
+          icon={Trophy}
+          title="No rules match"
+          description="Try a different category or clear the search."
+        />
       ) : (
         <div className="space-y-6">
           {Object.entries(grouped).map(([cat, rs]) => (

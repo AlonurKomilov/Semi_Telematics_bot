@@ -11,7 +11,9 @@ fresh on a 60s cadence.
 
 from __future__ import annotations
 
-from infra.context import is_companies_prepared, mark_companies_prepared
+from infra.context import (
+    get_cached_companies, is_companies_prepared, mark_companies_prepared,
+)
 from infra.services import get_client, get_tenant_db
 from adapters.samsara.client import populate_company_display
 
@@ -22,16 +24,18 @@ async def prepare_companies(account_id: int) -> list:
     Returns the list of Company objects (with .code, .display_name).
 
     Idempotent within the current async-task context: subsequent calls
-    for the same *account_id* skip the DB round-trip and return the
-    cached result directly.
+    for the same *account_id* return the cached list **without a DB
+    round-trip**. Hot scoring requests call this 5-6 times via each
+    signal fetcher; the cache cuts that to one query per request.
     """
     if is_companies_prepared(account_id):
-        tenant = await get_tenant_db(account_id)
-        return await tenant.get_account_companies(account_id)
+        cached = get_cached_companies(account_id)
+        if cached is not None:
+            return cached
     tenant = await get_tenant_db(account_id)
     companies = await tenant.get_account_companies(account_id)
     populate_company_display(companies)
-    mark_companies_prepared(account_id)
+    mark_companies_prepared(account_id, companies)
     return companies
 
 

@@ -1,5 +1,8 @@
-"""Admin API endpoints — users, companies, invites, audit log, settings, schedules."""
+"""Admin API endpoints — users, companies, invites, audit log, settings, schedules,
+scorecard rules + pillar caps (driver-facing scorecards live under /safety)."""
 
+import asyncio
+import json
 import logging
 import os
 import time
@@ -8,9 +11,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 
-from interfaces.api.deps import require_permission, get_tenant_db, get_platform_db
+from interfaces.api.deps import require_permission, get_tenant_db, get_platform_db, paginate
 from adapters.storage.models import Role
 from capabilities.iam.permissions import validate_role_change, role_rank
+from capabilities.scoring.rules import get_default_rules as _get_default_rules
 
 logger = logging.getLogger(__name__)
 
@@ -21,22 +25,54 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 @router.get("/users")
 async def list_users(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=500),
+    role: str | None = Query(None, description="Filter by role"),
+    search: str | None = Query(None, description="Substring match on display name / email"),
     user: dict = Depends(require_permission("can_manage_users")),
     platform_db=Depends(get_platform_db),
 ):
-    """List all users in the account."""
+    """List users in the account with optional filtering and pagination.
+
+    Truck and company assignments are looked up only for the page being
+    returned, so the per-user N+1 stays bounded even on accounts with
+    thousands of users.
+    """
     users = await platform_db.list_account_users(user["account_id"])
 
-    # Bulk-fetch truck assignments for all users
-    truck_map: dict[int, list[str]] = {}
-    company_map: dict[int, list[str]] = {}
-    for u in users:
-        trucks = await platform_db.get_user_vehicle_nums(u.id)
-        if trucks:
-            truck_map[u.id] = trucks
-        codes = await platform_db.get_user_company_codes(u.id)
-        if codes:
-            company_map[u.id] = codes
+    # In-memory filters before pagination — list size is bounded by tenant
+    # roster which sits in the low thousands at worst. If/when this grows
+    # large enough to matter, push these into the SQL query.
+    if role:
+        users = [u for u in users if (u.role.value if hasattr(u.role, "value") else u.role) == role]
+    if search:
+        q = search.lower()
+        users = [
+            u for u in users
+            if q in (u.display_name or "").lower() or q in (u.email or "").lower()
+        ]
+
+    paged = paginate(users, page, page_size)
+    page_users = paged["items"]
+
+    # Per-user lookups only for the visible page — fan out concurrently.
+    # Sequential per-user awaits turned a 50-user account into ~100 DB
+    # roundtrips; gather() collapses that into one round-trip per user
+    # (and the asyncpg pool serves them concurrently).
+    if page_users:
+        truck_results, company_results = await asyncio.gather(
+            asyncio.gather(*(platform_db.get_user_vehicle_nums(u.id) for u in page_users)),
+            asyncio.gather(*(platform_db.get_user_company_codes(u.id) for u in page_users)),
+        )
+        truck_map: dict[int, list[str]] = {
+            u.id: t for u, t in zip(page_users, truck_results) if t
+        }
+        company_map: dict[int, list[str]] = {
+            u.id: c for u, c in zip(page_users, company_results) if c
+        }
+    else:
+        truck_map = {}
+        company_map = {}
 
     return {
         "users": [
@@ -55,9 +91,12 @@ async def list_users(
                 "timezone": u.timezone,
                 "created_at": getattr(u, "created_at", None),
             }
-            for u in users
+            for u in page_users
         ],
-        "count": len(users),
+        "count": paged["total"],
+        "page": paged["page"],
+        "page_size": paged["page_size"],
+        "total_pages": paged["total_pages"],
     }
 
 
@@ -154,6 +193,46 @@ async def update_user_role(
 
 class UserDeactivate(BaseModel):
     is_active: bool
+
+
+class SamsaraDriverIdUpdate(BaseModel):
+    samsara_driver_id: Optional[str] = Field(default=None, max_length=128)
+
+
+@router.put("/users/{user_id}/samsara-driver-id")
+async def update_user_samsara_driver_id(
+    user_id: int,
+    body: SamsaraDriverIdUpdate,
+    user: dict = Depends(require_permission("can_manage_users")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Bind a Telegram user to a Samsara driver_id. Required before the
+    user's /coaching/me and /payroll/me endpoints will return any data —
+    these endpoints used to infer the binding from "most recent safety
+    event by truck", which leaked another driver's data after a vehicle
+    was reassigned. Setting NULL unbinds the user."""
+    target = await platform_db.get_user(user_id)
+    if not target or target.account_id != user["account_id"]:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    caller_rank = role_rank(user["role"])
+    existing_rank = role_rank(
+        target.role.value if hasattr(target.role, "value") else target.role
+    )
+    if existing_rank >= caller_rank:
+        raise HTTPException(status_code=403, detail="Cannot modify a user with equal or higher role")
+
+    new_did = (body.samsara_driver_id or "").strip() or None
+    ok = await platform_db.update_user(user_id, samsara_driver_id=new_did)
+    if ok:
+        await tenant_db.add_audit_log(
+            user["account_id"], int(user["sub"]),
+            "user_samsara_driver_id_set",
+            target_type="user", target_id=str(user_id),
+            details=f"driver_id={new_did or '(unset)'}",
+        )
+    return {"ok": ok, "samsara_driver_id": new_did}
 
 
 @router.put("/users/{user_id}/status")
@@ -924,3 +1003,334 @@ async def delete_role_guidance(
         raise HTTPException(status_code=404, detail=f"No custom guidance found for role '{role}'")
     return {"status": "ok", "role": role}
 
+
+# ── Scorecard rules + pillar caps ─────────────────────────────────────────────
+#
+# Tenant-level scoring config — sits in /admin to match the "Scorecard Rules"
+# sidebar entry under Admin. The driver-facing scorecard read endpoints
+# remain under /safety/scorecards/* (same feature, different audience).
+
+
+class ScoreRuleUpdate(BaseModel):
+    points: int = Field(..., ge=-100, le=100)
+    cap: int | None = Field(None, ge=-200, le=200)
+    enabled: bool = True
+    curve_x_zero: float | None = Field(None, ge=-1000, le=10000)
+    curve_x_max:  float | None = Field(None, ge=-1000, le=10000)
+    curve_y_max:  int   | None = Field(None, ge=-200, le=200)
+
+
+class PillarCapsUpdate(BaseModel):
+    safety:     int = Field(..., ge=0, le=100)
+    efficiency: int = Field(..., ge=0, le=100)
+    compliance: int = Field(..., ge=0, le=100)
+
+    @property
+    def total(self) -> int:
+        return self.safety + self.efficiency + self.compliance
+
+
+@router.get("/scorecard-rules")
+async def list_score_rules(
+    user: dict = Depends(require_permission("can_manage_account")),
+    tenant=Depends(get_tenant_db),
+):
+    """Default rules merged with this account's overrides.
+
+    Each item carries id/label/category/pillar/kind, effective values, and
+    an ``overridden`` flag so the UI can show a "reset to default" button.
+    """
+    overrides = await tenant.get_score_rule_overrides(user["account_id"])
+    out: list[dict] = []
+    for r in _get_default_rules():
+        ov = overrides.get(r.id) or {}
+        out.append({
+            "id":         r.id,
+            "label":      r.label,
+            "category":   r.category,
+            "pillar":     r.pillar,
+            "kind":       r.kind,
+            "default_points":  r.points,
+            "default_cap":     r.cap,
+            "points":     int(ov["points"])  if "points"  in ov else r.points,
+            "cap":        (ov["cap"] if ov.get("cap") is not None else r.cap)
+                          if "cap" in ov else r.cap,
+            "enabled":    bool(ov["enabled"]) if "enabled" in ov else r.enabled,
+            "curve_kind":          r.curve_kind,
+            "default_curve_x_zero": r.curve_x_zero,
+            "default_curve_x_max":  r.curve_x_max,
+            "default_curve_y_max":  r.curve_y_max,
+            "curve_x_zero": (ov["curve_x_zero"]
+                             if ov.get("curve_x_zero") is not None else r.curve_x_zero),
+            "curve_x_max":  (ov["curve_x_max"]
+                             if ov.get("curve_x_max")  is not None else r.curve_x_max),
+            "curve_y_max":  (ov["curve_y_max"]
+                             if ov.get("curve_y_max")  is not None else r.curve_y_max),
+            "overridden": bool(ov),
+        })
+    return {"rules": out, "count": len(out)}
+
+
+@router.put("/scorecard-rules/{rule_id}")
+async def update_score_rule(
+    rule_id: str,
+    body: ScoreRuleUpdate,
+    user: dict = Depends(require_permission("can_manage_account")),
+    tenant=Depends(get_tenant_db),
+):
+    """Override a default rule's points / cap / enabled / curve anchors."""
+    defaults = {r.id: r for r in _get_default_rules()}
+    rule = defaults.get(rule_id)
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Unknown rule_id")
+    await tenant.upsert_score_rule(
+        user["account_id"], rule_id,
+        label=rule.label, category=rule.category, kind=rule.kind,
+        points=body.points, cap=body.cap, enabled=body.enabled,
+        pillar=rule.pillar,
+        curve_x_zero=body.curve_x_zero,
+        curve_x_max=body.curve_x_max,
+        curve_y_max=body.curve_y_max,
+    )
+    return {"ok": True, "rule_id": rule_id}
+
+
+@router.delete("/scorecard-rules/{rule_id}")
+async def reset_score_rule(
+    rule_id: str,
+    user: dict = Depends(require_permission("can_manage_account")),
+    tenant=Depends(get_tenant_db),
+):
+    """Drop the per-account override → rule reverts to built-in default."""
+    deleted = await tenant.delete_score_rule(user["account_id"], rule_id)
+    return {"ok": True, "rule_id": rule_id, "deleted": deleted}
+
+
+@router.get("/scorecard-pillar-caps")
+async def get_pillar_caps(
+    user: dict = Depends(require_permission("can_manage_account")),
+    tenant=Depends(get_tenant_db),
+):
+    """Pillar cap weights for this account (defaults 50/25/25 when no override)."""
+    from capabilities.scoring.engine import PILLAR_CAPS
+    raw = await tenant.get_account_setting(
+        user["account_id"], tenant.KEY_SCORECARD_PILLAR_CAPS, "",
+    )
+    if raw:
+        try:
+            caps = json.loads(raw)
+            return {"safety": caps.get("safety", PILLAR_CAPS["safety"]),
+                    "efficiency": caps.get("efficiency", PILLAR_CAPS["efficiency"]),
+                    "compliance": caps.get("compliance", PILLAR_CAPS["compliance"]),
+                    "is_custom": True}
+        except Exception:
+            pass
+    return {**PILLAR_CAPS, "is_custom": False}
+
+
+@router.put("/scorecard-pillar-caps")
+async def set_pillar_caps(
+    body: PillarCapsUpdate,
+    user: dict = Depends(require_permission("can_manage_account")),
+    tenant=Depends(get_tenant_db),
+):
+    """Set per-tenant pillar cap weights. Must sum to exactly 100."""
+    if body.total != 100:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Pillar caps must sum to 100 (got {body.total}).",
+        )
+    caps = {"safety": body.safety, "efficiency": body.efficiency, "compliance": body.compliance}
+    await tenant.set_account_setting(
+        user["account_id"],
+        tenant.KEY_SCORECARD_PILLAR_CAPS,
+        json.dumps(caps),
+    )
+    return {"ok": True, "caps": caps}
+
+
+@router.delete("/scorecard-pillar-caps")
+async def reset_pillar_caps(
+    user: dict = Depends(require_permission("can_manage_account")),
+    tenant=Depends(get_tenant_db),
+):
+    """Remove pillar cap override — reverts to built-in defaults (50/25/25)."""
+    from capabilities.scoring.engine import PILLAR_CAPS
+    await tenant.set_account_setting(
+        user["account_id"], tenant.KEY_SCORECARD_PILLAR_CAPS, "",
+    )
+    return {"ok": True, "caps": PILLAR_CAPS, "is_custom": False}
+
+
+
+# ── Warehouse diagnostics ─────────────────────────────────────
+#
+# Surfaces the row counts + freshness of every warehouse table for the
+# caller's account. Used during the WAREHOUSE_READS_ENABLED rollout to
+# verify that the ingestor is populating the tables before flipping the
+# read flag, and afterwards to verify that the data stays fresh. Also
+# reports the current value of WAREHOUSE_READS_ENABLED so ops can
+# confirm the flag is set correctly per pod.
+
+_WAREHOUSE_TABLES: list[tuple[str, str | None]] = [
+    # (table_name, ts_column or None if the table has no timestamp)
+    ("vehicle_state",             "fetched_at"),
+    ("vehicle_health_snapshot",   "fetched_at"),
+    ("vehicle_fault_snapshot",    "fetched_at"),
+    ("fleet_weather_snapshot",    "fetched_at"),
+    ("fleet_efficiency_snapshot", "fetched_at"),
+    ("safety_event_log",          "occurred_at"),
+    ("driver_efficiency_daily",   "snapshot_date"),
+    ("vehicle_telemetry_hourly",  "hour_bucket"),
+    ("geofence_definitions",      "fetched_at"),
+]
+
+
+@router.get("/warehouse-status")
+async def warehouse_status(
+    user: dict = Depends(require_permission("can_manage_account")),
+    tenant=Depends(get_tenant_db),
+):
+    """Per-table row count + most-recent-row timestamp for the caller's
+    account warehouse. Exposes ``warehouse_reads_enabled`` so ops can
+    verify the env var is set on the pod handling the request.
+
+    Designed as the pre-flight check before flipping
+    ``WAREHOUSE_READS_ENABLED=1`` in production: if every table has rows
+    and the timestamps are within the expected ingestor cadence (60s /
+    5min / hourly), the flag is safe to flip.
+    """
+    from infra import config as _cfg
+
+    account_id = user["account_id"]
+    tables: list[dict] = []
+
+    for name, ts_col in _WAREHOUSE_TABLES:
+        entry: dict = {"table": name}
+        try:
+            count_row = await tenant.read_one(
+                f"SELECT COUNT(*) AS n FROM {name} WHERE account_id = ?",
+                (account_id,),
+            )
+            entry["rows"] = int(count_row["n"]) if count_row else 0
+        except Exception as e:
+            # Table may not exist yet on a freshly-installed tenant DB
+            # that hasn't run the warehouse migrations. Surface it as a
+            # diagnostic rather than failing the whole endpoint.
+            entry["rows"] = 0
+            entry["error"] = str(e)[:200]
+            tables.append(entry)
+            continue
+
+        if ts_col and entry["rows"] > 0:
+            try:
+                ts_row = await tenant.read_one(
+                    f"SELECT MAX({ts_col}) AS ts FROM {name} "
+                    f"WHERE account_id = ?",
+                    (account_id,),
+                )
+                entry["last_seen"] = ts_row["ts"] if ts_row else None
+            except Exception:
+                entry["last_seen"] = None
+
+        tables.append(entry)
+
+    populated = sum(1 for t in tables if t.get("rows", 0) > 0)
+    return {
+        "account_id": account_id,
+        "warehouse_reads_enabled": bool(getattr(_cfg, "WAREHOUSE_READS_ENABLED", False)),
+        "tables": tables,
+        "summary": {
+            "total":     len(tables),
+            "populated": populated,
+            "empty":     len(tables) - populated,
+        },
+    }
+
+
+# ── Job queue diagnostics (Phase 3) ───────────────────────────
+#
+# Read-only endpoints that surface the state of the ARQ job queue.
+# Used by ops to:
+#   * verify a freshly-enqueued job is being picked up by a worker
+#   * poll a long-running job (PDF generation, report export) from the
+#     dashboard without holding an HTTP connection open
+#   * confirm the `/admin/jobs/enqueue/{name}` admin trigger for the
+#     pre-warm fanout actually queued work
+#
+# Job results are JSON; the queue itself never holds binary payloads.
+# Any large artifact (PDF, CSV) is written to object storage and the
+# job result holds the URL.
+
+@router.get("/jobs/{job_id}")
+async def job_status(
+    job_id: str,
+    user: dict = Depends(require_permission("can_manage_account")),
+):
+    """Look up an ARQ background job by id.
+
+    Returns the job's current status (deferred / queued / in_progress /
+    complete / not_found), enqueue + start + finish times, and the
+    job result when complete.
+
+    Permission: ``can_manage_account`` — ARQ doesn't natively scope
+    jobs to tenants so we restrict status access to admins. If you add
+    user-facing async jobs (e.g. dashboard "Generate report" button),
+    enforce ownership inside the job's result by stamping the requester
+    on enqueue.
+    """
+    from infra import jobs as _jobs
+    info = await _jobs.get_job_status(job_id)
+    if info is None:
+        raise HTTPException(404, f"Job {job_id} not found or queue unavailable")
+    return info
+
+
+@router.post("/jobs/prewarm-scorecards")
+async def trigger_prewarm_scorecards(
+    days: int = Query(7, ge=1, le=90),
+    user: dict = Depends(require_permission("can_manage_account")),
+):
+    """Manually fire the scorecards cache pre-warm fanout for the
+    caller's account. Useful for ops to re-warm the cache after a
+    schema/rules change without waiting for the 06:00 cron.
+
+    Returns ``{job_id}`` of the per-account precompute job. Poll
+    ``GET /admin/jobs/{job_id}`` for status.
+    """
+    from infra import jobs as _jobs
+    job = await _jobs.enqueue("precompute_scorecards", user["account_id"], days)
+    if job is None:
+        raise HTTPException(503, "Job queue unavailable — is the ARQ worker running?")
+    return {"job_id": job.job_id, "function": "precompute_scorecards", "account_id": user["account_id"], "days": days}
+
+
+# ── Dual-write diagnostics (Phase 5b) ─────────────────────────
+#
+# Surfaces the per-process counters from ``adapters.storage.dualwrite``
+# so ops can monitor how the SQLite→PostgreSQL dual-write phase is
+# tracking. Endpoint returns the same shape as warehouse-status so the
+# admin dashboard can poll it on the same cadence.
+#
+# Counters reset on process restart (they're in-memory). Aggregating
+# across workers requires Phase 6 metrics (Prometheus); this endpoint is
+# enough for one-process spot checks during the rollout.
+
+@router.get("/dualwrite-status")
+async def dualwrite_status(
+    user: dict = Depends(require_permission("can_manage_account")),
+):
+    """Per-process dual-write counters + flag values.
+
+    Used during the SQLite → PostgreSQL migration to verify that
+    secondary writes are succeeding and reads are returning identical
+    row counts. Healthy state: ``writes_failed == 0``,
+    ``reads_diverged == 0``.
+    """
+    from adapters.storage import dualwrite as _dw
+
+    return {
+        "dual_write_enabled": _dw.is_dual_write_enabled(),
+        "read_backend":       _dw.read_backend(),
+        "metrics":            _dw.get_metrics(),
+    }

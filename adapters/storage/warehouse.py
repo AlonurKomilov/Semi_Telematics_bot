@@ -223,6 +223,7 @@ class WarehouseMixin(_MixinBase):
         days: int = 7,
         event_type: str | None = None,
         vehicle_id: str | None = None,
+        vehicle_name: str | None = None,
         driver_id: str | None = None,
         limit: int = 5000,
     ) -> list[dict[str, Any]]:
@@ -239,6 +240,9 @@ class WarehouseMixin(_MixinBase):
         if vehicle_id:
             where.append("vehicle_id = ?")
             args.append(vehicle_id)
+        if vehicle_name:
+            where.append("vehicle_name = ?")
+            args.append(vehicle_name)
         if driver_id:
             where.append("driver_id = ?")
             args.append(driver_id)

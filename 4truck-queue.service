@@ -1,0 +1,42 @@
+[Unit]
+Description=4truck ARQ background-job worker (Phase 3)
+# After redis is reachable on the network. Wants= because the worker
+# auto-retries connection on boot, so it can survive a brief Redis blip.
+After=network-online.target 4truck-bot.service
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=abcdev
+Group=abcdev
+WorkingDirectory=/home/abcdev/projects/Semi_Telematics_bot
+
+# ARQ worker entry point. The CLI handles the asyncio loop, retries,
+# graceful shutdown on SIGTERM, and BLPOP-based job pickup. Run multiple
+# instances of this unit (different unit names) to scale horizontally;
+# they self-coordinate via Redis without any extra config.
+ExecStart=/usr/bin/python3 -m arq capabilities.jobs.worker.WorkerSettings
+
+# SIGTERM gracefully drains in-flight jobs (job_timeout = 300s by
+# default); SIGKILL after 90s so we don't hang shutdown indefinitely.
+KillSignal=SIGTERM
+TimeoutStopSec=90
+
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/abcdev/projects/Semi_Telematics_bot/queue.log
+StandardError=append:/home/abcdev/projects/Semi_Telematics_bot/queue.log
+
+EnvironmentFile=/home/abcdev/projects/Semi_Telematics_bot/.env
+# Worker doesn't run the API or Telegram bot — it only consumes from
+# the ARQ queue. Per-process startup hook in WorkerSettings still
+# initialises platform infra (DB, Redis cache pool) so jobs can read
+# the same data the API reads.
+Environment=ENABLE_API=0
+Environment=ENABLE_BOT=0
+Environment=ENABLE_SCHEDULER=0
+
+[Install]
+WantedBy=multi-user.target

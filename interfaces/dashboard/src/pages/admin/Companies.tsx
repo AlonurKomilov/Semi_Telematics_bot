@@ -1,6 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Building2, Plus, X } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataTable from '../../components/DataTable';
+import {
+  PageHeader,
+  EmptyState,
+  ErrorState,
+  TableSkeleton,
+} from '../../components/shell';
 import type { CompanyInfo, AnyColumn } from '../../types';
 
 const columns: AnyColumn[] = [
@@ -13,8 +21,7 @@ const columns: AnyColumn[] = [
 ];
 
 export default function Companies() {
-  const [companies, setCompanies] = useState<CompanyInfo[]>([]);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
   const [error, setError] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [selected, setSelected] = useState<CompanyInfo | null>(null);
@@ -31,16 +38,13 @@ export default function Companies() {
   const [editKey, setEditKey] = useState('');
   const [editDays, setEditDays] = useState(30);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await apiJSON<{ companies: CompanyInfo[] }>('/admin/companies');
-      setCompanies(data.companies || []);
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
-    finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
+  const { data, isLoading: loading, error: queryError } = useQuery({
+    queryKey: ['admin-companies'],
+    queryFn: () => apiJSON<{ companies: CompanyInfo[] }>('/admin/companies'),
+  });
+  const companies = data?.companies ?? [];
+  const queryErrorMsg = queryError instanceof Error ? queryError.message : '';
+  const load = () => qc.invalidateQueries({ queryKey: ['admin-companies'] });
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true); setError('');
@@ -76,14 +80,24 @@ export default function Companies() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Companies</h1>
-        <button onClick={() => { setShowAdd(!showAdd); setError(''); }} className="px-4 py-2 bg-primary hover:bg-primary/90 rounded-lg text-sm font-medium transition">
-          {showAdd ? 'Cancel' : '+ Add Company'}
-        </button>
-      </div>
+      <PageHeader
+        icon={Building2}
+        title="Companies"
+        description="Sub-companies inside your account — each with its own Samsara API key. Use companies to scope reporting and alerts to a single division or region."
+        actions={
+          <button
+            onClick={() => { setShowAdd(!showAdd); setError(''); }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
+          >
+            <Plus size={13} />
+            {showAdd ? 'Cancel' : 'Add company'}
+          </button>
+        }
+      />
 
-      {error && <p className="text-destructive text-sm mb-3">{error}</p>}
+      {(error || queryErrorMsg) && (
+        <div className="mb-3"><ErrorState message={error || queryErrorMsg} /></div>
+      )}
 
       {showAdd && (
         <form onSubmit={handleAdd} className="bg-card border border-border rounded-xl p-4 mb-6 grid grid-cols-5 gap-3">
@@ -111,7 +125,24 @@ export default function Companies() {
         </form>
       )}
 
-      {loading ? <p className="text-muted-foreground">Loading...</p> : (
+      {loading && companies.length === 0 ? (
+        <TableSkeleton rows={6} cols={6} />
+      ) : companies.length === 0 ? (
+        <EmptyState
+          icon={Building2}
+          title="No companies yet"
+          description="Add your first company to start syncing vehicles and drivers from Samsara."
+          action={
+            <button
+              onClick={() => setShowAdd(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
+            >
+              <Plus size={13} />
+              Add company
+            </button>
+          }
+        />
+      ) : (
         <DataTable columns={columns} data={companies as unknown as Record<string, unknown>[]} searchKey="display_name" onRowClick={(row) => {
           const c = row as unknown as CompanyInfo;
           setSelected(c); setEditName(c.display_name); setEditKey(''); setEditDays(c.active_days);
@@ -123,7 +154,7 @@ export default function Companies() {
           <div className="w-96 bg-card border-l border-border p-6 overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">{selected.display_name}</h2>
-              <button onClick={() => setSelected(null)} className="text-muted-foreground hover:text-foreground">✕</button>
+              <button onClick={() => setSelected(null)} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1"><X size={16} /></button>
             </div>
             <dl className="space-y-3 text-sm mb-6">
               <div className="flex justify-between"><dt className="text-muted-foreground">Code</dt><dd>{selected.code}</dd></div>

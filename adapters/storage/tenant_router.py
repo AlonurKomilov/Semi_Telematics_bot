@@ -23,8 +23,8 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-from .platform_db import PlatformDB
-from .tenant_db import TenantDB
+from .platform import PlatformDB
+from .tenant import TenantDB
 
 if TYPE_CHECKING:
     from .core import _DatabaseCore

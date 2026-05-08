@@ -1,8 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Users as UsersIcon, X, Truck } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
 import { useAuth } from '../../context/AuthContext';
+import {
+  PageHeader,
+  EmptyState,
+  ErrorState,
+  TableSkeleton,
+} from '../../components/shell';
 import type { AdminUser, AnyColumn } from '../../types';
 
 const ROLES = ['admin', 'fleet', 'safety', 'dispatcher', 'driver'] as const;
@@ -118,8 +126,7 @@ type DetailTab = 'profile' | 'access' | 'settings';
 
 export default function Users() {
   const { user: me } = useAuth();
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [selected, setSelected] = useState<AdminUser | null>(null);
@@ -130,7 +137,6 @@ export default function Users() {
   const [editVehicles, setEditTrucks] = useState<string[]>([]);
   const [newVehicle, setNewTruck] = useState('');
   const [savingVehicles, setSavingTrucks] = useState(false);
-  const [fleetVehicles, setFleetVehicles] = useState<FleetVehicle[]>([]);
 
   // Company assignment
   const [allCompanies, setAllCompanies] = useState<{ id: number; code: string; display_name: string }[]>([]);
@@ -142,24 +148,27 @@ export default function Users() {
   const [pendingRole, setPendingRole] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<'role' | 'deactivate' | 'activate' | null>(null);
 
-  const loadUsers = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await apiJSON<{ users: AdminUser[] }>('/admin/users');
-      setUsers(data.users || []);
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
-    finally { setLoading(false); }
-  }, []);
+  // React Query: cached across navigations, deduped, no manual loading state.
+  const { data: usersData, isLoading: loading, error: usersError } = useQuery({
+    queryKey: ['admin-users'],
+    queryFn: () => apiJSON<{ users: AdminUser[] }>('/admin/users'),
+  });
+  const users = useMemo(() => usersData?.users ?? [], [usersData]);
+  useEffect(() => {
+    if (usersError) setError(usersError instanceof Error ? usersError.message : 'Failed');
+  }, [usersError]);
 
-  // Load fleet vehicles for truck autocomplete
-  const loadFleetVehicles = useCallback(async () => {
-    try {
-      const data = await apiJSON<{ vehicles: FleetVehicle[] }>('/vehicles');
-      setFleetVehicles(data.vehicles || []);
-    } catch { /* ignore - autocomplete just won't work */ }
-  }, []);
+  // Truck autocomplete — cached for 60s as configured globally; harmless if it fails.
+  const { data: fleetData } = useQuery({
+    queryKey: ['admin-users-fleet-vehicles'],
+    queryFn: () => apiJSON<{ vehicles: FleetVehicle[] }>('/vehicles'),
+  });
+  const fleetVehicles = fleetData?.vehicles ?? [];
 
-  useEffect(() => { loadUsers(); loadFleetVehicles(); }, [loadUsers, loadFleetVehicles]);
+  const loadUsers = useCallback(
+    () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
+    [qc],
+  );
 
   // Filtered users by role
   const filteredUsers = useMemo(() => {
@@ -271,12 +280,18 @@ export default function Users() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Team Management</h1>
-        <span className="text-sm text-muted-foreground">{activeCount} active / {users.length} total</span>
-      </div>
+      <PageHeader
+        icon={UsersIcon}
+        title="Team Management"
+        description="Manage who has access to your account, set roles and permissions, and link Telegram drivers to their Samsara records."
+        meta={
+          <span className="text-sm text-muted-foreground">{activeCount} active / {users.length} total</span>
+        }
+      />
 
-      {error && <p className="text-destructive text-sm mb-3">{error}</p>}
+      {error && (
+        <div className="mb-3"><ErrorState message={error} /></div>
+      )}
       {success && <p className="text-green-600 dark:text-green-400 text-sm mb-3">{success}</p>}
 
       <div className="flex items-center gap-3 mb-4">
@@ -308,7 +323,17 @@ export default function Users() {
         </div>
       </div>
 
-      {loading && users.length === 0 ? <p className="text-muted-foreground">Loading...</p> : (
+      {loading && users.length === 0 ? <TableSkeleton rows={6} cols={5} /> : filteredUsers.length === 0 ? (
+        <EmptyState
+          icon={UsersIcon}
+          title={roleFilter ? `No ${ROLE_LABELS[roleFilter]} users` : 'No team members yet'}
+          description={
+            roleFilter
+              ? 'Try a different role filter.'
+              : 'Invite teammates from the Invites page to get started.'
+          }
+        />
+      ) : (
         <>
           <DataTable columns={userColumns} data={filteredUsers as unknown as Record<string, unknown>[]} searchKey="display_name" onRowClick={(row) => setSelected(row as unknown as AdminUser)} />
           {selected && (
@@ -327,7 +352,7 @@ export default function Users() {
                         </div>
                       </div>
                     </div>
-                    <button onClick={() => setSelected(null)} className="text-muted-foreground hover:text-foreground p-1">✕</button>
+                    <button onClick={() => setSelected(null)} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1"><X size={16} /></button>
                   </div>
 
                   {/* Detail tabs */}
@@ -471,7 +496,8 @@ export default function Users() {
                           <div className="flex-1 border-t border-border" />
                         </div>
                         <h3 className="text-sm font-semibold text-foreground/80 mb-1 flex items-center gap-2">
-                          🚛 Vehicle Assignments
+                          <Truck size={14} className="text-muted-foreground" />
+                          Vehicle Assignments
                           {editVehicles.length > 0 && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-400">{editVehicles.length}</span>
                           )}

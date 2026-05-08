@@ -276,7 +276,7 @@ class TestBillingMixinContracts:
     @pytest.mark.asyncio
     async def test_billing_mixin_e2e(self, tmp_path):
         """End-to-end: get_or_create_subscription works on a real SQLite DB."""
-        from adapters.storage.platform_db import PlatformDB
+        from adapters.storage.platform import PlatformDB
         db_path = str(tmp_path / "billing_test.db")
         db = PlatformDB(db_path, pool_size=1)
         await db.initialize()

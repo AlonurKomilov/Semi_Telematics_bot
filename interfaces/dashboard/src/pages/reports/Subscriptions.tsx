@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { Mail } from 'lucide-react';
 import { apiJSON } from '../../api/client';
+import { PageHeader, CardSkeleton, ErrorState } from '../../components/shell';
 import type { Subscription } from '../../types';
 
 const REPORT_TYPES: Record<string, string> = {
@@ -93,13 +95,28 @@ export default function Subscriptions() {
     }
   }
 
-  if (loading) return <p className="text-muted-foreground">Loading...</p>;
+  if (loading) {
+    return (
+      <div className="max-w-xl">
+        <PageHeader
+          icon={Mail}
+          title="Report Subscriptions"
+          description="Schedule a recurring email with the report of your choice. Pick the frequency, hour, and time zone — you can unsubscribe any time."
+        />
+        <CardSkeleton height="h-48" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-xl">
-      <h1 className="text-2xl font-bold mb-6">📬 Report Subscriptions</h1>
+      <PageHeader
+        icon={Mail}
+        title="Report Subscriptions"
+        description="Schedule a recurring email with the report of your choice. Pick the frequency, hour, and time zone — you can unsubscribe any time."
+      />
 
-      {error && <p className="text-destructive text-sm mb-3">{error}</p>}
+      {error && <div className="mb-3"><ErrorState message={error} /></div>}
       {success && <p className="text-green-600 dark:text-green-400 text-sm mb-3">{success}</p>}
 
       {sub && (

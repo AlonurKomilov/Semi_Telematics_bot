@@ -575,3 +575,89 @@ def generate_scorecard_csv(
         writer.writerow(row)
 
     return _to_buf(sio)
+
+
+# ══════════════════════════════════════════════════════════════════
+# RISK SUMMARY CSV  (Stakeholder Risk Summary export)
+# ══════════════════════════════════════════════════════════════════
+
+def generate_risk_summary_csv(profile, *, audience: str = "owner") -> io.BytesIO:
+    """Return a BytesIO containing CSV data for a Stakeholder Risk
+    Summary report.  ``profile`` is a
+    :class:`capabilities.reporting.risk_profile.RiskProfile`.
+
+    The CSV mirrors the PDF sections so downstream tooling can do its
+    own analysis without having to scrape the PDF.
+    """
+    from .audiences import get_audience_config
+    cfg = get_audience_config(audience)
+
+    sio = io.StringIO()
+    writer = csv.writer(sio)
+
+    # ── Metadata ────────────────────────────────────────────────
+    writer.writerow(["Report", "Stakeholder Risk Summary"])
+    writer.writerow(["Audience", audience])
+    writer.writerow(["Generated", _now_et()])
+    writer.writerow(["Account", profile.account_id])
+    writer.writerow(["Subject type", profile.subject_type])
+    subject_label = profile.subject_display
+    if profile.subject_type == "driver" and not cfg.show_pii_driver_name:
+        tail = (profile.subject_id or "")[-4:].upper() or "0000"
+        subject_label = f"DRV-{tail}"
+    writer.writerow(["Subject", subject_label])
+    if profile.company:
+        writer.writerow(["Company", profile.company])
+    writer.writerow(["Window (days)", profile.days])
+    writer.writerow(["Total score", profile.total_score if profile.total_score is not None else _NA])
+    writer.writerow(["Grade", profile.grade or _NA])
+    writer.writerow(["Fleet median", profile.fleet_median if profile.fleet_median is not None else _NA])
+    writer.writerow(["Fleet percentile", profile.fleet_percentile if profile.fleet_percentile is not None else _NA])
+    writer.writerow(["Fleet size", profile.fleet_size])
+    writer.writerow([])
+
+    # ── Pillars ─────────────────────────────────────────────────
+    writer.writerow(["Section", "Pillars"])
+    writer.writerow(["pillar", "score", "cap"])
+    for k, v in (profile.pillars or {}).items():
+        if isinstance(v, dict):
+            writer.writerow([k, v.get("subtotal", ""), v.get("cap", "")])
+        else:
+            writer.writerow([k, v, ""])
+    writer.writerow([])
+
+    # ── Daily history ───────────────────────────────────────────
+    writer.writerow(["Section", "Daily history"])
+    writer.writerow(["snapshot_date", "total_score"])
+    for r in profile.daily_history:
+        writer.writerow([r.get("snapshot_date"), r.get("total_score")])
+    writer.writerow([])
+
+    # ── Safety incidents ────────────────────────────────────────
+    writer.writerow(["Section", "Safety events"])
+    base_hdr = ["occurred_at", "event_type", "severity",
+                "vehicle_name", "driver_name", "speed_mph"]
+    if cfg.show_video_links:
+        base_hdr.append("video_url")
+    writer.writerow(base_hdr)
+    for e in profile.safety_events:
+        row = [
+            e.get("occurred_at"), e.get("event_type"), e.get("severity"),
+            e.get("vehicle_name"), e.get("driver_name"), e.get("speed_mph"),
+        ]
+        if cfg.show_video_links:
+            row.append(e.get("video_url") or "")
+        writer.writerow(row)
+    writer.writerow([])
+
+    # ── Maintenance ─────────────────────────────────────────────
+    writer.writerow(["Section", "Maintenance"])
+    writer.writerow(["status", "task_type", "description", "due_date", "due_miles"])
+    for t in (profile.overdue_tasks or []):
+        writer.writerow(["overdue", t.get("task_type"), t.get("description"),
+                         t.get("due_date"), t.get("due_miles")])
+    for t in (profile.pending_tasks or []):
+        writer.writerow(["pending", t.get("task_type"), t.get("description"),
+                         t.get("due_date"), t.get("due_miles")])
+
+    return _to_buf(sio)

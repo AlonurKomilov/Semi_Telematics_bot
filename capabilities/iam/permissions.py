@@ -102,6 +102,12 @@ class FeatureSet:
     can_events_own: bool = False        # safety events (own truck)
     can_manage_billing: bool = False    # billing & subscription management (owner + admin)
     can_manage_poi_layers: bool = False # create/edit/delete custom POI map layers (owner/admin/fleet)
+    can_risk_report_all: bool = False   # generate Stakeholder Risk Summary for any subject
+    can_risk_report_own: bool = False   # generate Stakeholder Risk Summary for own subject only
+    can_payroll_admin: bool = False     # configure rules / trigger runs / view all paystubs
+    can_payroll_view_own: bool = False  # view own paystub history (driver self-service)
+    can_coaching_admin: bool = False    # manage coaching rules + assign manually + view all
+    can_coaching_view_own: bool = False # see + acknowledge own coaching assignments
 
 
 # ─── Role → Permission Map ───────────────────────────────────────
@@ -126,6 +132,9 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_events_all=True, can_events_own=True,
         can_manage_billing=True,
         can_manage_poi_layers=True,
+        can_risk_report_all=True, can_risk_report_own=True,
+        can_payroll_admin=True, can_payroll_view_own=True,
+        can_coaching_admin=True, can_coaching_view_own=True,
     ),
     Role.ADMIN: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=True,
@@ -146,6 +155,9 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_events_all=True, can_events_own=True,
         can_manage_billing=True,
         can_manage_poi_layers=True,
+        can_risk_report_all=True, can_risk_report_own=True,
+        can_payroll_admin=True, can_payroll_view_own=True,
+        can_coaching_admin=True, can_coaching_view_own=True,
     ),
     Role.FLEET: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=True,
@@ -165,6 +177,9 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_cost_per_mile=True,
         can_events_all=True, can_events_own=True,
         can_manage_poi_layers=True,
+        can_risk_report_all=False, can_risk_report_own=True,
+        can_payroll_admin=False, can_payroll_view_own=False,
+        can_coaching_admin=True, can_coaching_view_own=False,
     ),
     Role.SAFETY: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=False,
@@ -183,6 +198,9 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_route_all=True, can_route_own=True,
         can_cost_per_mile=False,
         can_events_all=True, can_events_own=True,
+        can_risk_report_all=True, can_risk_report_own=True,
+        can_payroll_admin=False, can_payroll_view_own=False,
+        can_coaching_admin=True, can_coaching_view_own=False,
     ),
     Role.DISPATCHER: FeatureSet(
         can_faults=False, can_critical=False, can_fuel=True,
@@ -201,6 +219,9 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_route_all=True, can_route_own=True,
         can_cost_per_mile=False,
         can_events_all=False, can_events_own=False,
+        can_risk_report_all=False, can_risk_report_own=False,
+        can_payroll_admin=False, can_payroll_view_own=False,
+        can_coaching_admin=False, can_coaching_view_own=False,
     ),
     Role.DRIVER: FeatureSet(
         can_faults=False, can_critical=False, can_fuel=False,
@@ -219,6 +240,9 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_route_all=False, can_route_own=True,
         can_cost_per_mile=False,
         can_events_all=False, can_events_own=True,
+        can_risk_report_all=False, can_risk_report_own=True,
+        can_payroll_admin=False, can_payroll_view_own=True,
+        can_coaching_admin=False, can_coaching_view_own=True,
     ),
 }
 
@@ -364,6 +388,12 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_events_all": "safety events (all)",
     "can_events_own": "safety events (own)",
     "can_manage_billing": "billing & subscription management",
+    "can_risk_report_all": "stakeholder risk summary report (all subjects)",
+    "can_risk_report_own": "stakeholder risk summary report (own subject)",
+    "can_payroll_admin": "payroll: manage rules, trigger runs, view all paystubs",
+    "can_payroll_view_own": "payroll: view own paystub history",
+    "can_coaching_admin": "coaching: manage rules, assign coaching, view all",
+    "can_coaching_view_own": "coaching: see + acknowledge own assignments",
 }
 
 

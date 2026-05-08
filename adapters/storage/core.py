@@ -209,6 +209,8 @@ class _DatabaseCore:
             bot_token_encrypted=row["bot_token_encrypted"] if "bot_token_encrypted" in row.keys() else None,
             bot_username=row["bot_username"] if "bot_username" in row.keys() else "",
             webhook_secret=row["webhook_secret"] if "webhook_secret" in row.keys() else "",
+            payroll_enabled=bool(row["payroll_enabled"]) if "payroll_enabled" in row.keys() else False,
+            coaching_enabled=bool(row["coaching_enabled"]) if "coaching_enabled" in row.keys() else False,
         )
 
     def _row_to_company(self, row) -> Company:
@@ -252,6 +254,7 @@ class _DatabaseCore:
             last_shift_report=row["last_shift_report"] if "last_shift_report" in row.keys() else None,
             email=row["email"] if "email" in row.keys() else None,
             password_hash=row["password_hash"] if "password_hash" in row.keys() else None,
+            samsara_driver_id=row["samsara_driver_id"] if "samsara_driver_id" in row.keys() else None,
         )
 
     def _row_to_invite(self, row) -> Invite:

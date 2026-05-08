@@ -62,6 +62,25 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("events", cmd_events))
     app.add_handler(CommandHandler("tips", cmd_tips))
 
+    # Stakeholder Risk Summary (premium)
+    from interfaces.bot.reports import cmd_risk_report
+    app.add_handler(CommandHandler("risk_report", cmd_risk_report))
+
+    # Pay-for-Performance — driver self-service paystub
+    from interfaces.bot.payroll import cmd_my_pay
+    app.add_handler(CommandHandler("my_pay", cmd_my_pay))
+
+    # Auto Coaching — driver self-service assignments + ack callback
+    from interfaces.bot.coaching import (
+        ACK_CALLBACK_PREFIX,
+        cb_coaching_ack,
+        cmd_my_coaching,
+    )
+    app.add_handler(CommandHandler("my_coaching", cmd_my_coaching))
+    app.add_handler(CallbackQueryHandler(
+        cb_coaching_ack, pattern=f"^{ACK_CALLBACK_PREFIX}",
+    ))
+
     # Management
     app.add_handler(CommandHandler("invite", cmd_invite))
     app.add_handler(CommandHandler("account", cmd_account))

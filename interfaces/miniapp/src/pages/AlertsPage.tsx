@@ -6,7 +6,7 @@
  * Empty state offers a quick jump to the last-N-days history.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Icon24WarningTriangleOutline,
   Icon24FlashOutline,
@@ -24,9 +24,11 @@ import {
   Icon24CheckCircleOutline,
   Icon24SearchSlashOutline,
   Icon24TruckOutline,
+  Icon24LockOutline,
+  Icon24GlobeOutline,
 } from '@vkontakte/icons';
 import { Placeholder } from '@telegram-apps/telegram-ui';
-import { apiFetch, apiJSON } from '../api/client';
+import { apiFetch, apiJSON, classifyError, type ClassifiedError } from '../api/client';
 import type { Alert } from '../types';
 import { Snackbar } from '../components/Snackbar';
 import { BottomSheet } from '../components/BottomSheet';
@@ -34,6 +36,7 @@ import { RelativeTime } from '../components/RelativeTime';
 import { ListRowsSkeleton } from '../components/Skeleton';
 import { haptics } from '../hooks/useTelegram';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
+import { pluralize } from '../utils/units';
 
 interface Props {
   active: boolean;
@@ -107,10 +110,80 @@ function formatAbsolute(iso: string): string {
   }).format(new Date(iso));
 }
 
+// ── Memoized alert card ────────────────────────────────────────────
+// Extracted out of the AlertsPage render so React.memo can skip
+// re-rendering unaffected cards when one card's expanded/absolute
+// state flips.  With ~50–100 pending alerts this matters on low-end
+// Android.  Callbacks are stable refs created via useCallback in the
+// parent so the memo equality check actually holds.
+interface AlertCardProps {
+  alert: Alert;
+  isExpanded: boolean;
+  showAbsolute: boolean;
+  isAcking: boolean;
+  timezone?: string;
+  onToggleAbsolute: (id: number) => void;
+  onToggleExpanded: (id: number) => void;
+  onAcknowledge: (id: number) => void;
+}
+
+const AlertCard = memo(function AlertCard({
+  alert, isExpanded, showAbsolute, isAcking, timezone,
+  onToggleAbsolute, onToggleExpanded, onAcknowledge,
+}: AlertCardProps) {
+  const sev = alertSeverity(alert);
+  const hasLongMsg = (alert.message?.length ?? 0) > 80;
+  return (
+    <div className={`alert-card${sev === 'critical' ? ' alert-card--critical' : ''}`}>
+      <div className={`alert-card__strip alert-card__strip--${sev}`} />
+      <div className={`alert-card__icon-wrap alert-card__icon-wrap--${sev}`} aria-hidden>
+        <AlertIcon alert={alert} />
+      </div>
+      <div className="alert-card__main">
+        <div className="alert-card__row1">
+          <span className="alert-card__title">{alertTitle(alert)}</span>
+          <span
+            className="alert-card__when"
+            onClick={() => onToggleAbsolute(alert.id)}
+            title="Tap for exact time"
+          >
+            {showAbsolute
+              ? formatAbsolute(alert.created_at)
+              : <RelativeTime iso={alert.created_at} timezone={timezone} />}
+          </span>
+        </div>
+        {alert.vehicle_name && (
+          <div className="alert-card__vehicle">
+            <Icon24TruckOutline width={11} height={11} />
+            {alert.vehicle_name}
+          </div>
+        )}
+        {alert.message && (
+          <div
+            className={`alert-card__msg${isExpanded ? ' alert-card__msg--expanded' : ''}`}
+            onClick={hasLongMsg ? () => onToggleExpanded(alert.id) : undefined}
+            style={hasLongMsg ? { cursor: 'pointer' } : undefined}
+          >
+            {alert.message}
+          </div>
+        )}
+      </div>
+      <button
+        className="alert-card__ack"
+        disabled={isAcking}
+        onClick={() => onAcknowledge(alert.id)}
+        aria-label={`Acknowledge ${alertTitle(alert)} on ${alert.vehicle_name}`}
+      >
+        {isAcking ? '…' : <><Icon24DoneOutline width={16} height={16} />Done</>}
+      </button>
+    </div>
+  );
+});
+
 export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Props) {
   const [alerts, setAlerts]           = useState<Alert[]>([]);
   const [loading, setLoading]         = useState(true);
-  const [error, setError]             = useState(false);
+  const [error, setError]             = useState<ClassifiedError | null>(null);
   const [acking, setAcking]           = useState<Set<number>>(new Set());
   const [bulkAcking, setBulkAcking]   = useState(false);
   const [snackOpen, setSnackOpen]     = useState(false);
@@ -126,12 +199,16 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [absoluteIds, setAbsoluteIds] = useState<Set<number>>(new Set());
 
+  // Ack-all confirmation.  Bulk-ack is destructive (no per-row undo) so
+  // a misplaced thumb on the header should not wipe every alert.
+  const [confirmBulkAck, setConfirmBulkAck] = useState(false);
+
   function toast(text: string, kind: 'success' | 'error' | 'info' = 'info') {
     setSnackText(text); setSnackKind(kind); setSnackOpen(true);
   }
 
   const load = useCallback(async () => {
-    setError(false);
+    setError(null);
     try {
       const data = await apiJSON<{ alerts: Alert[] }>('/api/alerts/pending');
       // Sort newest-first (finding #18 — explicit ordering).
@@ -142,7 +219,7 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
       onCountChange?.(arr.length);
     } catch (e) {
       console.error('Failed to load alerts:', e);
-      setError(true);
+      setError(classifyError(e));
     }
   }, [onCountChange]);
 
@@ -193,7 +270,7 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
     try {
       await apiFetch('/api/alerts/bulk-ack', { method: 'POST', body: { ids } });
       haptics.success();
-      toast(`Acknowledged all ${ids.length} alerts`, 'success');
+      toast(`Acknowledged all ${pluralize(ids.length, 'alert')}`, 'success');
     } catch (e) {
       console.error('Bulk ack failed:', e);
       setAlerts(snapshot);
@@ -205,10 +282,15 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
     }
   }
 
-  async function acknowledge(id: number) {
+  // useCallback so the AlertCard memo's onAcknowledge prop is stable.
+  // Snapshot is captured via the functional setAlerts updater so we
+  // don't have to read `alerts` from the closure (which would otherwise
+  // make the dep list change on every ack).
+  const acknowledge = useCallback(async (id: number) => {
     setAcking(prev => new Set(prev).add(id));
-    const snapshot = alerts.find(a => a.id === id);
+    let snapshot: Alert | undefined;
     setAlerts(prev => {
+      snapshot = prev.find(a => a.id === id);
       const next = prev.filter(a => a.id !== id);
       onCountChange?.(next.length);
       return next;
@@ -220,8 +302,9 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
     } catch (e) {
       console.error('Failed to acknowledge alert:', e);
       if (snapshot) {
+        const restored = snapshot;
         setAlerts(prev => {
-          const next = [snapshot, ...prev.filter(a => a.id !== id)];
+          const next = [restored, ...prev.filter(a => a.id !== id)];
           onCountChange?.(next.length);
           return next;
         });
@@ -231,7 +314,7 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
     } finally {
       setAcking(prev => { const next = new Set(prev); next.delete(id); return next; });
     }
-  }
+  }, [onCountChange]);
 
   // ── Derived data ──────────────────────────────────────────────────
 
@@ -264,27 +347,40 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
   const warningCount  = alerts.filter(a => alertSeverity(a) === 'warning').length;
 
   // ── Toggle helpers ────────────────────────────────────────────────
+  // useCallback so the AlertCard memo equality check holds across
+  // unrelated re-renders (filter changes, history sheet toggles, etc.).
 
-  function toggleExpanded(id: number) {
+  const toggleExpanded = useCallback((id: number) => {
     setExpandedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
-  }
-  function toggleAbsolute(id: number) {
+  }, []);
+  const toggleAbsolute = useCallback((id: number) => {
     setAbsoluteIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
-  }
+  }, []);
 
   // ── Loading / error states ────────────────────────────────────────
 
   if (loading) return <ListRowsSkeleton count={4} />;
 
   if (error) {
+    const ErrIcon =
+      error.kind === 'auth'    ? Icon24LockOutline
+      : error.kind === 'network' ? Icon24GlobeOutline
+      : Icon24WarningTriangleOutline;
+    const header =
+      error.kind === 'auth'    ? 'Session expired'
+      : error.kind === 'server'  ? 'Server error'
+      : error.kind === 'network' ? 'No connection'
+      : 'Failed to load';
     return (
       <div className="centered">
         <Placeholder
-          header="Failed to Load"
-          description="Could not fetch your alerts. Check your connection and retry."
-          action={<button className="retry-btn" onClick={() => { setLoading(true); load().finally(() => setLoading(false)); }}>Retry</button>}
+          header={header}
+          description={error.message}
+          action={error.kind === 'auth' ? null : (
+            <button className="retry-btn" onClick={() => { setLoading(true); load().finally(() => setLoading(false)); }}>Retry</button>
+          )}
         >
-          <Icon24WarningTriangleOutline width={48} height={48} style={{ opacity: 0.4 }} />
+          <ErrIcon width={48} height={48} aria-label={header} style={{ opacity: 0.4 }} />
         </Placeholder>
       </div>
     );
@@ -387,7 +483,11 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
         <span className="alerts-header__count">{alerts.length} pending</span>
         <div className="alerts-header__actions">
           {alerts.length > 1 && (
-            <button className="alerts-header__bulk-ack" onClick={bulkAck} disabled={bulkAcking}>
+            <button
+              className="alerts-header__bulk-ack"
+              onClick={() => setConfirmBulkAck(true)}
+              disabled={bulkAcking}
+            >
               <Icon24ChecksOutline width={15} height={15} />
               {bulkAcking ? '…' : `Ack all (${alerts.length})`}
             </button>
@@ -465,77 +565,52 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
         </div>
       )}
 
-      {/* Alert cards */}
-      {visible.map(alert => {
-        const sev = alertSeverity(alert);
-        const isExpanded = expandedIds.has(alert.id);
-        const showAbsolute = absoluteIds.has(alert.id);
-        const hasLongMsg = (alert.message?.length ?? 0) > 80;
-
-        return (
-          <div
-            key={alert.id}
-            className={`alert-card${sev === 'critical' ? ' alert-card--critical' : ''}`}
-          >
-            <div className={`alert-card__strip alert-card__strip--${sev}`} />
-
-            {/* VK icon instead of emoji (findings #1, #2) */}
-            <div className={`alert-card__icon-wrap alert-card__icon-wrap--${sev}`} aria-hidden>
-              <AlertIcon alert={alert} />
-            </div>
-
-            <div className="alert-card__main">
-              <div className="alert-card__row1">
-                {/* Title only — vehicle name below (finding #4) */}
-                <span className="alert-card__title">{alertTitle(alert)}</span>
-                {/* Tap timestamp to toggle relative ↔ absolute (finding #19) */}
-                <span
-                  className="alert-card__when"
-                  onClick={() => toggleAbsolute(alert.id)}
-                  title="Tap for exact time"
-                >
-                  {showAbsolute
-                    ? formatAbsolute(alert.created_at)
-                    : <RelativeTime iso={alert.created_at} timezone={timezone} />}
-                </span>
-              </div>
-
-              {/* Vehicle name as separate element (finding #4) */}
-              {alert.vehicle_name && (
-                <div className="alert-card__vehicle">
-                  <Icon24TruckOutline width={11} height={11} />
-                  {alert.vehicle_name}
-                </div>
-              )}
-
-              {/* Expandable message — tap to reveal full text (finding #17) */}
-              {alert.message && (
-                <div
-                  className={`alert-card__msg${isExpanded ? ' alert-card__msg--expanded' : ''}`}
-                  onClick={hasLongMsg ? () => toggleExpanded(alert.id) : undefined}
-                  style={hasLongMsg ? { cursor: 'pointer' } : undefined}
-                >
-                  {alert.message}
-                </div>
-              )}
-            </div>
-
-            {/* Done button with icon (finding #3) */}
-            <button
-              className="alert-card__ack"
-              disabled={acking.has(alert.id)}
-              onClick={() => acknowledge(alert.id)}
-              aria-label={`Acknowledge ${alertTitle(alert)} on ${alert.vehicle_name}`}
-            >
-              {acking.has(alert.id)
-                ? '…'
-                : <><Icon24DoneOutline width={16} height={16} />Done</>}
-            </button>
-          </div>
-        );
-      })}
+      {/* Alert cards — memoized so expanding one card doesn't re-render
+          the rest of the list (matters at 50–100 pending alerts). */}
+      {visible.map(alert => (
+        <AlertCard
+          key={alert.id}
+          alert={alert}
+          isExpanded={expandedIds.has(alert.id)}
+          showAbsolute={absoluteIds.has(alert.id)}
+          isAcking={acking.has(alert.id)}
+          timezone={timezone}
+          onToggleAbsolute={toggleAbsolute}
+          onToggleExpanded={toggleExpanded}
+          onAcknowledge={acknowledge}
+        />
+      ))}
 
       {historyOpen && renderHistorySheet()}
+
+      {/* Ack-all confirmation — destructive, no per-row undo so we ask. */}
+      <BottomSheet
+        open={confirmBulkAck}
+        onClose={() => setConfirmBulkAck(false)}
+        title="Acknowledge all alerts?"
+      >
+        <p style={{ color: 'var(--tgui--hint_color)', fontSize: 14, marginTop: 0 }}>
+          {`This will mark ${alerts.length === 1 ? 'this' : 'all'} ${pluralize(alerts.length, 'pending alert')} as acknowledged. You can review them in History.`}
+        </p>
+        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          <button
+            className="profile-secondary-btn"
+            style={{ flex: 1 }}
+            onClick={() => setConfirmBulkAck(false)}
+          >
+            Cancel
+          </button>
+          <button
+            className="profile-save-btn"
+            style={{ flex: 1 }}
+            disabled={bulkAcking}
+            onClick={() => { setConfirmBulkAck(false); bulkAck(); }}
+          >
+            {bulkAcking ? '…' : 'Acknowledge'}
+          </button>
+        </div>
+      </BottomSheet>
+
       <Snackbar open={snackOpen} text={snackText} kind={snackKind} onClose={() => setSnackOpen(false)} />
     </div>
   );

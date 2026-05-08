@@ -13,6 +13,21 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Split heavy vendor libs into their own chunks so:
+        //  - editing a chart page doesn't invalidate the user's recharts cache
+        //  - editing a map page doesn't invalidate the user's leaflet cache
+        //  - the React/router/query bundle is reused across every navigation
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'query-vendor': ['@tanstack/react-query', '@tanstack/react-query-devtools', '@tanstack/react-table'],
+          'chart-vendor': ['recharts'],
+          'map-vendor': ['leaflet', 'leaflet.heat'],
+          'ui-vendor': ['@base-ui/react', 'lucide-react', 'sonner'],
+        },
+      },
+    },
   },
   server: {
     port: 8002,

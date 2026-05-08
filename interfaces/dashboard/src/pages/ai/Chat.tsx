@@ -37,14 +37,40 @@ function getSuggestedQuestions(role?: string): string[] {
         'Which drivers had harsh braking?',
         'Trucks with stop engine lights?',
       ];
+    case 'admin':
+    case 'owner':
+      return [
+        'Give me a status briefing for the operation',
+        'Which trucks have active faults?',
+        'Show me fuel costs this month',
+        'Any overdue maintenance tasks?',
+      ];
     default:
       return [
-        'How is my fleet doing today?',
+        'How are my vehicles doing today?',
         'Which trucks have active faults?',
         'Show me fuel costs this month',
         'Any overdue maintenance tasks?',
       ];
   }
+}
+
+/** Role-aware label for the assistant's primary briefing button. */
+function briefingLabel(role?: string): string {
+  if (role === 'driver') return 'My Truck Briefing';
+  if (role === 'dispatcher') return 'Dispatch Briefing';
+  if (role === 'safety') return 'Safety Briefing';
+  if (role === 'fleet') return 'Fleet Briefing';
+  return 'Operations Briefing';
+}
+
+/** Role-aware noun for the chat placeholder/loading copy. */
+function chatSubject(role?: string): string {
+  if (role === 'driver') return 'your truck';
+  if (role === 'dispatcher') return 'today’s dispatch';
+  if (role === 'safety') return 'safety & coaching';
+  if (role === 'fleet') return 'your fleet';
+  return 'your operation';
 }
 
 export default function Chat() {
@@ -129,7 +155,7 @@ export default function Chat() {
   const THINK_PHRASES = [
     'Reading your question\u2026',
     'Figuring out what data I need\u2026',
-    'Preparing to query the fleet\u2026',
+    'Preparing the right query\u2026',
     'Connecting to telematics\u2026',
   ];
   useEffect(() => {
@@ -317,7 +343,7 @@ export default function Chat() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `fleet-chat-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.download = `4truck-chat-${new Date().toISOString().slice(0, 10)}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -472,7 +498,7 @@ export default function Chat() {
           }`}
         >
           <Sparkles size={14} />
-          Fleet Briefing
+          {briefingLabel(user?.role)}
         </button>
       </div>
 
@@ -488,7 +514,7 @@ export default function Chat() {
                 <p className="text-sm mt-1">
                   {user?.role === 'driver'
                     ? 'Ask anything about your assigned truck.'
-                    : 'Ask anything about your fleet \u2014 vehicles, faults, fuel, events, maintenance.'}
+                    : `Ask anything about ${chatSubject(user?.role)} \u2014 vehicles, faults, fuel, events, maintenance.`}
                 </p>
                 <div className="mt-6 flex flex-wrap justify-center gap-2">
                   {suggestedQuestions.map((q) => (
@@ -624,7 +650,7 @@ export default function Chat() {
                 e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
               }}
               onKeyDown={handleKeyDown}
-              placeholder={user?.role === 'driver' ? 'Ask about your truck\u2026' : 'Ask about your fleet\u2026'}
+              placeholder={`Ask about ${chatSubject(user?.role)}\u2026`}
               rows={1}
               style={{ maxHeight: '120px' }}
               className="flex-1 bg-card text-foreground rounded-xl px-4 py-3 text-sm border border-border focus:border-ring focus:ring-2 focus:ring-ring/20 focus:outline-none resize-none transition-colors placeholder:text-muted-foreground/50"
@@ -647,9 +673,7 @@ export default function Chat() {
         <div className="flex-1 overflow-y-auto min-h-0">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-lg font-semibold">
-                {user?.role === 'driver' ? 'My Truck Briefing' : 'Fleet Briefing'}
-              </h2>
+              <h2 className="text-lg font-semibold">{briefingLabel(user?.role)}</h2>
               {briefingTime && (
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Generated at {briefingTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -671,13 +695,11 @@ export default function Chat() {
           {!briefing && !briefingLoading && !briefingError && (
             <div className="text-center text-muted-foreground mt-16">
               <Sparkles size={40} className="mx-auto mb-3 text-primary/40" />
-              <p className="text-lg font-medium">
-                {user?.role === 'driver' ? 'My Truck Briefing' : 'Fleet Status Briefing'}
-              </p>
+              <p className="text-lg font-medium">{briefingLabel(user?.role)}</p>
               <p className="text-sm mt-1">
                 {user?.role === 'driver'
                   ? "Get a quick summary of your truck's current status, health, and any issues."
-                  : 'Generate an executive summary of your fleet status, health, events, and recommendations.'}
+                  : `Generate an executive summary of ${chatSubject(user?.role)} — status, health, events, and recommendations.`}
               </p>
               <button
                 onClick={generateBriefing}
@@ -696,7 +718,7 @@ export default function Chat() {
                   <span className="animate-bounce" style={{ animationDelay: '150ms' }}>&#9679;</span>
                   <span className="animate-bounce" style={{ animationDelay: '300ms' }}>&#9679;</span>
                 </span>
-                Analyzing your {user?.role === 'driver' ? 'truck' : 'fleet'}\u2026
+                Analyzing {chatSubject(user?.role)}\u2026
               </div>
             </div>
           )}

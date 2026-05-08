@@ -29,12 +29,20 @@ function fmt(iso: string, timezone?: string, absoluteAfterSec = 86400): string {
   }
 }
 
-export function RelativeTime({ iso, timezone, absoluteAfterSec }: Props) {
+export function RelativeTime({ iso, timezone, absoluteAfterSec = 86400 }: Props) {
   const [, force] = useState(0);
+  // Once the timestamp is older than the absolute-fallback window, the
+  // formatter returns a static date that won't change — there's nothing
+  // to refresh, so skip the interval entirely.  With ~100 history items
+  // on screen this avoids ~100 needless renders/min.
+  const isFrozen = iso
+    ? Math.max(0, (Date.now() - Date.parse(iso)) / 1000) >= absoluteAfterSec
+    : true;
   useEffect(() => {
+    if (isFrozen) return;
     const t = window.setInterval(() => force(n => n + 1), 60_000);
     return () => window.clearInterval(t);
-  }, []);
+  }, [isFrozen]);
   if (!iso) return null;
   return <>{fmt(iso, timezone, absoluteAfterSec)}</>;
 }

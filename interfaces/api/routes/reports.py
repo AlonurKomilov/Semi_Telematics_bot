@@ -59,12 +59,13 @@ async def report_faults(
     }
 
 
-@router.get("/fuel")
-async def report_fuel(
+@router.get("/fuel-levels")
+async def report_fuel_levels(
     company: str | None = Query(None),
     user: dict = Depends(require_permission("can_fuel")),
 ):
-    """Fuel & DEF levels for all vehicles."""
+    """Live fuel & DEF tank levels from telematics — not the same as
+    /costs/fuel (which tracks logged fill-up entries)."""
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
     client = await get_client(user["account_id"])
@@ -90,6 +91,15 @@ async def report_fuel(
             "good": len(with_fuel) - critical - low,
         },
     }
+
+
+@router.get("/fuel", include_in_schema=False)
+async def _legacy_report_fuel(
+    company: str | None = Query(None),
+    user: dict = Depends(require_permission("can_fuel")),
+):
+    """Deprecated alias — use /reports/fuel-levels instead."""
+    return await report_fuel_levels(company=company, user=user)
 
 
 @router.get("/health")
@@ -180,6 +190,7 @@ async def export_report(
     if not _can(user["role"], type_perm):
         raise HTTPException(403, f"Role '{user['role']}' cannot export {report_type} reports")
 
+    allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
 
     client = await get_client(user["account_id"])
@@ -214,5 +225,173 @@ async def export_report(
     return StreamingResponse(
         buf,
         media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── Stakeholder Risk Summary ─────────────────────────────────────
+
+@router.get("/risk-summary")
+async def report_risk_summary(
+    subject_type: str = Query(..., pattern="^(driver|vehicle)$"),
+    subject_id: str = Query(..., min_length=1, max_length=200),
+    audience: str = Query("owner"),
+    fmt: str = Query("pdf", pattern="^(pdf|csv)$"),
+    days: int = Query(30, ge=1, le=90),
+    company: str | None = Query(None),
+    user: dict = Depends(require_permission_any(
+        "can_risk_report_all", "can_risk_report_own",
+    )),
+):
+    """Universal Stakeholder Risk Summary — per-subject risk profile.
+
+    Audience is one of insurance, owner, broker, auditor, payroll;
+    unknown values fall back to ``owner``.
+    """
+    from fastapi import HTTPException
+    from infra.platform import get_tenant_db as _get_tenant_db
+    from capabilities.reporting import (
+        build_risk_profile, generate_risk_summary_pdf,
+        generate_risk_summary_csv, is_valid_audience,
+    )
+    from interfaces.api.deps import get_user_vehicle_nums
+
+    if not is_valid_audience(audience):
+        # Fall back to owner silently rather than 4xx — keeps deep-links robust.
+        audience = "owner"
+
+    allowed = await get_user_company_codes(user)
+    validate_company_access(allowed, company)
+
+    # Defense-in-depth for own-only callers (driver / restricted roles):
+    # they may only target a *vehicle* subject in their assigned truck list.
+    own_perm = user.get("_matched_perm") == "can_risk_report_own"
+    if own_perm:
+        if subject_type != "vehicle":
+            raise HTTPException(
+                403,
+                "Own-scope callers may only request vehicle risk summaries.",
+            )
+        own_trucks = {t.strip().lower() for t in await get_user_vehicle_nums(user) if t}
+        if subject_id.strip().lower() not in own_trucks:
+            raise HTTPException(403, "Subject is not in your assigned trucks.")
+
+    # ── Build profile ───────────────────────────────────────────
+    profile = await build_risk_profile(
+        user["account_id"],
+        subject_type=subject_type,
+        subject_id=subject_id,
+        days=days,
+        company=company,
+    )
+
+    # ── Render ──────────────────────────────────────────────────
+    account_label = company or ""
+    if fmt == "pdf":
+        buf = await asyncio.to_thread(
+            generate_risk_summary_pdf, profile,
+            audience=audience, account_label=account_label,
+        )
+        media = "application/pdf"
+        ext = "pdf"
+    else:
+        buf = await asyncio.to_thread(
+            generate_risk_summary_csv, profile, audience=audience,
+        )
+        media = "text/csv; charset=utf-8"
+        ext = "csv"
+
+    # ── Audit log ───────────────────────────────────────────────
+    try:
+        tenant = await _get_tenant_db(user["account_id"])
+        await tenant.add_audit_log(
+            user["account_id"], int(user["sub"]),
+            "risk_summary_export",
+            target_type=subject_type, target_id=str(subject_id),
+            details=f"audience={audience} fmt={fmt} days={days}",
+        )
+    except Exception:
+        # Audit failure must not break export delivery.
+        pass
+
+    safe_subject = "".join(c if c.isalnum() or c in "-_." else "_"
+                           for c in subject_id)[:64]
+    filename = f"risk_summary_{audience}_{subject_type}_{safe_subject}.{ext}"
+    return StreamingResponse(
+        buf,
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/risk-summary/me")
+async def report_risk_summary_me(
+    audience: str = Query("payroll"),
+    fmt: str = Query("pdf", pattern="^(pdf|csv)$"),
+    days: int = Query(30, ge=1, le=90),
+    user: dict = Depends(require_permission_any(
+        "can_risk_report_all", "can_risk_report_own",
+    )),
+):
+    """Self-service Risk Summary for the calling user (miniapp shortcut).
+
+    Resolves the caller's primary assigned vehicle and emits a risk
+    summary for that subject. Defaults to the ``payroll`` audience —
+    the most appropriate audience for driver-facing self-service.
+    """
+    from fastapi import HTTPException
+    from interfaces.api.deps import get_user_vehicle_nums
+    from infra.platform import get_tenant_db as _get_tenant_db
+    from capabilities.reporting import (
+        build_risk_profile, generate_risk_summary_pdf,
+        generate_risk_summary_csv, is_valid_audience,
+    )
+
+    if not is_valid_audience(audience):
+        audience = "payroll"
+
+    trucks = await get_user_vehicle_nums(user)
+    if not trucks:
+        raise HTTPException(404, "No vehicle assignment for caller.")
+
+    subject_id = trucks[0]
+    profile = await build_risk_profile(
+        user["account_id"],
+        subject_type="vehicle",
+        subject_id=subject_id,
+        days=days,
+    )
+
+    if fmt == "pdf":
+        buf = await asyncio.to_thread(
+            generate_risk_summary_pdf, profile,
+            audience=audience, account_label="",
+        )
+        media = "application/pdf"
+        ext = "pdf"
+    else:
+        buf = await asyncio.to_thread(
+            generate_risk_summary_csv, profile, audience=audience,
+        )
+        media = "text/csv; charset=utf-8"
+        ext = "csv"
+
+    try:
+        tenant = await _get_tenant_db(user["account_id"])
+        await tenant.add_audit_log(
+            user["account_id"], int(user["sub"]),
+            "risk_summary_export",
+            target_type="vehicle", target_id=str(subject_id),
+            details=f"audience={audience} via=miniapp_self",
+        )
+    except Exception:
+        pass
+
+    safe_subject = "".join(c if c.isalnum() or c in "-_." else "_"
+                           for c in subject_id)[:64]
+    filename = f"risk_summary_{audience}_vehicle_{safe_subject}.{ext}"
+    return StreamingResponse(
+        buf,
+        media_type=media,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

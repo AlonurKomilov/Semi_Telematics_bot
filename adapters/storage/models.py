@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
@@ -47,6 +47,8 @@ class Account:
     bot_token_encrypted: Optional[str] = None
     bot_username: str = ""
     webhook_secret: str = ""
+    payroll_enabled: bool = False
+    coaching_enabled: bool = False
 
 @dataclass
 class Company:
@@ -91,6 +93,10 @@ class User:
     last_shift_report: Optional[str] = None  # ISO date of last shift report
     email: Optional[str] = None         # For dashboard email+password login
     password_hash: Optional[str] = None # bcrypt hash
+    # Samsara driver_id this user is linked to. Set by an admin so /coaching/me
+    # and /payroll/me have a trustworthy identity binding instead of a
+    # most-recent-event-by-truck heuristic. NULL ⇒ user has no fleet identity yet.
+    samsara_driver_id: Optional[str] = None
 
     @property
     def is_owner(self) -> bool:

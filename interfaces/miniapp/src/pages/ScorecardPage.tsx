@@ -21,9 +21,11 @@ import {
   Icon24ChevronDown,
   Icon24ChevronUp,
 } from '@vkontakte/icons';
-import { apiJSON, ApiError } from '../api/client';
+import { apiJSON, apiFetch, ApiError } from '../api/client';
 import { PillarRing } from '../components/PillarRing';
 import { ScoreSkeleton } from '../components/Skeleton';
+import { MyPaystubs } from '../components/MyPaystubs';
+import { MyCoaching } from '../components/MyCoaching';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { haptics } from '../hooks/useTelegram';
 
@@ -118,23 +120,42 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
   const [winsExpanded, setWinsExpanded]     = useState(false);
   const [lossesExpanded, setLossesExpanded] = useState(false);
 
+  // Per-load token: incremented on every load() call.  Both the main
+  // request and the (fire-and-forget) history fetch capture this value
+  // and short-circuit if a newer load has started — prevents a slow
+  // 7-day history from overwriting the chart after the user has
+  // already toggled to 30/90.
+  const loadIdRef = useRef(0);
+
+  // Mirror userRole in a ref so it can be read inside `load()` without
+  // forcing the callback to re-create on prop change (which would
+  // invalidate the load-token and cancel itself on the very next render).
+  const userRoleRef = useRef(userRole);
+  userRoleRef.current = userRole;
+
   const load = useCallback(async (days: Range) => {
+    const myId = ++loadIdRef.current;
     setError(null);
     setNoDataForRange(false);
     try {
       const resp = await apiJSON<MyScorecardResp>(`/api/safety/scorecards/me?days=${days}`);
+      if (myId !== loadIdRef.current) return;   // a newer load() has started
       setData(resp);
       haptics.success();
-      // Fetch score history — uses same `days` as the range toggle (finding #3, #13).
+      // Fetch score history — uses same `days` as the range toggle.
       const sid = resp.scorecard?.subject_id;
       if (sid) {
         apiJSON<{ history: ScoreHistoryPoint[] }>(
           `/api/safety/scorecards/history?subject_id=${encodeURIComponent(sid)}&days=${days}`
         )
-          .then(r => setHistory(r.history ?? []))
+          .then(r => {
+            if (myId !== loadIdRef.current) return;
+            setHistory(r.history ?? []);
+          })
           .catch(() => { /* warehouse may be cold */ });
       }
     } catch (e) {
+      if (myId !== loadIdRef.current) return;
       const apiErr = e as ApiError;
       const status = apiErr.status;
       if (status === 404) {
@@ -143,7 +164,7 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
         // Show a permanent informational error instead of a range-period hint.
         if (msg.toLowerCase().includes('assignment') || msg.toLowerCase().includes('no driver')) {
           setError(
-            MANAGEMENT_ROLES.has(userRole)
+            MANAGEMENT_ROLES.has(userRoleRef.current)
               ? 'Scorecards are available for drivers with an assigned vehicle. Fleet-wide scoring is not available in this view.'
               : 'No vehicle assigned to your account. Contact your admin.'
           );
@@ -179,7 +200,6 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
 
   // ── Count-up hook for the centre score ──────────────────────────
   // Declared before early returns so hook order is stable.
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   const animatedTotal = useCountUp(data?.scorecard.total ?? 0);
 
   if (loading) return <ScoreSkeleton />;
@@ -298,6 +318,13 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
           </button>
         ))}
       </div>
+
+      {/* Risk Summary self-service download */}
+      <RiskSummaryDownload days={range} />
+
+      {/* Pay-for-Performance self-service paystub history */}
+      <MyPaystubs />
+      <MyCoaching />
 
       {/* No data for selected range */}
       {noDataForRange && (
@@ -499,6 +526,77 @@ function ScoreSparkline({ points, rangeDays }: { points: ScoreHistoryPoint[]; ra
             fill="var(--tgui--hint_color)">{label}</text>
         ))}
       </svg>
+    </div>
+  );
+}
+
+
+// ── Risk Summary self-service download ─────────────────────────────
+function RiskSummaryDownload({ days }: { days: Range }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  async function go(fmt: 'pdf' | 'csv') {
+    setErr('');
+    setBusy(true);
+    haptics.selection();
+    try {
+      const qp = new URLSearchParams({
+        audience: 'payroll',
+        fmt,
+        days: String(days),
+      });
+      const res = await apiFetch(`/api/reports/risk-summary/me?${qp}`);
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(txt || `Request failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `risk_summary.${fmt}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Download failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div style={{
+      display: 'flex', gap: 8, alignItems: 'center',
+      padding: '10px 16px',
+    }}>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => go('pdf')}
+        style={{
+          padding: '8px 14px', borderRadius: 999,
+          border: '1px solid var(--tgui--button_color, #2481cc)',
+          background: 'transparent',
+          color: 'var(--tgui--button_color, #2481cc)',
+          fontSize: 13, fontWeight: 500,
+        }}
+      >
+        {busy ? 'Generating…' : '📄 My Risk Summary'}
+      </button>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => go('csv')}
+        style={{
+          padding: '8px 14px', borderRadius: 999,
+          border: '1px solid var(--tgui--hint_color, #8d8e90)',
+          background: 'transparent',
+          color: 'var(--tgui--hint_color, #8d8e90)',
+          fontSize: 13,
+        }}
+      >
+        CSV
+      </button>
+      {err && <span style={{ fontSize: 11, color: 'var(--st-red, #f04747)' }}>{err}</span>}
     </div>
   );
 }

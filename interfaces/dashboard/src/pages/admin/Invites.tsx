@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react';
+import { Link as LinkIcon, Plus } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import type { InviteInfo, InvitesResponse } from '../../types';
 import DataTable from '../../components/DataTable';
+import {
+  PageHeader,
+  EmptyState,
+  ErrorState,
+  TableSkeleton,
+} from '../../components/shell';
 import type { AnyColumn } from '../../types';
 
 const ROLE_BADGES: Record<string, string> = {
@@ -126,34 +133,55 @@ export default function Invites() {
     },
   ];
 
-  if (error && invites.length === 0) return <p className="text-destructive">{error}</p>;
-
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">🔗 Invites</h1>
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={showAll}
-              onChange={(e) => setShowAll(e.target.checked)}
-              className="rounded bg-muted border-border"
-            />
-            Show all
-          </label>
-          <button onClick={() => setShowForm(true)} className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium transition-colors">
-            + New Invite
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        icon={LinkIcon}
+        title="Invites"
+        description="Generate one-time links to add new users. Choose the role first — drivers can also be pre-bound to a truck number."
+        actions={
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={showAll}
+                onChange={(e) => setShowAll(e.target.checked)}
+                className="rounded bg-muted border-border"
+              />
+              Show all
+            </label>
+            <button
+              onClick={() => setShowForm(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
+            >
+              <Plus size={13} />
+              New invite
+            </button>
+          </div>
+        }
+      />
 
-      {error && <p className="text-destructive text-sm mb-3">{error}</p>}
+      {error && (
+        <div className="mb-3"><ErrorState message={error} /></div>
+      )}
 
       {loading ? (
-        <p className="text-muted-foreground text-sm py-8 text-center">Loading invites…</p>
+        <TableSkeleton rows={6} cols={5} />
       ) : invites.length === 0 ? (
-        <p className="text-muted-foreground text-sm py-8 text-center">No invites found</p>
+        <EmptyState
+          icon={LinkIcon}
+          title={showAll ? 'No invites have been issued' : 'No active invites'}
+          description="Create an invite to add a new teammate — pick the role and how long the link should be valid."
+          action={
+            <button
+              onClick={() => setShowForm(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
+            >
+              <Plus size={13} />
+              New invite
+            </button>
+          }
+        />
       ) : (
         <DataTable columns={columns} data={invites as unknown as Record<string, unknown>[]} />
       )}

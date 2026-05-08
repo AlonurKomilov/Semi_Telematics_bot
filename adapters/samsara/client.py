@@ -136,6 +136,14 @@ class SamsaraClient:
         self._org_id: Optional[str] = None
         self._session_lock = asyncio.Lock()
         self._org_id_lock = asyncio.Lock()
+        # Stat types this company's Samsara plan rejected with 400 — skip
+        # them on subsequent calls so we don't replay the same error every
+        # poll cycle.  TTL=24h re-validates after a plan change.
+        # Why a TTL: a tenant upgrading their Samsara plan should pick up
+        # the new types automatically without a service restart.
+        self._unsupported_stat_types: TTLCache[str, bool] = TTLCache(
+            maxsize=64, ttl=24 * 60 * 60,
+        )
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is not None and not self._session.closed:
@@ -177,8 +185,16 @@ class SamsaraClient:
         return f"https://cloud.samsara.com/o/{self._org_id}/devices/{vehicle_id}/vehicle"
 
     async def _get(self, endpoint: str, params: Optional[dict] = None) -> dict:
+        # Phase 6 observability — record latency + status per endpoint.
+        # ``endpoint`` is a static path (~30 distinct values) so the
+        # Prometheus label cardinality stays bounded.
+        import time as _time
+        from infra import observability as _obs
+
         session = await self._get_session()
         url = f"{self.base_url}{endpoint}"
+        _t0 = _time.perf_counter()
+        status_label = "ok"
         try:
             async with session.get(url, params=params) as resp:
                 if resp.status in (401, 403):
@@ -187,14 +203,24 @@ class SamsaraClient:
                         msg = body.get("message", "Permission denied")
                     except Exception:
                         msg = f"HTTP {resp.status} — permission denied"
+                    status_label = "denied"
                     raise SamsaraPermissionError(msg)
+                if resp.status >= 500:
+                    status_label = "5xx"
                 resp.raise_for_status()
                 return await resp.json()
         except SamsaraPermissionError:
             raise
         except aiohttp.ClientError as e:
+            status_label = "timeout" if "timeout" in str(e).lower() else "error"
             logger.error(f"Samsara API error on {endpoint}: {e}")
             raise
+        finally:
+            _obs.record_samsara(
+                endpoint=endpoint,
+                status=status_label,
+                seconds=_time.perf_counter() - _t0,
+            )
 
     # ── Vehicle List ─────────────────────────────────────────────
 
@@ -226,13 +252,27 @@ class SamsaraClient:
         """Return latest engine state (On/Off/Idle) for all vehicles.
 
         Uses /fleet/vehicles/stats?types=engineStates which returns the
-        most recent engine state per vehicle.
+        most recent engine state per vehicle.  If this company's plan
+        doesn't support engineStates we cache that fact for 24h so we
+        don't replay the same 400 every map-poll cycle.
         """
+        if "engineStates" in self._unsupported_stat_types:
+            return []
         try:
             data = await self._get(
                 "/fleet/vehicles/stats", params={"types": "engineStates"},
             )
             return data.get("data", [])
+        except aiohttp.ClientResponseError as e:
+            if e.status == 400:
+                self._unsupported_stat_types["engineStates"] = True
+                logger.warning(
+                    "engineStates not supported by this Samsara plan — "
+                    "caching as unsupported for 24h",
+                )
+            else:
+                logger.warning("Engine states unavailable (non-fatal): %s", e)
+            return []
         except Exception as e:
             logger.warning("Engine states unavailable (non-fatal): %s", e)
             return []
@@ -656,24 +696,41 @@ class SamsaraClient:
 
         If the batched call fails, retries each stat type individually
         so fleets that don't support certain types still get partial data.
+        Types this company's plan has already 400'd on are filtered out
+        upfront via ``_unsupported_stat_types`` so we don't burn a network
+        round-trip per poll cycle on known-bad inputs.
         """
+        wanted = [t for t in types.split(",") if t and t not in self._unsupported_stat_types]
+        if not wanted:
+            return {"data": []}
+
         try:
             return await self._get(
-                "/fleet/vehicles/stats", params={"types": types}
+                "/fleet/vehicles/stats", params={"types": ",".join(wanted)}
             )
         except Exception:
-            # Batch failed — try each type individually
-            logger.debug(f"Stats batch [{types}] failed, trying individually")
+            # Batch failed — try each type individually so a single bad
+            # type doesn't poison the rest of the response.
+            logger.debug(f"Stats batch [{','.join(wanted)}] failed, trying individually")
             merged: dict[str, dict] = {}
-            for t in types.split(","):
+            for t in wanted:
                 try:
                     data = await self._get(
                         "/fleet/vehicles/stats", params={"types": t}
                     )
                     for v in data.get("data", []):
                         merged.setdefault(v["id"], {"id": v["id"]}).update(v)
-                except Exception:
-                    logger.debug(f"Stats type {t} unsupported, skipping")
+                except aiohttp.ClientResponseError as e:
+                    if e.status == 400:
+                        self._unsupported_stat_types[t] = True
+                        logger.warning(
+                            "Stat type %s not supported by this Samsara "
+                            "plan — caching as unsupported for 24h", t,
+                        )
+                    else:
+                        logger.debug(f"Stats type {t} failed: {e}")
+                except Exception as e:
+                    logger.debug(f"Stats type {t} failed: {e}")
             return {"data": list(merged.values())}
 
     async def get_vehicle_health(self) -> list[dict]:

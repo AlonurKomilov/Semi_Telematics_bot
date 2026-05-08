@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Truck } from 'lucide-react';
+import { Truck, Thermometer } from 'lucide-react';
 import { apiJSON } from '../../api/client';
+import {
+  PageHeader,
+  EmptyState,
+  ErrorState,
+  KpiSkeleton,
+} from '../../components/shell';
 
 interface WeatherVehicle {
   name: string;
@@ -50,7 +56,7 @@ export default function Weather() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiJSON<WeatherResponse>('/weather/fleet')
+    apiJSON<WeatherResponse>('/fleet/weather')
       .then((d) => {
         setVehicles(d.vehicles || []);
         setSummary(d.summary || null);
@@ -59,11 +65,26 @@ export default function Weather() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (error && vehicles.length === 0) return <p className="text-destructive">{error}</p>;
+  if (error && vehicles.length === 0) {
+    return (
+      <div>
+        <PageHeader
+          icon={Thermometer}
+          title="Weather"
+          description="Live cabin temperature for every truck. Useful for spotting frozen DEF risk in winter and hot-cab safety issues in summer."
+        />
+        <ErrorState message={error} />
+      </div>
+    );
+  }
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Weather</h1>
+      <PageHeader
+        icon={Thermometer}
+        title="Weather"
+        description="Live cabin temperature for every truck. Useful for spotting frozen DEF risk in winter and hot-cab safety issues in summer."
+      />
 
       {/* Summary cards */}
       {summary && (
@@ -87,10 +108,22 @@ export default function Weather() {
         </div>
       )}
 
-      {loading && <p className="text-muted-foreground">Loading...</p>}
+      {loading && (
+        <div className="space-y-4">
+          <KpiSkeleton count={4} />
+        </div>
+      )}
+
+      {!loading && vehicles.length === 0 && (
+        <EmptyState
+          icon={Thermometer}
+          title="No weather data"
+          description="Cabin temperature is reported by Samsara — once trucks come online with thermal sensors you'll see them here."
+        />
+      )}
 
       {/* Vehicle grid */}
-      {!loading && (
+      {!loading && vehicles.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {vehicles.map((v) => (
             <div key={v.name} className={`rounded-lg border border-border bg-card p-4 ${tempBg(v.temp_f)}`}>

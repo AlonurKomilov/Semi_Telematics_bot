@@ -157,6 +157,10 @@ async def get_driver_efficiency(
 ) -> list[dict]:
     """Fetch per-driver efficiency/scorecard data.
 
+    Warehouse-first: reads ``driver_efficiency_daily`` (snapshotted hourly)
+    when WAREHOUSE_READS_ENABLED=1, falls back to live Samsara otherwise
+    (or on cold-start empty warehouse).
+
     When *vehicle_nums* is provided the results are filtered to drivers whose
     ``_vehicle_summaries[].vehicle.name`` matches any of the truck identifiers
     (case-insensitive exact match).  This is structurally correct — earlier
@@ -169,7 +173,22 @@ async def get_driver_efficiency(
     """
     await prepare_companies(account_id)
     client = await get_client(account_id)
-    results = await client.get_driver_efficiency(days=days, company=company)
+
+    async def _live():
+        return await client.get_driver_efficiency(days=days, company=company)
+
+    from capabilities.telemetry import warehouse_reader as _wh
+    results = await _wh.get_driver_efficiency_window(
+        account_id, days=days, samsara_fallback=_live,
+    )
+    # Warehouse path is account-scoped but not company-scoped — filter
+    # locally so the warehouse hit still respects the caller's company
+    # parameter when present.
+    if company:
+        results = [
+            r for r in results
+            if (r.get("_org") or r.get("company") or "") == company
+        ]
     if vehicle_nums is not None:
         if not vehicle_nums:
             return []

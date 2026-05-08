@@ -1,6 +1,9 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Shield } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useRoleView } from '../../context/RoleViewContext';
+import { PageHeader, CardSkeleton } from '../../components/shell';
 
 const ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'driver'] as const;
 
@@ -81,6 +84,7 @@ const PERM_GROUPS: PermGroup[] = [
     flags: [
       { allKey: 'can_scorecard_all', ownKey: 'can_scorecard_own', label: 'Scorecards', scoped: true },
       { allKey: 'can_events_all', ownKey: 'can_events_own', label: 'Safety Events', scoped: true },
+      { allKey: 'can_risk_report_all', ownKey: 'can_risk_report_own', label: 'Stakeholder Risk Summary', scoped: true },
       { key: 'can_fuel_cost', label: 'Fuel Costs' },
       { key: 'can_cost_per_mile', label: 'Cost per Mile' },
     ],
@@ -93,6 +97,22 @@ const PERM_GROUPS: PermGroup[] = [
       { key: 'can_manage_users', label: 'Manage Users' },
       { key: 'can_manage_companies', label: 'Manage Companies' },
       { key: 'can_invite', label: 'Send Invites' },
+    ],
+  },
+  {
+    title: 'Payroll',
+    icon: '💵',
+    flags: [
+      { key: 'can_payroll_admin', label: 'Manage Bonus Rules & Runs' },
+      { key: 'can_payroll_view_own', label: 'View Own Paystubs' },
+    ],
+  },
+  {
+    title: 'Coaching',
+    icon: '🎓',
+    flags: [
+      { key: 'can_coaching_admin', label: 'Manage Coaching Rules & Assignments' },
+      { key: 'can_coaching_view_own', label: 'View & Acknowledge Own Coaching' },
     ],
   },
 ];
@@ -117,9 +137,7 @@ interface OverridesData {
 
 export default function RolePermissions() {
   const { refreshPermissions } = useRoleView();
-  const [data, setData] = useState<PermsData | null>(null);
-  const [overridesData, setOverridesData] = useState<OverridesData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
@@ -128,6 +146,22 @@ export default function RolePermissions() {
   const [edits, setEdits] = useState<Record<string, boolean>>({});
   const [resetAllConfirm, setResetAllConfirm] = useState(false);
   const [deleteOverrideConfirm, setDeleteOverrideConfirm] = useState(false);
+
+  const { data, isLoading: rolesLoading, error: rolesErr } = useQuery({
+    queryKey: ['perms-roles'],
+    queryFn: () => apiJSON<PermsData>('/admin/permissions/roles'),
+  });
+  const { data: overridesData } = useQuery({
+    queryKey: ['perms-overrides'],
+    queryFn: () => apiJSON<OverridesData>('/admin/permissions/roles/overrides'),
+  });
+  const loading = rolesLoading;
+  const fetchError = rolesErr instanceof Error ? rolesErr.message : '';
+  const load = () =>
+    Promise.all([
+      qc.invalidateQueries({ queryKey: ['perms-roles'] }),
+      qc.invalidateQueries({ queryKey: ['perms-overrides'] }),
+    ]);
 
   const companies = overridesData?.companies ?? [];
   const hasCompanies = companies.length > 0;
@@ -138,25 +172,6 @@ export default function RolePermissions() {
     const roles = overridesData.overrides[String(selectedCompany)] ?? [];
     return roles.includes(selectedRole);
   }, [selectedCompany, selectedRole, overridesData]);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const [d, ov] = await Promise.all([
-        apiJSON<PermsData>('/admin/permissions/roles'),
-        apiJSON<OverridesData>('/admin/permissions/roles/overrides').catch(() => null),
-      ]);
-      setData(d);
-      if (ov) setOverridesData(ov);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load permissions');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
 
   // Base permissions for the selected role (account-wide from /roles endpoint)
   const accountWidePerms = data?.current[selectedRole] ?? {};
@@ -327,18 +342,32 @@ export default function RolePermissions() {
       .filter(roles => roles.includes(role)).length;
   }
 
-  if (loading) return <p className="text-muted-foreground">Loading permissions...</p>;
+  if (loading) {
+    return (
+      <div>
+        <PageHeader
+          icon={Shield}
+          title="Role Permissions"
+          description="Decide what each role is allowed to see and do. Changes take effect on the next page load for active users."
+        />
+        <CardSkeleton height="h-96" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Role Permissions</h1>
-        {!resetAllConfirm ? (
+      <PageHeader
+        icon={Shield}
+        title="Role Permissions"
+        description="Decide what each role is allowed to see and do. Toggle a permission to change it for everyone in that role; per-company overrides are also supported."
+        actions={
+          !resetAllConfirm ? (
           <button
             onClick={() => setResetAllConfirm(true)}
-            className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-border hover:border-border/80 rounded transition"
+            className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-border hover:border-border/80 rounded-md transition"
           >
-            Reset All Roles
+            Reset all roles
           </button>
         ) : (
           <div className="flex items-center gap-2">
@@ -357,10 +386,11 @@ export default function RolePermissions() {
               Cancel
             </button>
           </div>
-        )}
-      </div>
+        )
+        }
+      />
 
-      {error && <p className="text-destructive text-sm">{error}</p>}
+      {(error || fetchError) && <p className="text-destructive text-sm">{error || fetchError}</p>}
       {success && <p className="text-green-600 dark:text-green-400 text-sm">{success}</p>}
 
       {/* Company selector */}

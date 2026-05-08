@@ -1,5 +1,7 @@
 """Alert API endpoints."""
 
+import asyncio
+
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
 
@@ -140,12 +142,17 @@ async def bulk_acknowledge(
 ):
     """Acknowledge multiple alerts at once."""
     telegram_id = int(user["sub"])
-    acked = 0
-    failed = 0
-    for ack_id in body.ids:
-        success = await tenant_db.acknowledge_alert(ack_id, telegram_id, account_id=user["account_id"])
-        if success:
-            acked += 1
-        else:
-            failed += 1
+    if not body.ids:
+        return {"acked": 0, "failed": 0, "total": 0}
+    # Run all acknowledges in parallel — N sequential awaits become 1 round trip
+    # per row served concurrently by the asyncpg pool.
+    results = await asyncio.gather(
+        *(
+            tenant_db.acknowledge_alert(ack_id, telegram_id, account_id=user["account_id"])
+            for ack_id in body.ids
+        ),
+        return_exceptions=True,
+    )
+    acked = sum(1 for r in results if r is True)
+    failed = len(results) - acked
     return {"acked": acked, "failed": failed, "total": len(body.ids)}

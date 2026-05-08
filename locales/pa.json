@@ -859,5 +859,64 @@
     "back_reports": "◀️ ਰਿਪੋਰਟਾਂ",
     "error_content": "📋 <b>ਰਿਪੋਰਟ ਸਬਸਕ੍ਰਿਪਸ਼ਨ</b>\n\n⚠️ ਰਿਪੋਰਟ ਤਿਆਰ ਨਹੀਂ ਹੋ ਸਕੀ।",
     "sending": "📋 ਤੁਹਾਡੀ ਸ਼ਡਿਊਲਡ <b>{rtype}</b> ਰਿਪੋਰਟ ਤਿਆਰ ਹੋ ਰਹੀ ਹੈ..."
+  },
+  "risk_report": {
+    "title": "ਹਿੱਸੇਦਾਰਾਂ ਲਈ ਜੋਖਮ ਸੰਖੇਪ",
+    "usage": "ਵਰਤੋਂ: /risk_report <ਟਰੱਕ> [insurance|owner|broker|auditor|payroll]",
+    "not_assigned": "ਤੁਸੀਂ ਸਿਰਫ ਆਪਣੇ ਨੂੰ ਅਸਾਈਨ ਕੀਤੇ ਟਰੱਕਾਂ ਲਈ ਜੋਖਮ ਸੰਖੇਪ ਮੰਗ ਸਕਦੇ ਹੋ।",
+    "loading": "{vehicle} ਲਈ ਜੋਖਮ ਸੰਖੇਪ ਤਿਆਰ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ…",
+    "caption": "<b>ਜੋਖਮ ਸੰਖੇਪ</b>\nਟਰੱਕ: {vehicle}\nਆਡੀਅੰਸ: {audience}\nਸਕੋਰ: {score}",
+    "audience": {
+      "insurance": "ਬੀਮਾ",
+      "owner": "ਮਾਲਕ",
+      "broker": "ਬ੍ਰੋਕਰ",
+      "auditor": "ਆਡੀਟਰ",
+      "payroll": "ਪੇਅਰੋਲ"
+    }
+  },
+  "payroll": {
+    "title": "ਪ੍ਰਦਰਸ਼ਨ ਅਨੁਸਾਰ ਤਨਖਾਹ",
+    "disabled_for_account": "ਇਸ ਖਾਤੇ ਲਈ ਪੇਰੋਲ ਫੀਚਰ ਯੋਗ ਨਹੀਂ ਹੈ।",
+    "my_pay": {
+      "title": "ਮੇਰੀ ਤਨਖਾਹ",
+      "period": "ਅਵਧੀ: {start} → {end}",
+      "status": "ਸਥਿਤੀ: {status}",
+      "base": "ਮੁੱਢਲੀ ਤਨਖਾਹ: {amount}",
+      "bonuses": "ਬੋਨਸ",
+      "total": "ਕੁੱਲ: {amount}",
+      "history": "ਇਤਿਹਾਸ",
+      "no_driver_mapping": "ਤੁਹਾਡੇ ਖਾਤੇ ਨੂੰ ਡਰਾਈਵਰ ਰਿਕਾਰਡ ਨਾਲ ਮਿਲਾਨ ਨਹੀਂ ਹੋ ਸਕਿਆ।",
+      "no_history": "ਅਜੇ ਕੋਈ ਤਨਖਾਹ ਪਰਚੀ ਨਹੀਂ।"
+    }
+  },
+  "coaching": {
+    "title": "ਆਟੋ ਕੋਚਿੰਗ",
+    "disabled_for_account": "ਇਸ ਖਾਤੇ ਲਈ ਕੋਚਿੰਗ ਚਾਲੂ ਨਹੀਂ ਹੈ।",
+    "topics": {
+      "hard_brake": "ਸਖਤ ਬ੍ਰੇਕਿੰਗ",
+      "harsh_accel": "ਸਖਤ ਐਕਸਲੇਰੇਸ਼ਨ",
+      "speeding": "ਤੇਜ਼ ਰਫ਼ਤਾਰ",
+      "distraction": "ਧਿਆਨ ਭਟਕਾਉ",
+      "following_distance": "ਫਾਲੋਇੰਗ ਦੂਰੀ",
+      "fatigue": "ਥਕਾਵਟ"
+    },
+    "severity": {
+      "low": "ਘੱਟ",
+      "medium": "ਮੱਧਮ",
+      "high": "ਉੱਚ"
+    },
+    "status": {
+      "pending": "ਬਕਾਇਆ",
+      "acknowledged": "ਮੰਨਿਆ",
+      "cancelled": "ਰੱਦ"
+    },
+    "my": {
+      "title": "ਮੇਰੀ ਕੋਚਿੰਗ",
+      "no_pending": "ਕੋਈ ਬਕਾਇਆ ਕੋਚਿੰਗ ਸੌਂਪਣੀ ਨਹੀਂ ਹੈ।",
+      "no_driver_mapping": "ਤੁਹਾਡੇ ਖਾਤੇ ਨੂੰ ਡਰਾਈਵਰ ਨਾਲ ਮੈਪ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਿਆ।",
+      "ack_button": "ਮੰਨੋ",
+      "ack_done": "ਮੰਨ ਲਿਆ। ਧੰਨਵਾਦ!",
+      "ack_failed": "ਸੌਂਪਣੀ ਨੂੰ ਮੰਨਿਆ ਨਹੀਂ ਜਾ ਸਕਿਆ।"
+    }
   }
 }

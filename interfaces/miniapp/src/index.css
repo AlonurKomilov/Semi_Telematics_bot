@@ -335,6 +335,21 @@ body {
 .status-badge.moving   { background: var(--st-green-tint);  color: var(--st-green); }
 .status-badge.idle     { background: var(--st-orange-tint); color: var(--st-orange); }
 .status-badge.stopped  { background: var(--st-red-tint);    color: var(--st-red); }
+
+/* Colorblind-safe: each status also carries a distinct glyph so the
+   badge is legible without relying on color alone (~8% of male users
+   are red-green colorblind).  Glyphs are in the Geometric Shapes block
+   (U+25B6/25CF/25A0) and render consistently across iOS/Android. */
+.status-badge::before {
+  display: inline-block;
+  margin-right: 4px;
+  font-size: 0.85em;
+  line-height: 1;
+  vertical-align: -0.05em;
+}
+.status-badge.moving::before  { content: '\25B6'; } /* ▶ */
+.status-badge.idle::before    { content: '\25CF'; } /* ● */
+.status-badge.stopped::before { content: '\25A0'; } /* ■ */
 /* Solid-fill variant for the status card (higher contrast on dark card bg) */
 .status-badge--solid.moving  { background: var(--st-green, #30d158);  color: #fff; }
 .status-badge--solid.idle    { background: var(--st-orange, #ff9f0a); color: #fff; }
@@ -568,6 +583,12 @@ body {
   font-size: 28px;
   font-weight: 700;
   letter-spacing: -0.01em;
+  /* 28px on a long vehicle name (e.g. "VOLVO-2024-FREIGHT-LINE-09") would
+     wrap onto a second line and push the stat row off-screen on a 320px
+     iPhone SE.  Truncate instead. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .vehicle-hero__company {
   font-size: 13px;
@@ -1544,9 +1565,44 @@ button.profile-row:focus-visible {
 .sheet--full { height: 90vh; }
 .sheet__handle-area {
   display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 10px 0 6px;
+  /* Apple HIG min touch target = 44px.  Older 10/6 padding made the
+     swipe-dismiss handle hard to grab on bigger thumbs. */
+  padding: 18px 0 16px;
+  min-height: 44px;
   cursor: grab;
+  touch-action: none;
+}
+
+/* Reusable label/value row inside a BottomSheet body.  Replaces a pile
+   of inline styles in MapPage's vehicle detail sheet so theme-aware
+   borders and icon alignment stay consistent. */
+.sheet-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--tgui--divider, rgba(128,128,128,0.14));
+}
+.sheet-row--header {
+  border-bottom: none;
+  margin-bottom: 8px;
+}
+.sheet-row__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--tgui--hint_color);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.sheet-row__value {
+  font-size: 14px;
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .sheet__handle {
   width: 40px;

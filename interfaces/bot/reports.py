@@ -837,3 +837,98 @@ async def cmd_api_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error in API status: {e}", exc_info=True)
         await _show(update, context, [_safe_error(e)], keyboard=back_kb())
+
+
+# ══════════════════════════════════════════════════════════════════
+# STAKEHOLDER RISK SUMMARY  (premium)
+# ══════════════════════════════════════════════════════════════════
+
+@_require_registered
+async def cmd_risk_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Generate a Stakeholder Risk Summary PDF for one vehicle.
+
+    Usage: ``/risk_report <vehicle> [audience]``
+        audience ∈ insurance | owner | broker | auditor | payroll
+        defaults to ``owner`` when omitted.
+    """
+    user = context.user_data["_db_user"]
+    if not (can(user.role, "can_risk_report_all") or can(user.role, "can_risk_report_own")):
+        if update.callback_query:
+            await update.callback_query.answer(t("access.no_access"), show_alert=True)
+        else:
+            await update.message.reply_text(t("access.no_access"))
+        return
+
+    args = context.args or []
+    if not args:
+        await update.message.reply_text(t("risk_report.usage"))
+        return
+
+    vehicle = args[0].strip()
+    audience = (args[1].strip().lower() if len(args) > 1 else "owner")
+
+    # Defense-in-depth for own-only callers — verify vehicle assignment.
+    if not can(user.role, "can_risk_report_all"):
+        own_trucks: set[str] = set()
+        try:
+            from infra.platform import get_platform_db
+            pdb = get_platform_db()
+            trucks = await pdb.get_user_vehicle_nums(user.id)
+            if not trucks and getattr(user, "truck_num", None):
+                trucks = [user.truck_num]
+            own_trucks = {str(r).strip().lower() for r in (trucks or []) if r}
+        except Exception:
+            own_trucks = set()
+        if vehicle.strip().lower() not in own_trucks:
+            await update.message.reply_text(t("risk_report.not_assigned"))
+            return
+
+    await prepare_companies(user.account_id)
+    await _show_loading(update, context, t("risk_report.loading", vehicle=vehicle))
+
+    try:
+        from capabilities.reporting import (
+            build_risk_profile, generate_risk_summary_pdf, is_valid_audience,
+        )
+        from infra.platform import get_tenant_db
+
+        if not is_valid_audience(audience):
+            audience = "owner"
+
+        profile = await build_risk_profile(
+            user.account_id,
+            subject_type="vehicle",
+            subject_id=vehicle,
+            days=30,
+        )
+        pdf_buf = await asyncio.to_thread(
+            generate_risk_summary_pdf, profile,
+            audience=audience, account_label="",
+        )
+
+        # Audit log
+        try:
+            tenant = await get_tenant_db(user.account_id)
+            await tenant.add_audit_log(
+                user.account_id, user.telegram_id,
+                "risk_summary_export",
+                target_type="vehicle", target_id=vehicle,
+                details=f"audience={audience} via=bot",
+            )
+        except Exception:
+            pass
+
+        caption = t(
+            "risk_report.caption",
+            vehicle=vehicle,
+            audience=audience,
+            score=profile.total_score if profile.total_score is not None else "—",
+        )
+        kb = await _user_menu_kb(user)
+        await _send_report_doc(
+            update, context, pdf_buf,
+            f"Risk_Summary_{audience}", "pdf", None, caption, kb,
+        )
+    except Exception as e:
+        logger.error(f"Error in /risk_report: {e}", exc_info=True)
+        await _show(update, context, [_safe_error(e)], keyboard=back_kb())

@@ -1,0 +1,127 @@
+# Prometheus alert rules for the 4truck stack.
+#
+# Severity convention:
+#   * critical — page on-call immediately (SLO breach, customer impact)
+#   * warning  — Slack channel / next business day investigation
+#   * info     — runbook reference, no notification
+
+groups:
+  # ── API health ────────────────────────────────────────────
+  - name: 4truck-api
+    interval: 30s
+    rules:
+      - alert: APIErrorRateHigh
+        expr: |
+          sum(rate(http_requests_total{status=~"5..", handler!~"/metrics|/api/health"}[5m]))
+            /
+          sum(rate(http_requests_total{handler!~"/metrics|/api/health"}[5m]))
+            > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API 5xx rate > 1% over 5 minutes"
+          runbook: "docs/runbooks/observability-rollout.md#api-error-rate"
+
+      - alert: APIp99LatencyHigh
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le, handler) (
+              rate(http_request_duration_seconds_bucket{handler!~"/metrics|/api/health"}[5m])
+            )
+          ) > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p99 API latency > 5s for {{ $labels.handler }}"
+          runbook: "docs/runbooks/observability-rollout.md#api-latency"
+
+      - alert: APIDown
+        expr: up{job="4truck-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "4truck API endpoint not responding to scrapes for 2m"
+
+  # ── Samsara dependency ────────────────────────────────────
+  - name: 4truck-samsara
+    interval: 30s
+    rules:
+      - alert: Samsara5xxRateHigh
+        expr: |
+          sum(rate(samsara_requests_total{status="5xx"}[5m]))
+            /
+          sum(rate(samsara_requests_total[5m]))
+            > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Samsara 5xx rate > 5% over 10m — upstream API likely degraded"
+
+      - alert: SamsaraTimeoutRateHigh
+        expr: |
+          sum(rate(samsara_requests_total{status="timeout"}[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Samsara timeouts > 1 req/sec"
+
+  # ── Cache effectiveness ───────────────────────────────────
+  - name: 4truck-cache
+    interval: 60s
+    rules:
+      - alert: ScorecardCacheMissRateHigh
+        expr: |
+          sum(rate(cache_get_or_compute_total{key_prefix="scorecards", status="miss"}[15m]))
+            /
+          sum(rate(cache_get_or_compute_total{key_prefix="scorecards"}[15m]))
+            > 0.30
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Scorecard cache miss rate > 30% — pre-warm job may have failed"
+          runbook: "docs/runbooks/jobqueue-rollout.md"
+
+  # ── Job queue ─────────────────────────────────────────────
+  - name: 4truck-arq
+    interval: 30s
+    rules:
+      - alert: ARQQueueDepthHigh
+        expr: arq_queue_depth > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ARQ queue depth > 1000 — workers can't keep up"
+
+      - alert: ARQJobFailureRateHigh
+        expr: |
+          sum(rate(arq_job_seconds_count{status="failed"}[15m]))
+            /
+          sum(rate(arq_job_seconds_count[15m]))
+            > 0.05
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ARQ job failure rate > 5% over 15m"
+
+  # ── Scoring service ───────────────────────────────────────
+  - name: 4truck-scoring
+    interval: 60s
+    rules:
+      - alert: ScorecardSignalsGatherSlow
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(scorecard_stage_seconds_bucket{stage="signals_gather"}[10m]))
+          ) > 10
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Scoring signals_gather stage p95 > 10s — Samsara fan-out slowing down"
