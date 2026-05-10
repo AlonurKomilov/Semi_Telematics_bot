@@ -217,7 +217,7 @@ async def check_unsafe_parking(app: Application):
                     if isinstance(latest, dict):
                         engine_by_id[vid] = latest
 
-            # ── Pre-fetch per-account state ONCE (item 6) ──────────────
+            # ── Pre-fetch per-account state ONCE ───────────────────────
             # Replaces V × per-vehicle queries inside the loop:
             #   * active parking events  (was: 1 query per vehicle)
             #   * maintenance suppression (was: 1 query per vehicle)

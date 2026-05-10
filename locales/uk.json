@@ -385,6 +385,7 @@
     "history_occurrences": "Випадків: <b>{count}</b>",
     "history_since": "Від: {date}",
     "history_latest": "Останній: {date}",
+    "history_occurrences_inline": "{count} разів",
     "ago_just_now": "щойно",
     "ago_minutes": "{n} хв тому",
     "ago_hours": "{n} год тому",

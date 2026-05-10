@@ -438,6 +438,7 @@
     "history_occurrences": "Occurrences: <b>{count}</b>",
     "history_since": "Since: {date}",
     "history_latest": "Latest: {date}",
+    "history_occurrences_inline": "{count} occurrences",
     "ago_just_now": "just now",
     "ago_minutes": "{n} min ago",
     "ago_hours": "{n} hr ago",

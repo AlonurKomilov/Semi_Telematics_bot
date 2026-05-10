@@ -385,6 +385,7 @@
     "history_occurrences": "Soni: <b>{count}</b>",
     "history_since": "Boshlangan vaqti: {date}",
     "history_latest": "Oxirgi marta: {date}",
+    "history_occurrences_inline": "{count} marta",
     "ago_just_now": "hozir",
     "ago_minutes": "{n} daqiqa oldin",
     "ago_hours": "{n} soat oldin",

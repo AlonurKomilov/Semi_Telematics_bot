@@ -243,7 +243,7 @@ async def send_alert(
         )
         return
 
-    # ── Bulk pre-fetch acks once (item 8) ───────────────────────
+    # ── Bulk pre-fetch acks once ────────────────────────────────
     # For S subscribers, the per-subscriber path used to do 1-2 ack
     # lookups each = 2 S DB round-trips. Pre-fetching here turns that
     # into 2 chunked queries regardless of S.

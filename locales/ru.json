@@ -385,6 +385,7 @@
     "history_occurrences": "Случаев: <b>{count}</b>",
     "history_since": "С: {date}",
     "history_latest": "Последний: {date}",
+    "history_occurrences_inline": "{count} срабатываний",
     "ago_just_now": "только что",
     "ago_minutes": "{n} мин назад",
     "ago_hours": "{n} ч назад",

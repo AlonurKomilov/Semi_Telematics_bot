@@ -201,7 +201,15 @@ def format_alert_history_footer(occurrence_count: int,
     if history_id is not None:
         head = _t('alert_format.history_alert_id').replace('{id}', str(history_id))
         if occurrence_count > 1:
-            head = f"{head}  ·  × {occurrence_count}"
+            # "× 51" alone is cryptic — readers couldn't tell it meant
+            # occurrence count without context.  Use the verbose form
+            # ("51 occurrences") so the chronic-pattern signal is
+            # self-explanatory at a glance.
+            count_label = (
+                _t('alert_format.history_occurrences_inline')
+                .replace('{count}', str(occurrence_count))
+            )
+            head = f"{head}  ·  {count_label}"
         parts.append(f"  {head}")
 
     if occurrence_count > 1:

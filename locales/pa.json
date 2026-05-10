@@ -385,6 +385,7 @@
     "history_occurrences": "ਵਾਰ: <b>{count}</b>",
     "history_since": "ਇਸ ਸਮੇਂ ਤੋਂ: {date}",
     "history_latest": "ਨਵੀਨਤਮ: {date}",
+    "history_occurrences_inline": "{count} ਵਾਰ",
     "ago_just_now": "ਹੁਣੇ",
     "ago_minutes": "{n} ਮਿੰਟ ਪਹਿਲਾਂ",
     "ago_hours": "{n} ਘੰਟੇ ਪਹਿਲਾਂ",
