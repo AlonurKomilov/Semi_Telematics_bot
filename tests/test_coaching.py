@@ -81,11 +81,26 @@ def _patch_services(monkeypatch, tenant_db, *, coaching_enabled: bool = True,
             out.append(ev)
         return out
 
+    async def _counts_grouped(_aid, *, days=30, event_types=None, driver_ids=None):
+        out: dict[tuple[str, str], int] = {}
+        ets = set(event_types or [])
+        dids = set(driver_ids or [])
+        for ev in (safety_events or []):
+            et = ev.get("event_type") or ""
+            did = ev.get("driver_id") or ""
+            if ets and et not in ets:
+                continue
+            if dids and did not in dids:
+                continue
+            out[(did, et)] = out.get((did, et), 0) + 1
+        return out
+
     monkeypatch.setattr(coaching_engine, "get_tenant_db", _get_tenant)
     monkeypatch.setattr(coaching_service, "get_tenant_db", _get_tenant)
     monkeypatch.setattr(coaching_service, "get_db", lambda: fake_pdb)
     monkeypatch.setattr(coaching_engine, "evaluate_subjects", _evaluate_subjects)
     tenant_db.get_safety_events_warehouse = _events  # type: ignore[assignment]
+    tenant_db.get_safety_event_counts_grouped = _counts_grouped  # type: ignore[assignment]
 
 
 # ── pure rule evaluation matrix ──────────────────────────────────

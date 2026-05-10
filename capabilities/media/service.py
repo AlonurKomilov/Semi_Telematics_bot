@@ -45,27 +45,40 @@ async def gather_snapshots(
     populate_company_display(companies)
     show_co = len(companies) > 1
 
-    all_snapshots: list[dict] = []
-    for co in companies:
-        from adapters.samsara.client import SamsaraClient
+    # Each company has its own Samsara API key → one round-trip per
+    # company (~3-5 s). Run them in parallel; the Samsara API rate
+    # limits per *key*, so concurrent calls across distinct keys don't
+    # contend with each other.
+    from adapters.samsara.client import SamsaraClient
+
+    async def _fetch_one(co):
         client = SamsaraClient(
             api_key=co.samsara_api_key,
             active_days=co.active_days,
         )
         try:
             snaps = await client.get_dashcam_snapshots(days=days)
-            for s in snaps:
-                s["_org"] = co.code
-            if vehicle_name:
-                snaps = [
-                    s for s in snaps
-                    if s["vehicle_name"].lower() == vehicle_name.lower()
-                ]
-            all_snapshots.extend(snaps)
         except Exception as e:
             logger.warning(f"Camera snapshots failed for {co.code}: {e}")
+            return []
         finally:
             await client.close()
+        for s in snaps:
+            s["_org"] = co.code
+        if vehicle_name:
+            snaps = [
+                s for s in snaps
+                if s["vehicle_name"].lower() == vehicle_name.lower()
+            ]
+        return snaps
+
+    results = await asyncio.gather(
+        *(_fetch_one(co) for co in companies),
+        return_exceptions=False,
+    )
+    all_snapshots: list[dict] = []
+    for r in results:
+        all_snapshots.extend(r)
 
     return all_snapshots, show_co
 

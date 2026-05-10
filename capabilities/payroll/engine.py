@@ -130,19 +130,31 @@ async def compute_run(
     counts_by_driver: dict[str, dict[str, int]] = {}
 
     if (incident_event_types or has_any_kind) and driver_ids:
-        for did in driver_ids:
-            slot: dict[str, int] = {}
-            for et in incident_event_types:
-                events = await tenant.get_safety_events_warehouse(
-                    account_id, days=days, event_type=et, driver_id=did,
-                )
-                slot[et or ""] = len(events)
-            if has_any_kind:
-                events_all = await tenant.get_safety_events_warehouse(
-                    account_id, days=days, driver_id=did,
-                )
-                slot["*"] = len(events_all)
-            counts_by_driver[did] = slot
+        # Bulk-fetch counts for typed event rules (one grouped query
+        # replaces D × E queries — same pattern as coaching/engine.py).
+        if incident_event_types:
+            typed_counts = await tenant.get_safety_event_counts_grouped(
+                account_id,
+                days=days,
+                event_types=[et for et in incident_event_types if et],
+                driver_ids=list(driver_ids),
+            )
+            for (did, et), cnt in typed_counts.items():
+                counts_by_driver.setdefault(did, {})[et or ""] = cnt
+        # "Any-kind" rules need the per-driver total across all event
+        # types — one ungrouped query collapses D queries to 1.
+        if has_any_kind:
+            any_counts = await tenant.get_safety_event_counts_grouped(
+                account_id,
+                days=days,
+                event_types=None,
+                driver_ids=list(driver_ids),
+            )
+            totals: dict[str, int] = {}
+            for (did, _et), cnt in any_counts.items():
+                totals[did] = totals.get(did, 0) + cnt
+            for did, total in totals.items():
+                counts_by_driver.setdefault(did, {})["*"] = total
 
     items: list[RunItem] = []
     for did in sorted(driver_ids):

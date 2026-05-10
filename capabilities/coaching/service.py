@@ -239,14 +239,22 @@ async def run_evaluation(
     if not proposals:
         return []
     tenant = await get_tenant_db(account_id)
-    created: list[int] = []
-    for p in proposals:
-        aid = await tenant.create_coaching_assignment(
-            account_id, driver_id=p.driver_id, topic_key=p.topic_key,
-            rule_id=p.rule_id, severity=p.severity, reason=p.reason,
-            assigned_by=user_id,
-        )
-        created.append(aid)
+    # One executemany + one commit instead of P INSERT-then-commit
+    # round-trips. Per-row commits dominated wall time at ~20+ proposals.
+    created = await tenant.create_coaching_assignments_bulk(
+        account_id,
+        items=[
+            {
+                "driver_id": p.driver_id,
+                "topic_key": p.topic_key,
+                "rule_id": p.rule_id,
+                "severity": p.severity,
+                "reason": p.reason,
+            }
+            for p in proposals
+        ],
+        assigned_by=user_id,
+    )
     await _audit(
         account_id, user_id, "coaching_run_completed",
         f"{len(created)} assignments",

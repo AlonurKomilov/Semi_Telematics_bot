@@ -99,6 +99,66 @@ class AlertsMixin(_MixinBase):
         )
         return [dict(r) for r in rows]
 
+    async def get_active_vehicle_acks_bulk(
+        self, account_id: int, vehicle_id: str, sent_tos: list[int],
+    ) -> dict[int, list[dict]]:
+        """Bulk variant: ``{telegram_id: [active_acks]}`` for every
+        subscriber in ``sent_tos``. Replaces the per-subscriber query in
+        the alerting fan-out — one chunked SELECT instead of S queries."""
+        out: dict[int, list[dict]] = {tid: [] for tid in sent_tos}
+        if not sent_tos:
+            return out
+        for i in range(0, len(sent_tos), 500):
+            chunk = sent_tos[i:i + 500]
+            placeholders = ",".join("?" * len(chunk))
+            rows = await self.read_all(
+                f"SELECT * FROM alert_acknowledgments "
+                f"WHERE account_id = ? AND vehicle_id = ? "
+                f"  AND sent_to IN ({placeholders}) "
+                f"  AND acknowledged_at IS NULL AND status = 'active'",
+                (account_id, vehicle_id, *chunk),
+            )
+            for r in rows:
+                d = dict(r)
+                tid = d.get("sent_to")
+                if tid is not None:
+                    out.setdefault(int(tid), []).append(d)
+        return out
+
+    async def get_info_alert_acks_bulk(
+        self, account_id: int, vehicle_id: str, alert_type: str,
+        sent_tos: list[int],
+    ) -> dict[int, dict]:
+        """Bulk variant of ``get_info_alert_ack`` — return the latest INFO
+        delivery record per subscriber. ``{telegram_id: ack_dict}``;
+        subscribers with no prior INFO ack are absent from the result."""
+        out: dict[int, dict] = {}
+        if not sent_tos:
+            return out
+        for i in range(0, len(sent_tos), 500):
+            chunk = sent_tos[i:i + 500]
+            placeholders = ",".join("?" * len(chunk))
+            # MAX(id) wins per (sent_to) — id is monotonic so it tracks
+            # created_at without a join back to the row.
+            rows = await self.read_all(
+                f"SELECT a.* FROM alert_acknowledgments a "
+                f"INNER JOIN ( "
+                f"  SELECT sent_to, MAX(id) AS max_id "
+                f"  FROM alert_acknowledgments "
+                f"  WHERE account_id = ? AND vehicle_id = ? "
+                f"    AND alert_type = ? AND status = 'info' "
+                f"    AND sent_to IN ({placeholders}) "
+                f"  GROUP BY sent_to "
+                f") latest ON a.id = latest.max_id",
+                (account_id, vehicle_id, alert_type, *chunk),
+            )
+            for r in rows:
+                d = dict(r)
+                tid = d.get("sent_to")
+                if tid is not None:
+                    out[int(tid)] = d
+        return out
+
     async def supersede_alert_ack(self, ack_id: int, account_id: int = 0):
         """Mark an alert ack as superseded (replaced by a newer alert).
 
@@ -117,6 +177,36 @@ class AlertsMixin(_MixinBase):
                 (ack_id,),
             )
         await self._db.commit()
+
+    async def supersede_alert_acks_bulk(
+        self, ack_ids: list[int], account_id: int = 0,
+    ) -> int:
+        """Bulk supersede — replaces N × per-row UPDATE-then-commit
+        loops in the alert pipeline's edit-in-place / send-fresh
+        fallbacks. Same-type ack lists are usually 0–3 entries but
+        spike during escalation milestones.
+        """
+        if not ack_ids:
+            return 0
+        touched = 0
+        for i in range(0, len(ack_ids), 500):
+            chunk = ack_ids[i:i + 500]
+            placeholders = ",".join("?" * len(chunk))
+            if account_id:
+                cur = await self._db.execute(
+                    f"UPDATE alert_acknowledgments SET status = 'superseded' "
+                    f"WHERE account_id = ? AND id IN ({placeholders})",
+                    (account_id, *chunk),
+                )
+            else:
+                cur = await self._db.execute(
+                    f"UPDATE alert_acknowledgments SET status = 'superseded' "
+                    f"WHERE id IN ({placeholders})",
+                    tuple(chunk),
+                )
+            touched += cur.rowcount or 0
+        await self._db.commit()
+        return touched
 
     async def acknowledge_alert(self, ack_id: int, user_id: int, account_id: int = 0) -> bool:
         """Mark an alert as acknowledged — also acks all rows with the same alert_key."""
@@ -299,31 +389,67 @@ class AlertsMixin(_MixinBase):
         self, account_id: int, alert_type: str,
         vehicle_id: str, vehicle_name: str,
         last_detail: str = "",
+        severity: str = "warning",
+        location: str = "",
     ) -> dict:
         """Create or update the single shared alert history record for a vehicle+type.
 
         Uses INSERT OR IGNORE + UPDATE so only one row ever exists per
         (account_id, alert_type, vehicle_id), regardless of how many
-        subscribers received the alert.  Occurrence count is the total
-        number of times the alert fired fleet-wide, not per-subscriber.
+        subscribers received the alert.
+
+        ``severity`` is the cross-surface SSOT: bot, dashboard, and
+        mini-app all read this value instead of re-deriving from
+        alert_type.  Severity is "sticky upward" — a fault that starts
+        as WARNING and escalates to CRITICAL on a later cycle gets
+        promoted, but never demoted.  An once-critical alert stays
+        critical until explicitly cleared.
+
+        ``location`` is a human-readable snapshot ("Mojave Freeway, CA")
+        captured at first fire and refreshed whenever a non-empty
+        location is supplied on a re-fire (so a moving truck's
+        latest known location is always shown).
+
         Returns the updated record dict.
         """
         now = self._now()
+        sev = (severity or "warning").lower()
+        if sev not in ("critical", "warning", "info"):
+            sev = "warning"
         # Ensure exactly one row exists (UNIQUE constraint on account+type+vehicle)
         await self._db.execute(
             "INSERT OR IGNORE INTO alert_history "
             "(account_id, alert_type, vehicle_id, vehicle_name, "
             "chat_id, message_id, occurrence_count, "
-            "first_seen, last_seen, last_detail, status) "
-            "VALUES (?, ?, ?, ?, 0, 0, 0, ?, ?, ?, 'active')",
-            (account_id, alert_type, vehicle_id, vehicle_name, now, now, last_detail),
+            "first_seen, last_seen, last_detail, status, severity, location) "
+            "VALUES (?, ?, ?, ?, 0, 0, 0, ?, ?, ?, 'active', ?, ?)",
+            (account_id, alert_type, vehicle_id, vehicle_name,
+             now, now, last_detail, sev, location),
         )
+        # Sticky-upward severity:
+        #   critical wins over everything; warning beats info; info is
+        #   the floor.  CASE keeps the write atomic with the rest of
+        #   the upsert.
         await self._db.execute(
-            "UPDATE alert_history SET "
-            "occurrence_count = occurrence_count + 1, "
-            "vehicle_name = ?, last_seen = ?, last_detail = ? "
-            "WHERE account_id = ? AND alert_type = ? AND vehicle_id = ?",
-            (vehicle_name, now, last_detail, account_id, alert_type, vehicle_id),
+            """
+            UPDATE alert_history SET
+              occurrence_count = occurrence_count + 1,
+              vehicle_name = ?,
+              last_seen    = ?,
+              last_detail  = ?,
+              location     = CASE WHEN ? != '' THEN ? ELSE location END,
+              severity     = CASE
+                  WHEN ? = 'critical' THEN 'critical'
+                  WHEN severity = 'critical' THEN 'critical'
+                  WHEN ? = 'warning' AND severity != 'critical' THEN 'warning'
+                  ELSE severity
+              END
+            WHERE account_id = ? AND alert_type = ? AND vehicle_id = ?
+            """,
+            (vehicle_name, now, last_detail,
+             location, location,
+             sev, sev,
+             account_id, alert_type, vehicle_id),
         )
         await self._db.commit()
         row = await self._db.execute(
@@ -405,11 +531,16 @@ class AlertsMixin(_MixinBase):
     async def get_active_alert_history_for_account(self, account_id: int) -> list[dict]:
         """Return one row per *logical* active alert for the account.
 
-        This is the canonical "what's currently wrong" view — backs the
-        dashboard's pending list and the mini-app alerts tab.  Each row
-        carries:
+        Sorted by **severity then last_seen** so a fresh CRITICAL bubbles
+        above older WARNINGs, and within each severity tier the most
+        recently re-fired alert comes first.  Backed by the
+        ``idx_alert_history_active_sort`` index.
+
+        Each row carries:
             - id (the AlertID surfaced in UI)
             - alert_type, vehicle_id, vehicle_name
+            - severity ('critical' | 'warning' | 'info')
+            - location (snapshot string)
             - occurrence_count (× N times)
             - first_seen, last_seen
             - last_detail (latest description)
@@ -420,9 +551,18 @@ class AlertsMixin(_MixinBase):
         receiving the same alert produce ONE row, not seven.
         """
         cur = await self._db.execute(
-            "SELECT * FROM alert_history "
-            "WHERE account_id = ? AND status = 'active' "
-            "ORDER BY last_seen DESC",
+            """
+            SELECT *,
+                   CASE severity
+                       WHEN 'critical' THEN 0
+                       WHEN 'warning'  THEN 1
+                       WHEN 'info'     THEN 2
+                       ELSE 3
+                   END AS _sev_rank
+              FROM alert_history
+             WHERE account_id = ? AND status = 'active'
+             ORDER BY _sev_rank ASC, last_seen DESC
+            """,
             (account_id,),
         )
         rows = await cur.fetchall()

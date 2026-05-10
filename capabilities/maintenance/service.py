@@ -46,13 +46,13 @@ async def mark_overdue_tasks_by_date(account_id: int, tenant_db) -> list[dict]:
     (bot scheduler) can send notifications for each.
     """
     overdue_tasks = await tenant_db.get_pending_tasks_by_date(account_id)
-    newly_overdue: list[dict] = []
-    for task in overdue_tasks:
-        await tenant_db.update_maintenance_status(
-            task["id"], "overdue", account_id=account_id,
-        )
-        newly_overdue.append(task)
-    return newly_overdue
+    if not overdue_tasks:
+        return []
+    # One bulk UPDATE replaces N × per-task UPDATE-then-commit cycles.
+    await tenant_db.update_maintenance_status_bulk(
+        account_id, [t["id"] for t in overdue_tasks], "overdue",
+    )
+    return list(overdue_tasks)
 
 
 async def mark_overdue_tasks_by_mileage(
@@ -93,23 +93,30 @@ async def mark_overdue_tasks_by_mileage(
         return []
 
     newly_overdue: list[dict] = []
+    odometer_updates: list[tuple[int, float]] = []
+    overdue_ids: list[int] = []
     for task in tasks:
         current_miles = odometer_by_vehicle_name.get(task["vehicle_name"])
         if current_miles is None:
             continue
         due_miles = task["due_miles"]
 
-        await tenant_db.update_maintenance_task(
-            task["id"], account_id=account_id,
-            last_odometer=round(current_miles, 1),
-        )
+        odometer_updates.append((int(task["id"]), round(current_miles, 1)))
 
         if current_miles >= due_miles:
-            await tenant_db.update_maintenance_status(
-                task["id"], "overdue", account_id=account_id,
-            )
+            overdue_ids.append(int(task["id"]))
             task["_current_miles"] = round(current_miles, 1)
             newly_overdue.append(task)
+
+    # Two bulk operations replace 2 N per-row UPDATE-then-commit cycles.
+    if odometer_updates:
+        await tenant_db.update_maintenance_last_odometer_bulk(
+            account_id, odometer_updates,
+        )
+    if overdue_ids:
+        await tenant_db.update_maintenance_status_bulk(
+            account_id, overdue_ids, "overdue",
+        )
 
     return newly_overdue
 

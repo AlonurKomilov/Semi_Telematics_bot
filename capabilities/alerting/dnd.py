@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -105,7 +106,11 @@ async def deliver_dnd_alerts(app: Application):
             )
 
             # ── Generate PDF ───────────────────────────────────
-            pdf_buf = _generate_pdf(
+            # ReportLab is sync + CPU-bound (~500 ms-2 s). Off-load to a
+            # worker thread so the alerting loop keeps moving while the
+            # PDF renders.
+            pdf_buf = await asyncio.to_thread(
+                _generate_pdf,
                 sub, queued, pending, resolved, maint, history, now_local,
             )
 

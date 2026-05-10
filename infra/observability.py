@@ -184,6 +184,35 @@ def record_arq_job(function: str, status: str, seconds: float) -> None:
     ARQ_JOB.labels(function=function, status=status).observe(seconds)
 
 
+def time_block(timings: dict, name: str):
+    """Context manager — record elapsed ms of a block into a dict.
+
+    Usage::
+
+        timings: dict[str, float] = {}
+        with observability.time_block(timings, "fetch"):
+            await fetch_stuff()
+        logger.info("job=foo timings=%s", timings)
+
+    Cheap (sub-microsecond), no Prometheus dependency. Use this for
+    per-job stage timing in scheduled jobs (ingestor, parking, coaching,
+    alerting) where dashboards aren't yet wired but a structured log
+    line is enough to diagnose slow cycles.
+    """
+    import time as _time
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _cm():
+        t0 = _time.perf_counter()
+        try:
+            yield
+        finally:
+            timings[name] = round((_time.perf_counter() - t0) * 1000, 1)
+
+    return _cm()
+
+
 def set_arq_queue_depth(queue: str, depth: int) -> None:
     ARQ_QUEUE_DEPTH.labels(queue=queue).set(depth)
 

@@ -83,6 +83,41 @@ class ParkingMixin:
         row = await cur.fetchone()
         return dict(row) if row else None
 
+    async def get_active_parking_events_for_vehicles(
+        self, account_id: int, vehicle_ids: list[str],
+    ) -> dict[str, dict]:
+        """Bulk variant of ``get_active_parking_event``.
+
+        Returns ``{vehicle_id: event_dict}`` for every vehicle in
+        ``vehicle_ids`` that has an active (unresolved) parking event.
+        Replaces V × per-vehicle queries in the parking-check job with
+        one chunked query.
+        """
+        out: dict[str, dict] = {}
+        if not vehicle_ids:
+            return out
+        # Chunk to stay below SQLite's 999-parameter limit (cap = 998
+        # since one slot is reserved for account_id).
+        for i in range(0, len(vehicle_ids), 500):
+            chunk = vehicle_ids[i:i + 500]
+            placeholders = ",".join("?" * len(chunk))
+            cur = await self._db.execute(
+                f"SELECT * FROM parking_events "
+                f"WHERE account_id = ? AND resolved = 0 "
+                f"  AND vehicle_id IN ({placeholders})",
+                (account_id, *chunk),
+            )
+            for row in await cur.fetchall():
+                d = dict(row)
+                vid = d.get("vehicle_id")
+                # If multiple unresolved rows somehow exist, keep the
+                # most-recently-created one to mirror the singleton method.
+                if vid:
+                    prev = out.get(vid)
+                    if prev is None or (d.get("created_at") or "") > (prev.get("created_at") or ""):
+                        out[vid] = d
+        return out
+
     async def get_active_parking_events(
         self, account_id: int, attention_only: bool = True,
     ) -> list[dict]:

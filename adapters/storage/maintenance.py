@@ -61,6 +61,49 @@ class MaintenanceMixin:
         await self._db.commit()
         return cur.rowcount > 0
 
+    async def update_maintenance_status_bulk(
+        self, account_id: int, task_ids: list[int], status: str,
+    ) -> int:
+        """Bulk-update task status — replaces N × per-task UPDATEs in
+        the scheduled overdue-marker jobs. One IN-clause UPDATE per
+        chunk of 500 ids, single commit.
+        """
+        if not task_ids:
+            return 0
+        completed_at = self._now() if status == "done" else None
+        touched = 0
+        for i in range(0, len(task_ids), 500):
+            chunk = task_ids[i:i + 500]
+            placeholders = ",".join("?" * len(chunk))
+            cur = await self._db.execute(
+                f"UPDATE maintenance_tasks "
+                f"SET status = ?, completed_at = ? "
+                f"WHERE account_id = ? AND id IN ({placeholders})",
+                (status, completed_at, account_id, *chunk),
+            )
+            touched += cur.rowcount or 0
+        await self._db.commit()
+        return touched
+
+    async def update_maintenance_last_odometer_bulk(
+        self, account_id: int, items: list[tuple[int, float]],
+    ) -> int:
+        """Bulk-update ``last_odometer`` for many tasks via executemany.
+
+        ``items`` is a list of (task_id, odometer_mi). Replaces the
+        per-task UPDATE loop in mark_overdue_tasks_by_mileage.
+        """
+        if not items:
+            return 0
+        params = [(float(odo), int(tid), account_id) for tid, odo in items]
+        await self._db.executemany(
+            "UPDATE maintenance_tasks SET last_odometer = ? "
+            "WHERE id = ? AND account_id = ?",
+            params,
+        )
+        await self._db.commit()
+        return len(params)
+
     async def get_overdue_tasks(self, account_id: int) -> list[dict]:
         cur = await self._db.execute(
             "SELECT * FROM maintenance_tasks WHERE account_id = ? AND status = 'overdue'",
@@ -158,3 +201,16 @@ class MaintenanceMixin:
         )
         row = await cur.fetchone()
         return row[0] > 0
+
+    async def get_vehicles_in_maintenance(
+        self, account_id: int,
+    ) -> set[str]:
+        """Bulk variant of ``is_vehicle_in_maintenance`` — return the set of
+        vehicle_names with pending/overdue maintenance tasks. One query
+        replaces V × per-vehicle suppression lookups."""
+        cur = await self._db.execute(
+            "SELECT DISTINCT vehicle_name FROM maintenance_tasks "
+            "WHERE account_id = ? AND status IN ('pending', 'overdue')",
+            (account_id,),
+        )
+        return {str(row[0] or "") for row in await cur.fetchall() if row[0]}

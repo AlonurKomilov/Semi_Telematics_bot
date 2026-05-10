@@ -45,6 +45,7 @@ async def run_all(conn) -> None:
     await migrate_add_vehicle_state_odometer_time(conn)
     await migrate_add_alert_mutes_table(conn)
     await migrate_add_alert_history_reescalate_columns(conn)
+    await migrate_add_alert_history_severity_location(conn)
 
 
 async def migrate_add_parking_map_image(conn) -> None:
@@ -525,6 +526,10 @@ async def migrate_alert_ack_indexes(conn) -> None:
             ON alert_acknowledgments(status, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_alert_ack_vehicle_status
             ON alert_acknowledgments(vehicle_id, status);
+        -- Composite for the bulk-lookup paths in send_alert
+        -- (get_active_vehicle_acks_bulk + get_info_alert_acks_bulk).
+        CREATE INDEX IF NOT EXISTS idx_alert_ack_acct_veh
+            ON alert_acknowledgments(account_id, vehicle_id, status);
     """)
     await conn.commit()
     logger.info("Migration: alert_acknowledgments composite indexes ensured")
@@ -895,6 +900,35 @@ async def migrate_add_alert_history_reescalate_columns(conn) -> None:
         logger.info("Migration: alert_history reescalate columns ensured")
     except Exception as e:
         logger.error("alert_history reescalate migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_add_alert_history_severity_location(conn) -> None:
+    """Add severity + location to alert_history (tenant DBs)."""
+    try:
+        cur = await conn.execute("PRAGMA table_info(alert_history)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "severity" not in cols:
+            await conn.execute(
+                "ALTER TABLE alert_history "
+                "ADD COLUMN severity TEXT NOT NULL DEFAULT 'warning'"
+            )
+        if "location" not in cols:
+            await conn.execute(
+                "ALTER TABLE alert_history "
+                "ADD COLUMN location TEXT NOT NULL DEFAULT ''"
+            )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_alert_history_active_sort "
+            "ON alert_history(account_id, status, severity, last_seen DESC)"
+        )
+        await conn.commit()
+        logger.info("Migration: alert_history severity/location ensured")
+    except Exception as e:
+        logger.error("alert_history severity/location migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

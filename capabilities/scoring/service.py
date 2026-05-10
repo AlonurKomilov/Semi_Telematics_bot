@@ -239,8 +239,12 @@ async def evaluate_subjects(
             "drive_hours":   eff["drive_hours"],
             "idle_hours":    eff["idle_hours"],
             "idle_pct":      eff["idle_pct"],
-            "events":        events_by_subject.get(sid)
-                             or events_by_subject.get(eff["driver_name"], {"count": 0, "by_type": {}}),
+            # Strict id-keyed lookup — the previous name fallback could
+            # cross-contaminate when a vehicle and driver shared a name.
+            # ``from_events`` already keys by driver_name when driver_id
+            # is empty, so a missing-id sid that happens to equal the
+            # name still matches via the primary lookup.
+            "events":        events_by_subject.get(sid, {"count": 0, "by_type": {}}),
             "maintenance":   maint_signals.aggregate(
                                  maint_tasks, truck_names, days,
                              ),

@@ -4,8 +4,12 @@ from __future__ import annotations
 
 from math import radians, sin, cos, sqrt, atan2
 
-from infra.services import get_client
+import logging
+
+from infra.services import get_client, get_tenant_db
 from capabilities.vehicles.service import prepare_companies
+
+logger = logging.getLogger(__name__)
 
 # Earth radius in miles
 _EARTH_RADIUS_MI = 3958.8
@@ -44,12 +48,54 @@ async def get_vehicle_gps_history(
     """Fetch GPS breadcrumb trail for a named vehicle across all companies.
 
     Returns list of point dicts with latitude, longitude, speed, time.
-    Searches all company clients to find the matching vehicle.
+
+    Fast path: look up the vehicle's company in the warehouse
+    ``vehicle_state`` table and make a single targeted history call.
+    Slow path (fallback): walk every company client when the warehouse
+    miss-fires (e.g. a freshly-onboarded vehicle that hasn't been
+    ingested yet).
     """
     client = await get_client(account_id)
-    points: list[dict] = []
     needle = vehicle_name.lower()
 
+    # ── Fast path: warehouse lookup → single targeted Samsara call.
+    try:
+        tenant = await get_tenant_db(int(account_id))
+    except (TypeError, ValueError, Exception):
+        tenant = None
+    if tenant is not None:
+        try:
+            states = await tenant.get_vehicle_state(int(account_id))
+            target = next(
+                (
+                    s for s in states
+                    if needle in str(s.get("vehicle_name") or "").lower()
+                ),
+                None,
+            )
+            if target and target.get("company_code"):
+                code = str(target["company_code"])
+                single_client = client.clients.get(code)
+                if single_client is not None:
+                    gps_data = await single_client._get_paginated_history(
+                        "gps", start, end,
+                    )
+                    points: list[dict] = []
+                    for vid, vdata in gps_data.items():
+                        if needle in vdata.get("name", "").lower():
+                            for pt in vdata.get("gps", []):
+                                val = pt.get("value", pt)
+                                points.append(val if isinstance(val, dict) else pt)
+                            return points
+        except Exception as e:
+            logger.debug(
+                "GPS history warehouse fast-path failed for %s: %s — "
+                "falling back to all-companies search",
+                vehicle_name, e,
+            )
+
+    # ── Fallback: serial walk across all company clients.
+    points = []
     for code, single_client in client.clients.items():
         gps_data = await single_client._get_paginated_history("gps", start, end)
         for vid, vdata in gps_data.items():

@@ -8,6 +8,7 @@ Universal alert pipeline with severity tiers:
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from enum import Enum
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -73,6 +74,13 @@ _ESCALATION_OCCURRENCES: frozenset[int] = frozenset(
 # Startup warm-up: first cycle of each check only populates caches
 # without sending alerts. Prevents alert bursts on server restart.
 _warmup_done: dict[str, set[int]] = {"health": set(), "fuel": set()}
+
+# Telegram bot API rate limit is roughly 30 msg/sec globally per bot
+# token. Each subscriber's path can issue 2-5 Telegram calls (delete +
+# send + edit_reply_markup, sometimes a video/photo too) so 20 parallel
+# subscribers staying under that ceiling is comfortably safe; tunable
+# via ``ALERT_FANOUT_CONCURRENCY`` if a deployment runs multiple bots.
+_ALERT_FANOUT_CONCURRENCY = int(_os.getenv("ALERT_FANOUT_CONCURRENCY", "20"))
 
 
 def build_alert_keyboard(
@@ -184,13 +192,38 @@ async def send_alert(
     _hist_count = (existing_hist["occurrence_count"] if existing_hist else 0) + 1
     _hist_first_seen = existing_hist["first_seen"] if existing_hist else ""
     _now_str = datetime.now(timezone.utc).isoformat()
-    history_footer = format_alert_history_footer(_hist_count, _hist_first_seen, _now_str)
+
+    # Snapshot the truck's location so dashboard/mini-app rows can show
+    # "📍 Mojave Freeway, CA" without an extra Samsara round-trip.
+    # Prefer the human-readable formattedLocation; fall back to
+    # whatever the raw `address` field carries.
+    _loc_dict = vehicle.get("location") or {}
+    _location_snapshot = (
+        (_loc_dict.get("reverseGeo") or {}).get("formattedLocation")
+        or _loc_dict.get("address")
+        or vehicle.get("formattedAddress")
+        or vehicle.get("address")
+        or ""
+    )
+
     history_record = await tenant.upsert_alert_history(
         account_id=account_id,
         alert_type=alert_type,
         vehicle_id=vid,
         vehicle_name=vname,
         last_detail=alert_key_detail,
+        # Severity-as-string so the storage layer doesn't import the
+        # AlertSeverity enum.  AlertSeverity inherits from str so .value
+        # round-trips cleanly to the persisted form.
+        severity=str(severity.value) if isinstance(severity, AlertSeverity) else str(severity).lower(),
+        location=str(_location_snapshot or ""),
+    )
+
+    # Footer carries the canonical AlertID + history info so every
+    # subscriber sees the same "Alert #1234 / × N occurrences" line.
+    history_footer = format_alert_history_footer(
+        _hist_count, _hist_first_seen, _now_str,
+        history_id=(history_record or {}).get("id"),
     )
 
     # ── Per-alert mute check (D2) ────────────────────────────────
@@ -210,7 +243,35 @@ async def send_alert(
         )
         return
 
-    for sub in subscribers:
+    # ── Bulk pre-fetch acks once (item 8) ───────────────────────
+    # For S subscribers, the per-subscriber path used to do 1-2 ack
+    # lookups each = 2 S DB round-trips. Pre-fetching here turns that
+    # into 2 chunked queries regardless of S.
+    import time as _time
+    from infra import observability as _obs
+    timings: dict[str, float] = {}
+    _send_t0 = _time.perf_counter()
+    sub_telegram_ids = [s.telegram_id for s in subscribers if s.telegram_id]
+    with _obs.time_block(timings, "bulk_acks"):
+        try:
+            bulk_active_acks = await tenant.get_active_vehicle_acks_bulk(
+                account_id, vid, sub_telegram_ids,
+            )
+        except Exception:
+            logger.debug("bulk_active_acks lookup failed", exc_info=True)
+            bulk_active_acks = {}
+        try:
+            bulk_info_acks = await tenant.get_info_alert_acks_bulk(
+                account_id, vid, alert_type, sub_telegram_ids,
+            )
+        except Exception:
+            logger.debug("bulk_info_acks lookup failed", exc_info=True)
+            bulk_info_acks = {}
+
+    fanout_sem = asyncio.Semaphore(_ALERT_FANOUT_CONCURRENCY)
+
+    async def _send_to_one_sub(sub):
+      async with fanout_sem:
         # Driver: only alert for their own truck.
         # Substring match (case-insensitive) to mirror
         # ``filter_alerts_by_access`` in alerting/service.py — the API +
@@ -218,7 +279,7 @@ async def send_alert(
         # consistent for names like "Truck 105" vs assignment "105".
         if sub.role == Role.DRIVER and sub.truck_num:
             if sub.truck_num.lower() not in vname.lower():
-                continue
+                return
 
         # DND: queue non-critical alerts during quiet hours
         if not bypasses_dnd and sub.is_in_quiet_hours():
@@ -229,7 +290,7 @@ async def send_alert(
                 vehicle_name=vname,
                 alert_text=alert_text,
             )
-            continue
+            return
 
         try:
             # Old "delete prior INFO message" hop has been folded into
@@ -298,9 +359,7 @@ async def send_alert(
                 #     a media one
                 #   - the edit fails (user deleted the message, > 48 h
                 #     old, ParseMode mismatch, etc.)
-                old_acks = await tenant.get_active_vehicle_acks(
-                    account_id, vid, sub.telegram_id,
-                )
+                old_acks = bulk_active_acks.get(sub.telegram_id, [])
                 same_type_acks = [a for a in old_acks if a.get("alert_type") == alert_type]
                 edited_in_place = False
                 if same_type_acks and not video_url and not photo_bytes:
@@ -362,14 +421,20 @@ async def send_alert(
 
                 if edited_in_place:
                     # Supersede the OTHER same-type acks (defensive — usually empty).
-                    for old_ack in same_type_acks:
-                        if old_ack["id"] != edit_ack_id:
-                            await tenant.supersede_alert_ack(old_ack["id"])
+                    other_ids = [
+                        a["id"] for a in same_type_acks
+                        if a["id"] != edit_ack_id
+                    ]
+                    if other_ids:
+                        await tenant.supersede_alert_acks_bulk(other_ids)
                 else:
                     # Fallback: legacy delete-old + send-new.  Used on
                     # first-occurrence (no prior ack) AND on edit-failure.
+                    if same_type_acks:
+                        await tenant.supersede_alert_acks_bulk(
+                            [a["id"] for a in same_type_acks],
+                        )
                     for old_ack in same_type_acks:
-                        await tenant.supersede_alert_ack(old_ack["id"])
                         if old_ack.get("message_id") and old_ack.get("chat_id"):
                             try:
                                 await bot_app.bot.delete_message(
@@ -418,9 +483,7 @@ async def send_alert(
                 # the live status row instead of pinging again.  If
                 # there's no prior message or the edit fails, fall back
                 # to send-new just like the CRITICAL/WARNING branch.
-                old_info = await tenant.get_info_alert_ack(
-                    account_id, vid, alert_type, sub.telegram_id,
-                )
+                old_info = bulk_info_acks.get(sub.telegram_id)
                 edited_info = False
                 if old_info and not video_url and not photo_bytes:
                     msg_id = old_info.get("message_id")
@@ -493,6 +556,25 @@ async def send_alert(
         except Exception as e:
             logger.error("%s alert delivery failed for user %s (account %d): %s",
                          alert_type, sub.telegram_id, account_id, e, exc_info=True)
+
+    # Fan out to subscribers in parallel — bounded by fanout_sem so we
+    # stay under Telegram's ~30 msg/sec global rate limit. gather()
+    # captures any per-sub exception (already logged inside) so one
+    # bad recipient never sinks the rest of the cohort.
+    if subscribers:
+        with _obs.time_block(timings, "fanout"):
+            await asyncio.gather(
+                *(_send_to_one_sub(s) for s in subscribers),
+                return_exceptions=True,
+            )
+
+    timings["total"] = round(
+        (_time.perf_counter() - _send_t0) * 1000, 1,
+    )
+    logger.info(
+        "send_alert acct=%d type=%s severity=%s subs=%d timings_ms=%s",
+        account_id, alert_type, severity.value, len(subscribers), timings,
+    )
 
 
 async def is_vehicle_suppressed(account_id: int, vehicle_name: str) -> bool:

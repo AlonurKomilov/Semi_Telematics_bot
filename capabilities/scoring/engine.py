@@ -241,6 +241,13 @@ def score(
             pillar.penalty_total = 0
             pillar.bonuses.clear()
             pillar.penalties.clear()
+            # Strip the same events from the legacy flat_* lists too
+            # so bonus_total/penalty_total surfaced via the legacy API
+            # aliases stay consistent with the per-pillar zero. Without
+            # this, a no-data pillar would zero out in pillars[...] but
+            # still contribute non-zero values via bonus_total/penalty_total.
+            flat_bonuses[:] = [b for b in flat_bonuses if b.pillar != pillar.name]
+            flat_penalties[:] = [p for p in flat_penalties if p.pillar != pillar.name]
 
     total = sum(p.subtotal for p in pillars.values())
     drive_h = float(signals.get("drive_hours", 0) or 0)

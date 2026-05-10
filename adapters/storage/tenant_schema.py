@@ -101,6 +101,14 @@ async def create_tables(conn) -> None:
             last_seen         TEXT    NOT NULL,
             last_detail       TEXT    NOT NULL DEFAULT '',
             status            TEXT    NOT NULL DEFAULT 'active',
+            -- Severity is the single source of truth across bot / dashboard /
+            -- mini-app.  Was previously re-derived client-side from alert_type
+            -- (and frequently disagreed with the bot's per-type formatter).
+            severity          TEXT    NOT NULL DEFAULT 'warning',
+            -- Snapshot of the truck's location at first fire so the
+            -- dashboard + mini-app rows can show "📍 Mojave Freeway, CA"
+            -- without an extra Samsara round-trip.
+            location          TEXT    NOT NULL DEFAULT '',
             -- Re-escalation tracking: how many "UNACKNOWLEDGED" reminders
             -- have been pushed and when the last one was sent.  Used by
             -- re_escalate_critical_alerts to enforce the max-attempts cap
@@ -109,6 +117,8 @@ async def create_tables(conn) -> None:
             reescalate_last_sent_at TEXT,
             UNIQUE(account_id, alert_type, vehicle_id)
         );
+        CREATE INDEX IF NOT EXISTS idx_alert_history_active_sort
+            ON alert_history(account_id, status, severity, last_seen DESC);
 
         -- Per-alert mute window. While ``muted_until`` is in the future,
         -- pipeline.send_alert skips Telegram delivery for the targeted
@@ -232,6 +242,12 @@ async def create_tables(conn) -> None:
             ON fuel_entries(account_id, vehicle_name);
         CREATE INDEX IF NOT EXISTS idx_alert_ack_pending
             ON alert_acknowledgments(acknowledged_at, status);
+        -- Composite for the per-vehicle bulk lookups in send_alert
+        -- (get_active_vehicle_acks_bulk, get_info_alert_acks_bulk).
+        -- Without this, a fleet-wide alert burst falls back to a scan
+        -- of acknowledged_at, ordering tens of thousands of rows.
+        CREATE INDEX IF NOT EXISTS idx_alert_ack_acct_veh
+            ON alert_acknowledgments(account_id, vehicle_id, status);
         CREATE INDEX IF NOT EXISTS idx_alert_history_active
             ON alert_history(account_id, alert_type, vehicle_id, status);
         CREATE INDEX IF NOT EXISTS idx_dnd_queue_pending

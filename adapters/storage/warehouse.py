@@ -68,14 +68,33 @@ class WarehouseMixin(_MixinBase):
         don't we fail-safe to "stale row beats no row".
         """
         ts = _now_iso()
-        cnt = 0
         # Aggregating in a single transaction keeps the hot path cheap;
         # batches of ~80 vehicles complete in <30 ms locally.
+        values: list[tuple] = []
         for r in rows:
             vid = (r.get("vehicle_id") or r.get("id") or "").strip()
             if not vid:
                 continue
-            await self._db.execute(
+            values.append((
+                vid, account_id,
+                str(r.get("vehicle_name") or r.get("name") or ""),
+                str(r.get("company_code") or ""),
+                r.get("lat"), r.get("lon"),
+                r.get("speed_mph"), r.get("heading"),
+                str(r.get("address") or ""),
+                str(r.get("engine_state") or ""),
+                r.get("fuel_pct"), r.get("def_pct"),
+                r.get("odometer_mi"),
+                r.get("odometer_time"),
+                int(r.get("fault_count") or 0),
+                int(r.get("dtc_critical_count") or 0),
+                str(r.get("last_driver_id") or ""),
+                str(r.get("last_driver_name") or ""),
+                str(r.get("captured_at") or ts),
+                ts,
+            ))
+        if values:
+            await self._db.executemany(
                 """
                 INSERT INTO vehicle_state (
                     vehicle_id, account_id, vehicle_name, company_code,
@@ -104,28 +123,10 @@ class WarehouseMixin(_MixinBase):
                     captured_at=excluded.captured_at,
                     updated_at=excluded.updated_at
                 """,
-                (
-                    vid, account_id,
-                    str(r.get("vehicle_name") or r.get("name") or ""),
-                    str(r.get("company_code") or ""),
-                    r.get("lat"), r.get("lon"),
-                    r.get("speed_mph"), r.get("heading"),
-                    str(r.get("address") or ""),
-                    str(r.get("engine_state") or ""),
-                    r.get("fuel_pct"), r.get("def_pct"),
-                    r.get("odometer_mi"),
-                    r.get("odometer_time"),
-                    int(r.get("fault_count") or 0),
-                    int(r.get("dtc_critical_count") or 0),
-                    str(r.get("last_driver_id") or ""),
-                    str(r.get("last_driver_name") or ""),
-                    str(r.get("captured_at") or ts),
-                    ts,
-                ),
+                values,
             )
-            cnt += 1
         await self._db.commit()
-        return cnt
+        return len(values)
 
     async def get_vehicle_state(
         self,
@@ -189,12 +190,49 @@ class WarehouseMixin(_MixinBase):
         number of *new* rows persisted (post-dedupe).
         """
         ts = _now_iso()
-        new = 0
+        values: list[tuple] = []
         for e in events:
             evt_id = str(e.get("samsara_event_id") or e.get("id") or "").strip()
             if not evt_id:
                 continue
+            values.append((
+                account_id, evt_id,
+                str(e.get("vehicle_id") or ""),
+                str(e.get("vehicle_name") or ""),
+                str(e.get("driver_id") or ""),
+                str(e.get("driver_name") or ""),
+                str(e.get("event_type") or ""),
+                str(e.get("severity") or ""),
+                str(e.get("occurred_at") or ""),
+                e.get("lat"), e.get("lon"),
+                e.get("speed_mph"),
+                str(e.get("video_url") or ""),
+                json.dumps(e.get("raw") or e, default=str),
+                ts,
+            ))
+        if not values:
+            return 0
+        # Pre-filter against existing samsara_event_ids so the count of
+        # new rows stays accurate after the executemany. Doing this in
+        # a single SELECT (vs. trusting executemany rowcount, which is
+        # unreliable for OR IGNORE across SQLite/Postgres) is still
+        # cheaper than per-row execute().
+        evt_ids = [v[1] for v in values]
+        existing_ids: set[str] = set()
+        # Chunk the IN clause to stay under SQLite's 999-parameter cap.
+        for i in range(0, len(evt_ids), 500):
+            chunk = evt_ids[i:i + 500]
+            placeholders = ",".join("?" * len(chunk))
             cur = await self._db.execute(
+                f"SELECT samsara_event_id FROM safety_event_log "
+                f"WHERE account_id = ? AND samsara_event_id IN ({placeholders})",
+                (account_id, *chunk),
+            )
+            for row in await cur.fetchall():
+                existing_ids.add(str(row[0]))
+        new_values = [v for v in values if v[1] not in existing_ids]
+        if new_values:
+            await self._db.executemany(
                 """
                 INSERT OR IGNORE INTO safety_event_log (
                     account_id, samsara_event_id,
@@ -204,26 +242,10 @@ class WarehouseMixin(_MixinBase):
                     raw_json, ingested_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    account_id, evt_id,
-                    str(e.get("vehicle_id") or ""),
-                    str(e.get("vehicle_name") or ""),
-                    str(e.get("driver_id") or ""),
-                    str(e.get("driver_name") or ""),
-                    str(e.get("event_type") or ""),
-                    str(e.get("severity") or ""),
-                    str(e.get("occurred_at") or ""),
-                    e.get("lat"), e.get("lon"),
-                    e.get("speed_mph"),
-                    str(e.get("video_url") or ""),
-                    json.dumps(e.get("raw") or e, default=str),
-                    ts,
-                ),
+                new_values,
             )
-            if cur.rowcount:
-                new += 1
         await self._db.commit()
-        return new
+        return len(new_values)
 
     async def get_safety_events_warehouse(
         self,
@@ -282,6 +304,50 @@ class WarehouseMixin(_MixinBase):
             out.append(d)
         return out
 
+    async def get_safety_event_counts_grouped(
+        self,
+        account_id: int,
+        *,
+        days: int,
+        event_types: list[str] | None = None,
+        driver_ids: list[str] | None = None,
+    ) -> dict[tuple[str, str], int]:
+        """Single grouped query → ``{(driver_id, event_type): count}``.
+
+        Replaces the per-(driver × event_type) N+1 in coaching/engine.py.
+        Empty ``event_types`` or ``driver_ids`` filters fold the GROUP BY
+        across all values for that dimension. Drivers with zero events
+        simply won't appear in the result — caller defaults to 0.
+        """
+        from datetime import timedelta
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
+        where = ["account_id = ?", "occurred_at >= ?"]
+        args: list[Any] = [account_id, since]
+        if event_types:
+            placeholders = ",".join("?" * len(event_types))
+            where.append(f"event_type IN ({placeholders})")
+            args.extend(event_types)
+        if driver_ids:
+            placeholders = ",".join("?" * len(driver_ids))
+            where.append(f"driver_id IN ({placeholders})")
+            args.extend(driver_ids)
+
+        cur = await self._db.execute(
+            f"""
+            SELECT driver_id, event_type, COUNT(*) AS cnt
+            FROM safety_event_log
+            WHERE {' AND '.join(where)}
+            GROUP BY driver_id, event_type
+            """,
+            tuple(args),
+        )
+        out: dict[tuple[str, str], int] = {}
+        for row in await cur.fetchall():
+            did = str(row[0] or "")
+            et = str(row[1] or "")
+            out[(did, et)] = int(row[2] or 0)
+        return out
+
     # ── driver_efficiency_daily ──────────────────────────────────────
 
     async def upsert_driver_efficiency_daily(
@@ -293,13 +359,31 @@ class WarehouseMixin(_MixinBase):
         Samsara's per-day breakdown shaped to the warehouse columns.
         Counts how many rows were touched."""
         ts = _now_iso()
-        cnt = 0
+        values: list[tuple] = []
         for r in rows:
             did = str(r.get("driver_id") or "").strip()
             day = str(r.get("day") or "").strip()
             if not did or not day:
                 continue
-            await self._db.execute(
+            values.append((
+                account_id, did,
+                str(r.get("driver_name") or ""),
+                day,
+                float(r.get("miles") or 0),
+                float(r.get("drive_h") or 0),
+                float(r.get("idle_h") or 0),
+                r.get("mpg"),
+                r.get("antic_pct"),
+                r.get("green_pct"),
+                int(r.get("harsh_brake") or 0),
+                int(r.get("harsh_turn") or 0),
+                int(r.get("harsh_accel") or 0),
+                float(r.get("overspeed_min") or 0),
+                json.dumps(r.get("raw") or {}, default=str),
+                ts,
+            ))
+        if values:
+            await self._db.executemany(
                 """
                 INSERT INTO driver_efficiency_daily (
                     account_id, driver_id, driver_name, day,
@@ -319,27 +403,10 @@ class WarehouseMixin(_MixinBase):
                     raw_json=excluded.raw_json,
                     ingested_at=excluded.ingested_at
                 """,
-                (
-                    account_id, did,
-                    str(r.get("driver_name") or ""),
-                    day,
-                    float(r.get("miles") or 0),
-                    float(r.get("drive_h") or 0),
-                    float(r.get("idle_h") or 0),
-                    r.get("mpg"),
-                    r.get("antic_pct"),
-                    r.get("green_pct"),
-                    int(r.get("harsh_brake") or 0),
-                    int(r.get("harsh_turn") or 0),
-                    int(r.get("harsh_accel") or 0),
-                    float(r.get("overspeed_min") or 0),
-                    json.dumps(r.get("raw") or {}, default=str),
-                    ts,
-                ),
+                values,
             )
-            cnt += 1
         await self._db.commit()
-        return cnt
+        return len(values)
 
     async def get_driver_efficiency_window(
         self,
@@ -394,13 +461,23 @@ class WarehouseMixin(_MixinBase):
         ``vehicle_state`` history + safety events; this mixin just
         persists them."""
         ts = _now_iso()
-        cnt = 0
+        values: list[tuple] = []
         for r in rows:
             vid = str(r.get("vehicle_id") or "").strip()
             hour = str(r.get("hour_utc") or "").strip()
             if not vid or not hour:
                 continue
-            await self._db.execute(
+            values.append((
+                account_id, vid, hour,
+                float(r.get("miles") or 0),
+                float(r.get("drive_min") or 0),
+                float(r.get("idle_min") or 0),
+                float(r.get("max_speed_mph") or 0),
+                int(r.get("harsh_event_count") or 0),
+                ts,
+            ))
+        if values:
+            await self._db.executemany(
                 """
                 INSERT INTO vehicle_telemetry_hourly (
                     account_id, vehicle_id, hour_utc,
@@ -415,19 +492,10 @@ class WarehouseMixin(_MixinBase):
                     harsh_event_count=excluded.harsh_event_count,
                     ingested_at=excluded.ingested_at
                 """,
-                (
-                    account_id, vid, hour,
-                    float(r.get("miles") or 0),
-                    float(r.get("drive_min") or 0),
-                    float(r.get("idle_min") or 0),
-                    float(r.get("max_speed_mph") or 0),
-                    int(r.get("harsh_event_count") or 0),
-                    ts,
-                ),
+                values,
             )
-            cnt += 1
         await self._db.commit()
-        return cnt
+        return len(values)
 
     async def get_vehicle_telemetry_hourly(
         self,
@@ -475,12 +543,22 @@ class WarehouseMixin(_MixinBase):
         out so readers return the live shape unchanged.
         """
         ts = _now_iso()
-        cnt = 0
+        values: list[tuple] = []
         for r in rows:
             vid = (r.get("vehicle_id") or r.get("id") or "").strip()
             if not vid:
                 continue
-            await self._db.execute(
+            values.append((
+                vid, account_id,
+                str(r.get("vehicle_name") or r.get("name") or ""),
+                str(r.get("company_code") or r.get("_org") or ""),
+                int(r.get("alert_count") or 0),
+                json.dumps(r.get("raw") or {}, default=str),
+                str(r.get("captured_at") or ts),
+                ts,
+            ))
+        if values:
+            await self._db.executemany(
                 """
                 INSERT INTO vehicle_health_snapshot (
                     vehicle_id, account_id, vehicle_name, company_code,
@@ -495,19 +573,10 @@ class WarehouseMixin(_MixinBase):
                     captured_at=excluded.captured_at,
                     updated_at=excluded.updated_at
                 """,
-                (
-                    vid, account_id,
-                    str(r.get("vehicle_name") or r.get("name") or ""),
-                    str(r.get("company_code") or r.get("_org") or ""),
-                    int(r.get("alert_count") or 0),
-                    json.dumps(r.get("raw") or {}, default=str),
-                    str(r.get("captured_at") or ts),
-                    ts,
-                ),
+                values,
             )
-            cnt += 1
         await self._db.commit()
-        return cnt
+        return len(values)
 
     async def get_vehicle_health_snapshots(
         self,
@@ -572,13 +641,24 @@ class WarehouseMixin(_MixinBase):
         ts = _now_iso()
         critical_ids = set(critical_vehicle_ids or ())
         seen: set[str] = set()
-        cnt = 0
+        values: list[tuple] = []
         for r in faulted_rows:
             vid = (r.get("vehicle_id") or "").strip()
             if not vid:
                 continue
             seen.add(vid)
-            await self._db.execute(
+            values.append((
+                vid, account_id,
+                str(r.get("vehicle_name") or ""),
+                str(r.get("company_code") or ""),
+                int(r.get("dtc_count") or 0),
+                1 if vid in critical_ids else 0,
+                json.dumps(r.get("raw") or {}, default=str),
+                str(r.get("captured_at") or ts),
+                ts,
+            ))
+        if values:
+            await self._db.executemany(
                 """
                 INSERT INTO vehicle_fault_snapshot (
                     vehicle_id, account_id, vehicle_name, company_code,
@@ -595,18 +675,8 @@ class WarehouseMixin(_MixinBase):
                     captured_at=excluded.captured_at,
                     updated_at=excluded.updated_at
                 """,
-                (
-                    vid, account_id,
-                    str(r.get("vehicle_name") or ""),
-                    str(r.get("company_code") or ""),
-                    int(r.get("dtc_count") or 0),
-                    1 if vid in critical_ids else 0,
-                    json.dumps(r.get("raw") or {}, default=str),
-                    str(r.get("captured_at") or ts),
-                    ts,
-                ),
+                values,
             )
-            cnt += 1
         # Drop rows for vehicles no longer faulted in this cycle.  Done
         # last so a transient empty pull (samsara hiccup → seen=∅) only
         # blanks the snapshot once we got past the writer step.
@@ -623,7 +693,7 @@ class WarehouseMixin(_MixinBase):
                 (account_id,),
             )
         await self._db.commit()
-        return cnt
+        return len(values)
 
     async def upsert_vehicle_fault_details(
         self,
@@ -648,88 +718,118 @@ class WarehouseMixin(_MixinBase):
         ts = _now_iso()
         new_obs = 0
         new_cleared = 0
+
+        # Normalize input: drop empty vehicle_ids and build the set of
+        # (vid, dtc_id) currently observed.
+        normalized: dict[str, list[dict[str, Any]]] = {}
+        current: set[tuple[str, str]] = set()
         for vid, dtcs in per_vehicle_dtcs.items():
             vid = (vid or "").strip()
             if not vid:
                 continue
-            # ── set of dtc_ids in this cycle
-            current_ids: set[str] = set()
+            normalized[vid] = dtcs
             for dtc in dtcs:
                 did = _dtc_id(dtc)
                 if did:
-                    current_ids.add(did)
+                    current.add((vid, did))
 
-            # ── clear any active rows missing from this cycle
+        if not normalized:
+            await self._db.commit()
+            return 0, 0
+
+        # ── ONE bulk SELECT for all (vehicle_id, dtc_id, cleared_at)
+        #    rows across every vehicle in this cycle. Replaces the
+        #    O(V) + O(V·D) per-vehicle SELECTs with O(V/500) chunks.
+        existing_state: dict[tuple[str, str], Any] = {}
+        active_by_vid: dict[str, set[str]] = {v: set() for v in normalized}
+        vids = list(normalized.keys())
+        for i in range(0, len(vids), 500):
+            chunk = vids[i:i + 500]
+            placeholders = ",".join("?" * len(chunk))
             cur = await self._db.execute(
-                """
-                SELECT dtc_id FROM vehicle_fault_detail
-                WHERE account_id = ? AND vehicle_id = ? AND cleared_at IS NULL
+                f"""
+                SELECT vehicle_id, dtc_id, cleared_at
+                FROM vehicle_fault_detail
+                WHERE account_id = ? AND vehicle_id IN ({placeholders})
                 """,
-                (account_id, vid),
+                (account_id, *chunk),
             )
-            active_ids = {row[0] for row in await cur.fetchall()}
-            to_clear = active_ids - current_ids
-            if to_clear:
-                placeholders = ",".join("?" * len(to_clear))
-                await self._db.execute(
-                    f"""
-                    UPDATE vehicle_fault_detail
-                    SET cleared_at = ?
-                    WHERE account_id = ? AND vehicle_id = ?
-                      AND cleared_at IS NULL
-                      AND dtc_id IN ({placeholders})
-                    """,
-                    (ts, account_id, vid, *to_clear),
-                )
-                new_cleared += len(to_clear)
+            for row in await cur.fetchall():
+                row_vid = str(row[0] or "")
+                row_did = str(row[1] or "")
+                cleared_at = row[2]
+                existing_state[(row_vid, row_did)] = cleared_at
+                if cleared_at is None:
+                    active_by_vid.setdefault(row_vid, set()).add(row_did)
 
-            # ── insert / re-open observed DTCs
+        # ── Plan three bulk operations from the in-memory diff
+        clear_params: list[tuple] = []   # (ts, account_id, vid, did)
+        insert_params: list[tuple] = []  # full INSERT row tuple
+        reopen_params: list[tuple] = []  # (ts, raw_json, account_id, vid, did)
+
+        for vid, dtcs in normalized.items():
+            current_ids = {_dtc_id(d) for d in dtcs if _dtc_id(d)}
+            # Rows that were active before this cycle but are no longer
+            # observed → mark them cleared.
+            for did in (active_by_vid.get(vid, set()) - current_ids):
+                clear_params.append((ts, account_id, vid, did))
+                new_cleared += 1
+            # Rows observed in this cycle: insert if brand-new, reopen
+            # if a previously cleared row exists for the same dtc_id.
             for dtc in dtcs:
                 did = _dtc_id(dtc)
                 if not did:
                     continue
-                # If a previously cleared row exists, re-open it (set
-                # cleared_at NULL, refresh observed_at) so the active
-                # query stays a single ``cleared_at IS NULL`` predicate.
-                cur = await self._db.execute(
-                    """
-                    SELECT cleared_at FROM vehicle_fault_detail
-                    WHERE account_id = ? AND vehicle_id = ? AND dtc_id = ?
-                    """,
-                    (account_id, vid, did),
-                )
-                row = await cur.fetchone()
-                if row is None:
-                    await self._db.execute(
-                        """
-                        INSERT INTO vehicle_fault_detail (
-                            account_id, vehicle_id, dtc_id,
-                            spn, fmi, description, severity,
-                            observed_at, cleared_at, raw_json
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
-                        """,
-                        (
-                            account_id, vid, did,
-                            dtc.get("spn"),
-                            dtc.get("fmi"),
-                            str(dtc.get("description") or dtc.get("fmiDescription") or ""),
-                            str(dtc.get("severity") or ""),
-                            ts,
-                            json.dumps(dtc, default=str),
-                        ),
-                    )
+                key = (vid, did)
+                if key not in existing_state:
+                    insert_params.append((
+                        account_id, vid, did,
+                        dtc.get("spn"),
+                        dtc.get("fmi"),
+                        str(dtc.get("description") or dtc.get("fmiDescription") or ""),
+                        str(dtc.get("severity") or ""),
+                        ts,
+                        json.dumps(dtc, default=str),
+                    ))
                     new_obs += 1
-                elif row[0] is not None:
-                    # Re-opening a previously cleared DTC.
-                    await self._db.execute(
-                        """
-                        UPDATE vehicle_fault_detail
-                        SET cleared_at = NULL, observed_at = ?, raw_json = ?
-                        WHERE account_id = ? AND vehicle_id = ? AND dtc_id = ?
-                        """,
-                        (ts, json.dumps(dtc, default=str), account_id, vid, did),
-                    )
+                elif existing_state[key] is not None:
+                    # Previously cleared → reopen.
+                    reopen_params.append((
+                        ts, json.dumps(dtc, default=str),
+                        account_id, vid, did,
+                    ))
                     new_obs += 1
+
+        if clear_params:
+            await self._db.executemany(
+                """
+                UPDATE vehicle_fault_detail
+                SET cleared_at = ?
+                WHERE account_id = ? AND vehicle_id = ? AND dtc_id = ?
+                  AND cleared_at IS NULL
+                """,
+                clear_params,
+            )
+        if insert_params:
+            await self._db.executemany(
+                """
+                INSERT INTO vehicle_fault_detail (
+                    account_id, vehicle_id, dtc_id,
+                    spn, fmi, description, severity,
+                    observed_at, cleared_at, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+                """,
+                insert_params,
+            )
+        if reopen_params:
+            await self._db.executemany(
+                """
+                UPDATE vehicle_fault_detail
+                SET cleared_at = NULL, observed_at = ?, raw_json = ?
+                WHERE account_id = ? AND vehicle_id = ? AND dtc_id = ?
+                """,
+                reopen_params,
+            )
         await self._db.commit()
         return new_obs, new_cleared
 
@@ -828,13 +928,23 @@ class WarehouseMixin(_MixinBase):
     ) -> int:
         ts = _now_iso()
         seen: set[str] = set()
-        cnt = 0
+        values: list[tuple] = []
         for r in rows:
             vid = (r.get("vehicle_id") or "").strip()
             if not vid:
                 continue
             seen.add(vid)
-            await self._db.execute(
+            values.append((
+                vid, account_id,
+                str(r.get("vehicle_name") or ""),
+                str(r.get("company_code") or ""),
+                r.get("temp_f"),
+                json.dumps(r.get("raw") or {}, default=str),
+                str(r.get("captured_at") or ts),
+                ts,
+            ))
+        if values:
+            await self._db.executemany(
                 """
                 INSERT INTO fleet_weather_snapshot (
                     vehicle_id, account_id, vehicle_name, company_code,
@@ -849,17 +959,8 @@ class WarehouseMixin(_MixinBase):
                     captured_at=excluded.captured_at,
                     updated_at=excluded.updated_at
                 """,
-                (
-                    vid, account_id,
-                    str(r.get("vehicle_name") or ""),
-                    str(r.get("company_code") or ""),
-                    r.get("temp_f"),
-                    json.dumps(r.get("raw") or {}, default=str),
-                    str(r.get("captured_at") or ts),
-                    ts,
-                ),
+                values,
             )
-            cnt += 1
         # Same fail-safe as fault snapshot: only DELETE if the writer
         # actually saw vehicles this cycle.
         if seen:
@@ -870,7 +971,7 @@ class WarehouseMixin(_MixinBase):
                 (account_id, *seen),
             )
         await self._db.commit()
-        return cnt
+        return len(values)
 
     async def get_fleet_weather_snapshots(
         self,

@@ -187,6 +187,67 @@ class CoachingMixin(_MixinBase):
         await self._db.commit()
         return cur.lastrowid or 0
 
+    async def create_coaching_assignments_bulk(
+        self, account_id: int, items: list[dict],
+        *, assigned_by: int = 0,
+    ) -> list[int]:
+        """Bulk-create coaching assignments and return inserted IDs.
+
+        ``items`` is a list of dicts with keys: ``driver_id``,
+        ``topic_key``, ``rule_id``, ``severity``, ``reason``. Replaces
+        the P × per-proposal INSERT-then-commit loop in
+        coaching/service.py with one ``executemany`` and one commit.
+
+        Uses ``RETURNING id`` (SQLite 3.35+ / Postgres) so callers still
+        get the new ids back without a second round-trip. The ordering
+        of returned IDs matches the input order.
+        """
+        if not items:
+            return []
+        now = self._now()
+        params = [
+            (
+                account_id,
+                str(it.get("driver_id") or ""),
+                it.get("rule_id"),
+                str(it.get("topic_key") or ""),
+                str(it.get("severity") or "medium"),
+                str(it.get("reason") or ""),
+                assigned_by,
+                now,
+                it.get("due_at"),
+            )
+            for it in items
+        ]
+        # executemany + RETURNING is supported by aiosqlite ≥ 0.18 and
+        # asyncpg; both drivers expose .fetchall() on the cursor.
+        cur = await self._db.executemany(
+            "INSERT INTO coaching_assignments "
+            "(account_id, driver_id, rule_id, topic_key, severity, reason, "
+            " status, assigned_by, assigned_at, due_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?) "
+            "RETURNING id",
+            params,
+        )
+        ids: list[int] = []
+        try:
+            rows = await cur.fetchall()
+            ids = [int(r[0]) for r in rows if r and r[0] is not None]
+        except Exception:
+            # Driver doesn't surface RETURNING from executemany — fall
+            # back to a SELECT keyed on the timestamp we just stamped.
+            ids = []
+        await self._db.commit()
+        if not ids:
+            sel = await self._db.execute(
+                "SELECT id FROM coaching_assignments "
+                "WHERE account_id = ? AND assigned_at = ? AND assigned_by = ? "
+                "ORDER BY id",
+                (account_id, now, assigned_by),
+            )
+            ids = [int(r[0]) for r in await sel.fetchall()]
+        return ids
+
     async def has_pending_coaching_assignment(
         self, account_id: int, driver_id: str, topic_key: str,
         within_days: int,
@@ -203,6 +264,33 @@ class CoachingMixin(_MixinBase):
         )
         row = await cur.fetchone()
         return row is not None
+
+    async def get_pending_assignments_recent(
+        self, account_id: int, within_days: int,
+    ) -> dict[tuple[str, str], str]:
+        """Return ``{(driver_id, topic_key): most_recent_assigned_at}`` for
+        every pending assignment within the trailing ``within_days``.
+
+        Bulk replacement for ``has_pending_coaching_assignment`` when the
+        coaching engine evaluates a whole fleet — one query instead of
+        D × R round-trips. Caller passes the *largest* ``period_days``
+        across all rules and then re-filters per-rule in Python so each
+        rule's idempotency window stays correct.
+        """
+        cur = await self._db.execute(
+            "SELECT driver_id, topic_key, MAX(assigned_at) "
+            "FROM coaching_assignments "
+            "WHERE account_id = ? AND status = 'pending' "
+            "  AND datetime(assigned_at) >= datetime('now', ?) "
+            "GROUP BY driver_id, topic_key",
+            (account_id, f"-{int(within_days)} days"),
+        )
+        out: dict[tuple[str, str], str] = {}
+        for row in await cur.fetchall():
+            did = str(row[0] or "")
+            tk = str(row[1] or "")
+            out[(did, tk)] = str(row[2] or "")
+        return out
 
     async def list_coaching_assignments(
         self, account_id: int, *,
