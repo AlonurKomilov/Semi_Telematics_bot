@@ -279,12 +279,33 @@ class AlertsMixin(_MixinBase):
 
     async def get_alert_history(
         self, account_id: int, limit: int = 50,
+        *,
+        alert_type: str | None = None,
+        vehicle_substring: str | None = None,
+        status: str | None = None,
     ) -> list[dict]:
-        """Get alert acknowledgment history for an account (all statuses)."""
+        """Get alert acknowledgment history for an account.
+
+        Optional filters are pushed into the WHERE clause so the
+        dashboard's /alerts/history endpoint doesn't have to load the
+        full window into memory before narrowing.
+        """
+        where = ["account_id = ?"]
+        args: list[Any] = [account_id]
+        if alert_type:
+            where.append("alert_type = ?")
+            args.append(alert_type)
+        if vehicle_substring:
+            where.append("LOWER(vehicle_name) LIKE ?")
+            args.append(f"%{vehicle_substring.lower()}%")
+        if status:
+            where.append("status = ?")
+            args.append(status)
         rows = await self.read_all(
-            "SELECT * FROM alert_acknowledgments WHERE account_id = ? "
-            "ORDER BY created_at DESC LIMIT ?",
-            (account_id, limit),
+            f"SELECT * FROM alert_acknowledgments "
+            f"WHERE {' AND '.join(where)} "
+            f"ORDER BY created_at DESC LIMIT ?",
+            (*args, limit),
         )
         return [dict(r) for r in rows]
 
@@ -371,17 +392,20 @@ class AlertsMixin(_MixinBase):
 
     async def get_active_alert_history(
         self, account_id: int, alert_type: str, vehicle_id: str,
+        alert_subkey: str = "",
     ) -> Optional[dict]:
-        """Get the single shared alert history record for a vehicle+type.
+        """Get the single shared alert history record for a vehicle+type+subkey.
 
-        One row per (account_id, alert_type, vehicle_id) — not per subscriber.
-        Per-subscriber Telegram message tracking is in alert_acknowledgments.
+        One row per (account_id, alert_type, vehicle_id, alert_subkey).
+        For events, *alert_subkey* is the event_type (rollingStop, braking,
+        …) so each behavior gets its own occurrence count.  For fault /
+        fuel / health the subkey is '' (default) and dedup is unchanged.
         """
         row = await self.read_one(
             "SELECT * FROM alert_history "
             "WHERE account_id = ? AND alert_type = ? "
-            "AND vehicle_id = ? AND status = 'active'",
-            (account_id, alert_type, vehicle_id),
+            "AND vehicle_id = ? AND alert_subkey = ? AND status = 'active'",
+            (account_id, alert_type, vehicle_id, alert_subkey),
         )
         return dict(row) if row else None
 
@@ -391,12 +415,17 @@ class AlertsMixin(_MixinBase):
         last_detail: str = "",
         severity: str = "warning",
         location: str = "",
+        alert_subkey: str = "",
     ) -> dict:
-        """Create or update the single shared alert history record for a vehicle+type.
+        """Create or update the shared alert history record for a vehicle+type+subkey.
 
         Uses INSERT OR IGNORE + UPDATE so only one row ever exists per
-        (account_id, alert_type, vehicle_id), regardless of how many
-        subscribers received the alert.
+        (account_id, alert_type, vehicle_id, alert_subkey), regardless
+        of how many subscribers received the alert.  *alert_subkey*
+        differentiates subtypes within a class — e.g. event_type for
+        the events alert family — so per-subtype occurrence counts
+        are accurate.  Empty subkey ('') keeps the legacy single-bucket
+        behavior for fault / fuel / health.
 
         ``severity`` is the cross-surface SSOT: bot, dashboard, and
         mini-app all read this value instead of re-deriving from
@@ -416,15 +445,16 @@ class AlertsMixin(_MixinBase):
         sev = (severity or "warning").lower()
         if sev not in ("critical", "warning", "info"):
             sev = "warning"
-        # Ensure exactly one row exists (UNIQUE constraint on account+type+vehicle)
+        # Ensure exactly one row exists (UNIQUE constraint on
+        # account+type+vehicle+subkey).
         await self._db.execute(
             "INSERT OR IGNORE INTO alert_history "
             "(account_id, alert_type, vehicle_id, vehicle_name, "
             "chat_id, message_id, occurrence_count, "
-            "first_seen, last_seen, last_detail, status, severity, location) "
-            "VALUES (?, ?, ?, ?, 0, 0, 0, ?, ?, ?, 'active', ?, ?)",
+            "first_seen, last_seen, last_detail, status, severity, location, alert_subkey) "
+            "VALUES (?, ?, ?, ?, 0, 0, 0, ?, ?, ?, 'active', ?, ?, ?)",
             (account_id, alert_type, vehicle_id, vehicle_name,
-             now, now, last_detail, sev, location),
+             now, now, last_detail, sev, location, alert_subkey),
         )
         # Sticky-upward severity:
         #   critical wins over everything; warning beats info; info is
@@ -445,16 +475,18 @@ class AlertsMixin(_MixinBase):
                   ELSE severity
               END
             WHERE account_id = ? AND alert_type = ? AND vehicle_id = ?
+              AND alert_subkey = ?
             """,
             (vehicle_name, now, last_detail,
              location, location,
              sev, sev,
-             account_id, alert_type, vehicle_id),
+             account_id, alert_type, vehicle_id, alert_subkey),
         )
         await self._db.commit()
         row = await self._db.execute(
-            "SELECT * FROM alert_history WHERE account_id = ? AND alert_type = ? AND vehicle_id = ?",
-            (account_id, alert_type, vehicle_id),
+            "SELECT * FROM alert_history WHERE account_id = ? AND alert_type = ? "
+            "AND vehicle_id = ? AND alert_subkey = ?",
+            (account_id, alert_type, vehicle_id, alert_subkey),
         )
         return dict(await row.fetchone())
 
@@ -527,6 +559,104 @@ class AlertsMixin(_MixinBase):
         )
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
+
+    async def count_active_alert_history_for_account(self, account_id: int) -> int:
+        """Lightweight COUNT(*) for the badge-poll endpoint.
+
+        Hit every few seconds by the dashboard / mini-app to refresh the
+        red dot on the Alerts tab.  The full row fetch in
+        ``get_active_alert_history_for_account`` was wasteful for a
+        caller that only needs an integer — this method skips the
+        SELECT *, the CASE-rank ORDER BY, and the network transfer.
+        """
+        cur = await self._db.execute(
+            "SELECT COUNT(*) AS c FROM alert_history "
+            "WHERE account_id = ? AND status = 'active'",
+            (account_id,),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return 0
+        try:
+            return int(row["c"])
+        except (KeyError, TypeError):
+            # Tuple-row fallback (some adapter paths)
+            return int(row[0])
+
+    async def get_active_alert_history_for_account_paged(
+        self, account_id: int,
+        alert_type: str | None = None,
+        vehicle_substring: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict]:
+        """Paginated variant of ``get_active_alert_history_for_account``.
+
+        Pushes optional alert_type / vehicle filters and LIMIT/OFFSET into
+        SQL so the API layer no longer has to fetch the entire account's
+        active set just to slice 100 rows.  After the per-subtype event
+        dedup, fleets routinely accumulate 1000+ active rows; the prior
+        full-fetch path was the dominant cost on the dashboard load.
+
+        ORDER BY uses an inline CASE on severity (the existing index
+        only knows the text value) — with LIMIT applied, the engine can
+        do a top-K sort instead of a full sort, so this is a real win.
+        """
+        sql = (
+            "SELECT *, "
+            "  CASE severity "
+            "    WHEN 'critical' THEN 0 "
+            "    WHEN 'warning'  THEN 1 "
+            "    WHEN 'info'     THEN 2 "
+            "    ELSE 3 "
+            "  END AS _sev_rank "
+            "FROM alert_history "
+            "WHERE account_id = ? AND status = 'active' "
+        )
+        params: list = [account_id]
+        if alert_type:
+            sql += "AND alert_type = ? "
+            params.append(alert_type)
+        if vehicle_substring:
+            sql += "AND LOWER(vehicle_name) LIKE ? "
+            params.append(f"%{vehicle_substring.lower()}%")
+        sql += "ORDER BY _sev_rank ASC, last_seen DESC "
+        if limit is not None:
+            sql += "LIMIT ? OFFSET ? "
+            params.extend([int(limit), int(offset)])
+        cur = await self._db.execute(sql, tuple(params))
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def count_active_alert_history_for_account_filtered(
+        self, account_id: int,
+        alert_type: str | None = None,
+        vehicle_substring: str | None = None,
+    ) -> int:
+        """Filtered COUNT(*) matching the same WHERE as the paged query.
+
+        Used by the API to compute the total page count without a
+        second full fetch.
+        """
+        sql = (
+            "SELECT COUNT(*) AS c FROM alert_history "
+            "WHERE account_id = ? AND status = 'active' "
+        )
+        params: list = [account_id]
+        if alert_type:
+            sql += "AND alert_type = ? "
+            params.append(alert_type)
+        if vehicle_substring:
+            sql += "AND LOWER(vehicle_name) LIKE ? "
+            params.append(f"%{vehicle_substring.lower()}%")
+        cur = await self._db.execute(sql, tuple(params))
+        row = await cur.fetchone()
+        if row is None:
+            return 0
+        try:
+            return int(row["c"])
+        except (KeyError, TypeError):
+            return int(row[0])
 
     async def get_active_alert_history_for_account(self, account_id: int) -> list[dict]:
         """Return one row per *logical* active alert for the account.
@@ -657,16 +787,20 @@ class AlertsMixin(_MixinBase):
         return (await cur.fetchone()) is not None
 
     async def get_active_mutes_for_account(
-        self, account_id: int,
+        self, account_id: int, *, limit: int = 500,
     ) -> list[dict]:
         """Return active (unexpired) mutes — used by dashboard to show
-        a "muted" badge on alerts so operators know what's silenced."""
+        a "muted" badge on alerts so operators know what's silenced.
+
+        ``limit`` caps the result so a runaway account with thousands
+        of stale mutes can't blow up the response payload.
+        """
         now = self._now()
         rows = await self.read_all(
             "SELECT * FROM alert_mutes "
             "WHERE account_id = ? AND muted_until > ? "
-            "ORDER BY muted_until ASC",
-            (account_id, now),
+            "ORDER BY muted_until ASC LIMIT ?",
+            (account_id, now, int(limit)),
         )
         return [dict(r) for r in rows]
 

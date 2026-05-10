@@ -144,20 +144,40 @@ async def pending_alerts(
     alert_history because every re-fire to every subscriber adds a row;
     `alert_history` is the SSOT and gives one entry per logical issue.
     """
-    rows = await tenant_db.get_active_alert_history_for_account(user["account_id"])
+    # Drivers only see their own trucks; that filter happens in Python
+    # because it joins against user→vehicle assignments.  Everyone else
+    # gets the much faster SQL-paginated path that lets the DB engine
+    # do top-K sort + LIMIT on the (now per-subtype) alert_history.
+    is_driver_scope = user.get("_matched_perm") == "can_alerts_own"
+    if is_driver_scope:
+        rows = await tenant_db.get_active_alert_history_for_account(user["account_id"])
+        alerts = [_shape_history_for_pending_api(r) for r in rows]
+        alerts = await _filter_own(user, alerts)
+        if alert_type:
+            alerts = [a for a in alerts if a.get("alert_type") == alert_type]
+        if vehicle:
+            q = vehicle.lower()
+            alerts = [a for a in alerts if q in (a.get("vehicle_name") or "").lower()]
+        paged = paginate(alerts, page, page_size)
+        return {"alerts": paged["items"], "count": paged["total"],
+                "page": paged["page"], "page_size": paged["page_size"],
+                "total_pages": paged["total_pages"]}
+
+    # Non-driver path: push everything to SQL.
+    offset = (page - 1) * page_size
+    total = await tenant_db.count_active_alert_history_for_account_filtered(
+        user["account_id"], alert_type=alert_type, vehicle_substring=vehicle,
+    )
+    rows = await tenant_db.get_active_alert_history_for_account_paged(
+        user["account_id"],
+        alert_type=alert_type, vehicle_substring=vehicle,
+        limit=page_size, offset=offset,
+    )
     alerts = [_shape_history_for_pending_api(r) for r in rows]
-    alerts = await _filter_own(user, alerts)
-
-    if alert_type:
-        alerts = [a for a in alerts if a.get("alert_type") == alert_type]
-    if vehicle:
-        q = vehicle.lower()
-        alerts = [a for a in alerts if q in (a.get("vehicle_name") or "").lower()]
-
-    paged = paginate(alerts, page, page_size)
-    return {"alerts": paged["items"], "count": paged["total"],
-            "page": paged["page"], "page_size": paged["page_size"],
-            "total_pages": paged["total_pages"]}
+    total_pages = max(1, (total + page_size - 1) // page_size) if total > 0 else 1
+    return {"alerts": alerts, "count": total,
+            "page": page, "page_size": page_size,
+            "total_pages": total_pages}
 
 
 @router.get("/pending/count")
@@ -171,10 +191,19 @@ async def pending_alerts_count(
     paginated list when only the count is needed.  Reads
     `alert_history` (logical alerts) for consistency with /pending.
     """
-    rows = await tenant_db.get_active_alert_history_for_account(user["account_id"])
-    alerts = [_shape_history_for_pending_api(r) for r in rows]
-    alerts = await _filter_own(user, alerts)
-    return {"count": len(alerts)}
+    is_driver_scope = user.get("_matched_perm") == "can_alerts_own"
+    if is_driver_scope:
+        # Driver scope still needs the row list because access filtering
+        # joins user→vehicle assignments.  Their truck count is small,
+        # so the full fetch is cheap here.
+        rows = await tenant_db.get_active_alert_history_for_account(user["account_id"])
+        alerts = [_shape_history_for_pending_api(r) for r in rows]
+        alerts = await _filter_own(user, alerts)
+        return {"count": len(alerts)}
+    # Fast path: SQL COUNT(*) — the badge poll fires every few seconds
+    # so this saves real wall time on dashboards with many active rows.
+    count = await tenant_db.count_active_alert_history_for_account(user["account_id"])
+    return {"count": count}
 
 
 @router.get("/history")
@@ -192,18 +221,23 @@ async def alert_history(
     user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Get alert history for this account."""
-    alerts = await tenant_db.get_alert_history(user["account_id"], limit=days * 50)
+    """Get alert history for this account.
+
+    Filters (alert_type / vehicle / status) are applied in SQL so the
+    Python side only sees the narrowed window — meaningful when an
+    account has thousands of historical rows.
+    """
+    # Cap the SQL window at days*50 to keep the response bounded;
+    # downstream pagination then carves the result into pages.
+    alerts = await tenant_db.get_alert_history(
+        user["account_id"],
+        limit=days * 50,
+        alert_type=alert_type,
+        vehicle_substring=vehicle,
+        status=status,
+    )
     alerts = await _filter_own(user, alerts)
     alerts = _dedup_by_alert_key(alerts)
-
-    if alert_type:
-        alerts = [a for a in alerts if a.get("alert_type") == alert_type]
-    if vehicle:
-        q = vehicle.lower()
-        alerts = [a for a in alerts if q in (a.get("vehicle_name") or "").lower()]
-    if status:
-        alerts = [a for a in alerts if a.get("status") == status]
 
     paged = paginate(alerts, page, page_size)
     return {"alerts": paged["items"], "count": paged["total"],
@@ -328,12 +362,16 @@ async def unmute_alert(
 
 @router.get("/mutes")
 async def list_active_mutes(
+    limit: int = Query(500, ge=1, le=2000),
     user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
     tenant_db=Depends(get_tenant_db),
 ):
-    """List every active (unexpired) mute for this account so the
-    dashboard can render a 🔇 badge on muted alerts."""
-    mutes = await tenant_db.get_active_mutes_for_account(user["account_id"])
+    """List active (unexpired) mutes for this account so the dashboard
+    can render a 🔇 badge. Capped to ``limit`` (default 500); accounts
+    with more pending mutes paginate through subsequent calls."""
+    mutes = await tenant_db.get_active_mutes_for_account(
+        user["account_id"], limit=limit,
+    )
     return {"mutes": mutes, "count": len(mutes)}
 
 

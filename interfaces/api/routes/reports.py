@@ -44,17 +44,28 @@ async def report_faults(
     company: str | None = Query(None),
     user: dict = Depends(require_permission("can_faults")),
 ):
-    """Fault report — all vehicles with active fault codes."""
+    """Fault report — all vehicles with active fault codes.
+
+    Reads from the warehouse (ingested every 5 min); falls back to
+    live Samsara only when the warehouse is cold for this account.
+    """
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
+    from capabilities.telemetry import warehouse_reader as _wh
     client = await get_client(user["account_id"])
-    vehicles = await client.get_fault_codes(company=company)
-    vehicles = filter_by_allowed_companies(vehicles, allowed)
-    vehicles = await filter_by_assigned_trucks(vehicles, user)
-    faulted = [v for v in vehicles if v.get("fault_codes")]
+
+    async def _live():
+        rows = await client.get_fault_codes(company=company)
+        return rows, len(rows), {}
+
+    faulted, total, _bd = await _wh.get_vehicles_with_faults(
+        user["account_id"], company=company, samsara_fallback=_live,
+    )
+    faulted = filter_by_allowed_companies(faulted or [], allowed)
+    faulted = await filter_by_assigned_trucks(faulted, user)
     return {
         "vehicles": [_simplify_fault(v) for v in faulted],
-        "total_vehicles": len(vehicles),
+        "total_vehicles": total or len(faulted),
         "faulted_count": len(faulted),
     }
 
@@ -65,11 +76,22 @@ async def report_fuel_levels(
     user: dict = Depends(require_permission("can_fuel")),
 ):
     """Live fuel & DEF tank levels from telematics — not the same as
-    /costs/fuel (which tracks logged fill-up entries)."""
+    /costs/fuel (which tracks logged fill-up entries).
+
+    Reads from the warehouse ``vehicle_state`` snapshot (ingested every
+    60 s); falls back to live Samsara only on a cold warehouse.
+    """
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
+    from capabilities.telemetry import warehouse_reader as _wh
     client = await get_client(user["account_id"])
-    vehicles = await client.get_fuel_levels(company=company)
+
+    async def _live():
+        return await client.get_fuel_levels(company=company)
+
+    vehicles = await _wh.get_current_vehicles(
+        user["account_id"], company=company, samsara_fallback=_live,
+    )
     vehicles = filter_by_allowed_companies(vehicles, allowed)
     vehicles = await filter_by_assigned_trucks(vehicles, user)
     items = [_simplify_fuel(v) for v in vehicles]

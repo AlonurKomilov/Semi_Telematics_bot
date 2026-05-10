@@ -46,6 +46,8 @@ async def run_all(conn) -> None:
     await migrate_add_alert_mutes_table(conn)
     await migrate_add_alert_history_reescalate_columns(conn)
     await migrate_add_alert_history_severity_location(conn)
+    await migrate_add_alert_history_subkey(conn)
+    await migrate_alert_history_subkey_index(conn)
 
 
 async def migrate_add_parking_map_image(conn) -> None:
@@ -929,6 +931,144 @@ async def migrate_add_alert_history_severity_location(conn) -> None:
         logger.info("Migration: alert_history severity/location ensured")
     except Exception as e:
         logger.error("alert_history severity/location migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_add_alert_history_subkey(conn) -> None:
+    """Add alert_subkey column + per-subkey UNIQUE constraint.
+
+    Previously the unique key was (account_id, alert_type, vehicle_id),
+    which meant ALL events on a vehicle (Following Distance, Harsh Brake,
+    Lane Departure, …) collapsed into a single alert_history row.  The
+    occurrence count therefore reported "any event on this truck" while
+    the alert title showed only the latest subtype — confusing UX.
+
+    After this migration, each (alert_type, vehicle, subtype) gets its
+    own row.  For events the subkey = event_type; for fault / fuel /
+    health it stays '' so their dedup behavior is unchanged.
+
+    Backfill for legacy events rows: extract the subtype from the
+    last_detail field (which has format "{event_type}:{event_id}" — see
+    pipeline.send_alert callers).  This attributes the existing
+    occurrence count to the last-known subtype rather than splitting
+    it (the subtype-level history was never recorded).  Imperfect, but
+    better than dumping everything into the '' bucket.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(alert_history)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "alert_subkey" in cols:
+            return  # already migrated
+
+        # Safety: if a prior migration aborted mid-rebuild, the temp
+        # table from that run will still exist and the RENAME below
+        # would fail with "already exists".  Drop it first so the
+        # retry can complete cleanly.
+        await conn.execute("DROP TABLE IF EXISTS _alert_history_subkey_old")
+        # SQLite can't ALTER a UNIQUE constraint, and we want both column
+        # add + constraint update in one atomic step.  Rebuild via
+        # rename → create new → copy → drop old.
+        await conn.execute("ALTER TABLE alert_history RENAME TO _alert_history_subkey_old")
+        await conn.execute("""
+            CREATE TABLE alert_history (
+                id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id              INTEGER NOT NULL,
+                alert_type              TEXT    NOT NULL,
+                vehicle_id              TEXT    NOT NULL,
+                vehicle_name            TEXT    NOT NULL DEFAULT '',
+                chat_id                 BIGINT  NOT NULL DEFAULT 0,
+                message_id              BIGINT  NOT NULL DEFAULT 0,
+                occurrence_count        INTEGER NOT NULL DEFAULT 1,
+                first_seen              TEXT    NOT NULL,
+                last_seen               TEXT    NOT NULL,
+                last_detail             TEXT    NOT NULL DEFAULT '',
+                status                  TEXT    NOT NULL DEFAULT 'active',
+                severity                TEXT    NOT NULL DEFAULT 'warning',
+                location                TEXT    NOT NULL DEFAULT '',
+                reescalate_count        INTEGER NOT NULL DEFAULT 0,
+                reescalate_last_sent_at TEXT,
+                alert_subkey            TEXT    NOT NULL DEFAULT '',
+                UNIQUE(account_id, alert_type, vehicle_id, alert_subkey)
+            )
+        """)
+        # Backfill: attribute legacy events rows to their last-recorded
+        # subtype using the "{event_type}:{event_id}" detail pattern.
+        await conn.execute("""
+            INSERT INTO alert_history (
+                id, account_id, alert_type, vehicle_id, vehicle_name,
+                chat_id, message_id, occurrence_count,
+                first_seen, last_seen, last_detail, status,
+                severity, location, reescalate_count, reescalate_last_sent_at,
+                alert_subkey
+            )
+            SELECT
+                id, account_id, alert_type, vehicle_id, vehicle_name,
+                chat_id, message_id, occurrence_count,
+                first_seen, last_seen, last_detail, status,
+                severity, location, reescalate_count, reescalate_last_sent_at,
+                CASE
+                    WHEN alert_type = 'events' AND instr(last_detail, ':') > 0
+                    THEN substr(last_detail, 1, instr(last_detail, ':') - 1)
+                    ELSE ''
+                END
+            FROM _alert_history_subkey_old
+        """)
+        await conn.execute("DROP TABLE _alert_history_subkey_old")
+        # Re-create the active-sort index lost during the rebuild.
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_alert_history_active_sort "
+            "ON alert_history(account_id, status, severity, last_seen DESC)"
+        )
+        # Drop the legacy 4-column index and recreate with alert_subkey
+        # in the prefix — every active-history lookup filters on subkey
+        # too, so missing it forced a seq-scan over the partial match.
+        await conn.execute("DROP INDEX IF EXISTS idx_alert_history_active")
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_alert_history_active "
+            "ON alert_history(account_id, alert_type, vehicle_id, alert_subkey, status)"
+        )
+        await conn.commit()
+        logger.info("Migration: alert_history alert_subkey added + UNIQUE updated")
+    except Exception as e:
+        logger.error("alert_history subkey migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_alert_history_subkey_index(conn) -> None:
+    """Replace the legacy ``idx_alert_history_active`` (4 columns) with
+    a 5-column variant that includes ``alert_subkey``.
+
+    The subkey column was added by ``migrate_add_alert_history_subkey``
+    but the index recreated at the end of that migration didn't include
+    it. ``get_active_alert_history()`` filters on
+    ``(account_id, alert_type, vehicle_id, alert_subkey, status)`` so
+    every alert delivery scans rows on the trailing predicate. This
+    follow-up rebuilds the index for accounts already migrated; new
+    accounts pick up the correct shape from ``tenant_schema``.
+    """
+    try:
+        cur = await conn.execute(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type = 'index' AND name = 'idx_alert_history_active'"
+        )
+        row = await cur.fetchone()
+        if row and "alert_subkey" in (row[0] or ""):
+            return  # already correct
+        await conn.execute("DROP INDEX IF EXISTS idx_alert_history_active")
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_alert_history_active "
+            "ON alert_history(account_id, alert_type, vehicle_id, alert_subkey, status)"
+        )
+        await conn.commit()
+        logger.info("Migration: idx_alert_history_active extended with alert_subkey")
+    except Exception as e:
+        logger.error("alert_history subkey index migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

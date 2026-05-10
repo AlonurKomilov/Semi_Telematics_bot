@@ -14,12 +14,17 @@ DATABASE_PATH = os.getenv("DATABASE_PATH", "data/bot.db")
 # Feature flag: set MULTI_TENANT_DB=1 to use per-tenant SQLite databases
 MULTI_TENANT = bool(os.getenv("MULTI_TENANT_DB"))
 
-# Phase C cutover flag.  When ON, hot read endpoints (fleet/vehicles,
-# safety/events, scorecards) read from the local telemetry warehouse
-# instead of calling Samsara live.  Default OFF so the ingestor can
-# backfill in production *before* readers flip; once shadow reads
-# match Samsara within tolerance for ~24 h, set this to "1".
-WAREHOUSE_READS_ENABLED = bool(os.getenv("WAREHOUSE_READS_ENABLED"))
+# Warehouse-first reads.  When ON, hot read endpoints (fleet/vehicles,
+# safety/events, scorecards, faults, fuel) read from the local
+# telemetry warehouse populated by the ingestor — Samsara is only
+# called as a cold-start fallback when the warehouse is empty.
+#
+# Default ON: making the warehouse the single source of truth keeps
+# dashboard p50 in the 10–120 ms range instead of the 800–2500 ms
+# round-trips Samsara would otherwise impose. Override with
+# ``WAREHOUSE_READS_ENABLED=0`` only when shadow-reading a brand-new
+# environment whose warehouse hasn't been backfilled yet.
+WAREHOUSE_READS_ENABLED = os.getenv("WAREHOUSE_READS_ENABLED", "1") not in ("0", "false", "False", "")
 
 # Phase 5 — object storage backend.  "disk" (default) writes blobs
 # under data/<bucket>/<key>.  "gdrive" routes uploads through the

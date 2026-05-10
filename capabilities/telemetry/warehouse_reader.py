@@ -25,9 +25,24 @@ import logging
 from typing import Any
 
 from infra import config
-from infra.services import get_tenant_db
+from infra.services import get_tenant_db as _real_get_tenant_db
 
 logger = logging.getLogger(__name__)
+
+
+async def get_tenant_db(account_id: int):
+    """Tolerant wrapper around ``infra.services.get_tenant_db``.
+
+    The platform router asserts when not yet initialised — that's a
+    legitimate state during boot and also during unit tests that
+    monkeypatch only the live-Samsara path. Treat both as "no tenant
+    available" so the caller can fall back to live Samsara instead of
+    raising.
+    """
+    try:
+        return await _real_get_tenant_db(account_id)
+    except (AssertionError, RuntimeError):
+        return None
 
 
 def _enabled() -> bool:

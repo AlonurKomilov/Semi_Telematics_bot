@@ -115,7 +115,14 @@ async def create_tables(conn) -> None:
             -- and exponential backoff between reminders.
             reescalate_count        INTEGER NOT NULL DEFAULT 0,
             reescalate_last_sent_at TEXT,
-            UNIQUE(account_id, alert_type, vehicle_id)
+            -- Per-alert sub-bucket so distinct subtypes of the same
+            -- alert_type don't collapse together.  For events this is
+            -- the event_type (rollingStop, braking, …) so each
+            -- behavior gets its own occurrence count.  For faults /
+            -- fuel / health the subkey is '' and dedup behavior is
+            -- unchanged from before.
+            alert_subkey            TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, alert_type, vehicle_id, alert_subkey)
         );
         CREATE INDEX IF NOT EXISTS idx_alert_history_active_sort
             ON alert_history(account_id, status, severity, last_seen DESC);
@@ -248,8 +255,11 @@ async def create_tables(conn) -> None:
         -- of acknowledged_at, ordering tens of thousands of rows.
         CREATE INDEX IF NOT EXISTS idx_alert_ack_acct_veh
             ON alert_acknowledgments(account_id, vehicle_id, status);
+        -- Includes alert_subkey because get_active_alert_history()
+        -- and the upsert path filter on it; without subkey in the
+        -- index every alert delivery does a partial seq-scan.
         CREATE INDEX IF NOT EXISTS idx_alert_history_active
-            ON alert_history(account_id, alert_type, vehicle_id, status);
+            ON alert_history(account_id, alert_type, vehicle_id, alert_subkey, status);
         CREATE INDEX IF NOT EXISTS idx_dnd_queue_pending
             ON dnd_alert_queue(telegram_id, delivered);
         CREATE INDEX IF NOT EXISTS idx_audit_account
