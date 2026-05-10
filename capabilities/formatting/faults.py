@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from infra.context import get_company_display
-from capabilities.formatting.helpers import _t, _short_location
+from capabilities.formatting.helpers import (
+    _t, _short_location, _fmt_time, _relative_ago,
+)
 
 
 def format_fault_alert(
@@ -12,6 +14,7 @@ def format_fault_alert(
     severity: str = "warning",
     lights: dict | None = None,
     show_company: bool = False,
+    detected_at: str | None = None,
 ) -> str:
     """Format a fault alert for any severity tier (CRITICAL, WARNING, INFO).
 
@@ -38,15 +41,12 @@ def format_fault_alert(
     if is_critical:
         title = _t("alert_format.critical_fault_title")
         dtc_emoji = "🔴"
-        hint = _t("alert_format.critical_fault_action")
     elif is_info:
         title = _t("alert_format.info_fault_title")
         dtc_emoji = "🔵"
-        hint = _t("alert_format.info_fault_hint")
     else:
         title = _t("alert_format.new_fault_title")
         dtc_emoji = "🔸"
-        hint = _t("alert_format.new_fault_hint")
 
     lines = [
         "━━━━━━━━━━━━━━━━━━━━━",
@@ -57,6 +57,17 @@ def format_fault_alert(
         f"  📍  {city}",
         f"{co_label}",
     ]
+
+    # Detection time — when the fault first appeared in the poll cycle.
+    # The Telegram envelope timestamp is delivery time, which lags by
+    # the cooldown/dedup interval; surfacing detection time anchors
+    # freshness for dispatch.
+    if detected_at:
+        time_str = _fmt_time(detected_at)
+        ago = _relative_ago(detected_at)
+        if ago:
+            time_str = f"{time_str} {ago}"
+        lines.append(f"  🕐  {time_str}")
 
     if is_critical and lights:
         light_flags = []
@@ -83,7 +94,10 @@ def format_fault_alert(
             f"       {_t('alert_format.new_fault_source')} {source}\n"
         )
 
-    lines.append(f"  {hint}")
+    # The trailing hint ("Tap 🚛 Vehicles for details") used to live
+    # here.  It duplicated the inline keyboard buttons (Open in
+    # Samsara / View Truck / Main Menu) and added a line of clutter,
+    # so it was removed.
     return "\n".join(lines)
 
 

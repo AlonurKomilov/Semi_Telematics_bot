@@ -140,7 +140,9 @@ class TestCriticalFaultFormatter:
         assert "Truck #101" in result
         assert "🛑 STOP" in result
         assert "Engine Temp" in result
-        assert "Immediate attention required" in result
+        # Note: the "Immediate attention required" hint footer was
+        # removed — the inline keyboard buttons (Open in Samsara /
+        # View Truck / Main Menu) cover the same call-to-action.
 
     def test_multiple_lights(self):
         vehicle = {"name": "202", "location": {}, "_org": "CO1"}
@@ -232,6 +234,93 @@ class TestLowFuelFormatter:
         result = format_low_fuel_alert(vehicle, 0.0)
         assert "0%" in result
         assert "refueling" in result
+
+    def test_includes_driver_when_provided(self):
+        vehicle = {"name": "604", "_org": "CO1"}
+        result = format_low_fuel_alert(
+            vehicle, 8.0, driver_name="JANE DOE",
+        )
+        assert "JANE DOE" in result
+
+    def test_omits_driver_line_when_absent(self):
+        vehicle = {"name": "605", "_org": "CO1"}
+        result = format_low_fuel_alert(vehicle, 9.0)
+        # No "👤" line should render when driver isn't supplied.
+        assert "👤" not in result
+
+    def test_includes_location_from_vehicle(self):
+        vehicle = {
+            "name": "606", "_org": "CO1",
+            "location": {"reverseGeo": {"formattedLocation": "Cincinnati, OH"}},
+        }
+        result = format_low_fuel_alert(vehicle, 10.0)
+        assert "Cincinnati, OH" in result
+
+    def test_includes_detection_time(self):
+        from datetime import datetime, timezone, timedelta
+        recent = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+        vehicle = {"name": "607", "_org": "CO1"}
+        result = format_low_fuel_alert(vehicle, 7.0, detected_at=recent)
+        assert "min ago" in result
+
+
+class TestHealthAlertExtras:
+    """New driver/location/time fields on format_health_alert."""
+
+    def test_includes_driver_when_provided(self):
+        vehicle = {"name": "H1", "_org": "CO1"}
+        result = format_health_alert(
+            vehicle, ["low_battery"], {"battery_v": 11.0},
+            driver_name="JOHN SMITH",
+        )
+        assert "JOHN SMITH" in result
+
+    def test_includes_location_from_vehicle(self):
+        vehicle = {
+            "name": "H2", "_org": "CO1",
+            "location": {"reverseGeo": {"formattedLocation": "Dayton, OH"}},
+        }
+        result = format_health_alert(vehicle, ["low_def"], {"def_pct": 5.0})
+        assert "Dayton, OH" in result
+
+    def test_includes_detection_time(self):
+        from datetime import datetime, timezone, timedelta
+        recent = (datetime.now(timezone.utc) - timedelta(minutes=3)).isoformat()
+        vehicle = {"name": "H3", "_org": "CO1"}
+        result = format_health_alert(
+            vehicle, ["low_battery"], {"battery_v": 11.5},
+            detected_at=recent,
+        )
+        assert "min ago" in result
+
+
+class TestFaultAlertExtras:
+    """New time field + dropped hint on format_fault_alert."""
+
+    def test_drops_hint_footer(self):
+        # The "Tap 🚛 Vehicles for details" / "Immediate attention
+        # required" lines used to live at the bottom — they were noise
+        # given the inline keyboard already provides the same actions.
+        vehicle = {"name": "F1", "location": {}, "_org": "CO1"}
+        dtcs = [{"spnDescription": "Engine", "fmiDescription": "Severe",
+                 "sourceAddressName": "ECU"}]
+        result = format_critical_fault_alert(vehicle, dtcs, {"stopIsOn": True})
+        assert "Immediate attention required" not in result
+        assert "Tap" not in result
+
+    def test_includes_detection_time(self):
+        from datetime import datetime, timezone, timedelta
+        recent = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+        vehicle = {"name": "F2", "location": {}, "_org": "CO1"}
+        dtcs = [{"spnDescription": "Oil", "fmiDescription": "Warn",
+                 "sourceAddressName": "ECU"}]
+        # detected_at is on the underlying format_fault_alert, not the
+        # backward-compat alias — call it directly.
+        from capabilities.formatting import format_fault_alert
+        result = format_fault_alert(
+            vehicle, dtcs, severity="warning", detected_at=recent,
+        )
+        assert "min ago" in result
 
 
 # ══════════════════════════════════════════════════════════════════

@@ -226,9 +226,14 @@ async def _check_health_account(
 
             show_co = len(company_codes) > 1
             health = v.get("_health", {})
+            # Detection time = now (poll cycle just observed the
+            # threshold breach).  Driver is best-effort.
+            detected_at = datetime.now(timezone.utc).isoformat()
             alert_text = format_health_alert(
                 v, list(new_alerts), health,
                 show_company=show_co,
+                driver_name=v.get("_driver_name"),
+                detected_at=detected_at,
             )
 
             # Proactive AI — only if any subscriber enabled it

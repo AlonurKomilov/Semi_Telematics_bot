@@ -380,10 +380,15 @@
     "health_low_def": "💧 Nivel de DEF Bajo",
     "health_coolant_fault": "🌡 Fallo del Sistema de Refrigeración",
     "health_coolant_dtc": "DTC de refrigerante J1939 detectado",
+    "history_alert_id": "🔖 Alert <b>#{id}</b>",
     "history_footer_title": "📊 <b>Historial de Alertas</b>",
     "history_occurrences": "Ocurrencias: <b>{count}</b>",
     "history_since": "Desde: {date}",
-    "history_latest": "Última: {date}"
+    "history_latest": "Última: {date}",
+    "ago_just_now": "ahora",
+    "ago_minutes": "hace {n} min",
+    "ago_hours": "hace {n} h",
+    "ago_days": "hace {n} d"
   },
   "access": {
     "no_access": "⛔ Sin acceso",

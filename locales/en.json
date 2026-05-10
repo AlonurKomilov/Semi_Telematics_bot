@@ -433,10 +433,15 @@
     "health_low_def": "💧 Low DEF Level",
     "health_coolant_fault": "🌡 Coolant System Fault",
     "health_coolant_dtc": "J1939 coolant DTC detected",
+    "history_alert_id": "🔖 Alert <b>#{id}</b>",
     "history_footer_title": "📊 <b>Alert History</b>",
     "history_occurrences": "Occurrences: <b>{count}</b>",
     "history_since": "Since: {date}",
-    "history_latest": "Latest: {date}"
+    "history_latest": "Latest: {date}",
+    "ago_just_now": "just now",
+    "ago_minutes": "{n} min ago",
+    "ago_hours": "{n} hr ago",
+    "ago_days": "{n} d ago"
   },
   "access": {
     "no_access": "⛔ No access",

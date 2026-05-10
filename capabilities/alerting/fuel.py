@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 from cachetools import LRUCache
 from telegram.ext import Application
@@ -144,8 +145,14 @@ async def _check_fuel_account(
 
         fuel_pct = v.get("_fuel_pct", 0)
         show_co = len(company_codes) > 1
+        # Detection time = now (this poll cycle saw fuel cross the
+        # threshold).  Driver is best-effort — populated only when the
+        # vehicle dict came from a flow that joined drivers in.
+        detected_at = datetime.now(timezone.utc).isoformat()
         alert_text = format_low_fuel_alert(
             v, fuel_pct, show_company=show_co,
+            driver_name=v.get("_driver_name"),
+            detected_at=detected_at,
         )
 
         # ── Classify severity ────────────────────

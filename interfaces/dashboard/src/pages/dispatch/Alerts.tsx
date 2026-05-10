@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, CheckCircle2 } from 'lucide-react';
+import { Bell, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
@@ -32,6 +32,29 @@ function TypeBadge({ type }: { type: string }) {
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{type}</span>;
 }
 
+// Severity dot + label.  Reads alert_history.severity (server-authoritative)
+// so it always matches the bot's per-type formatter.  Falls back to 'warning'
+// for legacy rows that haven't been migrated yet.
+function SeverityDot({ severity }: { severity?: string }) {
+  const sev = (severity === 'critical' || severity === 'info') ? severity : 'warning';
+  const cfg: Record<string, { dot: string; text: string; label: string }> = {
+    critical: { dot: 'bg-red-500',    text: 'text-red-600 dark:text-red-400',     label: 'Critical' },
+    warning:  { dot: 'bg-orange-500', text: 'text-orange-600 dark:text-orange-400', label: 'Warning' },
+    info:     { dot: 'bg-blue-500',   text: 'text-blue-600 dark:text-blue-400',   label: 'Info' },
+  };
+  const c = cfg[sev];
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-medium ${c.text}`}>
+      <span className={`w-2 h-2 rounded-full ${c.dot}`} aria-hidden />
+      {c.label}
+    </span>
+  );
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? `${s.slice(0, max)}…` : s;
+}
+
 const historyColumns: AnyColumn[] = [
   { key: 'vehicle_name', label: 'Vehicle' },
   {
@@ -61,12 +84,18 @@ export default function Alerts() {
   const [tab, setTab] = useState<Tab>('pending');
   const [selected, setSelected] = useState<Set<string | number>>(new Set());
   const [typeFilter, setTypeFilter] = useState<AlertType>('all');
+  const [severityFilter, setSeverityFilter] = useState<'all' | 'critical' | 'warning' | 'info'>('all');
   const [vehicleSearch, setVehicleSearch] = useState('');
   const [days, setDays] = useState(7);
   const [bulkError, setBulkError] = useState('');
   const [acking, setAcking] = useState(false);
+  // Server-side pagination — see /alerts/pending {page, total_pages}.
+  // 100/page is a comfortable scroll target; the API max is 500 if a
+  // dispatcher prefers fewer round-trips.
+  const PAGE_SIZE = 100;
+  const [page, setPage] = useState(1);
 
-  const queryKey = ['alerts', tab, typeFilter, vehicleSearch, tab === 'history' ? days : null] as const;
+  const queryKey = ['alerts', tab, typeFilter, vehicleSearch, page, tab === 'history' ? days : null] as const;
   const {
     data,
     isLoading: loading,
@@ -81,13 +110,24 @@ export default function Alerts() {
       if (typeFilter !== 'all') params.set('alert_type', typeFilter);
       if (vehicleSearch) params.set('vehicle', vehicleSearch);
       if (tab === 'history') params.set('days', String(days));
+      // Server-side pagination — request a fixed page_size and the
+      // current page number; bind Next/Prev to total_pages from the
+      // API response so dispatchers can step through fleets that
+      // have 300+ active logical alerts without overloading the table.
+      params.set('page_size', String(PAGE_SIZE));
+      params.set('page', String(page));
       const path = tab === 'pending' ? '/alerts/pending' : '/alerts/history';
       const qs = params.toString();
       return apiJSON<AlertsResponse>(`${path}${qs ? `?${qs}` : ''}`);
     },
     placeholderData: (prev) => prev,
   });
-  const alerts: Alert[] = data?.alerts ?? [];
+  const allAlerts: Alert[] = data?.alerts ?? [];
+  // Apply severity filter client-side (server already sorts by
+  // severity → last_seen so the bucket-by-severity grouping is stable).
+  const alerts: Alert[] = severityFilter === 'all'
+    ? allAlerts
+    : allAlerts.filter((a) => (a.severity ?? 'warning') === severityFilter);
   const fetchError = queryError instanceof Error ? queryError.message : '';
 
   async function ackSelected() {
@@ -151,7 +191,7 @@ export default function Alerts() {
         {(['pending', 'history'] as const).map((t) => (
           <button
             key={t}
-            onClick={() => setTab(t)}
+            onClick={() => { setTab(t); setPage(1); }}
             className={`px-4 py-2 text-sm font-medium transition capitalize border-b-2 -mb-px ${
               tab === t
                 ? 'border-primary text-foreground'
@@ -164,18 +204,31 @@ export default function Alerts() {
       </div>
 
       <FilterBar>
-        <FilterChips options={ALERT_TYPES} value={typeFilter} onChange={setTypeFilter} />
+        <FilterChips
+          options={ALERT_TYPES}
+          value={typeFilter}
+          onChange={(v) => { setTypeFilter(v); setPage(1); }}
+        />
+        {/* Severity filter — server-authoritative `alert_history.severity`.
+            Drives client-side .filter() on the rendered alerts array; the
+            counts are derived off the unfiltered list so each chip shows
+            what it would surface. */}
+        <FilterChips
+          options={['all', 'critical', 'warning', 'info'] as const}
+          value={severityFilter}
+          onChange={(v) => { setSeverityFilter(v); setPage(1); }}
+        />
         <input
           type="text"
           placeholder="Vehicle name…"
           value={vehicleSearch}
-          onChange={(e) => setVehicleSearch(e.target.value)}
+          onChange={(e) => { setVehicleSearch(e.target.value); setPage(1); }}
           className="bg-background border border-border rounded-md px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:border-ring w-44"
         />
         {tab === 'history' && (
           <select
             value={days}
-            onChange={(e) => setDays(Number(e.target.value))}
+            onChange={(e) => { setDays(Number(e.target.value)); setPage(1); }}
             className="bg-background border border-border rounded-md px-2 py-1.5 text-sm text-foreground/80"
           >
             {[7, 14, 30, 60, 90].map((d) => (
@@ -225,8 +278,11 @@ export default function Alerts() {
                   />
                 </th>
                 <th className="px-4 py-3 w-20">Alert</th>
+                <th className="px-4 py-3 w-24">Severity</th>
                 <th className="px-4 py-3">Vehicle</th>
                 <th className="px-4 py-3">Type</th>
+                <th className="px-4 py-3">Description</th>
+                <th className="px-4 py-3">Location</th>
                 <th className="px-4 py-3">Time</th>
               </tr>
             </thead>
@@ -243,6 +299,9 @@ export default function Alerts() {
                   <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
                     #{a.id}
                   </td>
+                  <td className="px-4 py-3">
+                    <SeverityDot severity={a.severity} />
+                  </td>
                   <td className="px-4 py-3">{a.vehicle_name}</td>
                   <td className="px-4 py-3">
                     <TypeBadge type={a.alert_type || 'unknown'} />
@@ -257,6 +316,23 @@ export default function Alerts() {
                         × {a.occurrence_count}
                       </span>
                     )}
+                  </td>
+                  {/* Description — first 60 chars of last_detail with
+                      full text on hover.  Mirrors mini-app's tap-to-
+                      expand pattern but desktop UX uses tooltip. */}
+                  <td
+                    className="px-4 py-3 text-sm text-muted-foreground max-w-xs"
+                    title={(a as Alert & { last_detail?: string }).last_detail || (a as Alert & { message?: string }).message || ''}
+                  >
+                    {truncate((a as Alert & { last_detail?: string }).last_detail ?? (a as Alert & { message?: string }).message ?? '—', 60)}
+                  </td>
+                  {/* Location snapshot from alert_history.location.
+                      Empty when the truck didn't have GPS at first fire. */}
+                  <td
+                    className="px-4 py-3 text-sm text-muted-foreground max-w-[14rem] truncate"
+                    title={a.location || ''}
+                  >
+                    {a.location ? truncate(a.location, 30) : '—'}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {a.last_seen
@@ -276,10 +352,54 @@ export default function Alerts() {
         />
       )}
 
-      {alerts.length > 0 && (
-        <p className="text-xs text-muted-foreground mt-2">
-          {alerts.length} alert{alerts.length !== 1 ? 's' : ''}
-        </p>
+      {/* Pagination footer — Next/Prev step through `alert_history` for
+          fleets with hundreds of active alerts.  Severity filter applies
+          *after* pagination on the client, so the displayed range is
+          "what's on this page that also matched the severity chip". */}
+      {data && data.count > 0 && (
+        <div className="flex items-center justify-between mt-3">
+          <p className="text-xs text-muted-foreground">
+            {(() => {
+              const total = data.count;
+              const ps = data.page_size ?? PAGE_SIZE;
+              const cur = data.page ?? page;
+              const start = total === 0 ? 0 : (cur - 1) * ps + 1;
+              const end = Math.min(cur * ps, total);
+              const sevHidden = severityFilter !== 'all' && allAlerts.length !== alerts.length;
+              return sevHidden ? (
+                <>
+                  Showing <strong>{alerts.length}</strong> of <strong>{allAlerts.length}</strong> on
+                  this page · <strong>{total}</strong> total
+                </>
+              ) : (
+                <>Showing <strong>{start}</strong>–<strong>{end}</strong> of <strong>{total}</strong> alerts</>
+              );
+            })()}
+          </p>
+          {(data.total_pages ?? 1) > 1 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={(data.page ?? page) <= 1 || isFetching}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border text-xs font-medium text-foreground/80 hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition"
+              >
+                <ChevronLeft size={14} />
+                Prev
+              </button>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                Page <strong>{data.page ?? page}</strong> of <strong>{data.total_pages ?? 1}</strong>
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(data.total_pages ?? p, p + 1))}
+                disabled={(data.page ?? page) >= (data.total_pages ?? 1) || isFetching}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border text-xs font-medium text-foreground/80 hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition"
+              >
+                Next
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

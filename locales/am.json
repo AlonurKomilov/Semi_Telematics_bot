@@ -380,10 +380,15 @@
     "health_low_def": "💧 ዝቅተኛ DEF ደረጃ",
     "health_coolant_fault": "🌡 የኩላንት ስርዓት ችግር",
     "health_coolant_dtc": "J1939 የኩላንት DTC ተገኝቷል",
+    "history_alert_id": "🔖 Alert <b>#{id}</b>",
     "history_footer_title": "📊 <b>የማሳወቂያ ታሪክ</b>",
     "history_occurrences": "ክስተቶች: <b>{count}</b>",
     "history_since": "ከ: {date}",
-    "history_latest": "የቅርብ ጊዜ: {date}"
+    "history_latest": "የቅርብ ጊዜ: {date}",
+    "ago_just_now": "አሁን",
+    "ago_minutes": "ከ{n} ደቂቃ በፊት",
+    "ago_hours": "ከ{n} ሰዓት በፊት",
+    "ago_days": "ከ{n} ቀን በፊት"
   },
   "access": {
     "no_access": "⛔ ምንም መዳረሻ የለም",

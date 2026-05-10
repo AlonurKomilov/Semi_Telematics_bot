@@ -73,6 +73,8 @@ export interface GeofenceFeature {
   };
 }
 
+export type AlertSeverity = 'critical' | 'warning' | 'info';
+
 export interface Alert {
   /** alert_history.id — the canonical AlertID surfaced in the UI ("#1234"). */
   id: number;
@@ -81,6 +83,12 @@ export interface Alert {
   vehicle_name: string;
   vehicle_id?: string;
   message: string;
+  /** Server-authoritative severity — same value the bot used to format
+   *  the Telegram message.  Frontends must NOT re-derive from alert_type. */
+  severity?: AlertSeverity;
+  /** Snapshot location string ("Mojave Freeway, CA") captured by the
+   *  ingest pipeline; empty when the truck reported no GPS. */
+  location?: string;
   /** First time this logical alert fired (also used by RelativeTime). */
   created_at: string;
   /** Most recent fire time — drives "× N occurrences" freshness display. */

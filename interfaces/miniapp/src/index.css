@@ -1088,6 +1088,40 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 .alerts-header__bulk-ack[disabled] { opacity: 0.5; cursor: progress; }
+
+/* Pager (Prev / Page N of M / Next) below the alert cards. */
+.alerts-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 16px 24px;
+}
+.alerts-pager__btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--tg-theme-secondary-bg-color, rgba(120,120,128,0.12));
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--tg-theme-text-color, inherit);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 12px;
+  -webkit-tap-highlight-color: transparent;
+}
+.alerts-pager__btn[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.alerts-pager__label {
+  font-size: 12px;
+  color: var(--tg-theme-hint-color, #8e8e93);
+  font-variant-numeric: tabular-nums;
+}
+
 .alerts-header__history {
   appearance: none;
   display: flex;
@@ -1239,14 +1273,65 @@ body {
   font-weight: 700;
   letter-spacing: 0.02em;
 }
-/* Vehicle name tag below title */
+/* Meta row holds severity pill + vehicle + location chips inline so
+   they wrap together under the title rather than each on its own line. */
+.alert-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 2px;
+}
+/* Server-authoritative severity pill — color-coded but always carries
+   a text label so colorblind users can triage too. */
+.alert-card__sev {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.alert-card__sev--critical { background: var(--st-red-tint, rgba(255,69,58,0.18)); color: var(--st-red, #ff453a); }
+.alert-card__sev--warning  { background: var(--st-orange-tint, rgba(255,159,10,0.18)); color: var(--st-orange, #ff9f0a); }
+.alert-card__sev--info     { background: var(--st-blue-tint, rgba(41,144,255,0.18)); color: var(--st-blue, #2990ff); }
+
+/* Vehicle name tag — kept inline now that it lives in __meta. */
 .alert-card__vehicle {
   display: inline-flex;
   align-items: center;
   gap: 3px;
   font-size: 11px;
   color: var(--tgui--hint_color);
-  margin-top: 2px;
+}
+/* Location snapshot tag — truncates long addresses with ellipsis but
+   the full string is in `title` so hover reveals it. */
+.alert-card__loc {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--tgui--hint_color);
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Severity-filter chip variants — match the pills inside the cards. */
+.alerts-filter--severity { gap: 6px; }
+.alerts-filter__btn--critical { color: var(--st-red, #ff453a); }
+.alerts-filter__btn--warning  { color: var(--st-orange, #ff9f0a); }
+.alerts-filter__btn--info     { color: var(--st-blue, #2990ff); }
+.alerts-sev-count {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: rgba(128,128,128,0.18);
+  font-size: 10px;
+  font-weight: 700;
 }
 .alert-card__when {
   font-size: 11px;

@@ -105,6 +105,11 @@ def _shape_history_for_pending_api(row: dict) -> dict:
         "alert_type": row.get("alert_type"),
         "vehicle_id": row.get("vehicle_id"),
         "vehicle_name": row.get("vehicle_name"),
+        # Severity + location are now SSOT on alert_history (writes by
+        # pipeline.send_alert).  Frontends should read these instead of
+        # re-deriving from alert_type.
+        "severity": (row.get("severity") or "warning"),
+        "location": row.get("location") or "",
         "occurrence_count": row.get("occurrence_count") or 1,
         "first_seen": row.get("first_seen"),
         "last_seen": row.get("last_seen"),
@@ -123,7 +128,11 @@ async def pending_alerts(
     alert_type: str | None = Query(None, description="Filter: fault, health, fuel, events"),
     vehicle: str | None = Query(None, description="Filter by vehicle name (substring)"),
     page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(50, ge=1, le=200, description="Items per page"),
+    # Cap raised 200 → 500 so a fleet with 300+ active logical alerts
+    # can render in one round-trip on the dashboard / mini-app.  The
+    # default stays 50 for backwards compat with any client that
+    # doesn't pass page_size.
+    page_size: int = Query(50, ge=1, le=500, description="Items per page (max 500)"),
     user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -175,7 +184,11 @@ async def alert_history(
     vehicle: str | None = Query(None, description="Filter by vehicle name (substring)"),
     status: str | None = Query(None, description="Filter: acknowledged, expired, active"),
     page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(50, ge=1, le=200, description="Items per page"),
+    # Cap raised 200 → 500 so a fleet with 300+ active logical alerts
+    # can render in one round-trip on the dashboard / mini-app.  The
+    # default stays 50 for backwards compat with any client that
+    # doesn't pass page_size.
+    page_size: int = Query(50, ge=1, le=500, description="Items per page (max 500)"),
     user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
     tenant_db=Depends(get_tenant_db),
 ):

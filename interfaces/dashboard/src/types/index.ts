@@ -194,6 +194,8 @@ export interface DashboardStats {
 
 // ── Alerts ───────────────────────────────────────────────────
 
+export type AlertSeverity = 'critical' | 'warning' | 'info';
+
 export interface Alert {
   /** alert_history.id — canonical AlertID; "#1234" in the UI. */
   id: string | number;
@@ -201,6 +203,11 @@ export interface Alert {
   vehicle_name?: string;
   vehicle_id?: string;
   alert_type?: string;
+  /** Server-authoritative severity — written by pipeline.send_alert.
+   *  Frontends must NOT re-derive from alert_type. */
+  severity?: AlertSeverity;
+  /** Snapshot location ("Mojave Freeway, CA") captured at first fire. */
+  location?: string;
   status?: string;
   /** First time this logical alert fired — used for "since 06:47" display. */
   created_at?: string;
@@ -219,6 +226,9 @@ export interface Alert {
 export interface AlertsResponse {
   alerts: Alert[];
   count: number;
+  page?: number;
+  page_size?: number;
+  total_pages?: number;
 }
 
 export interface BulkAckResponse {

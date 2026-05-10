@@ -5,15 +5,26 @@ from constants import TZ_ET as _TZ_ET
 from infra.context import get_company_display
 from capabilities.formatting.helpers import (
     _t, _health_icon, _company_tag, _split_message,
+    _short_location, _fmt_time, _relative_ago,
 )
 
 
 def format_health_alert(vehicle: dict, alerts: list[str],
                         health: dict,
-                        show_company: bool = False) -> str:
-    """Format a vehicle health critical alert (battery, oil, coolant, DEF)."""
+                        show_company: bool = False,
+                        driver_name: str | None = None,
+                        detected_at: str | None = None) -> str:
+    """Format a vehicle health critical alert (battery, oil, coolant, DEF).
+
+    *driver_name* and *detected_at* are optional context the alerting
+    pipeline now threads through so the dispatcher knows who to call
+    and how stale the reading is — the prior format had only the
+    sensor reading with no who/where/when context.
+    """
     name = vehicle.get("name", "?")
     co = vehicle.get("_org", "")
+    loc = vehicle.get("location", {})
+    city = _short_location(loc)
 
     co_label = ""
     if show_company and co:
@@ -31,9 +42,20 @@ def format_health_alert(vehicle: dict, alerts: list[str],
         "━━━━━━━━━━━━━━━━━━━━━",
         "",
         f"  🚛  <b>Truck #{name}</b>",
-        f"{co_label}",
-        "",
     ]
+    if driver_name:
+        lines.append(f"  👤  {driver_name}")
+    if co_label:
+        lines.append(co_label.lstrip("\n"))
+    if city and city != "—":
+        lines.append(f"  📍  {city}")
+    if detected_at:
+        time_str = _fmt_time(detected_at)
+        ago = _relative_ago(detected_at)
+        if ago:
+            time_str = f"{time_str} {ago}"
+        lines.append(f"  🕐  {time_str}")
+    lines.append("")
 
     # Show each alert condition with current value
     alert_details = {

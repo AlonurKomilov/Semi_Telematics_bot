@@ -310,8 +310,13 @@ async def _check_faults_account(bot_app: Application, account_id: int, subs: lis
 
                     show_co = len(company_codes) > 1
                     lights = v.get("_lights", {})
+                    # Detection time = now (the poll cycle that just
+                    # discovered the new DTC).  Anchors freshness when
+                    # the alert lands a few seconds later.
+                    detected_at = datetime.now(timezone.utc).isoformat()
                     alert_text = format_fault_alert(
-                        v, new_dtcs, severity=severity, lights=lights, show_company=show_co,
+                        v, new_dtcs, severity=severity, lights=lights,
+                        show_company=show_co, detected_at=detected_at,
                     )
 
                     if has_coolant_dtc:

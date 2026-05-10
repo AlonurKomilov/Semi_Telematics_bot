@@ -27,6 +27,8 @@ import {
   Icon24LockOutline,
   Icon24GlobeOutline,
   Icon24MuteOutline,
+  Icon24ChevronLeftOutline,
+  Icon24ChevronRightOutline,
 } from '@vkontakte/icons';
 import { Placeholder } from '@telegram-apps/telegram-ui';
 import { apiFetch, apiJSON, classifyError, type ClassifiedError } from '../api/client';
@@ -91,11 +93,26 @@ function AlertIcon({ alert }: { alert: Alert }) {
 }
 
 function alertSeverity(a: Alert): 'critical' | 'warning' | 'info' {
+  // SSOT: alert_history.severity from the server.  Frontends used to
+  // re-derive from alert_type which disagreed with the bot's per-type
+  // formatter — fixed by S2.
+  if (a.severity === 'critical' || a.severity === 'warning' || a.severity === 'info') {
+    return a.severity;
+  }
+  // Conservative fallback for legacy rows seeded before the severity
+  // column landed (migration 032 backfills 'warning' so this branch
+  // is only hit during the brief upgrade window).
   const t = a.alert_type?.toLowerCase() ?? '';
   if (t === 'crash' || t === 'rollover') return 'critical';
   if (t === 'fuel' || t === 'idle' || t === 'maintenance') return 'info';
   return 'warning';
 }
+
+const SEVERITY_LABEL: Record<'critical' | 'warning' | 'info', string> = {
+  critical: 'Critical',
+  warning:  'Warning',
+  info:     'Info',
+};
 
 function alertTitle(a: Alert): string {
   const key = (a.alert_type || a.alert_key || 'Alert').toLowerCase();
@@ -170,12 +187,28 @@ const AlertCard = memo(function AlertCard({
               : <RelativeTime iso={alert.last_seen ?? alert.created_at} timezone={timezone} />}
           </span>
         </div>
-        {alert.vehicle_name && (
-          <div className="alert-card__vehicle">
-            <Icon24TruckOutline width={11} height={11} />
-            {alert.vehicle_name}
-          </div>
-        )}
+        <div className="alert-card__meta">
+          {/* Severity pill — server-authoritative.  Color-coded
+              red/orange/blue with text label so colorblind users can
+              still tell critical from warning. */}
+          <span className={`alert-card__sev alert-card__sev--${sev}`}>
+            {SEVERITY_LABEL[sev]}
+          </span>
+          {alert.vehicle_name && (
+            <span className="alert-card__vehicle">
+              <Icon24TruckOutline width={11} height={11} />
+              {alert.vehicle_name}
+            </span>
+          )}
+          {/* Location snapshot from alert_history.location.  Empty when
+              the truck didn't have GPS at first-fire time. */}
+          {alert.location && (
+            <span className="alert-card__loc" title={alert.location}>
+              <Icon24LocationOutline width={11} height={11} />
+              {alert.location}
+            </span>
+          )}
+        </div>
         {alert.message && (
           <div
             className={`alert-card__msg${isExpanded ? ' alert-card__msg--expanded' : ''}`}
@@ -225,6 +258,10 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
   const [muting, setMuting]           = useState<Set<number>>(new Set());
   const [mutedIds, setMutedIds]       = useState<Set<number>>(new Set());
   const [bulkAcking, setBulkAcking]   = useState(false);
+  // Server-reported total of un-filtered active alerts.  When > alerts.length
+  // we either hit the page_size=500 cap or a truncation happened — show a
+  // "Showing X of Y" hint so the dispatcher knows.
+  const [totalCount, setTotalCount]   = useState(0);
   const [snackOpen, setSnackOpen]     = useState(false);
   const [snackText, setSnackText]     = useState('');
   const [snackKind, setSnackKind]     = useState<'success' | 'error' | 'info'>('info');
@@ -233,7 +270,15 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyDays, setHistoryDays] = useState(7);
   const [typeFilter, setTypeFilter]   = useState<string>('all');
+  const [severityFilter, setSeverityFilter] = useState<'all' | 'critical' | 'warning' | 'info'>('all');
   const [vehicleFilter, setVehicleFilter] = useState<string>('all');
+  // Client-side pagination — the load() above already pulls everything
+  // (page_size=500) and all three filters operate client-side, so paging
+  // server-side here would let a severity chip drop to "0 results" on
+  // page N while later pages have the rows.  Slicing the *post-filter*
+  // list on the client keeps the chips coherent.
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(1);
   // Per-card expanded message & absolute timestamp toggles.
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [absoluteIds, setAbsoluteIds] = useState<Set<number>>(new Set());
@@ -249,13 +294,20 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
   const load = useCallback(async () => {
     setError(null);
     try {
-      const data = await apiJSON<{ alerts: Alert[] }>('/api/alerts/pending');
-      // Sort newest-first (finding #18 — explicit ordering).
-      const arr = (data.alerts ?? []).sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      // page_size=500 — fleets with hundreds of active alerts would
+      // otherwise hit the API's default 50-row cap and the badge
+      // count + "Ack all" button would silently lose alerts.
+      const data = await apiJSON<{ alerts: Alert[]; count?: number }>(
+        '/api/alerts/pending?page_size=500',
       );
+      // Trust server order (severity → last_seen DESC).
+      const arr = data.alerts ?? [];
       setAlerts(arr);
-      onCountChange?.(arr.length);
+      // count comes from the server's pre-pagination total; fall back
+      // to arr.length so the badge stays accurate when count is absent.
+      const total = typeof data.count === 'number' ? data.count : arr.length;
+      setTotalCount(total);
+      onCountChange?.(total);
     } catch (e) {
       console.error('Failed to load alerts:', e);
       setError(classifyError(e));
@@ -268,6 +320,10 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
   }, [load]);
 
   useEffect(() => { if (active) load(); }, [active, load]);
+
+  // Reset to page 1 whenever the filter set changes — otherwise switching
+  // from "all" to "critical" while on page 4 lands on an empty page.
+  useEffect(() => { setPage(1); }, [typeFilter, vehicleFilter, severityFilter]);
 
   useEffect(() => {
     if (refreshKey !== undefined && refreshKey > 0) load();
@@ -404,9 +460,8 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
     [alerts]
   );
 
-  // Severity summary counts (finding #8).
-  const criticalCount = alerts.filter(a => alertSeverity(a) === 'critical').length;
-  const warningCount  = alerts.filter(a => alertSeverity(a) === 'warning').length;
+  // (Severity summary counts are now derived inside the render block
+  //  as `sevCounts` so the filter chips and badges stay in sync.)
 
   // ── Toggle helpers ────────────────────────────────────────────────
   // useCallback so the AlertCard memo equality check holds across
@@ -529,9 +584,25 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
 
   // ── Main render ───────────────────────────────────────────────────
 
-  const visible = alerts
+  const filtered = alerts
     .filter(a => typeFilter === 'all' || a.alert_type === typeFilter)
-    .filter(a => vehicleFilter === 'all' || a.vehicle_name === vehicleFilter);
+    .filter(a => vehicleFilter === 'all' || a.vehicle_name === vehicleFilter)
+    .filter(a => severityFilter === 'all' || alertSeverity(a) === severityFilter);
+
+  // Pagination over the *filtered* list — server already returns up to
+  // 500 active alerts; we slice into 50-row pages so the DOM is light
+  // on low-end Telegram clients.
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const visible = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  // Counts per severity for the filter-chip badges (computed off the
+  // unfiltered list so each chip shows what it would surface).
+  const sevCounts = {
+    critical: alerts.filter(a => alertSeverity(a) === 'critical').length,
+    warning:  alerts.filter(a => alertSeverity(a) === 'warning').length,
+    info:     alerts.filter(a => alertSeverity(a) === 'info').length,
+  };
 
   return (
     <div ref={ptr.ref} style={{ overflowY: 'auto', height: '100%' }}>
@@ -542,7 +613,19 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
 
       {/* Header: count + bulk-ack + history (finding #7) */}
       <div className="alerts-header">
-        <span className="alerts-header__count">{alerts.length} pending</span>
+        <span className="alerts-header__count">
+          {/* Header counter logic:
+              - filtered.length === alerts.length → just "N pending"
+              - any filter active → "M of N" so the user can see how much
+                they're hiding (M is post-filter, N is server-side total).
+              - server returned fewer than reported (page_size cap) →
+                still surface the bigger total. */}
+          {filtered.length !== alerts.length || totalCount > alerts.length ? (
+            <>Showing <strong>{filtered.length}</strong> of <strong>{Math.max(totalCount, alerts.length)}</strong></>
+          ) : (
+            <>{alerts.length} pending</>
+          )}
+        </span>
         <div className="alerts-header__actions">
           {alerts.length > 1 && (
             <button
@@ -561,22 +644,48 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
         </div>
       </div>
 
-      {/* Severity summary row (finding #8) */}
-      {(criticalCount > 0 || warningCount > 0) && (
-        <div className="alerts-severity-row">
-          {criticalCount > 0 && (
-            <span className="alerts-severity-pill alerts-severity-pill--critical">
-              <Icon24WarningTriangleOutline width={13} height={13} />
-              {criticalCount} critical
-            </span>
-          )}
-          {warningCount > 0 && (
-            <span className="alerts-severity-pill alerts-severity-pill--warning">
-              {warningCount} warning
-            </span>
-          )}
-        </div>
-      )}
+      {/* Severity filter chips — server-authoritative counts.
+          Critical and Warning use icons + colored pills so colorblind
+          users can still triage.  Tap a chip to filter the list. */}
+      <div className="alerts-filter alerts-filter--severity">
+        <button
+          className={`sort-bar__btn${severityFilter === 'all' ? ' sort-bar__btn--active' : ''}`}
+          onClick={() => setSeverityFilter('all')}
+        >
+          All <span className="alerts-sev-count">{alerts.length}</span>
+        </button>
+        {sevCounts.critical > 0 && (
+          <button
+            className={`sort-bar__btn alerts-filter__btn--critical${
+              severityFilter === 'critical' ? ' sort-bar__btn--active' : ''
+            }`}
+            onClick={() => setSeverityFilter('critical')}
+          >
+            <Icon24WarningTriangleOutline width={13} height={13} />
+            Critical <span className="alerts-sev-count">{sevCounts.critical}</span>
+          </button>
+        )}
+        {sevCounts.warning > 0 && (
+          <button
+            className={`sort-bar__btn alerts-filter__btn--warning${
+              severityFilter === 'warning' ? ' sort-bar__btn--active' : ''
+            }`}
+            onClick={() => setSeverityFilter('warning')}
+          >
+            Warning <span className="alerts-sev-count">{sevCounts.warning}</span>
+          </button>
+        )}
+        {sevCounts.info > 0 && (
+          <button
+            className={`sort-bar__btn alerts-filter__btn--info${
+              severityFilter === 'info' ? ' sort-bar__btn--active' : ''
+            }`}
+            onClick={() => setSeverityFilter('info')}
+          >
+            Info <span className="alerts-sev-count">{sevCounts.info}</span>
+          </button>
+        )}
+      </div>
 
       {/* Type filter chips — derived from ALERT_TYPE_LABELS + actual list (findings #2, #11, #16, #20) */}
       <div className="alerts-filter">
@@ -645,6 +754,34 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
           onMute={muteAlert}
         />
       ))}
+
+      {/* Pager — Prev / "Page N of M" / Next.  Only shown when the
+          (post-filter) list spans more than one page. */}
+      {totalPages > 1 && (
+        <div className="alerts-pager">
+          <button
+            className="alerts-pager__btn"
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={safePage <= 1}
+            aria-label="Previous page"
+          >
+            <Icon24ChevronLeftOutline width={16} height={16} />
+            Prev
+          </button>
+          <span className="alerts-pager__label">
+            Page <strong>{safePage}</strong> of <strong>{totalPages}</strong>
+          </span>
+          <button
+            className="alerts-pager__btn"
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={safePage >= totalPages}
+            aria-label="Next page"
+          >
+            Next
+            <Icon24ChevronRightOutline width={16} height={16} />
+          </button>
+        </div>
+      )}
 
       {historyOpen && renderHistorySheet()}
 

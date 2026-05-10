@@ -380,10 +380,15 @@
     "health_low_def": "💧 Низкий уровень DEF",
     "health_coolant_fault": "🌡 Неисправность системы охлаждения",
     "health_coolant_dtc": "Обнаружен DTC системы охлаждения J1939",
+    "history_alert_id": "🔖 Alert <b>#{id}</b>",
     "history_footer_title": "📊 <b>История оповещений</b>",
     "history_occurrences": "Случаев: <b>{count}</b>",
     "history_since": "С: {date}",
-    "history_latest": "Последний: {date}"
+    "history_latest": "Последний: {date}",
+    "ago_just_now": "только что",
+    "ago_minutes": "{n} мин назад",
+    "ago_hours": "{n} ч назад",
+    "ago_days": "{n} дн назад"
   },
   "access": {
     "no_access": "⛔ Нет доступа",

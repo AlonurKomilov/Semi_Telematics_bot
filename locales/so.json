@@ -380,10 +380,15 @@
     "health_low_def": "💧 Heerka DEF Hooseeya",
     "health_coolant_fault": "🌡 Ciladda Nidaamka Coolant",
     "health_coolant_dtc": "J1939 ciladda coolant DTC waa la helay",
+    "history_alert_id": "🔖 Alert <b>#{id}</b>",
     "history_footer_title": "📊 <b>Taariikhda Ogeysiiska</b>",
     "history_occurrences": "Dhacdooyinka: <b>{count}</b>",
     "history_since": "Ilaa iyo: {date}",
-    "history_latest": "Kii U dambeeyay: {date}"
+    "history_latest": "Kii U dambeeyay: {date}",
+    "ago_just_now": "hadda",
+    "ago_minutes": "{n} daqiiqo ka hor",
+    "ago_hours": "{n} saac ka hor",
+    "ago_days": "{n} maalmood ka hor"
   },
   "access": {
     "no_access": "⛔ Ma jirto gelitaan",

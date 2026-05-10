@@ -380,10 +380,15 @@
     "health_low_def": "💧 ਘੱਟ DEF ਪੱਧਰ",
     "health_coolant_fault": "🌡 ਕੂਲੈਂਟ ਸਿਸਟਮ ਵਿੱਚ ਨੁਕਸ/ਖਰਾਬੀ",
     "health_coolant_dtc": "J1939 ਕੂਲੈਂਟ DTC ਮਿਲੀ",
+    "history_alert_id": "🔖 Alert <b>#{id}</b>",
     "history_footer_title": "📊 <b>ਅਲਰਟ ਦਾ ਇਤਿਹਾਸ</b>",
     "history_occurrences": "ਵਾਰ: <b>{count}</b>",
     "history_since": "ਇਸ ਸਮੇਂ ਤੋਂ: {date}",
-    "history_latest": "ਨਵੀਨਤਮ: {date}"
+    "history_latest": "ਨਵੀਨਤਮ: {date}",
+    "ago_just_now": "ਹੁਣੇ",
+    "ago_minutes": "{n} ਮਿੰਟ ਪਹਿਲਾਂ",
+    "ago_hours": "{n} ਘੰਟੇ ਪਹਿਲਾਂ",
+    "ago_days": "{n} ਦਿਨ ਪਹਿਲਾਂ"
   },
   "access": {
     "no_access": "⛔ ਕੋਈ ਪਹੁੰਚ ਨਹੀਂ",

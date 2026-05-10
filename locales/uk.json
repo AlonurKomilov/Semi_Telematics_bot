@@ -380,10 +380,15 @@
     "health_low_def": "💧 Низький рівень DEF",
     "health_coolant_fault": "🌡 Несправність системи охолодження",
     "health_coolant_dtc": "Виявлено DTC охолоджувальної рідини J1939",
+    "history_alert_id": "🔖 Alert <b>#{id}</b>",
     "history_footer_title": "📊 <b>Історія сповіщень</b>",
     "history_occurrences": "Випадків: <b>{count}</b>",
     "history_since": "Від: {date}",
-    "history_latest": "Останній: {date}"
+    "history_latest": "Останній: {date}",
+    "ago_just_now": "щойно",
+    "ago_minutes": "{n} хв тому",
+    "ago_hours": "{n} год тому",
+    "ago_days": "{n} дн тому"
   },
   "access": {
     "no_access": "⛔ Немає доступу",

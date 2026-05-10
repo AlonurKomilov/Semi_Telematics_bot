@@ -49,6 +49,43 @@ def _fmt_time(iso_str: str) -> str:
         return iso_str
 
 
+def _relative_ago(iso_str: str) -> str:
+    """Return a parenthesised relative-time suffix like "(4 min ago)".
+
+    Used on alert "Time" lines so dispatchers can see at a glance
+    whether the underlying *event* was minutes or hours old when the
+    Telegram message arrived (the bot timestamp = send time, not
+    detection time, which can confuse on-call staff).
+
+    Returns "" when the timestamp is missing, unparseable, or in the
+    future (clock skew); the caller decides how to lay it out next to
+    the absolute time.
+    """
+    if not iso_str:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+    except Exception:
+        return ""
+    now = datetime.now(timezone.utc)
+    delta = now - dt
+    secs = int(delta.total_seconds())
+    if secs < 0:
+        # Future-dated (clock skew); skip the suffix rather than
+        # rendering a misleading "in the future".
+        return ""
+    if secs < 60:
+        return f"({_t('alert_format.ago_just_now')})"
+    if secs < 3600:
+        mins = secs // 60
+        return f"({_t('alert_format.ago_minutes').replace('{n}', str(mins))})"
+    if secs < 86400:
+        hrs = secs // 3600
+        return f"({_t('alert_format.ago_hours').replace('{n}', str(hrs))})"
+    days = secs // 86400
+    return f"({_t('alert_format.ago_days').replace('{n}', str(days))})"
+
+
 def _light_badges(lights: dict) -> str:
     badges = []
     if lights.get("stopIsOn"):

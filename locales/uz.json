@@ -380,10 +380,15 @@
     "health_low_def": "💧 DEF miqdori kam",
     "health_coolant_fault": "🌡 Antifriz tizimi xatosi",
     "health_coolant_dtc": "J1939 antifriz DTC aniqlandi",
+    "history_alert_id": "🔖 Alert <b>#{id}</b>",
     "history_footer_title": "📊 <b>Ogohlantirish tarixi</b>",
     "history_occurrences": "Soni: <b>{count}</b>",
     "history_since": "Boshlangan vaqti: {date}",
-    "history_latest": "Oxirgi marta: {date}"
+    "history_latest": "Oxirgi marta: {date}",
+    "ago_just_now": "hozir",
+    "ago_minutes": "{n} daqiqa oldin",
+    "ago_hours": "{n} soat oldin",
+    "ago_days": "{n} kun oldin"
   },
   "access": {
     "no_access": "⛔ Ruxsat yo'q",

@@ -396,6 +396,14 @@ class SamsaraClient:
                         "g_force": evt.get("maxAccelerationGForce", 0.0),
                         "latitude": loc.get("latitude"),
                         "longitude": loc.get("longitude"),
+                        # Reverse-geocoded address when Samsara provides
+                        # one — flat alias mirrors the vehicles flow above
+                        # so the alert formatter can prefer "City, ST"
+                        # over raw coords.
+                        "address": (
+                            (loc.get("reverseGeo") or {}).get("formattedLocation", "")
+                            or ""
+                        ),
                         "coaching_state": evt.get("coachingState", ""),
                         "video_url": evt.get("downloadForwardVideoUrl"),
                         "inward_video_url": evt.get("downloadInwardVideoUrl"),

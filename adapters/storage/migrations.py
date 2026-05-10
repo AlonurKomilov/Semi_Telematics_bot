@@ -1041,3 +1041,40 @@ async def migrate_alert_history_reescalate(conn) -> None:
                 await conn.rollback()
             except Exception:
                 pass
+
+
+@_register("032_alert_history_severity_location")
+async def migrate_alert_history_severity_location(conn) -> None:
+    """Add severity + location columns to alert_history.
+
+    severity becomes the cross-surface SSOT — bot/dashboard/mini-app all
+    read this value instead of re-deriving from alert_type.  Default
+    'warning' is the safe middle tier (existing rows backfill to warning).
+
+    location is a snapshot string ("Mojave Freeway, CA") populated at
+    first fire so consumers don't need a Samsara fetch to render it.
+    """
+    for col, ddl in (
+        ("severity", "TEXT NOT NULL DEFAULT 'warning'"),
+        ("location", "TEXT NOT NULL DEFAULT ''"),
+    ):
+        try:
+            await conn.execute(
+                f"ALTER TABLE alert_history ADD COLUMN {col} {ddl}"
+            )
+            await conn.commit()
+            logger.info("Migration 032: added alert_history.%s", col)
+        except Exception as e:
+            logger.debug("alert_history.%s already present or skipped: %s", col, e)
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+    try:
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_alert_history_active_sort "
+            "ON alert_history(account_id, status, severity, last_seen DESC)"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.debug("idx_alert_history_active_sort skipped: %s", e)

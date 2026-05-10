@@ -33,7 +33,10 @@ def _sample_event(**overrides):
         "driver_id": "drv_1",
         "driver_name": "John Smith",
         "vehicle_id": "veh_1",
-        "vehicle_name": "Truck 101",
+        # Real Samsara vehicle names are bare ("208", "101"); the
+        # formatter prepends "Truck #" itself, so a fixture name of
+        # "Truck 101" would render as "Truck #Truck 101".
+        "vehicle_name": "101",
         "vehicle_vin": "1HGBH41JXMN109186",
         "time": "2026-03-15T10:30:00Z",
         "g_force": 0.55,
@@ -177,7 +180,7 @@ class TestEventFormatters:
         event = _sample_event()
         result = format_event_alert(event)
         assert "Harsh Brake" in result
-        assert "Truck 101" in result
+        assert "Truck #101" in result
         assert "John Smith" in result
         assert "0.55g" in result
         assert "40.7128" in result
@@ -208,10 +211,105 @@ class TestEventFormatters:
         # Should still format successfully without video
         assert "Harsh Brake" in result
 
-    def test_format_event_alert_unassigned_driver(self):
+    def test_format_event_alert_unassigned_driver_hidden(self):
+        # When no driver is assigned to the rig, the driver row is
+        # suppressed entirely — "Driver: Unassigned" is noise that
+        # buries the actionable info further down the message.
         event = _sample_event(driver_name="Unassigned")
         result = format_event_alert(event)
-        assert "Unassigned" in result
+        assert "Unassigned" not in result
+        assert "👤" not in result
+
+    def test_format_event_alert_rolling_stop_omits_gforce(self):
+        # Rolling stop is a behavior event — Samsara emits a g-force
+        # value (often 0.00) but it's not a meaningful magnitude here.
+        event = _sample_event(event_type="rollingStop", event_name="Rolling Stop", g_force=0.0)
+        result = format_event_alert(event)
+        assert "0.00g" not in result
+        assert "g_force" not in result.lower()
+
+    def test_format_event_alert_following_distance_omits_gforce(self):
+        event = _sample_event(event_type="followingDistance", g_force=0.12)
+        result = format_event_alert(event)
+        assert "0.12g" not in result
+
+    def test_format_event_alert_lane_departure_omits_gforce(self):
+        event = _sample_event(event_type="laneDeparture", g_force=0.05)
+        result = format_event_alert(event)
+        assert "0.05g" not in result
+
+    def test_format_event_alert_harsh_turn_keeps_gforce(self):
+        event = _sample_event(event_type="harshTurn", g_force=0.62)
+        result = format_event_alert(event)
+        assert "0.62g" in result
+
+    def test_format_event_alert_acceleration_keeps_gforce(self):
+        event = _sample_event(event_type="acceleration", g_force=0.45)
+        result = format_event_alert(event)
+        assert "0.45g" in result
+
+    def test_format_event_alert_prefers_address_over_coords(self):
+        # When the event was enriched with a reverse-geocoded address,
+        # surface that instead of raw lat/lng.
+        event = _sample_event(address="Cincinnati, OH")
+        result = format_event_alert(event)
+        assert "Cincinnati, OH" in result
+        assert "40.7128" not in result
+
+    def test_format_event_alert_falls_back_to_nested_reverse_geo(self):
+        # If only the nested Samsara location object is present, still
+        # extract formattedLocation rather than dropping to coords.
+        event = _sample_event(
+            address="",
+            location={"reverseGeo": {"formattedLocation": "Dayton, OH"}},
+        )
+        result = format_event_alert(event)
+        assert "Dayton, OH" in result
+
+    def test_format_event_alert_includes_relative_ago_for_recent(self):
+        # Event a few minutes old → "(N min ago)" suffix on the Time
+        # line so dispatchers can see at a glance how stale the alert
+        # is vs. the bot delivery timestamp.
+        from datetime import datetime, timezone, timedelta
+        recent = (datetime.now(timezone.utc) - timedelta(minutes=4)).isoformat()
+        event = _sample_event(time=recent)
+        result = format_event_alert(event)
+        assert "ago" in result
+        # Acceptable: "4 min ago" or "3 min ago" depending on rounding.
+        assert "min ago" in result
+
+    def test_format_event_alert_relative_ago_hours(self):
+        from datetime import datetime, timezone, timedelta
+        old = (datetime.now(timezone.utc) - timedelta(hours=2, minutes=30)).isoformat()
+        event = _sample_event(time=old)
+        result = format_event_alert(event)
+        assert "hr ago" in result
+        assert "2 hr ago" in result
+
+    def test_format_event_alert_no_ago_for_unparseable_time(self):
+        # Garbage timestamp → no relative suffix, no crash.
+        event = _sample_event(time="not-a-date")
+        result = format_event_alert(event)
+        assert "ago" not in result.lower()
+
+    def test_format_event_alert_drops_field_labels(self):
+        # The "Vehicle:", "Driver:", "G-Force:", "Location:", "Time:"
+        # labels were redundant — the emoji conveys the meaning.  This
+        # test pins them out so they don't sneak back in.
+        event = _sample_event(event_type="braking", g_force=0.55)
+        result = format_event_alert(event)
+        assert "Vehicle:" not in result
+        assert "Driver:" not in result
+        assert "G-Force:" not in result
+        assert "Location:" not in result
+        assert "Time:" not in result
+
+    def test_format_event_alert_uses_truck_hash_prefix(self):
+        # Match the fault/fuel/health alert style — "Truck #208" not
+        # bare "208" — for cross-alert consistency.
+        event = _sample_event(vehicle_name="208")
+        result = format_event_alert(event)
+        assert "Truck #208" in result
 
     def test_format_events_dashboard_returns_list(self):
         events = _sample_events()
@@ -337,7 +435,8 @@ class TestEventsCsv:
         content = buf.read().decode("utf-8-sig")
         assert "Harsh Brake" in content
         assert "John Smith" in content
-        assert "Truck 101" in content
+        # Vehicle name is now bare ("101") to match real Samsara data.
+        assert "101" in content
 
     def test_csv_has_summary_row(self):
         events = _sample_events()
