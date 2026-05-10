@@ -694,7 +694,7 @@ async def get_subject_scorecard(
     subject_id: str,
     subject_type: str = Query("vehicle", pattern="^(driver|vehicle)$"),
     days: int = Query(7, ge=1, le=90),
-    user: dict = Depends(require_permission("can_scorecard")),
+    user: dict = Depends(require_permission_any("can_scorecard_all", "can_scorecard_own")),
 ):
     """Compute and return a scorecard for a single subject (vehicle or driver).
 
@@ -724,7 +724,7 @@ async def get_subject_score_events(
     subject_id: str,
     subject_type: str = Query("vehicle", pattern="^(driver|vehicle)$"),
     since: str | None = Query(None, description="ISO date YYYY-MM-DD"),
-    user: dict = Depends(require_permission("can_scorecard")),
+    user: dict = Depends(require_permission_any("can_scorecard_all", "can_scorecard_own")),
     tenant=Depends(get_tenant_db),
 ):
     """Return the score_events evidence trail for one subject.

@@ -25,7 +25,7 @@ const NAV_GROUPS: NavGroup[] = [
     title: null,
     items: [
       { label: 'Overview',     path: '/',        icon: LayoutDashboard, permission: null },
-      { label: 'AI Assistant', path: '/ai/chat', icon: Bot,             permission: 'can_faults' },
+      { label: 'AI Assistant', path: '/ai/chat', icon: Bot,             permission: ['can_vehicle_all', 'can_vehicle_own'] },
     ],
   },
   {

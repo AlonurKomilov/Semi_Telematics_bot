@@ -5,6 +5,7 @@ import {
   Icon24NotificationOutline,
   Icon24StatisticsOutline,
   Icon24UserOutline,
+  Icon24MessageOutline,
 } from '@vkontakte/icons';
 import type { Page } from '../types';
 import { haptics } from '../hooks/useTelegram';
@@ -23,6 +24,9 @@ const ALL_TABS: { id: Page; label: string; icon: React.ReactNode; permKeys?: str
   { id: 'vehicles',  label: 'Vehicles', icon: <Icon24TruckOutline /> },
   { id: 'alerts',    label: 'Alerts',  icon: <Icon24NotificationOutline />, permKeys: ['can_alerts_all', 'can_alerts_own'] },
   { id: 'scorecard', label: 'Score',   icon: <Icon24StatisticsOutline />,  permKeys: ['can_scorecard_all', 'can_scorecard_own'] },
+  // AI uses the same own-vehicle gate as the dashboard sidebar so drivers
+  // (who have can_vehicle_own=True) get access to chat with the assistant.
+  { id: 'ai',        label: 'AI',      icon: <Icon24MessageOutline />,     permKeys: ['can_vehicle_all', 'can_vehicle_own'] },
   { id: 'profile',   label: 'Profile', icon: <Icon24UserOutline /> },
 ];
 

@@ -12,10 +12,30 @@ export interface Vehicle {
   fuel_percent: number | null;
   def_percent: number | null;
   fault_count: number;
+  /** Current OBD odometer in miles (warehouse-sourced).  Null when the
+   *  vehicle has no CAN bus gateway or hasn't reported yet. */
+  odometer_miles: number | null;
+  /** ISO timestamp of the odometer reading itself — distinct from
+   *  ``time`` which tracks the location/state freshness. */
+  odometer_time: string | null;
   status: 'moving' | 'idle' | 'stopped';
   /** Per-vehicle "as-of" timestamp from Samsara, ISO-8601.  Used by
    *  RelativeTime to render real signal freshness. */
   time?: string | null;
+}
+
+export interface MaintenanceTask {
+  id: number;
+  vehicle_name: string;
+  task_type: string;
+  description?: string;
+  due_date: string | null;
+  due_miles: number | null;
+  /** Last odometer reading captured by the maintenance scheduler when
+   *  it last ran the mileage check (warehouse-sourced).  Lets the UI
+   *  show "247,500 / 250,000 mi (98%)" progress without an extra call. */
+  last_odometer: number | null;
+  status: 'pending' | 'overdue' | 'done' | string;
 }
 
 export interface VehicleFeature {
@@ -54,12 +74,21 @@ export interface GeofenceFeature {
 }
 
 export interface Alert {
+  /** alert_history.id — the canonical AlertID surfaced in the UI ("#1234"). */
   id: number;
   alert_type: string;
   alert_key: string;
   vehicle_name: string;
+  vehicle_id?: string;
   message: string;
+  /** First time this logical alert fired (also used by RelativeTime). */
   created_at: string;
+  /** Most recent fire time — drives "× N occurrences" freshness display. */
+  last_seen?: string;
+  /** Total times this alert has fired without being cleared. */
+  occurrence_count?: number;
+  /** 'active' | 'cleared' | 'acknowledged'. */
+  status?: string;
 }
 
-export type Page = 'map' | 'vehicles' | 'alerts' | 'scorecard' | 'profile';
+export type Page = 'map' | 'vehicles' | 'alerts' | 'scorecard' | 'ai' | 'profile';

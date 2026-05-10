@@ -206,7 +206,10 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_faults=False, can_critical=False, can_fuel=True,
         can_efficiency=False, can_health=False,
         can_vehicle_all=True, can_vehicle_own=True,
-        can_alerts_all=False, can_alerts_own=False,
+        # Dispatchers need to see geofence/parking alerts and safety events
+        # to react to deviations from the route plan. Without these they
+        # were effectively blind to anything happening to a truck mid-shift.
+        can_alerts_all=True, can_alerts_own=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
         can_rolling_stopped=True,
@@ -218,7 +221,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_fuel_cost=False,
         can_route_all=True, can_route_own=True,
         can_cost_per_mile=False,
-        can_events_all=False, can_events_own=False,
+        can_events_all=True, can_events_own=True,
         can_risk_report_all=False, can_risk_report_own=False,
         can_payroll_admin=False, can_payroll_view_own=False,
         can_coaching_admin=False, can_coaching_view_own=False,

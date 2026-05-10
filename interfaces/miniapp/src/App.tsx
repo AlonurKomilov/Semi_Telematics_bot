@@ -12,6 +12,7 @@ import { MapPage } from './pages/MapPage';
 const VehiclesPage = lazy(() => import('./pages/VehiclesPage').then(m => ({ default: m.VehiclesPage })));
 const AlertsPage = lazy(() => import('./pages/AlertsPage').then(m => ({ default: m.AlertsPage })));
 const ScorecardPage = lazy(() => import('./pages/ScorecardPage').then(m => ({ default: m.ScorecardPage })));
+const AIChatPage = lazy(() => import('./pages/AIChatPage').then(m => ({ default: m.AIChatPage })));
 const ProfilePage = lazy(() => import('./pages/ProfilePage').then(m => ({ default: m.ProfilePage })));
 import type { Page } from './types';
 
@@ -25,7 +26,7 @@ interface UserMeBasic {
 
 function getHashPage(): Page {
   const hash = window.location.hash.replace('#', '');
-  return (['map', 'vehicles', 'alerts', 'scorecard', 'profile'] as Page[]).includes(hash as Page)
+  return (['map', 'vehicles', 'alerts', 'scorecard', 'ai', 'profile'] as Page[]).includes(hash as Page)
     ? (hash as Page)
     : 'map';
 }
@@ -58,6 +59,7 @@ export default function App() {
     vehicles: useRef<HTMLDivElement | null>(null),
     alerts: useRef<HTMLDivElement | null>(null),
     scorecard: useRef<HTMLDivElement | null>(null),
+    ai: useRef<HTMLDivElement | null>(null),
     profile: useRef<HTMLDivElement | null>(null),
   } as const;
   const prevPageRef = useRef<Page>(page);
@@ -147,6 +149,7 @@ export default function App() {
   function canAccessPage(p: Page, perms: Record<string, boolean>): boolean {
     if (p === 'alerts') return !!(perms.can_alerts_all || perms.can_alerts_own);
     if (p === 'scorecard') return !!(perms.can_scorecard_all || perms.can_scorecard_own);
+    if (p === 'ai') return !!(perms.can_vehicle_all || perms.can_vehicle_own);
     return true; // map, vehicles, profile always accessible
   }
 
@@ -308,6 +311,11 @@ export default function App() {
             {visited.has('scorecard') && (
               <div ref={pageRefs.scorecard} className={`page${page !== 'scorecard' ? ' page--hidden' : ''}`}>
                 <ScorecardPage userRole={userRole} />
+              </div>
+            )}
+            {visited.has('ai') && (
+              <div ref={pageRefs.ai} className={`page${page !== 'ai' ? ' page--hidden' : ''}`}>
+                <AIChatPage active={page === 'ai'} userRole={userRole} />
               </div>
             )}
             {visited.has('profile') && (
