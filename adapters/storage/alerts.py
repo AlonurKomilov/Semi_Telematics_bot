@@ -147,6 +147,46 @@ class AlertsMixin(_MixinBase):
         await self._db.commit()
         return True
 
+    async def acknowledge_alert_history(
+        self, history_id: int, user_id: int, account_id: int,
+    ) -> Optional[dict]:
+        """Clear an `alert_history` row (the canonical logical alert) and
+        cascade-ack every related `alert_acknowledgments` delivery row.
+
+        This is the "ack the whole logical alert" operation that fits the
+        new dashboard model where one row = one alert (not one row per
+        delivery).  Returns the cleared history record (with vehicle_id
+        + alert_type) so callers can edit Telegram messages in chat to
+        show the ack receipt; returns None when the row doesn't exist or
+        is already cleared.
+        """
+        now = self._now()
+        cur = await self._db.execute(
+            "SELECT * FROM alert_history "
+            "WHERE id = ? AND account_id = ? AND status = 'active'",
+            (history_id, account_id),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        history = dict(row)
+        # 1. Clear the history record (this is what the dashboard reads)
+        await self._db.execute(
+            "UPDATE alert_history SET status = 'cleared', last_seen = ? "
+            "WHERE id = ? AND account_id = ?",
+            (now, history_id, account_id),
+        )
+        # 2. Cascade-ack every active delivery for this (account, type, vehicle)
+        await self._db.execute(
+            "UPDATE alert_acknowledgments "
+            "SET acknowledged_by = ?, acknowledged_at = ?, status = 'acknowledged' "
+            "WHERE account_id = ? AND alert_type = ? AND vehicle_id = ? "
+            "AND acknowledged_at IS NULL",
+            (user_id, now, account_id, history["alert_type"], history["vehicle_id"]),
+        )
+        await self._db.commit()
+        return history
+
     async def get_alert_history(
         self, account_id: int, limit: int = 50,
     ) -> list[dict]:
@@ -362,6 +402,32 @@ class AlertsMixin(_MixinBase):
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
+    async def get_active_alert_history_for_account(self, account_id: int) -> list[dict]:
+        """Return one row per *logical* active alert for the account.
+
+        This is the canonical "what's currently wrong" view — backs the
+        dashboard's pending list and the mini-app alerts tab.  Each row
+        carries:
+            - id (the AlertID surfaced in UI)
+            - alert_type, vehicle_id, vehicle_name
+            - occurrence_count (× N times)
+            - first_seen, last_seen
+            - last_detail (latest description)
+            - status (always 'active' here; cleared rows are filtered out)
+
+        Crucially, this does NOT fan out by recipient — `alert_history`
+        has one row per (account, alert_type, vehicle), so 7 subscribers
+        receiving the same alert produce ONE row, not seven.
+        """
+        cur = await self._db.execute(
+            "SELECT * FROM alert_history "
+            "WHERE account_id = ? AND status = 'active' "
+            "ORDER BY last_seen DESC",
+            (account_id,),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
     async def get_stale_unacked_alerts(
         self,
         account_id: int,
@@ -389,3 +455,143 @@ class AlertsMixin(_MixinBase):
         )
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
+
+    # ── Per-alert mute (D2) ────────────────────────────────────────
+    # Sister table to alert_history. Operators can pause Telegram delivery
+    # for a specific logical alert without acking it, e.g. "I know SPN
+    # 524133 is broken on Truck 200, mute it for 7 days while we order
+    # the part".  The dashboard still shows the alert so it isn't lost.
+
+    async def mute_alert_history(
+        self,
+        history_id: int,
+        account_id: int,
+        muted_by: int,
+        hours: int = 24 * 7,
+        reason: str = "",
+    ) -> Optional[dict]:
+        """Mute alert_history row for ``hours`` hours.  Returns the new
+        mute record dict, or None if the history row doesn't belong to
+        the account (defensive — prevents cross-tenant mute writes)."""
+        # Verify the alert belongs to this account
+        cur = await self._db.execute(
+            "SELECT id FROM alert_history WHERE id = ? AND account_id = ?",
+            (history_id, account_id),
+        )
+        if not await cur.fetchone():
+            return None
+        now_dt = datetime.now(timezone.utc)
+        until = (now_dt + timedelta(hours=hours)).isoformat()
+        now = self._now()
+        await self._db.execute(
+            "INSERT INTO alert_mutes "
+            "(account_id, alert_history_id, muted_by, scope, "
+            " reason, muted_until, created_at) "
+            "VALUES (?, ?, ?, 'all_recipients', ?, ?, ?)",
+            (account_id, history_id, muted_by, reason, until, now),
+        )
+        await self._db.commit()
+        return {
+            "alert_history_id": history_id,
+            "muted_by": muted_by,
+            "muted_until": until,
+            "hours": hours,
+        }
+
+    async def is_alert_history_muted(
+        self, history_id: int, account_id: int,
+    ) -> bool:
+        """Cheap check: any unexpired mute on this alert_history row?
+
+        Pipeline calls this before every send/edit.  Indexed query —
+        single-row hit, microseconds even on large mute tables.
+        """
+        now = self._now()
+        cur = await self._db.execute(
+            "SELECT 1 FROM alert_mutes "
+            "WHERE account_id = ? AND alert_history_id = ? "
+            "AND muted_until > ? "
+            "LIMIT 1",
+            (account_id, history_id, now),
+        )
+        return (await cur.fetchone()) is not None
+
+    async def get_active_mutes_for_account(
+        self, account_id: int,
+    ) -> list[dict]:
+        """Return active (unexpired) mutes — used by dashboard to show
+        a "muted" badge on alerts so operators know what's silenced."""
+        now = self._now()
+        rows = await self.read_all(
+            "SELECT * FROM alert_mutes "
+            "WHERE account_id = ? AND muted_until > ? "
+            "ORDER BY muted_until ASC",
+            (account_id, now),
+        )
+        return [dict(r) for r in rows]
+
+    async def unmute_alert_history(
+        self, history_id: int, account_id: int,
+    ) -> int:
+        """Drop every active mute targeting this alert_history row.
+        Returns the number of mute rows removed."""
+        cur = await self._db.execute(
+            "DELETE FROM alert_mutes "
+            "WHERE alert_history_id = ? AND account_id = ?",
+            (history_id, account_id),
+        )
+        await self._db.commit()
+        return cur.rowcount or 0
+
+    # ── Re-escalation tracking ─────────────────────────────────────
+
+    async def get_active_unacked_history_for_reescalation(
+        self,
+        account_id: int,
+        cutoff_iso: str,
+        max_attempts: int,
+    ) -> list[dict]:
+        """Logical alerts (alert_history rows) that need re-escalation.
+
+        Reads the canonical history table (one row per vehicle+type)
+        rather than alert_acknowledgments, so re-escalation fires once
+        per *logical* alert instead of once per subscriber.  Subscriber
+        fan-out happens at delivery time inside the scheduler.
+
+        Filters:
+          - status = 'active' (auto-resolved alerts excluded)
+          - reescalate_count < max_attempts (cap reached → silent)
+          - reescalate_last_sent_at IS NULL OR < cutoff
+            (cutoff reflects per-attempt exponential backoff)
+        """
+        if max_attempts <= 0:
+            return []
+        rows = await self.read_all(
+            "SELECT * FROM alert_history "
+            "WHERE account_id = ? AND status = 'active' "
+            "AND reescalate_count < ? "
+            "AND (reescalate_last_sent_at IS NULL OR reescalate_last_sent_at < ?) "
+            "ORDER BY first_seen ASC",
+            (account_id, max_attempts, cutoff_iso),
+        )
+        return [dict(r) for r in rows]
+
+    async def bump_reescalate_attempt(
+        self, history_id: int, account_id: int,
+    ) -> int:
+        """Mark a re-escalation as just sent.  Returns the new count."""
+        now = self._now()
+        await self._db.execute(
+            "UPDATE alert_history "
+            "SET reescalate_count = reescalate_count + 1, "
+            "    reescalate_last_sent_at = ? "
+            "WHERE id = ? AND account_id = ?",
+            (now, history_id, account_id),
+        )
+        await self._db.commit()
+        cur = await self._db.execute(
+            "SELECT reescalate_count FROM alert_history WHERE id = ? AND account_id = ?",
+            (history_id, account_id),
+        )
+        row = await cur.fetchone()
+        return int(row["reescalate_count"]) if row else 0

@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from .models import Role, Account, Company, User, AuthorizedChat, Invite
-from . import schema, migrations
+from . import schema, migrations, platform_schema, platform_migrations
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,17 @@ class _DatabaseCore:
             await self._initialize_sqlite()
 
     async def _initialize_sqlite(self):
-        """SQLite startup: WAL mode, schema, migrations, read pool."""
+        """SQLite startup: WAL mode, schema, migrations, read pool.
+
+        Platform-only tables (``subscriptions``, ``billing_usage_snapshots``,
+        ``ai_chat_history``, etc.) live in ``platform_schema`` and are created
+        on-demand by ``PlatformDB.initialize()`` in multi-tenant mode. Legacy
+        single-file SQLite databases that need them already have them from
+        prior runs; running ``platform_migrations.run_all`` here would
+        re-trigger the destructive ``migrate_email_unique_per_account``
+        rebuild, which corrupts FK references on tables that point to
+        ``users(id)``. PG mode runs them in ``_initialize_pg``.
+        """
         os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
         self._db = await self._open_connection()
         await schema.create_tables(self._db)
@@ -97,6 +107,8 @@ class _DatabaseCore:
         self._db = await self._pg_pool.acquire_connection()
         await schema.create_tables(self._db)
         await migrations.run_all(self._db)
+        await platform_schema.create_tables(self._db)
+        await platform_migrations.run_all(self._db)
         # Subsequent mixin calls reuse the same pool via self._db
         logger.info("Database ready (PostgreSQL via asyncpg, pool_size=%d)", self._pool_size)
 
@@ -142,9 +154,18 @@ class _DatabaseCore:
 
     async def close(self):
         if self._using_postgres:
+            # Release the writer connection BEFORE closing the pool —
+            # otherwise asyncpg's pool.close() blocks for command_timeout
+            # seconds waiting for the in-flight connection to drain
+            # (manifests as a 60s "hang" on shutdown).
+            if self._db is not None:
+                try:
+                    await self._db.close()
+                except Exception:
+                    pass
+                self._db = None
             await self._pg_pool.close()
             self._pg_pool = None
-            self._db = None
             return
         for conn in self._all_readers:
             await conn.close()

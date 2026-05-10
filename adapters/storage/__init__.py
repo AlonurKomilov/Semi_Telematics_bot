@@ -50,6 +50,7 @@ from .billing import BillingMixin
 from .geofence import GeofenceMixin
 from .custom_poi import CustomPoiMixin
 from .scorecard import ScorecardMixin
+from .warehouse import WarehouseMixin
 from .payroll import PayrollMixin
 from .coaching import CoachingMixin
 from .platform import PlatformDB
@@ -78,6 +79,11 @@ class Database(
     GeofenceMixin,
     CustomPoiMixin,
     ScorecardMixin,
+    # WarehouseMixin owns vehicle_state / safety_event_log / etc — needed
+    # for ingest_vehicle_state to upsert odometer + telemetry rows in the
+    # legacy single-DB layout.  Without this the LegacyRouter path crashes
+    # with "'Database' has no attribute 'upsert_vehicle_state'".
+    WarehouseMixin,
     PayrollMixin,
     CoachingMixin,
     _DatabaseCore,

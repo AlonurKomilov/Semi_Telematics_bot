@@ -81,8 +81,13 @@ async def migrate_email_unique_per_account(conn) -> None:
             return  # table doesn't exist yet — CREATE TABLE handles it
 
         ddl = row[0] or ""
-        # If the DDL already has the composite constraint, skip
-        if "UNIQUE(account_id, email)" in ddl.replace(" ", ""):
+        # If the DDL already has the composite constraint, skip.
+        # Strip ALL whitespace from both sides — earlier code kept a space in
+        # the needle while stripping only spaces from the DDL, so any DDL
+        # rendered with tabs/newlines bypassed the guard. That bug, combined
+        # with a partial INSERT failure on the rebuild path, repeatedly wiped
+        # the users table.
+        if "UNIQUE(account_id,email)" in "".join(ddl.split()):
             return
         # Only proceed if there's a bare UNIQUE on email
         if "email" not in ddl:

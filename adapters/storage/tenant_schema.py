@@ -39,7 +39,7 @@ async def create_tables(conn) -> None:
             due_date            TEXT,
             due_miles           REAL,
             status              TEXT    NOT NULL DEFAULT 'pending',
-            created_by          INTEGER NOT NULL,
+            created_by          BIGINT  NOT NULL,
             created_at          TEXT    NOT NULL,
             completed_at        TEXT,
             recur_interval_days INTEGER,
@@ -58,7 +58,7 @@ async def create_tables(conn) -> None:
             total_cost      REAL    NOT NULL DEFAULT 0,
             odometer_miles  REAL    NOT NULL DEFAULT 0,
             date            TEXT    NOT NULL,
-            created_by      INTEGER NOT NULL,
+            created_by      BIGINT  NOT NULL,
             created_at      TEXT    NOT NULL
         );
 
@@ -77,10 +77,10 @@ async def create_tables(conn) -> None:
             vehicle_id       TEXT    NOT NULL DEFAULT '',
             vehicle_name     TEXT    NOT NULL DEFAULT '',
             alert_key        TEXT    NOT NULL DEFAULT '',
-            message_id       INTEGER NOT NULL DEFAULT 0,
-            chat_id          INTEGER NOT NULL DEFAULT 0,
-            sent_to          INTEGER NOT NULL DEFAULT 0,
-            acknowledged_by  INTEGER,
+            message_id       BIGINT  NOT NULL DEFAULT 0,
+            chat_id          BIGINT  NOT NULL DEFAULT 0,
+            sent_to          BIGINT  NOT NULL DEFAULT 0,
+            acknowledged_by  BIGINT,
             acknowledged_at  TEXT,
             status           TEXT    NOT NULL DEFAULT 'active',
             created_at       TEXT    NOT NULL
@@ -93,21 +93,45 @@ async def create_tables(conn) -> None:
             vehicle_id        TEXT    NOT NULL,
             vehicle_name      TEXT    NOT NULL DEFAULT '',
             -- chat_id kept for backwards compat but not used in queries; always 0
-            chat_id           INTEGER NOT NULL DEFAULT 0,
+            chat_id           BIGINT  NOT NULL DEFAULT 0,
             -- message_id not used; per-subscriber tracking is in alert_acknowledgments
-            message_id        INTEGER NOT NULL DEFAULT 0,
+            message_id        BIGINT  NOT NULL DEFAULT 0,
             occurrence_count  INTEGER NOT NULL DEFAULT 1,
             first_seen        TEXT    NOT NULL,
             last_seen         TEXT    NOT NULL,
             last_detail       TEXT    NOT NULL DEFAULT '',
             status            TEXT    NOT NULL DEFAULT 'active',
+            -- Re-escalation tracking: how many "UNACKNOWLEDGED" reminders
+            -- have been pushed and when the last one was sent.  Used by
+            -- re_escalate_critical_alerts to enforce the max-attempts cap
+            -- and exponential backoff between reminders.
+            reescalate_count        INTEGER NOT NULL DEFAULT 0,
+            reescalate_last_sent_at TEXT,
             UNIQUE(account_id, alert_type, vehicle_id)
         );
+
+        -- Per-alert mute window. While ``muted_until`` is in the future,
+        -- pipeline.send_alert skips Telegram delivery for the targeted
+        -- alert_history row.  Surfaced via "🔇 Mute 7d" button on the
+        -- Telegram alert keyboard / dashboard alert card.
+        CREATE TABLE IF NOT EXISTS alert_mutes (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id        INTEGER NOT NULL,
+            alert_history_id  INTEGER NOT NULL,
+            muted_by          BIGINT  NOT NULL,
+            scope             TEXT    NOT NULL DEFAULT 'all_recipients',
+            recipient_id      BIGINT,
+            reason            TEXT    NOT NULL DEFAULT '',
+            muted_until       TEXT    NOT NULL,
+            created_at        TEXT    NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_alert_mutes_active
+            ON alert_mutes(account_id, alert_history_id, muted_until);
 
         CREATE TABLE IF NOT EXISTS dnd_alert_queue (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id      INTEGER NOT NULL,
-            telegram_id     INTEGER NOT NULL,
+            telegram_id     BIGINT  NOT NULL,
             alert_type      TEXT    NOT NULL DEFAULT 'fault',
             vehicle_name    TEXT    NOT NULL DEFAULT '',
             alert_text      TEXT    NOT NULL DEFAULT '',
@@ -118,7 +142,7 @@ async def create_tables(conn) -> None:
         CREATE TABLE IF NOT EXISTS audit_log (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id  INTEGER NOT NULL,
-            user_id     INTEGER,
+            user_id     BIGINT,
             action      TEXT    NOT NULL,
             target_type TEXT    NOT NULL DEFAULT '',
             target_id   TEXT    NOT NULL DEFAULT '',
@@ -167,7 +191,7 @@ async def create_tables(conn) -> None:
             start_hour  INTEGER NOT NULL DEFAULT 6,
             end_hour    INTEGER NOT NULL DEFAULT 18,
             target_role TEXT    NOT NULL DEFAULT 'all',
-            created_by  INTEGER NOT NULL DEFAULT 0,
+            created_by  BIGINT  NOT NULL DEFAULT 0,
             created_at  TEXT    NOT NULL DEFAULT ''
         );
 
@@ -194,7 +218,7 @@ async def create_tables(conn) -> None:
             tags            TEXT    NOT NULL DEFAULT '',
             visibility      TEXT    NOT NULL DEFAULT 'all',
             pinned          INTEGER NOT NULL DEFAULT 0,
-            created_by      INTEGER NOT NULL DEFAULT 0,
+            created_by      BIGINT  NOT NULL DEFAULT 0,
             updated_at      TEXT    NOT NULL DEFAULT '',
             created_at      TEXT    NOT NULL
         );
@@ -236,7 +260,7 @@ async def create_tables(conn) -> None:
             notify_roles    TEXT    NOT NULL DEFAULT '["owner","admin","fleet","safety","dispatcher","driver"]',
             zone_role       TEXT    NOT NULL DEFAULT 'all',
             is_active       INTEGER NOT NULL DEFAULT 1,
-            created_by      INTEGER NOT NULL DEFAULT 0,
+            created_by      BIGINT  NOT NULL DEFAULT 0,
             created_at      TEXT    NOT NULL DEFAULT '',
             updated_at      TEXT    NOT NULL DEFAULT '',
             UNIQUE(account_id, name)
@@ -267,7 +291,7 @@ async def create_tables(conn) -> None:
             brand_filters   TEXT    NOT NULL DEFAULT '[]',
             default_on      INTEGER NOT NULL DEFAULT 0,
             is_active       INTEGER NOT NULL DEFAULT 1,
-            created_by      INTEGER NOT NULL DEFAULT 0,
+            created_by      BIGINT  NOT NULL DEFAULT 0,
             created_at      TEXT    NOT NULL DEFAULT '',
             updated_at      TEXT    NOT NULL DEFAULT '',
             UNIQUE(account_id, layer_key)
@@ -367,6 +391,7 @@ async def create_tables(conn) -> None:
             fuel_pct            REAL,
             def_pct             REAL,
             odometer_mi         REAL,
+            odometer_time       TEXT,
             fault_count         INTEGER NOT NULL DEFAULT 0,
             dtc_critical_count  INTEGER NOT NULL DEFAULT 0,
             last_driver_id      TEXT    NOT NULL DEFAULT '',
@@ -593,7 +618,7 @@ async def create_tables(conn) -> None:
             period_start    TEXT    NOT NULL,
             period_end      TEXT    NOT NULL,
             status          TEXT    NOT NULL DEFAULT 'draft',
-            created_by      INTEGER NOT NULL DEFAULT 0,
+            created_by      BIGINT  NOT NULL DEFAULT 0,
             created_at      TEXT    NOT NULL DEFAULT '',
             finalized_at    TEXT,
             total_cents     INTEGER NOT NULL DEFAULT 0,
@@ -664,7 +689,7 @@ async def create_tables(conn) -> None:
             severity        TEXT    NOT NULL DEFAULT 'medium',
             reason          TEXT    NOT NULL DEFAULT '',
             status          TEXT    NOT NULL DEFAULT 'pending',
-            assigned_by     INTEGER NOT NULL DEFAULT 0,
+            assigned_by     BIGINT  NOT NULL DEFAULT 0,
             assigned_at     TEXT    NOT NULL DEFAULT '',
             due_at          TEXT,
             acknowledged_at TEXT

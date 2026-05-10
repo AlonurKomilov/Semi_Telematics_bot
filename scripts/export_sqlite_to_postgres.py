@@ -161,9 +161,31 @@ async def insert_pg_rows(
     pk_col: str | None,
     dry_run: bool,
 ) -> int:
-    """Insert rows into a PostgreSQL table.  Returns count inserted."""
+    """Insert rows into a PostgreSQL table.  Returns count inserted.
+
+    Drops any source columns that don't exist in the PG schema. SQLite
+    sometimes accumulates legacy columns that were removed from the
+    codebase but never DROP COLUMN'd from existing files (e.g.
+    ``parking_events.resolved_at``); skipping those at the column level
+    lets the rest of the row migrate cleanly instead of failing
+    every insert."""
     if not rows:
         return 0
+
+    # Reconcile source columns with the actual PG table.
+    pg_cols = await pg_conn.fetch(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema='public' AND table_name=$1",
+        table,
+    )
+    pg_col_set = {r["column_name"] for r in pg_cols}
+    keep_idx = [i for i, c in enumerate(cols) if c in pg_col_set]
+    dropped = [c for c in cols if c not in pg_col_set]
+    if dropped:
+        logger.info("  %s — dropping %d legacy SQLite-only column(s): %s",
+                    table, len(dropped), ", ".join(dropped))
+    cols = [cols[i] for i in keep_idx]
+    rows = [tuple(row[i] for i in keep_idx) for row in rows]
 
     col_list = ", ".join(cols)
     placeholders = ", ".join(f"${i + 1}" for i in range(len(cols)))

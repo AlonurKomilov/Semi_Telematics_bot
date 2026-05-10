@@ -33,6 +33,23 @@ logger = logging.getLogger(__name__)
 # SQLite PRAGMA pattern — skip entirely in PostgreSQL
 _PRAGMA_RE = re.compile(r"^\s*PRAGMA\s+", re.IGNORECASE)
 
+# ``PRAGMA table_info(X)`` is used by migrations to introspect columns.
+# Translate to an information_schema query that returns the same 6-column
+# shape as SQLite (``cid, name, type, notnull, dflt_value, pk``) so callers
+# don't need to branch on backend.
+_PRAGMA_TABLE_INFO_RE = re.compile(
+    r"^\s*PRAGMA\s+table_info\s*\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)\s*;?\s*$",
+    re.IGNORECASE,
+)
+
+# ``sqlite_master`` references in introspection queries (``SELECT … FROM
+# sqlite_master WHERE type='table' AND name=…``).  Rewrite to a synthesised
+# UNION over ``pg_tables`` and ``pg_indexes`` exposing the same
+# ``(name, type, sql)`` columns.  ``sql`` is empty since PG doesn't store
+# original CREATE statements; callers using it for substring checks must
+# compare against the live ``information_schema`` shape instead.
+_SQLITE_MASTER_RE = re.compile(r"\bsqlite_master\b", re.IGNORECASE)
+
 # SQLite-specific clauses to strip from CREATE TABLE for PostgreSQL
 _AUTOINCREMENT_RE = re.compile(r"\bAUTOINCREMENT\b", re.IGNORECASE)
 # SQLite uses INTEGER PRIMARY KEY for autoincrement — map to SERIAL in PG
@@ -146,8 +163,40 @@ def _sqlite_to_pg_sql(sql: str) -> str:
     printf, WITHOUT ROWID, random()) emit an INFO log so the dual-write
     phase can catch them in prod logs.
     """
+    # ``PRAGMA table_info(X)`` — translate to information_schema query
+    # returning the same 6-column shape SQLite produces. Match BEFORE the
+    # generic PRAGMA-skip below so we don't return empty.
+    pti = _PRAGMA_TABLE_INFO_RE.match(sql)
+    if pti:
+        tbl = pti.group(1)
+        return (
+            "SELECT ordinal_position - 1 AS cid, column_name AS name, "
+            "data_type AS type, "
+            "(CASE WHEN is_nullable='NO' THEN 1 ELSE 0 END) AS notnull, "
+            "column_default AS dflt_value, "
+            "(CASE WHEN column_name = ANY("
+            "  SELECT a.attname FROM pg_index i "
+            "  JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey) "
+            f"  WHERE i.indrelid = '{tbl}'::regclass AND i.indisprimary"
+            ") THEN 1 ELSE 0 END) AS pk "
+            "FROM information_schema.columns "
+            f"WHERE table_schema='public' AND table_name='{tbl}' "
+            "ORDER BY ordinal_position"
+        )
+
     if _PRAGMA_RE.match(sql):
         return ""  # caller skips empty strings
+
+    # ``sqlite_master`` → UNION over pg_tables + pg_indexes that exposes the
+    # same ``(name, type, sql)`` columns SQLite returns.
+    if _SQLITE_MASTER_RE.search(sql):
+        replacement = (
+            "(SELECT tablename AS name, 'table' AS type, ''::text AS sql "
+            "FROM pg_tables WHERE schemaname='public' "
+            "UNION ALL SELECT indexname AS name, 'index' AS type, ''::text AS sql "
+            "FROM pg_indexes WHERE schemaname='public') AS sqlite_master"
+        )
+        sql = _SQLITE_MASTER_RE.sub(replacement, sql)
 
     _warn_if_untranslated(sql)
 
@@ -299,6 +348,16 @@ class _PgConnection:
         self._in_transaction = False
         # row_factory attribute to satisfy aiosqlite.Row compat checks
         self.row_factory = None
+        # asyncpg Connections are NOT safe for concurrent use — only one
+        # operation can be in flight at a time, otherwise asyncpg raises
+        # "another operation is in progress". Mixins share a single
+        # ``self._db`` (this object) across all coroutines, so without a
+        # lock parallel API requests collide. The lock serialises every
+        # underlying ``self._conn.*`` call. Reads that need parallelism
+        # should use ``Database.acquire()`` which checks out a fresh
+        # pool connection per request.
+        import asyncio as _asyncio
+        self._lock = _asyncio.Lock()
 
     async def execute(self, sql: str, params: tuple = ()) -> _PgCursor:
         pg_sql = _sqlite_to_pg_sql(sql)
@@ -307,44 +366,61 @@ class _PgConnection:
 
         stripped = pg_sql.strip().upper()
 
-        # For SELECT / RETURNING, fetch rows
-        if stripped.startswith("SELECT") or "RETURNING" in stripped:
-            rows = await self._conn.fetch(pg_sql, *params)
-            return _PgCursor(rows)
+        async with self._lock:
+            # For SELECT / RETURNING, fetch rows
+            if stripped.startswith("SELECT") or "RETURNING" in stripped:
+                rows = await self._conn.fetch(pg_sql, *params)
+                return _PgCursor(rows)
 
-        # For INSERT with lastrowid, append RETURNING id
-        if stripped.startswith("INSERT") and "RETURNING" not in stripped:
-            try:
-                returning_sql = pg_sql.rstrip().rstrip(";") + " RETURNING id"
-                row = await self._conn.fetchrow(returning_sql, *params)
-                lastrowid = row["id"] if row else 0
-                return _PgCursor([row] if row else [], lastrowid=lastrowid)
-            except Exception:
-                # If RETURNING id fails (no id column), fall back
-                await self._conn.execute(pg_sql, *params)
-                return _PgCursor([])
+            # For INSERT with lastrowid, append RETURNING id
+            if stripped.startswith("INSERT") and "RETURNING" not in stripped:
+                try:
+                    returning_sql = pg_sql.rstrip().rstrip(";") + " RETURNING id"
+                    row = await self._conn.fetchrow(returning_sql, *params)
+                    lastrowid = row["id"] if row else 0
+                    return _PgCursor([row] if row else [], lastrowid=lastrowid)
+                except Exception:
+                    # If RETURNING id fails (no id column), fall back
+                    await self._conn.execute(pg_sql, *params)
+                    return _PgCursor([])
 
-        # UPDATE / DELETE / DDL
-        await self._conn.execute(pg_sql, *params)
-        return _PgCursor([])
+            # UPDATE / DELETE / DDL
+            await self._conn.execute(pg_sql, *params)
+            return _PgCursor([])
 
     async def executescript(self, script: str) -> None:
-        """Execute a semicolon-separated SQL script (used for schema creation)."""
-        for stmt in script.split(";"):
-            stmt = stmt.strip()
-            if not stmt:
-                continue
-            pg_stmt = _sqlite_to_pg_sql(stmt)
-            if not pg_stmt.strip():
-                continue
-            try:
-                await self._conn.execute(pg_stmt)
-            except Exception as e:
-                # CREATE IF NOT EXISTS can still fail in PG on concurrent init
-                if "already exists" in str(e).lower():
-                    logger.debug("Schema object already exists (skipping): %s", e)
-                else:
-                    raise
+        """Execute a semicolon-separated SQL script (used for schema creation).
+
+        Strips ``--`` line comments before splitting so a stray ``;`` inside
+        a comment ("``-- foo; bar``") doesn't tear a CREATE TABLE in two.
+        """
+        # Strip ``--`` line comments to end-of-line so a ``;`` inside a
+        # comment (e.g. "-- One row per account.  Stripe IDs stored here;
+        # provider_data holds…") never breaks the statement split.
+        clean_lines = []
+        for line in script.splitlines():
+            idx = line.find("--")
+            if idx >= 0:
+                line = line[:idx]
+            clean_lines.append(line)
+        clean_script = "\n".join(clean_lines)
+
+        async with self._lock:
+            for stmt in clean_script.split(";"):
+                stmt = stmt.strip()
+                if not stmt:
+                    continue
+                pg_stmt = _sqlite_to_pg_sql(stmt)
+                if not pg_stmt.strip():
+                    continue
+                try:
+                    await self._conn.execute(pg_stmt)
+                except Exception as e:
+                    # CREATE IF NOT EXISTS can still fail in PG on concurrent init
+                    if "already exists" in str(e).lower():
+                        logger.debug("Schema object already exists (skipping): %s", e)
+                    else:
+                        raise
 
     async def commit(self) -> None:
         """No-op — asyncpg uses explicit transactions or autocommit."""

@@ -293,7 +293,7 @@ async def migrate_work_schedules_table(conn) -> None:
                 start_hour  INTEGER NOT NULL,
                 end_hour    INTEGER NOT NULL,
                 target_role TEXT    NOT NULL DEFAULT 'all',
-                created_by  INTEGER NOT NULL,
+                created_by  BIGINT  NOT NULL,
                 created_at  TEXT    NOT NULL
             )
         """)
@@ -449,7 +449,7 @@ async def migrate_knowledge_base_table(conn) -> None:
                     visibility      TEXT    NOT NULL DEFAULT 'private',
                     target_role     TEXT    NOT NULL DEFAULT 'all',
                     pinned          INTEGER NOT NULL DEFAULT 0,
-                    created_by      INTEGER NOT NULL DEFAULT 0,
+                    created_by      BIGINT  NOT NULL DEFAULT 0,
                     creator_name    TEXT    NOT NULL DEFAULT '',
                     approved        INTEGER NOT NULL DEFAULT 1,
                     updated_at      TEXT    NOT NULL DEFAULT '',
@@ -624,7 +624,7 @@ async def migrate_user_companies_table(conn) -> None:
                 user_id     INTEGER NOT NULL REFERENCES users(id),
                 account_id  INTEGER NOT NULL REFERENCES accounts(id),
                 company_id  INTEGER NOT NULL REFERENCES companies(id),
-                assigned_by INTEGER NOT NULL DEFAULT 0,
+                assigned_by BIGINT  NOT NULL DEFAULT 0,
                 assigned_at TEXT    NOT NULL DEFAULT ''
             )
         """)
@@ -714,7 +714,7 @@ async def migrate_platform_geofences_table(conn) -> None:
             notify_roles    TEXT    NOT NULL DEFAULT '["owner","admin","fleet","safety","dispatcher","driver"]',
             zone_role       TEXT    NOT NULL DEFAULT 'all',
             is_active       INTEGER NOT NULL DEFAULT 1,
-            created_by      INTEGER NOT NULL DEFAULT 0,
+            created_by      BIGINT  NOT NULL DEFAULT 0,
             created_at      TEXT    NOT NULL DEFAULT '',
             updated_at      TEXT    NOT NULL DEFAULT '',
             UNIQUE(account_id, name)
@@ -751,7 +751,7 @@ async def migrate_custom_poi_layers_legacy(conn) -> None:
             brand_filters   TEXT    NOT NULL DEFAULT '[]',
             default_on      INTEGER NOT NULL DEFAULT 0,
             is_active       INTEGER NOT NULL DEFAULT 1,
-            created_by      INTEGER NOT NULL DEFAULT 0,
+            created_by      BIGINT  NOT NULL DEFAULT 0,
             created_at      TEXT    NOT NULL DEFAULT '',
             updated_at      TEXT    NOT NULL DEFAULT '',
             UNIQUE(account_id, layer_key)
@@ -804,3 +804,240 @@ async def migrate_score_rules_pillar_curves(conn) -> None:
             logger.info("Added column score_rules.%s", name)
         except Exception:
             logger.exception("Failed to add score_rules.%s", name)
+
+
+@_register("028_warehouse_tables")
+async def migrate_warehouse_tables(conn) -> None:
+    """Create the telemetry warehouse tables on the legacy single-DB layout.
+
+    Phase C (multi-tenant) put these in ``tenant_schema.create_tables`` so
+    fresh tenant DBs get them; the legacy ``LegacyRouter`` path that uses
+    a single ``Database`` instance shared across the platform was missing
+    them entirely.  Without this migration, ``ingest_vehicle_state`` (and
+    every consumer that reads the warehouse) crashes with
+    ``'Database' object has no attribute 'upsert_vehicle_state'`` /
+    ``relation "vehicle_state" does not exist``.
+
+    DDL kept identical to ``tenant_schema.py`` (incl. ``odometer_time``)
+    so a tenant migrating to multi-DB sees the same shape.
+    PG-translation handled automatically by ``pg_adapter`` (TEXT/REAL
+    pass through; INTEGER PRIMARY KEY AUTOINCREMENT → SERIAL).
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS vehicle_state (
+            vehicle_id          TEXT    NOT NULL PRIMARY KEY,
+            account_id          INTEGER NOT NULL,
+            vehicle_name        TEXT    NOT NULL DEFAULT '',
+            company_code        TEXT    NOT NULL DEFAULT '',
+            lat                 REAL,
+            lon                 REAL,
+            speed_mph           REAL,
+            heading             REAL,
+            address             TEXT    NOT NULL DEFAULT '',
+            engine_state        TEXT    NOT NULL DEFAULT '',
+            fuel_pct            REAL,
+            def_pct             REAL,
+            odometer_mi         REAL,
+            odometer_time       TEXT,
+            fault_count         INTEGER NOT NULL DEFAULT 0,
+            dtc_critical_count  INTEGER NOT NULL DEFAULT 0,
+            last_driver_id      TEXT    NOT NULL DEFAULT '',
+            last_driver_name    TEXT    NOT NULL DEFAULT '',
+            captured_at         TEXT    NOT NULL DEFAULT '',
+            updated_at          TEXT    NOT NULL DEFAULT ''
+        )
+    """)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_vehicle_state_company "
+        "ON vehicle_state(account_id, company_code)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_vehicle_state_name "
+        "ON vehicle_state(account_id, vehicle_name)"
+    )
+
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS safety_event_log (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id          INTEGER NOT NULL,
+            samsara_event_id    TEXT    NOT NULL UNIQUE,
+            vehicle_id          TEXT    NOT NULL DEFAULT '',
+            vehicle_name        TEXT    NOT NULL DEFAULT '',
+            driver_id           TEXT    NOT NULL DEFAULT '',
+            driver_name         TEXT    NOT NULL DEFAULT '',
+            event_type          TEXT    NOT NULL DEFAULT '',
+            severity            TEXT    NOT NULL DEFAULT '',
+            occurred_at         TEXT    NOT NULL DEFAULT '',
+            lat                 REAL,
+            lon                 REAL,
+            speed_mph           REAL,
+            video_url           TEXT    NOT NULL DEFAULT '',
+            raw_json            TEXT    NOT NULL DEFAULT '',
+            ingested_at         TEXT    NOT NULL DEFAULT ''
+        )
+    """)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_safety_event_log_occurred "
+        "ON safety_event_log(account_id, occurred_at DESC)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_safety_event_log_vehicle "
+        "ON safety_event_log(account_id, vehicle_id, occurred_at DESC)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_safety_event_log_driver "
+        "ON safety_event_log(account_id, driver_id, occurred_at DESC)"
+    )
+
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS driver_efficiency_daily (
+            account_id      INTEGER NOT NULL,
+            driver_id       TEXT    NOT NULL,
+            driver_name     TEXT    NOT NULL DEFAULT '',
+            day             TEXT    NOT NULL,
+            miles           REAL    NOT NULL DEFAULT 0,
+            drive_h         REAL    NOT NULL DEFAULT 0,
+            idle_h          REAL    NOT NULL DEFAULT 0,
+            mpg             REAL,
+            antic_pct       REAL,
+            green_pct       REAL,
+            harsh_brake     INTEGER NOT NULL DEFAULT 0,
+            harsh_turn      INTEGER NOT NULL DEFAULT 0,
+            harsh_accel     INTEGER NOT NULL DEFAULT 0,
+            overspeed_min   REAL    NOT NULL DEFAULT 0,
+            raw_json        TEXT    NOT NULL DEFAULT '',
+            ingested_at     TEXT    NOT NULL DEFAULT '',
+            PRIMARY KEY (account_id, driver_id, day)
+        )
+    """)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_driver_efficiency_daily_day "
+        "ON driver_efficiency_daily(account_id, day DESC)"
+    )
+
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS vehicle_telemetry_hourly (
+            account_id    INTEGER NOT NULL,
+            vehicle_id    TEXT    NOT NULL,
+            vehicle_name  TEXT    NOT NULL DEFAULT '',
+            hour_utc      TEXT    NOT NULL,
+            miles         REAL    NOT NULL DEFAULT 0,
+            drive_min     REAL    NOT NULL DEFAULT 0,
+            idle_min      REAL    NOT NULL DEFAULT 0,
+            top_speed_mph REAL,
+            avg_fuel_pct  REAL,
+            ingested_at   TEXT    NOT NULL DEFAULT '',
+            PRIMARY KEY (account_id, vehicle_id, hour_utc)
+        )
+    """)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_vehicle_telemetry_hourly_hour "
+        "ON vehicle_telemetry_hourly(account_id, hour_utc DESC)"
+    )
+
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS vehicle_health_snapshot (
+            vehicle_id    TEXT    NOT NULL PRIMARY KEY,
+            account_id    INTEGER NOT NULL,
+            vehicle_name  TEXT    NOT NULL DEFAULT '',
+            company_code  TEXT    NOT NULL DEFAULT '',
+            alert_count   INTEGER NOT NULL DEFAULT 0,
+            captured_at   TEXT    NOT NULL DEFAULT '',
+            raw_json      TEXT    NOT NULL DEFAULT '',
+            updated_at    TEXT    NOT NULL DEFAULT ''
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS vehicle_fault_snapshot (
+            vehicle_id    TEXT    NOT NULL PRIMARY KEY,
+            account_id    INTEGER NOT NULL,
+            vehicle_name  TEXT    NOT NULL DEFAULT '',
+            company_code  TEXT    NOT NULL DEFAULT '',
+            dtc_count     INTEGER NOT NULL DEFAULT 0,
+            captured_at   TEXT    NOT NULL DEFAULT '',
+            raw_json      TEXT    NOT NULL DEFAULT '',
+            updated_at    TEXT    NOT NULL DEFAULT ''
+        )
+    """)
+    await conn.commit()
+    logger.info("Migration 028: warehouse tables created")
+
+
+@_register("029_vehicle_state_odometer_time")
+async def migrate_vehicle_state_odometer_time(conn) -> None:
+    """Add vehicle_state.odometer_time for legacy DBs that ran 028 before
+    the column was added to the canonical tenant_schema.  No-op when the
+    column is already present (Postgres ALTER TABLE IF NOT EXISTS form)."""
+    try:
+        await conn.execute(
+            "ALTER TABLE vehicle_state ADD COLUMN odometer_time TEXT"
+        )
+        await conn.commit()
+        logger.info("Migration 029: added vehicle_state.odometer_time")
+    except Exception as e:
+        # Already exists — pg_adapter raises a generic error here; SQLite
+        # raises 'duplicate column name'.  Either way, idempotent: swallow.
+        logger.debug("vehicle_state.odometer_time migration skipped: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("030_alert_mutes_table")
+async def migrate_alert_mutes_table(conn) -> None:
+    """Per-alert mute table.
+
+    A mute targets a specific ``alert_history.id`` (the canonical
+    AlertID surfaced as "#1234" in the UI).  While the mute is active
+    (``muted_until`` in the future), ``pipeline.send_alert`` skips
+    Telegram delivery for that alert — the dashboard still shows it
+    so operators can see what's quieted.
+
+    ``muted_by`` is the operator's telegram_id; ``scope`` is currently
+    'all_recipients' but the column is reserved for future per-recipient
+    mutes ('recipient' + recipient_id).
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS alert_mutes (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id        INTEGER NOT NULL REFERENCES accounts(id),
+            alert_history_id  INTEGER NOT NULL,
+            muted_by          BIGINT  NOT NULL,
+            scope             TEXT    NOT NULL DEFAULT 'all_recipients',
+            recipient_id      BIGINT,
+            reason            TEXT    NOT NULL DEFAULT '',
+            muted_until       TEXT    NOT NULL,
+            created_at        TEXT    NOT NULL
+        )
+    """)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_alert_mutes_active "
+        "ON alert_mutes(account_id, alert_history_id, muted_until)"
+    )
+    await conn.commit()
+    logger.info("Migration 030: alert_mutes table created")
+
+
+@_register("031_alert_history_reescalate_columns")
+async def migrate_alert_history_reescalate(conn) -> None:
+    """Add re-escalation tracking to alert_history: count of reminders
+    sent and last reminder timestamp.  Lets re_escalate_critical_alerts
+    enforce a max-attempts cap and exponential backoff per logical alert
+    instead of firing every hour forever."""
+    for col, ddl in (
+        ("reescalate_count", "INTEGER NOT NULL DEFAULT 0"),
+        ("reescalate_last_sent_at", "TEXT"),
+    ):
+        try:
+            await conn.execute(
+                f"ALTER TABLE alert_history ADD COLUMN {col} {ddl}"
+            )
+            await conn.commit()
+            logger.info("Migration 031: added alert_history.%s", col)
+        except Exception as e:
+            logger.debug("alert_history.%s already present or skipped: %s", col, e)
+            try:
+                await conn.rollback()
+            except Exception:
+                pass

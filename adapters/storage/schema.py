@@ -63,7 +63,7 @@ async def create_tables(conn) -> None:
 
         CREATE TABLE IF NOT EXISTS users (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            telegram_id INTEGER NOT NULL UNIQUE,
+            telegram_id BIGINT  NOT NULL UNIQUE,
             account_id  INTEGER NOT NULL REFERENCES accounts(id),
             role        TEXT    NOT NULL DEFAULT 'fleet',
             department  TEXT    NOT NULL DEFAULT 'general',
@@ -89,7 +89,7 @@ async def create_tables(conn) -> None:
         CREATE TABLE IF NOT EXISTS authorized_chats (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id  INTEGER NOT NULL REFERENCES accounts(id),
-            chat_id     INTEGER NOT NULL,
+            chat_id     BIGINT  NOT NULL,
             chat_title  TEXT    NOT NULL DEFAULT '',
             added_by    INTEGER NOT NULL REFERENCES users(id),
             is_active   INTEGER NOT NULL DEFAULT 1,
@@ -108,7 +108,7 @@ async def create_tables(conn) -> None:
             due_date        TEXT,
             due_miles       REAL,
             status          TEXT    NOT NULL DEFAULT 'pending',
-            created_by      INTEGER NOT NULL,
+            created_by      BIGINT  NOT NULL,
             created_at      TEXT    NOT NULL,
             completed_at    TEXT
         );
@@ -124,7 +124,7 @@ async def create_tables(conn) -> None:
             total_cost      REAL    NOT NULL DEFAULT 0,
             odometer_miles  REAL    NOT NULL DEFAULT 0,
             date            TEXT    NOT NULL,
-            created_by      INTEGER NOT NULL,
+            created_by      BIGINT  NOT NULL,
             created_at      TEXT    NOT NULL
         );
 
@@ -176,10 +176,10 @@ async def create_tables(conn) -> None:
             vehicle_id      TEXT    NOT NULL DEFAULT '',
             vehicle_name    TEXT    NOT NULL DEFAULT '',
             alert_key       TEXT    NOT NULL DEFAULT '',
-            message_id      INTEGER NOT NULL DEFAULT 0,
-            chat_id         INTEGER NOT NULL DEFAULT 0,
-            sent_to         INTEGER NOT NULL DEFAULT 0,
-            acknowledged_by INTEGER,
+            message_id      BIGINT  NOT NULL DEFAULT 0,
+            chat_id         BIGINT  NOT NULL DEFAULT 0,
+            sent_to         BIGINT  NOT NULL DEFAULT 0,
+            acknowledged_by BIGINT,
             acknowledged_at TEXT,
             status          TEXT    NOT NULL DEFAULT 'active',
             created_at      TEXT    NOT NULL
@@ -188,7 +188,7 @@ async def create_tables(conn) -> None:
         CREATE TABLE IF NOT EXISTS audit_log (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id  INTEGER NOT NULL REFERENCES accounts(id),
-            user_id     INTEGER,
+            user_id     BIGINT,
             action      TEXT    NOT NULL,
             target_type TEXT    NOT NULL DEFAULT '',
             target_id   TEXT    NOT NULL DEFAULT '',
@@ -199,7 +199,7 @@ async def create_tables(conn) -> None:
         CREATE TABLE IF NOT EXISTS ai_usage (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id      INTEGER NOT NULL REFERENCES accounts(id),
-            user_id         INTEGER NOT NULL DEFAULT 0,
+            user_id         BIGINT  NOT NULL DEFAULT 0,
             model           TEXT    NOT NULL DEFAULT '',
             request_type    TEXT    NOT NULL DEFAULT '',
             prompt_tokens   INTEGER NOT NULL DEFAULT 0,
@@ -219,7 +219,7 @@ async def create_tables(conn) -> None:
         CREATE TABLE IF NOT EXISTS dnd_alert_queue (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id      INTEGER NOT NULL REFERENCES accounts(id),
-            telegram_id     INTEGER NOT NULL,
+            telegram_id     BIGINT  NOT NULL,
             alert_type      TEXT    NOT NULL DEFAULT 'fault',
             vehicle_name    TEXT    NOT NULL DEFAULT '',
             alert_text      TEXT    NOT NULL DEFAULT '',
@@ -235,8 +235,8 @@ async def create_tables(conn) -> None:
             alert_type        TEXT    NOT NULL,
             vehicle_id        TEXT    NOT NULL,
             vehicle_name      TEXT    NOT NULL DEFAULT '',
-            chat_id           INTEGER NOT NULL,
-            message_id        INTEGER NOT NULL DEFAULT 0,
+            chat_id           BIGINT  NOT NULL,
+            message_id        BIGINT  NOT NULL DEFAULT 0,
             occurrence_count  INTEGER NOT NULL DEFAULT 1,
             first_seen        TEXT    NOT NULL,
             last_seen         TEXT    NOT NULL,
@@ -252,7 +252,7 @@ async def create_tables(conn) -> None:
             role            TEXT    NOT NULL,
             company_id      INTEGER,
             permissions     TEXT    NOT NULL DEFAULT '{}',
-            updated_by      INTEGER NOT NULL DEFAULT 0,
+            updated_by      BIGINT  NOT NULL DEFAULT 0,
             updated_at      TEXT    NOT NULL DEFAULT '',
             UNIQUE(account_id, role, company_id)
         );
@@ -267,7 +267,7 @@ async def create_tables(conn) -> None:
             account_id  INTEGER NOT NULL REFERENCES accounts(id),
             truck_num   TEXT    NOT NULL,
             is_primary  INTEGER NOT NULL DEFAULT 0,
-            assigned_by INTEGER NOT NULL DEFAULT 0,
+            assigned_by BIGINT  NOT NULL DEFAULT 0,
             assigned_at TEXT    NOT NULL DEFAULT ''
         );
         CREATE UNIQUE INDEX IF NOT EXISTS idx_driver_trucks_user_truck
@@ -280,7 +280,7 @@ async def create_tables(conn) -> None:
             user_id     INTEGER NOT NULL REFERENCES users(id),
             account_id  INTEGER NOT NULL REFERENCES accounts(id),
             company_id  INTEGER NOT NULL REFERENCES companies(id),
-            assigned_by INTEGER NOT NULL DEFAULT 0,
+            assigned_by BIGINT  NOT NULL DEFAULT 0,
             assigned_at TEXT    NOT NULL DEFAULT ''
         );
         CREATE UNIQUE INDEX IF NOT EXISTS idx_user_companies_user_company

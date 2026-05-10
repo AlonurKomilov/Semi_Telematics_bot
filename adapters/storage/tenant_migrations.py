@@ -42,6 +42,9 @@ async def run_all(conn) -> None:
     await migrate_add_geofence_definitions(conn)
     await migrate_add_payroll_tables(conn)
     await migrate_add_coaching_tables(conn)
+    await migrate_add_vehicle_state_odometer_time(conn)
+    await migrate_add_alert_mutes_table(conn)
+    await migrate_add_alert_history_reescalate_columns(conn)
 
 
 async def migrate_add_parking_map_image(conn) -> None:
@@ -820,6 +823,78 @@ async def migrate_add_coaching_tables(conn) -> None:
         logger.info("Migration: coaching tables ensured")
     except Exception as e:
         logger.error("Coaching tables migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+async def migrate_add_vehicle_state_odometer_time(conn) -> None:
+    """Add vehicle_state.odometer_time so the warehouse persists the
+    timestamp Samsara reports alongside the odometer reading.  Used by
+    the maintenance-progress UI to show how fresh the value is."""
+    try:
+        cur = await conn.execute("PRAGMA table_info(vehicle_state)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "odometer_time" not in cols:
+            await conn.execute(
+                "ALTER TABLE vehicle_state ADD COLUMN odometer_time TEXT"
+            )
+            await conn.commit()
+            logger.info("Migration: added vehicle_state.odometer_time")
+    except Exception as e:
+        logger.error("vehicle_state.odometer_time migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_add_alert_mutes_table(conn) -> None:
+    """Per-alert mute table — see tenant_schema.py for column rationale."""
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS alert_mutes (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id        INTEGER NOT NULL,
+                alert_history_id  INTEGER NOT NULL,
+                muted_by          BIGINT  NOT NULL,
+                scope             TEXT    NOT NULL DEFAULT 'all_recipients',
+                recipient_id      BIGINT,
+                reason            TEXT    NOT NULL DEFAULT '',
+                muted_until       TEXT    NOT NULL,
+                created_at        TEXT    NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_alert_mutes_active
+                ON alert_mutes(account_id, alert_history_id, muted_until);
+        """)
+        await conn.commit()
+        logger.info("Migration: alert_mutes table ensured")
+    except Exception as e:
+        logger.error("alert_mutes migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_add_alert_history_reescalate_columns(conn) -> None:
+    """Add reescalate_count + reescalate_last_sent_at to alert_history."""
+    try:
+        cur = await conn.execute("PRAGMA table_info(alert_history)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "reescalate_count" not in cols:
+            await conn.execute(
+                "ALTER TABLE alert_history "
+                "ADD COLUMN reescalate_count INTEGER NOT NULL DEFAULT 0"
+            )
+        if "reescalate_last_sent_at" not in cols:
+            await conn.execute(
+                "ALTER TABLE alert_history ADD COLUMN reescalate_last_sent_at TEXT"
+            )
+        await conn.commit()
+        logger.info("Migration: alert_history reescalate columns ensured")
+    except Exception as e:
+        logger.error("alert_history reescalate migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

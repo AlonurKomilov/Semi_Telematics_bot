@@ -80,11 +80,12 @@ class WarehouseMixin(_MixinBase):
                 INSERT INTO vehicle_state (
                     vehicle_id, account_id, vehicle_name, company_code,
                     lat, lon, speed_mph, heading, address,
-                    engine_state, fuel_pct, def_pct, odometer_mi,
+                    engine_state, fuel_pct, def_pct,
+                    odometer_mi, odometer_time,
                     fault_count, dtc_critical_count,
                     last_driver_id, last_driver_name,
                     captured_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(vehicle_id) DO UPDATE SET
                     account_id=excluded.account_id,
                     vehicle_name=excluded.vehicle_name,
@@ -94,7 +95,8 @@ class WarehouseMixin(_MixinBase):
                     address=excluded.address,
                     engine_state=excluded.engine_state,
                     fuel_pct=excluded.fuel_pct, def_pct=excluded.def_pct,
-                    odometer_mi=excluded.odometer_mi,
+                    odometer_mi=COALESCE(excluded.odometer_mi, vehicle_state.odometer_mi),
+                    odometer_time=COALESCE(excluded.odometer_time, vehicle_state.odometer_time),
                     fault_count=excluded.fault_count,
                     dtc_critical_count=excluded.dtc_critical_count,
                     last_driver_id=excluded.last_driver_id,
@@ -112,6 +114,7 @@ class WarehouseMixin(_MixinBase):
                     str(r.get("engine_state") or ""),
                     r.get("fuel_pct"), r.get("def_pct"),
                     r.get("odometer_mi"),
+                    r.get("odometer_time"),
                     int(r.get("fault_count") or 0),
                     int(r.get("dtc_critical_count") or 0),
                     str(r.get("last_driver_id") or ""),
@@ -148,21 +151,27 @@ class WarehouseMixin(_MixinBase):
             where.append(f"vehicle_name IN ({placeholders})")
             args.extend(vehicle_nums)
 
+        # Hard-coded column list rather than ``cur.description`` so this
+        # works on both SQLite (aiosqlite cursors expose .description)
+        # and Postgres (asyncpg adapter cursor doesn't).
+        cols = [
+            "vehicle_id", "vehicle_name", "company_code",
+            "lat", "lon", "speed_mph", "heading", "address",
+            "engine_state", "fuel_pct", "def_pct",
+            "odometer_mi", "odometer_time",
+            "fault_count", "dtc_critical_count",
+            "last_driver_id", "last_driver_name",
+            "captured_at", "updated_at",
+        ]
         cur = await self._db.execute(
             f"""
-            SELECT vehicle_id, vehicle_name, company_code,
-                   lat, lon, speed_mph, heading, address,
-                   engine_state, fuel_pct, def_pct, odometer_mi,
-                   fault_count, dtc_critical_count,
-                   last_driver_id, last_driver_name,
-                   captured_at, updated_at
+            SELECT {', '.join(cols)}
             FROM vehicle_state
             WHERE {' AND '.join(where)}
             ORDER BY vehicle_name
             """,
             tuple(args),
         )
-        cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row)) for row in await cur.fetchall()]
 
     # ── safety_event_log ─────────────────────────────────────────────

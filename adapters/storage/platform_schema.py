@@ -31,7 +31,7 @@ async def create_tables(conn) -> None:
 
         CREATE TABLE IF NOT EXISTS users (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            telegram_id     INTEGER NOT NULL UNIQUE,
+            telegram_id     BIGINT  NOT NULL UNIQUE,
             account_id      INTEGER NOT NULL REFERENCES accounts(id),
             role            TEXT    NOT NULL DEFAULT 'fleet',
             department      TEXT    NOT NULL DEFAULT 'general',
@@ -79,7 +79,7 @@ async def create_tables(conn) -> None:
         CREATE TABLE IF NOT EXISTS authorized_chats (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id  INTEGER NOT NULL REFERENCES accounts(id),
-            chat_id     INTEGER NOT NULL,
+            chat_id     BIGINT  NOT NULL,
             chat_title  TEXT    NOT NULL DEFAULT '',
             added_by    INTEGER NOT NULL REFERENCES users(id),
             is_active   INTEGER NOT NULL DEFAULT 1,
@@ -90,7 +90,7 @@ async def create_tables(conn) -> None:
         CREATE TABLE IF NOT EXISTS ai_usage (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id      INTEGER NOT NULL REFERENCES accounts(id),
-            user_id         INTEGER NOT NULL DEFAULT 0,
+            user_id         BIGINT  NOT NULL DEFAULT 0,
             model           TEXT    NOT NULL DEFAULT '',
             request_type    TEXT    NOT NULL DEFAULT '',
             prompt_tokens   INTEGER NOT NULL DEFAULT 0,
@@ -112,7 +112,7 @@ async def create_tables(conn) -> None:
         CREATE TABLE IF NOT EXISTS ai_chat_history (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id INTEGER NOT NULL,
-            user_id    INTEGER NOT NULL,
+            user_id    BIGINT  NOT NULL,
             role       TEXT    NOT NULL,
             text       TEXT    NOT NULL,
             created_at TEXT    NOT NULL
@@ -132,7 +132,7 @@ async def create_tables(conn) -> None:
             visibility      TEXT    NOT NULL DEFAULT 'private',
             target_role     TEXT    NOT NULL DEFAULT 'all',
             pinned          INTEGER NOT NULL DEFAULT 0,
-            created_by      INTEGER NOT NULL DEFAULT 0,
+            created_by      BIGINT  NOT NULL DEFAULT 0,
             creator_name    TEXT    NOT NULL DEFAULT '',
             approved        INTEGER NOT NULL DEFAULT 1,
             updated_at      TEXT    NOT NULL DEFAULT '',
@@ -153,7 +153,7 @@ async def create_tables(conn) -> None:
             role            TEXT    NOT NULL,
             company_id      INTEGER,
             permissions     TEXT    NOT NULL DEFAULT '{}',
-            updated_by      INTEGER NOT NULL DEFAULT 0,
+            updated_by      BIGINT  NOT NULL DEFAULT 0,
             updated_at      TEXT    NOT NULL DEFAULT '',
             UNIQUE(account_id, role, company_id)
         );
@@ -178,7 +178,7 @@ async def create_tables(conn) -> None:
             account_id  INTEGER NOT NULL REFERENCES accounts(id),
             truck_num   TEXT    NOT NULL,
             is_primary  INTEGER NOT NULL DEFAULT 0,
-            assigned_by INTEGER NOT NULL DEFAULT 0,
+            assigned_by BIGINT  NOT NULL DEFAULT 0,
             assigned_at TEXT    NOT NULL DEFAULT ''
         );
         CREATE UNIQUE INDEX IF NOT EXISTS idx_driver_trucks_user_truck
@@ -191,7 +191,7 @@ async def create_tables(conn) -> None:
             user_id     INTEGER NOT NULL REFERENCES users(id),
             account_id  INTEGER NOT NULL REFERENCES accounts(id),
             company_id  INTEGER NOT NULL REFERENCES companies(id),
-            assigned_by INTEGER NOT NULL DEFAULT 0,
+            assigned_by BIGINT  NOT NULL DEFAULT 0,
             assigned_at TEXT    NOT NULL DEFAULT ''
         );
         CREATE UNIQUE INDEX IF NOT EXISTS idx_user_companies_user_company
