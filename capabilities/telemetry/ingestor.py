@@ -148,7 +148,15 @@ def _driver_eff_to_daily_row(rec: dict[str, Any], day: str) -> dict[str, Any]:
 
 async def ingest_vehicle_state(account_id: int) -> int:
     """Pull the live fleet overview and overwrite ``vehicle_state``.
-    Returns the number of vehicles persisted."""
+    Returns the number of vehicles persisted.
+
+    Also fans out to ``get_current_odometer_readings()`` per company
+    and stamps ``odometer_mi`` + ``odometer_time`` onto each row before
+    upsert.  This is the warehouse-side population so every consumer
+    (vehicles list, dashboard, mini-app, AI tools, maintenance
+    progress UI) reads odometer from the DB rather than re-querying
+    Samsara on the request path.
+    """
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         return 0
@@ -164,9 +172,48 @@ async def ingest_vehicle_state(account_id: int) -> int:
         logger.exception("ingest_vehicle_state: get_fleet_overview failed acct=%d", account_id)
         return 0
 
+    # Fetch current odometer for every active company in this account
+    # so we can merge the value before persisting.  Failures are
+    # non-fatal (some Samsara plans / vehicles without CAN bus gateways
+    # don't expose obdOdometerMeters); affected vehicles keep
+    # odometer_mi=None and the readers degrade to "—".
+    odometer_by_vehicle_id: dict[str, dict] = {}
+    # MultiCompanyClient exposes `.clients` (per-company SamsaraClient
+    # instances); test stubs are flat single-company clients.  Iterate
+    # the per-company map when present, otherwise call the flat stub.
+    per_company_clients = getattr(client, "clients", None)
+    fetch_targets = (
+        list(per_company_clients.values()) if per_company_clients else [client]
+    )
+    for company_client in fetch_targets:
+        if not hasattr(company_client, "get_current_odometer_readings"):
+            continue
+        try:
+            readings = await company_client.get_current_odometer_readings()
+        except Exception as e:
+            logger.debug("odometer fetch failed: %s", e)
+            continue
+        for reading in readings:
+            vehicle_id = reading.get("id")
+            if vehicle_id:
+                odometer_by_vehicle_id[str(vehicle_id)] = {
+                    "miles": reading.get("odometer_miles"),
+                    "time": reading.get("time"),
+                }
+
     rows = [_vehicle_overview_to_state_row(v) for v in fleet]
+    if odometer_by_vehicle_id:
+        for row in rows:
+            odometer = odometer_by_vehicle_id.get(str(row.get("vehicle_id") or ""))
+            if odometer:
+                row["odometer_mi"] = odometer.get("miles")
+                row["odometer_time"] = odometer.get("time")
+
     n = await tenant.upsert_vehicle_state(account_id, rows)
-    logger.info("ingest_vehicle_state acct=%d persisted=%d", account_id, n)
+    logger.info(
+        "ingest_vehicle_state acct=%d persisted=%d with_odometer=%d",
+        account_id, n, len(odometer_by_vehicle_id),
+    )
     return n
 
 

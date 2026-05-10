@@ -228,37 +228,25 @@ async def get_vehicle_odometer(
 ) -> float | None:
     """Fetch current odometer reading for a vehicle (in miles).
 
-    Returns miles as a float, or None if not available.
-    Single Source of Truth — used by maintenance scheduler and any
-    future API/dashboard endpoint that needs live odometer data.
+    Reads ``vehicle_state.odometer_mi`` directly from the warehouse
+    table — DB is the single source of truth, populated every 60s by
+    ``ingest_vehicle_state``.  Bypasses the WAREHOUSE_READS_ENABLED
+    cutover flag because odometer is *only* in the warehouse.
+    Returns ``None`` when the vehicle has never reported odometer (no
+    CAN bus gateway, plan limitation, or warehouse cold-start).
     """
-    try:
-        client = await get_client(account_id)
-    except Exception:
+    from infra.platform import get_tenant_db
+
+    tenant = await get_tenant_db(account_id)
+    rows = await tenant.get_vehicle_state(
+        account_id, company=company_code or None, vehicle_nums=[vehicle_name],
+    )
+    name_lower = vehicle_name.strip().lower()
+    for row in rows:
+        if (row.get("vehicle_name") or "").strip().lower() != name_lower:
+            continue
+        miles = row.get("odometer_mi")
+        if isinstance(miles, (int, float)):
+            return float(miles)
         return None
-
-    end = datetime.now(timezone.utc)
-    start = end - timedelta(hours=24)
-
-    try:
-        raw = await client._get_paginated_history(
-            "obdOdometerMeters", start, end=end,
-        )
-    except Exception:
-        return None
-
-    fleet = await client.get_fleet_overview(company=company_code)
-    vid = None
-    for v in fleet:
-        if v["name"] == vehicle_name:
-            vid = v.get("id", "")
-            break
-    if not vid or vid not in raw:
-        return None
-
-    points = raw[vid].get("obdOdometerMeters", [])
-    if not points:
-        return None
-
-    last_val = points[-1].get("value", 0)
-    return round(last_val / METERS_PER_MILE, 1)
+    return None

@@ -10,6 +10,7 @@ from adapters.samsara.client import populate_company_display
 from capabilities.formatting import (
     format_help,
     format_welcome_unregistered,
+    format_unregistered_member,
     format_system_owner_welcome,
     format_register_success,
     format_join_success,
@@ -220,25 +221,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         account = await platform.get_account(bot_account_id)
         account_name = account.name if account else "this organization"
         await _show(update, context, [
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            f"  👋 Hi{(' ' + name) if name else ''}!\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            "\n"
-            f"This bot belongs to <b>{account_name}</b>.\n"
-            "\n"
-            "You're not registered as a member yet.\n"
-            "Ask your fleet manager or admin to add you\n"
-            "to the team — they can send you an invite link.\n"
-            "\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            "  🚛 <b>4truck — Fleet Intelligence Platform</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            "\n"
-            "Real-time fleet monitoring, fault diagnostics,\n"
-            "AI-powered insights, driver scorecards, and more.\n"
-            "\n"
-            "  🌐 <a href=\"https://4truck.us\">4truck.us</a>\n"
-            "  📩 Contact: @Allen_Klein\n"
+            format_unregistered_member(account_name, name=name, support_contact=SUPPORT_CONTACT),
         ], keyboard=unregistered_kb())
         return
 

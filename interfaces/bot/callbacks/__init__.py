@@ -10,7 +10,12 @@ from telegram.ext import ContextTypes
 
 from adapters.samsara.client import populate_company_display
 from infra.context import get_company_display
-from capabilities.formatting import format_help, format_welcome_unregistered, format_system_owner_welcome
+from capabilities.formatting import (
+    format_help,
+    format_welcome_unregistered,
+    format_unregistered_member,
+    format_system_owner_welcome,
+)
 
 from interfaces.bot.config import get_platform_db, get_tenant_db, SUPPORT_CONTACT
 from interfaces.bot.keyboards import (
@@ -873,12 +878,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 acct_name = acct.name if acct else "this organization"
                 first = getattr(update.effective_user, "first_name", "") or ""
                 await _show(update, context, [
-                    f"👋 Hi{(' ' + first) if first else ''}!\n\n"
-                    f"This bot belongs to <b>{acct_name}</b>.\n"
-                    "You're not registered as a member.\n\n"
-                    "Ask your admin to send you an invite link,\n"
-                    "or contact us at @Allen_Klein\n\n"
-                    "🌐 <a href=\"https://4truck.us\">4truck.us</a>"
+                    format_unregistered_member(acct_name, name=first, support_contact=SUPPORT_CONTACT),
                 ], keyboard=unregistered_kb())
             else:
                 await _show(update, context,

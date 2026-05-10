@@ -89,10 +89,14 @@ class TestEventsPermissions:
         assert perms.can_events_all is True
         assert perms.can_events_own is True
 
-    def test_dispatcher_no_events(self):
+    def test_dispatcher_sees_events(self):
+        # Dispatchers were granted can_events_all/can_events_own in the
+        # IAM refactor — they need safety-event visibility to react to
+        # mid-shift deviations.  See capabilities/iam/permissions.py
+        # comment on the DISPATCHER block.
         perms = get_permissions(Role.DISPATCHER)
-        assert perms.can_events_all is False
-        assert perms.can_events_own is False
+        assert perms.can_events_all is True
+        assert perms.can_events_own is True
 
     def test_driver_events_own_only(self):
         perms = get_permissions(Role.DRIVER)

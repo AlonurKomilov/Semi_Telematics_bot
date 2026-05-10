@@ -14,6 +14,41 @@ import type { MaintenanceTask, AnyColumn } from '../../types';
 
 const STATUS_OPTIONS = ['pending', 'in_progress', 'completed', 'cancelled'];
 
+// Mileage-progress cell: renders "247,500 / 250,000 mi (98%)" with a
+// thin gauge bar. Hidden when the task has no due_miles or hasn't been
+// touched by the mileage-check scheduler yet.
+function MileageProgress({ row }: { row: MaintenanceTask }) {
+  if (row.due_miles == null) return <>—</>;
+  if (row.last_odometer == null) {
+    return (
+      <span className="text-muted-foreground text-xs">
+        Due {Number(row.due_miles).toLocaleString()} mi
+      </span>
+    );
+  }
+  const pct = Math.max(0, Math.min(120, Math.round((row.last_odometer / row.due_miles) * 100)));
+  const overdue = pct >= 100;
+  const remaining = Math.round(row.due_miles - row.last_odometer);
+  return (
+    <div className="flex flex-col gap-1 min-w-[140px]">
+      <div className="text-xs">
+        {Number(row.last_odometer).toLocaleString()} / {Number(row.due_miles).toLocaleString()} mi
+      </div>
+      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+        <div
+          className={`h-full ${overdue ? 'bg-red-500' : pct >= 90 ? 'bg-orange-500' : 'bg-blue-500'}`}
+          style={{ width: `${Math.min(pct, 100)}%` }}
+        />
+      </div>
+      <div className={`text-xs ${overdue ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
+        {overdue
+          ? `${Math.abs(remaining).toLocaleString()} mi overdue`
+          : `${remaining.toLocaleString()} mi to go`}
+      </div>
+    </div>
+  );
+}
+
 const columns: AnyColumn[] = [
   { key: 'vehicle_name', label: 'Vehicle', sortable: true },
   { key: 'task_type', label: 'Type', sortable: true, render: (v) => <span className="capitalize">{String(v || '').replace(/_/g, ' ')}</span> },
@@ -22,7 +57,10 @@ const columns: AnyColumn[] = [
     return s.length > 60 ? <span title={s}>{s.slice(0, 60)}…</span> : s;
   }},
   { key: 'due_date', label: 'Due Date', sortable: true, render: (v) => v ? new Date(String(v)).toLocaleDateString() : '—' },
-  { key: 'due_miles', label: 'Due Miles', render: (v) => v ? Number(v).toLocaleString() : '—' },
+  // Combined "Mileage Progress" replaces the bare "Due Miles" cell so the
+  // operator can see how close each truck is to the next service without
+  // doing the arithmetic in their head.
+  { key: 'due_miles', label: 'Mileage Progress', render: (_v, row) => <MileageProgress row={row as MaintenanceTask} /> },
   { key: 'status', label: 'Status', sortable: true, render: (v) => <StatusBadge status={String(v)} /> },
   { key: 'updated_at', label: 'Updated', sortable: true, render: (v) => v ? new Date(String(v)).toLocaleDateString() : '—' },
 ];

@@ -43,6 +43,13 @@ const columns: AnyColumn[] = [
     label: 'Faults',
     render: (v) => (v as number) > 0 ? <span className="text-orange-600 dark:text-orange-400 font-medium">{v as number}</span> : '0',
   },
+  {
+    key: 'odometer_miles',
+    label: 'Odometer',
+    render: (v) => v != null
+      ? `${Math.round(v as number).toLocaleString()} mi`
+      : <span className="text-muted-foreground">—</span>,
+  },
 ];
 
 export default function Vehicles() {

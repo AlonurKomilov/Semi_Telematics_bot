@@ -69,6 +69,17 @@ interface TimelineResp {
   points: TelemetryPoint[];
 }
 
+// Slim shape of the basic /api/vehicles/{name} response — only the
+// odometer fields are read here; the rest of the vehicle data already
+// lives in the parent VehiclesPage state.
+interface BasicResp {
+  vehicles?: Array<{
+    name: string;
+    odometer_miles: number | null;
+    odometer_time: string | null;
+  }>;
+}
+
 interface Props {
   /** Vehicle name to load; null = sheet closed */
   name: string | null;
@@ -132,6 +143,11 @@ export function VehicleDetailSheet({ name, onClose }: Props) {
   const [health, setHealth] = useState<HealthResp | null>(null);
   const [faults, setFaults] = useState<FaultsResp | null>(null);
   const [timeline, setTimeline] = useState<TelemetryPoint[]>([]);
+  // Odometer is a separate fetch against /api/vehicles/{name} so the
+  // health endpoint can stay narrowly scoped.  Both come from the
+  // warehouse — neither makes a Samsara call on the request path.
+  const [odometerMiles, setOdometerMiles] = useState<number | null>(null);
+  const [odometerTime, setOdometerTime] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 
@@ -140,6 +156,8 @@ export function VehicleDetailSheet({ name, onClose }: Props) {
       setHealth(null);
       setFaults(null);
       setTimeline([]);
+      setOdometerMiles(null);
+      setOdometerTime(null);
       setError(false);
       return;
     }
@@ -153,12 +171,16 @@ export function VehicleDetailSheet({ name, onClose }: Props) {
       apiJSON<TimelineResp>(`/api/vehicles/${encoded}/timeline?days=7`)
         .then(r => r.points ?? [])
         .catch(() => [] as TelemetryPoint[]), // non-critical: warehouse may be cold
+      apiJSON<BasicResp>(`/api/vehicles/${encoded}`).catch(() => ({} as BasicResp)),
     ])
-      .then(([h, f, pts]) => {
+      .then(([h, f, pts, basic]) => {
         if (cancelled) return;
         setHealth(h);
         setFaults(f);
         setTimeline(pts);
+        const match = (basic.vehicles ?? []).find(v => v.name === name);
+        setOdometerMiles(match?.odometer_miles ?? null);
+        setOdometerTime(match?.odometer_time ?? null);
       })
       .catch(() => {
         if (!cancelled) setError(true);
@@ -209,6 +231,16 @@ export function VehicleDetailSheet({ name, onClose }: Props) {
           )}
           {health.health && (
             <>
+              {odometerMiles != null && (
+                <HealthRow
+                  label={
+                    odometerTime
+                      ? `Odometer (as of ${new Date(odometerTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
+                      : 'Odometer'
+                  }
+                  value={`${Math.round(odometerMiles).toLocaleString()} mi`}
+                />
+              )}
               <HealthRow
                 label="Battery"
                 value={voltDisplay(health.health.battery_v)}

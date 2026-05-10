@@ -8,10 +8,7 @@ Notification delivery stays in the bot interface layer
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone, timedelta
 
-from constants import METERS_PER_MILE
-from infra.services import get_client
 from capabilities.iam.permissions import can
 from adapters.storage import Role
 
@@ -64,64 +61,55 @@ async def mark_overdue_tasks_by_mileage(
 ) -> list[dict]:
     """Mark pending mileage-based tasks as 'overdue' when current odometer >= due_miles.
 
-    Also updates last_odometer on each task for progress tracking.
-    Returns list of tasks newly marked overdue so the caller can notify.
+    Reads current odometer directly from the ``vehicle_state`` warehouse
+    table (single source of truth) — bypasses the WAREHOUSE_READS_ENABLED
+    cutover flag because this signal lives only in the warehouse.
+    ``ingest_vehicle_state`` (every 60s) keeps it fresh; this scheduled
+    check runs every 6h so freshness is plenty.
+
+    Also updates ``last_odometer`` on each task for progress tracking.
+    Returns the list of tasks newly marked overdue so the caller can
+    push a notification.
     """
     tasks = await tenant_db.get_pending_tasks_by_miles()
     if not tasks:
         return []
 
-    # Group by company_code to minimise Samsara API calls
-    by_company: dict[str, list[dict]] = {}
-    for task in tasks:
-        co = task.get("company_code", "")
-        if co:
-            by_company.setdefault(co, []).append(task)
+    # Single warehouse read for the whole account — no per-company
+    # Samsara fan-out, no rate-limit risk.
+    state_rows = await tenant_db.get_vehicle_state(account_id)
+    odometer_by_vehicle_name: dict[str, float] = {}
+    for row in state_rows:
+        name = row.get("vehicle_name") or ""
+        miles = row.get("odometer_mi")
+        if name and isinstance(miles, (int, float)):
+            odometer_by_vehicle_name[name] = float(miles)
+
+    if not odometer_by_vehicle_name:
+        logger.debug(
+            "mark_overdue_tasks_by_mileage acct=%d — warehouse has no odometer yet",
+            account_id,
+        )
+        return []
 
     newly_overdue: list[dict] = []
-
-    for company_code, company_tasks in by_company.items():
-        try:
-            client = await get_client(account_id)
-        except Exception:
-            logger.debug("Could not get Samsara client for account %d", account_id)
+    for task in tasks:
+        current_miles = odometer_by_vehicle_name.get(task["vehicle_name"])
+        if current_miles is None:
             continue
+        due_miles = task["due_miles"]
 
-        fleet = await client.get_fleet_overview(company=company_code)
-        name_to_id = {v["name"]: v["id"] for v in fleet}
+        await tenant_db.update_maintenance_task(
+            task["id"], account_id=account_id,
+            last_odometer=round(current_miles, 1),
+        )
 
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(hours=12)
-        try:
-            raw = await client._get_paginated_history(
-                "obdOdometerMeters", start, end=end,
+        if current_miles >= due_miles:
+            await tenant_db.update_maintenance_status(
+                task["id"], "overdue", account_id=account_id,
             )
-        except Exception as e:
-            logger.debug("Odometer fetch failed for %s: %s", company_code, e)
-            continue
-
-        for task in company_tasks:
-            vid = name_to_id.get(task["vehicle_name"], "")
-            if not vid or vid not in raw:
-                continue
-            points = raw[vid].get("obdOdometerMeters", [])
-            if not points:
-                continue
-
-            current_miles = round(points[-1].get("value", 0) / METERS_PER_MILE, 1)
-            due_miles = task["due_miles"]
-
-            await tenant_db.update_maintenance_task(
-                task["id"], account_id=account_id,
-                last_odometer=current_miles,
-            )
-
-            if current_miles >= due_miles:
-                await tenant_db.update_maintenance_status(
-                    task["id"], "overdue", account_id=account_id,
-                )
-                task["_current_miles"] = current_miles  # attach for notification text
-                newly_overdue.append(task)
+            task["_current_miles"] = round(current_miles, 1)
+            newly_overdue.append(task)
 
     return newly_overdue
 

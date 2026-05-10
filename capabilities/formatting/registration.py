@@ -60,6 +60,48 @@ def format_help(company_codes: list[str] | None = None,
     )
 
 
+def format_unregistered_member(
+    account_name: str,
+    name: str = "",
+    support_contact: str = "@Allen_Klein",
+) -> str:
+    """Welcome shown to a Telegram user who started a per-account bot
+    but isn't yet a registered member of that account.
+
+    Role-agnostic copy: 4truck supports drivers, dispatchers, safety,
+    fleet, and admin/owner roles, so the platform tagline and the
+    feature list are intentionally written without singling out any
+    one role.  Used by:
+        - interfaces/bot/registration.py  (the long /start path)
+        - interfaces/bot/auth.py          (short /start auth check)
+        - interfaces/bot/callbacks/__init__.py  (callback re-render)
+    Centralised here so tagline edits land everywhere at once.
+    """
+    return (
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"  👋 Hi{(' ' + name) if name else ''}!\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "\n"
+        f"This bot belongs to <b>{account_name}</b>.\n"
+        "\n"
+        "You're not registered as a member yet.\n"
+        "Ask your manager or admin to add you to\n"
+        "the team — they can send you an invite link.\n"
+        "\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "  🚛 <b>4truck — Logistics Operations Platform</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "\n"
+        "Built for drivers, dispatchers, safety,\n"
+        "fleet, and admins — live tracking, fault\n"
+        "diagnostics, AI insights, driver scorecards,\n"
+        "payroll, coaching, and more.\n"
+        "\n"
+        "  🌐 <a href=\"https://4truck.us\">4truck.us</a>\n"
+        f"  📩 Contact: {support_contact}\n"
+    )
+
+
 def format_welcome_unregistered(support_contact: str = "", name: str = "") -> str:
     """Shown to users who haven't registered or joined yet."""
     return (

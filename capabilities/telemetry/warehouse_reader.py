@@ -46,6 +46,8 @@ def _warehouse_row_to_overview(row: dict[str, Any]) -> dict[str, Any]:
     license plate, fault details) \u2014 those keep ``"N/A"``-shaped
     placeholders so JSON contracts stay stable.
     """
+    odometer_miles = row.get("odometer_mi")
+    odometer_time = row.get("odometer_time")
     return {
         "id":   row.get("vehicle_id"),
         "name": row.get("vehicle_name") or "",
@@ -68,6 +70,10 @@ def _warehouse_row_to_overview(row: dict[str, Any]) -> dict[str, Any]:
         },
         "fuel":      {"value": row.get("fuel_pct")} if row.get("fuel_pct") is not None else {},
         "def_level": {"value": row.get("def_pct")} if row.get("def_pct") is not None else {},
+        # Odometer surfaced as a nested dict so ``_extract_odometer``
+        # in the vehicles route can consume it without knowing whether
+        # the row came from the warehouse or a live Samsara fallback.
+        "odometer": {"miles": odometer_miles, "time": odometer_time} if odometer_miles is not None else {},
         # Approximate fault payload \u2014 enough for ``_extract_fault_count``
         # to return the warehouse-tracked count without reshaping.
         "fault_codes": {

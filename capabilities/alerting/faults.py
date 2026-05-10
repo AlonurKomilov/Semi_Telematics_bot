@@ -21,7 +21,7 @@ from capabilities.alerting.pipeline import (
 from capabilities.formatting import format_fault_alert
 from capabilities.telemetry.service import get_vehicles_with_faults as _svc_get_faults
 from infra.bot_registry import get_app_for_account
-from infra.config import FAULT_ALERT_COOLDOWN_HOURS
+from infra.config import FAULT_ALERT_COOLDOWN_HOURS, CHRONIC_FAULT_SUPPRESS_AFTER
 from infra.context import set_tenant_display
 from infra.isolation import run_account_job
 from infra.services import get_client, get_platform_db, get_tenant_db
@@ -114,6 +114,9 @@ async def _shadow_compare_dedup(
 # LRUCache caps in-memory growth when Redis is unavailable.
 # Faults LRU is consistent with _known_faults above.
 _fault_last_sent: dict = LRUCache(maxsize=10_000)
+# Per-canonical-key fire counter for chronic-fault suppression.
+# Memory fallback when Redis is unavailable.
+_chronic_fire_count: dict = LRUCache(maxsize=20_000)
 
 
 async def _get_fault_last_sent(account_id: int, vid: str) -> float:
@@ -140,6 +143,64 @@ def _is_fault_on_cooldown(last_sent: float) -> bool:
         return False
     now = datetime.now(timezone.utc).timestamp()
     return (now - last_sent) < (FAULT_ALERT_COOLDOWN_HOURS * 3600)
+
+
+# ── Chronic-fault suppression ─────────────────────────────────────
+# When the same (vehicle, SPN-root) has been alerted N times without
+# resolving, stop sending per-cycle pushes.  The alert stays in the
+# dashboard pending list and the alert_history table; auto-resolve
+# clears the counter when the SPN drops off the truck's reported set.
+#
+# Counter TTL = 7 days; if the fault stays gone for that long the
+# counter expires naturally and a fresh re-occurrence can re-alert.
+
+_CHRONIC_TTL_SECONDS = 7 * 24 * 3600
+
+
+async def _get_chronic_fire_count(account_id: int, vid: str, canonical_key: str) -> int:
+    """Read the unacked-fire counter for a (vehicle, SPN-root) pair."""
+    cache_key = f"t:{account_id}:fault_chronic:{vid}:{canonical_key}"
+    if rcache.is_available():
+        val = await rcache.get(cache_key)
+        try:
+            return int(val) if val else 0
+        except (TypeError, ValueError):
+            return 0
+    return _chronic_fire_count.get(f"{account_id}:{vid}:{canonical_key}", 0)
+
+
+async def _bump_chronic_fire_count(account_id: int, vid: str, canonical_key: str) -> int:
+    """Increment the counter and return the new value."""
+    cache_key = f"t:{account_id}:fault_chronic:{vid}:{canonical_key}"
+    if rcache.is_available():
+        current = await _get_chronic_fire_count(account_id, vid, canonical_key)
+        new_val = current + 1
+        await rcache.cache_set(cache_key, new_val, ttl=_CHRONIC_TTL_SECONDS)
+        return new_val
+    mem_key = f"{account_id}:{vid}:{canonical_key}"
+    new_val = _chronic_fire_count.get(mem_key, 0) + 1
+    _chronic_fire_count[mem_key] = new_val
+    return new_val
+
+
+async def _clear_chronic_fire_count(account_id: int, vid: str, canonical_key: str | None = None) -> None:
+    """Drop the counter — called from the auto-resolve path when an SPN
+    leaves the truck's reported set, so the next fresh occurrence
+    re-alerts at full force.  Pass canonical_key=None to clear every
+    SPN counter for this vehicle (used on full-vehicle resolve)."""
+    if canonical_key:
+        cache_key = f"t:{account_id}:fault_chronic:{vid}:{canonical_key}"
+        if rcache.is_available():
+            try:
+                await rcache.cache_delete(cache_key)
+            except Exception:
+                pass
+        _chronic_fire_count.pop(f"{account_id}:{vid}:{canonical_key}", None)
+        return
+    # Bulk clear (memory only — Redis would need scan, skip).
+    prefix = f"{account_id}:{vid}:"
+    for k in [k for k in _chronic_fire_count.keys() if k.startswith(prefix)]:
+        _chronic_fire_count.pop(k, None)
 
 
 # ── API Health Notifications ────────────────────────────────────
@@ -264,14 +325,52 @@ async def _check_faults_account(bot_app: Application, account_id: int, subs: lis
                     if any(getattr(s, 'ai_fault', False) for s in subs):
                         ai_note = await _get_ai_diagnosis_note(v, new_dtcs)
 
-                    # Build fault detail with descriptions
-                    fault_details = []
+                    # Build the alert_key detail using SPN root only — NOT
+                    # the FMI sub-code.  Same SPN reported with FMI 31, FMI
+                    # 9, or both creates ONE logical alert ("this SPN is
+                    # currently active on this truck") instead of three
+                    # separate ones that all re-fire on every cycle.
+                    # Production data showed truck 200 with stuck SPN
+                    # 524133 generating 8 distinct alert_keys over 52 days
+                    # purely due to FMI variation — 5 160 messages for one
+                    # chronic fault.  Deduping by SPN root collapses ~50 %
+                    # of fault noise without hiding new SPNs.
+                    unique_spns: dict[str, str] = {}
                     for dtc in new_dtcs:
-                        spn = dtc.get('spnId', '?')
-                        fmi = dtc.get('fmiId', '?')
-                        desc = dtc.get('spnDescription', '')
-                        fault_details.append(f"{spn}-{fmi}:{desc}")
-                    fault_detail_str = "|".join(sorted(fault_details))
+                        spn = str(dtc.get('spnId', '?'))
+                        if spn not in unique_spns:
+                            unique_spns[spn] = dtc.get('spnDescription', '')
+                    fault_detail_str = "|".join(
+                        f"SPN{spn}:{desc}"
+                        for spn, desc in sorted(unique_spns.items())
+                    )
+
+                    # ── Chronic-fault suppression ──────────────
+                    # Track unacked-fire count per (vehicle, SPN-root).
+                    # CRITICAL alerts always fire — never suppress red lights.
+                    # WARNING / INFO alerts switch to "silent" once the
+                    # counter crosses CHRONIC_FAULT_SUPPRESS_AFTER (default
+                    # 10).  The alert still appears in the dashboard pending
+                    # list and history; we just stop pinging Telegram every
+                    # cycle.  Counter is cleared by the auto-resolve path
+                    # below when the SPN drops off the truck's reported set.
+                    is_chronic = False
+                    if (
+                        severity != AlertSeverity.CRITICAL
+                        and CHRONIC_FAULT_SUPPRESS_AFTER > 0
+                    ):
+                        fire_count = await _get_chronic_fire_count(
+                            account_id, vid, fault_detail_str,
+                        )
+                        if fire_count >= CHRONIC_FAULT_SUPPRESS_AFTER:
+                            is_chronic = True
+                            logger.info(
+                                "fault chronic-suppressed acct=%d vid=%s spn=%s fires=%d",
+                                account_id, vid, fault_detail_str, fire_count,
+                            )
+                            await _set_known_faults(account_id, vid, current_codes)
+                            continue
+                    await _bump_chronic_fire_count(account_id, vid, fault_detail_str)
 
                     # ── Universal pipeline ───────────────
                     await send_alert(
@@ -343,6 +442,10 @@ async def _check_faults_account(bot_app: Application, account_id: int, subs: lis
                 # Pass v_id directly — _set_known_faults builds the compound
                 # key internally as f"{account_id}:{vid}".
                 await _set_known_faults(account_id, v_id, set())
+                # Reset every chronic-fire counter for this vehicle — when
+                # the SPN comes back later it should re-alert at full
+                # force, not stay suppressed because of stale state.
+                await _clear_chronic_fire_count(account_id, v_id)
     except Exception as e:
         logger.error("DB-based fault auto-resolve scan failed for account %d: %s", account_id, e)
 

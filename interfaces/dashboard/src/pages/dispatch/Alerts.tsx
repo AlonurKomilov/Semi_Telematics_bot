@@ -224,6 +224,7 @@ export default function Alerts() {
                     }}
                   />
                 </th>
+                <th className="px-4 py-3 w-20">Alert</th>
                 <th className="px-4 py-3">Vehicle</th>
                 <th className="px-4 py-3">Type</th>
                 <th className="px-4 py-3">Time</th>
@@ -239,10 +240,28 @@ export default function Alerts() {
                       onChange={() => toggleSelect(a.id)}
                     />
                   </td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
+                    #{a.id}
+                  </td>
                   <td className="px-4 py-3">{a.vehicle_name}</td>
-                  <td className="px-4 py-3"><TypeBadge type={a.alert_type || 'unknown'} /></td>
+                  <td className="px-4 py-3">
+                    <TypeBadge type={a.alert_type || 'unknown'} />
+                    {/* Occurrence-count badge — "× 5" when this same
+                        logical alert has fired multiple times without
+                        being cleared.  Hidden for first-time alerts. */}
+                    {(a.occurrence_count ?? 1) > 1 && (
+                      <span
+                        className="ml-2 inline-block px-2 py-0.5 rounded-full text-xs font-bold bg-orange-500/15 text-orange-500"
+                        title="Total occurrences"
+                      >
+                        × {a.occurrence_count}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground">
-                    {a.created_at ? new Date(a.created_at).toLocaleString() : '—'}
+                    {a.last_seen
+                      ? new Date(a.last_seen).toLocaleString()
+                      : a.created_at ? new Date(a.created_at).toLocaleString() : '—'}
                   </td>
                 </tr>
               ))}

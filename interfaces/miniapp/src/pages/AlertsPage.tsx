@@ -26,6 +26,7 @@ import {
   Icon24TruckOutline,
   Icon24LockOutline,
   Icon24GlobeOutline,
+  Icon24MuteOutline,
 } from '@vkontakte/icons';
 import { Placeholder } from '@telegram-apps/telegram-ui';
 import { apiFetch, apiJSON, classifyError, type ClassifiedError } from '../api/client';
@@ -121,15 +122,18 @@ interface AlertCardProps {
   isExpanded: boolean;
   showAbsolute: boolean;
   isAcking: boolean;
+  isMuting: boolean;
+  isMuted: boolean;
   timezone?: string;
   onToggleAbsolute: (id: number) => void;
   onToggleExpanded: (id: number) => void;
   onAcknowledge: (id: number) => void;
+  onMute: (id: number) => void;
 }
 
 const AlertCard = memo(function AlertCard({
-  alert, isExpanded, showAbsolute, isAcking, timezone,
-  onToggleAbsolute, onToggleExpanded, onAcknowledge,
+  alert, isExpanded, showAbsolute, isAcking, isMuting, isMuted, timezone,
+  onToggleAbsolute, onToggleExpanded, onAcknowledge, onMute,
 }: AlertCardProps) {
   const sev = alertSeverity(alert);
   const hasLongMsg = (alert.message?.length ?? 0) > 80;
@@ -141,15 +145,29 @@ const AlertCard = memo(function AlertCard({
       </div>
       <div className="alert-card__main">
         <div className="alert-card__row1">
-          <span className="alert-card__title">{alertTitle(alert)}</span>
+          <span className="alert-card__title">
+            {alertTitle(alert)}
+            {/* Canonical AlertID — alert_history.id surfaced as #N so
+                support / drivers can refer to a specific alert when
+                discussing it ("ack #1234"). */}
+            <span className="alert-card__id" title="Alert ID">#{alert.id}</span>
+            {/* Occurrence-count badge — "× 5" means this same logical
+                alert has fired 5 times without being cleared.  Hidden
+                for first-time alerts to keep the card clean. */}
+            {(alert.occurrence_count ?? 1) > 1 && (
+              <span className="alert-card__count" title="Total occurrences">
+                × {alert.occurrence_count}
+              </span>
+            )}
+          </span>
           <span
             className="alert-card__when"
             onClick={() => onToggleAbsolute(alert.id)}
             title="Tap for exact time"
           >
             {showAbsolute
-              ? formatAbsolute(alert.created_at)
-              : <RelativeTime iso={alert.created_at} timezone={timezone} />}
+              ? formatAbsolute(alert.last_seen ?? alert.created_at)
+              : <RelativeTime iso={alert.last_seen ?? alert.created_at} timezone={timezone} />}
           </span>
         </div>
         {alert.vehicle_name && (
@@ -168,14 +186,33 @@ const AlertCard = memo(function AlertCard({
           </div>
         )}
       </div>
-      <button
-        className="alert-card__ack"
-        disabled={isAcking}
-        onClick={() => onAcknowledge(alert.id)}
-        aria-label={`Acknowledge ${alertTitle(alert)} on ${alert.vehicle_name}`}
-      >
-        {isAcking ? '…' : <><Icon24DoneOutline width={16} height={16} />Done</>}
-      </button>
+      <div className="alert-card__actions">
+        {/* 🔇 Mute 7d — pause Telegram delivery without acknowledging.
+            Useful for known-broken trucks ("we ordered the part, stop
+            paging me about it for a week").  CRITICAL alerts ignore
+            mutes server-side so this can't silence a real fire. */}
+        <button
+          className="alert-card__mute"
+          disabled={isMuting || isMuted}
+          onClick={() => onMute(alert.id)}
+          aria-label={`Mute ${alertTitle(alert)} on ${alert.vehicle_name} for 7 days`}
+          title="Mute for 7 days"
+        >
+          {isMuted
+            ? '🔇'
+            : isMuting
+            ? '…'
+            : <Icon24MuteOutline width={14} height={14} />}
+        </button>
+        <button
+          className="alert-card__ack"
+          disabled={isAcking}
+          onClick={() => onAcknowledge(alert.id)}
+          aria-label={`Acknowledge ${alertTitle(alert)} on ${alert.vehicle_name}`}
+        >
+          {isAcking ? '…' : <><Icon24DoneOutline width={16} height={16} />Done</>}
+        </button>
+      </div>
     </div>
   );
 });
@@ -185,6 +222,8 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState<ClassifiedError | null>(null);
   const [acking, setAcking]           = useState<Set<number>>(new Set());
+  const [muting, setMuting]           = useState<Set<number>>(new Set());
+  const [mutedIds, setMutedIds]       = useState<Set<number>>(new Set());
   const [bulkAcking, setBulkAcking]   = useState(false);
   const [snackOpen, setSnackOpen]     = useState(false);
   const [snackText, setSnackText]     = useState('');
@@ -315,6 +354,29 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
       setAcking(prev => { const next = new Set(prev); next.delete(id); return next; });
     }
   }, [onCountChange]);
+
+  // Mute the alert for 7 days — pauses Telegram delivery without acking.
+  // The card stays in the list (you still see it muted with a 🔇 marker)
+  // and reappears as fully active once the mute window expires.
+  const muteAlert = useCallback(async (id: number) => {
+    if (mutedIds.has(id)) return;
+    setMuting(prev => new Set(prev).add(id));
+    try {
+      await apiFetch(`/api/alerts/${id}/mute`, {
+        method: 'POST',
+        body: { hours: 24 * 7 },
+      });
+      setMutedIds(prev => new Set(prev).add(id));
+      haptics.success();
+      toast('Muted for 7 days', 'success');
+    } catch (e) {
+      console.error('Failed to mute alert:', e);
+      haptics.error();
+      toast('Failed to mute — try again', 'error');
+    } finally {
+      setMuting(prev => { const next = new Set(prev); next.delete(id); return next; });
+    }
+  }, [mutedIds]);
 
   // ── Derived data ──────────────────────────────────────────────────
 
@@ -574,10 +636,13 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
           isExpanded={expandedIds.has(alert.id)}
           showAbsolute={absoluteIds.has(alert.id)}
           isAcking={acking.has(alert.id)}
+          isMuting={muting.has(alert.id)}
+          isMuted={mutedIds.has(alert.id)}
           timezone={timezone}
           onToggleAbsolute={toggleAbsolute}
           onToggleExpanded={toggleExpanded}
           onAcknowledge={acknowledge}
+          onMute={muteAlert}
         />
       ))}
 

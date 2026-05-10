@@ -47,13 +47,10 @@ import { useUnitSystem } from '../hooks/useUnitSystem';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { fmtSpeed, speedUnit } from '../utils/units';
 
-interface MaintenanceTask {
-  id: number;
-  vehicle_name: string;
-  task_type: string;
-  due_date: string | null;
-  status: string;
-}
+// Re-import the shared MaintenanceTask shape.  Keeping the import below
+// the local Props on purpose so existing render code reads in declaration
+// order without a hop to the types module.
+import type { MaintenanceTask } from '../types';
 
 interface Props {
   active: boolean;
@@ -109,7 +106,12 @@ export function VehiclesPage({ active, onGoToMap, timezone }: Props) {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const data = await apiJSON<{ vehicles: Vehicle[] }>('/api/vehicles/');
+      // page_size=200 is the backend max — match the map endpoint, which
+      // returns the full fleet.  Without this the list silently caps at
+      // the route default of 50 even on a 85-vehicle fleet.  The mini
+      // app does its own client-side search/sort/filter so we need the
+      // full list anyway.
+      const data = await apiJSON<{ vehicles: Vehicle[] }>('/api/vehicles/?page_size=200');
       setVehicles(data.vehicles ?? []);
       setUpdatedAt(new Date().toISOString());
     } catch (e) {
@@ -189,17 +191,48 @@ export function VehiclesPage({ active, onGoToMap, timezone }: Props) {
           </span>
         }
       >
-        {maintenanceTasks.map(t => (
-          <div key={t.id} className="maint-row">
-            <div>
-              <div className="maint-row__title">{t.task_type}</div>
-              <div className="maint-row__sub">
-                {t.vehicle_name}{t.due_date ? ` · Due ${t.due_date}` : ''}
+        {maintenanceTasks.map(t => {
+          // Mileage progress: only show when both due_miles and a captured
+          // last_odometer are present.  pct = how far along the truck is
+          // toward the threshold; 100% means due now, >100% means overdue.
+          const hasMileage = t.due_miles != null && t.last_odometer != null;
+          const pct = hasMileage
+            ? Math.max(0, Math.min(120, Math.round((t.last_odometer! / t.due_miles!) * 100)))
+            : null;
+          const remaining = hasMileage ? Math.round(t.due_miles! - t.last_odometer!) : null;
+          const overdue = pct !== null && pct >= 100;
+          return (
+            <div key={t.id} className="maint-row">
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="maint-row__title">{t.task_type}</div>
+                <div className="maint-row__sub">
+                  {t.vehicle_name}
+                  {t.due_date && ` · Due ${t.due_date}`}
+                  {t.due_miles != null && ` · Due at ${t.due_miles.toLocaleString()} mi`}
+                </div>
+                {hasMileage && (
+                  <div className="odometer-progress" aria-label={`Mileage progress: ${pct}%`}>
+                    <div className="odometer-progress__track">
+                      <div
+                        className={`odometer-progress__fill${overdue ? ' odometer-progress__fill--overdue' : ''}`}
+                        style={{ width: `${Math.min(pct!, 100)}%` }}
+                      />
+                    </div>
+                    <div className="odometer-progress__label">
+                      {t.last_odometer!.toLocaleString()} / {t.due_miles!.toLocaleString()} mi
+                      {overdue
+                        ? ` · ${Math.abs(remaining!).toLocaleString()} mi overdue`
+                        : ` · ${remaining!.toLocaleString()} mi to go`}
+                    </div>
+                  </div>
+                )}
               </div>
+              <span className={`status-badge ${overdue || t.status === 'overdue' ? 'stopped' : 'idle'}`}>
+                {overdue || t.status === 'overdue' ? 'overdue' : 'pending'}
+              </span>
             </div>
-            <span className="status-badge stopped">pending</span>
-          </div>
-        ))}
+          );
+        })}
       </BottomSheet>
     </>
   ) : null;
@@ -394,6 +427,23 @@ function VehicleHero({ v, status, updatedAt, timezone, units, onGoToMap, onViewD
           {def != null && <GaugeBar pct={def} warn={def < 20} critical={def < 10} />}
         </div>
       </div>
+
+      {/* Odometer line — warehouse-sourced, refreshed every 60s on the
+          backend.  Distinct from `time` (which tracks GPS/state freshness)
+          so we surface the odometer's own as-of timestamp. */}
+      {v.odometer_miles != null && (
+        <div className="vehicle-hero__odometer">
+          <Icon24SpeedometerMiddleOutline width={14} height={14} />
+          <span className="vehicle-hero__odometer-value">
+            {Math.round(v.odometer_miles).toLocaleString()} mi
+          </span>
+          {v.odometer_time && (
+            <span className="vehicle-hero__odometer-time">
+              · <RelativeTime iso={v.odometer_time} timezone={timezone} />
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Address — tappable, opens map */}
       {v.address && (

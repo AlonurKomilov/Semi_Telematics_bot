@@ -42,9 +42,24 @@ FUEL_THRESHOLD = int(os.getenv("FUEL_LOW_THRESHOLD_PERCENT", "20"))
 SUPPORT_CONTACT = os.getenv("SUPPORT_CONTACT", "")
 
 
-HEALTH_ALERT_COOLDOWN_HOURS = int(os.getenv("HEALTH_ALERT_COOLDOWN_HOURS", "4"))
-FUEL_HYSTERESIS_PERCENT = int(os.getenv("FUEL_HYSTERESIS_PERCENT", "5"))
-FAULT_ALERT_COOLDOWN_HOURS = int(os.getenv("FAULT_ALERT_COOLDOWN_HOURS", "2"))
+HEALTH_ALERT_COOLDOWN_HOURS = int(os.getenv("HEALTH_ALERT_COOLDOWN_HOURS", "8"))
+# Hysteresis band that fuel must rise back above before a new low-fuel
+# alert can fire.  Default 10 (was 5) so a truck oscillating around 25 %
+# doesn't flip-flop into pinging operators every refuel-burn cycle.
+FUEL_HYSTERESIS_PERCENT = int(os.getenv("FUEL_HYSTERESIS_PERCENT", "10"))
+# Default raised 2h → 6h: a chronic SPN that re-fires every 2h was the
+# single largest source of alert noise (one truck with stuck SPN 524133
+# generated 5 160 alert messages over 52 days).  6h still surfaces a
+# *new* fault within a shift while collapsing chronic noise 3×.
+FAULT_ALERT_COOLDOWN_HOURS = int(os.getenv("FAULT_ALERT_COOLDOWN_HOURS", "6"))
+
+# ── Chronic-fault suppression ─────────────────────────────────────
+# Once an alert (vehicle + canonical-key) has fired this many times
+# without resolving, stop sending per-cycle pushes for it.  The alert
+# stays visible in the dashboard pending list and the daily digest
+# until the underlying fault clears (auto-resolve) or an operator
+# explicitly acknowledges + clears it.  Set to 0 to disable.
+CHRONIC_FAULT_SUPPRESS_AFTER = int(os.getenv("CHRONIC_FAULT_SUPPRESS_AFTER", "10"))
 
 # ── Re-escalation ─────────────────────────────────────────────────
 # Hourly job pings subscribers about CRITICAL alerts that have been active
@@ -57,6 +72,23 @@ REESCALATE_ALERT_TYPES = tuple(
         "REESCALATE_ALERT_TYPES", "fault,health"
     ).split(",") if t.strip()
 )
+# Maximum number of re-escalation pushes per logical alert (per recipient).
+# After this many "🔴 UNACKNOWLEDGED ALERT" reminders, the job stops
+# pinging — the alert is still visible in the dashboard pending list and
+# auto-resolves when the underlying condition clears, so the operator's
+# loop is "fix it / mute it / ack it" but Telegram stays quiet.
+# Production data showed a single chronic alert generated 360+ reminders
+# per recipient over 15 days (one per hour, no cap); 4 is enough to get
+# attention without becoming spam.  Set 0 to disable re-escalation.
+REESCALATE_MAX_ATTEMPTS = int(os.getenv("REESCALATE_MAX_ATTEMPTS", "4"))
+# Exponential backoff between attempts (hours).  First reminder fires at
+# REESCALATE_AFTER_MINUTES, then each successive reminder waits this many
+# hours longer than the previous.  Default sequence: 1h → 4h → 12h → 24h.
+REESCALATE_BACKOFF_HOURS = tuple(
+    int(x) for x in os.getenv(
+        "REESCALATE_BACKOFF_HOURS", "1,4,12,24"
+    ).split(",") if x.strip().isdigit()
+) or (1, 4, 12, 24)
 
 RATE_LIMIT_SECONDS = int(os.getenv("RATE_LIMIT_SECONDS", "10"))
 

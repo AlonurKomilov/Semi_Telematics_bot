@@ -41,6 +41,7 @@ from capabilities.formatting.events import (
 from capabilities.formatting.registration import (
     format_help,
     format_welcome_unregistered,
+    format_unregistered_member,
     format_register_success,
     format_join_success,
     format_invite_created,
@@ -84,6 +85,7 @@ __all__ = [
     # registration
     "format_help",
     "format_welcome_unregistered",
+    "format_unregistered_member",
     "format_register_success",
     "format_join_success",
     "format_invite_created",

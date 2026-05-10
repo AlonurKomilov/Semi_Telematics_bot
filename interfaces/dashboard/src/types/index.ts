@@ -101,6 +101,12 @@ export interface Vehicle {
   faults?: Fault[];
   fault_codes?: Fault[];
   location?: VehicleLocation;
+  /** Current OBD odometer in miles (warehouse-sourced).  Null when the
+   *  vehicle has no CAN bus gateway or hasn't reported yet. */
+  odometer_miles?: number | null;
+  /** ISO timestamp of the odometer reading itself — distinct from
+   *  the location ``time`` which tracks GPS/state freshness. */
+  odometer_time?: string | null;
 }
 
 export interface VehicleLocation {
@@ -189,13 +195,23 @@ export interface DashboardStats {
 // ── Alerts ───────────────────────────────────────────────────
 
 export interface Alert {
+  /** alert_history.id — canonical AlertID; "#1234" in the UI. */
   id: string | number;
   alert_key?: string;
   vehicle_name?: string;
   vehicle_id?: string;
   alert_type?: string;
   status?: string;
+  /** First time this logical alert fired — used for "since 06:47" display. */
   created_at?: string;
+  /** Most recent fire — drives the "X minutes ago" freshness pill. */
+  last_seen?: string;
+  /** Total times this alert has fired without being cleared.
+   *  Rendered as "× 5" badge on the alert card. */
+  occurrence_count?: number;
+  /** Latest description line — already populated by the server in `message`. */
+  last_detail?: string;
+  message?: string;
   acknowledged_by?: number;
   acknowledged_at?: string;
 }
@@ -766,6 +782,10 @@ export interface MaintenanceTask {
   description: string;
   due_date: string | null;
   due_miles: number | null;
+  /** Last odometer reading captured by the maintenance scheduler when
+   *  it last ran the mileage check (warehouse-sourced).  Combined with
+   *  ``due_miles`` to render the progress bar in the maintenance UI. */
+  last_odometer: number | null;
   status: string;
   recur_interval_days: number | null;
   recur_interval_miles: number | null;

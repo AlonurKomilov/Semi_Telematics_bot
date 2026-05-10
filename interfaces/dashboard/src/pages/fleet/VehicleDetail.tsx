@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Copy, Check, ExternalLink } from 'lucide-react';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
 } from 'recharts';
@@ -121,15 +121,30 @@ export default function VehicleDetail() {
           </Row>
           <Row label="Fuel" value={fuel != null ? `${Math.round(fuel)}%` : '—'} />
           {defPct != null && <Row label="DEF" value={`${Math.round(defPct)}%`} />}
+          {/* Odometer comes from the warehouse via /api/vehicles/{name},
+              refreshed every 60s by ingest_vehicle_state.  Hidden when
+              the vehicle has no CAN bus gateway (odometer_miles=null). */}
+          {v.odometer_miles != null && (
+            <Row
+              label="Odometer"
+              value={`${Math.round(v.odometer_miles).toLocaleString()} mi`}
+            />
+          )}
         </div>
 
-        {/* Location card */}
+        {/* Location card.  Address links to Google Maps using the actual
+            lat/lng (more precise than a street-name search), and the
+            two coordinates are merged onto one row with a copy button
+            so users can paste them into other tools without juggling
+            two values. */}
         <div className="bg-card border border-border rounded-xl p-5 space-y-3">
           <h2 className="text-lg font-semibold mb-3">Location</h2>
-          <Row label="Address" value={loc.reverseGeo?.formattedLocation || v.formattedAddress || v.address || '—'} />
-          <Row label="Speed" value={v.speed_mph != null ? `${v.speed_mph} mph` : '—'} />
-          <Row label="Latitude" value={loc.latitude ?? v.latitude} />
-          <Row label="Longitude" value={loc.longitude ?? v.longitude} />
+          <LocationRows
+            address={loc.reverseGeo?.formattedLocation || v.formattedAddress || v.address}
+            latitude={loc.latitude ?? v.latitude ?? null}
+            longitude={loc.longitude ?? v.longitude ?? null}
+            speedMph={v.speed_mph ?? null}
+          />
         </div>
 
         {/* Health card */}
@@ -327,5 +342,79 @@ function Row({ label, value, children }: RowProps) {
       <span className="text-muted-foreground">{label}</span>
       {children || <span>{value ?? '—'}</span>}
     </div>
+  );
+}
+
+// ── Location rows: merged coordinates + Google Maps deep-link ─────────
+// Address text becomes a link to Google Maps anchored at the *exact*
+// lat/lng (not a street-name search) so the pin lands on the truck.
+// Coordinates are shown on a single line with a copy button — one
+// click puts "40.926909, -76.01063" on the clipboard.
+interface LocationRowsProps {
+  address?: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  speedMph: number | null;
+}
+
+function LocationRows({ address, latitude, longitude, speedMph }: LocationRowsProps) {
+  const [copied, setCopied] = useState(false);
+  const hasCoords = latitude != null && longitude != null;
+  const coordsText = hasCoords ? `${latitude}, ${longitude}` : '';
+  const mapsHref = hasCoords
+    ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+    : null;
+
+  async function copyCoords() {
+    if (!coordsText) return;
+    try {
+      await navigator.clipboard.writeText(coordsText);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard may be blocked — silently no-op */
+    }
+  }
+
+  return (
+    <>
+      <div className="flex justify-between text-sm gap-3">
+        <span className="text-muted-foreground flex-shrink-0">Address</span>
+        {address && mapsHref ? (
+          <a
+            href={mapsHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline inline-flex items-center gap-1 text-right"
+            title="Open in Google Maps"
+          >
+            <span>{address}</span>
+            <ExternalLink size={12} className="flex-shrink-0 opacity-70" />
+          </a>
+        ) : (
+          <span>{address || '—'}</span>
+        )}
+      </div>
+      <Row label="Speed" value={speedMph != null ? `${speedMph} mph` : '—'} />
+      <div className="flex justify-between items-center text-sm gap-3">
+        <span className="text-muted-foreground flex-shrink-0">Coordinates</span>
+        {hasCoords ? (
+          <span className="inline-flex items-center gap-2">
+            <span className="font-mono text-xs">{coordsText}</span>
+            <button
+              type="button"
+              onClick={copyCoords}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              title={copied ? 'Copied' : 'Copy to clipboard'}
+              aria-label={copied ? 'Coordinates copied' : 'Copy coordinates'}
+            >
+              {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+            </button>
+          </span>
+        ) : (
+          <span>—</span>
+        )}
+      </div>
+    </>
   );
 }

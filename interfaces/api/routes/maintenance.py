@@ -170,11 +170,17 @@ async def delete_task(
 async def get_vehicle_odometer(
     vehicle_name: str,
     user: dict = Depends(get_current_user),
+    tenant_db=Depends(get_tenant_db),
 ):
-    """Return current odometer reading for a specific vehicle from Samsara.
+    """Return current odometer reading for a specific vehicle.
 
-    Used by the maintenance form to help users set a sensible 'Due Miles' value.
-    Returns null odometer_miles when the vehicle doesn't report OBD odometer.
+    Reads ``vehicle_state.odometer_mi`` directly from the warehouse
+    table (single source of truth, refreshed every 60s by
+    ``ingest_vehicle_state``).  Bypasses the WAREHOUSE_READS_ENABLED
+    cutover flag because odometer is *only* in the warehouse.
+    Returns ``odometer_miles=None`` when the vehicle doesn't report
+    OBD odometer (no CAN bus gateway, plan limitation, or warehouse
+    cold-start before the first ingest).
     """
     if not has_maintenance_access(user["role"]):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
@@ -187,18 +193,20 @@ async def get_vehicle_odometer(
             name_lower = vehicle_name.strip().lower()
             if not any(t.strip().lower() == name_lower for t in allowed_trucks):
                 return {"vehicle_name": vehicle_name, "odometer_miles": None, "time": None}
-    client = await get_client(user["account_id"])
-    readings = await client.get_current_odometer_readings()
+    # Direct warehouse-table lookup (case-insensitive match).
+    rows = await tenant_db.get_vehicle_state(
+        user["account_id"], vehicle_nums=[vehicle_name],
+    )
     name_lower = vehicle_name.strip().lower()
     match = next(
-        (r for r in readings if r.get("name", "").lower() == name_lower),
+        (r for r in rows if (r.get("vehicle_name") or "").lower() == name_lower),
         None,
     )
     if not match:
         return {"vehicle_name": vehicle_name, "odometer_miles": None, "time": None}
     return {
-        "vehicle_name": match["name"],
-        "odometer_miles": match.get("odometer_miles"),
-        "time": match.get("time"),
-        "company": match.get("_org", ""),
+        "vehicle_name": match.get("vehicle_name", vehicle_name),
+        "odometer_miles": match.get("odometer_mi"),
+        "time": match.get("odometer_time"),
+        "company": match.get("company_code", ""),
     }

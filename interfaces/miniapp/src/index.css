@@ -669,6 +669,50 @@ body {
   border-radius: 2px;
   transition: width 0.4s ease;
 }
+
+/* Odometer line on the single-vehicle hero card. */
+.vehicle-hero__odometer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--tgui--hint_color);
+}
+.vehicle-hero__odometer-value {
+  font-weight: 600;
+  color: var(--tgui--text_color, inherit);
+}
+.vehicle-hero__odometer-time {
+  white-space: nowrap;
+}
+
+/* Mileage-progress gauge inside maintenance sheet rows. Width is set
+   inline by the React component; colour switches red on overdue. */
+.odometer-progress {
+  margin-top: 6px;
+}
+.odometer-progress__track {
+  width: 100%;
+  height: 4px;
+  background: rgba(128,128,128,0.16);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.odometer-progress__fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--st-blue, #2990ff);
+  transition: width 0.4s ease;
+}
+.odometer-progress__fill--overdue {
+  background: var(--st-red, #ff453a);
+}
+.odometer-progress__label {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--tgui--hint_color);
+}
 .vehicle-hero__addr {
   display: flex;
   align-items: center;
@@ -1172,6 +1216,29 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* "#1234" canonical AlertID — small monospace prefix next to the title. */
+.alert-card__id {
+  display: inline-block;
+  margin-left: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--tgui--hint_color);
+  letter-spacing: -0.01em;
+}
+/* "× 5" badge next to the title — only shown when the same logical
+   alert has fired more than once without being cleared. */
+.alert-card__count {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: var(--st-orange-tint, rgba(255,159,10,0.15));
+  color: var(--st-orange, #ff9f0a);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
 /* Vehicle name tag below title */
 .alert-card__vehicle {
   display: inline-flex;
@@ -1227,6 +1294,33 @@ body {
 }
 .alert-card__ack:active { background: var(--st-green-tint); }
 .alert-card__ack[disabled] { opacity: 0.5; cursor: progress; }
+
+/* Action column on the right side of an alert card — stacks the mute
+   pill above the ack button when both are present. */
+.alert-card__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: stretch;
+  justify-content: center;
+  align-self: center;
+}
+/* 🔇 Mute pill — short and unobtrusive so it doesn't compete with Ack. */
+.alert-card__mute {
+  appearance: none;
+  background: transparent;
+  border: 1px solid rgba(128,128,128,0.3);
+  border-radius: 999px;
+  padding: 2px 8px;
+  min-height: 22px;
+  font-size: 11px;
+  color: var(--tgui--hint_color);
+  cursor: pointer;
+  transition: background 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.alert-card__mute:active { background: rgba(128,128,128,0.15); }
+.alert-card__mute[disabled] { opacity: 0.5; cursor: not-allowed; }
 
 /* Alert history rows */
 .hist-row {

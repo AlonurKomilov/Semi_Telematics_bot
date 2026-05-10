@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
+from telegram.error import BadRequest as TGBadRequest
 from telegram.ext import Application
 
 from capabilities.alerting.pipeline import (
@@ -187,20 +188,25 @@ async def _auto_resolve_vehicle_alerts(
     if duration_str:
         resolve_text += f"\n{duration_str}"
 
-    for alert in resolved:
-        # Delete this subscriber's previous alert message
-        if alert.get("message_id") and alert.get("chat_id"):
-            try:
-                await bot_app.bot.delete_message(
-                    chat_id=alert["chat_id"],
-                    message_id=alert["message_id"],
-                )
-            except Exception:
-                logger.debug("Failed to delete old alert msg %s during auto-resolve",
-                             alert.get("message_id"))
+    # Per-recipient: try to EDIT the existing alert message into a
+    # ✅ resolved receipt instead of delete-old + send-new.  The user's
+    # chat now shows one persistent record per logical alert with its
+    # final state ("auto-resolved 6m ago"), no extra notification ping.
+    # Falls back to delete + send when the edit fails (msg deleted, > 48h
+    # old, ParseMode mismatch, …) so the user still gets the resolution.
+    resolved_kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            f"📋 View Truck #{vname}",
+            callback_data=f"covehicle_{alert_co}_{vname}",
+        )],
+    ])
 
-        # Check DND — skip sending if user is outside working hours
+    for alert in resolved:
         recipient_id = alert.get("sent_to")
+        msg_id = alert.get("message_id")
+        chat_id = alert.get("chat_id")
+
+        # DND: skip Telegram delivery (audit log still happens below).
         if recipient_id:
             recipient = await get_platform_db().get_user_by_telegram_id(recipient_id)
             if recipient and recipient.is_in_quiet_hours():
@@ -213,17 +219,47 @@ async def _auto_resolve_vehicle_alerts(
                 )
                 continue
 
+        edited = False
+        if msg_id and chat_id:
+            try:
+                await bot_app.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=msg_id,
+                    text=resolve_text,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=resolved_kb,
+                )
+                edited = True
+            except TGBadRequest as e:
+                if "not modified" in str(e).lower():
+                    edited = True
+                else:
+                    logger.debug(
+                        "Auto-resolve edit failed for msg %s: %s — falling back to send-new",
+                        msg_id, e,
+                    )
+            except Exception as e:
+                logger.debug("Auto-resolve edit error for msg %s: %s", msg_id, e)
+
+        if edited:
+            continue
+
+        # Fallback path: delete the original alert and send a fresh
+        # resolved message.  Only reached when the in-place edit failed.
+        if msg_id and chat_id:
+            try:
+                await bot_app.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+            except Exception:
+                logger.debug(
+                    "Failed to delete old alert msg %s during auto-resolve fallback",
+                    msg_id,
+                )
         try:
             await bot_app.bot.send_message(
                 chat_id=alert["sent_to"],
                 text=resolve_text,
                 parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton(
-                        f"📋 View Truck #{vname}",
-                        callback_data=f"covehicle_{alert_co}_{vname}",
-                    )],
-                ]),
+                reply_markup=resolved_kb,
             )
         except Exception as e:
             logger.debug("Could not send auto-resolve message: %s", e)
@@ -321,27 +357,54 @@ async def handle_back_to_alert(update, context, ack_id: int):
 
 # ── Re-escalation of unacknowledged CRITICAL alerts ──────────────
 
-async def re_escalate_critical_alerts(app: Application):
-    """Hourly job: re-notify subscribers about CRITICAL alerts that have
-    been sitting unacknowledged for more than ``REESCALATE_AFTER_MINUTES``.
+def _backoff_hours_for_attempt(attempt_index: int, schedule: tuple[int, ...]) -> int:
+    """Pick the wait-hours for the next reminder.
 
-    Behaviour
-    ---------
-    * Pings each original recipient with a short reminder message that
-      links back to the original alert (via ``back_alert_<ack_id>``).
-    * Does **not** create a new ack row — the original ack stays the
-      single source of truth.  We bump ``last_seen`` on the corresponding
-      alert_history row so an ops dashboard can observe the reminder.
-    * Sends at most one reminder per hour per ack: we mark the row as
-      seen via ``last_seen`` and skip rows whose ``last_seen`` is within
-      the same window.
-    * Respects DND: queues the reminder for later delivery if the
-      recipient is currently in quiet hours.
+    ``attempt_index`` is the count of reminders ALREADY sent (0 = none yet).
+    Returns the schedule entry, clamped to the last value when we're past
+    the array length so chronic alerts settle at the longest backoff.
     """
-    from infra.config import REESCALATE_AFTER_MINUTES, REESCALATE_ALERT_TYPES
+    if not schedule:
+        return 1
+    if attempt_index < 0:
+        attempt_index = 0
+    if attempt_index >= len(schedule):
+        return schedule[-1]
+    return schedule[attempt_index]
+
+
+async def re_escalate_critical_alerts(app: Application):
+    """Hourly job: bump unacknowledged CRITICAL/WARNING alerts.
+
+    Major rewrite (2026-05) addressing the 360+ reminders/recipient noise
+    pattern.  Now:
+
+      * Iterates ``alert_history`` (one row per logical alert) instead of
+        ``alert_acknowledgments`` (one row per delivery × subscriber).
+        Subscriber fan-out happens once per logical alert per attempt.
+      * Caps at ``REESCALATE_MAX_ATTEMPTS`` reminders per logical alert
+        across its entire lifetime — after that, the alert stays in the
+        dashboard pending list but stops pinging Telegram.
+      * Exponential backoff per attempt via ``REESCALATE_BACKOFF_HOURS``
+        (default 1h → 4h → 12h → 24h between successive reminders).
+      * Skips alerts that are muted (alert_mutes table).
+      * Edits the existing alert message in place with an "[N reminders]"
+        prefix instead of sending a fresh push notification.  Falls back
+        to send-new only when the edit fails.
+      * Per-account isolation via tenant DB; never mixes data across
+        accounts.
+    """
+    from infra.config import (
+        REESCALATE_AFTER_MINUTES,
+        REESCALATE_ALERT_TYPES,
+        REESCALATE_MAX_ATTEMPTS,
+        REESCALATE_BACKOFF_HOURS,
+    )
     from infra.services import get_platform_db as _get_platform_db
 
     if REESCALATE_AFTER_MINUTES <= 0 or not REESCALATE_ALERT_TYPES:
+        return
+    if REESCALATE_MAX_ATTEMPTS <= 0:
         return
 
     platform = _get_platform_db()
@@ -352,93 +415,230 @@ async def re_escalate_critical_alerts(app: Application):
         return
 
     qualified_types = set(REESCALATE_ALERT_TYPES)
+    now_dt = datetime.now(timezone.utc)
     sent = 0
+    suppressed_muted = 0
+    suppressed_capped = 0
+
     for acct in accounts:
         account_id = getattr(acct, "id", None)
         if not account_id:
             continue
         try:
             tenant = await get_tenant_db(account_id)
-            stale = await tenant.get_stale_unacked_alerts(
-                account_id, REESCALATE_AFTER_MINUTES,
-            )
         except Exception as e:
             logger.debug("re_escalate: tenant fetch failed for %s: %s", account_id, e)
             continue
-        if not stale:
+
+        # First reminder fires after REESCALATE_AFTER_MINUTES; further
+        # reminders use REESCALATE_BACKOFF_HOURS[count-1].  We compute
+        # the strictest cutoff (min of current backoff window) below per
+        # row, but the SQL pre-filter uses the loosest one to avoid
+        # fetching everything.
+        loose_cutoff_min = min(
+            REESCALATE_AFTER_MINUTES,
+            REESCALATE_BACKOFF_HOURS[0] * 60 if REESCALATE_BACKOFF_HOURS else 60,
+        )
+        cutoff_iso = (now_dt - timedelta(minutes=loose_cutoff_min)).isoformat()
+        try:
+            candidates = await tenant.get_active_unacked_history_for_reescalation(
+                account_id, cutoff_iso, REESCALATE_MAX_ATTEMPTS,
+            )
+        except Exception as e:
+            logger.debug("re_escalate: candidate fetch failed acct=%d: %s", account_id, e)
+            continue
+        if not candidates:
             continue
 
         bot_app = get_app_for_account(account_id) or app
         if not bot_app:
             continue
 
-        for alert in stale:
-            if alert.get("alert_type") not in qualified_types:
+        for hist in candidates:
+            atype = hist.get("alert_type", "alert")
+            if atype not in qualified_types:
                 continue
-            recipient_id = alert.get("sent_to")
-            if not recipient_id:
-                continue
-            ack_id = alert.get("id")
-            vname = alert.get("vehicle_name", "?")
-            atype = alert.get("alert_type", "alert")
+
+            history_id = hist.get("id")
+            attempts_so_far = int(hist.get("reescalate_count") or 0)
+
+            # Per-row cooldown using the backoff schedule.
+            wait_hours = _backoff_hours_for_attempt(
+                attempts_so_far, REESCALATE_BACKOFF_HOURS,
+            )
+            last_sent = hist.get("reescalate_last_sent_at")
+            if last_sent:
+                try:
+                    last_dt = datetime.fromisoformat(last_sent)
+                    if (now_dt - last_dt) < timedelta(hours=wait_hours):
+                        continue
+                except Exception:
+                    pass
+            else:
+                # First-ever reminder gates on first_seen + REESCALATE_AFTER_MINUTES
+                first_seen = hist.get("first_seen") or ""
+                if first_seen:
+                    try:
+                        first_dt = datetime.fromisoformat(first_seen)
+                        if (now_dt - first_dt) < timedelta(minutes=REESCALATE_AFTER_MINUTES):
+                            continue
+                    except Exception:
+                        pass
+
+            # Mute check — operator silenced this alert.
             try:
-                created = datetime.fromisoformat(alert["created_at"])
-                age_min = int(
-                    (datetime.now(timezone.utc) - created).total_seconds() / 60,
-                )
+                if await tenant.is_alert_history_muted(history_id, account_id):
+                    suppressed_muted += 1
+                    continue
+            except Exception:
+                pass
+
+            vid = hist.get("vehicle_id", "")
+            vname = hist.get("vehicle_name", "?")
+            try:
+                first_dt = datetime.fromisoformat(hist.get("first_seen") or "")
+                age_min = int((now_dt - first_dt).total_seconds() / 60)
             except Exception:
                 age_min = REESCALATE_AFTER_MINUTES
-            if age_min >= 60:
-                age_str = f"{age_min // 60}h {age_min % 60}m"
-            else:
-                age_str = f"{age_min} min"
+            age_str = f"{age_min // 60}h {age_min % 60}m" if age_min >= 60 else f"{age_min} min"
 
-            text = (
+            attempt_n = attempts_so_far + 1
+            reminder_text = (
                 "━━━━━━━━━━━━━━━━━━━\n"
-                "  🔴  <b>UNACKNOWLEDGED ALERT</b>\n"
+                f"  🔴  <b>UNACKNOWLEDGED ALERT</b>"
+                f" (reminder {attempt_n}/{REESCALATE_MAX_ATTEMPTS})\n"
                 "━━━━━━━━━━━━━━━━━━━\n"
                 f"\n  🚛 Truck: <b>#{vname}</b>"
-                f"\n  🩺 {atype.title()} alert active for <b>{age_str}</b>"
-                "\n\n  Please acknowledge or escalate."
+                f"\n  🩺 {atype.title()} alert #<b>{history_id}</b>"
+                f" active for <b>{age_str}</b>"
+                "\n\n  Please acknowledge or mute."
             )
+
+            # Resolve every still-active recipient delivery for this
+            # logical alert.  We edit each subscriber's message in place
+            # (so they see "[reminder 2/4]" added to the existing alert
+            # bubble) instead of sending a brand-new push.
+            try:
+                deliveries = await tenant.auto_resolve_alerts_by_vehicle  # noqa
+            except AttributeError:
+                deliveries = None
+            try:
+                rows = await tenant.read_all(
+                    "SELECT * FROM alert_acknowledgments "
+                    "WHERE account_id = ? AND alert_type = ? AND vehicle_id = ? "
+                    "AND acknowledged_at IS NULL AND status = 'active'",
+                    (account_id, atype, vid),
+                )
+                deliveries = [dict(r) for r in rows]
+            except Exception as e:
+                logger.debug("re_escalate: deliveries fetch failed: %s", e)
+                deliveries = []
+            if not deliveries:
+                # No active deliveries to remind — likely already acked
+                # via a path that didn't clear history.  Bump count so
+                # we don't loop on this row.
+                try:
+                    await tenant.bump_reescalate_attempt(history_id, account_id)
+                except Exception:
+                    pass
+                continue
+
             kb = InlineKeyboardMarkup([[
                 InlineKeyboardButton(
                     "🔎 Open alert",
-                    callback_data=f"back_alert_{ack_id}",
+                    callback_data=f"back_alert_{deliveries[0]['id']}",
                 ),
             ]])
 
-            # Respect DND
-            try:
-                recipient = await _get_platform_db().get_user_by_telegram_id(recipient_id)
-            except Exception:
-                recipient = None
-            if recipient and recipient.is_in_quiet_hours():
+            attempt_sent_anywhere = False
+            for delivery in deliveries:
+                recipient_id = delivery.get("sent_to")
+                if not recipient_id:
+                    continue
+
+                # Respect DND: queue the reminder so it lands when the
+                # recipient is back online.
                 try:
-                    await tenant.queue_dnd_alert(
-                        account_id=account_id,
-                        telegram_id=recipient_id,
-                        alert_type=atype,
-                        vehicle_name=vname,
-                        alert_text=text,
-                    )
+                    recipient = await _get_platform_db().get_user_by_telegram_id(recipient_id)
+                except Exception:
+                    recipient = None
+                if recipient and recipient.is_in_quiet_hours():
+                    try:
+                        await tenant.queue_dnd_alert(
+                            account_id=account_id,
+                            telegram_id=recipient_id,
+                            alert_type=atype,
+                            vehicle_name=vname,
+                            alert_text=reminder_text,
+                        )
+                    except Exception:
+                        pass
+                    attempt_sent_anywhere = True
+                    continue
+
+                msg_id = delivery.get("message_id")
+                chat_id = delivery.get("chat_id")
+                edited = False
+                if msg_id and chat_id:
+                    try:
+                        await bot_app.bot.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=msg_id,
+                            text=reminder_text,
+                            parse_mode=ParseMode.HTML,
+                            reply_markup=kb,
+                        )
+                        edited = True
+                    except TGBadRequest as e:
+                        if "not modified" in str(e).lower():
+                            edited = True
+                        else:
+                            logger.debug(
+                                "re_escalate: edit failed for delivery %s: %s",
+                                delivery.get("id"), e,
+                            )
+                    except Exception as e:
+                        logger.debug(
+                            "re_escalate: edit error for delivery %s: %s",
+                            delivery.get("id"), e,
+                        )
+
+                if not edited:
+                    # Fallback: send fresh.  Only reached when edit
+                    # is impossible (msg deleted, > 48 h old, etc.).
+                    try:
+                        await bot_app.bot.send_message(
+                            chat_id=recipient_id,
+                            text=reminder_text,
+                            parse_mode=ParseMode.HTML,
+                            reply_markup=kb,
+                        )
+                    except Exception as e:
+                        logger.debug(
+                            "re_escalate: send fallback failed for %s: %s",
+                            recipient_id, e,
+                        )
+                        continue
+                attempt_sent_anywhere = True
+
+            if attempt_sent_anywhere:
+                try:
+                    new_count = await tenant.bump_reescalate_attempt(history_id, account_id)
+                    sent += 1
+                    if new_count >= REESCALATE_MAX_ATTEMPTS:
+                        suppressed_capped += 1
+                        logger.info(
+                            "re_escalate: alert #%d hit max attempts (%d) — silenced",
+                            history_id, REESCALATE_MAX_ATTEMPTS,
+                        )
                 except Exception as e:
-                    logger.debug("re_escalate: DND queue failed: %s", e)
-                continue
+                    logger.debug(
+                        "re_escalate: bump_reescalate_attempt failed for %d: %s",
+                        history_id, e,
+                    )
 
-            try:
-                await bot_app.bot.send_message(
-                    chat_id=recipient_id,
-                    text=text,
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=kb,
-                )
-                sent += 1
-            except Exception as e:
-                logger.debug(
-                    "re_escalate: send failed for ack %s -> %s: %s",
-                    ack_id, recipient_id, e,
-                )
-
-    if sent:
-        logger.info("re_escalate: sent %d reminder(s)", sent)
+    if sent or suppressed_muted or suppressed_capped:
+        logger.info(
+            "re_escalate: sent=%d skipped_muted=%d capped=%d",
+            sent, suppressed_muted, suppressed_capped,
+        )

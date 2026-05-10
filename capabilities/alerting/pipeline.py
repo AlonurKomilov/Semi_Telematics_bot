@@ -13,6 +13,7 @@ from enum import Enum
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application
 from telegram.constants import ParseMode
+from telegram.error import BadRequest as TGBadRequest, TelegramError
 
 from adapters.storage import Role
 from adapters.samsara.client import (
@@ -56,6 +57,18 @@ _COOLDOWN_HOURS = {
 
 # J1939 SPNs related to coolant system
 COOLANT_SPNS = {110, 111, 2609, 441, 1691}  # temp, level, low-level, pressure, additive
+
+# Occurrence numbers that force a fresh push (instead of silent edit-in-place).
+# 1 = the original alert.  10/25/50/100/250/500/1000 are "still not fixed?"
+# nudges that get progressively rarer so a chronic alert doesn't churn the
+# notification panel every milestone.  Tune via PIPELINE_ESCALATION env var
+# (comma-separated ints).
+import os as _os
+_ESCALATION_OCCURRENCES: frozenset[int] = frozenset(
+    int(x) for x in _os.getenv(
+        "PIPELINE_ESCALATION", "1,10,25,50,100,250,500,1000",
+    ).split(",") if x.strip().isdigit()
+) or frozenset({1})
 
 # Startup warm-up: first cycle of each check only populates caches
 # without sending alerts. Prevents alert bursts on server restart.
@@ -172,13 +185,30 @@ async def send_alert(
     _hist_first_seen = existing_hist["first_seen"] if existing_hist else ""
     _now_str = datetime.now(timezone.utc).isoformat()
     history_footer = format_alert_history_footer(_hist_count, _hist_first_seen, _now_str)
-    await tenant.upsert_alert_history(
+    history_record = await tenant.upsert_alert_history(
         account_id=account_id,
         alert_type=alert_type,
         vehicle_id=vid,
         vehicle_name=vname,
         last_detail=alert_key_detail,
     )
+
+    # ── Per-alert mute check (D2) ────────────────────────────────
+    # Operators can mute a specific alert_history row for N hours so
+    # known/in-progress issues stop pinging.  We still upsert the
+    # history above so the dashboard shows the alert is still active —
+    # we just skip Telegram delivery.  CRITICAL alerts ignore mutes
+    # because something genuinely on fire should not stay quiet.
+    if (
+        severity != AlertSeverity.CRITICAL
+        and history_record
+        and await tenant.is_alert_history_muted(history_record["id"], account_id)
+    ):
+        logger.info(
+            "alert muted: acct=%d type=%s vid=%s history_id=%s — skipping delivery",
+            account_id, alert_type, vid, history_record["id"],
+        )
+        return
 
     for sub in subscribers:
         # Driver: only alert for their own truck.
@@ -202,22 +232,9 @@ async def send_alert(
             continue
 
         try:
-            # ── Delete this subscriber's previous alert message (per-subscriber lookup) ──
-            # For CRITICAL/WARNING: look in alert_acknowledgments (already fetched later).
-            # For INFO: look up the latest 'info' ack row for this subscriber+vehicle+type.
-            if not needs_ack:
-                old_info_acks = await tenant.get_info_alert_ack(
-                    account_id, vid, alert_type, sub.telegram_id,
-                )
-                if old_info_acks and old_info_acks.get("message_id"):
-                    try:
-                        await bot_app.bot.delete_message(
-                            chat_id=sub.telegram_id,
-                            message_id=old_info_acks["message_id"],
-                        )
-                    except Exception:
-                        logger.debug("Failed to delete old INFO alert message %s for user %s",
-                                     old_info_acks["message_id"], sub.telegram_id)
+            # Old "delete prior INFO message" hop has been folded into
+            # the INFO branch below — it now tries edit-in-place first
+            # and only falls back to delete+send when the edit fails.
 
             # Build message text
             send_text = alert_text
@@ -264,12 +281,94 @@ async def send_alert(
             reply_to = video_msg_id or photo_msg_id
 
             if needs_ack:
-                # Supersede old unacked alerts for this vehicle/type/subscriber
+                # ── Edit-in-place if there's an existing active alert
+                #    for this (subscriber, alert_type, vehicle).
+                # Production behaviour was: every re-fire deleted the
+                # previous Telegram message and sent a fresh one — which
+                # produced the "722 messages in one shift" complaint.
+                # We now look up the most recent un-acked delivery for
+                # this triple and try to edit it in place: same message
+                # in the chat, no notification ping, just a fresh
+                # occurrence count in the footer.
+                #
+                # Edit is skipped (and we fall back to send-new) when:
+                #   - no prior active ack exists (this is a fresh alert)
+                #   - the prior message attached media (video / photo);
+                #     Telegram doesn't let us swap a text msg in/out of
+                #     a media one
+                #   - the edit fails (user deleted the message, > 48 h
+                #     old, ParseMode mismatch, etc.)
                 old_acks = await tenant.get_active_vehicle_acks(
                     account_id, vid, sub.telegram_id,
                 )
-                for old_ack in old_acks:
-                    if old_ack.get("alert_type") == alert_type:
+                same_type_acks = [a for a in old_acks if a.get("alert_type") == alert_type]
+                edited_in_place = False
+                if same_type_acks and not video_url and not photo_bytes:
+                    most_recent = max(
+                        same_type_acks,
+                        key=lambda a: a.get("created_at") or "",
+                    )
+                    edit_ack_id = most_recent["id"]
+                    edit_msg_id = most_recent.get("message_id")
+                    edit_chat_id = most_recent.get("chat_id")
+                    if edit_msg_id and edit_chat_id:
+                        try:
+                            await bot_app.bot.edit_message_text(
+                                chat_id=edit_chat_id,
+                                message_id=edit_msg_id,
+                                text=send_text,
+                                parse_mode=ParseMode.HTML,
+                                reply_markup=build_alert_keyboard(
+                                    severity, co, vname,
+                                    ack_id=edit_ack_id,
+                                    alert_type=alert_type,
+                                    vehicle_id=vid,
+                                    event_id=event_id,
+                                    event_time=event_time,
+                                ),
+                            )
+                            edited_in_place = True
+                        except TGBadRequest as e:
+                            err = str(e).lower()
+                            if "not modified" in err:
+                                # Identical text — counts as success
+                                edited_in_place = True
+                            else:
+                                logger.debug(
+                                    "edit-in-place failed for user %s msg %s: %s — falling back to send-new",
+                                    sub.telegram_id, edit_msg_id, e,
+                                )
+                        except TelegramError as e:
+                            logger.debug(
+                                "Telegram error during edit for user %s msg %s: %s",
+                                sub.telegram_id, edit_msg_id, e,
+                            )
+
+                # ── Escalation thresholds ─────────────────────────
+                # Most re-fires should silently edit in place (above).
+                # But every "push-worthy" milestone (occurrence 1, 10,
+                # 25, 50, 100, 250, 500, 1000…) we force a fresh
+                # message so the user gets a visible nudge: "This has
+                # now fired N times — please look at it."
+                # If we already edited above, but the milestone wants a
+                # push, undo the edit decision and fall through to
+                # delete-old + send-new.
+                if edited_in_place and _hist_count in _ESCALATION_OCCURRENCES:
+                    edited_in_place = False
+                    logger.info(
+                        "alert escalation milestone: acct=%d type=%s vid=%s n=%d — sending fresh",
+                        account_id, alert_type, vid, _hist_count,
+                    )
+
+                if edited_in_place:
+                    # Supersede the OTHER same-type acks (defensive — usually empty).
+                    for old_ack in same_type_acks:
+                        if old_ack["id"] != edit_ack_id:
+                            await tenant.supersede_alert_ack(old_ack["id"])
+                else:
+                    # Fallback: legacy delete-old + send-new.  Used on
+                    # first-occurrence (no prior ack) AND on edit-failure.
+                    for old_ack in same_type_acks:
                         await tenant.supersede_alert_ack(old_ack["id"])
                         if old_ack.get("message_id") and old_ack.get("chat_id"):
                             try:
@@ -281,68 +380,116 @@ async def send_alert(
                                 logger.debug("Failed to delete superseded alert msg %s",
                                              old_ack["message_id"])
 
-                # Send with basic keyboard (no ack_id yet)
-                basic_kb = build_alert_keyboard(
-                    severity, co, vname, alert_type=alert_type,
-                    vehicle_id=vid, event_id=event_id, event_time=event_time,
-                )
-                msg = await bot_app.bot.send_message(
-                    chat_id=sub.telegram_id,
-                    text=send_text,
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=basic_kb,
-                    reply_to_message_id=reply_to,
-                )
-
-                # Create ACK record
-                alert_key = f"{co}:{vid}:{alert_key_detail}"
-                ack_id = await tenant.create_alert_ack(
-                    account_id=account_id,
-                    alert_type=alert_type,
-                    vehicle_id=vid,
-                    vehicle_name=vname,
-                    alert_key=alert_key,
-                    message_id=msg.message_id,
-                    chat_id=sub.telegram_id,
-                    sent_to=sub.telegram_id,
-                )
-
-                # Update keyboard with ACK buttons
-                ack_kb = build_alert_keyboard(
-                    severity, co, vname, ack_id=ack_id, alert_type=alert_type,
-                    vehicle_id=vid, event_id=event_id, event_time=event_time,
-                )
-                await bot_app.bot.edit_message_reply_markup(
-                    chat_id=sub.telegram_id,
-                    message_id=msg.message_id,
-                    reply_markup=ack_kb,
-                )
+                    basic_kb = build_alert_keyboard(
+                        severity, co, vname, alert_type=alert_type,
+                        vehicle_id=vid, event_id=event_id, event_time=event_time,
+                    )
+                    msg = await bot_app.bot.send_message(
+                        chat_id=sub.telegram_id,
+                        text=send_text,
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=basic_kb,
+                        reply_to_message_id=reply_to,
+                    )
+                    alert_key = f"{co}:{vid}:{alert_key_detail}"
+                    ack_id = await tenant.create_alert_ack(
+                        account_id=account_id,
+                        alert_type=alert_type,
+                        vehicle_id=vid,
+                        vehicle_name=vname,
+                        alert_key=alert_key,
+                        message_id=msg.message_id,
+                        chat_id=sub.telegram_id,
+                        sent_to=sub.telegram_id,
+                    )
+                    # Swap the keyboard now that we have an ack_id
+                    ack_kb = build_alert_keyboard(
+                        severity, co, vname, ack_id=ack_id, alert_type=alert_type,
+                        vehicle_id=vid, event_id=event_id, event_time=event_time,
+                    )
+                    await bot_app.bot.edit_message_reply_markup(
+                        chat_id=sub.telegram_id,
+                        message_id=msg.message_id,
+                        reply_markup=ack_kb,
+                    )
             else:
-                # INFO — send alert; store a lightweight delivery record in
-                # alert_acknowledgments (status='info') so the next occurrence
-                # can delete this subscriber's previous message.
-                basic_kb = build_alert_keyboard(
-                    severity, co, vname, alert_type=alert_type,
-                    vehicle_id=vid, event_id=event_id, event_time=event_time,
+                # INFO — try edit-in-place on the prior INFO message
+                # (same recipient, same vehicle+type) so re-fires update
+                # the live status row instead of pinging again.  If
+                # there's no prior message or the edit fails, fall back
+                # to send-new just like the CRITICAL/WARNING branch.
+                old_info = await tenant.get_info_alert_ack(
+                    account_id, vid, alert_type, sub.telegram_id,
                 )
-                msg = await bot_app.bot.send_message(
-                    chat_id=sub.telegram_id,
-                    text=send_text,
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=basic_kb,
-                    reply_to_message_id=reply_to,
-                )
-                alert_key = f"{co}:{vid}:{alert_key_detail}"
-                await tenant.create_info_alert_ack(
-                    account_id=account_id,
-                    alert_type=alert_type,
-                    vehicle_id=vid,
-                    vehicle_name=vname,
-                    alert_key=alert_key,
-                    message_id=msg.message_id,
-                    chat_id=sub.telegram_id,
-                    sent_to=sub.telegram_id,
-                )
+                edited_info = False
+                if old_info and not video_url and not photo_bytes:
+                    msg_id = old_info.get("message_id")
+                    chat_id = old_info.get("chat_id")
+                    if msg_id and chat_id:
+                        try:
+                            await bot_app.bot.edit_message_text(
+                                chat_id=chat_id,
+                                message_id=msg_id,
+                                text=send_text,
+                                parse_mode=ParseMode.HTML,
+                                reply_markup=build_alert_keyboard(
+                                    severity, co, vname,
+                                    alert_type=alert_type,
+                                    vehicle_id=vid,
+                                    event_id=event_id,
+                                    event_time=event_time,
+                                ),
+                            )
+                            edited_info = True
+                        except TGBadRequest as e:
+                            if "not modified" in str(e).lower():
+                                edited_info = True
+                            else:
+                                logger.debug(
+                                    "INFO edit-in-place failed for user %s msg %s: %s",
+                                    sub.telegram_id, msg_id, e,
+                                )
+                        except TelegramError as e:
+                            logger.debug(
+                                "Telegram error during INFO edit for user %s msg %s: %s",
+                                sub.telegram_id, msg_id, e,
+                            )
+
+                if not edited_info:
+                    # Fallback: existing path (delete prior, send fresh).
+                    if old_info and old_info.get("message_id"):
+                        try:
+                            await bot_app.bot.delete_message(
+                                chat_id=sub.telegram_id,
+                                message_id=old_info["message_id"],
+                            )
+                        except Exception:
+                            logger.debug(
+                                "Failed to delete old INFO msg %s for user %s",
+                                old_info["message_id"], sub.telegram_id,
+                            )
+                    basic_kb = build_alert_keyboard(
+                        severity, co, vname, alert_type=alert_type,
+                        vehicle_id=vid, event_id=event_id, event_time=event_time,
+                    )
+                    msg = await bot_app.bot.send_message(
+                        chat_id=sub.telegram_id,
+                        text=send_text,
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=basic_kb,
+                        reply_to_message_id=reply_to,
+                    )
+                    alert_key = f"{co}:{vid}:{alert_key_detail}"
+                    await tenant.create_info_alert_ack(
+                        account_id=account_id,
+                        alert_type=alert_type,
+                        vehicle_id=vid,
+                        vehicle_name=vname,
+                        alert_key=alert_key,
+                        message_id=msg.message_id,
+                        chat_id=sub.telegram_id,
+                        sent_to=sub.telegram_id,
+                    )
         except Exception as e:
             logger.error("%s alert delivery failed for user %s (account %d): %s",
                          alert_type, sub.telegram_id, account_id, e, exc_info=True)

@@ -9,7 +9,11 @@ from infra.context import set_tenant_display
 from interfaces.bot.config import SUPPORT_CONTACT, get_platform_db, get_tenant_db
 from interfaces.bot.helpers import _show
 from interfaces.bot.keyboards import system_owner_kb, unregistered_kb, back_kb
-from capabilities.formatting import format_system_owner_welcome, format_welcome_unregistered
+from capabilities.formatting import (
+    format_system_owner_welcome,
+    format_welcome_unregistered,
+    format_unregistered_member,
+)
 
 
 async def _is_group_chat(update: Update) -> bool:
@@ -95,12 +99,7 @@ def _require_registered(func):
                 account_name = account.name if account else "this organization"
                 first = getattr(update.effective_user, "first_name", "") or ""
                 await _show(update, context, [
-                    f"👋 Hi{(' ' + first) if first else ''}!\n\n"
-                    f"This bot belongs to <b>{account_name}</b>.\n"
-                    "You're not registered as a member.\n\n"
-                    "Ask your admin to send you an invite link,\n"
-                    "or contact us at @Allen_Klein\n\n"
-                    "🌐 <a href=\"https://4truck.us\">4truck.us</a>"
+                    format_unregistered_member(account_name, name=first, support_contact=SUPPORT_CONTACT),
                 ], keyboard=unregistered_kb())
                 return
 

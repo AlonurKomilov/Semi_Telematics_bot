@@ -32,6 +32,7 @@ from capabilities.vehicles.service import (
 from capabilities.telemetry.service import get_vehicle_health as _svc_vehicle_health
 from capabilities.telemetry import warehouse_reader as _wh_reader
 from capabilities.location.service import classify_vehicle_status
+from infra.platform import get_tenant_db as _get_tenant_db
 import infra.cache as _redis
 
 # Short TTL for the full Samsara snapshot backing the vehicle list.
@@ -98,6 +99,23 @@ def _derive_engine_state(status: str) -> str:
     return "Off"
 
 
+def _extract_odometer(v: dict) -> tuple[float | None, str | None]:
+    """Pull odometer (miles, ISO timestamp) from a merged vehicle dict.
+
+    The value comes from the warehouse ``vehicle_state.odometer_mi``
+    column populated by ``ingest_vehicle_state``; the fallback live
+    path (cold cache) shapes the same key.  Vehicles without a CAN
+    bus gateway return None for both fields.
+    """
+    odometer = v.get("odometer")
+    if isinstance(odometer, dict):
+        miles = odometer.get("miles")
+        timestamp = odometer.get("time")
+        if isinstance(miles, (int, float)):
+            return float(miles), timestamp if isinstance(timestamp, str) else None
+    return None, None
+
+
 def _simplify(v: dict) -> dict:
     """Flatten a fleet overview vehicle into the consistent API shape."""
     loc = v.get("location", {})
@@ -109,6 +127,7 @@ def _simplify(v: dict) -> dict:
         or loc.get("address")
         or ""
     )
+    odometer_miles, odometer_time = _extract_odometer(v)
     return {
         "id": v.get("id"),
         "name": v.get("name", ""),
@@ -121,6 +140,8 @@ def _simplify(v: dict) -> dict:
         "fuel_percent": _extract_fuel(v),
         "def_percent": _extract_def(v),
         "fault_count": _extract_fault_count(v),
+        "odometer_miles": odometer_miles,
+        "odometer_time": odometer_time,
         "status": status,
         "time": (
             loc.get("time")
@@ -145,6 +166,7 @@ def _normalize_detail(v: dict) -> dict:
         or loc.get("address")
         or ""
     )
+    odometer_miles, odometer_time = _extract_odometer(v)
     return {
         **v,
         "fuel_percent": fuel_pct,
@@ -156,6 +178,8 @@ def _normalize_detail(v: dict) -> dict:
         "engineState": engine_state,
         "status": status,
         "fault_count": len(dtcs),
+        "odometer_miles": odometer_miles,
+        "odometer_time": odometer_time,
         "formattedAddress": address,
         "address": address,
         "latitude": loc.get("latitude"),
@@ -201,6 +225,41 @@ async def vehicles_list(
     )
     vehicles = filter_by_allowed_companies(vehicles, allowed)
     vehicles = await filter_by_assigned_trucks(vehicles, user)
+
+    # Enrich with warehouse-sourced odometer regardless of which path
+    # produced ``vehicles``.  When WAREHOUSE_READS_ENABLED is off the
+    # rows came from live Samsara via _live_cached and don't include
+    # odometer (Samsara overview never does); when on the rows already
+    # have odometer but a fresh re-read is cheap and keeps the contract
+    # uniform.  Read directly from vehicle_state mixin to bypass the
+    # cutover flag.
+    if vehicles:
+        tenant_db = await _get_tenant_db(user["account_id"])
+        warehouse_rows = await tenant_db.get_vehicle_state(
+            user["account_id"], company=company,
+        )
+        odometer_by_id: dict[str, dict] = {}
+        odometer_by_name: dict[str, dict] = {}
+        for row in warehouse_rows:
+            miles = row.get("odometer_mi")
+            if miles is None:
+                continue
+            odometer = {"miles": miles, "time": row.get("odometer_time")}
+            rid = str(row.get("vehicle_id") or "")
+            rname = (row.get("vehicle_name") or "").lower()
+            if rid:
+                odometer_by_id[rid] = odometer
+            if rname:
+                odometer_by_name[rname] = odometer
+        for v in vehicles:
+            if v.get("odometer"):
+                continue
+            vid = str(v.get("id") or "")
+            vname = (v.get("name") or "").lower()
+            odometer = odometer_by_id.get(vid) or odometer_by_name.get(vname)
+            if odometer:
+                v["odometer"] = odometer
+
     result = [_simplify(v) for v in vehicles]
 
     if search:
@@ -230,7 +289,14 @@ async def vehicle_detail(
     company: str | None = Query(None),
     user: dict = Depends(require_permission_any("can_faults", "can_vehicle_own")),
 ):
-    """Single vehicle detail by name."""
+    """Single vehicle detail by name.
+
+    Live Samsara is the source for static metadata (VIN, make, model,
+    license plate) which the warehouse intentionally doesn't track.
+    Dynamic telemetry (odometer_miles + odometer_time) is merged in
+    from ``vehicle_state`` so the value is consistent with everywhere
+    else in the app — DB stays the single source of truth for state.
+    """
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
     matches = await _svc_vehicle_detail(user["account_id"], vehicle_name, company=company)
@@ -238,6 +304,37 @@ async def vehicle_detail(
     matches = await filter_by_assigned_trucks(matches, user)
     if not matches:
         return {"error": "Vehicle not found", "vehicles": []}
+
+    # Enrich with warehouse-sourced odometer.  Read the raw vehicle_state
+    # table directly via the mixin — bypasses the WAREHOUSE_READS_ENABLED
+    # cutover flag because odometer is *only* in the warehouse, never in
+    # the live overview, so we always need it regardless of cutover phase.
+    tenant = await _get_tenant_db(user["account_id"])
+    warehouse_rows = await tenant.get_vehicle_state(
+        user["account_id"], company=company, vehicle_nums=[vehicle_name],
+    )
+    odometer_by_id: dict[str, dict] = {}
+    odometer_by_name: dict[str, dict] = {}
+    for row in warehouse_rows:
+        miles = row.get("odometer_mi")
+        if miles is None:
+            continue
+        odometer = {"miles": miles, "time": row.get("odometer_time")}
+        rid = str(row.get("vehicle_id") or "")
+        rname = (row.get("vehicle_name") or "").lower()
+        if rid:
+            odometer_by_id[rid] = odometer
+        if rname:
+            odometer_by_name[rname] = odometer
+    for match in matches:
+        if match.get("odometer"):
+            continue
+        match_id = str(match.get("id") or "")
+        match_name = (match.get("name") or "").lower()
+        odometer = odometer_by_id.get(match_id) or odometer_by_name.get(match_name)
+        if odometer:
+            match["odometer"] = odometer
+
     normalized = [_normalize_detail(m) for m in matches]
     return {"vehicles": normalized, "count": len(normalized)}
 

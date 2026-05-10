@@ -44,6 +44,19 @@ async def seeded(tmp_path):
     )
 
     # Two distinct active alerts: one on driver's truck, one on stranger's.
+    # `/api/alerts/pending` and /pending/count read from `alert_history`
+    # (the canonical 1-row-per-logical-alert table) so the seed must
+    # populate that — production always upserts history before creating
+    # delivery rows.  ack rows are still seeded below to keep the
+    # legacy ack-by-ack-id endpoints exercised in other tests.
+    await database.upsert_alert_history(
+        account_id=acct.id, alert_type="fault",
+        vehicle_id="V1", vehicle_name="T-DRIVER",
+    )
+    await database.upsert_alert_history(
+        account_id=acct.id, alert_type="fault",
+        vehicle_id="V2", vehicle_name="T-OTHER",
+    )
     await database.create_alert_ack(
         account_id=acct.id, alert_type="fault",
         vehicle_id="V1", vehicle_name="T-DRIVER",
@@ -113,11 +126,12 @@ class TestPendingCountEndpoint:
             assert r.status_code in (401, 403, 422)
 
     async def test_count_zero_when_all_acked(self, seeded):
-        # Acknowledge both pending alerts at the DB level.
+        # Acknowledge every active logical alert via the new
+        # alert_history-based path (cascades to deliveries).
         db = seeded["db"]
-        pending = await db.get_pending_alerts(seeded["acct"].id)
-        for row in pending:
-            await db.acknowledge_alert(row["id"], 7001, account_id=seeded["acct"].id)
+        history_rows = await db.get_active_alert_history_for_account(seeded["acct"].id)
+        for row in history_rows:
+            await db.acknowledge_alert_history(row["id"], 7001, account_id=seeded["acct"].id)
 
         async with AsyncClient(
             transport=ASGITransport(app=seeded["app"]), base_url="http://t"
