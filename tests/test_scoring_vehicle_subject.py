@@ -91,17 +91,29 @@ class TestVehicleEfficiencySignal:
 
 
 class TestEventsByVehicle:
-    def test_buckets_by_vehicle_id_and_name(self):
+    def test_buckets_under_vehicle_id_when_present(self):
+        # When both vehicle_id and vehicle_name exist, the event is
+        # counted ONCE under the id. (The legacy dual-keying behaviour
+        # caused double-counting if a caller iterated values() and was
+        # a name-collision risk with the driver path; both gone.)
         out = from_events_by_vehicle([
             {"vehicle_id": "v1", "vehicle_name": "T-1", "event_type": "harsh_brake"},
             {"vehicle_id": "v1", "vehicle_name": "T-1", "event_type": "speeding"},
             {"vehicle_id": "v2", "vehicle_name": "T-2", "event_type": "harsh_brake"},
         ])
-        # Indexed under both id (primary) and name (fallback).
         assert out["v1"]["count"] == 2
-        assert out["T-1"]["count"] == 2
         assert out["v2"]["count"] == 1
         assert out["v1"]["by_type"] == {"harsh_brake": 1, "speeding": 1}
+        # Name keys must NOT be present when id is available — that
+        # was the cross-contamination risk.
+        assert "T-1" not in out
+        assert "T-2" not in out
+
+    def test_falls_back_to_name_when_id_missing(self):
+        out = from_events_by_vehicle([
+            {"vehicle_id": "", "vehicle_name": "T-7", "event_type": "harsh_brake"},
+        ])
+        assert out["T-7"]["count"] == 1
 
     def test_empty_keys_skipped(self):
         out = from_events_by_vehicle([

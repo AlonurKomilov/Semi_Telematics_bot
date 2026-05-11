@@ -23,21 +23,23 @@ def from_events(events: list[dict]) -> dict[str, dict]:
 
 
 def from_events_by_vehicle(events: list[dict]) -> dict[str, dict]:
-    """Phase B: same shape as ``from_events`` but keyed by vehicle.
+    """Aggregate raw safety events into per-vehicle count buckets.
 
-    Indexed by both vehicle_id (primary) and vehicle_name (fallback) so
-    the caller can match either way, mirroring the driver path's
-    id-or-name fallback.
+    Returns ``{vehicle_id_or_name: {"count": int, "by_type": {...}}}``.
+    Mirrors ``from_vehicle_records`` keying (vehicle_id when present,
+    falls back to vehicle_name) so the lookup at the service layer
+    always hits a single canonical slot — no double-counting, and no
+    collision with the driver path's name space.
     """
     by_vehicle: dict[str, dict] = {}
     for e in events:
         vid = str(e.get("vehicle_id") or "").strip()
         vname = str(e.get("vehicle_name") or "").strip()
+        key = vid or vname
+        if not key:
+            continue
         et = e.get("event_type", "unknown")
-        for key in {vid, vname}:
-            if not key:
-                continue
-            slot = by_vehicle.setdefault(key, {"count": 0, "by_type": {}})
-            slot["count"] += 1
-            slot["by_type"][et] = slot["by_type"].get(et, 0) + 1
+        slot = by_vehicle.setdefault(key, {"count": 0, "by_type": {}})
+        slot["count"] += 1
+        slot["by_type"][et] = slot["by_type"].get(et, 0) + 1
     return by_vehicle

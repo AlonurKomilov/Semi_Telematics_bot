@@ -376,7 +376,14 @@ async def evaluate_subjects(
             },
         })
 
-    out.sort(key=lambda r: r["score"], reverse=True)
+    # Stable tie-break on subject_id keeps the leaderboard order
+    # deterministic across requests when two drivers / trucks score
+    # identically. Without this, dict-iteration order leaked into the
+    # ranking and the same pair could flicker positions between page
+    # loads. ``reverse=True`` sorts the score descending; we reverse
+    # subject_id with a tuple of (-score, subject_id) so ascending
+    # alphabetical id wins ties.
+    out.sort(key=lambda r: (-int(r["score"]), str(r.get("subject_id") or "")))
 
     # Structured timing — one log line per request, easy to grep in prod
     # to tell whether the slow step is Samsara, the DB, or our scoring

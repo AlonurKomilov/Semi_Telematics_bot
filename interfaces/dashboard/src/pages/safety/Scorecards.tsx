@@ -14,6 +14,7 @@ import {
   ErrorState,
   TableSkeleton,
   DateRangePresets,
+  useLoadingStage,
 } from '../../components/shell';
 import type {
   CompositeScorecard,
@@ -25,20 +26,28 @@ import type {
 
 // ── Color helpers ───────────────────────────────────────────────────
 
+// Single source of truth for score → bucket. scoreColor + scoreGrade
+// share the same cutoffs so a "B" badge never lands on a yellow
+// background (and to match the miniapp's gradeColor() at the same
+// thresholds).
+const SCORE_BUCKETS = [
+  { min: 85, grade: 'A', color: '#22c55e' },  // green
+  { min: 70, grade: 'B', color: '#84cc16' },  // lime
+  { min: 55, grade: 'C', color: '#eab308' },  // yellow
+  { min: 40, grade: 'D', color: '#f97316' },  // orange
+  { min: 0,  grade: 'F', color: '#ef4444' },  // red
+] as const;
+
+function scoreBucket(score: number) {
+  return SCORE_BUCKETS.find((b) => score >= b.min) ?? SCORE_BUCKETS[SCORE_BUCKETS.length - 1];
+}
+
 function scoreColor(score: number): string {
-  if (score >= 85) return '#22c55e';
-  if (score >= 70) return '#84cc16';
-  if (score >= 55) return '#eab308';
-  if (score >= 40) return '#f97316';
-  return '#ef4444';
+  return scoreBucket(score).color;
 }
 
 function scoreGrade(score: number): string {
-  if (score >= 90) return 'A';
-  if (score >= 80) return 'B';
-  if (score >= 70) return 'C';
-  if (score >= 60) return 'D';
-  return 'F';
+  return scoreBucket(score).grade;
 }
 
 function ScoreBadge({ score }: { score: number }) {
@@ -483,6 +492,10 @@ export default function Scorecards() {
 
   const cards = composite?.scorecards ?? [];
   const loading = isLoading && !composite;
+  // Composite scorecards are heavy — they evaluate every truck and
+  // can take 20-30s on a cold cache + warehouse fallback.  Surface
+  // progressive feedback so the page never reads as frozen.
+  const stage = useLoadingStage(loading);
 
   useEffect(() => {
     if (queryError) {
@@ -545,7 +558,8 @@ export default function Scorecards() {
     const cardsForExport = pillarFilter === 'all' ? cards : displayCards;
     const hasPillars = cardsForExport.some((c) => c.pillars);
     const headers = [
-      'driver_id', 'driver_name', 'company', 'score', 'grade',
+      'subject_id', 'subject_name', 'driver_id', 'driver_name',
+      'company', 'score', 'grade',
       'base', 'bonus_total', 'penalty_total',
       'miles', 'mpg', 'drive_hours', 'idle_hours',
       'eco_pct', 'overspeed_min', 'anticipatory_braking_pct',
@@ -561,10 +575,16 @@ export default function Scorecards() {
       const s = String(v);
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
+    // Spell "no data" explicitly in CSV so spreadsheets don't misread
+    // empty cells as zeros — important for pillar subtotals where 0
+    // means "max penalties applied" and missing data means "n/a".
+    const NA = 'n/a';
     const lines = [headers.join(',')];
     for (const c of cardsForExport) {
       const i = c.inputs;
       const row: unknown[] = [
+        c.subject_id ?? c.driver_id,
+        c.subject_name ?? c.driver_name,
         c.driver_id, c.driver_name, c.company || '', c.score, scoreGrade(c.score),
         c.base, c.bonus_total, c.penalty_total,
         i.miles, i.mpg, i.drive_hours, i.idle_hours,
@@ -575,9 +595,9 @@ export default function Scorecards() {
         const pe = c.pillars?.efficiency;
         const pc = c.pillars?.compliance;
         row.push(
-          ps?.has_data ? ps.subtotal : '',
-          pe?.has_data ? pe.subtotal : '',
-          pc?.has_data ? pc.subtotal : '',
+          ps?.has_data ? ps.subtotal : NA,
+          pe?.has_data ? pe.subtotal : NA,
+          pc?.has_data ? pc.subtotal : NA,
           c.total ?? c.score,
           c.insufficient_data ? '1' : '0',
           c.exposure?.miles ?? '',
@@ -651,8 +671,21 @@ export default function Scorecards() {
         </div>
       )}
 
-      {loading && cards.length === 0 ? (
-        <TableSkeleton rows={8} cols={6} />
+      {stage === 'timeout' && cards.length === 0 ? (
+        <ErrorState
+          title="Loading is taking too long"
+          message="Scoring every truck takes a moment — Samsara may be slow or the warehouse hasn't been populated yet. Try again, or refresh in a moment."
+        />
+      ) : loading && cards.length === 0 ? (
+        <TableSkeleton
+          rows={8}
+          cols={6}
+          message={
+            stage === 'slow'
+              ? 'Still loading… composite scoring across the fleet can take a moment.'
+              : 'Loading scorecards…'
+          }
+        />
       ) : cards.length === 0 ? (
         <EmptyState
           icon={Trophy}
@@ -689,6 +722,8 @@ export default function Scorecards() {
                     key={c.k}
                     type="button"
                     onClick={() => setPillarFilter(c.k)}
+                    aria-pressed={active}
+                    aria-label={`Filter by ${c.label.replace(/^\W+\s*/, '')} pillar`}
                     className={`text-xs px-3 py-1 rounded-full border transition ${
                       active
                         ? 'border-transparent text-white'
@@ -721,8 +756,11 @@ export default function Scorecards() {
       {detail && (
         <DetailDrawer
           card={detail}
-          rank={cards.findIndex((c) => c.driver_id === detail.driver_id) + 1}
-          total={cards.length}
+          // Rank against the currently displayed cohort so a
+          // pillar-filtered view doesn't surface a fleet-wide rank
+          // that confuses what the user is looking at.
+          rank={displayCards.findIndex((c) => c.driver_id === detail.driver_id) + 1}
+          total={displayCards.length}
           fleetAvg={stats.avgScore}
           days={days}
           onClose={() => setDetail(null)}

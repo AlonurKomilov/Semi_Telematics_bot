@@ -79,11 +79,18 @@ function deltaColor(d: number | null): string {
   return 'var(--st-red)';
 }
 
-/** Map a 0-100 score to a grade colour token. */
+/** Map a 0-100 score to a grade colour token.
+ *
+ * Cutoffs (85 / 70 / 55) align with the dashboard's ``scoreColor`` so
+ * the same driver doesn't render green here and yellow there. The
+ * miniapp design system exposes four hues; the dashboard splits the
+ * mid range with a fifth (lime/yellow), but the boundaries themselves
+ * are shared.
+ */
 function gradeColor(score: number): string {
   if (score >= 85) return 'var(--st-green)';
-  if (score >= 71) return 'var(--st-blue)';
-  if (score >= 51) return 'var(--st-orange)';
+  if (score >= 70) return 'var(--st-blue)';
+  if (score >= 55) return 'var(--st-orange)';
   return 'var(--st-red)';
 }
 
@@ -375,7 +382,7 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
             <span className="score-rank-row__delta" style={{ color: deltaColor(dlt.efficiency) }}>{fmtDelta(dlt.efficiency)}</span>
           </div>
           <div className="score-rank-row">
-            <Icon24CheckCircleOutline width={16} height={16} style={{ color: 'var(--st-violet)' }} />
+            <Icon24CheckCircleOutline width={16} height={16} style={{ color: 'var(--st-blue)' }} />
             <span className="score-rank-row__label">Compliance</span>
             <span className="score-rank-row__pos">#{rank.compliance.pos} of {rank.compliance.total}</span>
             <span className="score-rank-row__delta" style={{ color: deltaColor(dlt.compliance) }}>{fmtDelta(dlt.compliance)}</span>
