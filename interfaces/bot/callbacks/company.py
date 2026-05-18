@@ -7,8 +7,8 @@ from capabilities.iam.permissions import can, role_display
 from adapters.storage import Role
 from capabilities.formatting import format_invite_created
 
-from interfaces.bot.config import get_platform_db, get_tenant_db, invalidate_client
-from interfaces.bot.keyboards import back_kb, skip_name_kb, invite_kb
+from interfaces.bot.state import get_platform_db, get_tenant_db
+from interfaces.bot.keyboards import back_kb, invite_kb
 from interfaces.bot.helpers import _show, _safe_error, make_invite_link
 from capabilities.localization.i18n import t
 from interfaces.bot.management import cmd_addcompany

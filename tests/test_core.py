@@ -29,27 +29,21 @@ from adapters.storage import Database
 # ═══════════════════════════════════════════════════════════════════
 
 @pytest_asyncio.fixture
-async def platform_db(tmp_path):
-    """Provide an initialised platform Database and wire infra.platform."""
+async def platform_db(pg_db):
+    """Provide an initialised platform Database and wire infra.platform.
+
+    Uses the shared ``pg_db`` fixture (testcontainers PG) — the
+    SQLite tmp-file path was retired with the rest of the SQLite
+    branch.
+    """
     import infra.platform as _cp
 
-    db_path = str(tmp_path / "platform_test.db")
-    database = Database(db_path, pool_size=1)
-    await database.initialize()
-
-    # Wire infra.platform so lookups resolve properly
     _old_db = _cp._db
-    _old_router = _cp._router
-    _cp._db = database
+    _cp._db = pg_db
 
-    from adapters.storage.tenant_router import LegacyRouter
-    _cp._router = LegacyRouter(database)
-
-    yield database
+    yield pg_db
 
     _cp._db = _old_db
-    _cp._router = _old_router
-    await database.close()
 
 
 @pytest_asyncio.fixture
@@ -284,23 +278,27 @@ class TestTenantRegistry:
 class TestPlatformInit:
     """infra.platform initialize/close cycle."""
 
-    async def test_initialize_and_access(self, tmp_path):
+    async def test_initialize_and_access(self, _pg_container_url, monkeypatch):
         """initialize() makes get_db() and get_router() available."""
         import infra.platform as _cp
 
         # Save and clear
         _saved_db = _cp._db
-        _saved_router = _cp._router
         _cp._db = None
-        _cp._router = None
 
         try:
-            # Set DATABASE_PATH to temp
-            import infra.config
-            old_path = infra.config.DATABASE_PATH
-            infra.config.DATABASE_PATH = str(tmp_path / "init_test.db")
-            old_mt = infra.config.MULTI_TENANT
-            infra.config.MULTI_TENANT = False
+            # Point Database.initialize() at the test container.  Reset
+            # the schema first so init's migration step starts from a
+            # clean public schema.
+            import asyncpg
+            conn = await asyncpg.connect(_pg_container_url)
+            try:
+                await conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
+                await conn.execute("CREATE SCHEMA public")
+            finally:
+                await conn.close()
+            import adapters.storage.core as _core
+            monkeypatch.setattr(_core, "_DATABASE_URL", _pg_container_url)
 
             await _cp.initialize()
 
@@ -309,12 +307,8 @@ class TestPlatformInit:
             assert _cp.get_platform_db() is not None
 
             await _cp.close()
-
-            infra.config.DATABASE_PATH = old_path
-            infra.config.MULTI_TENANT = old_mt
         finally:
             _cp._db = _saved_db
-            _cp._router = _saved_router
 
     async def test_get_db_before_init_raises(self):
         """get_db() raises AssertionError before initialize()."""
@@ -329,44 +323,47 @@ class TestPlatformInit:
             _cp._db = _saved
 
     async def test_get_router_before_init_raises(self):
-        """get_router() raises AssertionError before initialize()."""
+        """get_router() raises AssertionError before initialize().
+
+        The shim is stateless but accesses ``_db`` lazily, which
+        triggers the not-initialized assertion when called before
+        initialize().
+        """
         import infra.platform as _cp
 
-        _saved = _cp._router
-        _cp._router = None
+        _saved = _cp._db
+        _cp._db = None
         try:
             with pytest.raises(AssertionError, match="not initialized"):
-                _cp.get_router()
+                # ``.platform`` reaches into get_db() which asserts.
+                _cp.get_router().platform
         finally:
-            _cp._router = _saved
+            _cp._db = _saved
 
-    async def test_close_sets_none(self, tmp_path):
-        """close() sets _db and _router to None."""
+    async def test_close_sets_none(self, _pg_container_url, monkeypatch):
+        """close() sets _db to None."""
         import infra.platform as _cp
 
         _saved_db = _cp._db
-        _saved_router = _cp._router
         _cp._db = None
-        _cp._router = None
 
         try:
-            import infra.config
-            old_path = infra.config.DATABASE_PATH
-            infra.config.DATABASE_PATH = str(tmp_path / "close_test.db")
-            old_mt = infra.config.MULTI_TENANT
-            infra.config.MULTI_TENANT = False
+            import asyncpg
+            conn = await asyncpg.connect(_pg_container_url)
+            try:
+                await conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
+                await conn.execute("CREATE SCHEMA public")
+            finally:
+                await conn.close()
+            import adapters.storage.core as _core
+            monkeypatch.setattr(_core, "_DATABASE_URL", _pg_container_url)
 
             await _cp.initialize()
             await _cp.close()
 
             assert _cp._db is None
-            assert _cp._router is None
-
-            infra.config.DATABASE_PATH = old_path
-            infra.config.MULTI_TENANT = old_mt
         finally:
             _cp._db = _saved_db
-            _cp._router = _saved_router
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -502,24 +499,27 @@ class TestContextVars:
 class TestStartup:
     """infra.startup.initialize() / shutdown() full cycle."""
 
-    async def test_full_cycle(self, tmp_path):
+    async def test_full_cycle(self, _pg_container_url, monkeypatch):
         """initialize() → use → shutdown() works end-to-end."""
         import infra.startup
         import infra.platform as _cp
-        import infra.config
 
         # Save original state
         _saved_db = _cp._db
-        _saved_router = _cp._router
         _saved_reg = infra.startup.tenant_registry
         _cp._db = None
-        _cp._router = None
         infra.startup.tenant_registry = None
 
-        old_path = infra.config.DATABASE_PATH
-        infra.config.DATABASE_PATH = str(tmp_path / "startup_test.db")
-        old_mt = infra.config.MULTI_TENANT
-        infra.config.MULTI_TENANT = False
+        # Reset PG schema + point Database at the test container.
+        import asyncpg
+        conn = await asyncpg.connect(_pg_container_url)
+        try:
+            await conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
+            await conn.execute("CREATE SCHEMA public")
+        finally:
+            await conn.close()
+        import adapters.storage.core as _core
+        monkeypatch.setattr(_core, "_DATABASE_URL", _pg_container_url)
 
         try:
             registry = await infra.startup.initialize()
@@ -543,10 +543,7 @@ class TestStartup:
             assert infra.startup.tenant_registry is None
 
         finally:
-            infra.config.DATABASE_PATH = old_path
-            infra.config.MULTI_TENANT = old_mt
             _cp._db = _saved_db
-            _cp._router = _saved_router
             infra.startup.tenant_registry = _saved_reg
 
     async def test_shutdown_safe_without_init(self):
@@ -555,10 +552,8 @@ class TestStartup:
         import infra.platform as _cp
 
         _saved_db = _cp._db
-        _saved_router = _cp._router
         _saved_reg = infra.startup.tenant_registry
         _cp._db = None
-        _cp._router = None
         infra.startup.tenant_registry = None
 
         try:
@@ -566,5 +561,4 @@ class TestStartup:
             await infra.startup.shutdown()
         finally:
             _cp._db = _saved_db
-            _cp._router = _saved_router
             infra.startup.tenant_registry = _saved_reg

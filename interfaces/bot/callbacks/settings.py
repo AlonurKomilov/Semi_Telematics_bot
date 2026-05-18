@@ -1,6 +1,6 @@
 """User-settings callback handlers — quiet hours, timezone, language."""
 
-from interfaces.bot.config import get_platform_db, get_tenant_db
+from interfaces.bot.state import get_platform_db, get_tenant_db
 from interfaces.bot.keyboards import (
     user_settings_kb, quiet_hours_kb, quiet_hours_picker_kb,
     settings_tz_kb, language_kb,

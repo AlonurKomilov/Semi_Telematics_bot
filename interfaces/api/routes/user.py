@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from interfaces.api.deps import get_current_user, get_platform_db, get_tenant_db
-from capabilities.iam.permissions import get_permissions, get_account_permissions
+from capabilities.iam.permissions import get_account_permissions
+from capabilities.localization.tz import effective_tz_for_user, IANA_OPTIONS
 from adapters.storage import Role
 
 router = APIRouter(prefix="/user", tags=["user"])
@@ -43,6 +44,33 @@ async def user_me(
     # Get company access restrictions
     allowed_companies = await platform_db.get_user_company_codes(db_user.id)
 
+    # ``timezone`` is the per-user override stored on the row (may be
+    # empty / 'UTC' / default 'America/New_York' depending on history).
+    # ``effective_timezone`` is what the rest of the app should actually
+    # render in — user override first, then account default, then the
+    # hard fallback.  The dashboard reads ``effective_timezone`` for
+    # every formatter; ``timezone`` is shown in the Profile UI as the
+    # override the user can clear back to inherit.
+    effective_tz = await effective_tz_for_user(db_user.id)
+
+    # DND-derived-from-Working-Hours summary so the dashboard can
+    # render the right UI ("auto from Working Hours" vs "personal
+    # override active") without re-implementing the SSoT logic.
+    has_override = (db_user.quiet_start is not None
+                    and db_user.quiet_end is not None)
+    work_hours_rows = []
+    try:
+        work_hours_rows = await platform_db.get_work_hours_for_role(
+            account_id, user["role"],
+        )
+    except Exception:
+        pass
+    dnd_source = (
+        "user_override" if has_override
+        else "work_hours" if work_hours_rows
+        else "none"
+    )
+
     return {
         "telegram_id": db_user.telegram_id,
         "display_name": db_user.display_name,
@@ -54,8 +82,25 @@ async def user_me(
         "allowed_companies": allowed_companies,
         "language": db_user.language,
         "timezone": db_user.timezone,
+        "effective_timezone": effective_tz,
+        "account_timezone": getattr(acct, "timezone", None),
         "quiet_start": db_user.quiet_start,
         "quiet_end": db_user.quiet_end,
+        # DND derivation summary for the dashboard UI:
+        #   "user_override" → personal quiet_start/end is active
+        #   "work_hours"    → derived from account Working Hours for this role
+        #   "none"          → DND inactive (no override AND no work_hours for role)
+        "dnd_source": dnd_source,
+        "work_hours_for_role": [
+            {
+                "id":          int(r["id"]),
+                "label":       r.get("label", ""),
+                "start_hour":  int(r.get("start_hour", 0)),
+                "end_hour":    int(r.get("end_hour", 0)),
+                "target_role": r.get("target_role", "all"),
+            }
+            for r in work_hours_rows
+        ],
         "email": db_user.email,
         "has_password": db_user.password_hash is not None,
         "permissions": perm_dict,
@@ -185,13 +230,29 @@ async def update_preferences(
         raise HTTPException(status_code=404, detail="User not found")
 
     updates: dict = {}
+    # Pydantic's ``model_fields_set`` distinguishes "field not sent" from
+    # "field sent explicitly as null".  We need that for quiet_start /
+    # quiet_end so the user can CLEAR their override (= explicit null)
+    # to fall back to the Working-Hours-derived DND.  Without this, a
+    # null in the JSON body would silently be skipped and the old
+    # override would persist forever.
+    sent = body.model_fields_set
     if body.language is not None:
         updates["language"] = body.language
-    if body.timezone is not None:
-        updates["timezone"] = body.timezone
-    if body.quiet_start is not None:
+    if "timezone" in sent and body.timezone is not None:
+        # Validate against the supported IANA list — an empty string is
+        # allowed as "clear my override, fall back to account default."
+        tz_val = body.timezone.strip()
+        if tz_val and tz_val not in IANA_OPTIONS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unsupported timezone. Valid values: {', '.join(IANA_OPTIONS)}",
+            )
+        updates["timezone"] = tz_val
+    if "quiet_start" in sent:
+        # Accept explicit null to clear; otherwise stored as int.
         updates["quiet_start"] = body.quiet_start
-    if body.quiet_end is not None:
+    if "quiet_end" in sent:
         updates["quiet_end"] = body.quiet_end
     if body.display_name is not None:
         updates["display_name"] = body.display_name

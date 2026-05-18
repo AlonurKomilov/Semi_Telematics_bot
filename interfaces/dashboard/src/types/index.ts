@@ -36,6 +36,8 @@ export interface Permissions {
   can_payroll_view_own: boolean;
   can_coaching_admin: boolean;
   can_coaching_view_own: boolean;
+  can_manage_driver_docs: boolean;
+  can_driver_docs_own: boolean;
   [key: string]: boolean;
 }
 
@@ -51,7 +53,12 @@ export interface User {
   trucks?: string[];
   allowed_companies?: string[];
   language?: string;
+  /** Per-user override (may be blank — inherits account default). */
   timezone?: string;
+  /** Account-level default — read-only on /user/me. */
+  account_timezone?: string;
+  /** Resolved tz the dashboard should actually format dates in. */
+  effective_timezone?: string;
   quiet_start?: number;
   quiet_end?: number;
   permissions: Permissions;
@@ -107,6 +114,12 @@ export interface Vehicle {
   /** ISO timestamp of the odometer reading itself — distinct from
    *  the location ``time`` which tracks GPS/state freshness. */
   odometer_time?: string | null;
+  /** Cumulative OBD engine hours (warehouse-sourced).  Null when the
+   *  vehicle doesn't report ``obdEngineSeconds`` — usually means no
+   *  CAN bus gateway or the Samsara plan doesn't include the signal. */
+  engine_hours?: number | null;
+  /** ISO timestamp of the engine-hours reading. */
+  engine_hours_time?: string | null;
 }
 
 export interface VehicleLocation {
@@ -387,7 +400,7 @@ export interface ScoreEventBreakdown {
   source: string;         // 🅢 / 🅘 / 🅜 badge
 }
 
-// ── Audit Option C: pillar-aware shape ─────────────────────────
+// ── pillar-aware shape ─────────────────────────
 
 export type PillarKey = 'safety' | 'efficiency' | 'compliance';
 
@@ -410,22 +423,22 @@ export interface RuleCurve {
 export interface CompositeScorecard {
   driver_id: string;
   driver_name: string;
-  /** Phase B — canonical subject identity.  ``driver_id``/``driver_name``
+  /** canonical subject identity.  ``driver_id``/``driver_name``
    *  are kept as aliases that always carry the same value. */
   subject_id?: string;
   subject_name?: string;
   subject_type?: 'driver' | 'vehicle';
   company: string;
-  /** Phase F (driver-inline) — populated only when ``subject_type``
+  /** populated only when ``subject_type``
    *  is ``vehicle``.  Samsara-paired driver wins; ``assigned_driver_name``
    *  is the manual fallback from the per-account driver→truck map. */
   paired_driver_name?: string | null;
   assigned_driver_name?: string | null;
-  /** Phase F (sparkline) — last ~14 daily totals (oldest → newest)
+  /** last ~14 daily totals (oldest → newest)
    *  pulled from ``daily_scorecard_snapshots``.  Empty array when the
    *  subject has no snapshots yet (new tenants, or trucks added mid-window). */
   score_trend?: number[];
-  // ── New canonical fields (Audit Option C) ─────────────────
+ // ── New canonical fields ─────────────────
   total?: number;                                 // 0-100, sum of pillar subtotals
   pillars?: Record<PillarKey, PillarSummary>;     // optional during one-release transition
   exposure?: {
@@ -434,6 +447,11 @@ export interface CompositeScorecard {
     idle_hours: number;
   };
   insufficient_data?: boolean;
+  /** grace period — true when the driver has fewer than the
+   *  probationary minimum of daily snapshots (currently 14).  These
+   *  drivers stay visible but are excluded from rank pools so new
+   *  hires can't outrank veterans on data they don't yet have. */
+  probationary?: boolean;
   // ── Legacy aliases (kept for one release) ─────────────────
   score: number;          // = total when new shape present
   base: number;           // 0 in new shape
@@ -461,15 +479,18 @@ export interface CompositeScorecardsResponse {
   scorecards: CompositeScorecard[];
   count: number;
   days: number;
-  /** Phase B — echoes back the ?subject= the request used. */
+  /** echoes back the ?subject= the request used. */
   subject?: 'driver' | 'vehicle';
+  /** ISO-8601 UTC wall-clock at compute time. UI renders this as
+   *  "Updated …" so operators can tell how stale the data is. */
+  generated_at?: string;
 }
 
 export interface ScoreHistoryPoint {
   date: string;
   score: number;
   /**
-   * Audit Option C — present when the row was filtered to a specific
+ * present when the row was filtered to a specific
    * pillar (`?pillar=safety|efficiency|compliance`).  ``false`` means
    * the snapshot existed but the pillar didn't have enough exposure
    * data to produce a score.
@@ -479,10 +500,44 @@ export interface ScoreHistoryPoint {
 
 export interface ScoreHistoryResponse {
   driver_id: string;
-  /** Audit Option C — echoed when the request used `?pillar=`. */
+  /** echoed when the request used `?pillar=`. */
   pillar?: 'safety' | 'efficiency' | 'compliance' | null;
   history: ScoreHistoryPoint[];
   count: number;
+}
+
+/** Event entry inside a snapshot diff.  Mirrors ScoreEventBreakdown
+ *  but the ``increased`` / ``decreased`` arrays additionally carry
+ *  occurrence-count deltas so the UI can show "Speeding 2 → 5". */
+export interface ScoreExplanationEvent extends ScoreEventBreakdown {
+  occ_from?: number;
+  occ_to?: number;
+  occ_delta?: number;
+}
+
+/** Response shape for /api/safety/scorecards/{subject_id}/explanation
+ *  — "Why did my score change?" diff between the latest snapshot and
+ *  one ~N days ago.  No new schema; reads from
+ *  ``daily_scorecard_snapshots.breakdown_json``. */
+export interface ScoreExplanationResponse {
+  subject_id: string;
+  subject_type: 'driver' | 'vehicle';
+  available: boolean;
+  reason?: 'not_enough_snapshots' | 'breakdown_unparseable';
+  snapshots_available?: number;
+  from_date?: string;
+  to_date?: string;
+  from_score?: number;
+  to_score?: number;
+  score_delta?: number;
+  penalties_added?:     ScoreExplanationEvent[];
+  penalties_cleared?:   ScoreExplanationEvent[];
+  penalties_increased?: ScoreExplanationEvent[];
+  penalties_decreased?: ScoreExplanationEvent[];
+  bonuses_earned?:      ScoreExplanationEvent[];
+  bonuses_lost?:        ScoreExplanationEvent[];
+  bonuses_increased?:   ScoreExplanationEvent[];
+  bonuses_decreased?:   ScoreExplanationEvent[];
 }
 
 export interface SafetyEvent {
@@ -699,6 +754,81 @@ export interface AdminUsersResponse {
   count: number;
 }
 
+// ── Driver Module ───────────────────────────────────────────────
+
+export interface DriverProfile {
+  user_id: number;
+  account_id: number;
+  display_name: string;
+  telegram_id: number;
+  samsara_driver_id: string | null;
+  cdl_number: string | null;
+  cdl_state: string | null;
+  cdl_class: string | null;
+  cdl_expires: string | null;
+  med_card_expires: string | null;
+  hire_date: string | null;
+  termination_date: string | null;
+  dob: string | null;
+  phone: string | null;
+  home_address: string | null;
+  driver_notes: string | null;
+}
+
+export interface DriverVehicleAssignment {
+  id: number;
+  account_id: number;
+  user_id: number;
+  vehicle_name: string;
+  vehicle_id: string | null;
+  is_primary: boolean;
+  assigned_by: number | null;
+  assigned_at: string;
+  unassigned_at: string | null;
+  notes: string | null;
+  active: boolean;
+}
+
+export interface DriverDocument {
+  id: number;
+  account_id: number;
+  user_id: number;
+  doc_type: string;
+  file_name: string;
+  file_size: number | null;
+  mime_type: string | null;
+  issued_at: string | null;
+  expires_at: string | null;
+  status: string;
+  uploaded_by: number | null;
+  uploaded_at: string;
+  notes: string | null;
+  drive_file_id: string | null;
+}
+
+export interface DriverDetail {
+  profile: DriverProfile;
+  assignments: DriverVehicleAssignment[];
+  documents: DriverDocument[];
+}
+
+export interface SamsaraDriver {
+  samsara_driver_id: string;
+  name: string;
+  username: string;
+  phone: string;
+  company_code: string;
+  deactivated: boolean;
+  /** Local users.id this Samsara driver is already linked to, if any. */
+  linked_user_id: number | null;
+}
+
+export interface SamsaraDriversResponse {
+  drivers: SamsaraDriver[];
+  count?: number;
+  error?: string;
+}
+
 export interface InviteInfo {
   id: number;
   code: string;
@@ -796,16 +926,137 @@ export interface MaintenanceTask {
    *  it last ran the mileage check (warehouse-sourced).  Combined with
    *  ``due_miles`` to render the progress bar in the maintenance UI. */
   last_odometer: number | null;
+  /** Engine-hours threshold parallel to due_miles.  Required for trucks
+   *  where idle wear dominates road wear (PTO, refrigerated, generator). */
+  due_engine_hours: number | null;
+  /** Last engine_hours reading from the warehouse scheduler. */
+  last_engine_hours: number | null;
   status: string;
+  /** 'low' | 'medium' | 'high' | 'critical'.  Default 'medium' on
+   *  legacy rows so the badge always has something to render. */
+  priority: string;
   recur_interval_days: number | null;
   recur_interval_miles: number | null;
+  recur_interval_engine_hours: number | null;
+  /** Set after the first overdue alert fires; gates the daily/6-h
+   *  schedulers so a single crossing notifies exactly once. */
+  alerted_at: string | null;
+  /** Set after the pre-overdue ("due soon") notification fires.
+   *  Distinct from alerted_at because the two notification windows are
+   *  independent — a task can be warned today and still trigger the
+   *  overdue alert 3 days later when it actually crosses. */
+  warning_sent_at: string | null;
+  /** Link to the Work Order row that closed this task (NULL while the
+   *  task is open).  The Work Orders module owns CRUD for the linked
+   *  row; the column lives here so we don't denormalize cost/vendor
+   *  fields onto maintenance_tasks. */
+  work_order_id: number | null;
+  /** Telegram user id of whoever confirmed completion (bot driver or
+   *  dashboard manager).  Raw id — display name resolved server-side
+   *  into ``attested_by_name`` for the UI. */
+  attested_by: number | null;
+  attested_at: string | null;
+  /** Server-resolved display name for ``attested_by``.  Absent when no
+   *  attestation yet, OR when the platform user lookup failed. */
+  attested_by_name?: string;
+  /** Lineage: parent task id when this row was auto-spawned as a
+   *  recurring follow-up or compliance auto-renewal.  Drives the
+   *  "↻ Auto-renewed from #N" breadcrumb. */
+  spawned_from_id: number | null;
   created_at: string;
+  /** Set when status flips to 'completed' or 'done'; drives the service
+   *  history timeline ordering. */
+  completed_at: string | null;
   updated_at: string;
 }
 
 export interface MaintenanceTasksResponse {
   tasks: MaintenanceTask[];
   count: number;
+}
+
+// ── Work Orders ──────────────────────────────────────────────
+
+/** Shop-invoice record.  Links to many maintenance tasks via
+ *  ``maintenance_tasks.work_order_id`` (one visit closes many tasks). */
+export interface WorkOrder {
+  id: number;
+  account_id: number;
+  company_code: string;
+  vehicle_id: string;
+  vehicle_name: string;
+  vendor_name: string;
+  vendor_address: string;
+  vendor_phone: string;
+  service_date: string | null;
+  odometer_at_service: number | null;
+  engine_hours_at_service: number | null;
+  labor_cost: number;
+  parts_cost: number;
+  tax_amount: number;
+  total_cost: number;
+  invoice_number: string;
+  payment_method: string;
+  /** unpaid / paid / partial / void */
+  payment_status: string;
+  /** draft / submitted / paid / void */
+  status: string;
+  notes: string;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Line item on a work order. */
+export interface WorkOrderPart {
+  id: number;
+  work_order_id: number;
+  part_name: string;
+  part_number: string;
+  quantity: number;
+  unit_cost: number;
+  total_cost: number;
+  warranty_months: number;
+  notes: string;
+}
+
+/** Attachment metadata — invoice PDF, shop photo, warranty doc.  File
+ *  bytes are served via GET /work-orders/{id}/attachments/{aid}. */
+export interface WorkOrderAttachment {
+  id: number;
+  work_order_id: number;
+  /** Backend-specific locator (disk path / Drive file ID / S3 key).
+   *  Frontend never parses this — it just calls the download route. */
+  file_path: string;
+  file_name: string;
+  file_size: number;
+  content_type: string;
+  /** invoice / photo / warranty / receipt / other */
+  kind: string;
+  uploaded_by: number;
+  /** Server-resolved display name for ``uploaded_by``. */
+  uploaded_by_name?: string;
+  uploaded_at: string;
+}
+
+export interface WorkOrdersResponse {
+  work_orders: WorkOrder[];
+  count: number;
+}
+
+export interface WorkOrderDetail {
+  work_order: WorkOrder;
+  parts: WorkOrderPart[];
+  attachments: WorkOrderAttachment[];
+  linked_tasks: MaintenanceTask[];
+}
+
+export interface WorkOrderCostRow {
+  vehicle_name?: string;
+  task_type?: string;
+  vendor_name?: string;
+  work_order_count: number;
+  total_spent: number;
 }
 
 // ── Parking ──────────────────────────────────────────────────

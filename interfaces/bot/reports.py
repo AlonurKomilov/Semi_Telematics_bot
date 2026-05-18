@@ -36,10 +36,8 @@ from capabilities.reporting import (
     generate_fault_csv,
 )
 
-from interfaces.bot.config import (
-    logger,
-    _active_messages, get_client,
-)
+from interfaces.bot.config import logger
+from interfaces.bot.state import _active_messages, get_client
 from interfaces.bot.keyboards import (
     back_kb, faults_menu_kb,
     efficiency_format_kb, fuel_format_kb, health_format_kb, faults_format_kb,

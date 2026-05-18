@@ -1,10 +1,6 @@
 """Events — on-demand safety event dashboard and CSV export."""
 
 import asyncio
-import io
-import csv
-from datetime import datetime as _dt
-from constants import TZ_ET as _TZ_ET
 from capabilities.localization.i18n import t
 
 from telegram import Update
@@ -16,9 +12,10 @@ from adapters.samsara.client import populate_company_display
 from capabilities.formatting import format_events_dashboard
 from capabilities.events.service import filter_events_by_access as _filter_events_by_access, get_events as _svc_get_events
 
-from interfaces.bot.config import logger, get_user_company_codes, get_tenant_db
+from interfaces.bot.config import logger
+from interfaces.bot.state import get_tenant_db
 from interfaces.bot.keyboards import back_kb, events_format_kb
-from interfaces.bot.helpers import _show, _show_loading, _user_menu_kb, _safe_error
+from interfaces.bot.helpers import _show, _show_loading, _safe_error
 from interfaces.bot.auth import _require_registered
 
 

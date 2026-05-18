@@ -8,7 +8,7 @@ for every account.  Two purposes:
   2. **History / trends** — enables the score-over-time chart in the UI
      without re-querying Samsara for every page load.
 
-Phase B (April 2026): writes one row per *driver* AND one per *vehicle*
+writes one row per *driver* AND one per *vehicle*
 each night, so the new vehicle-primary scorecard view has trend data
 from day one.  ``daily_scorecard_snapshots`` keys on
 ``(account_id, snapshot_date, subject_type, subject_id)`` so the two
@@ -30,7 +30,7 @@ from infra.services import get_platform_db, get_tenant_db
 logger = logging.getLogger(__name__)
 
 
-# Phase B: snapshot both subjects.  Order matters \u2014 driver first so a
+# snapshot both subjects. Order matters \u2014 driver first so a
 # tenant looking at a fresh "yesterday" scorecard while the job is still
 # in flight sees driver data first (legacy default), then vehicle.
 SUBJECTS_TO_SNAPSHOT: tuple[str, ...] = ("driver", "vehicle")
@@ -54,7 +54,7 @@ def _breakdown_payload(card: dict) -> dict:
         "company":       card.get("company", ""),
         # Option-C pillar block \u2014 required for pillar history filter.
         "pillars":       card.get("pillars", {}),
-        # Phase B exposure block \u2014 lets the dashboard show
+        # exposure block \u2014 lets the dashboard show
         # "miles in window" on hover without extra fetches.
         "exposure":      card.get("exposure", {}),
         "insufficient_data": bool(card.get("insufficient_data", False)),
@@ -69,7 +69,14 @@ async def take_daily_scorecard_snapshots(_app=None) -> None:
     totals: dict[str, int] = {s: 0 for s in SUBJECTS_TO_SNAPSHOT}
     failed: list[tuple[int, str]] = []
 
+    from capabilities.localization.tz import is_local_hour as _is_local_hour
+    _TARGET_HOUR = 2  # local 02:00 — pre-shift, after yesterday's data settled
     for acc in accounts:
+        # Hourly tick + per-account gate replaces the old fleet-wide
+        # 02:30 UTC cron, so an Eastern fleet snapshots at 02:00 ET
+        # (07:00 UTC) and a Pacific fleet at 02:00 PT (10:00 UTC).
+        if not await _is_local_hour(acc.id, _TARGET_HOUR):
+            continue
         tenant = await get_tenant_db(acc.id)
         if tenant is None:
             continue
@@ -118,7 +125,11 @@ async def take_daily_scorecard_snapshots(_app=None) -> None:
     )
 
     # Prune score_events older than 90 days to keep the table bounded.
+    # Same gate — only the account whose local 02:00 just ticked prunes
+    # its own rows.  Other accounts' rows are untouched until their tick.
     for acc in accounts:
+        if not await _is_local_hour(acc.id, _TARGET_HOUR):
+            continue
         tenant = await get_tenant_db(acc.id)
         if tenant is None:
             continue
@@ -154,7 +165,12 @@ async def check_scorecard_drop_alerts(_app=None) -> None:
 
     accounts = await get_platform_db().list_accounts(active_only=True)
 
+    from capabilities.localization.tz import is_local_hour as _is_local_hour
+    _TARGET_HOUR = 3  # local 03:00 — runs the hour after snapshots
     for acc in accounts:
+        # Same hourly-tick-with-local-gate pattern as the snapshot job.
+        if not await _is_local_hour(acc.id, _TARGET_HOUR):
+            continue
         tenant = await get_tenant_db(acc.id)
         if tenant is None:
             continue
@@ -226,7 +242,17 @@ async def check_scorecard_drop_alerts(_app=None) -> None:
             lines.append(f"\n<i>Threshold: floor ≤{floor_threshold} or drop ≥{drop_threshold} pts</i>")
             text = "\n".join(lines)
 
-            # Deliver to each eligible subscriber
+            # Forum routing first.  When the account has a Scorecards
+            # topic configured the digest lands there once; otherwise
+            # we fall through to the legacy per-subscriber DM fanout.
+            from capabilities.alerting.pipeline import post_alert_to_topic
+            posted = await post_alert_to_topic(
+                bot_app, account_id=acc.id,
+                alert_type="scorecard", text=text,
+            )
+            if posted:
+                continue
+
             for sub in subscribers:
                 if not sub.alerts_on:
                     continue

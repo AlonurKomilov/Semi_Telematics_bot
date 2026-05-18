@@ -2,8 +2,7 @@
 
 import html as _html
 import re
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import datetime, timezone
 from constants import TZ_ET as _TZ_ET, TZ_CT as _TZ_CT, TZ_MT as _TZ_MT, TZ_PT as _TZ_PT
 
 # Pre-compiled regex for allowed Telegram HTML tags
@@ -38,13 +37,30 @@ def _t(key: str, lang: str | None = None) -> str:
 # HELPERS
 # ═══════════════════════════════════════════════════════════════════
 
-def _fmt_time(iso_str: str) -> str:
+def _fmt_time(iso_str: str, tz_name: str | None = None) -> str:
+    """Render an ISO timestamp in a target timezone.
+
+    ``tz_name`` is an IANA name (``"America/Chicago"``, ``"UTC"``, …);
+    defaults to Eastern when not provided so existing call sites keep
+    working unchanged.  Callers that have already resolved the user's
+    effective timezone (via
+    ``capabilities.localization.tz.effective_tz_for_user``) should pass
+    it through so the message renders in the recipient's local time.
+    """
     if not iso_str:
         return "—"
     try:
         dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
-        et = dt.astimezone(_TZ_ET)
-        return et.strftime("%b %d, %Y  %I:%M %p")
+        if tz_name:
+            try:
+                from zoneinfo import ZoneInfo
+                tz = ZoneInfo(tz_name)
+            except Exception:
+                tz = _TZ_ET
+        else:
+            tz = _TZ_ET
+        local = dt.astimezone(tz)
+        return local.strftime("%b %d, %Y  %I:%M %p")
     except Exception:
         return iso_str
 

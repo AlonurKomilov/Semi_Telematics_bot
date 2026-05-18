@@ -9,22 +9,32 @@ import { AuthProvider } from './context/AuthContext';
 import { RoleViewProvider } from './context/RoleViewContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { TooltipProvider } from './components/ui/tooltip';
+import './i18n';  // initialise i18next before any component renders
 import './index.css';
 
 // Single shared QueryClient.  ``staleTime: 60s`` matches the server-side
 // 120-second Samsara cache: by the time the user comes back to a tab the
 // upstream data has likely refreshed once, but rapid navigation between
-// pages reuses the cached payload.  ``retry: 1`` keeps transient hiccups
-// invisible without burying real backend failures under retries.
+// pages reuses the cached payload.
+//
+// ``retry: 3`` with exponential backoff (1s → 2s → 4s, capped at 10s)
+// hides API restarts from active users.  A ``make restart-api`` takes
+// ~3-5s; nginx already retries upstream 3× within 30s, and this client-
+// side retry covers the case where nginx itself gives up (very rare).
+// Mutations (POST/PATCH/DELETE) intentionally have retry disabled — we
+// can't tell whether a failed write was actually applied, so retrying
+// risks duplicate orders/users/etc.
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 60_000,
       gcTime: 5 * 60_000,
       refetchOnWindowFocus: false,
-      retry: 1,
+      retry: 3,
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10_000),
     },
     mutations: {
+      retry: false,
       onError: (err: unknown) => {
         const msg = err instanceof Error ? err.message : 'Request failed';
         toast.error(msg);

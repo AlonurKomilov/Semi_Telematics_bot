@@ -55,7 +55,7 @@ class AccountsMixin:
 
     async def update_account(self, account_id: int, **kwargs) -> bool:
         """Update account fields. Allowed keys: name, tier, is_active, bot_token_encrypted, bot_username, webhook_secret."""
-        allowed = {"name", "tier", "is_active", "bot_token_encrypted", "bot_username", "webhook_secret", "payroll_enabled", "coaching_enabled"}
+        allowed = {"name", "tier", "is_active", "bot_token_encrypted", "bot_username", "webhook_secret", "payroll_enabled", "coaching_enabled", "timezone"}
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
             return False
@@ -65,6 +65,14 @@ class AccountsMixin:
             f"UPDATE accounts SET {set_clause} WHERE id = ?", values
         )
         await self._db.commit()
+        # Tz change invalidates the account-tz cache plus every cached
+        # user resolution that may have inherited the default.
+        if "timezone" in updates:
+            try:
+                from capabilities.localization.tz import invalidate_account
+                invalidate_account(account_id)
+            except Exception:
+                pass
         return True
 
     async def update_account_tier(self, account_id: int, tier: str) -> bool:

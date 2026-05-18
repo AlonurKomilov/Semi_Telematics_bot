@@ -7,11 +7,8 @@ from unittest.mock import patch
 from adapters.storage import Role
 from capabilities.iam.permissions import (
     FeatureSet,
-    ROLE_PERMISSIONS,
     get_permissions,
     can,
-    is_system_owner,
-    SYSTEM_OWNER_IDS,
     role_display,
 )
 

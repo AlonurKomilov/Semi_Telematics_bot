@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { ClipboardList } from 'lucide-react';
 import { apiJSON } from '../../api/client';
@@ -24,6 +25,7 @@ const columns: AnyColumn[] = [
 ];
 
 export default function AuditLog() {
+  const { t } = useTranslation();
   const [limit, setLimit] = useState(100);
 
   const { data, isLoading: loading, error: queryError, refetch } = useQuery({
@@ -38,8 +40,8 @@ export default function AuditLog() {
     <div>
       <PageHeader
         icon={ClipboardList}
-        title="Audit Log"
-        description="Every change to your account — who did what and when. Useful for compliance and tracing accidental edits."
+        title={t('pages.audit_log_title')}
+        description={t('pages.audit_log_desc')}
         actions={
           <select
             value={limit}

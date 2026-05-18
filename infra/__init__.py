@@ -3,7 +3,7 @@
 Public API::
 
     from infra import get_platform_db, get_tenant_db, TenantContext, TenantRegistry
-    from infra.config import DATABASE_PATH, SAMSARA_BASE_URL, ...
+    from infra.config import SAMSARA_BASE_URL, ...
     from infra.startup import initialize, shutdown
 
 Modules:

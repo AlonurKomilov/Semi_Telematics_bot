@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ParkingSquare } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
@@ -11,6 +12,7 @@ import {
   LastUpdated,
   FilterBar,
   FilterChips,
+  DateRangePresets,
 } from '../../components/shell';
 import type { ParkingEvent, ParkingEventsResponse, AnyColumn } from '../../types';
 
@@ -86,13 +88,14 @@ const historyColumns: AnyColumn[] = [
 /* ── Main Component ────────────────────────────────────────── */
 
 export default function Parking() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const [tab, setTab] = useState<'active' | 'history'>('active');
   const [error, setError] = useState('');
   const [vehicleSearch, setVehicleSearch] = useState('');
   const [classFilter, setClassFilter] = useState('all');
   const [showAll, setShowAll] = useState(false);
-  const [days, setDays] = useState(7);
+  const [days, setDays] = useState(30);
   const [resolving, setResolving] = useState<number | null>(null);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [mapUrls, setMapUrls] = useState<Record<number, string>>({});
@@ -156,7 +159,7 @@ export default function Parking() {
     <div>
       <PageHeader
         icon={ParkingSquare}
-        title="Parking"
+        title={t('pages.parking_title')}
         description={
           tab === 'active'
             ? 'Vehicles currently parked. Resolve events when drivers move on, or open the AI analysis to see why a stop was flagged.'
@@ -190,7 +193,7 @@ export default function Parking() {
       <FilterBar>
         <input
           type="text"
-          placeholder="Vehicle name…"
+          placeholder={t('forms.vehicle_name_placeholder')}
           value={vehicleSearch}
           onChange={(e) => setVehicleSearch(e.target.value)}
           className="bg-background border border-border rounded-md px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:border-ring w-44"
@@ -213,15 +216,7 @@ export default function Parking() {
               value={classFilter as 'all' | 'safe' | 'unsafe' | 'unknown'}
               onChange={(v) => setClassFilter(v)}
             />
-            <select
-              value={days}
-              onChange={(e) => setDays(Number(e.target.value))}
-              className="bg-background border border-border rounded-md px-2 py-1.5 text-sm text-foreground/80"
-            >
-              {[7, 14, 30, 60, 90].map((d) => (
-                <option key={d} value={d}>{d} days</option>
-              ))}
-            </select>
+            <DateRangePresets value={days} onChange={setDays} isFetching={isFetching} />
           </>
         )}
       </FilterBar>

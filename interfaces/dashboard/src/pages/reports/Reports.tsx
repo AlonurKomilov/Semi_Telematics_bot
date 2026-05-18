@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { FileText, Download, Sparkles } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
@@ -9,6 +10,7 @@ import {
   EmptyState,
   ErrorState,
   TableSkeleton,
+  DateRangePresets,
 } from '../../components/shell';
 import type {
   FaultVehicle, FaultReportResponse,
@@ -97,13 +99,14 @@ const COLUMNS_MAP: Record<TabKey, AnyColumn[]> = {
 };
 
 export default function Reports() {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<TabKey>('faults');
   const navigate = useNavigate();
   const [data, setData] = useState<Record<string, unknown>[]>([]);
   const [summary, setSummary] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [days, setDays] = useState(7);
+  const [days, setDays] = useState(30);
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
@@ -163,20 +166,12 @@ export default function Reports() {
     <div>
       <PageHeader
         icon={FileText}
-        title="Reports"
-        description="On-demand snapshots of vehicle faults, fuel/DEF levels, vehicle health, and driving efficiency. Export to PDF for stakeholders or CSV for spreadsheets."
+        title={t('pages.reports_title')}
+        description={t('pages.reports_desc')}
         actions={
           <div className="flex items-center gap-2">
             {tab === 'efficiency' && (
-              <select
-                value={days}
-                onChange={(e) => setDays(Number(e.target.value))}
-                className="bg-background border border-border rounded-md px-2 py-1.5 text-sm text-foreground/80"
-              >
-                {[7, 14, 30].map((d) => (
-                  <option key={d} value={d}>{d} days</option>
-                ))}
-              </select>
+              <DateRangePresets value={days} onChange={setDays} />
             )}
             <button
               onClick={() => downloadReport('pdf')}

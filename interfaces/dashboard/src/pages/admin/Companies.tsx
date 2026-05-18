@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Plus, X } from 'lucide-react';
 import { apiJSON } from '../../api/client';
@@ -21,6 +22,7 @@ const columns: AnyColumn[] = [
 ];
 
 export default function Companies() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const [error, setError] = useState('');
   const [showAdd, setShowAdd] = useState(false);
@@ -82,8 +84,8 @@ export default function Companies() {
     <div>
       <PageHeader
         icon={Building2}
-        title="Companies"
-        description="Sub-companies inside your account — each with its own Samsara API key. Use companies to scope reporting and alerts to a single division or region."
+        title={t('pages.companies_title')}
+        description={t('pages.companies_desc')}
         actions={
           <button
             onClick={() => { setShowAdd(!showAdd); setError(''); }}

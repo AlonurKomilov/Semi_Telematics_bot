@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query, HTTPException
 
-from interfaces.api.deps import require_permission, require_permission_any, get_user_vehicle_nums
+from interfaces.api.deps import require_permission_any, get_user_vehicle_nums
 from capabilities.routes.service import total_route_miles, get_vehicle_gps_history
 from capabilities.vehicles.service import get_fleet_overview as _svc_fleet_overview
 

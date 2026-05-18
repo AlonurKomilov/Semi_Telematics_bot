@@ -56,6 +56,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const data = await apiJSON<User>('/user/me');
       setUser(data);
+      // Sync the backend-stored language into i18next so an account
+      // whose Telegram bot is set to Russian doesn't see the dashboard
+      // in English on first login. Only applies the first time per
+      // session; users can still switch via the top-bar selector
+      // (which writes back to the same endpoint).
+      try {
+        const lang = (data as { language?: string | null }).language;
+        if (lang && typeof lang === 'string') {
+          const i18n = (await import('../i18n')).default;
+          if (i18n.resolvedLanguage !== lang) {
+            await i18n.changeLanguage(lang);
+          }
+        }
+      } catch {
+        /* i18n not yet loaded — selector still works */
+      }
     } catch {
       clearToken();
       setUser(null);

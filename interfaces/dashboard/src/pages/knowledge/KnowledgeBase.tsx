@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Plus } from 'lucide-react';
 import { apiJSON } from '../../api/client';
@@ -57,6 +58,7 @@ const TARGET_ROLE_OPTIONS = [
 ];
 
 export default function KnowledgeBase() {
+  const { t } = useTranslation();
   const { role } = usePermissions();
   const { user } = useAuth();
   const canManage = ['owner', 'admin', 'fleet', 'safety'].includes(role || '');
@@ -206,8 +208,8 @@ export default function KnowledgeBase() {
     <div className="space-y-6">
       <PageHeader
         icon={BookOpen}
-        title="Knowledge Base"
-        description="Tips, guides and SOPs your team can search and reference — drivers, dispatch, safety, and admins. Pin the most important articles to keep them at the top."
+        title={t('pages.knowledge_title')}
+        description={t('pages.knowledge_desc')}
         actions={
           canManage ? (
             <button

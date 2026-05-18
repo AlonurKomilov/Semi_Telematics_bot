@@ -29,7 +29,6 @@ class TestAIClientConfig:
 
     def test_ensure_model_raises_without_project(self):
         import capabilities.ai as ai
-        import capabilities.ai.models  # ensure submodule loaded
         ai.models._model = None  # Reset
         with patch.dict(os.environ, {"GOOGLE_CLOUD_PROJECT": "", "GOOGLE_APPLICATION_CREDENTIALS": ""}):
             with pytest.raises(RuntimeError, match="GOOGLE_CLOUD_PROJECT"):
@@ -68,7 +67,6 @@ class TestAIClientGenerate:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = mock_response
 
-        import capabilities.ai.models  # ensure submodule loaded
         ai.models._model = mock_model
 
         result = await ai.generate("test question")
@@ -94,7 +92,6 @@ class TestAIClientGenerate:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = mock_response
 
-        import capabilities.ai.models  # ensure submodule loaded
         ai.models._model = mock_model
 
         result = await ai.generate(
@@ -124,7 +121,6 @@ class TestAIClientGenerate:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = mock_response
 
-        import capabilities.ai.models  # ensure submodule loaded
         ai.models._model = mock_model
 
         result = await ai.generate("test")
@@ -149,7 +145,6 @@ class TestAIClientGenerate:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = mock_response
 
-        import capabilities.ai.models  # ensure submodule loaded
         ai.models._model = mock_model
 
         large_data = "x" * 50000
@@ -176,7 +171,6 @@ class TestAIClientGenerate:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = mock_response
 
-        import capabilities.ai.models  # ensure submodule loaded
         ai.models._model = mock_model
 
         result = await ai.generate("test safety block")
@@ -204,7 +198,6 @@ class TestAIDiagnose:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = mock_response
 
-        import capabilities.ai.models  # ensure submodule loaded
         ai.models._model = mock_model
 
         dtcs = [
@@ -238,7 +231,6 @@ class TestAIDiagnose:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = mock_response
 
-        import capabilities.ai.models  # ensure submodule loaded
         ai.models._model = mock_model
 
         dtcs = [

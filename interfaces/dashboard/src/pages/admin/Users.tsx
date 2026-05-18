@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Users as UsersIcon, X, Truck } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
@@ -125,6 +126,7 @@ const userColumns: AnyColumn[] = [
 type DetailTab = 'profile' | 'access' | 'settings';
 
 export default function Users() {
+  const { t } = useTranslation();
   const { user: me } = useAuth();
   const qc = useQueryClient();
   const [error, setError] = useState('');
@@ -141,8 +143,17 @@ export default function Users() {
   // Company assignment
   const [allCompanies, setAllCompanies] = useState<{ id: number; code: string; display_name: string }[]>([]);
   const [editCompanyIds, setEditCompanyIds] = useState<number[]>([]);
+  // Snapshot of assignments as loaded from the server — compared against
+  // editCompanyIds to detect when a driver's company is actually changing
+  // (single-company constraint means the change triggers the archive flow
+  // on the backend, so we surface a confirmation before save).
+  const [initialCompanyIds, setInitialCompanyIds] = useState<number[]>([]);
   const [savingCompanies, setSavingCompanies] = useState(false);
   const [unrestricted, setUnrestricted] = useState(true);
+
+  // Drivers are restricted to one company at a time (backend enforces;
+  // the UI mirrors that with a single-select instead of a checkbox list).
+  const isDriver = selected?.role === 'driver';
 
   // Role change
   const [pendingRole, setPendingRole] = useState<string | null>(null);
@@ -234,23 +245,61 @@ export default function Users() {
         '/admin/users/' + selected.id + '/companies'
       ).then(data => {
         setAllCompanies(data.all_companies || []);
-        setEditCompanyIds(data.companies?.map(a => a.company_id) || []);
+        const ids = data.companies?.map(a => a.company_id) || [];
+        setEditCompanyIds(ids);
+        setInitialCompanyIds(ids);
         setUnrestricted(data.unrestricted);
-      }).catch(() => { setAllCompanies([]); setEditCompanyIds([]); setUnrestricted(true); });
+      }).catch(() => { setAllCompanies([]); setEditCompanyIds([]); setInitialCompanyIds([]); setUnrestricted(true); });
     }
   }, [selected]);
 
   const handleSaveAccess = async (userId: number) => {
+    // Driver reassignment triggers the backend archive flow that moves
+    // their existing CDL/medical docs into `{old_company}/drivers/_archive/`.
+    // Warn the operator before that happens — it's not destructive (files
+    // remain in Drive, just under a dated archive folder), but the path
+    // change is permanent and worth a deliberate confirmation.
+    if (isDriver && initialCompanyIds.length > 0) {
+      const targetIds = unrestricted ? [] : editCompanyIds;
+      const sameSet =
+        targetIds.length === initialCompanyIds.length &&
+        targetIds.every(id => initialCompanyIds.includes(id));
+      if (!sameSet) {
+        const oldCodes = allCompanies
+          .filter(c => initialCompanyIds.includes(c.id))
+          .map(c => c.code)
+          .join(', ');
+        if (!window.confirm(
+          `This driver's company will change. Their previous documents ` +
+          `under "${oldCodes}" will be archived to ` +
+          `\`{company}/drivers/_archive/{today}/\` automatically.\n\n` +
+          `Continue?`
+        )) {
+          return;
+        }
+      }
+    }
     setSavingCompanies(true);
     setSavingTrucks(true);
     try {
-      await apiJSON('/admin/users/' + userId + '/companies', {
-        method: 'PUT',
-        body: { company_ids: unrestricted ? [] : editCompanyIds },
-      });
+      const res = await apiJSON<{ archived_companies?: string[] }>(
+        '/admin/users/' + userId + '/companies',
+        {
+          method: 'PUT',
+          body: { company_ids: unrestricted ? [] : editCompanyIds },
+        },
+      );
       const uniqueTrucks = [...new Set(editVehicles)];
       await apiJSON('/admin/users/' + userId + '/trucks', { method: 'PUT', body: { trucks: uniqueTrucks } });
-      setSuccess('Access saved');
+      const archived = res.archived_companies || [];
+      setSuccess(
+        archived.length
+          ? `Access saved. Archived docs from: ${archived.join(', ')}`
+          : 'Access saved',
+      );
+      // Refresh the snapshot so a second save without re-loading the user
+      // doesn't re-trigger the confirm or replay the archive flow.
+      setInitialCompanyIds(unrestricted ? [] : [...editCompanyIds]);
       await loadUsers();
       if (selected) setSelected({ ...selected, trucks: uniqueTrucks });
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
@@ -258,6 +307,15 @@ export default function Users() {
   };
 
   const toggleCompany = (id: number) => {
+    // Drivers can only sit in one company at a time — clicking another
+    // option replaces the current one rather than adding to a set.  For
+    // every other role the picker is multi-select (admin/dispatcher
+    // managing multiple companies legitimately need broad access).
+    if (isDriver) {
+      setEditCompanyIds(prev => (prev.length === 1 && prev[0] === id) ? prev : [id]);
+      setUnrestricted(false);
+      return;
+    }
     setEditCompanyIds(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]);
     setUnrestricted(false);
   };
@@ -282,8 +340,8 @@ export default function Users() {
     <div>
       <PageHeader
         icon={UsersIcon}
-        title="Team Management"
-        description="Manage who has access to your account, set roles and permissions, and link Telegram drivers to their Samsara records."
+        title={t('pages.team_title')}
+        description={t('pages.team_desc')}
         meta={
           <span className="text-sm text-muted-foreground">{activeCount} active / {users.length} total</span>
         }
@@ -392,10 +450,14 @@ export default function Users() {
                           <div className="text-xs text-muted-foreground">Trucks Assigned</div>
                         </div>
                         <div className="bg-muted/50 rounded-lg p-3 text-center">
-                          <div className="text-lg font-bold text-primary">
-                            {unrestricted ? 'All' : editCompanyIds.length}
+                          <div className="text-lg font-bold text-primary truncate">
+                            {isDriver
+                              ? (allCompanies.find(c => c.id === editCompanyIds[0])?.code || '—')
+                              : (unrestricted ? 'All' : editCompanyIds.length)}
                           </div>
-                          <div className="text-xs text-muted-foreground">Companies</div>
+                          <div className="text-xs text-muted-foreground">
+                            {isDriver ? 'Company' : 'Companies'}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -407,53 +469,72 @@ export default function Users() {
                       {/* ── Step 1: Company Access ── */}
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Step 1</span>
+                          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{t('forms.step_label', { n: 1 })}</span>
                           <div className="flex-1 border-t border-border" />
                         </div>
                         <h3 className="text-sm font-semibold text-foreground/80 mb-3 flex items-center gap-2">
-                          🏢 Company Access
-                          {!unrestricted && editCompanyIds.length > 0 && (
+                          🏢 {isDriver ? 'Assigned Company' : 'Company Access'}
+                          {!unrestricted && editCompanyIds.length > 0 && !isDriver && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">{editCompanyIds.length}</span>
                           )}
                         </h3>
 
-                        {/* Unrestricted toggle */}
-                        <div
-                          onClick={() => { setUnrestricted(!unrestricted); if (!unrestricted) setEditCompanyIds([]); }}
-                          className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition mb-3 border ${
-                            unrestricted
-                              ? 'bg-green-500/10 border-green-500/30'
-                              : 'bg-muted/50 border-border hover:border-border'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm">{unrestricted ? '🌐' : '🔒'}</span>
-                            <span className="text-sm font-medium">{unrestricted ? 'All Companies' : 'Selected Companies Only'}</span>
+                        {/* Driver-only callout: single-company constraint + archive behaviour */}
+                        {isDriver && (
+                          <div className="mb-3 px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/10 text-xs text-amber-700 dark:text-amber-300">
+                            <p className="font-medium mb-0.5">One company at a time.</p>
+                            <p>Changing this driver's company will archive their previous CDL / medical / DQF documents to <code className="font-mono text-[10px]">{'{old company}'}/drivers/_archive/{'{today}'}/</code>.</p>
                           </div>
-                          <div className="relative">
-                            <div className={`w-9 h-5 rounded-full transition ${unrestricted ? 'bg-green-600' : 'bg-muted'}`} />
-                            <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-background rounded-full shadow transition-transform ${unrestricted ? 'translate-x-4' : ''}`} />
-                          </div>
-                        </div>
-
-                        {unrestricted && (
-                          <p className="text-xs text-muted-foreground mb-3">This user can access data from all companies.</p>
                         )}
 
-                        {!unrestricted && allCompanies.length > 0 && (
+                        {/* Unrestricted toggle — non-driver roles only.
+                            Drivers must pick exactly one company; an
+                            "all companies" mode would defeat the
+                            single-company constraint. */}
+                        {!isDriver && (
+                          <>
+                            <div
+                              onClick={() => { setUnrestricted(!unrestricted); if (!unrestricted) setEditCompanyIds([]); }}
+                              className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition mb-3 border ${
+                                unrestricted
+                                  ? 'bg-green-500/10 border-green-500/30'
+                                  : 'bg-muted/50 border-border hover:border-border'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm">{unrestricted ? '🌐' : '🔒'}</span>
+                                <span className="text-sm font-medium">{unrestricted ? 'All Companies' : 'Selected Companies Only'}</span>
+                              </div>
+                              <div className="relative">
+                                <div className={`w-9 h-5 rounded-full transition ${unrestricted ? 'bg-green-600' : 'bg-muted'}`} />
+                                <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-background rounded-full shadow transition-transform ${unrestricted ? 'translate-x-4' : ''}`} />
+                              </div>
+                            </div>
+
+                            {unrestricted && (
+                              <p className="text-xs text-muted-foreground mb-3">This user can access data from all companies.</p>
+                            )}
+                          </>
+                        )}
+
+                        {(!unrestricted || isDriver) && allCompanies.length > 0 && (
                           <>
                             <div className="flex items-center justify-between mb-2">
-                              <p className="text-xs text-muted-foreground">Select which companies this user can access:</p>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (editCompanyIds.length === allCompanies.length) setEditCompanyIds([]);
-                                  else setEditCompanyIds(allCompanies.map(c => c.id));
-                                }}
-                                className="text-[10px] text-primary hover:text-primary/80 uppercase tracking-wider"
-                              >
-                                {editCompanyIds.length === allCompanies.length ? 'Deselect All' : 'Select All'}
-                              </button>
+                              <p className="text-xs text-muted-foreground">
+                                {isDriver ? 'Pick the company this driver works for:' : 'Select which companies this user can access:'}
+                              </p>
+                              {!isDriver && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (editCompanyIds.length === allCompanies.length) setEditCompanyIds([]);
+                                    else setEditCompanyIds(allCompanies.map(c => c.id));
+                                  }}
+                                  className="text-[10px] text-primary hover:text-primary/80 uppercase tracking-wider"
+                                >
+                                  {editCompanyIds.length === allCompanies.length ? 'Deselect All' : 'Select All'}
+                                </button>
+                              )}
                             </div>
                             <div className="space-y-1.5 mb-3">
                               {allCompanies.map(c => {
@@ -468,11 +549,20 @@ export default function Users() {
                                         : 'bg-muted/30 border-border hover:border-border'
                                     }`}
                                   >
-                                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition ${
-                                      checked ? 'bg-primary border-primary' : 'border-border'
-                                    }`}>
-                                      {checked && <span className="text-foreground text-[10px]">✓</span>}
-                                    </div>
+                                    {/* Visually a radio for drivers (filled circle), a checkbox for everyone else */}
+                                    {isDriver ? (
+                                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition ${
+                                        checked ? 'border-primary' : 'border-border'
+                                      }`}>
+                                        {checked && <div className="w-2 h-2 rounded-full bg-primary" />}
+                                      </div>
+                                    ) : (
+                                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition ${
+                                        checked ? 'bg-primary border-primary' : 'border-border'
+                                      }`}>
+                                        {checked && <span className="text-foreground text-[10px]">✓</span>}
+                                      </div>
+                                    )}
                                     <div className="flex-1">
                                       <span className="text-sm font-medium">{c.code}</span>
                                       {c.display_name && <span className="text-xs text-muted-foreground ml-2">{c.display_name}</span>}
@@ -492,7 +582,7 @@ export default function Users() {
                       {/* ── Step 2: Vehicle Assignments ── */}
                       <div className="border-t border-border pt-5">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Step 2</span>
+                          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{t('forms.step_label', { n: 2 })}</span>
                           <div className="flex-1 border-t border-border" />
                         </div>
                         <h3 className="text-sm font-semibold text-foreground/80 mb-1 flex items-center gap-2">
@@ -545,7 +635,7 @@ export default function Users() {
                             <input
                               value={newVehicle}
                               onChange={e => setNewTruck(e.target.value)}
-                              placeholder="Search vehicles..."
+                              placeholder={t('forms.search_vehicles_placeholder')}
                               className="w-full bg-muted border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-ring mb-2"
                             />
 

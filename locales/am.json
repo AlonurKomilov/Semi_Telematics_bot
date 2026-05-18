@@ -524,7 +524,8 @@
     "share_step3": "3. ኮድ ያስገቡ:",
     "driver_title": "🚛 <b>አሽከርካሪ ይጋብዙ</b>",
     "step2": "<b>እርምጃ 2/2</b> — የጭነት መኪና ቁጥር",
-    "driver_prompt": "ለዚህ አሽከርካሪ የጭነት መኪና ቁጥር ይተይቡ\n(ወይም ባዶ ለመተው <b>skip</b> ይተይቡ):",
+    "driver_prompt": "ለዚህ አሽከርካሪ የጭነት መኪና ቁጥር ይተይቡ:",
+    "driver_vehicle_required": "⚠️ ለአሽከርካሪዎች የጭነት መኪና ቁጥር ያስፈልጋል።\n\nየጭነት መኪና ቁጥር ይተይቡ — ለምሳሌ <code>107</code> — ማንቂያዎች ወደ አሽከርካሪው እንዲደርሱ።",
     "vehicle_assigned": "🚛 የጭነት መኪና: #{vehicle}",
     "vehicle_not_assigned": "አልተመደበም"
   },

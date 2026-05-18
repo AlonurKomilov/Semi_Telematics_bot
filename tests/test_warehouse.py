@@ -1,4 +1,4 @@
-"""Phase C — telemetry warehouse tests.
+"""telemetry warehouse tests.
 
 Covers:
 
@@ -24,7 +24,7 @@ import pytest_asyncio
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from adapters.storage.tenant import TenantDB
+from adapters.storage import Database
 from capabilities.telemetry import warehouse_reader, ingestor
 
 
@@ -32,11 +32,13 @@ from capabilities.telemetry import warehouse_reader, ingestor
 
 
 @pytest_asyncio.fixture
-async def tenant(tmp_path):
-    db = TenantDB(str(tmp_path / "tenant.db"), account_id=1)
-    await db.initialize()
-    yield db
-    await db.close()
+async def tenant(pg_db):
+    """Per-test PG database — same engine as production.
+
+    Forwards to the shared ``pg_db`` fixture (testcontainers PG with
+    per-test schema reset).
+    """
+    yield pg_db
 
 
 def _now_iso() -> str:

@@ -1,13 +1,22 @@
 # 4truck — convenience targets
 # ─────────────────────────────────────────
 
-SERVICE  = 4truck-bot
+SERVICE       = 4truck-bot
+SERVICE_API   = 4truck-api
+SERVICE_QUEUE = 4truck-queue
+# The full set of systemd units `make start/stop/restart` should cover.
+# Order matters for stop: queue first (in-flight job drain), then bot
+# (shutdown handler stops scheduler cleanly), then API.  Start order is
+# the reverse: API up first so workers can enqueue immediately, then
+# bot, then queue (so it picks up pending work).
+APP_SERVICES_START = $(SERVICE_API) $(SERVICE) $(SERVICE_QUEUE)
+APP_SERVICES_STOP  = $(SERVICE_QUEUE) $(SERVICE) $(SERVICE_API)
 PID_FILE = .bot.pid
 LOG_FILE = bot.log
 
-.PHONY: start stop restart status logs install clean \
+.PHONY: start stop restart restart-api restart-bot restart-queue status logs install clean \
+       start-queue stop-queue \
        test test-cov test-fast test-watch \
-       backup backup-list backup-restore \
        docker-build docker-up docker-down docker-logs docker-restart \
        nginx-install nginx-test nginx-status ports \
        redis-start redis-stop redis-cli \
@@ -59,24 +68,37 @@ start: dashboard-build-if-needed miniapp-build-if-needed
 			redis-server --port 8002 >/dev/null; \
 		echo "   ✅ Redis started on port 8002 (new container)"; \
 	fi
-	@# ── 2. Bot + API ──
-	@if systemctl is-enabled $(SERVICE) >/dev/null 2>&1; then \
-		sudo systemctl start $(SERVICE); \
-		echo "   ✅ Bot + API started via systemd"; \
-	elif ss -tlnp 2>/dev/null | grep -q ':8000 '; then \
-		echo "   🧹 Port 8000 in use — clearing (race after stop)..."; \
-		fuser -k 8000/tcp 2>/dev/null; sleep 2; \
-		if ss -tlnp 2>/dev/null | grep -q ':8000 '; then \
-			echo "   ❌ Port 8000 still held (root process?) — run: sudo fuser -k 8000/tcp"; \
-			exit 1; \
+	@# ── 2. App services ──
+	@# Production split: API (gunicorn workers), bot+scheduler, and the
+	@# ARQ queue worker each have their own systemd unit.  Start them
+	@# in API → bot → queue order so workers can enqueue from the
+	@# moment they boot.  Each unit is optional — only the installed
+	@# ones are touched, so single-process dev setups (where the legacy
+	@# `4truck-bot` unit runs everything) still work.
+	@started_any=0; \
+	for svc in $(APP_SERVICES_START); do \
+		if systemctl is-enabled $$svc >/dev/null 2>&1; then \
+			sudo systemctl start $$svc; \
+			echo "   ✅ $$svc started (systemd)"; \
+			started_any=1; \
 		fi; \
-		nohup python3 run.py >> $(LOG_FILE) 2>&1 & echo $$! > $(PID_FILE); \
-		echo "   ✅ Bot + API started (PID $$(cat $(PID_FILE))) — logs: $(LOG_FILE)"; \
-	elif [ -f $(PID_FILE) ] && kill -0 $$(cat $(PID_FILE)) 2>/dev/null; then \
-		echo "   ⚠️  Bot already running (PID $$(cat $(PID_FILE)))"; \
-	else \
-		nohup python3 run.py >> $(LOG_FILE) 2>&1 & echo $$! > $(PID_FILE); \
-		echo "   ✅ Bot + API started (PID $$(cat $(PID_FILE))) — logs: $(LOG_FILE)"; \
+	done; \
+	if [ $$started_any -eq 0 ]; then \
+		if ss -tlnp 2>/dev/null | grep -q ':8000 '; then \
+			echo "   🧹 Port 8000 in use — clearing (race after stop)..."; \
+			fuser -k 8000/tcp 2>/dev/null; sleep 2; \
+			if ss -tlnp 2>/dev/null | grep -q ':8000 '; then \
+				echo "   ❌ Port 8000 still held (root process?) — run: sudo fuser -k 8000/tcp"; \
+				exit 1; \
+			fi; \
+			nohup python3 run.py >> $(LOG_FILE) 2>&1 & echo $$! > $(PID_FILE); \
+			echo "   ✅ Bot + API started (PID $$(cat $(PID_FILE))) — logs: $(LOG_FILE)"; \
+		elif [ -f $(PID_FILE) ] && kill -0 $$(cat $(PID_FILE)) 2>/dev/null; then \
+			echo "   ⚠️  Bot already running (PID $$(cat $(PID_FILE)))"; \
+		else \
+			nohup python3 run.py >> $(LOG_FILE) 2>&1 & echo $$! > $(PID_FILE); \
+			echo "   ✅ Bot + API started (PID $$(cat $(PID_FILE))) — logs: $(LOG_FILE)"; \
+		fi; \
 	fi
 	@# ── 3. Health check ──
 	@echo "   🔍 Checking health..."
@@ -114,19 +136,30 @@ start: dashboard-build-if-needed miniapp-build-if-needed
 		echo "   ℹ️  Nginx: skipped (no sudo session — run 'sudo -v' then 'make nginx-install' to update)"; \
 	fi
 
-## Stop all services: bot/API + Redis
+## Stop all services: queue + bot + API + Redis
 stop:
 	@echo "🛑 Stopping 4truck services..."
-	@# ── 1. Bot + API ──
-	@if systemctl is-enabled $(SERVICE) >/dev/null 2>&1; then \
-		sudo systemctl stop $(SERVICE); \
-		echo "   🛑 Bot + API stopped (systemd)"; \
-	elif [ -f $(PID_FILE) ] && kill -0 $$(cat $(PID_FILE)) 2>/dev/null; then \
-		kill $$(cat $(PID_FILE)) && rm -f $(PID_FILE); \
-		echo "   🛑 Bot + API stopped"; \
-	else \
-		echo "   ⚠️  Bot is not running"; \
-		rm -f $(PID_FILE); \
+	@# ── 1. App services ──
+	@# Reverse-order from start: queue first so the ARQ worker drains
+	@# in-flight jobs cleanly; bot next so the scheduler tearsdown
+	@# without a half-running cron; API last so the request layer
+	@# stays available until the bot+queue are quiet.
+	@stopped_any=0; \
+	for svc in $(APP_SERVICES_STOP); do \
+		if systemctl is-enabled $$svc >/dev/null 2>&1; then \
+			sudo systemctl stop $$svc; \
+			echo "   🛑 $$svc stopped (systemd)"; \
+			stopped_any=1; \
+		fi; \
+	done; \
+	if [ $$stopped_any -eq 0 ]; then \
+		if [ -f $(PID_FILE) ] && kill -0 $$(cat $(PID_FILE)) 2>/dev/null; then \
+			kill $$(cat $(PID_FILE)) && rm -f $(PID_FILE); \
+			echo "   🛑 Bot + API stopped (PID file)"; \
+		else \
+			echo "   ⚠️  No app services found running"; \
+			rm -f $(PID_FILE); \
+		fi; \
 	fi
 	@# ── Nuclear port clear: release port 8000 regardless of which process holds it ──────────────────
 	@# fuser -k sends SIGKILL directly to whatever owns the port — no PID file or name matching needed.
@@ -170,17 +203,24 @@ restart:
 ## Show status of all services
 status:
 	@echo "📋 4truck service status:"
-	@# ── Bot + API ──
-	@if systemctl is-enabled $(SERVICE) >/dev/null 2>&1; then \
-		if systemctl is-active $(SERVICE) >/dev/null 2>&1; then \
-			echo "   ✅ Bot + API: running (systemd)"; \
-		else \
-			echo "   ❌ Bot + API: stopped (systemd)"; \
+	@# ── App services ──
+	@any_systemd=0; \
+	for svc in $(APP_SERVICES_START); do \
+		if systemctl is-enabled $$svc >/dev/null 2>&1; then \
+			any_systemd=1; \
+			if systemctl is-active $$svc >/dev/null 2>&1; then \
+				echo "   ✅ $$svc: running (systemd)"; \
+			else \
+				echo "   ❌ $$svc: stopped (systemd)"; \
+			fi; \
 		fi; \
-	elif [ -f $(PID_FILE) ] && kill -0 $$(cat $(PID_FILE)) 2>/dev/null; then \
-		echo "   ✅ Bot + API: running (PID $$(cat $(PID_FILE)))"; \
-	else \
-		echo "   ❌ Bot + API: stopped"; \
+	done; \
+	if [ $$any_systemd -eq 0 ]; then \
+		if [ -f $(PID_FILE) ] && kill -0 $$(cat $(PID_FILE)) 2>/dev/null; then \
+			echo "   ✅ Bot + API: running (PID $$(cat $(PID_FILE)))"; \
+		else \
+			echo "   ❌ App: stopped (no systemd units installed)"; \
+		fi; \
 	fi
 	@# ── Redis ──
 	@if docker ps --format '{{.Names}}' | grep -q $(REDIS_CONTAINER); then \
@@ -283,84 +323,6 @@ test-fast:
 ## Watch mode — re-runs tests on file changes
 test-watch:
 	ptw -- tests/ -v --tb=short
-
-# ── backup targets ───────────────────────────────────
-
-BACKUP_DIR   = backups
-BACKUP_TS   := $(shell date +%Y%m%d_%H%M%S)
-BACKUP_NAME  = $(SERVICE)_$(BACKUP_TS)
-
-## Create a pre-work backup: source code + consistent SQLite DB snapshot
-## Archives land in ./backups/  (git-ignored, never deployed)
-backup:
-	@echo "📦 Creating backup: $(BACKUP_NAME)"
-	@mkdir -p $(BACKUP_DIR)/$(BACKUP_NAME)/data
-	@# ── 1. Consistent SQLite backup (handles WAL safely) ──
-	@if [ -f data/bot.db ]; then \
-		sqlite3 data/bot.db ".backup '$(BACKUP_DIR)/$(BACKUP_NAME)/data/bot.db'"; \
-		echo "   ✅ Database snapshot saved"; \
-	else \
-		echo "   ⚠️  No database found at data/bot.db — skipping DB"; \
-	fi
-	@# ── 2. Source code archive (exclude junk) ──
-	@tar cf - \
-		--exclude='__pycache__'   \
-		--exclude='.pytest_cache' \
-		--exclude='.mypy_cache'   \
-		--exclude='.git'          \
-		--exclude='*.pyc'         \
-		--exclude='*.pyo'         \
-		--exclude='.venv'         \
-		--exclude='venv'          \
-		--exclude='env'           \
-		--exclude='*.log'         \
-		--exclude='.bot.pid'      \
-		--exclude='.pid'          \
-		--exclude='data'          \
-		--exclude='backups'       \
-		--exclude='.env'          \
-		--exclude='*.db'          \
-		--exclude='*.db-shm'     \
-		--exclude='*.db-wal'     \
-		. | tar xf - -C $(BACKUP_DIR)/$(BACKUP_NAME)/
-	@# ── 3. Pack everything into a single .tar.gz ──
-	@cd $(BACKUP_DIR) && tar czf $(BACKUP_NAME).tar.gz $(BACKUP_NAME)/ \
-		&& rm -rf $(BACKUP_NAME)/
-	@echo "✅ Backup ready: $(BACKUP_DIR)/$(BACKUP_NAME).tar.gz"
-	@echo "   Size: $$(du -h $(BACKUP_DIR)/$(BACKUP_NAME).tar.gz | cut -f1)"
-
-## List existing backups
-backup-list:
-	@if [ -d $(BACKUP_DIR) ] && ls $(BACKUP_DIR)/*.tar.gz >/dev/null 2>&1; then \
-		echo "📋 Available backups:"; \
-		ls -lh $(BACKUP_DIR)/*.tar.gz | awk '{print "   " $$NF " (" $$5 ")"}'; \
-	else \
-		echo "⚠️  No backups found"; \
-	fi
-
-## Restore from latest backup (prompts for confirmation)
-backup-restore:
-	@LATEST=$$(ls -t $(BACKUP_DIR)/*.tar.gz 2>/dev/null | head -1); \
-	if [ -z "$$LATEST" ]; then \
-		echo "⚠️  No backups found in $(BACKUP_DIR)/"; \
-		exit 1; \
-	fi; \
-	echo "⚠️  This will restore from: $$LATEST"; \
-	echo "   Current data/bot.db will be overwritten."; \
-	read -p "   Continue? [y/N] " confirm; \
-	if [ "$$confirm" = "y" ] || [ "$$confirm" = "Y" ]; then \
-		TMPDIR=$$(mktemp -d); \
-		tar xzf "$$LATEST" -C "$$TMPDIR"; \
-		INNER=$$(ls "$$TMPDIR"); \
-		if [ -f "$$TMPDIR/$$INNER/data/bot.db" ]; then \
-			cp "$$TMPDIR/$$INNER/data/bot.db" data/bot.db; \
-			echo "   ✅ Database restored"; \
-		fi; \
-		rm -rf "$$TMPDIR"; \
-		echo "✅ Restore complete from $$LATEST"; \
-	else \
-		echo "❌ Restore cancelled"; \
-	fi
 
 # ── Docker targets ───────────────────────────────────
 
@@ -523,6 +485,51 @@ stop-bot:
 		echo "🛑 Bot process stopped"; \
 	else \
 		echo "⚠️  Bot service not running"; \
+	fi
+
+## Start only the ARQ queue worker
+start-queue:
+	@if systemctl is-enabled $(SERVICE_QUEUE) >/dev/null 2>&1; then \
+		sudo systemctl start $(SERVICE_QUEUE); \
+		echo "✅ Queue worker started (systemd)"; \
+	else \
+		echo "⚠️  $(SERVICE_QUEUE) is not installed as a systemd unit"; \
+	fi
+
+## Stop only the ARQ queue worker
+stop-queue:
+	@if systemctl is-enabled $(SERVICE_QUEUE) >/dev/null 2>&1; then \
+		sudo systemctl stop $(SERVICE_QUEUE); \
+		echo "🛑 Queue worker stopped (systemd)"; \
+	else \
+		echo "⚠️  $(SERVICE_QUEUE) is not installed as a systemd unit"; \
+	fi
+
+## Restart only the API workers (fast — no scheduler drain)
+restart-api:
+	@if systemctl is-enabled $(SERVICE_API) >/dev/null 2>&1; then \
+		sudo systemctl restart $(SERVICE_API); \
+		echo "🔄 $(SERVICE_API) restarted (systemd)"; \
+	else \
+		$(MAKE) stop-api; $(MAKE) start-api; \
+	fi
+
+## Restart only the bot + scheduler (drains in-flight jobs gracefully)
+restart-bot:
+	@if systemctl is-enabled $(SERVICE) >/dev/null 2>&1; then \
+		sudo systemctl restart $(SERVICE); \
+		echo "🔄 $(SERVICE) restarted (systemd)"; \
+	else \
+		$(MAKE) stop-bot; $(MAKE) start-bot; \
+	fi
+
+## Restart only the ARQ queue worker (drains in-flight jobs gracefully)
+restart-queue:
+	@if systemctl is-enabled $(SERVICE_QUEUE) >/dev/null 2>&1; then \
+		sudo systemctl restart $(SERVICE_QUEUE); \
+		echo "🔄 $(SERVICE_QUEUE) restarted (systemd)"; \
+	else \
+		echo "⚠️  $(SERVICE_QUEUE) is not installed as a systemd unit"; \
 	fi
 
 ## Start split services via docker-compose.services.yml (api + bot + redis)

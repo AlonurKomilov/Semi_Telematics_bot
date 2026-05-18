@@ -1,5 +1,6 @@
 """Event alert and events dashboard formatters."""
 
+import html as _html
 from datetime import datetime
 from collections import Counter
 from constants import TZ_ET as _TZ_ET
@@ -7,6 +8,18 @@ from infra.context import get_company_display
 from capabilities.formatting.helpers import (
     _t, _fmt_time, _relative_ago, _split_message,
 )
+
+
+def _esc(s: object) -> str:
+    """HTML-escape a value before inlining it into a Telegram HTML message.
+
+    Samsara-supplied strings (driver name, vehicle name, address) can
+    contain ``&``, ``<``, ``>`` — Telegram's HTML parser rejects the
+    whole message with ``Bad Request: can't parse entities`` and the
+    bot's outer try/except swallows the error, producing the
+    "video without description" symptom users reported.
+    """
+    return _html.escape(str(s or ""), quote=False)
 
 
 def _fmt_short_et(iso_str: str) -> str:
@@ -54,14 +67,38 @@ _EVENT_TYPE_KEYS: dict[str, str] = {
 # in the alert is misleading.
 _GFORCE_EVENT_TYPES = frozenset({"crash", "braking", "acceleration", "harshTurn"})
 
+# Words Samsara appends to behavior labels that read as accusatory in
+# dispatcher UI — "Edge Railroad Crossing Violation" is already an
+# unambiguous safety event, the "Violation" label adds nothing and
+# sounds punitive.  These get stripped from the visible event title.
+_NOISE_LABEL_SUFFIXES = ("Violation", "Detected", "Detection", "Event")
+
+
+def _clean_event_name(name: str) -> str:
+    """Strip noise suffix words from a Samsara behavior label."""
+    cleaned = name.strip()
+    # Repeated strip in case Samsara stacks two suffixes (e.g. "X Detection Event").
+    for _ in range(len(_NOISE_LABEL_SUFFIXES)):
+        changed = False
+        for suffix in _NOISE_LABEL_SUFFIXES:
+            if cleaned.endswith(" " + suffix):
+                cleaned = cleaned[: -(len(suffix) + 1)].rstrip()
+                changed = True
+                break
+        if not changed:
+            break
+    return cleaned or name
+
 
 def format_event_alert(event: dict) -> str:
     """Format a single event for push notification (HTML)."""
     etype = event.get("event_type", "unknown")
     emoji = _EVENT_EMOJI.get(etype, "🚨")
-    ename = event.get("event_name", "Event")
-    vname = event.get("vehicle_name", "?")
-    dname = event.get("driver_name", "Unassigned")
+    # All values that originate from Samsara (names, locations) get
+    # HTML-escaped before going into the message — see _esc docstring.
+    ename = _esc(_clean_event_name(event.get("event_name", "Event")))
+    vname = _esc(event.get("vehicle_name", "?"))
+    dname = _esc(event.get("driver_name", "Unassigned"))
     lat = event.get("latitude")
     lng = event.get("longitude")
     # Detection time: when Samsara saw the event (NOT when the bot
@@ -83,7 +120,7 @@ def format_event_alert(event: dict) -> str:
         loc = event.get("location") or {}
         addr = ((loc.get("reverseGeo") or {}).get("formattedLocation") or "").strip()
     if addr:
-        loc_str = addr
+        loc_str = _esc(addr)
     elif lat is not None and lng is not None:
         loc_str = f"{lat:.4f}, {lng:.4f}"
     else:
@@ -135,10 +172,9 @@ def format_events_dashboard(
     for etype in type_order:
         cnt = type_counts.get(etype, 0)
         if cnt > 0:
-            emoji = _EVENT_EMOJI.get(etype, "🚨")
             key = _EVENT_TYPE_KEYS.get(etype, "events.type_crash")
             summary_lines.append(f"  {_t(key)}: {cnt}")
-    summary_lines.append(f"  ─────────────")
+    summary_lines.append("  ─────────────")
     summary_lines.append(f"  {_t('events.total').format(count=len(events))}")
 
     # Top 5 drivers by event count

@@ -1,10 +1,10 @@
-"""Tests for Phase C (service split flags) and Phase E (PostgreSQL adapter).
+"""Tests for and (PostgreSQL adapter).
 
-Phase C tests verify that:
+tests verify that:
   - ENABLE_API / ENABLE_BOT / ENABLE_SCHEDULER env flags parse correctly
   - docker-compose.services.yml and systemd units have correct env vars
 
-Phase E tests verify that:
+tests verify that:
   - pg_adapter._sqlite_to_pg_sql() translates SQL correctly
   - _PgRow exposes dict-like access
   - _PgCursor fetchone/fetchall behave like aiosqlite.Cursor
@@ -25,7 +25,7 @@ import pytest
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  Phase C — Service split flag tests
+# Service split flag tests
 # ═══════════════════════════════════════════════════════════════════
 
 class TestServiceSplitFlags:
@@ -99,10 +99,10 @@ class TestServiceSplitFlags:
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  Phase E — PostgreSQL adapter unit tests
+# PostgreSQL adapter unit tests
 # ═══════════════════════════════════════════════════════════════════
 
-from adapters.storage.pg_adapter import _sqlite_to_pg_sql, _PgRow, _PgCursor
+from adapters.storage.pg_adapter import _sqlite_to_pg_sql, _PgRow, _PgCursor  # noqa: E402
 
 
 class TestSqlTranslation:
@@ -274,13 +274,9 @@ class TestBillingMixinContracts:
         assert "self._db" in source
 
     @pytest.mark.asyncio
-    async def test_billing_mixin_e2e(self, tmp_path):
-        """End-to-end: get_or_create_subscription works on a real SQLite DB."""
-        from adapters.storage.platform import PlatformDB
-        db_path = str(tmp_path / "billing_test.db")
-        db = PlatformDB(db_path, pool_size=1)
-        await db.initialize()
-
+    async def test_billing_mixin_e2e(self, pg_db):
+        """End-to-end: get_or_create_subscription works on a real Postgres DB."""
+        db = pg_db
         acct = await db.create_account("Test Carrier")
         sub = await db.get_or_create_subscription(acct.id, tier="starter")
         assert sub is not None
@@ -321,27 +317,18 @@ class TestBillingMixinContracts:
         await db.close()
 
 
-class TestExportScriptExists:
-    """scripts/export_sqlite_to_postgres.py must be present and complete."""
-
-    def test_script_file_exists(self):
-        root = os.path.dirname(os.path.dirname(__file__))
-        path = os.path.join(root, "scripts", "export_sqlite_to_postgres.py")
-        assert os.path.exists(path)
-
-    def test_script_has_table_defs(self):
-        root = os.path.dirname(os.path.dirname(__file__))
-        content = open(os.path.join(root, "scripts", "export_sqlite_to_postgres.py")).read()
-        assert "PLATFORM_TABLES" in content
-        assert "TENANT_TABLES"   in content
-        assert "accounts"        in content
-        assert "subscriptions"   in content
-        assert "billing_usage_snapshots" in content
+class TestPgAdapterImports:
+    """pg_adapter symbols must remain importable across renames."""
 
     def test_pg_adapter_importable(self):
         from adapters.storage.pg_adapter import (
             _sqlite_to_pg_sql, _PgRow, _PgCursor,
             _PgConnection, _PgPool, open_pg_pool,
         )
+        # The import itself is the test — every symbol must resolve so
+        # any rename breakage is caught here before downstream callers
+        # fail at runtime.  Assert each name so ruff sees them used.
+        for sym in (_sqlite_to_pg_sql, _PgRow, _PgCursor, _PgConnection, _PgPool, open_pg_pool):
+            assert sym is not None
         assert callable(_sqlite_to_pg_sql)
         assert callable(open_pg_pool)

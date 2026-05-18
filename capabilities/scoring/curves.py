@@ -1,4 +1,4 @@
-"""Smooth curve evaluators for scoring rules (audit Option C).
+"""Smooth curve evaluators for scoring rules.
 
 Replaces brittle step thresholds (``green_pct >= 80 → +5``) with linear
 interpolation between two anchor points.  Each evaluator returns a

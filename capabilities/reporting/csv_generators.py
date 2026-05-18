@@ -523,7 +523,7 @@ def generate_scorecard_csv(
     """Return a BytesIO containing CSV data for the Driver Scorecards report.
 
     *pillar_by_driver* — optional mapping ``driver_id -> composite
-    scorecard dict`` (Audit Option C). When supplied, the CSV gains
+    scorecard dict``. When supplied, the CSV gains
     five trailing columns: ``Safety/50, Efficiency/25, Compliance/25,
     Total/100, Insufficient Data``. Empty for rows missing composite
     data so the column count stays stable.
@@ -610,7 +610,7 @@ def generate_risk_summary_csv(profile, *, audience: str = "owner") -> io.BytesIO
         writer.writerow(["Company", profile.company])
     writer.writerow(["Window (days)", profile.days])
     writer.writerow(["Total score", profile.total_score if profile.total_score is not None else _NA])
-    writer.writerow(["Grade", profile.grade or _NA])
+    writer.writerow(["Tier", profile.tier or _NA])
     writer.writerow(["Fleet median", profile.fleet_median if profile.fleet_median is not None else _NA])
     writer.writerow(["Fleet percentile", profile.fleet_percentile if profile.fleet_percentile is not None else _NA])
     writer.writerow(["Fleet size", profile.fleet_size])

@@ -38,9 +38,8 @@ class TestQuietHours:
         assert updated.quiet_end == 6
 
     async def test_is_in_quiet_hours_during(self, seeded):
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
         from datetime import datetime as real_dt, timezone as tz
-        from zoneinfo import ZoneInfo
         db, user = seeded["db"], seeded["owner"]
         # Working hours 6-22 means alerts queue OUTSIDE 6-22
         await db.update_user(user.id, quiet_start=6, quiet_end=22, timezone="UTC")
@@ -266,9 +265,12 @@ class TestNewKeyboards:
         from interfaces.bot.keyboards import auto_reports_tz_kb
         kb = auto_reports_tz_kb()
         callbacks = self._callbacks(kb)
+        # Whitelist trimmed to the four contiguous-US zones — UTC was
+        # removed when the product committed to a US-only customer base.
         assert "ar_tz_America/New_York" in callbacks
-        assert "ar_tz_UTC" in callbacks
+        assert "ar_tz_America/Los_Angeles" in callbacks
         assert "cmd_auto_reports" in callbacks
+        assert "ar_tz_UTC" not in callbacks
 
     def test_auto_reports_type_kb(self):
         from interfaces.bot.keyboards import auto_reports_type_kb
@@ -410,8 +412,11 @@ class TestNewKeyboards:
         from interfaces.bot.keyboards import settings_tz_kb
         kb = settings_tz_kb()
         callbacks = self._callbacks(kb)
+        # Whitelist trimmed to the four contiguous-US zones.
         assert "set_tz_America/New_York" in callbacks
-        assert "set_tz_UTC" in callbacks
+        assert "set_tz_America/Los_Angeles" in callbacks
+        assert "set_tz_UTC" not in callbacks
+        assert "set_tz_America/Anchorage" not in callbacks
 
     def test_auto_reports_menu_with_subscription(self):
         from interfaces.bot.keyboards import auto_reports_menu_kb
@@ -445,24 +450,24 @@ class TestNewKeyboards:
 
 class TestRateLimiting:
     def test_first_call_allowed(self):
-        from interfaces.bot.config import check_rate_limit, _rate_limits
+        from interfaces.bot.state import check_rate_limit, _rate_limits
         _rate_limits.clear()
         assert check_rate_limit(12345, "test_cmd") is True
 
     def test_second_call_blocked(self):
-        from interfaces.bot.config import check_rate_limit, _rate_limits
+        from interfaces.bot.state import check_rate_limit, _rate_limits
         _rate_limits.clear()
         check_rate_limit(99999, "test_cmd")
         assert check_rate_limit(99999, "test_cmd") is False
 
     def test_different_users_independent(self):
-        from interfaces.bot.config import check_rate_limit, _rate_limits
+        from interfaces.bot.state import check_rate_limit, _rate_limits
         _rate_limits.clear()
         check_rate_limit(1001, "cmd")
         assert check_rate_limit(1002, "cmd") is True
 
     def test_different_commands_independent(self):
-        from interfaces.bot.config import check_rate_limit, _rate_limits
+        from interfaces.bot.state import check_rate_limit, _rate_limits
         _rate_limits.clear()
         check_rate_limit(5555, "cmd_a")
         assert check_rate_limit(5555, "cmd_b") is True
@@ -1402,7 +1407,6 @@ class TestParkingMapRender:
         """_render_parking_map should return PNG bytes for valid coords."""
         from capabilities.alerting import _render_parking_map
         from unittest.mock import patch, MagicMock
-        import io
 
         # Mock staticmap and PIL to avoid actual HTTP tile fetching
         mock_img = MagicMock()
@@ -1441,7 +1445,7 @@ class TestParkingMapRender:
     async def test_ai_analysis_with_map_uses_vision(self):
         """When map renders successfully, should call generate_with_vision."""
         from capabilities.alerting import _get_ai_parking_analysis
-        from unittest.mock import patch, AsyncMock, MagicMock
+        from unittest.mock import patch, AsyncMock
 
         mock_map = b"\x89PNG_fake_map"
         mock_vision_response = (

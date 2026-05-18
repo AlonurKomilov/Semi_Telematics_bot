@@ -1,7 +1,7 @@
-"""Phase C — telemetry warehouse mixin.
+"""telemetry warehouse mixin.
 
 Read + upsert helpers for the four warehouse tables created in
-``tenant_schema``::
+``schema.py``::
 
   - vehicle_state          (one row per vehicle, overwritten)
   - safety_event_log       (append-only, idempotent on samsara_event_id)
@@ -86,6 +86,8 @@ class WarehouseMixin(_MixinBase):
                 r.get("fuel_pct"), r.get("def_pct"),
                 r.get("odometer_mi"),
                 r.get("odometer_time"),
+                r.get("engine_hours"),
+                r.get("engine_hours_time"),
                 int(r.get("fault_count") or 0),
                 int(r.get("dtc_critical_count") or 0),
                 str(r.get("last_driver_id") or ""),
@@ -101,10 +103,11 @@ class WarehouseMixin(_MixinBase):
                     lat, lon, speed_mph, heading, address,
                     engine_state, fuel_pct, def_pct,
                     odometer_mi, odometer_time,
+                    engine_hours, engine_hours_time,
                     fault_count, dtc_critical_count,
                     last_driver_id, last_driver_name,
                     captured_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(vehicle_id) DO UPDATE SET
                     account_id=excluded.account_id,
                     vehicle_name=excluded.vehicle_name,
@@ -116,6 +119,8 @@ class WarehouseMixin(_MixinBase):
                     fuel_pct=excluded.fuel_pct, def_pct=excluded.def_pct,
                     odometer_mi=COALESCE(excluded.odometer_mi, vehicle_state.odometer_mi),
                     odometer_time=COALESCE(excluded.odometer_time, vehicle_state.odometer_time),
+                    engine_hours=COALESCE(excluded.engine_hours, vehicle_state.engine_hours),
+                    engine_hours_time=COALESCE(excluded.engine_hours_time, vehicle_state.engine_hours_time),
                     fault_count=excluded.fault_count,
                     dtc_critical_count=excluded.dtc_critical_count,
                     last_driver_id=excluded.last_driver_id,
@@ -160,6 +165,7 @@ class WarehouseMixin(_MixinBase):
             "lat", "lon", "speed_mph", "heading", "address",
             "engine_state", "fuel_pct", "def_pct",
             "odometer_mi", "odometer_time",
+            "engine_hours", "engine_hours_time",
             "fault_count", "dtc_critical_count",
             "last_driver_id", "last_driver_name",
             "captured_at", "updated_at",
@@ -207,6 +213,7 @@ class WarehouseMixin(_MixinBase):
                 e.get("lat"), e.get("lon"),
                 e.get("speed_mph"),
                 str(e.get("video_url") or ""),
+                str(e.get("company_code") or ""),
                 json.dumps(e.get("raw") or e, default=str),
                 ts,
             ))
@@ -239,13 +246,66 @@ class WarehouseMixin(_MixinBase):
                     vehicle_id, vehicle_name, driver_id, driver_name,
                     event_type, severity, occurred_at,
                     lat, lon, speed_mph, video_url,
+                    company_code,
                     raw_json, ingested_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 new_values,
             )
         await self._db.commit()
         return len(new_values)
+
+    async def count_safety_events_in_window(
+        self,
+        account_id: int,
+        days: int = 90,
+    ) -> int:
+        """Return how many safety events the warehouse already has in
+        the trailing *days* window — used by the on-connect backfill to
+        decide whether to skip the Samsara call (data already there).
+        """
+        from datetime import timedelta
+        since = (
+            datetime.now(timezone.utc) - timedelta(days=days)
+        ).strftime("%Y-%m-%dT%H:%M:%S")
+        cur = await self._db.execute(
+            "SELECT COUNT(*) AS c FROM safety_event_log "
+            "WHERE account_id = ? AND occurred_at >= ?",
+            (account_id, since),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return 0
+        try:
+            return int(row["c"])
+        except (KeyError, TypeError):
+            return int(row[0])
+
+    async def count_driver_efficiency_in_window(
+        self,
+        account_id: int,
+        days: int = 90,
+    ) -> int:
+        """How many (driver, day) rows the warehouse already has within
+        the trailing window.  Used by the on-connect backfill to skip
+        the Samsara call when the scoreboard period is already populated.
+        """
+        from datetime import timedelta
+        since = (
+            datetime.now(timezone.utc) - timedelta(days=days)
+        ).strftime("%Y-%m-%d")
+        cur = await self._db.execute(
+            "SELECT COUNT(*) AS c FROM driver_efficiency_daily "
+            "WHERE account_id = ? AND day >= ?",
+            (account_id, since),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return 0
+        try:
+            return int(row["c"])
+        except (KeyError, TypeError):
+            return int(row[0])
 
     async def get_safety_events_warehouse(
         self,
@@ -257,10 +317,19 @@ class WarehouseMixin(_MixinBase):
         vehicle_name: str | None = None,
         driver_id: str | None = None,
         limit: int = 5000,
+        include_raw: bool = True,
     ) -> list[dict[str, Any]]:
         """Read safety events from the warehouse, ordered most-recent
         first.  ``days`` filters on ``occurred_at`` lexicographically
-        (ISO-8601 ordering, UTC)."""
+        (ISO-8601 ordering, UTC).
+
+        *include_raw* — when True (default, used by alerting + reporting
+        flows that need the full live-Samsara event shape), every row
+        decodes its ``raw_json`` blob into a ``raw`` dict.  Set False
+        from list-view callers (the dashboard's /safety/events route)
+        that only need the SQL columns; skipping the per-row
+        ``json.loads`` saves hundreds of ms on a 30-day window.
+        """
         from datetime import timedelta
         since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
         where = ["account_id = ?", "occurred_at >= ?"]
@@ -278,12 +347,22 @@ class WarehouseMixin(_MixinBase):
             where.append("driver_id = ?")
             args.append(driver_id)
 
+        # Hard-coded column list rather than ``cur.description`` so this
+        # works on both SQLite (aiosqlite cursors expose .description)
+        # and Postgres (asyncpg adapter cursor doesn't).  When the caller
+        # didn't ask for the raw blob, we skip the column entirely so the
+        # 2KB-per-row payload never crosses the DB connection.
+        cols = [
+            "samsara_event_id", "vehicle_id", "vehicle_name",
+            "driver_id", "driver_name",
+            "event_type", "severity", "occurred_at",
+            "lat", "lon", "speed_mph", "video_url", "company_code",
+        ]
+        if include_raw:
+            cols.append("raw_json")
         cur = await self._db.execute(
             f"""
-            SELECT samsara_event_id, vehicle_id, vehicle_name,
-                   driver_id, driver_name,
-                   event_type, severity, occurred_at,
-                   lat, lon, speed_mph, video_url, raw_json
+            SELECT {', '.join(cols)}
             FROM safety_event_log
             WHERE {' AND '.join(where)}
             ORDER BY occurred_at DESC
@@ -291,16 +370,16 @@ class WarehouseMixin(_MixinBase):
             """,
             (*args, limit),
         )
-        cols = [d[0] for d in cur.description]
         out: list[dict[str, Any]] = []
         for row in await cur.fetchall():
             d = dict(zip(cols, row))
-            # Decode raw_json on the way out so callers can treat
-            # rows like the live-Samsara shape.
-            try:
-                d["raw"] = json.loads(d.pop("raw_json") or "{}")
-            except Exception:
-                d["raw"] = {}
+            if include_raw:
+                # Decode raw_json on the way out so callers can treat
+                # rows like the live-Samsara shape.
+                try:
+                    d["raw"] = json.loads(d.pop("raw_json") or "{}")
+                except Exception:
+                    d["raw"] = {}
             out.append(d)
         return out
 
@@ -426,6 +505,13 @@ class WarehouseMixin(_MixinBase):
             where.append("driver_id = ?")
             args.append(driver_id)
 
+        # Hard-coded column list — see comment in get_current_vehicles
+        # for the asyncpg compatibility reason.
+        cols = [
+            "driver_id", "driver_name", "miles", "drive_h", "idle_h",
+            "mpg", "antic_pct", "green_pct",
+            "harsh_brake", "harsh_turn", "harsh_accel", "overspeed_min",
+        ]
         cur = await self._db.execute(
             f"""
             SELECT driver_id,
@@ -447,7 +533,6 @@ class WarehouseMixin(_MixinBase):
             """,
             tuple(args),
         )
-        cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row)) for row in await cur.fetchall()]
 
     # ── vehicle_telemetry_hourly ────────────────────────────────────
@@ -514,20 +599,24 @@ class WarehouseMixin(_MixinBase):
         if vehicle_id:
             where.append("vehicle_id = ?")
             args.append(vehicle_id)
+        # Hard-coded column list — see comment in get_current_vehicles
+        # for the asyncpg compatibility reason.
+        cols = [
+            "vehicle_id", "hour_utc", "miles", "drive_min", "idle_min",
+            "max_speed_mph", "harsh_event_count",
+        ]
         cur = await self._db.execute(
             f"""
-            SELECT vehicle_id, hour_utc, miles, drive_min, idle_min,
-                   max_speed_mph, harsh_event_count
+            SELECT {', '.join(cols)}
             FROM vehicle_telemetry_hourly
             WHERE {' AND '.join(where)}
             ORDER BY hour_utc DESC
             """,
             tuple(args),
         )
-        cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row)) for row in await cur.fetchall()]
 
-    # ── vehicle_health_snapshot (Phase 2) ────────────────────────────
+    # ── vehicle_health_snapshot ────────────────────────────
 
     async def upsert_vehicle_health_snapshots(
         self,
@@ -623,7 +712,7 @@ class WarehouseMixin(_MixinBase):
             out.append(d)
         return out
 
-    # ── vehicle_fault_snapshot + vehicle_fault_detail (Phase 2) ──────
+    # ── vehicle_fault_snapshot + vehicle_fault_detail ──────
 
     async def upsert_vehicle_fault_snapshot(
         self,
@@ -896,6 +985,40 @@ class WarehouseMixin(_MixinBase):
             }
         return faulted, grand_total, breakdown
 
+    async def get_vehicle_fault_snapshot_by_name(
+        self,
+        account_id: int,
+        vehicle_name: str,
+    ) -> dict[str, Any] | None:
+        """Return the decoded raw_json (full DTC details) for one vehicle.
+
+        ``vehicle_fault_snapshot.raw_json`` stores the live Samsara
+        shape — including ``fault_codes.j1939.diagnosticTroubleCodes``
+        with ``spnDescription`` / ``fmiDescription`` / ``sourceAddressName``.
+        Used by /api/vehicles/{name}/faults so the dashboard renders the
+        actual fault descriptions instead of the empty-dict placeholders
+        that ``_warehouse_row_to_overview`` produces from vehicle_state's
+        fault_count alone.
+
+        Returns None when no fault snapshot exists for the vehicle.
+        """
+        cur = await self._db.execute(
+            "SELECT raw_json FROM vehicle_fault_snapshot "
+            "WHERE account_id = ? AND vehicle_name = ? "
+            "LIMIT 1",
+            (account_id, vehicle_name),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        raw = row[0] if not isinstance(row, dict) else row.get("raw_json")
+        if not raw:
+            return None
+        try:
+            return json.loads(raw)
+        except Exception:
+            return None
+
     async def get_active_fault_dtc_ids(
         self,
         account_id: int,
@@ -904,9 +1027,9 @@ class WarehouseMixin(_MixinBase):
     ) -> set[str]:
         """Return active (``cleared_at IS NULL``) ``dtc_id``s.
 
-        Phase 3 alerting uses this in place of the Redis ``_known_faults``
+        alerting uses this in place of the Redis ``_known_faults``
         set so the DB becomes the dedup SSOT.  Currently unused; the
-        method is here so Phase 3 lands as a behaviour change only.
+        method is here so lands as a behaviour change only.
         """
         where = ["account_id = ?", "cleared_at IS NULL"]
         args: list[Any] = [account_id]
@@ -919,7 +1042,7 @@ class WarehouseMixin(_MixinBase):
         )
         return {row[0] for row in await cur.fetchall()}
 
-    # ── fleet_weather_snapshot (Phase 2) ─────────────────────────────
+    # ── fleet_weather_snapshot ─────────────────────────────
 
     async def upsert_fleet_weather_snapshots(
         self,
@@ -1005,7 +1128,7 @@ class WarehouseMixin(_MixinBase):
             out.append(d)
         return out
 
-    # ── fleet_efficiency_snapshot (Phase 2) ──────────────────────────
+    # ── fleet_efficiency_snapshot ──────────────────────────
 
     async def upsert_fleet_efficiency_snapshot(
         self,
@@ -1057,7 +1180,7 @@ class WarehouseMixin(_MixinBase):
         except Exception:
             return []
 
-    # ── Phase 4 — geofence definitions cache ─────────────────────
+    # ── geofence definitions cache ─────────────────────
 
     async def upsert_geofence_definitions(
         self,

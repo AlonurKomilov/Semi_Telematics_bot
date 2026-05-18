@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Truck } from 'lucide-react';
@@ -12,6 +13,7 @@ import {
   TableSkeleton,
   LastUpdated,
   FilterChips,
+  useLoadingStage,
 } from '../../components/shell';
 import type { Vehicle, VehiclesResponse } from '../../types';
 import type { AnyColumn } from '../../types';
@@ -50,9 +52,17 @@ const columns: AnyColumn[] = [
       ? `${Math.round(v as number).toLocaleString()} mi`
       : <span className="text-muted-foreground">—</span>,
   },
+  {
+    key: 'engine_hours',
+    label: 'Engine Hrs',
+    render: (v) => v != null
+      ? `${Math.round(v as number).toLocaleString()} h`
+      : <span className="text-muted-foreground">—</span>,
+  },
 ];
 
 export default function Vehicles() {
+  const { t } = useTranslation();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const navigate = useNavigate();
 
@@ -85,12 +95,18 @@ export default function Vehicles() {
     if (v.status && counts[v.status] !== undefined) counts[v.status]++;
   });
 
+  // Same warehouse-first pattern as the rest of the fleet — when the
+  // warehouse is cold the list falls back to live Samsara, which on a
+  // 100-truck fleet can take 15-30s.  useLoadingStage drives the
+  // progressive feedback (Loading… → Still loading… → Retry).
+  const stage = useLoadingStage(isLoading && vehicles.length === 0);
+
   return (
     <div>
       <PageHeader
         icon={Truck}
-        title="Vehicles"
-        description="Every truck in your account — current status, fuel, and active faults. Click a row to open the vehicle's detail page."
+        title={t('vehicles.page_title')}
+        description={t('vehicles.page_description')}
         actions={
           <LastUpdated
             fetchedAt={dataUpdatedAt}
@@ -111,22 +127,32 @@ export default function Vehicles() {
         />
       </div>
 
-      {error && vehicles.length === 0 ? (
+      {stage === 'timeout' && vehicles.length === 0 ? (
         <ErrorState
-          title="Couldn't load vehicles"
+          title={t('common.loading_takes_long')}
+          message={t('scorecards.loading_too_long_message')}
+          onRetry={() => refetch()}
+        />
+      ) : error && vehicles.length === 0 ? (
+        <ErrorState
+          title={t('vehicles.load_failed')}
           message={error}
           onRetry={() => refetch()}
         />
       ) : isLoading && vehicles.length === 0 ? (
-        <TableSkeleton rows={8} cols={7} />
+        <TableSkeleton
+          rows={8}
+          cols={7}
+          message={stage === 'slow' ? t('scorecards.loading_slow') : t('common.loading')}
+        />
       ) : vehicles.length === 0 ? (
         <EmptyState
           icon={Truck}
-          title="No vehicles match this filter"
+          title={t('vehicles.no_matches')}
           description={
             statusFilter === 'all'
-              ? 'Once trucks come online they will appear here.'
-              : `No vehicles are currently ${statusFilter}. Try a different filter.`
+              ? t('common.no_data')
+              : t('vehicles.no_matches')
           }
         />
       ) : (

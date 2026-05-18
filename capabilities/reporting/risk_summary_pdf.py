@@ -38,14 +38,21 @@ from .risk_profile import RiskProfile
 
 # ── Style helpers ─────────────────────────────────────────────────
 
-def _grade_color(score: Optional[int]):
+def _tier_color(score: Optional[int]):
+    """Map a 0-100 score to a PDF fill colour.  Thresholds match
+    SCORE_BUCKETS in the dashboard's Scorecards.tsx (85/70/55/40) so
+    the PDF gauge and the dashboard table render the same hue for
+    the same driver.
+    """
     if score is None:
         return C_GRAY
-    if score >= 90:
+    if score >= 85:
         return C_GREEN
-    if score >= 75:
+    if score >= 70:
         return C_YELLOW
-    if score >= 60:
+    if score >= 55:
+        return C_ORANGE
+    if score >= 40:
         return C_ORANGE
     return C_RED
 
@@ -97,8 +104,8 @@ def _render_cover(story, styles, profile: RiskProfile, cfg: AudienceConfig,
 
 def _render_score_gauge(story, styles, profile: RiskProfile) -> None:
     score = profile.total_score if profile.total_score is not None else 0
-    color = _grade_color(profile.total_score)
-    grade = profile.grade or "—"
+    color = _tier_color(profile.total_score)
+    tier = profile.tier or "—"
 
     _section_header(story, styles, "OVERALL RISK SCORE")
 
@@ -109,7 +116,7 @@ def _render_score_gauge(story, styles, profile: RiskProfile) -> None:
                strokeWidth=0.5))
     fill_w = max(0.0, min(1.0, score / 100.0)) * page_w
     d.add(Rect(0, 18, fill_w, 24, fillColor=color, strokeColor=None))
-    d.add(String(page_w / 2, 24, f"{score}/100  ·  Grade {grade}",
+    d.add(String(page_w / 2, 24, f"{score}/100  ·  Tier {tier}",
                  fontName="Helvetica-Bold", fontSize=12, fillColor=C_DARK,
                  textAnchor="middle"))
     story.append(d)

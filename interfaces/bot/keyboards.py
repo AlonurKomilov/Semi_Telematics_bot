@@ -5,12 +5,11 @@ from urllib.parse import quote
 from telegram import (
     InlineKeyboardButton, InlineKeyboardMarkup,
     KeyboardButton, KeyboardButtonRequestChat,
-    ReplyKeyboardMarkup, ReplyKeyboardRemove,
-    WebAppInfo,
+    ReplyKeyboardMarkup, WebAppInfo,
 )
 
 
-from capabilities.localization.i18n import SUPPORTED_LANGUAGES, LANGUAGE_NAMES, LANGUAGE_FLAGS, t
+from capabilities.localization.i18n import LANGUAGE_NAMES, LANGUAGE_FLAGS, t
 from adapters.storage import Role
 from capabilities.iam.permissions import get_permissions, can_access_company_submenu
 from infra.context import get_company_display
@@ -831,13 +830,18 @@ def auto_reports_hour_kb() -> InlineKeyboardMarkup:
 
 
 def auto_reports_tz_kb() -> InlineKeyboardMarkup:
-    """Timezone picker for Auto Reports delivery."""
+    """Timezone picker for Auto Reports delivery.
+
+    Kept aligned with the dashboard's 4-zone whitelist
+    (``capabilities.localization.tz.IANA_OPTIONS``) so users can't
+    pick a value the backend would reject.  US-only product → no
+    UTC / Alaska / Hawaii.
+    """
     timezones = [
-        ("Eastern", "America/New_York"),
-        ("Central", "America/Chicago"),
+        ("Pacific",  "America/Los_Angeles"),
         ("Mountain", "America/Denver"),
-        ("Pacific", "America/Los_Angeles"),
-        ("UTC", "UTC"),
+        ("Central",  "America/Chicago"),
+        ("Eastern",  "America/New_York"),
     ]
     rows = [
         [InlineKeyboardButton(f"🕐 {label}", callback_data=f"ar_tz_{tz}")]
@@ -1005,8 +1009,13 @@ def user_settings_kb(user) -> InlineKeyboardMarkup:
     lang_code = getattr(user, "language", "en") or "en"
     lang_flag = LANGUAGE_FLAGS.get(lang_code, "🌐")
     lang_name = LANGUAGE_NAMES.get(lang_code, lang_code)
+    # Personal DND label changed from "Working Hours" to "Quiet Hours"
+    # to avoid collision with the admin "Working Hours" menu (team shift
+    # templates).  Personal = DND silencer for one user; admin's
+    # Working Hours = team schedule that drives the default DND when
+    # the user has no personal override.
     rows = [
-        [InlineKeyboardButton(f"🕐 {t('user_settings.working_hours')}{work}", callback_data="settings_quiet")],
+        [InlineKeyboardButton(f"🌙 {t('user_settings.quiet_hours', default='Quiet Hours')}{work}", callback_data="settings_quiet")],
         [InlineKeyboardButton(f"🌐 {t('user_settings.timezone')}: {tz_short}", callback_data="settings_tz")],
         [InlineKeyboardButton(f"{lang_flag} {t('user_settings.language')}: {lang_name}", callback_data="settings_lang")],
         [InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")],
@@ -1052,17 +1061,36 @@ def language_kb(current: str = "en", region: str | None = None) -> InlineKeyboar
 
 
 def quiet_hours_kb(user) -> InlineKeyboardMarkup:
-    """Working hours settings (employee view)."""
-    active = getattr(user, "quiet_start", None) is not None
+    """Quiet-hours / DND settings (employee view).
+
+    Two states the user can be in:
+      • ``Personal override`` — they set their own ``quiet_start/end``
+        and those win over the team Working Hours.  Show the active
+        window + a "clear" button.
+      • ``Auto from Working Hours`` — neither column set; DND derives
+        from the account's Working Hours for this user's role.  Show
+        a "set personal override" button.
+    """
+    active = getattr(user, "quiet_start", None) is not None and getattr(user, "quiet_end", None) is not None
     rows = []
     if active:
         rows.append([InlineKeyboardButton(
-            f"🕐 Active: {user.quiet_start:02d}:00–{user.quiet_end:02d}:00",
+            f"🌙 Personal override: {user.quiet_start:02d}:00–{user.quiet_end:02d}:00",
             callback_data="settings_quiet_set",
         )])
-        rows.append([InlineKeyboardButton("❌ Clear Working Hours", callback_data="settings_quiet_off")])
+        rows.append([InlineKeyboardButton(
+            "♻️ Clear override (use team Working Hours)",
+            callback_data="settings_quiet_off",
+        )])
     else:
-        rows.append([InlineKeyboardButton("🕐 Set Working Hours", callback_data="settings_quiet_set")])
+        rows.append([InlineKeyboardButton(
+            "⏰ Using team Working Hours",
+            callback_data="settings_quiet_set",
+        )])
+        rows.append([InlineKeyboardButton(
+            "🌙 Set personal override",
+            callback_data="settings_quiet_set",
+        )])
     rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_settings")])
     return InlineKeyboardMarkup(rows)
 
@@ -1161,15 +1189,16 @@ def work_hour_role_picker_kb() -> InlineKeyboardMarkup:
 
 
 def settings_tz_kb() -> InlineKeyboardMarkup:
-    """Timezone selection keyboard."""
+    """Timezone selection keyboard.
+
+    Matches the dashboard's 4-zone whitelist
+    (``capabilities.localization.tz.IANA_OPTIONS``).
+    """
     timezones = [
-        ("Eastern", "America/New_York"),
-        ("Central", "America/Chicago"),
+        ("Pacific",  "America/Los_Angeles"),
         ("Mountain", "America/Denver"),
-        ("Pacific", "America/Los_Angeles"),
-        ("Alaska", "America/Anchorage"),
-        ("Hawaii", "Pacific/Honolulu"),
-        ("UTC", "UTC"),
+        ("Central",  "America/Chicago"),
+        ("Eastern",  "America/New_York"),
     ]
     rows = [
         [InlineKeyboardButton(f"🕐 {label}", callback_data=f"set_tz_{tz}")]

@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Placeholder } from '@telegram-apps/telegram-ui';
 import {
   Icon24ArrowUpOutline,
@@ -48,6 +49,10 @@ interface Scorecard {
   bonuses: ScoreEvent[];
   penalties: ScoreEvent[];
   insufficient_data: boolean;
+  /** true while the driver is in their first ~14 days
+   *  (not enough snapshot history to rank fairly).  UI shows a
+   *  banner; backend excludes them from rank pools. */
+  probationary?: boolean;
 }
 interface RankSlot { pos: number; total: number }
 interface MyScorecardResp {
@@ -62,9 +67,36 @@ interface MyScorecardResp {
   };
   account_size: number | null;
   days: number;
+  /** ISO-8601 UTC at compute time. Surfaced as "Updated …" footer. */
+  generated_at?: string;
 }
 
 interface ScoreHistoryPoint { date: string; score: number }
+
+/** Score-explanation event — same shape as ScoreEvent but bare
+ *  ``rule_id`` is required because the diff lists key by it.  Mirrors
+ *  the dashboard ``ScoreExplanationEvent`` type. */
+interface ExplanationEvent {
+  rule_id: string;
+  label: string;
+  points: number;
+  occurrences: number;
+}
+interface ScoreExplanationResp {
+  subject_id: string;
+  subject_type: 'driver' | 'vehicle';
+  available: boolean;
+  reason?: 'not_enough_snapshots' | 'breakdown_unparseable';
+  from_date?: string;
+  to_date?: string;
+  from_score?: number;
+  to_score?: number;
+  score_delta?: number;
+  penalties_added?:   ExplanationEvent[];
+  penalties_cleared?: ExplanationEvent[];
+  bonuses_earned?:    ExplanationEvent[];
+  bonuses_lost?:      ExplanationEvent[];
+}
 
 type Range = 7 | 30 | 90;
 
@@ -79,15 +111,15 @@ function deltaColor(d: number | null): string {
   return 'var(--st-red)';
 }
 
-/** Map a 0-100 score to a grade colour token.
+/** Map a 0-100 score to a tier colour token.
  *
  * Cutoffs (85 / 70 / 55) align with the dashboard's ``scoreColor`` so
- * the same driver doesn't render green here and yellow there. The
- * miniapp design system exposes four hues; the dashboard splits the
- * mid range with a fifth (lime/yellow), but the boundaries themselves
- * are shared.
+ * the same driver doesn't render green here and yellow there.  Tier
+ * names themselves (Platinum/Gold/Silver/Bronze/Red) aren't rendered
+ * in the miniapp today — only the ring colour is — so this stays a
+ * pure colour mapper.
  */
-function gradeColor(score: number): string {
+function tierColor(score: number): string {
   if (score >= 85) return 'var(--st-green)';
   if (score >= 70) return 'var(--st-blue)';
   if (score >= 55) return 'var(--st-orange)';
@@ -118,6 +150,7 @@ function useCountUp(target: number): number {
 const MANAGEMENT_ROLES = new Set(['owner', 'admin', 'fleet', 'safety', 'fleet_manager']);
 
 export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
+  const { t } = useTranslation();
   const [data, setData]         = useState<MyScorecardResp | null>(null);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
@@ -126,6 +159,9 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
   const [history, setHistory]   = useState<ScoreHistoryPoint[]>([]);
   const [winsExpanded, setWinsExpanded]     = useState(false);
   const [lossesExpanded, setLossesExpanded] = useState(false);
+  // "Score changes" — diff of latest snapshot vs ~N days ago.
+  // Fire-and-forget on every load(); ``null`` until the request resolves.
+  const [expl, setExpl] = useState<ScoreExplanationResp | null>(null);
 
   // Per-load token: incremented on every load() call.  Both the main
   // request and the (fire-and-forget) history fetch capture this value
@@ -161,6 +197,20 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
           })
           .catch(() => { /* warehouse may be cold */ });
       }
+      // Fetch score-changes explanation for the driver.  Uses the
+      // auto-resolving /me/explanation endpoint so the miniapp never
+      // needs to pass subject_id, and the backend enforces RBAC.
+      apiJSON<ScoreExplanationResp>(
+        `/api/safety/scorecards/me/explanation?days=${days}`
+      )
+        .then(r => {
+          if (myId !== loadIdRef.current) return;
+          setExpl(r);
+        })
+        .catch(() => {
+          if (myId !== loadIdRef.current) return;
+          setExpl(null);  // surface as empty-state silently
+        });
     } catch (e) {
       if (myId !== loadIdRef.current) return;
       const apiErr = e as ApiError;
@@ -172,18 +222,18 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
         if (msg.toLowerCase().includes('assignment') || msg.toLowerCase().includes('no driver')) {
           setError(
             MANAGEMENT_ROLES.has(userRoleRef.current)
-              ? 'Scorecards are available for drivers with an assigned vehicle. Fleet-wide scoring is not available in this view.'
-              : 'No vehicle assigned to your account. Contact your admin.'
+              ? t('scorecard.no_fleet_view')
+              : t('scorecard.no_vehicle_assigned')
           );
         } else {
           // No events in this time window — show inline hint, keep any previous data visible.
           setNoDataForRange(true);
         }
       } else {
-        setError(e instanceof Error ? e.message : 'Failed to load scorecard');
+        setError(e instanceof Error ? e.message : t('scorecard.load_failed'));
       }
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     setLoading(true);
@@ -215,9 +265,9 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
     return (
       <div className="centered">
         <Placeholder
-          header="Scorecard unavailable"
-          description={error ?? 'Try again in a moment.'}
-          action={<button className="retry-btn" onClick={() => { setLoading(true); load(range).finally(() => setLoading(false)); }}>Retry</button>}
+          header={t('scorecard.load_failed')}
+          description={error ?? t('scorecard.load_retry_hint')}
+          action={<button className="retry-btn" onClick={() => { setLoading(true); load(range).finally(() => setLoading(false)); }}>{t('common.retry')}</button>}
         >
           <Icon24StatisticsOutline width={48} height={48} style={{ opacity: 0.4 }} />
         </Placeholder>
@@ -229,9 +279,9 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
     return (
       <div className="centered">
         <Placeholder
-          header="No data yet"
-          description="No drive data found for this period. Try a shorter range or check back after your first trip."
-          action={<button className="retry-btn" onClick={() => { setNoDataForRange(false); setRange(7); }}>Show 7 days</button>}
+          header={t('common.no_data')}
+          description={t('scorecard.no_data_range_msg')}
+          action={<button className="retry-btn" onClick={() => { setNoDataForRange(false); setRange(7); }}>{t('scorecard.no_data_range_action')}</button>}
         >
           <Icon24StatisticsOutline width={48} height={48} style={{ opacity: 0.4 }} />
         </Placeholder>
@@ -247,12 +297,12 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
     : dlt.total > 0 ? 'up' : 'down';
   const bannerText =
     dlt.total === null
-      ? 'No prior period to compare'
+      ? t('scorecard.no_prior_period')
       : dlt.total === 0
-      ? 'No change vs. prior period'
+      ? t('scorecard.no_change_prior')
       : dlt.total > 0
-      ? `Up ${dlt.total} pts vs. prior period`
-      : `Down ${Math.abs(dlt.total)} pts vs. prior period`;
+      ? t('scorecard.up_pts_vs_prior', { n: dlt.total })
+      : t('scorecard.down_pts_vs_prior', { n: Math.abs(dlt.total) });
 
   const BannerIcon =
     bannerVariant === 'up'   ? <Icon24ArrowUpOutline width={18} height={18} />
@@ -272,7 +322,7 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
           efficiency={sc.pillars.efficiency}
           compliance={sc.pillars.compliance}
           total={animatedTotal}
-          gradeColor={gradeColor(sc.total)}
+          tierColor={tierColor(sc.total)}
           size={220}
         />
       </div>
@@ -281,9 +331,9 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
       <div className="score-pillars">
         <div className="score-pillar score-pillar--safety">
           <span className="score-pillar__icon"><Icon24CheckShieldOutline width={14} height={14} /></span>
-          <span className="score-pillar__label">Safety</span>
+          <span className="score-pillar__label">{t('scorecard.pillar_safety')}</span>
           <span className="score-pillar__val">
-            {sc.pillars.safety.has_data ? `${sc.pillars.safety.subtotal}/${sc.pillars.safety.cap}` : 'No data'}
+            {sc.pillars.safety.has_data ? `${sc.pillars.safety.subtotal}/${sc.pillars.safety.cap} pts` : t('common.no_data')}
           </span>
           {dlt.safety !== null && (
             <span className="score-pillar__delta" style={{ color: deltaColor(dlt.safety) }}>{fmtDelta(dlt.safety)}</span>
@@ -291,9 +341,9 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
         </div>
         <div className="score-pillar score-pillar--efficiency">
           <span className="score-pillar__icon"><Icon24SpeedometerMiddleOutline width={14} height={14} /></span>
-          <span className="score-pillar__label">Efficiency</span>
+          <span className="score-pillar__label">{t('scorecard.pillar_efficiency')}</span>
           <span className="score-pillar__val">
-            {sc.pillars.efficiency.has_data ? `${sc.pillars.efficiency.subtotal}/${sc.pillars.efficiency.cap}` : 'No data'}
+            {sc.pillars.efficiency.has_data ? `${sc.pillars.efficiency.subtotal}/${sc.pillars.efficiency.cap} pts` : t('common.no_data')}
           </span>
           {dlt.efficiency !== null && (
             <span className="score-pillar__delta" style={{ color: deltaColor(dlt.efficiency) }}>{fmtDelta(dlt.efficiency)}</span>
@@ -301,15 +351,37 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
         </div>
         <div className="score-pillar score-pillar--compliance">
           <span className="score-pillar__icon"><Icon24CheckCircleOutline width={14} height={14} /></span>
-          <span className="score-pillar__label">Compliance</span>
+          <span className="score-pillar__label">{t('scorecard.pillar_compliance')}</span>
           <span className="score-pillar__val">
-            {sc.pillars.compliance.has_data ? `${sc.pillars.compliance.subtotal}/${sc.pillars.compliance.cap}` : 'No data'}
+            {sc.pillars.compliance.has_data ? `${sc.pillars.compliance.subtotal}/${sc.pillars.compliance.cap} pts` : t('common.no_data')}
           </span>
           {dlt.compliance !== null && (
             <span className="score-pillar__delta" style={{ color: deltaColor(dlt.compliance) }}>{fmtDelta(dlt.compliance)}</span>
           )}
         </div>
       </div>
+
+      {/* Probationary banner — driver is in their first
+           ~14 days; backend excludes them from rank pools and the
+           UI explains why their score/rank are still "soft." */}
+      {sc.probationary && (
+        <div className="score-no-data-banner">
+          <Icon24WarningTriangleOutline width={18} height={18} style={{ flexShrink: 0, opacity: 0.7 }} />
+          {t('scorecard.probationary_banner')}
+        </div>
+      )}
+
+      {/* Insufficient-data warning — surfaces the provisional state
+           the backend flags so a "100/Platinum" with thin telemetry
+           doesn't read as authoritative.  Suppressed when the driver
+           is probationary (banner above already covers the same idea
+           with a clearer "you're new here" framing). */}
+      {sc.insufficient_data && !sc.probationary && (
+        <div className="score-no-data-banner">
+          <Icon24WarningTriangleOutline width={18} height={18} style={{ flexShrink: 0, opacity: 0.7 }} />
+          {t('scorecard.insufficient_note')}
+        </div>
+      )}
 
       {/* Range toggle */}
       <div className="score-range" role="tablist" aria-label="Time range">
@@ -337,7 +409,7 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
       {noDataForRange && (
         <div className="score-no-data-banner">
           <Icon24WarningTriangleOutline width={20} height={20} style={{ flexShrink: 0, opacity: 0.7 }} />
-          No drive data found for the {range}-day window. Try a shorter range.
+          {t('scorecard.no_data_range_msg')}
         </div>
       )}
 
@@ -347,7 +419,9 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
         <div style={{ flex: 1 }}>
           <div className="score-banner__text">{bannerText}</div>
           <div className="score-banner__sub">
-            {account_size != null ? `Last ${days} days · You vs. ${account_size} drivers` : `Last ${days} days`}
+            {account_size != null
+              ? t('scorecard.window_drivers', { days, n: account_size })
+              : t('scorecard.window_days_only', { days })}
           </div>
         </div>
       </div>
@@ -356,34 +430,48 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
       {history.length >= 5
         ? <ScoreSparkline points={history} rangeDays={range} />
         : history.length > 0 && (
-            <div className="score-sparkline-hint">Not enough drive data for a trend yet</div>
+            <div className="score-sparkline-hint">{t('scorecard.trend_insufficient')}</div>
           )
       }
+
+      {/* Score changes — "Why did my score change?" diff between the
+          latest snapshot and one ~N days ago.  Driver-side mirror of
+          the dashboard ScoreExplanationCard; backed by the auto-
+          resolving /scorecards/me/explanation endpoint so the miniapp
+          doesn't need to know its own subject_id. */}
+      <ScoreExplanationSection expl={expl} />
 
       {/* Rank section (fleet only) — coloured pillar icons (finding #10) */}
       {rank && rt && (
         <section className="score-section">
-          <div className="score-section__header">Your rank</div>
+          <div className="score-section__header">{t('scorecard.rank_section')}</div>
           <div className="score-rank-row">
             <Icon24StarsOutline width={16} height={16} style={{ color: 'var(--st-orange)' }} />
-            <span className="score-rank-row__label">Overall</span>
+            <span className="score-rank-row__label">{t('scorecard.rank_overall')}</span>
             <span className="score-rank-row__pos">#{rt.pos} of {rt.total}</span>
           </div>
+          {/* Rank-row icons mirror the pillar taxonomy used in the
+              dashboard so the same driver sees consistent colour
+              signals on web and phone: safety=red, efficiency=green,
+              compliance=blue.  ``deltaColor`` (used for the delta
+              chip on the right) continues to follow direction-of-
+              change rather than pillar identity — green = improving,
+              red = worsening — regardless of which pillar it belongs to. */}
           <div className="score-rank-row">
-            <Icon24CheckShieldOutline width={16} height={16} style={{ color: 'var(--st-green)' }} />
-            <span className="score-rank-row__label">Safety</span>
+            <Icon24CheckShieldOutline width={16} height={16} style={{ color: 'var(--st-red)' }} />
+            <span className="score-rank-row__label">{t('scorecard.pillar_safety')}</span>
             <span className="score-rank-row__pos">#{rank.safety.pos} of {rank.safety.total}</span>
             <span className="score-rank-row__delta" style={{ color: deltaColor(dlt.safety) }}>{fmtDelta(dlt.safety)}</span>
           </div>
           <div className="score-rank-row">
-            <Icon24SpeedometerMiddleOutline width={16} height={16} style={{ color: 'var(--st-blue)' }} />
-            <span className="score-rank-row__label">Efficiency</span>
+            <Icon24SpeedometerMiddleOutline width={16} height={16} style={{ color: 'var(--st-green)' }} />
+            <span className="score-rank-row__label">{t('scorecard.pillar_efficiency')}</span>
             <span className="score-rank-row__pos">#{rank.efficiency.pos} of {rank.efficiency.total}</span>
             <span className="score-rank-row__delta" style={{ color: deltaColor(dlt.efficiency) }}>{fmtDelta(dlt.efficiency)}</span>
           </div>
           <div className="score-rank-row">
             <Icon24CheckCircleOutline width={16} height={16} style={{ color: 'var(--st-blue)' }} />
-            <span className="score-rank-row__label">Compliance</span>
+            <span className="score-rank-row__label">{t('scorecard.pillar_compliance')}</span>
             <span className="score-rank-row__pos">#{rank.compliance.pos} of {rank.compliance.total}</span>
             <span className="score-rank-row__delta" style={{ color: deltaColor(dlt.compliance) }}>{fmtDelta(dlt.compliance)}</span>
           </div>
@@ -395,7 +483,7 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
         <section className="score-section">
           <div className="score-section__header">
             <Icon24CupOutline width={15} height={15} />
-            Top wins
+            {t('scorecard.wins_header')}
           </div>
           {sortedWins.map((w, i) => {
             const pct = (Math.abs(w.points) / maxWinMag) * 100;
@@ -416,8 +504,8 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
           {allWins.length > 3 && (
             <button className="score-expand-btn" onClick={() => setWinsExpanded(e => !e)}>
               {winsExpanded
-                ? <><Icon24ChevronUp width={14} height={14} /> Show less</>
-                : <><Icon24ChevronDown width={14} height={14} /> Show all {allWins.length}</>}
+                ? <><Icon24ChevronUp width={14} height={14} /> {t('scorecard.show_less')}</>
+                : <><Icon24ChevronDown width={14} height={14} /> {t('scorecard.show_more')}</>}
             </button>
           )}
         </section>
@@ -428,7 +516,7 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
         <section className="score-section">
           <div className="score-section__header">
             <Icon24WarningTriangleOutline width={15} height={15} />
-            What hurt your score
+            {t('scorecard.losses_header')}
           </div>
           {sortedLosses.map((l, i) => {
             const pct = (Math.abs(l.points) / maxLossMag) * 100;
@@ -452,8 +540,8 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
           {allLosses.length > 3 && (
             <button className="score-expand-btn" onClick={() => setLossesExpanded(e => !e)}>
               {lossesExpanded
-                ? <><Icon24ChevronUp width={14} height={14} /> Show less</>
-                : <><Icon24ChevronDown width={14} height={14} /> Show all {allLosses.length}</>}
+                ? <><Icon24ChevronUp width={14} height={14} /> {t('scorecard.show_less')}</>
+                : <><Icon24ChevronDown width={14} height={14} /> {t('scorecard.show_more')}</>}
             </button>
           )}
         </section>
@@ -462,9 +550,17 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
       {/* Insufficient data note */}
       {sc.insufficient_data && (
         <section className="score-section score-section--note">
-          Not enough driving in this window for a fully reliable score.
-          Numbers will firm up as you log more miles.
+          {t('scorecard.insufficient_note')}
         </section>
+      )}
+
+      {data.generated_at && (
+        <p
+          className="score-footer-updated"
+          title={new Date(data.generated_at).toLocaleString()}
+        >
+          {t('common.updated_prefix')} {formatRelative(data.generated_at, t)}
+        </p>
       )}
 
       <div style={{ height: 24 }} />
@@ -472,9 +568,111 @@ export function ScorecardPage({ userRole = 'driver' }: { userRole?: string }) {
   );
 }
 
+function formatRelative(
+  iso: string,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  const ms = new Date(iso).getTime();
+  if (Number.isNaN(ms)) return '';
+  const sec = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if (sec < 60) return t('common.updated_just_now');
+  if (sec < 3600) return t('common.updated_min_ago', { n: Math.floor(sec / 60) });
+  if (sec < 86400) return t('common.updated_hr_ago', { n: Math.floor(sec / 3600) });
+  return t('common.updated_d_ago', { n: Math.floor(sec / 86400) });
+}
+
 // ── Score trend sparkline ────────────────────────────────────────────────
 // Findings #3/#4/#6/#13/#15: tracks rangeDays, shows VK icon title,
 // guards <5 points, uses dynamic y-axis padding (finding #20).
+
+// ── Score changes section ─────────────────────────────────────
+//
+// Driver-side mirror of the dashboard's ScoreExplanationCard.
+// Renders the same four-list diff (penalties added/cleared,
+// bonuses earned/lost) plus the signed score delta.  Backed by
+// /api/safety/scorecards/me/explanation.
+
+function ScoreExplanationSection({ expl }: { expl: ScoreExplanationResp | null }) {
+  const { t } = useTranslation();
+  // Nothing fetched yet — quietly render nothing.  Loading state
+  // is conveyed by the parent skeleton.
+  if (!expl) return null;
+  if (!expl.available) {
+    return (
+      <section className="score-section">
+        <div className="score-section__header">{t('scorecard.explanation_title')}</div>
+        <div className="score-explanation-empty">
+          {t('scorecard.explanation_no_data')}
+        </div>
+      </section>
+    );
+  }
+  const delta = expl.score_delta ?? 0;
+  const deltaColor = delta > 0
+    ? 'var(--st-green)'
+    : delta < 0 ? 'var(--st-red)' : 'var(--tgui--hint_color)';
+  const sections: { titleKey: string; events: ExplanationEvent[]; tone: 'good' | 'bad' }[] = [
+    { titleKey: 'scorecard.explanation_penalties_added',   events: expl.penalties_added   || [], tone: 'bad' },
+    { titleKey: 'scorecard.explanation_penalties_cleared', events: expl.penalties_cleared || [], tone: 'good' },
+    { titleKey: 'scorecard.explanation_bonuses_earned',    events: expl.bonuses_earned    || [], tone: 'good' },
+    { titleKey: 'scorecard.explanation_bonuses_lost',      events: expl.bonuses_lost      || [], tone: 'bad' },
+  ];
+  const anyContent = sections.some((s) => s.events.length > 0);
+  return (
+    <section className="score-section">
+      <div className="score-section__header">
+        <span>{t('scorecard.explanation_title')}</span>
+        <span
+          className="score-explanation-delta"
+          style={{ color: deltaColor }}
+          title={`${expl.from_score} → ${expl.to_score}`}
+        >
+          {delta >= 0 ? '+' : ''}{delta} pts
+        </span>
+      </div>
+      <div className="score-explanation-subtitle">
+        {t('scorecard.explanation_subtitle', { from_date: expl.from_date })}
+      </div>
+      {!anyContent ? (
+        <div className="score-explanation-empty">
+          {t('scorecard.explanation_no_change')}
+        </div>
+      ) : (
+        sections.map((s) => s.events.length > 0 && (
+          <div key={s.titleKey} className="score-explanation-group">
+            <div
+              className={`score-explanation-group__header score-explanation-group__header--${s.tone}`}
+            >
+              {s.tone === 'good' ? '✓' : '✗'} {t(s.titleKey)}
+            </div>
+            {s.events.map((e) => (
+              <div key={e.rule_id} className="score-event-row">
+                <div className="score-event-row__top">
+                  <span className="score-event-row__label">
+                    {e.label}
+                    {e.occurrences > 1 && (
+                      <span className="score-event-row__occ"> ({e.occurrences}×)</span>
+                    )}
+                  </span>
+                  <span
+                    className={
+                      s.tone === 'good'
+                        ? 'score-event-row__pts score-event-row__pts--win'
+                        : 'score-event-row__pts score-event-row__pts--loss'
+                    }
+                  >
+                    {e.points > 0 ? '+' : ''}{e.points}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ))
+      )}
+    </section>
+  );
+}
+
 
 function ScoreSparkline({ points, rangeDays }: { points: ScoreHistoryPoint[]; rangeDays: number }) {
   const pts = points.slice(-rangeDays);
@@ -540,6 +738,7 @@ function ScoreSparkline({ points, rangeDays }: { points: ScoreHistoryPoint[]; ra
 
 // ── Risk Summary self-service download ─────────────────────────────
 function RiskSummaryDownload({ days }: { days: Range }) {
+  const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   async function go(fmt: 'pdf' | 'csv') {
@@ -565,7 +764,7 @@ function RiskSummaryDownload({ days }: { days: Range }) {
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Download failed');
+      setErr(e instanceof Error ? e.message : t('scorecard.download_failed'));
     } finally {
       setBusy(false);
     }
@@ -587,7 +786,7 @@ function RiskSummaryDownload({ days }: { days: Range }) {
           fontSize: 13, fontWeight: 500,
         }}
       >
-        {busy ? 'Generating…' : '📄 My Risk Summary'}
+        {busy ? t('scorecard.generating') : t('scorecard.risk_summary')}
       </button>
       <button
         type="button"

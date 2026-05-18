@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Trophy, Download, X } from 'lucide-react';
 import {
@@ -21,21 +22,24 @@ import type {
   CompositeScorecardsResponse,
   ScoreHistoryResponse,
   ScoreEventBreakdown,
+  ScoreExplanationResponse,
   AnyColumn,
 } from '../../types';
 
 // ── Color helpers ───────────────────────────────────────────────────
 
-// Single source of truth for score → bucket. scoreColor + scoreGrade
-// share the same cutoffs so a "B" badge never lands on a yellow
-// background (and to match the miniapp's gradeColor() at the same
-// thresholds).
+// Single source of truth for score → bucket.  Thresholds are
+// unchanged from the legacy A-F mapping (85/70/55/40) — only the
+// label changed to metallic tiers (Platinum/Gold/Silver/Bronze/Red).
+// Keeping the thresholds means no driver moves bucket on rollout.
+// ``tierKey`` is an i18n key suffix; UI components render via
+// ``t('tier.' + tierKey)``.
 const SCORE_BUCKETS = [
-  { min: 85, grade: 'A', color: '#22c55e' },  // green
-  { min: 70, grade: 'B', color: '#84cc16' },  // lime
-  { min: 55, grade: 'C', color: '#eab308' },  // yellow
-  { min: 40, grade: 'D', color: '#f97316' },  // orange
-  { min: 0,  grade: 'F', color: '#ef4444' },  // red
+  { min: 85, tierKey: 'platinum', color: '#22c55e' },  // green
+  { min: 70, tierKey: 'gold',     color: '#84cc16' },  // lime
+  { min: 55, tierKey: 'silver',   color: '#eab308' },  // yellow
+  { min: 40, tierKey: 'bronze',   color: '#f97316' },  // orange
+  { min: 0,  tierKey: 'red',      color: '#ef4444' },  // red
 ] as const;
 
 function scoreBucket(score: number) {
@@ -46,11 +50,11 @@ function scoreColor(score: number): string {
   return scoreBucket(score).color;
 }
 
-function scoreGrade(score: number): string {
-  return scoreBucket(score).grade;
+function scoreTierKey(score: number): string {
+  return scoreBucket(score).tierKey;
 }
 
-function ScoreBadge({ score }: { score: number }) {
+function ScoreBadge({ score, tierLabel }: { score: number; tierLabel: string }) {
   const c = scoreColor(score);
   return (
     <span
@@ -59,14 +63,14 @@ function ScoreBadge({ score }: { score: number }) {
     >
       <span>{score}</span>
       <span className="opacity-70">·</span>
-      <span>{scoreGrade(score)}</span>
+      <span>{tierLabel}</span>
     </span>
   );
 }
 
 // ── Circular gauge for the drawer ───────────────────────────────────
 
-function ScoreGauge({ score }: { score: number }) {
+function ScoreGauge({ score, tierLabel }: { score: number; tierLabel: string }) {
   const radius = 54;
   const stroke = 10;
   const norm   = radius - stroke / 2;
@@ -87,22 +91,10 @@ function ScoreGauge({ score }: { score: number }) {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-3xl font-bold tabular-nums" style={{ color: c }}>{score}</span>
-        <span className="text-xs text-muted-foreground">grade {scoreGrade(score)}</span>
+        <span className="text-xs text-muted-foreground">{tierLabel}</span>
       </div>
     </div>
   );
-}
-
-// ── Category meta ────────────────────────────────────────────────────
-
-const CATEGORY_META: Record<string, { color: string; icon: string }> = {
-  safety:     { color: '#ef4444', icon: '🛡' },
-  fleet:      { color: '#3b82f6', icon: '🛠' },
-  efficiency: { color: '#22c55e', icon: '⚡' },
-};
-
-function categoryColor(c: string): string {
-  return CATEGORY_META[c]?.color ?? '#6b7280';
 }
 
 // ── Score-distribution histogram ─────────────────────────────────────
@@ -141,7 +133,7 @@ function ScoreDistribution({ cards }: { cards: CompositeScorecard[] }) {
 
 function TopBottomChart({ cards }: { cards: CompositeScorecard[] }) {
   // Memoise so we sort/slice only when `cards` actually changes — not on
-  // every parent re-render (audit M5).
+ // every parent re-render.
   const { top, bottom } = useMemo(() => {
     const sorted = [...cards].sort((a, b) => b.score - a.score);
     const top    = sorted.slice(0, 5).map((c) => ({ name: c.subject_name || c.driver_name, score: c.score }));
@@ -179,7 +171,7 @@ function TopBottomChart({ cards }: { cards: CompositeScorecard[] }) {
 
 // ── 30-day history line chart ────────────────────────────────────────
 //
-// Audit Option C: overlays three faded pillar lines (safety / efficiency
+// overlays three faded pillar lines (safety / efficiency
 // / compliance) under the bold composite line.  Pre-Option-C snapshots
 // don't carry pillar data — the chart degrades gracefully to the bold
 // total line + a dashed marker showing where pillar tracking began.
@@ -193,7 +185,7 @@ interface MergedHistoryPoint {
 }
 
 function HistoryChart({ driverId, days }: { driverId: string; days: number }) {
-  // React Query (Phase E23): caches each driver's history under a
+ // React Query: caches each driver's history under a
   // per-driver+days key so opening the same drawer again is instant.
   // The four pillar variants fan out in parallel inside one ``queryFn``.
   const enc = encodeURIComponent(driverId);
@@ -274,37 +266,109 @@ function HistoryChart({ driverId, days }: { driverId: string; days: number }) {
   );
 }
 
-// ── Bonus / Penalty list row ─────────────────────────────────────────
+// ── Score explanation: "Why did my score change?" ────────────
+//
+// Shows added/cleared/earned/lost events between the latest snapshot
+// and the one ~``days`` ago.  Backed by /api/safety/scorecards/{id}/
+// explanation — no client-side diffing.  Empty state when fewer
+// than 2 snapshots exist (driver too new or tenant just onboarded).
 
-function BreakdownRow({ event }: { event: ScoreEventBreakdown }) {
-  const isBonus = event.kind === 'bonus';
-  const color   = isBonus ? '#22c55e' : '#ef4444';
+function ScoreExplanationCard({
+  subjectId, subjectType, days,
+}: {
+  subjectId: string;
+  subjectType: 'driver' | 'vehicle';
+  days: number;
+}) {
+  const { t } = useTranslation();
+  const enc = encodeURIComponent(subjectId);
+  const { data, isLoading } = useQuery<ScoreExplanationResponse>({
+    queryKey: ['scorecard-explanation', subjectId, subjectType, days],
+    queryFn: () => apiJSON<ScoreExplanationResponse>(
+      `/safety/scorecards/${enc}/explanation?subject_type=${subjectType}&days=${days}`,
+    ),
+    staleTime: 5 * 60_000,
+  });
+
+  if (isLoading) {
+    return <p className="text-xs text-muted-foreground italic">…</p>;
+  }
+  if (!data || !data.available) {
+    return (
+      <p className="text-xs text-muted-foreground italic">
+        {t('scorecards.explanation_no_data')}
+      </p>
+    );
+  }
+
+  const sections: { titleKey: string; events: ScoreEventBreakdown[]; tone: 'good' | 'bad' }[] = [
+    { titleKey: 'scorecards.explanation_penalties_added',   events: data.penalties_added   || [], tone: 'bad' },
+    { titleKey: 'scorecards.explanation_penalties_cleared', events: data.penalties_cleared || [], tone: 'good' },
+    { titleKey: 'scorecards.explanation_bonuses_earned',    events: data.bonuses_earned    || [], tone: 'good' },
+    { titleKey: 'scorecards.explanation_bonuses_lost',      events: data.bonuses_lost      || [], tone: 'bad' },
+  ];
+  const anyContent = sections.some((s) => s.events.length > 0);
+  const delta = data.score_delta ?? 0;
+  const deltaColor =
+    delta > 0 ? '#22c55e' : delta < 0 ? '#ef4444' : '#9ca3af';
+
   return (
-    <li className="flex items-start gap-2 py-1.5 border-b border-border/50 last:border-0 text-xs">
-      <span
-        className="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold"
-        style={{ background: `${categoryColor(event.category)}22`, color: categoryColor(event.category) }}
-        title={event.category}
-      >
-        {CATEGORY_META[event.category]?.icon ?? '•'}
-      </span>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <span className="truncate">{event.label}</span>
-          {event.source && <span className="text-[10px] opacity-60" title="data source">{event.source}</span>}
-        </div>
-        {event.occurrences > 1 && (
-          <span className="text-[10px] text-muted-foreground">×{event.occurrences}</span>
-        )}
+    <div className="text-xs">
+      <div className="flex items-baseline justify-between mb-2">
+        <p className="text-muted-foreground">
+          {t('scorecards.explanation_subtitle', { from_date: data.from_date })}
+        </p>
+        <span
+          className="tabular-nums font-semibold"
+          style={{ color: deltaColor }}
+          title={`${data.from_score} → ${data.to_score}`}
+        >
+          {delta >= 0 ? '+' : ''}{delta} pts
+        </span>
       </div>
-      <span className="font-bold tabular-nums shrink-0" style={{ color }}>
-        {isBonus ? '+' : ''}{event.points}
-      </span>
-    </li>
+      {!anyContent ? (
+        <p className="text-muted-foreground italic">
+          {t('scorecards.explanation_no_change')}
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {sections.map((s, idx) => s.events.length > 0 && (
+            <div key={idx}>
+              <p
+                className="text-[10px] font-semibold tracking-wide mb-1"
+                style={{ color: s.tone === 'good' ? '#22c55e' : '#ef4444' }}
+              >
+                {s.tone === 'good' ? '✓' : '✗'} {t(s.titleKey)}
+              </p>
+              <ul className="space-y-0.5">
+                {s.events.map((e) => (
+                  <li key={e.rule_id} className="flex items-baseline justify-between gap-2">
+                    <span className="truncate">
+                      {e.label}
+                      {e.occurrences > 1 && (
+                        <span className="text-[10px] text-muted-foreground ml-1">
+                          {t('scorecards.explanation_event_occurred', { count: e.occurrences })}
+                        </span>
+                      )}
+                    </span>
+                    <span
+                      className="font-medium tabular-nums shrink-0"
+                      style={{ color: s.tone === 'good' ? '#22c55e' : '#ef4444' }}
+                    >
+                      {e.points > 0 ? '+' : ''}{e.points}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
-// ── Sparkline (Phase F) ──────────────────────────────────────────────
+// ── Sparkline ──────────────────────────────────────────────
 //
 // Tiny inline SVG.  Renders nothing for fewer than two snapshots so a
 // single-day series doesn't draw a misleading flat line.
@@ -353,10 +417,13 @@ function Sparkline({ values, width = 80, height = 24 }: {
 
 // ── Table columns ────────────────────────────────────────────────────
 
-function makeColumns(anyDriverPaired: boolean): AnyColumn[] {
+function makeColumns(
+  anyDriverPaired: boolean,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): AnyColumn[] {
   return [
   {
-    // Phase F: vehicle-first table.  ``driver_name`` carries the truck
+ // vehicle-first table. ``driver_name`` carries the truck
     // name when ``subject_type`` is vehicle (legacy alias from the
     // backend).  We render the truck name on top with the paired or
     // manually-assigned driver name as a small subline so admins can
@@ -385,10 +452,37 @@ function makeColumns(anyDriverPaired: boolean): AnyColumn[] {
   { key: 'company',     label: 'Company', sortable: true },
   {
     key: 'score', label: 'Score', sortable: true,
-    render: (v) => <ScoreBadge score={v as number} />,
+    // Insufficient-data drivers ride the same gauge as everyone else;
+    // surface the provisional state inline so a "100 Platinum" cell
+ // with thin telemetry doesn't read as authoritative.
+    render: (v, row) => {
+      const r = row as unknown as CompositeScorecard;
+      const score = v as number;
+      return (
+        <div className="flex items-center gap-1.5">
+          <ScoreBadge score={score} tierLabel={t(`tier.${scoreTierKey(score)}`)} />
+          {r.probationary && (
+            <span
+              className="text-[10px] text-amber-600 dark:text-amber-400"
+              title={t('scorecards.probationary_banner_desc')}
+            >
+              ⏳
+            </span>
+          )}
+          {r.insufficient_data && !r.probationary && (
+            <span
+              className="text-[10px] text-amber-600 dark:text-amber-400"
+              title={t('scorecards.insufficient_drive_time')}
+            >
+              ⚠
+            </span>
+          )}
+        </div>
+      );
+    },
   },
   {
-    // Phase F sparkline column — last ~14 daily totals.  Sortable by
+ // sparkline column — last ~14 daily totals. Sortable by
     // *last* value so the worst-trending trucks naturally cluster
     // when the user toggles ascending sort.
     key: 'score_trend', label: '14-day', sortable: false,
@@ -412,7 +506,7 @@ function makeColumns(anyDriverPaired: boolean): AnyColumn[] {
     },
   },
   {
-    // Pillar mini-bars (Audit Option C). Only renders content when the
+ // Pillar mini-bars. Only renders content when the
     // backend supplies the new ``pillars`` block; otherwise blank — the
     // legacy Bonuses/Penalties columns still tell the story.
     key: 'pillars', label: 'S · E · C', sortable: false,
@@ -429,7 +523,20 @@ function makeColumns(anyDriverPaired: boolean): AnyColumn[] {
           {cells.map(({ k, abbr }) => {
             const p = r.pillars![k];
             if (!p.has_data) {
-              return <span key={k} className="text-[10px] text-muted-foreground italic">n/a</span>;
+              // Match the layout of a data cell (same padding +
+              // monospace) so columns don't jump when one pillar has
+              // data and another doesn't. Dashed border signals
+              // "missing" without competing with the red bucket.
+              return (
+                <span
+                  key={k}
+                  data-state="unavailable"
+                  className="text-[10px] font-mono tabular-nums px-1.5 py-0.5 rounded border border-dashed border-muted-foreground/40 text-muted-foreground italic"
+                  title={`${k}: ${t('scorecards.no_data_window')}`}
+                >
+                  {abbr} {t('common.na')}
+                </span>
+              );
             }
             const pct = p.cap ? Math.round((p.subtotal / p.cap) * 100) : 0;
             const perfColor = scoreColor(pct);
@@ -443,7 +550,7 @@ function makeColumns(anyDriverPaired: boolean): AnyColumn[] {
             );
           })}
           {r.insufficient_data && (
-            <span className="text-[10px] text-amber-600 dark:text-amber-400" title="insufficient drive time">⚠</span>
+            <span className="text-[10px] text-amber-600 dark:text-amber-400" title={t('scorecards.insufficient_drive_time')}>⚠</span>
           )}
         </div>
       );
@@ -463,17 +570,20 @@ function makeColumns(anyDriverPaired: boolean): AnyColumn[] {
 // ── Page ─────────────────────────────────────────────────────────────
 
 export default function Scorecards() {
-  const [days, setDays]       = useState(7);
+  const { t } = useTranslation();
+  // Default 30 days — matches Events, RiskSummary and Reports so the
+  // dashboard's "default window" is consistent across the SAFETY group.
+  const [days, setDays]       = useState(30);
   const [error, setError]     = useState('');
   const [detail, setDetail]   = useState<CompositeScorecard | null>(null);
-  // Audit Option C — pillar filter chips replace the old category chips.
+ // pillar filter chips replace the old category chips.
   // ``all`` shows the full table; otherwise we sort by the chosen pillar's
   // subtotal/cap percentage so the worst (or best) drivers in that pillar
   // bubble to the top.
   type PillarFilter = 'all' | 'safety' | 'efficiency' | 'compliance';
   const [pillarFilter, setPillarFilter] = useState<PillarFilter>('all');
 
-  // Phase F: vehicle-only view.  The legacy driver/truck toggle has been
+ // vehicle-only view. The legacy driver/truck toggle has been
   // retired \u2014 telematics data is per-vehicle by nature, and drivers
   // (when known) are rendered inline next to their truck name.  The
   // backend default already flipped to ``vehicle``; we still pass the
@@ -483,6 +593,7 @@ export default function Scorecards() {
   const {
     data: composite,
     isLoading,
+    isFetching,
     error: queryError,
   } = useQuery<CompositeScorecardsResponse>({
     queryKey: ['scorecards-composite', days, 'vehicle'],
@@ -492,6 +603,25 @@ export default function Scorecards() {
 
   const cards = composite?.scorecards ?? [];
   const loading = isLoading && !composite;
+  const generatedAt = composite?.generated_at;
+  // "Updated 4 min ago" — re-render once a minute so the label stays
+  // honest while the page is left open.
+  const [, _setNow] = useState(0);
+  useEffect(() => {
+    if (!generatedAt) return;
+    const id = window.setInterval(() => _setNow((n) => n + 1), 60_000);
+    return () => window.clearInterval(id);
+  }, [generatedAt]);
+  const relativeUpdated = useMemo(() => {
+    if (!generatedAt) return '';
+    const ts = new Date(generatedAt).getTime();
+    if (Number.isNaN(ts)) return '';
+    const sec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+    if (sec < 60) return t('common.updated_just_now');
+    if (sec < 3600) return t('common.updated_min_ago', { n: Math.floor(sec / 60) });
+    if (sec < 86400) return t('common.updated_hr_ago', { n: Math.floor(sec / 3600) });
+    return t('common.updated_d_ago', { n: Math.floor(sec / 86400) });
+  }, [generatedAt, t]);
   // Composite scorecards are heavy — they evaluate every truck and
   // can take 20-30s on a cold cache + warehouse fallback.  Surface
   // progressive feedback so the page never reads as frozen.
@@ -538,11 +668,11 @@ export default function Scorecards() {
       <div>
         <PageHeader
           icon={Trophy}
-          title="Vehicle Scorecards"
-          description="Composite 0-100 score per truck — driver shown when paired."
+          title={t('scorecards.page_title')}
+          description={t('scorecards.page_description')}
         />
         <ErrorState
-          title="Couldn't load scorecards"
+          title={t('errors.load_failed')}
           message={error}
           onRetry={() => window.location.reload()}
         />
@@ -550,16 +680,16 @@ export default function Scorecards() {
     );
   }
 
-  // CSV export (audit L1) — driven from the already-loaded cards array so
+ // CSV export — driven from the already-loaded cards array so
   // it reflects the current days filter without an extra API round-trip.
-  // Audit Option C: append pillar+exposure columns when the new shape is
+ // append pillar+exposure columns when the new shape is
   // present (mirrors capabilities/reporting/csv_generators.py).
   function exportCsv() {
     const cardsForExport = pillarFilter === 'all' ? cards : displayCards;
     const hasPillars = cardsForExport.some((c) => c.pillars);
     const headers = [
       'subject_id', 'subject_name', 'driver_id', 'driver_name',
-      'company', 'score', 'grade',
+      'company', 'score', 'tier',
       'base', 'bonus_total', 'penalty_total',
       'miles', 'mpg', 'drive_hours', 'idle_hours',
       'eco_pct', 'overspeed_min', 'anticipatory_braking_pct',
@@ -585,7 +715,7 @@ export default function Scorecards() {
       const row: unknown[] = [
         c.subject_id ?? c.driver_id,
         c.subject_name ?? c.driver_name,
-        c.driver_id, c.driver_name, c.company || '', c.score, scoreGrade(c.score),
+        c.driver_id, c.driver_name, c.company || '', c.score, t(`tier.${scoreTierKey(c.score)}`),
         c.base, c.bonus_total, c.penalty_total,
         i.miles, i.mpg, i.drive_hours, i.idle_hours,
         i.eco_pct, i.overspeed_min, i.anticipatory_braking_pct,
@@ -622,24 +752,32 @@ export default function Scorecards() {
     <div>
       <PageHeader
         icon={Trophy}
-        title="Vehicle Scorecards"
-        description="Composite 0-100 score per truck. Click any row for the full breakdown — pillars, trend, bonuses and penalties."
+        title={t('scorecards.page_title')}
+        description={t('scorecards.page_description')}
         actions={
           <div className="flex items-center gap-2">
+            {relativeUpdated && (
+              <span
+                className="text-[10px] text-muted-foreground"
+                title={generatedAt ? new Date(generatedAt).toLocaleString() : undefined}
+              >
+                {t('common.updated_prefix')} {relativeUpdated}
+              </span>
+            )}
             {loading && cards.length > 0 && (
-              <span className="text-[10px] text-muted-foreground animate-pulse">refreshing…</span>
+              <span className="text-[10px] text-muted-foreground animate-pulse">{t('common.refreshing')}</span>
             )}
             <button
               type="button"
               onClick={exportCsv}
               disabled={cards.length === 0}
               className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border bg-background hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition"
-              title="Download current scorecards as CSV"
+              title={t('scorecards.csv_download_title')}
             >
               <Download size={12} />
-              CSV
+              {t('scorecards.csv_label')}
             </button>
-            <DateRangePresets value={days} onChange={setDays} />
+            <DateRangePresets value={days} onChange={setDays} isFetching={isFetching} />
           </div>
         }
       />
@@ -648,23 +786,23 @@ export default function Scorecards() {
       {cards.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <KpiCard
-            label="Active Trucks"
+            label={t('scorecards.kpi_active_trucks')}
             value={cards.length.toString()}
-            sub="any drive activity"
+            sub={t('scorecards.kpi_active_trucks_sub')}
           />
           <KpiCard
-            label="Avg Score"
+            label={t('scorecards.kpi_avg_score')}
             value={stats.avgScore.toString()}
-            sub={scoreGrade(stats.avgScore)}
+            sub={t(`tier.${scoreTierKey(stats.avgScore)}`)}
             color={scoreColor(stats.avgScore)}
           />
           <KpiCard
-            label="Top Performers (≥85)"
+            label={t('scorecards.kpi_top_performers')}
             value={stats.topPerformers.toString()}
             color="#22c55e"
           />
           <KpiCard
-            label="At-Risk (<55)"
+            label={t('scorecards.kpi_at_risk')}
             value={stats.atRisk.toString()}
             color={stats.atRisk > 0 ? '#ef4444' : '#6b7280'}
           />
@@ -673,8 +811,8 @@ export default function Scorecards() {
 
       {stage === 'timeout' && cards.length === 0 ? (
         <ErrorState
-          title="Loading is taking too long"
-          message="Scoring every truck takes a moment — Samsara may be slow or the warehouse hasn't been populated yet. Try again, or refresh in a moment."
+          title={t('common.loading_takes_long')}
+          message={t('scorecards.loading_too_long_message')}
         />
       ) : loading && cards.length === 0 ? (
         <TableSkeleton
@@ -682,8 +820,8 @@ export default function Scorecards() {
           cols={6}
           message={
             stage === 'slow'
-              ? 'Still loading… composite scoring across the fleet can take a moment.'
-              : 'Loading scorecards…'
+              ? t('scorecards.loading_slow')
+              : t('scorecards.loading_default')
           }
         />
       ) : cards.length === 0 ? (
@@ -697,33 +835,34 @@ export default function Scorecards() {
           {cards.length > 0 && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
               <div className="bg-card border border-border rounded-xl p-5">
-                <p className="text-sm font-medium mb-3">Score Distribution</p>
+                <p className="text-sm font-medium mb-3">{t('scorecards.score_distribution')}</p>
                 <ScoreDistribution cards={cards} />
               </div>
               <div className="bg-card border border-border rounded-xl p-5">
-                <p className="text-sm font-medium mb-3">Top vs Bottom 5</p>
+                <p className="text-sm font-medium mb-3">{t('scorecards.top_vs_bottom')}</p>
                 <TopBottomChart cards={cards} />
               </div>
             </div>
           )}
-          {/* Audit Option C — pillar filter chips */}
+          {/* Pillar filter chips */}
           {cards.length > 0 && cards.some((c) => c.pillars) && (
             <div className="flex items-center gap-2 mb-3 flex-wrap">
-              <span className="text-xs text-muted-foreground mr-1">Filter by pillar:</span>
+              <span className="text-xs text-muted-foreground mr-1">{t('scorecards.filter_by_pillar')}</span>
               {([
-                { k: 'all',        label: 'All',        color: '#6b7280' },
-                { k: 'safety',     label: '🛡 Safety',     color: '#ef4444' },
-                { k: 'efficiency', label: '⚡ Efficiency', color: '#22c55e' },
-                { k: 'compliance', label: '🛠 Compliance', color: '#3b82f6' },
-              ] as { k: PillarFilter; label: string; color: string }[]).map((c) => {
+                { k: 'all',        labelKey: 'scorecards.filter_all',        color: '#6b7280' },
+                { k: 'safety',     labelKey: 'scorecards.pillar_safety',     color: '#ef4444' },
+                { k: 'efficiency', labelKey: 'scorecards.pillar_efficiency', color: '#22c55e' },
+                { k: 'compliance', labelKey: 'scorecards.pillar_compliance', color: '#3b82f6' },
+              ] as { k: PillarFilter; labelKey: string; color: string }[]).map((c) => {
                 const active = pillarFilter === c.k;
+                const label = t(c.labelKey);
                 return (
                   <button
                     key={c.k}
                     type="button"
                     onClick={() => setPillarFilter(c.k)}
                     aria-pressed={active}
-                    aria-label={`Filter by ${c.label.replace(/^\W+\s*/, '')} pillar`}
+                    aria-label={t('scorecards.filter_aria', { pillar: label.replace(/^\W+\s*/, '') })}
                     className={`text-xs px-3 py-1 rounded-full border transition ${
                       active
                         ? 'border-transparent text-white'
@@ -731,22 +870,25 @@ export default function Scorecards() {
                     }`}
                     style={active ? { background: c.color } : undefined}
                   >
-                    {c.label}
+                    {label}
                   </button>
                 );
               })}
               {pillarFilter !== 'all' && (
                 <span className="text-[10px] text-muted-foreground ml-2">
-                  ⚠ worst-first · {displayCards.length} trucks shown
+                  {t('scorecards.worst_first_hint', { count: displayCards.length })}
                 </span>
               )}
             </div>
           )}
           <DataTable
-            columns={makeColumns(cards.some((c) => !!(c.paired_driver_name || c.assigned_driver_name)))}
+            columns={makeColumns(
+              cards.some((c) => !!(c.paired_driver_name || c.assigned_driver_name)),
+              t,
+            )}
             data={displayCards as unknown as Record<string, unknown>[]}
             searchKey="driver_name"
-            searchPlaceholder="Search truck #…"
+            searchPlaceholder={t('scorecards.search_truck_placeholder')}
             stickyHeader="65vh"
             onRowClick={(row) => setDetail(row as unknown as CompositeScorecard)}
           />
@@ -795,7 +937,8 @@ function DetailDrawer({ card, rank, total, fleetAvg, days, onClose }: {
   days: number;
   onClose: () => void;
 }) {
-  // Audit L4: keyboard a11y — close on Esc and announce as a modal dialog.
+  const { t } = useTranslation();
+ // keyboard a11y — close on Esc and announce as a modal dialog.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
@@ -828,7 +971,7 @@ function DetailDrawer({ card, rank, total, fleetAvg, days, onClose }: {
           </div>
           <button
             onClick={onClose}
-            aria-label="Close detail panel"
+            aria-label={t('common.close')}
             className="text-muted-foreground hover:text-foreground p-1"
           >
             <X size={18} />
@@ -847,7 +990,7 @@ function DetailDrawer({ card, rank, total, fleetAvg, days, onClose }: {
 
         {/* Gauge + rank + fleet delta */}
         <div className="flex items-center gap-5 mb-5">
-          <ScoreGauge score={card.score} />
+          <ScoreGauge score={card.score} tierLabel={t(`tier.${scoreTierKey(card.score)}`)} />
           <div className="flex-1 text-xs space-y-1.5">
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Rank</span>
@@ -859,22 +1002,43 @@ function DetailDrawer({ card, rank, total, fleetAvg, days, onClose }: {
               <span
                 className="text-[11px] font-bold tabular-nums"
                 style={{ color: delta >= 0 ? '#22c55e' : '#ef4444' }}
+                title={`${delta >= 0 ? '+' : ''}${delta} vs fleet average`}
               >
-                {delta >= 0 ? '+' : ''}{delta}
+                {delta >= 0 ? '+' : ''}{delta} vs fleet
               </span>
             </div>
           </div>
         </div>
 
-        {/* Pillar breakdown lives inside DriverInsights now (one block
-             per pillar showing the score subtotal AND its events). The
-             legacy Base/Bonuses/Penalties math is still useful for cards
-             that haven't been re-scored under the pillar shape yet. */}
-        {!card.pillars && (
+        {/* Score math — visible reconciliation so users can trace
+             the gauge number back to its inputs.  Pillar-shape cards
+             show Safety/Compliance/Efficiency subtotals; legacy cards
+             fall back to Base/Bonuses/Penalties.  Either way the user
+             can match the gauge to the math. */}
+        {card.pillars ? (
           <div className="mb-5 text-xs space-y-1">
-            <ScoreMath label="Base"      value={card.base.toString()} />
-            <ScoreMath label="Bonuses"   value={`+${card.bonus_total}`} positive />
-            <ScoreMath label="Penalties" value={`${card.penalty_total}`} negative />
+            {(['safety', 'compliance', 'efficiency'] as const).map((pk) => {
+              const p = card.pillars?.[pk];
+              if (!p?.has_data) return null;
+              const label = pk[0].toUpperCase() + pk.slice(1);
+              return (
+                <ScoreMath
+                  key={pk}
+                  label={`${label} subtotal`}
+                  value={`${p.subtotal}/${p.cap}`}
+                />
+              );
+            })}
+            <div className="border-t border-border pt-1 mt-1 flex justify-between font-semibold">
+              <span>Total</span>
+              <span style={{ color: scoreColor(card.score) }}>{card.score}/100</span>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-5 text-xs space-y-1">
+            <ScoreMath label={t('detail_drawer.score_math_base')}      value={card.base.toString()} />
+            <ScoreMath label={t('detail_drawer.score_math_bonuses')}   value={`+${card.bonus_total}`} positive />
+            <ScoreMath label={t('detail_drawer.score_math_penalties')} value={`${card.penalty_total}`} negative />
             <div className="border-t border-border pt-1 mt-1 flex justify-between font-semibold">
               <span>Total</span>
               <span style={{ color: scoreColor(card.score) }}>{card.score}</span>
@@ -882,9 +1046,19 @@ function DetailDrawer({ card, rank, total, fleetAvg, days, onClose }: {
           </div>
         )}
 
+        {card.probationary && (
+          <div className="mb-4 flex items-start gap-2 text-[11px] text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2.5 py-2">
+            <span className="text-base leading-none">⏳</span>
+            <div>
+              <p className="font-semibold">{t('scorecards.probationary_banner_title')}</p>
+              <p className="opacity-90">{t('scorecards.probationary_banner_desc')}</p>
+            </div>
+          </div>
+        )}
+
         {card.insufficient_data && (
           <p className="mb-4 text-[11px] italic text-amber-600 dark:text-amber-400">
-            ⚠ insufficient drive time this window — excluded from rankings
+            {t('scorecards.insufficient_window')}
           </p>
         )}
 
@@ -896,51 +1070,61 @@ function DetailDrawer({ card, rank, total, fleetAvg, days, onClose }: {
           <HistoryChart driverId={card.driver_id || card.driver_name} days={days} />
         </div>
 
-        {/* Bonus / Penalty breakdown */}
-        <div className="grid grid-cols-1 gap-4 mb-6">
-          <div>
-            <p className="text-[10px] font-semibold text-green-600 dark:text-green-400 tracking-wide mb-1">
-              ✓ BONUSES ({card.bonuses.length})
-            </p>
-            {card.bonuses.length ? (
-              <ul>{card.bonuses.map((e) => <BreakdownRow key={e.rule_id} event={e} />)}</ul>
-            ) : (
-              <p className="text-xs text-muted-foreground italic">no bonuses fired this window</p>
-            )}
-          </div>
-          <div>
-            <p className="text-[10px] font-semibold text-red-600 dark:text-red-400 tracking-wide mb-1">
-              ✗ PENALTIES ({card.penalties.length})
-            </p>
-            {card.penalties.length ? (
-              <ul>{card.penalties.map((e) => <BreakdownRow key={e.rule_id} event={e} />)}</ul>
-            ) : (
-              <p className="text-xs text-muted-foreground italic">no penalties fired this window</p>
-            )}
-          </div>
+        {/* Score explanation — "Why did my score change?" diff of the
+             latest snapshot vs ~``days`` ago.  Backed by the new
+             /scorecards/{subject_id}/explanation endpoint; renders an
+             empty state for drivers with <2 snapshots. */}
+        <div className="mb-6">
+          <p className="text-[10px] font-semibold text-muted-foreground tracking-wide mb-1">
+            {t('scorecards.explanation_title').toUpperCase()}
+          </p>
+          <ScoreExplanationCard
+            subjectId={card.subject_id || card.driver_id || card.driver_name}
+            subjectType={(card.subject_type === 'vehicle' ? 'vehicle' : 'driver') as 'driver' | 'vehicle'}
+            days={Math.max(2, Math.min(days, 30))}
+          />
         </div>
 
-        {/* Raw inputs (Samsara) — preserved per plan */}
+        {/* Bonus / Penalty lists were here — merged into the
+             "Pillars · Your Events" section inside DriverInsights so
+             each event renders exactly once with its pillar context. */}
+
+        {/* Raw inputs (Samsara) — preserved per plan.
+             When odometer data is missing (miles=0 with non-zero drive
+             hours), Samsara's Driver Stats response is partial and the
+             behavior fields (eco/overspeed/coast/cruise/anticipatory
+             braking) are typically nulled-into-zero by the backend.
+             Rendering them as authoritative "0%" reads as if the
+             driver actually had perfect behavior, so we collapse them
+             all to "—" once the warning fires. */}
         <div className="border-t border-border pt-3">
           <p className="text-[10px] font-semibold text-muted-foreground tracking-wide mb-2">
             INPUTS {card.inputs._source && <span className="opacity-60">{card.inputs._source}</span>}
           </p>
-          {card.inputs.miles === 0 && card.inputs.drive_hours > 0 && (
-            <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-2">
-              ⚠ Odometer data missing — miles and MPG may be inaccurate
-            </p>
-          )}
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-            <Stat label="Miles"        value={card.inputs.miles.toLocaleString()} />
-            <Stat label="MPG"          value={`${card.inputs.mpg}`} />
-            <Stat label="Drive"        value={`${card.inputs.drive_hours}h (${card.inputs.drive_pct}%)`} />
-            <Stat label="Idle"         value={`${card.inputs.idle_hours}h (${card.inputs.idle_pct}%)`} />
-            <Stat label="Eco %"        value={`${card.inputs.eco_pct}%`} />
-            <Stat label="Overspeed"    value={`${card.inputs.overspeed_min} min`} />
-            <Stat label="Coast"        value={`${card.inputs.coast_min} min`} />
-            <Stat label="Cruise"       value={`${card.inputs.cruise_min} min`} />
-            <Stat label="Antic. Brake" value={`${card.inputs.anticipatory_braking_pct}%`} />
-          </dl>
+          {(() => {
+            const odometerMissing = card.inputs.miles === 0 && card.inputs.drive_hours > 0;
+            const fmt = (n: number, suffix: string) => odometerMissing ? '—' : `${n}${suffix}`;
+            return (
+              <>
+                {odometerMissing && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-2">
+                    ⚠ Odometer / Driver-Stats data missing — miles, MPG and behavior metrics are not reliable for this window
+                  </p>
+                )}
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <Stat label={t('detail_drawer.input_miles')}        value={odometerMissing ? '—' : card.inputs.miles.toLocaleString()} />
+                  <Stat label={t('detail_drawer.input_mpg')}          value={odometerMissing ? '—' : `${card.inputs.mpg}`} />
+                  <Stat label={t('detail_drawer.input_drive')}        value={`${card.inputs.drive_hours}h (${card.inputs.drive_pct}%)`} />
+                  <Stat label={t('detail_drawer.input_idle')}         value={`${card.inputs.idle_hours}h (${card.inputs.idle_pct}%)`} />
+                  <Stat label={t('detail_drawer.input_eco')}          value={fmt(card.inputs.eco_pct, '%')} />
+                  <Stat label={t('detail_drawer.input_overspeed')}    value={fmt(card.inputs.overspeed_min, ' min')} />
+                  <Stat label={t('detail_drawer.input_coast')}        value={fmt(card.inputs.coast_min, ' min')} />
+                  <Stat label={t('detail_drawer.input_cruise')}       value={fmt(card.inputs.cruise_min, ' min')} />
+                  <Stat label={t('detail_drawer.input_antic_braking')} value={fmt(card.inputs.anticipatory_braking_pct, '%')} />
+                </dl>
+              </>
+            );
+          })()}
         </div>
       </div>
     </div>

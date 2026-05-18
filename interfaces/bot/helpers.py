@@ -8,7 +8,8 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from telegram.error import BadRequest
 
-from interfaces.bot.config import _active_messages, logger, get_user_company_codes, get_tenant_db
+from interfaces.bot.config import logger
+from interfaces.bot.state import _active_messages, get_user_company_codes, get_tenant_db
 from interfaces.bot.keyboards import main_menu_kb
 
 # Re-export escape_html from its canonical home in capabilities/formatting

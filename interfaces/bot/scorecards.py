@@ -62,7 +62,7 @@ def _format_scorecard_text(
     for d in drivers:
         org = d.get("_org", "")
         org_tag = f"  [{org}]" if org else ""
-        # Pillar line (Audit Option C). Driver lookup tolerates a
+        # Pillar line. Driver lookup tolerates a
         # missing id by falling back to driver_name — mirrors the
         # safety_signals.from_events fallback path.
         sc = pillar_by_driver.get(str(d.get("driver_id") or "")) \
@@ -195,7 +195,7 @@ async def cmd_scorecards_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
         truck_filter2: list[str] | None = [user.truck_num] if (own_only and user.truck_num) else ([] if own_only else None)
         drivers = await _svc_driver_efficiency(user.account_id, company=company, vehicle_nums=truck_filter2)
 
-        # Best-effort pillar enrichment for the CSV (Audit Option C).
+        # Best-effort pillar enrichment for the CSV.
         pillar_by_driver: dict[str, dict] = {}
         try:
             sc_rows = await _svc_evaluate_drivers(

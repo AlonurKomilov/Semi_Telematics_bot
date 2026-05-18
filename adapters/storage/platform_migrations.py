@@ -27,6 +27,16 @@ async def run_all(conn) -> None:
     await migrate_add_payroll_enabled_flag(conn)
     await migrate_add_coaching_enabled_flag(conn)
     await migrate_add_users_samsara_driver_id(conn)
+    await migrate_create_payroll_tables(conn)
+    # Driver Module migrations
+    await migrate_add_driver_profile_columns(conn)
+    await migrate_create_driver_vehicle_assignments(conn)
+    await migrate_create_driver_documents(conn)
+    await migrate_add_account_storage_quota(conn)
+    await migrate_backfill_driver_vehicle_assignments(conn)
+    await migrate_create_driver_document_notifications(conn)
+    await migrate_create_driver_future_tables(conn)
+    await migrate_add_account_timezone(conn)
 
 
 async def migrate_ai_chat_history(conn) -> None:
@@ -484,7 +494,7 @@ async def migrate_add_error_log(conn) -> None:
 
 
 async def migrate_add_payroll_enabled_flag(conn) -> None:
-    """Add accounts.payroll_enabled (Phase 2 P4P kill-switch). Default OFF."""
+    """Add accounts.payroll_enabled ( P4P kill-switch). Default OFF."""
     try:
         cur = await conn.execute("PRAGMA table_info(accounts)")
         cols = {r[1] for r in await cur.fetchall()}
@@ -503,7 +513,7 @@ async def migrate_add_payroll_enabled_flag(conn) -> None:
 
 
 async def migrate_add_coaching_enabled_flag(conn) -> None:
-    """Add accounts.coaching_enabled (Phase 3 Auto Coaching kill-switch). Default OFF."""
+    """Add accounts.coaching_enabled ( Auto Coaching kill-switch). Default OFF."""
     try:
         cur = await conn.execute("PRAGMA table_info(accounts)")
         cols = {r[1] for r in await cur.fetchall()}
@@ -539,6 +549,491 @@ async def migrate_add_users_samsara_driver_id(conn) -> None:
             logger.info("Migration: added users.samsara_driver_id column")
     except Exception as e:
         logger.error("samsara_driver_id migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+# ── Driver Module ─────────────────────────────────────────────────
+#
+# Extends the existing ``users`` table (drivers stay a special role,
+# not a separate table) with profile columns: CDL details, medical
+# card expiry, hire date, contact info.  Adds two new tables:
+# ``driver_vehicle_assignments`` (single source of truth for
+# driver-vehicle mapping, with history) and ``driver_documents``
+# (per-driver document store with expiration tracking).  Adds
+# storage-quota columns on ``accounts`` so the local fallback object
+# store has a cap.  All migrations are idempotent.
+
+
+_DRIVER_PROFILE_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("cdl_number",       "TEXT"),
+    ("cdl_state",        "TEXT"),
+    ("cdl_class",        "TEXT"),
+    ("cdl_expires",      "TEXT"),
+    ("med_card_expires", "TEXT"),
+    ("hire_date",        "TEXT"),
+    ("termination_date", "TEXT"),
+    ("dob",              "TEXT"),
+    ("phone",            "TEXT"),
+    ("home_address",     "TEXT"),
+    ("driver_notes",     "TEXT"),
+)
+
+
+async def migrate_add_driver_profile_columns(conn) -> None:
+    """Add the 11 driver-profile columns to users.
+
+    All nullable so non-driver rows are unaffected.  Drivers will
+    populate them via the admin UI; the columns also seed the
+    expiration-alert scheduler (CDL / Medical Card).
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(users)")
+        cols = {r[1] for r in await cur.fetchall()}
+        added = 0
+        for name, sqltype in _DRIVER_PROFILE_COLUMNS:
+            if name not in cols:
+                await conn.execute(
+                    f"ALTER TABLE users ADD COLUMN {name} {sqltype}"
+                )
+                added += 1
+        if added:
+            await conn.commit()
+            logger.info("Migration: added %d driver-profile column(s) to users", added)
+    except Exception as e:
+        logger.error("driver-profile columns migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_create_driver_vehicle_assignments(conn) -> None:
+    """Create driver_vehicle_assignments — the single source of truth
+    for who drives what.
+
+    Replaces ``driver_trucks`` (kept as legacy alias one release).
+    Preserves history: when a driver moves off a vehicle the row
+    sticks around with ``unassigned_at`` set.  ``vehicle_name`` is
+    the Samsara name (matches alerts + scorecard lookups);
+    ``vehicle_id`` is the Samsara vehicle_id cached for fast joins.
+    """
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS driver_vehicle_assignments (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                user_id         INTEGER NOT NULL,
+                vehicle_name    TEXT    NOT NULL,
+                vehicle_id      TEXT,
+                is_primary      INTEGER NOT NULL DEFAULT 0,
+                assigned_by     INTEGER,
+                assigned_at     TEXT    NOT NULL,
+                unassigned_at   TEXT,
+                notes           TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_dva_active
+                ON driver_vehicle_assignments(user_id, unassigned_at);
+            CREATE INDEX IF NOT EXISTS idx_dva_vehicle
+                ON driver_vehicle_assignments(account_id, vehicle_name, unassigned_at);
+            CREATE INDEX IF NOT EXISTS idx_dva_account
+                ON driver_vehicle_assignments(account_id, unassigned_at);
+        """)
+        await conn.commit()
+        logger.info("Migration: created driver_vehicle_assignments table")
+    except Exception as e:
+        logger.error("driver_vehicle_assignments migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_create_driver_documents(conn) -> None:
+    """Create driver_documents — per-driver document store with
+    expiration tracking.
+
+    Files are stored via the existing ``ObjectStore`` protocol (Google
+    Drive when the account has it linked, local disk fallback otherwise).
+    ``object_key`` is the path inside the bucket; ``drive_file_id`` is
+    the Google Drive file id cached for fast re-fetch.  ``status``
+    transitions ``active`` → ``expired`` on the day of expiration via
+    the daily document-expiration scheduler.
+    """
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS driver_documents (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                user_id         INTEGER NOT NULL,
+                doc_type        TEXT    NOT NULL,
+                bucket          TEXT    NOT NULL DEFAULT 'driver_documents',
+                object_key      TEXT    NOT NULL,
+                drive_file_id   TEXT,
+                file_name       TEXT    NOT NULL,
+                file_size       INTEGER,
+                mime_type       TEXT,
+                issued_at       TEXT,
+                expires_at      TEXT,
+                status          TEXT    NOT NULL DEFAULT 'active',
+                uploaded_by     INTEGER,
+                uploaded_at     TEXT    NOT NULL,
+                notes           TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_docs_user
+                ON driver_documents(user_id, status);
+            CREATE INDEX IF NOT EXISTS idx_docs_expiring
+                ON driver_documents(account_id, expires_at, status);
+            CREATE INDEX IF NOT EXISTS idx_docs_account_type
+                ON driver_documents(account_id, doc_type, status);
+        """)
+        await conn.commit()
+        logger.info("Migration: created driver_documents table")
+    except Exception as e:
+        logger.error("driver_documents migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_add_account_storage_quota(conn) -> None:
+    """Add storage_quota_bytes / storage_used_bytes to accounts.
+
+    Quota applies only when the account uses the LOCAL disk fallback;
+    accounts with Google Drive connected don't hit this cap because
+    their Drive enforces its own quota.  Default 500 MB is enough for
+    a small fleet's documents + camera images without hitting the
+    cap; configurable per-account via the admin storage-settings route.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(accounts)")
+        cols = {r[1] for r in await cur.fetchall()}
+        added = 0
+        if "storage_quota_bytes" not in cols:
+            # 524288000 = 500 * 1024 * 1024 = 500 MB default cap.
+            await conn.execute(
+                "ALTER TABLE accounts ADD COLUMN storage_quota_bytes "
+                "INTEGER NOT NULL DEFAULT 524288000"
+            )
+            added += 1
+        if "storage_used_bytes" not in cols:
+            await conn.execute(
+                "ALTER TABLE accounts ADD COLUMN storage_used_bytes "
+                "INTEGER NOT NULL DEFAULT 0"
+            )
+            added += 1
+        if added:
+            await conn.commit()
+            logger.info("Migration: added %d storage-quota column(s) to accounts", added)
+    except Exception as e:
+        logger.error("storage-quota migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_backfill_driver_vehicle_assignments(conn) -> None:
+    """Seed driver_vehicle_assignments from existing data.
+
+    Two sources, in order:
+      1. ``driver_trucks`` — the previous junction table
+      2. ``users.truck_num`` — the legacy single-truck column
+
+    Both are preserved (no deletes); this is a one-way ADDITIVE backfill
+    so existing readers keep working during the transition.  Re-runs
+    are safe — only inserts rows that don't already have a matching
+    active assignment.
+    """
+    try:
+        cur = await conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name='driver_vehicle_assignments'"
+        )
+        if not (await cur.fetchone()):
+            return  # table not created yet; will be picked up on next start
+
+        now = __import__("datetime").datetime.utcnow().isoformat()
+        inserted = 0
+
+        # 1) driver_trucks → driver_vehicle_assignments (1:1)
+        cur = await conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name='driver_trucks'"
+        )
+        if await cur.fetchone():
+            cur = await conn.execute(
+                "SELECT dt.user_id, dt.account_id, dt.truck_num, "
+                "       dt.is_primary, COALESCE(dt.assigned_by, 0), "
+                "       COALESCE(dt.assigned_at, ?) "
+                "FROM driver_trucks dt "
+                "WHERE NOT EXISTS ("
+                "    SELECT 1 FROM driver_vehicle_assignments dva "
+                "    WHERE dva.user_id = dt.user_id "
+                "      AND dva.vehicle_name = dt.truck_num "
+                "      AND dva.unassigned_at IS NULL"
+                ")",
+                (now,),
+            )
+            for user_id, acct_id, vehicle, is_primary, by_id, at in await cur.fetchall():
+                await conn.execute(
+                    "INSERT INTO driver_vehicle_assignments "
+                    "(account_id, user_id, vehicle_name, is_primary, "
+                    " assigned_by, assigned_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (acct_id, user_id, vehicle, is_primary, by_id, at),
+                )
+                inserted += 1
+
+        # 2) users.truck_num for any driver still missing an active row
+        cur = await conn.execute(
+            "SELECT u.id, u.account_id, u.truck_num FROM users u "
+            "WHERE u.truck_num IS NOT NULL AND u.truck_num != '' "
+            "  AND u.is_active = 1 "
+            "  AND NOT EXISTS ("
+            "      SELECT 1 FROM driver_vehicle_assignments dva "
+            "      WHERE dva.user_id = u.id "
+            "        AND dva.unassigned_at IS NULL"
+            "  )"
+        )
+        for user_id, acct_id, truck in await cur.fetchall():
+            await conn.execute(
+                "INSERT INTO driver_vehicle_assignments "
+                "(account_id, user_id, vehicle_name, is_primary, "
+                " assigned_by, assigned_at) "
+                "VALUES (?, ?, ?, 1, 0, ?)",
+                (acct_id, user_id, truck, now),
+            )
+            inserted += 1
+
+        if inserted:
+            await conn.commit()
+            logger.info(
+                "Migration: backfilled %d row(s) into driver_vehicle_assignments",
+                inserted,
+            )
+    except Exception as e:
+        logger.error("driver_vehicle_assignments backfill failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_create_driver_document_notifications(conn) -> None:
+    """Per-(doc, bucket) ledger for the daily expiration scheduler.
+
+    ``bucket_days`` is the threshold the doc had crossed when the alert
+    fired (30 / 14 / 7 / 1 / 0 for "expired today").  The composite PK
+    is the dedup hook — re-running the scheduler the same day or even
+    weeks later won't re-fire an already-sent bucket for the same doc.
+    """
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS driver_document_notifications (
+                doc_id        INTEGER NOT NULL,
+                bucket_days   INTEGER NOT NULL,
+                notified_at   TEXT    NOT NULL,
+                PRIMARY KEY (doc_id, bucket_days)
+            );
+            CREATE INDEX IF NOT EXISTS idx_doc_notif_doc
+                ON driver_document_notifications(doc_id);
+        """)
+        await conn.commit()
+        logger.info("Migration: created driver_document_notifications table")
+    except Exception as e:
+        logger.error("driver_document_notifications migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_create_payroll_tables(conn) -> None:
+    """Create payroll tables on the unified Database.
+
+    Historically these lived on ``TenantDB`` and were created by
+    ``tenant_schema.create_tables``.  After the platform/tenant DB
+    unification they need an explicit migration so existing tenants
+    pick them up on the next startup.
+
+    Idempotent — CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS
+    means a re-run is a no-op for tenants already on the new schema.
+    """
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS bonus_rules (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                name            TEXT    NOT NULL,
+                kind            TEXT    NOT NULL DEFAULT 'score_threshold',
+                score_min       REAL,
+                event_type      TEXT,
+                max_count       INTEGER,
+                period_days     INTEGER NOT NULL DEFAULT 30,
+                amount_cents    INTEGER NOT NULL DEFAULT 0,
+                active          INTEGER NOT NULL DEFAULT 1,
+                created_at      TEXT    NOT NULL DEFAULT '',
+                updated_at      TEXT    NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_bonus_rules_account
+                ON bonus_rules(account_id, active);
+
+            CREATE TABLE IF NOT EXISTS driver_pay_settings (
+                account_id      INTEGER NOT NULL,
+                driver_id       TEXT    NOT NULL,
+                base_pay_cents  INTEGER NOT NULL DEFAULT 0,
+                opt_in          INTEGER NOT NULL DEFAULT 1,
+                updated_at      TEXT    NOT NULL DEFAULT '',
+                PRIMARY KEY (account_id, driver_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS payroll_runs (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                period_start    TEXT    NOT NULL,
+                period_end      TEXT    NOT NULL,
+                status          TEXT    NOT NULL DEFAULT 'draft',
+                created_by      INTEGER NOT NULL DEFAULT 0,
+                created_at      TEXT    NOT NULL DEFAULT '',
+                finalized_at    TEXT,
+                total_cents     INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(account_id, period_start, period_end)
+            );
+            CREATE INDEX IF NOT EXISTS idx_payroll_runs_account
+                ON payroll_runs(account_id, period_start);
+
+            CREATE TABLE IF NOT EXISTS payroll_run_items (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id            INTEGER NOT NULL REFERENCES payroll_runs(id),
+                driver_id         TEXT    NOT NULL,
+                driver_name       TEXT    NOT NULL DEFAULT '',
+                base_pay_cents    INTEGER NOT NULL DEFAULT 0,
+                bonus_total_cents INTEGER NOT NULL DEFAULT 0,
+                total_cents       INTEGER NOT NULL DEFAULT 0,
+                breakdown_json    TEXT    NOT NULL DEFAULT '[]',
+                created_at        TEXT    NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_payroll_items_run
+                ON payroll_run_items(run_id);
+            CREATE INDEX IF NOT EXISTS idx_payroll_items_driver
+                ON payroll_run_items(driver_id);
+        """)
+        await conn.commit()
+        logger.info("Migration: created payroll tables")
+    except Exception as e:
+        logger.error("Payroll-tables migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_create_driver_future_tables(conn) -> None:
+    """Foundation tables for upcoming driver-facing modules.
+
+    Schema-only, no read/write paths yet — the full features land in
+    follow-on PRs.  Tables created now so:
+
+    * Migration ordering stays simple (these three roll out together).
+    * Adapter stubs in ``capabilities/drivers/`` can be filled in
+      without another schema migration.
+    * Reporting + scorecards can start joining against them
+      incrementally.
+
+    Tables:
+      * ``driver_inspections`` — DOT pre/post-trip + annual + roadside
+      * ``driver_trainings``   — completed courses with expirations
+      * ``driver_hos_status``  — cached Samsara HOS / duty-status
+    """
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS driver_inspections (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                user_id         INTEGER NOT NULL,
+                vehicle_name    TEXT,
+                inspection_type TEXT    NOT NULL,
+                status          TEXT    NOT NULL DEFAULT 'pass',
+                inspected_at    TEXT    NOT NULL,
+                defects_json    TEXT,
+                notes           TEXT,
+                created_at      TEXT    NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_inspections_user
+                ON driver_inspections(user_id, inspected_at);
+            CREATE INDEX IF NOT EXISTS idx_inspections_account
+                ON driver_inspections(account_id, inspected_at);
+
+            CREATE TABLE IF NOT EXISTS driver_trainings (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id         INTEGER NOT NULL,
+                user_id            INTEGER NOT NULL,
+                training_type      TEXT    NOT NULL,
+                provider           TEXT,
+                completed_at       TEXT,
+                expires_at         TEXT,
+                certificate_doc_id INTEGER,
+                status             TEXT    NOT NULL DEFAULT 'completed',
+                notes              TEXT,
+                created_at         TEXT    NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_trainings_user
+                ON driver_trainings(user_id, status);
+            CREATE INDEX IF NOT EXISTS idx_trainings_expiring
+                ON driver_trainings(account_id, expires_at);
+
+            CREATE TABLE IF NOT EXISTS driver_hos_status (
+                user_id                 INTEGER PRIMARY KEY,
+                account_id              INTEGER NOT NULL,
+                samsara_driver_id       TEXT,
+                duty_status             TEXT,
+                drive_seconds_today     INTEGER DEFAULT 0,
+                on_duty_seconds_today   INTEGER DEFAULT 0,
+                cycle_seconds_remaining INTEGER,
+                shift_seconds_remaining INTEGER,
+                last_status_change      TEXT,
+                updated_at              TEXT    NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_hos_account
+                ON driver_hos_status(account_id);
+        """)
+        await conn.commit()
+        logger.info("Migration: created driver_inspections / driver_trainings / driver_hos_status")
+    except Exception as e:
+        logger.error("Driver future-tables migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_add_account_timezone(conn) -> None:
+    """Add ``accounts.timezone`` for the account-level timezone default.
+
+    Per-user ``users.timezone`` becomes the optional override; this
+    column is the account-wide default that admins set via Settings.
+    Cron jobs and display formatting both consult an effective-tz
+    resolver that falls back through user → account → ``UTC``.
+
+    Idempotent — ALTER TABLE only when the column is missing.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(accounts)")
+        existing = {r[1] for r in await cur.fetchall()}
+        if "timezone" in existing:
+            return
+        await conn.execute(
+            "ALTER TABLE accounts ADD COLUMN timezone "
+            "TEXT NOT NULL DEFAULT 'America/New_York'"
+        )
+        await conn.commit()
+        logger.info("Migration: added accounts.timezone column")
+    except Exception as e:
+        logger.error("accounts.timezone migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

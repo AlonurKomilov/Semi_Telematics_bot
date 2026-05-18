@@ -16,7 +16,7 @@ export interface PillarRingProps {
   /** Composite total (rendered in the centre). */
   total: number;
   /** CSS colour string for the centre score — drives grade colouring. */
-  gradeColor?: string;
+  tierColor?: string;
   /** Outer SVG side length in CSS pixels. Default 220. */
   size?: number;
   /** Stroke width per arc. Default 14. */
@@ -81,7 +81,7 @@ export function PillarRing({
   efficiency,
   compliance,
   total,
-  gradeColor,
+  tierColor,
   size = 220,
   stroke = 14,
 }: PillarRingProps) {
@@ -101,15 +101,17 @@ export function PillarRing({
     textAnchor: 'middle',
   };
   const totalStyle: CSSProperties = {
-    fill: gradeColor ?? 'var(--tg-theme-text-color, currentColor)',
+    fill: tierColor ?? 'var(--tg-theme-text-color, currentColor)',
     fontSize: 44,
     fontWeight: 700,
     textAnchor: 'middle',
   };
 
-  const SAFETY_COLOR     = '#34c759';
-  const EFFICIENCY_COLOR = '#0a84ff';
-  const COMPLIANCE_COLOR = '#bf5af2';
+  // Pillar arc colours match the dashboard's PILLAR_META so the
+  // same driver sees consistent colour cues on web and phone.
+  const SAFETY_COLOR     = '#ef4444';  // red
+  const EFFICIENCY_COLOR = '#22c55e';  // green
+  const COMPLIANCE_COLOR = '#3b82f6';  // blue
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>

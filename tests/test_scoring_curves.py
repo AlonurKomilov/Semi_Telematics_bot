@@ -1,4 +1,4 @@
-"""Unit tests for curve evaluators (Audit Option C)."""
+"""Unit tests for curve evaluators."""
 from __future__ import annotations
 
 import pytest

@@ -17,7 +17,8 @@ from capabilities.formatting import (
     format_system_owner_welcome,
 )
 
-from interfaces.bot.config import get_platform_db, get_tenant_db, SUPPORT_CONTACT
+from interfaces.bot.config import SUPPORT_CONTACT
+from interfaces.bot.state import get_platform_db, get_tenant_db
 from interfaces.bot.keyboards import (
     main_menu_kb, back_kb, system_owner_kb, unregistered_kb,
     co_menu_kb, vehicle_company_picker_kb,

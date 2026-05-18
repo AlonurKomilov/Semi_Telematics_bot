@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Settings as SettingsIcon } from 'lucide-react';
 import { apiJSON } from '../../api/client';
@@ -9,42 +10,31 @@ import {
   ErrorState,
   CardSkeleton,
 } from '../../components/shell';
+import { TIMEZONE_OPTIONS, timezoneLabelWithTime } from '../../utils/timezones';
+import { useNow } from '../../hooks/useNow';
+import ForumRoutingSection from './ForumRoutingSection';
 
 const ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'driver'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
-const LANGUAGES: Record<string, string> = {
-  en: '🇺🇸 English',
-  es: '🇪🇸 Español',
-  ru: '🇷🇺 Русский',
-  uk: '🇺🇦 Українська',
-  fr: '🇫🇷 Français',
-  so: '🇸🇴 Soomaali',
-  am: '🇪🇹 አማርኛ',
-  uz: '🇺🇿 O\'zbekcha',
-  pa: '🇮🇳 ਪੰਜਾਬੀ',
-};
-
-const TIMEZONES = [
-  'America/New_York', 'America/Chicago', 'America/Denver',
-  'America/Los_Angeles', 'America/Phoenix', 'America/Anchorage',
-  'Pacific/Honolulu', 'UTC',
-];
-
 export default function Settings() {
+  const { t } = useTranslation();
   const { user: authUser } = useAuth();
   const qc = useQueryClient();
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  // Re-renders once a minute so the "current time" suffix on each
+  // timezone option stays accurate while the page is open.
+  const now = useNow();
 
-  // User prefs
-  const [prefLang, setPrefLang] = useState('en');
-  const [prefTz, setPrefTz] = useState('America/New_York');
-  const [prefQuietStart, setPrefQuietStart] = useState<number | ''>('');
-  const [prefQuietEnd, setPrefQuietEnd] = useState<number | ''>('');
-  const [prefName, setPrefName] = useState('');
-  const [prefSaving, setPrefSaving] = useState(false);
-  const [prefSuccess, setPrefSuccess] = useState('');
+  // Account-wide timezone (admin / owner only).
+  // ``accountTz`` is what gets stored on accounts.timezone — every cron
+  // job + display formatter falls back to this when a user doesn't set
+  // a per-user override.  Editable only by users with can_manage_account.
+  const [accountTz, setAccountTz] = useState('America/New_York');
+  const [accountTzSaving, setAccountTzSaving] = useState(false);
+  const [accountTzSuccess, setAccountTzSuccess] = useState('');
+  const canManageAccount = !!authUser?.permissions?.can_manage_account;
 
   // Track editable settings
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -107,31 +97,41 @@ export default function Settings() {
     finally { setBotSaving(false); }
   };
 
-  // Load user preferences from /user/me
+  // Load user preferences from /user/me.  ``timezone`` is the user's
+  // override (may be blank, meaning "inherit account default");
+  // ``effective_timezone`` is what the rest of the app actually
+  // renders in — read-only here, shown as a hint.
   useEffect(() => {
+    // Settings only needs the account default for non-admins (admins
+    // overwrite this from /admin/timezone below).
     apiJSON<User>('/user/me').then((u) => {
-      setPrefLang(u.language || 'en');
-      setPrefTz(u.timezone || 'America/New_York');
-      setPrefQuietStart(u.quiet_start ?? '');
-      setPrefQuietEnd(u.quiet_end ?? '');
-      setPrefName(u.display_name || '');
+      if (u.account_timezone) setAccountTz(u.account_timezone);
     }).catch(() => {});
   }, []);
 
-  const handleSavePrefs = async () => {
-    setPrefSaving(true); setError(''); setPrefSuccess('');
-    const body: Record<string, unknown> = {};
-    if (prefLang) body.language = prefLang;
-    if (prefTz) body.timezone = prefTz;
-    if (prefName) body.display_name = prefName;
-    if (prefQuietStart !== '') body.quiet_start = prefQuietStart;
-    if (prefQuietEnd !== '') body.quiet_end = prefQuietEnd;
+  // Load account-level timezone (only when the user can edit it; for
+  // everyone else we already have the value baked into /user/me's
+  // ``account_timezone`` field, but the dedicated endpoint is what
+  // powers the save flow).
+  useEffect(() => {
+    if (!canManageAccount) return;
+    apiJSON<{ timezone: string }>('/admin/timezone')
+      .then((r) => setAccountTz(r.timezone || 'America/New_York'))
+      .catch(() => {});
+  }, [canManageAccount]);
+
+  const handleSaveAccountTz = async () => {
+    setAccountTzSaving(true); setError(''); setAccountTzSuccess('');
     try {
-      await apiJSON('/user/preferences', { method: 'PUT', body });
-      setPrefSuccess('Preferences saved!');
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
-    finally { setPrefSaving(false); }
+      await apiJSON('/admin/timezone', { method: 'PUT', body: { timezone: accountTz } });
+      setAccountTzSuccess('Account timezone saved.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save timezone');
+    } finally {
+      setAccountTzSaving(false);
+    }
   };
+
 
   const handleSaveSetting = async (key: string) => {
     setSaving(true); setError('');
@@ -164,8 +164,8 @@ export default function Settings() {
       <div>
         <PageHeader
           icon={SettingsIcon}
-          title="Settings"
-          description="Account preferences, language, time zone, and Telegram bot configuration."
+          title={t('pages.settings_title')}
+          description={t('pages.settings_desc_short')}
         />
         <div className="space-y-4">
           <CardSkeleton height="h-40" />
@@ -179,58 +179,75 @@ export default function Settings() {
     <div className="space-y-8">
       <PageHeader
         icon={SettingsIcon}
-        title="Settings"
-        description="Account preferences, language, time zone, and Telegram bot configuration. Each section saves independently."
+        title={t('pages.settings_title')}
+        description={t('pages.settings_desc_long')}
       />
       {(error || fetchError) && <ErrorState message={error || fetchError} />}
 
-      {/* My Preferences */}
-      <section className="bg-card border border-border rounded-xl p-5">
-        <h2 className="text-lg font-semibold mb-3">My Preferences</h2>
-        {prefSuccess && <p className="text-green-600 dark:text-green-400 text-sm mb-3">{prefSuccess}</p>}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs text-muted-foreground mb-1">Display Name</label>
-            <input value={prefName} onChange={e => setPrefName(e.target.value)}
-              className="w-full bg-muted border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-ring" />
-          </div>
-          <div>
-            <label className="block text-xs text-muted-foreground mb-1">Language</label>
-            <select value={prefLang} onChange={e => setPrefLang(e.target.value)}
-              className="w-full bg-muted border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-ring">
-              {Object.entries(LANGUAGES).map(([val, lbl]) => <option key={val} value={val}>{lbl}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-muted-foreground mb-1">Timezone</label>
-            <select value={prefTz} onChange={e => setPrefTz(e.target.value)}
-              className="w-full bg-muted border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-ring">
-              {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz.replace(/_/g, ' ')}</option>)}
-            </select>
-          </div>
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="block text-xs text-muted-foreground mb-1">Quiet Start (hour)</label>
-              <select value={prefQuietStart} onChange={e => setPrefQuietStart(e.target.value === '' ? '' : +e.target.value)}
-                className="w-full bg-muted border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-ring">
-                <option value="">Off</option>
-                {HOURS.map(h => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}
+      {/* Account Timezone — admin-only.  Single source of truth that
+          drives cron-job timing and every display formatter for users
+          who haven't set a personal override.  Per-user override lives
+          in "My Preferences" below. */}
+      {canManageAccount && (
+        <section className="bg-card border border-border rounded-xl p-5">
+          <h2 className="text-lg font-semibold mb-1">Account Timezone</h2>
+          <p className="text-xs text-muted-foreground mb-3">
+            Sets the company default. Cron jobs (driver-doc expiry, scorecards,
+            coaching, …) fire when it's the right local time here. Users can
+            override their own timezone in My Preferences below.
+            <br />
+            <span className="opacity-75">
+              Tip: DST is handled automatically — picking Eastern Time (ET) gives
+              you EST in winter and EDT in summer.
+            </span>
+          </p>
+          {accountTzSuccess && (
+            <p className="text-green-600 dark:text-green-400 text-sm mb-3">
+              {accountTzSuccess}
+            </p>
+          )}
+          <div className="flex items-end gap-3">
+            <div className="flex-1 max-w-sm">
+              <label className="block text-xs text-muted-foreground mb-1">Timezone</label>
+              <select
+                value={accountTz}
+                onChange={(e) => setAccountTz(e.target.value)}
+                className="w-full bg-muted border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-ring"
+              >
+                {TIMEZONE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {timezoneLabelWithTime(o.value, now)}
+                  </option>
+                ))}
               </select>
             </div>
-            <div className="flex-1">
-              <label className="block text-xs text-muted-foreground mb-1">Quiet End (hour)</label>
-              <select value={prefQuietEnd} onChange={e => setPrefQuietEnd(e.target.value === '' ? '' : +e.target.value)}
-                className="w-full bg-muted border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-ring">
-                <option value="">Off</option>
-                {HOURS.map(h => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}
-              </select>
-            </div>
+            <button
+              onClick={handleSaveAccountTz}
+              disabled={accountTzSaving}
+              className="bg-primary text-primary-foreground px-3 py-2 rounded text-sm font-medium disabled:opacity-50"
+            >
+              {accountTzSaving ? 'Saving…' : 'Save'}
+            </button>
           </div>
+        </section>
+      )}
+
+      {/* Personal preferences have their own page now — keep a pointer
+          here so admins coming to Settings can still find them. */}
+      <section className="bg-card border border-border rounded-xl p-4 flex items-center justify-between gap-4">
+        <div className="text-sm">
+          <p className="font-medium">Looking for your personal preferences?</p>
+          <p className="text-xs text-muted-foreground">
+            Display name, language, your own timezone override, and quiet
+            hours live on your Profile page — only affecting what you see.
+          </p>
         </div>
-        <button onClick={handleSavePrefs} disabled={prefSaving}
-          className="mt-4 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition">
-          {prefSaving ? 'Saving...' : 'Save Preferences'}
-        </button>
+        <a
+          href="/profile"
+          className="px-3 py-2 bg-muted hover:bg-muted/80 border border-border rounded text-sm font-medium transition shrink-0"
+        >
+          Open My Profile →
+        </a>
       </section>
 
       {/* Account Info */}
@@ -319,6 +336,11 @@ export default function Settings() {
                   </button>
                 )}
               </div>
+
+              {/* Inline alert-routing section — only visible once the
+                  bot is connected, since routing requires a working
+                  bot account to talk to Telegram. */}
+              <ForumRoutingSection />
             </div>
           ) : (
             <div>

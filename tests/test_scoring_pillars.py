@@ -1,4 +1,4 @@
-"""Pillar accumulator + insufficient-data tests (Audit Option C)."""
+"""Pillar accumulator + insufficient-data tests."""
 from __future__ import annotations
 
 from capabilities.scoring.engine import (

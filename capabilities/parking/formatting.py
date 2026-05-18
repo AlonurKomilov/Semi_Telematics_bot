@@ -113,6 +113,20 @@ async def _send_parking_resolved(
         f"\n  Vehicle is now moving.\n"
     )
 
+    # Forum routing first: parking-resolved was previously DM-only so
+    # the bound group's Parking topic never saw the resolution even
+    # though the original "UNSAFE PARKING" alert posted there.  Post
+    # once to the topic; DM fanout below still runs for personal
+    # acknowledgement of the lifecycle.
+    try:
+        from capabilities.alerting.pipeline import post_alert_to_topic
+        await post_alert_to_topic(
+            bot_app, account_id=account_id,
+            alert_type="parking", text=text,
+        )
+    except Exception as e:
+        logger.debug("Parking resolved → group topic post failed: %s", e)
+
     subscribers = await get_platform_db().get_all_typed_subscribers("parking")
     acct_subs = [s for s in subscribers if s.account_id == account_id]
 
@@ -123,8 +137,12 @@ async def _send_parking_resolved(
         if sub.role == Role.DRIVER and sub.truck_num:
             if sub.truck_num.lower() not in vname.lower():
                 continue
-        # Respect DND / quiet hours for resolved notifications
-        if sub.is_in_quiet_hours():
+        # Respect DND / quiet hours for resolved notifications.  Uses
+        # SSoT helper so personal overrides AND derived-from-Working-
+        # Hours are both honored consistently with the rest of the
+        # alerting pipeline.
+        from capabilities.alerting.dnd import is_user_dnd_active
+        if await is_user_dnd_active(sub, tenant):
             await tenant.queue_dnd_alert(
                 account_id=account_id,
                 telegram_id=sub.telegram_id,

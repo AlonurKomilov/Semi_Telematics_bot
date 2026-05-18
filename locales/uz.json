@@ -525,6 +525,7 @@
     "driver_title": "🚛 <b>Haydovchini taklif qilish</b>",
     "step2": "<b>2/2 qadam</b> — Yuk mashinasi raqami",
     "driver_prompt": "Yuk mashinasi raqamini yozing:",
+    "driver_vehicle_required": "⚠️ Haydovchilar uchun yuk mashinasi raqami majburiy.\n\nYuk mashinasi raqamini yozing — masalan <code>107</code> — ogohlantirishlar haydovchiga yetib borishi uchun.",
     "vehicle_assigned": "🚛 Yuk mashinasi: #{vehicle}",
     "vehicle_not_assigned": "biriktirilmagan"
   },

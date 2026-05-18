@@ -2,7 +2,7 @@
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-from interfaces.bot.config import get_platform_db
+from interfaces.bot.state import get_platform_db
 from interfaces.bot.keyboards import back_kb, group_picker_kb
 from interfaces.bot.helpers import _show
 from capabilities.localization.i18n import t

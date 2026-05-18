@@ -31,7 +31,7 @@ interface DataTableProps {
   onRowClick?: (row: Record<string, unknown>) => void;
   searchKey?: string;
   /**
-   * Phase F: when set, the table body scrolls within a fixed-height
+ * when set, the table body scrolls within a fixed-height
    * container and the header stays pinned to the top.  Useful for
    * long lists (scorecards, vehicles) where the user otherwise loses
    * the column labels half-way down.  Pass a CSS length string \u2014 e.g.

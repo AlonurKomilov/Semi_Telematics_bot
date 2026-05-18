@@ -22,7 +22,6 @@ The reporter NEVER raises — it is safe to call from inside any except block.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 import traceback

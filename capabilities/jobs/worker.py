@@ -58,25 +58,32 @@ def _build_cron():
     from capabilities.jobs.functions import fanout_precompute_scorecards
 
     return [
-        # Pre-warm the SWR scorecards cache once a day at 06:00 UTC so
-        # the first dashboard request of the morning is a cache hit
-        # rather than a cold-fan-out to Samsara.
+        # Pre-warm the SWR scorecards cache every 2 hours so the
+        # dashboard's DateRangePresets clicks (7 / 14 / 30 / 60 / 90 ×
+        # driver+vehicle) all land on a warm cache.  Combined with the
+        # safety-route SWR knobs (fresh_for=30 min, max_stale=2 h), a
+        # cache entry seeded by one cron run still serves the next
+        # cron tick, so users never pay the 30-45 s cold compute.
+        # ``run_at_startup=True`` so a freshly-deployed worker
+        # immediately backfills the cache instead of waiting up to 2 h.
         cron(
             fanout_precompute_scorecards,
-            name="prewarm_scorecards_morning",
-            hour=6, minute=0,
-            run_at_startup=False,
+            name="prewarm_scorecards_all_windows",
+            hour={0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22},
+            minute=0,
+            run_at_startup=True,
         ),
     ]
 
 
 def _build_settings():
     """Build WorkerSettings lazily so the module can be imported even
-    when the ``arq`` package isn't installed (the Phase 3 dependency
+    when the ``arq`` package isn't installed (the dependency
     is optional infra — the API still works without it)."""
     from arq.connections import RedisSettings
 
     from capabilities.jobs.functions import (
+        backfill_account_initial,
         fanout_precompute_scorecards,
         ping,
         precompute_scorecards,
@@ -94,6 +101,7 @@ def _build_settings():
             ping,
             precompute_scorecards,
             fanout_precompute_scorecards,
+            backfill_account_initial,
         ]
 
         # Cron jobs run by THIS worker (one of the workers wins the

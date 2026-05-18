@@ -1,4 +1,4 @@
-"""Phase 5a — exhaustive tests for the SQLite→PostgreSQL SQL translator.
+"""exhaustive tests for the SQLite→PostgreSQL SQL translator.
 
 Pins every translation rule we ship so a future refactor of
 ``adapters.storage.pg_adapter._sqlite_to_pg_sql`` can't silently regress
@@ -137,7 +137,7 @@ def test_insert_or_replace_warns_but_passes_through(caplog):
     assert "INSERT OR REPLACE" in out
 
 
-# ── Untranslated-pattern warnings (Phase 5a debug mode) ───────
+# ── Untranslated-pattern warnings ( debug mode) ───────
 
 def test_json_extract_warns_when_debug_enabled(monkeypatch, caplog):
     import logging

@@ -16,6 +16,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Placeholder } from '@telegram-apps/telegram-ui';
 import {
   Icon24TruckOutline,
@@ -90,6 +91,7 @@ function GaugeBar({ pct, warn = false, critical = false }: { pct: number; warn?:
 }
 
 export function VehiclesPage({ active, onGoToMap, timezone }: Props) {
+  const { t } = useTranslation();
   const units = useUnitSystem();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
@@ -160,7 +162,7 @@ export function VehiclesPage({ active, onGoToMap, timezone }: Props) {
   if (vehicles.length === 0) {
     return (
       <div className="centered">
-        <Placeholder header="No vehicle assigned" description="No vehicle has been assigned to you yet — ask your dispatcher.">
+        <Placeholder header={t('scorecard.no_vehicle_assigned')} description={t('scorecard.no_vehicle_assigned')}>
           <Icon24TruckOutline width={48} height={48} />
         </Placeholder>
       </div>
@@ -292,7 +294,7 @@ export function VehiclesPage({ active, onGoToMap, timezone }: Props) {
         <input
           className="search-bar__input"
           type="search"
-          placeholder="Search vehicles…"
+          placeholder={t('vehicles.search_placeholder')}
           value={search}
           onChange={e => setSearch(e.target.value)}
           aria-label="Search vehicles"
@@ -321,7 +323,7 @@ export function VehiclesPage({ active, onGoToMap, timezone }: Props) {
 
       {filtered.length === 0 ? (
         <div className="centered">
-          <Placeholder header="No matches" description={`No vehicles matching "${search}"`}>🔍</Placeholder>
+          <Placeholder header={t('alerts.no_matches_header')} description={`No vehicles matching "${search}"`}>🔍</Placeholder>
         </div>
       ) : (
         <div className="vlist">

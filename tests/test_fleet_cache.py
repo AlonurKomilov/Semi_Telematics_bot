@@ -16,7 +16,7 @@ import sys
 os.environ.setdefault("ENCRYPTION_KEY", "")
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -144,7 +144,6 @@ async def test_cache_key_includes_company(mock_redis):
 @pytest.mark.asyncio
 async def test_filters_applied_on_cached_data(mock_redis):
     """Search filter works correctly when data comes from the Redis cache."""
-    from capabilities.location.service import classify_vehicle_status
     from interfaces.api.routes.vehicles import _simplify
 
     async def _cached():

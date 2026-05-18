@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Route as RouteIcon } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useLeafletMap } from '../../hooks/useLeafletMap';
@@ -20,6 +21,7 @@ function today(): string {
 }
 
 export default function Routes() {
+  const { t } = useTranslation();
   const { mapRef, leafletMap, isReady } = useLeafletMap();
   const poiHook = usePoiLayers(leafletMap, isReady);
   const layerRef = useRef<L.LayerGroup | null>(null);
@@ -112,8 +114,8 @@ export default function Routes() {
     <div>
       <PageHeader
         icon={RouteIcon}
-        title="Routes"
-        description="Replay any vehicle's trip on a map. Pick a truck and date — we'll plot the route colored by speed and surface stops along the way."
+        title={t('pages.routes_title')}
+        description={t('pages.routes_desc')}
       />
 
       {/* Controls */}

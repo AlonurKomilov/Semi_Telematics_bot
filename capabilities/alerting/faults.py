@@ -52,7 +52,7 @@ async def _set_known_faults(account_id: int, vid: str, codes: set[str]):
         _known_faults[f"{account_id}:{vid}"] = codes
 
 
-# ── Phase 3 — DB dedup shadow (parallel run) ─────────────────────
+# ── DB dedup shadow (parallel run) ─────────────────────
 #
 # The plan replaces Redis ``_known_faults`` with the DB query
 # ``vehicle_fault_detail.cleared_at IS NULL``.  We run both in
@@ -275,7 +275,7 @@ async def _check_faults_account(bot_app: Application, account_id: int, subs: lis
             previously_known = await _get_known_faults(account_id, vid)
             new_codes = current_codes - previously_known
 
-            # Phase 3 shadow: compare Redis dedup vs DB warehouse view.
+            # shadow: compare Redis dedup vs DB warehouse view.
             # No behaviour change — just observability ahead of the
             # planned authority swap in the next release.
             await _shadow_compare_dedup(account_id, v["id"], previously_known)
@@ -359,7 +359,6 @@ async def _check_faults_account(bot_app: Application, account_id: int, subs: lis
                     # list and history; we just stop pinging Telegram every
                     # cycle.  Counter is cleared by the auto-resolve path
                     # below when the SPN drops off the truck's reported set.
-                    is_chronic = False
                     if (
                         severity != AlertSeverity.CRITICAL
                         and CHRONIC_FAULT_SUPPRESS_AFTER > 0
@@ -368,7 +367,6 @@ async def _check_faults_account(bot_app: Application, account_id: int, subs: lis
                             account_id, vid, fault_detail_str,
                         )
                         if fire_count >= CHRONIC_FAULT_SUPPRESS_AFTER:
-                            is_chronic = True
                             logger.info(
                                 "fault chronic-suppressed acct=%d vid=%s spn=%s fires=%d",
                                 account_id, vid, fault_detail_str, fire_count,
@@ -433,7 +431,6 @@ async def _check_faults_account(bot_app: Application, account_id: int, subs: lis
                 # Determine co from the compound _known_faults key if present,
                 # otherwise fall back to empty string (auto-resolve still works).
                 co_guess = ""
-                compound = f"{account_id}:*:{v_id}"  # pattern — not used directly
                 for k in list(_known_faults.keys()):
                     if k.endswith(f":{v_id}") and k.startswith(f"{account_id}:"):
                         parts = k.split(":", 2)

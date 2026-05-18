@@ -58,7 +58,7 @@ def format_admin_dashboard(stats: dict, ext: dict | None = None,
         ai_tokens = ext.get("ai_total_tokens", 0)
         if ai_calls:
             lines.append("  ── ── ── ── ── ── ── ──")
-            lines.append(f"  🤖 <b>AI Usage</b> (all time)")
+            lines.append("  🤖 <b>AI Usage</b> (all time)")
             lines.append(f"     {ai_calls} calls · {_fmt_tokens(ai_tokens)} tokens")
             lines.append("")
             # Group by account
@@ -83,7 +83,7 @@ def format_admin_dashboard(stats: dict, ext: dict | None = None,
         alerts_7d = ext.get("alerts_7d", [])
         if alerts_7d:
             lines.append("  ── ── ── ── ── ── ── ──")
-            lines.append(f"  🚨 <b>Alerts</b> (7 days)")
+            lines.append("  🚨 <b>Alerts</b> (7 days)")
             total_7d = sum(a["total"] for a in alerts_7d)
             total_acked = sum(a["acked"] for a in alerts_7d)
             ack_pct = round(total_acked / total_7d * 100) if total_7d else 0
@@ -101,7 +101,7 @@ def format_admin_dashboard(stats: dict, ext: dict | None = None,
 
         # Database
         lines.append("  ── ── ── ── ── ── ── ──")
-        lines.append(f"  💾 <b>Database</b>")
+        lines.append("  💾 <b>Database</b>")
         lines.append(f"     Size: {ext.get('db_size_mb', '?')} MB")
         lines.append(f"     Audit log: {ext.get('audit_entries', '?')} entries")
         lines.append(f"     Digest subs: {ext.get('digest_subs', 0)}")
@@ -114,7 +114,7 @@ def format_admin_dashboard(stats: dict, ext: dict | None = None,
     # ── Server info ─────────────────────────────────────────
     if server:
         lines.append("  ── ── ── ── ── ── ── ──")
-        lines.append(f"  🖥 <b>Server</b>")
+        lines.append("  🖥 <b>Server</b>")
         if server.get("hostname"):
             lines.append(f"     Host: {server['hostname']}")
         if server.get("python"):

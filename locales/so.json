@@ -524,7 +524,8 @@
     "share_step3": "3. Geliyaan koodhka:",
     "driver_title": "🚛 <b>Casuun Darawal</b>",
     "step2": "<b>Tallaabada 2/2</b> — Lambarka gaariga",
-    "driver_prompt": "Qor lambarka gaariga ee darawalkan\n(ama qor <b>gudub</b> si aad u dhaaftid banaan):",
+    "driver_prompt": "Qor lambarka gaariga ee darawalkan:",
+    "driver_vehicle_required": "⚠️ Lambarka gaariga waa loo baahan yahay darawallada.\n\nQor lambarka gaariga — tusaale <code>107</code> — si digniinaha u soo gaadhaan darawalka.",
     "vehicle_assigned": "🚛 Gaari: #{vehicle}",
     "vehicle_not_assigned": "looma qoondayn"
   },

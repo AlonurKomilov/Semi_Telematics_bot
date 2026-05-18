@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { MapPin, Plus } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -60,6 +61,7 @@ const DEFAULT_FORM: AddZoneForm = {
 };
 
 export default function Geofences() {
+  const { t } = useTranslation();
   const { has, role } = usePermissions();
   const canManage = has('can_geofence_all');
   const isOwner = role === 'owner';
@@ -338,8 +340,8 @@ export default function Geofences() {
       <div className="shrink-0">
         <PageHeader
           icon={MapPin}
-          title={`Geofences (${geofences.length})`}
-          description="Zones that trigger arrival/exit alerts. Pick from the map or paste an address — radius can be tuned in miles."
+          title={`${t('pages.geofences_title')} (${geofences.length})`}
+          description={t('pages.geofences_desc')}
           meta={
             (samsaraCount > 0 || platformCount > 0) && (
               <div className="flex gap-3 text-xs text-muted-foreground">

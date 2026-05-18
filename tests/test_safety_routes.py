@@ -28,16 +28,14 @@ from interfaces.api.auth import create_jwt
 
 
 @pytest_asyncio.fixture
-async def safety_app(tmp_path, monkeypatch):
+async def safety_app(pg_db, monkeypatch):
     """Spin up the API with a seeded DB and stub the upstream Samsara call.
 
     Returns dict with ``app``, ``token_owner``, ``token_driver`` plus a
     ``calls`` list capturing each invocation of ``get_driver_efficiency``
     so tests can assert on the kwargs the route forwards.
     """
-    db_path = str(tmp_path / "safety.db")
-    database = Database(db_path)
-    await database.initialize()
+    database = pg_db
 
     acct = await database.create_account("Safety Co")
     await database.add_company(acct.id, "SC", "key_sc", "Safety Co")
@@ -48,9 +46,7 @@ async def safety_app(tmp_path, monkeypatch):
     token_driver = create_jwt(driver.telegram_id, acct.id, "driver")
 
     import infra.platform as _cp
-    from adapters.storage.tenant_router import LegacyRouter
-    _old_router, _old_db = _cp._router, _cp._db
-    _cp._router = LegacyRouter(database)
+    _old_db = _cp._db
     _cp._db = database
 
     # Stub the service-layer fetch so tests don't hit Samsara.  Capture every
@@ -91,8 +87,8 @@ async def safety_app(tmp_path, monkeypatch):
         "calls": calls,
     }
 
-    _cp._router, _cp._db = _old_router, _old_db
-    await database.close()
+    _cp._db = _old_db
+    # database.close() handled by the pg_db fixture's own teardown
 
 
 def _h(token: str) -> dict:
@@ -232,7 +228,7 @@ class TestScorecardRulesRoute:
             assert r.status_code == 404
 
 
-# ── Truck filter: exact match against vehicle_summaries (audit H3) ──
+# ── Truck filter: exact match against vehicle_summaries ──
 
 
 class TestTruckFilter:
@@ -321,7 +317,7 @@ class TestTruckFilter:
         assert len(out) == 4
 
 
-# ── Audit Option C: pillar-based composite shape + curve overrides ──
+# ── pillar-based composite shape + curve overrides ──
 
 
 class TestPillarShapeContract:

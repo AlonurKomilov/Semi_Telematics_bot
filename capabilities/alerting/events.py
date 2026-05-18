@@ -170,6 +170,12 @@ async def _check_events_account(bot_app: Application, account):
                 subscribers=subscribers,
                 co=co,
                 alert_key_detail=f"{event.get('event_type', '')}:{eid}",
+                # Per-subtype dedup: each event_type (rollingStop,
+                # braking, followingDistance, …) gets its own
+                # alert_history row so the occurrence count matches
+                # the alert title instead of pooling all driving
+                # events on the truck into one row.
+                alert_subkey=event.get("event_type", "") or "",
                 video_url=event.get("video_url") or "",
                 event_id=eid,
                 event_time=event.get("time", ""),

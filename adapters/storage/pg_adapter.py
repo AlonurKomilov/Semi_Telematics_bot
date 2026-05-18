@@ -25,10 +25,56 @@ from __future__ import annotations
 import os
 import re
 import logging
+from datetime import timedelta
 from typing import Any, AsyncIterator
 from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
+
+
+# Pattern matching the SQLite interval-modifier strings the codebase
+# passes to ``datetime('now', ?)`` / ``date('now', ?)`` calls — e.g.
+# ``"-30 days"``, ``"+7 days"``, ``"-2 hours"``.  asyncpg accepts
+# ``timedelta`` for ``::interval`` parameters but rejects raw strings,
+# so we convert at the binding boundary.
+_SQLITE_INTERVAL_RE = re.compile(
+    r"^\s*([+-]?)\s*(\d+)\s+"
+    r"(second|sec|minute|min|hour|day|week|month|year)s?\s*$",
+    re.IGNORECASE,
+)
+
+_INTERVAL_UNIT_TO_TIMEDELTA = {
+    "second": "seconds", "sec": "seconds",
+    "minute": "minutes", "min": "minutes",
+    "hour": "hours",
+    "day": "days",
+    "week": "weeks",
+}
+
+
+def _maybe_coerce_interval_param(value: Any) -> Any:
+    """Return ``value`` converted to ``timedelta`` if it's a SQLite-style
+    interval modifier (e.g. ``"-30 days"``); otherwise return unchanged.
+
+    Only called when the SQL the parameter is bound to contains a
+    ``::interval`` cast, so non-interval strings on unrelated columns
+    are never touched.  Month/year intervals fall through unchanged —
+    they have no fixed-length timedelta equivalent and the few queries
+    that need them either use literal intervals (translated to PG
+    syntax directly) or pass days approximations explicitly.
+    """
+    if not isinstance(value, str):
+        return value
+    m = _SQLITE_INTERVAL_RE.match(value)
+    if not m:
+        return value
+    sign = -1 if m.group(1) == "-" else 1
+    qty = int(m.group(2)) * sign
+    unit = m.group(3).lower()
+    td_kwarg = _INTERVAL_UNIT_TO_TIMEDELTA.get(unit)
+    if td_kwarg is None:
+        return value  # month/year — leave for caller / PG to error visibly
+    return timedelta(**{td_kwarg: qty})
 
 # SQLite PRAGMA pattern — skip entirely in PostgreSQL
 _PRAGMA_RE = re.compile(r"^\s*PRAGMA\s+", re.IGNORECASE)
@@ -187,6 +233,53 @@ def _sqlite_to_pg_sql(sql: str) -> str:
     if _PRAGMA_RE.match(sql):
         return ""  # caller skips empty strings
 
+    # ── BEGIN IMMEDIATE / BEGIN EXCLUSIVE → BEGIN ──────────────
+    # SQLite's IMMEDIATE / EXCLUSIVE transaction modes acquire write
+    # locks at BEGIN time so a write-write contention error fires
+    # immediately rather than mid-transaction.  Postgres uses MVCC
+    # and doesn't have an equivalent; a plain BEGIN is the correct
+    # mapping (the transaction still gets serialisable-ish isolation
+    # via the default READ COMMITTED level, which is what the SQLite
+    # path was approximating).
+    _stripped = sql.strip().upper()
+    if _stripped in ("BEGIN IMMEDIATE", "BEGIN EXCLUSIVE",
+                     "BEGIN IMMEDIATE TRANSACTION", "BEGIN EXCLUSIVE TRANSACTION"):
+        return "BEGIN"
+
+    # ── instr(s, sub) → strpos(s, sub) ─────────────────────────
+    # SQLite's ``instr`` returns the 1-based index of ``sub`` in
+    # ``s`` (or 0 when absent).  Postgres' ``strpos`` is identical
+    # in both signature and semantics, so the substitution is
+    # mechanical.  Required by migration 033 which back-fills
+    # alert_subkey from a colon-prefixed last_detail.
+    sql = re.sub(r"\binstr\s*\(", "strpos(", sql, flags=re.IGNORECASE)
+
+    # ── MAX(a, b) → GREATEST(a, b), MIN(a, b) → LEAST(a, b) ─────
+    # SQLite overloads MAX/MIN as both aggregates AND 2-argument
+    # scalar functions.  Postgres treats MAX/MIN strictly as
+    # aggregates and uses GREATEST/LEAST for scalar comparisons —
+    # ``UPDATE accounts SET storage_used_bytes = MAX(0, ...)`` fails
+    # in PG with "function max(integer, integer) does not exist".
+    # We only rewrite when the MAX/MIN call has TWO comma-separated
+    # arguments (matched non-greedily and one level deep) — the
+    # one-arg aggregate form ``MAX(col)`` and grouped aggregates
+    # are left alone.
+    #
+    # The pattern uses negative look-around to skip aggregates that
+    # legitimately appear in subqueries (``... FROM (SELECT MAX(x)
+    # FROM y) ...``); two-arg scalar usage is what production code
+    # writes for ``MAX(0, col - delta)`` clamps.
+    _scalar_pair = re.compile(
+        r"\b(MAX|MIN)\s*\(\s*([^(),]+(?:\([^()]*\)[^(),]*)*)\s*,"
+        r"\s*([^()]+(?:\([^()]*\)[^()]*)*)\s*\)",
+        flags=re.IGNORECASE,
+    )
+    sql = _scalar_pair.sub(
+        lambda m: f"{'GREATEST' if m.group(1).upper() == 'MAX' else 'LEAST'}"
+                  f"({m.group(2)}, {m.group(3)})",
+        sql,
+    )
+
     # ``sqlite_master`` → UNION over pg_tables + pg_indexes that exposes the
     # same ``(name, type, sql)`` columns SQLite returns.
     if _SQLITE_MASTER_RE.search(sql):
@@ -283,13 +376,49 @@ def _sqlite_to_pg_sql(sql: str) -> str:
 
 # ── asyncpg cursor shim ────────────────────────────────────────────
 
-class _PgCursor:
-    """Thin wrapper around an asyncpg fetch result that mimics aiosqlite.Cursor."""
+def _parse_status_rowcount(status: object) -> int:
+    """Extract the affected-row count from asyncpg's command-status string.
 
-    def __init__(self, rows: list, lastrowid: int = 0):
+    ``Connection.execute()`` returns a string like ``"UPDATE 3"``,
+    ``"DELETE 12"``, ``"INSERT 0 5"`` (the middle 0 is the oid which
+    asyncpg keeps for back-compat).  The trailing integer is always
+    the affected-row count.  DDL statements (``CREATE TABLE``) return
+    just the verb with no integer — we treat that as 0.
+
+    Robust to: status being None (some test doubles), empty string,
+    or a multi-word verb like "CREATE INDEX".  Defaults to 0 rather
+    than raising so existing ``cur.rowcount > 0`` callers stay safe.
+    """
+    if not status or not isinstance(status, str):
+        return 0
+    parts = status.strip().split()
+    if not parts:
+        return 0
+    last = parts[-1]
+    if last.isdigit():
+        return int(last)
+    return 0
+
+
+class _PgCursor:
+    """Thin wrapper around an asyncpg fetch result that mimics aiosqlite.Cursor.
+
+    ``rowcount`` matches aiosqlite semantics: number of rows the
+    statement affected (UPDATE/DELETE) or returned (SELECT).  For
+    INSERT it's the number of inserted rows.  Callers in
+    ``adapters/storage/{maintenance,parking,permissions,…}.py`` rely
+    on this to gate "did the row actually exist?" branches like
+    ``return cur.rowcount > 0`` — without it those branches crash
+    with ``'_PgCursor' object has no attribute 'rowcount'``.
+    """
+
+    def __init__(self, rows: list, lastrowid: int = 0, rowcount: int = 0):
         self._rows = rows
         self._pos = 0
         self.lastrowid = lastrowid  # asyncpg returns lastrowid via RETURNING id
+        # Default to len(rows) so SELECT callers always see a sane
+        # number; UPDATE/DELETE callers override via the explicit kwarg.
+        self.rowcount = rowcount if rowcount else len(rows)
 
     async def fetchone(self):
         if self._pos < len(self._rows):
@@ -364,29 +493,80 @@ class _PgConnection:
         if not pg_sql.strip():
             return _PgCursor([])
 
+        # If the translated SQL contains an ``::interval`` cast we
+        # might be passing a SQLite-style string like ``"-30 days"`` as
+        # a parameter — asyncpg can't bind that to INTERVAL.  Convert
+        # such values to ``timedelta`` first; non-interval params are
+        # left untouched.
+        if "::interval" in pg_sql:
+            params = tuple(_maybe_coerce_interval_param(p) for p in params)
+
         stripped = pg_sql.strip().upper()
 
         async with self._lock:
-            # For SELECT / RETURNING, fetch rows
+            # For SELECT / RETURNING, fetch rows.  rowcount = len(rows).
             if stripped.startswith("SELECT") or "RETURNING" in stripped:
                 rows = await self._conn.fetch(pg_sql, *params)
-                return _PgCursor(rows)
+                return _PgCursor(rows, rowcount=len(rows))
 
-            # For INSERT with lastrowid, append RETURNING id
-            if stripped.startswith("INSERT") and "RETURNING" not in stripped:
+            # For INSERT with lastrowid, append RETURNING id.
+            #
+            # We skip the RETURNING augmentation when the statement
+            # already carries an ON CONFLICT clause: those targets
+            # are typically composite-PK junction tables
+            # (driver_document_notifications, user_companies, etc.)
+            # that have no ``id`` column at all, and asyncpg's failure
+            # mode here is to abort the entire surrounding transaction
+            # so the caller's next statement also errors out with
+            # ``InFailedSQLTransactionError``.  Plain execute() returns
+            # a status row count, which is what ``cur.rowcount > 0``
+            # callers (record_doc_notification, assign_user_company)
+            # actually need to gate fresh-vs-dedup.
+            if (
+                stripped.startswith("INSERT")
+                and "RETURNING" not in stripped
+                and "ON CONFLICT" not in stripped
+            ):
                 try:
                     returning_sql = pg_sql.rstrip().rstrip(";") + " RETURNING id"
                     row = await self._conn.fetchrow(returning_sql, *params)
                     lastrowid = row["id"] if row else 0
-                    return _PgCursor([row] if row else [], lastrowid=lastrowid)
+                    return _PgCursor(
+                        [row] if row else [],
+                        lastrowid=lastrowid,
+                        rowcount=1 if row else 0,
+                    )
                 except Exception:
-                    # If RETURNING id fails (no id column), fall back
-                    await self._conn.execute(pg_sql, *params)
-                    return _PgCursor([])
+                    # If RETURNING id fails (no id column), fall back.
+                    status = await self._conn.execute(pg_sql, *params)
+                    return _PgCursor([], rowcount=_parse_status_rowcount(status))
 
-            # UPDATE / DELETE / DDL
-            await self._conn.execute(pg_sql, *params)
+            # UPDATE / DELETE / DDL — asyncpg returns a status string
+            # like "UPDATE 3" / "DELETE 12" whose tail integer is the
+            # affected row count.  Parsing it lets callers gate on
+            # ``cur.rowcount > 0`` (used in maintenance, parking,
+            # permissions, geofence, etc.).
+            status = await self._conn.execute(pg_sql, *params)
+            return _PgCursor([], rowcount=_parse_status_rowcount(status))
+
+    async def executemany(self, sql: str, params_seq) -> "_PgCursor":
+        """Run the same statement many times — aiosqlite-compatible.
+
+        aiosqlite exposes ``Connection.executemany(sql, [(a,b), …])``;
+        asyncpg's equivalent is ``Connection.executemany(sql, …)`` but
+        only works for plain ``execute`` (no SELECT result rows), and
+        the parameter placeholders are ``$1, $2`` while our callers use
+        ``?``.  Re-using our existing single-statement ``execute`` keeps
+        the translation logic in one place — slower than asyncpg's
+        native batch but the call sites are off the hot path
+        (per-cycle bulk UPDATE in maintenance, etc.).
+        """
+        params_list = list(params_seq)
+        if not params_list:
             return _PgCursor([])
+        for p in params_list:
+            await self.execute(sql, tuple(p))
+        return _PgCursor([])
 
     async def executescript(self, script: str) -> None:
         """Execute a semicolon-separated SQL script (used for schema creation).

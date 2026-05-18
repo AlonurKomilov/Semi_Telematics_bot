@@ -17,7 +17,6 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 
 from interfaces.api.deps import (
-    require_permission,
     require_permission_any,
     get_user_company_codes,
     validate_company_access,
@@ -116,6 +115,21 @@ def _extract_odometer(v: dict) -> tuple[float | None, str | None]:
     return None, None
 
 
+def _extract_engine_hours(v: dict) -> tuple[float | None, str | None]:
+    """Pull cumulative engine hours (hours, ISO timestamp) from a merged
+    vehicle dict.  Mirrors ``_extract_odometer`` — same warehouse-or-
+    live source distinction.  Vehicles without an engine-hours OBD
+    signal return None for both fields.
+    """
+    eng = v.get("engine_hours_reading")
+    if isinstance(eng, dict):
+        hours = eng.get("hours")
+        timestamp = eng.get("time")
+        if isinstance(hours, (int, float)):
+            return float(hours), timestamp if isinstance(timestamp, str) else None
+    return None, None
+
+
 def _simplify(v: dict) -> dict:
     """Flatten a fleet overview vehicle into the consistent API shape."""
     loc = v.get("location", {})
@@ -128,6 +142,7 @@ def _simplify(v: dict) -> dict:
         or ""
     )
     odometer_miles, odometer_time = _extract_odometer(v)
+    engine_hours, engine_hours_time = _extract_engine_hours(v)
     return {
         "id": v.get("id"),
         "name": v.get("name", ""),
@@ -142,6 +157,8 @@ def _simplify(v: dict) -> dict:
         "fault_count": _extract_fault_count(v),
         "odometer_miles": odometer_miles,
         "odometer_time": odometer_time,
+        "engine_hours": engine_hours,
+        "engine_hours_time": engine_hours_time,
         "status": status,
         "time": (
             loc.get("time")
@@ -167,6 +184,7 @@ def _normalize_detail(v: dict) -> dict:
         or ""
     )
     odometer_miles, odometer_time = _extract_odometer(v)
+    engine_hours, engine_hours_time = _extract_engine_hours(v)
     return {
         **v,
         "fuel_percent": fuel_pct,
@@ -180,6 +198,8 @@ def _normalize_detail(v: dict) -> dict:
         "fault_count": len(dtcs),
         "odometer_miles": odometer_miles,
         "odometer_time": odometer_time,
+        "engine_hours": engine_hours,
+        "engine_hours_time": engine_hours_time,
         "formattedAddress": address,
         "address": address,
         "latitude": loc.get("latitude"),
@@ -226,13 +246,13 @@ async def vehicles_list(
     vehicles = filter_by_allowed_companies(vehicles, allowed)
     vehicles = await filter_by_assigned_trucks(vehicles, user)
 
-    # Enrich with warehouse-sourced odometer regardless of which path
-    # produced ``vehicles``.  When WAREHOUSE_READS_ENABLED is off the
-    # rows came from live Samsara via _live_cached and don't include
-    # odometer (Samsara overview never does); when on the rows already
-    # have odometer but a fresh re-read is cheap and keeps the contract
-    # uniform.  Read directly from vehicle_state mixin to bypass the
-    # cutover flag.
+    # Enrich with warehouse-sourced odometer + engine hours regardless
+    # of which path produced ``vehicles``.  When WAREHOUSE_READS_ENABLED
+    # is off the rows came from live Samsara via _live_cached and don't
+    # include either (Samsara overview never does); when on the rows
+    # already have them but a fresh re-read is cheap and keeps the
+    # contract uniform.  Read directly from vehicle_state mixin to
+    # bypass the cutover flag.
     if vehicles:
         tenant_db = await _get_tenant_db(user["account_id"])
         warehouse_rows = await tenant_db.get_vehicle_state(
@@ -240,25 +260,36 @@ async def vehicles_list(
         )
         odometer_by_id: dict[str, dict] = {}
         odometer_by_name: dict[str, dict] = {}
+        engine_hours_by_id: dict[str, dict] = {}
+        engine_hours_by_name: dict[str, dict] = {}
         for row in warehouse_rows:
-            miles = row.get("odometer_mi")
-            if miles is None:
-                continue
-            odometer = {"miles": miles, "time": row.get("odometer_time")}
             rid = str(row.get("vehicle_id") or "")
             rname = (row.get("vehicle_name") or "").lower()
-            if rid:
-                odometer_by_id[rid] = odometer
-            if rname:
-                odometer_by_name[rname] = odometer
+            miles = row.get("odometer_mi")
+            if miles is not None:
+                odometer = {"miles": miles, "time": row.get("odometer_time")}
+                if rid:
+                    odometer_by_id[rid] = odometer
+                if rname:
+                    odometer_by_name[rname] = odometer
+            hours = row.get("engine_hours")
+            if hours is not None:
+                eng = {"hours": hours, "time": row.get("engine_hours_time")}
+                if rid:
+                    engine_hours_by_id[rid] = eng
+                if rname:
+                    engine_hours_by_name[rname] = eng
         for v in vehicles:
-            if v.get("odometer"):
-                continue
             vid = str(v.get("id") or "")
             vname = (v.get("name") or "").lower()
-            odometer = odometer_by_id.get(vid) or odometer_by_name.get(vname)
-            if odometer:
-                v["odometer"] = odometer
+            if not v.get("odometer"):
+                o_hit = odometer_by_id.get(vid) or odometer_by_name.get(vname)
+                if o_hit:
+                    v["odometer"] = o_hit
+            if not v.get("engine_hours_reading"):
+                e_hit = engine_hours_by_id.get(vid) or engine_hours_by_name.get(vname)
+                if e_hit:
+                    v["engine_hours_reading"] = e_hit
 
     result = [_simplify(v) for v in vehicles]
 
@@ -305,35 +336,46 @@ async def vehicle_detail(
     if not matches:
         return {"error": "Vehicle not found", "vehicles": []}
 
-    # Enrich with warehouse-sourced odometer.  Read the raw vehicle_state
-    # table directly via the mixin — bypasses the WAREHOUSE_READS_ENABLED
-    # cutover flag because odometer is *only* in the warehouse, never in
-    # the live overview, so we always need it regardless of cutover phase.
+    # Enrich with warehouse-sourced odometer + engine hours.  Read the
+    # raw vehicle_state table directly via the mixin — bypasses the
+    # WAREHOUSE_READS_ENABLED cutover flag because both fields are
+    # *only* in the warehouse, never in the live overview.
     tenant = await _get_tenant_db(user["account_id"])
     warehouse_rows = await tenant.get_vehicle_state(
         user["account_id"], company=company, vehicle_nums=[vehicle_name],
     )
     odometer_by_id: dict[str, dict] = {}
     odometer_by_name: dict[str, dict] = {}
+    engine_hours_by_id: dict[str, dict] = {}
+    engine_hours_by_name: dict[str, dict] = {}
     for row in warehouse_rows:
-        miles = row.get("odometer_mi")
-        if miles is None:
-            continue
-        odometer = {"miles": miles, "time": row.get("odometer_time")}
         rid = str(row.get("vehicle_id") or "")
         rname = (row.get("vehicle_name") or "").lower()
-        if rid:
-            odometer_by_id[rid] = odometer
-        if rname:
-            odometer_by_name[rname] = odometer
+        miles = row.get("odometer_mi")
+        if miles is not None:
+            odometer = {"miles": miles, "time": row.get("odometer_time")}
+            if rid:
+                odometer_by_id[rid] = odometer
+            if rname:
+                odometer_by_name[rname] = odometer
+        hours = row.get("engine_hours")
+        if hours is not None:
+            eng = {"hours": hours, "time": row.get("engine_hours_time")}
+            if rid:
+                engine_hours_by_id[rid] = eng
+            if rname:
+                engine_hours_by_name[rname] = eng
     for match in matches:
-        if match.get("odometer"):
-            continue
         match_id = str(match.get("id") or "")
         match_name = (match.get("name") or "").lower()
-        odometer = odometer_by_id.get(match_id) or odometer_by_name.get(match_name)
-        if odometer:
-            match["odometer"] = odometer
+        if not match.get("odometer"):
+            o_hit = odometer_by_id.get(match_id) or odometer_by_name.get(match_name)
+            if o_hit:
+                match["odometer"] = o_hit
+        if not match.get("engine_hours_reading"):
+            e_hit = engine_hours_by_id.get(match_id) or engine_hours_by_name.get(match_name)
+            if e_hit:
+                match["engine_hours_reading"] = e_hit
 
     normalized = [_normalize_detail(m) for m in matches]
     return {"vehicles": normalized, "count": len(normalized)}
@@ -381,6 +423,34 @@ async def vehicle_faults(
     if not match:
         return {"error": "Vehicle not found", "faults": []}
     v = match[0]
+
+    # Prefer the fault snapshot — it carries the live Samsara shape
+    # (spnDescription / fmiDescription / sourceAddressName) so the UI
+    # can render real fault names.  ``_extract_dtcs`` on the warehouse
+    # vehicle row only sees ``[{}, {}, …]`` placeholders because
+    # vehicle_state stores fault_count, not per-DTC detail — that's
+    # why the dashboard was rendering 4 generic "DTC" rows.
+    try:
+        snap = await _wh_reader.get_vehicle_fault_snapshot(
+            user["account_id"], v.get("name", ""),
+        )
+    except Exception:
+        snap = None
+    if snap:
+        snap_dtcs = (
+            (snap.get("fault_codes") or {})
+            .get("j1939", {})
+            .get("diagnosticTroubleCodes")
+        ) or snap.get("dtcs") or []
+        if snap_dtcs:
+            return {
+                "name": v.get("name"),
+                "company": v.get("_org", ""),
+                "faults": snap_dtcs,
+                "fault_count": len(snap_dtcs),
+            }
+
+    # Fallback — placeholder DTCs from vehicle_state (count only).
     dtcs = _extract_dtcs(v)
     return {
         "name": v.get("name"),

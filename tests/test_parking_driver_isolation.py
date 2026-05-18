@@ -41,10 +41,8 @@ from interfaces.api.auth import create_jwt
 
 
 @pytest_asyncio.fixture
-async def parking_app(tmp_path):
-    db_path = str(tmp_path / "parking.db")
-    database = Database(db_path)
-    await database.initialize()
+async def parking_app(pg_db):
+    database = pg_db
 
     acct = await database.create_account("Parking Co")
     await database.add_company(acct.id, "PC", "key_pc", "Parking Co")
@@ -87,9 +85,7 @@ async def parking_app(tmp_path):
     token_owner = create_jwt(owner.telegram_id, acct.id, "owner")
 
     import infra.platform as _cp
-    from adapters.storage.tenant_router import LegacyRouter
-    _old_router, _old_db = _cp._router, _cp._db
-    _cp._router = LegacyRouter(database)
+    _old_db = _cp._db
     _cp._db = database
 
     from interfaces.api.app import create_api
@@ -101,8 +97,8 @@ async def parking_app(tmp_path):
         "own_event_id": own_event["id"], "other_event_id": other_event["id"],
     }
 
-    _cp._router, _cp._db = _old_router, _old_db
-    await database.close()
+    _cp._db = _old_db
+    # database.close() handled by the pg_db fixture's own teardown
 
 
 def _h(token: str) -> dict:

@@ -5,7 +5,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from adapters.storage import Role
 from capabilities.iam.permissions import can
 
-from interfaces.bot.config import get_tenant_db
+from interfaces.bot.state import get_tenant_db
 from interfaces.bot.keyboards import back_kb, parking_events_kb, parking_history_kb
 from interfaces.bot.helpers import _show
 from capabilities.localization.i18n import t
@@ -69,9 +69,9 @@ async def _handle_parking_events(update, context, user, show_all: bool = False):
     elif own_only:
         text = (
             "━━━━━━━━━━━━━━━━━━━━━\n"
-            f"  🅿️  <b>Your Parking</b>\n"
+            "  🅿️  <b>Your Parking</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
-            f"\n  Your truck — recent stop\n"
+            "\n  Your truck — recent stop\n"
             "  Tap for details."
         )
     else:

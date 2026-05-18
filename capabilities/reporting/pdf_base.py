@@ -65,13 +65,33 @@ C_CRIT_BANNER = colors.HexColor("#991b1b")    # red company banner
 
 # ── Helpers ──────────────────────────────────────────────────────
 
-def _fmt_time(iso_str: str) -> str:
+def _resolve_tz(tz_name: str | None):
+    """Translate an IANA name to a tzinfo, falling back to ET on
+    invalid / missing input.  Keeps the existing ``_TZ_ET`` fallback
+    behaviour intact for callers that haven't been migrated yet."""
+    if not tz_name:
+        return _TZ_ET
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(tz_name)
+    except Exception:
+        return _TZ_ET
+
+
+def _fmt_time(iso_str: str, tz_name: str | None = None) -> str:
+    """Render an ISO timestamp in ``tz_name`` (defaults to Eastern).
+
+    Old callers that just pass an ISO string keep their current
+    behaviour.  PDF builders that resolve the recipient's effective
+    timezone via ``capabilities.localization.tz`` pass it through so
+    the "Generated at" header matches the reader's clock.
+    """
     if not iso_str:
         return "\u2014"
     try:
         dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
-        et = dt.astimezone(_TZ_ET)
-        return et.strftime("%b %d, %Y  %I:%M %p")
+        local = dt.astimezone(_resolve_tz(tz_name))
+        return local.strftime("%b %d, %Y  %I:%M %p")
     except Exception:
         return iso_str
 

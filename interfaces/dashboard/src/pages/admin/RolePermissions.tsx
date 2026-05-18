@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Shield } from 'lucide-react';
 import { apiJSON } from '../../api/client';
@@ -136,6 +137,7 @@ interface OverridesData {
 }
 
 export default function RolePermissions() {
+  const { t } = useTranslation();
   const { refreshPermissions } = useRoleView();
   const qc = useQueryClient();
   const [error, setError] = useState('');
@@ -347,8 +349,8 @@ export default function RolePermissions() {
       <div>
         <PageHeader
           icon={Shield}
-          title="Role Permissions"
-          description="Decide what each role is allowed to see and do. Changes take effect on the next page load for active users."
+          title={t('pages.role_perms_title')}
+          description={t('pages.role_perms_desc_short')}
         />
         <CardSkeleton height="h-96" />
       </div>
@@ -359,8 +361,8 @@ export default function RolePermissions() {
     <div className="space-y-6">
       <PageHeader
         icon={Shield}
-        title="Role Permissions"
-        description="Decide what each role is allowed to see and do. Toggle a permission to change it for everyone in that role; per-company overrides are also supported."
+        title={t('pages.role_perms_title')}
+        description={t('pages.role_perms_desc_long')}
         actions={
           !resetAllConfirm ? (
           <button

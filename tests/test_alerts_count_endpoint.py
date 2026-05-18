@@ -1,4 +1,4 @@
-"""Tests for ``GET /api/alerts/pending/count`` (Phase A).
+"""Tests for ``GET /api/alerts/pending/count``.
 
 Driver isolation must match the existing ``/api/alerts/pending`` filter
 behaviour exactly so we can swap the front-end poll without privacy regression.
@@ -22,10 +22,8 @@ from interfaces.api.auth import create_jwt
 
 
 @pytest_asyncio.fixture
-async def seeded(tmp_path):
-    db_path = str(tmp_path / "alerts_count.db")
-    database = Database(db_path)
-    await database.initialize()
+async def seeded(pg_db):
+    database = pg_db
 
     acct = await database.create_account("Count Co")
     await database.add_company(acct.id, "CO", "key_co", "Count Co")
@@ -69,9 +67,7 @@ async def seeded(tmp_path):
     )
 
     import infra.platform as _cp
-    from adapters.storage.tenant_router import LegacyRouter
-    _old_router, _old_db = _cp._router, _cp._db
-    _cp._router = LegacyRouter(database)
+    _old_db = _cp._db
     _cp._db = database
 
     from interfaces.api.app import create_api
@@ -83,8 +79,8 @@ async def seeded(tmp_path):
         "token_driver": create_jwt(driver.telegram_id, acct.id, "driver"),
     }
 
-    _cp._router, _cp._db = _old_router, _old_db
-    await database.close()
+    _cp._db = _old_db
+    # database.close() handled by the pg_db fixture's own teardown
 
 
 def _h(token: str) -> dict:

@@ -19,7 +19,6 @@ SAMSARA_DASHBOARD_URL = os.getenv(
 )
 ALERT_INTERVAL = int(os.getenv("ALERT_CHECK_INTERVAL_MINUTES", "30"))
 FUEL_THRESHOLD = int(os.getenv("FUEL_LOW_THRESHOLD_PERCENT", "20"))
-DATABASE_PATH = os.getenv("DATABASE_PATH", "data/bot.db")
 SUPPORT_CONTACT = os.getenv("SUPPORT_CONTACT", "")
 
 # Health alert cooldown: don't re-alert same vehicle within this many hours
@@ -59,21 +58,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("bot")
 
-# ── Mutable runtime state (canonical home: bot.state) ────────────
-# Re-exported here for backward compatibility so existing
-# ``from interfaces.bot.config import db, get_client, …`` keeps working.
+# Mutable runtime state lives in ``interfaces.bot.state`` —
+# ``from interfaces.bot.state import db, get_client, get_platform_db,
+# get_tenant_db, invalidate_client, …``.  This module only owns
+# read-only env-var configuration.
 
 bot_username: str = ""                         # set in post_init via getMe
 
-from interfaces.bot.state import (  # noqa: E402
-    db,
-    _client_cache,
-    _active_messages,
-    _rate_limits,
-    check_rate_limit,
-    get_client,
-    invalidate_client,
-    get_user_company_codes,
-    get_platform_db,
-    get_tenant_db,
-)

@@ -1,0 +1,163 @@
+"""Bot-side wiring for the driver-document expiration scheduler.
+
+The pure logic — bucketing, message formatting, expired-flip detection —
+lives in :mod:`capabilities.drivers.expiration`.  This module is the
+thin adapter: it iterates accounts, calls the platform DB, sends
+Telegram messages, records dedup rows, and logs counters.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from telegram.constants import ParseMode
+from telegram.ext import Application
+
+from adapters.storage import Role
+from capabilities.drivers.expiration import (
+    classify_documents, format_alert,
+)
+from capabilities.localization.tz import is_local_hour
+from infra.bot_registry import get_app_for_account
+from infra.isolation import run_account_job
+from interfaces.bot.state import get_platform_db
+
+# Per-account local hour at which this job's per-account body runs.
+# Scheduler ticks hourly; the gate below skips the other 23 ticks per
+# account so each account only sees one delivery per day, at its own
+# local 09:00 (e.g. Eastern fleet 14:00 UTC, Pacific fleet 17:00 UTC).
+_TARGET_HOUR_LOCAL = 9
+
+logger = logging.getLogger(__name__)
+
+
+async def check_document_expirations(_app: Application | None = None) -> None:
+    """Daily — fire driver-document expiration alerts and mark past-due
+    documents as ``expired``.
+
+    Cadence: scheduler ticks hourly; each per-account body fires only
+    when it's currently 09:00 in that account's effective timezone.
+    Dedup is per-(doc_id, bucket_days), so re-running the same day is
+    a no-op even when an account spans timezones.
+    """
+    try:
+        pdb = get_platform_db()
+        accounts = await pdb.list_accounts()
+    except Exception as e:
+        logger.error("Document-expiry check — cannot list accounts: %s", e, exc_info=True)
+        return
+
+    total_alerts = 0
+    total_expired = 0
+
+    for account in accounts:
+        async def _run(acct=account):
+            nonlocal total_alerts, total_expired
+            # Per-account local-hour gate — skip 23 of the 24 daily ticks.
+            if not await is_local_hour(acct.id, _TARGET_HOUR_LOCAL):
+                return
+            bot_app = get_app_for_account(acct.id)
+            if bot_app is None:
+                return
+
+            # Pull every active doc expiring within the largest bucket
+            # (30 days) — the classifier picks the right per-doc bucket.
+            docs = await pdb.get_expiring_documents(acct.id, within_days=30)
+            if not docs:
+                return
+            alerts, expired = classify_documents(docs)
+
+            # 1) Flip past-due docs to status='expired'.
+            for d in expired:
+                try:
+                    await pdb.mark_document_status(d.id, "expired")
+                    total_expired += 1
+                except Exception as e:
+                    logger.debug("Could not flip doc %s to expired: %s", d.id, e)
+
+            if not alerts:
+                return
+
+            # 2) Cache account-admin telegram_ids once per account.
+            try:
+                users = await pdb.list_account_users(acct.id)
+            except Exception as e:
+                logger.debug("Could not list users for account %s: %s", acct.id, e)
+                return
+            admin_chat_ids = [
+                u.telegram_id for u in users
+                if u.role in (Role.OWNER, Role.ADMIN) and u.telegram_id
+            ]
+            by_user_id = {u.id: u for u in users}
+
+            # 3) For each alert: record dedup row first, then send.
+            for a in alerts:
+                fresh = await pdb.record_doc_notification(a.doc_id, a.bucket)
+                if not fresh:
+                    continue  # already alerted this bucket
+
+                driver = by_user_id.get(a.user_id)
+                if driver is None:
+                    continue
+                driver_name = driver.display_name or f"Driver #{driver.id}"
+
+                driver_text = format_alert(a, for_driver=True)
+                admin_text = (
+                    f"👤 <b>{driver_name}</b>\n\n"
+                    + format_alert(a, for_driver=False)
+                )
+
+                # Send to the driver themselves.
+                if driver.telegram_id:
+                    try:
+                        await bot_app.bot.send_message(
+                            chat_id=driver.telegram_id,
+                            text=driver_text,
+                            parse_mode=ParseMode.HTML,
+                        )
+                    except Exception as e:
+                        logger.debug(
+                            "Driver-doc alert to %s failed: %s",
+                            driver.telegram_id, e,
+                        )
+
+                # Forum routing for the admin view: one post to the
+                # Driver Documents topic when configured.  The driver's
+                # personal DM above is preserved — they get the heads-up
+                # in private regardless of the team routing.
+                from capabilities.alerting.pipeline import post_alert_to_topic
+                posted = await post_alert_to_topic(
+                    bot_app, account_id=acct.id,
+                    alert_type="documents", text=admin_text,
+                )
+                if not posted:
+                    # Fallback: send to each admin, skipping the driver
+                    # themselves so an owner-who-is-also-a-driver doesn't
+                    # get a duplicate.
+                    for chat_id in admin_chat_ids:
+                        if chat_id == driver.telegram_id:
+                            continue
+                        try:
+                            await bot_app.bot.send_message(
+                                chat_id=chat_id,
+                                text=admin_text,
+                                parse_mode=ParseMode.HTML,
+                            )
+                        except Exception as e:
+                            logger.debug(
+                                "Driver-doc admin alert to %s failed: %s",
+                                chat_id, e,
+                            )
+
+                total_alerts += 1
+
+        await run_account_job(
+            _run(), account_id=account.id,
+            job_name="driver_doc_expiry_check",
+        )
+
+    if total_alerts or total_expired:
+        logger.info(
+            "Driver-doc expiry check — alerts=%d expired_flipped=%d",
+            total_alerts, total_expired,
+        )

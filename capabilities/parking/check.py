@@ -424,10 +424,14 @@ async def check_unsafe_parking(app: Application):
                         else:
                             loc_class = "unknown"
 
-                    # Save map image to disk for dashboard display
+                    # Save map image to the account's configured object
+                    # store (disk by default, the user's Drive when
+                    # they've connected BYO).
                     if not map_image_path:
                         saved_path = await _save_parking_map(
                             account.id, vid, lat, lng,
+                            tenant_db=tenant,
+                            company_code=co,
                         )
                         if saved_path:
                             map_image_path = saved_path

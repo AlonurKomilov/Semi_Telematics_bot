@@ -20,7 +20,8 @@ from telegram.constants import ParseMode
 from capabilities.iam.permissions import can
 from adapters.samsara.client import populate_company_display
 
-from interfaces.bot.config import logger, get_tenant_db
+from interfaces.bot.config import logger
+from interfaces.bot.state import get_tenant_db
 from interfaces.bot.keyboards import back_kb, cam_company_picker_kb, cam_vehicle_list_kb
 from interfaces.bot.helpers import _show, _show_loading, _safe_error
 from interfaces.bot.auth import _require_registered

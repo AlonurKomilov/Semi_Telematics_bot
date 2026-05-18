@@ -1,0 +1,256 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { X, Download, Truck, User, MapPin, Gauge, Clock, Loader2 } from 'lucide-react';
+import { apiJSON } from '../api/client';
+import type { SafetyEvent } from '../types';
+
+interface VideoUrlResponse {
+  event_id: string;
+  angle: 'forward' | 'inward';
+  url: string;
+  forward_url: string;
+  inward_url: string;
+}
+
+/**
+ * Inline video viewer for a safety event.
+ *
+ * Replaces the previous "View → open S3 link in a new tab" behavior so
+ * the dispatcher sees the clip + event context in one place (matching
+ * Samsara's own player layout) and can still grab the raw file when
+ * needed.
+ *
+ * Auth flow: the dashboard fetches the fresh S3 URL via the bearer-token
+ * authenticated `/api/safety/events/{id}/video` endpoint, then assigns
+ * the returned URL directly to ``<video src>``.  We can't point
+ * ``<video>`` at the API endpoint because plain media GETs don't carry
+ * the ``Authorization`` header, so the JWT-required dependency would
+ * 422 the request.  S3 doesn't need auth, so once we have the signed
+ * URL the browser plays it directly.
+ */
+export default function EventVideoModal({
+  event,
+  onClose,
+}: {
+  event: SafetyEvent;
+  onClose: () => void;
+}) {
+  const [angle, setAngle] = useState<'forward' | 'inward'>('forward');
+  const [videoUrl, setVideoUrl] = useState<string>('');
+  const [loadError, setLoadError] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Close on Escape — Samsara's own player does the same.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  const hasInward = !!event.inward_video_url;
+
+  // Fetch the fresh signed URL on mount + every angle switch.  Cached
+  // by the browser's network layer if the user toggles back, but the
+  // backend always re-pulls from Samsara so the URL is current.
+  const fetchUrl = useCallback(async () => {
+    setLoading(true);
+    setLoadError('');
+    setVideoUrl('');
+    try {
+      const resp = await apiJSON<VideoUrlResponse>(
+        `/safety/events/${encodeURIComponent(event.event_id)}/video?angle=${angle}`,
+      );
+      setVideoUrl(resp.url);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : 'Failed to load video URL');
+    } finally {
+      setLoading(false);
+    }
+  }, [event.event_id, angle]);
+
+  useEffect(() => { fetchUrl(); }, [fetchUrl]);
+
+  // Trigger a fresh load on the <video> element when the src changes so
+  // the previous angle's frame isn't lingering when the user flips tabs.
+  useEffect(() => {
+    const el = videoRef.current;
+    if (el && videoUrl) { el.load(); }
+  }, [videoUrl]);
+
+  // Strip "Violation" / "Detected" / "Detection" / "Event" suffix
+  // words from the title so the chip doesn't read as accusatory and
+  // matches the cleaned label in the Events table.
+  const NOISE_SUFFIX_RE = /\s+(?:Violation|Detected|Detection|Event)$/i;
+  const eventTitle = (() => {
+    if (!event.event_type) return 'Safety Event';
+    let label = event.event_type.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()).trim();
+    for (let i = 0; i < 4 && NOISE_SUFFIX_RE.test(label); i++) {
+      label = label.replace(NOISE_SUFFIX_RE, '').trim();
+    }
+    return label;
+  })();
+  const eventTime = event.time ? new Date(event.time) : null;
+  const dateStr = eventTime?.toLocaleDateString(undefined, {
+    year: 'numeric', month: 'long', day: 'numeric',
+  }) ?? '—';
+  const timeStr = eventTime?.toLocaleTimeString(undefined, {
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }) ?? '—';
+
+  const latLng = (event.latitude != null && event.longitude != null)
+    ? `${event.latitude.toFixed(6)}, ${event.longitude.toFixed(6)}`
+    : null;
+  const mapsHref = latLng
+    ? `https://www.google.com/maps?q=${event.latitude},${event.longitude}`
+    : null;
+
+  const downloadName = useMemo(
+    () => `event-${event.event_id}-${angle}.mp4`,
+    [event.event_id, angle],
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="bg-card border border-border rounded-xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header — date · vehicle · driver · time (matches Samsara layout) */}
+        <div className="flex items-center justify-between gap-4 px-4 py-3 bg-black text-white">
+          <div className="flex items-center gap-4 text-sm">
+            <span className="font-medium">{dateStr}</span>
+            <span className="opacity-30">•</span>
+            <span className="inline-flex items-center gap-1.5">
+              <Truck size={14} className="opacity-70" />
+              {event.vehicle_name || '—'}
+            </span>
+            <span className="opacity-30">•</span>
+            <span className="inline-flex items-center gap-1.5">
+              <User size={14} className="opacity-70" />
+              {event.driver_name || 'Unassigned'}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm tabular-nums">{timeStr}</span>
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="p-1 rounded hover:bg-white/10 transition-colors"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Camera-angle tabs (only when inward is available) */}
+        {hasInward && (
+          <div className="flex border-b border-border bg-black/40">
+            {(['forward', 'inward'] as const).map((a) => (
+              <button
+                key={a}
+                onClick={() => setAngle(a)}
+                className={`px-4 py-2 text-xs font-medium capitalize transition ${
+                  angle === a
+                    ? 'text-foreground border-b-2 border-primary'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {a} camera
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Video — native HTML5 player; supports fullscreen + PiP + speed.
+            Three render states: loading (spinner), error (message +
+            retry), ready (the actual video element with the fresh URL). */}
+        <div className="bg-black flex items-center justify-center min-h-[40vh] max-h-[60vh]">
+          {loading ? (
+            <div className="flex flex-col items-center gap-2 text-white/70 py-12">
+              <Loader2 size={24} className="animate-spin" />
+              <span className="text-xs">Loading video…</span>
+            </div>
+          ) : loadError ? (
+            <div className="flex flex-col items-center gap-3 text-white/70 py-12 px-6 text-center">
+              <span className="text-sm">{loadError}</span>
+              <button
+                onClick={fetchUrl}
+                className="px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 text-xs font-medium"
+              >
+                Try again
+              </button>
+            </div>
+          ) : (
+            <video
+              ref={videoRef}
+              controls
+              preload="metadata"
+              controlsList="nodownload"
+              className="w-full max-h-[60vh]"
+            >
+              <source src={videoUrl} type="video/mp4" />
+              Your browser does not support video playback.
+            </video>
+          )}
+        </div>
+
+        {/* Footer strip — event type pill + meta chips + Download */}
+        <div className="px-4 py-3 bg-card/80 border-t border-border flex flex-wrap items-center gap-3">
+          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-primary/15 text-primary">
+            {eventTitle}
+          </span>
+          {event.severity && (
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-500/15 text-orange-600 dark:text-orange-400 capitalize">
+              {event.severity}
+            </span>
+          )}
+          {event.g_force > 0 && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Gauge size={12} /> {event.g_force.toFixed(2)} g
+            </span>
+          )}
+          {eventTime && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Clock size={12} /> {eventTime.toLocaleString()}
+            </span>
+          )}
+          {latLng && (
+            <a
+              href={mapsHref!}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+              title="Open in Google Maps"
+            >
+              <MapPin size={12} /> {latLng}
+            </a>
+          )}
+          {/* Download — points at the fresh S3 URL directly so the
+              browser can stream the file without going through our
+              proxy.  Disabled while we're still fetching the URL. */}
+          <a
+            href={videoUrl || '#'}
+            download={downloadName}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-disabled={!videoUrl}
+            onClick={(e) => { if (!videoUrl) e.preventDefault(); }}
+            className={`ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              videoUrl
+                ? 'bg-primary/15 hover:bg-primary/25 text-primary'
+                : 'bg-muted text-muted-foreground cursor-not-allowed'
+            }`}
+          >
+            <Download size={13} />
+            Download
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}

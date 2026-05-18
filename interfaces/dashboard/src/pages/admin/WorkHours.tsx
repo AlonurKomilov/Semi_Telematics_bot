@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Clock, Plus } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { PageHeader, ErrorState } from '../../components/shell';
@@ -38,6 +39,7 @@ interface WorkHoursResponse {
 }
 
 export default function WorkHours() {
+  const { t } = useTranslation();
   const [schedules, setSchedules] = useState<WorkSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -129,8 +131,8 @@ export default function WorkHours() {
       <div>
         <PageHeader
           icon={Clock}
-          title="Working Hours"
-          description="Define active hours per role — alerts pause outside these windows so the team isn't paged off-shift."
+          title={t('pages.work_hours_title')}
+          description={t('pages.work_hours_desc_short')}
         />
         <ErrorState message={error} />
       </div>
@@ -141,8 +143,8 @@ export default function WorkHours() {
     <div>
       <PageHeader
         icon={Clock}
-        title="Working Hours"
-        description="Define active hours per role — alerts pause outside these windows so the team isn't paged off-shift. Schedules use the account time zone."
+        title={t('pages.work_hours_title')}
+        description={t('pages.work_hours_desc_long')}
         actions={
           <button
             onClick={openCreate}
@@ -239,14 +241,14 @@ export default function WorkHours() {
       {showForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowForm(false)}>
           <div className="bg-card rounded-xl border border-border p-6 w-96" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-bold mb-4">{editId ? 'Edit Schedule' : 'New Schedule'}</h2>
+            <h2 className="text-lg font-bold mb-4">{editId ? t('modals.edit_schedule') : t('modals.new_schedule')}</h2>
 
             <label className="block text-sm text-muted-foreground mb-1">Label</label>
             <input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border mb-3"
-              placeholder="e.g. Day Shift"
+              placeholder={t('forms.name_example')}
             />
 
             <div className="flex gap-3 mb-3">
@@ -270,7 +272,7 @@ export default function WorkHours() {
             </select>
 
             <div className="flex justify-end gap-2">
-              <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">Cancel</button>
+              <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">{t('common.cancel')}</button>
               <button onClick={save} disabled={saving || !label.trim()} className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium disabled:opacity-50">
                 {saving ? 'Saving...' : editId ? 'Update' : 'Create'}
               </button>

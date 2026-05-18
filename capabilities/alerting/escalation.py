@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
@@ -194,31 +194,85 @@ async def _auto_resolve_vehicle_alerts(
     # final state ("auto-resolved 6m ago"), no extra notification ping.
     # Falls back to delete + send when the edit fails (msg deleted, > 48h
     # old, ParseMode mismatch, …) so the user still gets the resolution.
-    resolved_kb = InlineKeyboardMarkup([
+    # DM resolves keep the View Truck button — the recipient is the
+    # only viewer of their own DM, so editing-in-place is harmless.
+    resolved_kb_dm = InlineKeyboardMarkup([
         [InlineKeyboardButton(
             f"📋 View Truck #{vname}",
             callback_data=f"covehicle_{alert_co}_{vname}",
         )],
     ])
+    # Group resolves drop the button entirely — its callback rewrites
+    # the message in place and would erase the "AUTO-RESOLVED" receipt
+    # for every other shift reading the topic.
+    resolved_kb_group = None
 
     for alert in resolved:
         recipient_id = alert.get("sent_to")
         msg_id = alert.get("message_id")
         chat_id = alert.get("chat_id")
+        is_group_post = recipient_id == 0  # sentinel from _try_post_to_topic
 
         # DND: skip Telegram delivery (audit log still happens below).
-        if recipient_id:
+        # Group posts skip DND entirely — Telegram per-topic mute is
+        # each member's personal silencer.  Personal DND uses the SSoT
+        # helper that prefers per-user override and falls back to the
+        # account's Working Hours for the user's role.
+        if recipient_id and not is_group_post:
             recipient = await get_platform_db().get_user_by_telegram_id(recipient_id)
-            if recipient and recipient.is_in_quiet_hours():
-                await tenant.queue_dnd_alert(
-                    account_id=account_id,
-                    telegram_id=recipient_id,
-                    alert_type=alert_type,
-                    vehicle_name=vname,
-                    alert_text=f"✅ Auto-resolved: {alert_type} alert cleared",
-                )
-                continue
+            if recipient:
+                from capabilities.alerting.dnd import is_user_dnd_active
+                if await is_user_dnd_active(recipient, tenant):
+                    await tenant.queue_dnd_alert(
+                        account_id=account_id,
+                        telegram_id=recipient_id,
+                        alert_type=alert_type,
+                        vehicle_name=vname,
+                        alert_text=f"✅ Auto-resolved: {alert_type} alert cleared",
+                    )
+                    continue
 
+        # ── Group posts: send resolution as a REPLY to the original ──
+        # In a forum topic the original "🚨 ALERT" message has to stay
+        # visible — different shifts read the same topic at different
+        # times and the alert text + duration + AI analysis is the
+        # context they need.  Editing-in-place would erase that and
+        # leave only "✅ AUTO-RESOLVED" with no clue what the alert
+        # said.  So for group posts we post a NEW resolution message
+        # as a reply to the original, preserving both in the thread.
+        if is_group_post:
+            if msg_id and chat_id:
+                try:
+                    await bot_app.bot.send_message(
+                        chat_id=chat_id,
+                        text=resolve_text,
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=resolved_kb_group,
+                        reply_to_message_id=msg_id,
+                    )
+                except Exception as e:
+                    logger.debug(
+                        "Group auto-resolve reply failed (chat=%s msg=%s): %s",
+                        chat_id, msg_id, e,
+                    )
+                    # Last resort: post into the topic without a reply
+                    # link so at least the resolution lands somewhere.
+                    try:
+                        await bot_app.bot.send_message(
+                            chat_id=chat_id,
+                            text=resolve_text,
+                            parse_mode=ParseMode.HTML,
+                            reply_markup=resolved_kb_group,
+                        )
+                    except Exception as e2:
+                        logger.debug("Group auto-resolve plain-send also failed: %s", e2)
+            continue
+
+        # ── DM posts: original behavior (edit-in-place) ──
+        # The recipient is the only viewer of their own DM, so
+        # collapsing alert+resolve into one persistent record keeps
+        # their feed tidy.  Falls back to delete+send only when the
+        # edit physically can't happen (msg deleted, >48 h old).
         edited = False
         if msg_id and chat_id:
             try:
@@ -227,7 +281,7 @@ async def _auto_resolve_vehicle_alerts(
                     message_id=msg_id,
                     text=resolve_text,
                     parse_mode=ParseMode.HTML,
-                    reply_markup=resolved_kb,
+                    reply_markup=resolved_kb_dm,
                 )
                 edited = True
             except TGBadRequest as e:
@@ -244,8 +298,6 @@ async def _auto_resolve_vehicle_alerts(
         if edited:
             continue
 
-        # Fallback path: delete the original alert and send a fresh
-        # resolved message.  Only reached when the in-place edit failed.
         if msg_id and chat_id:
             try:
                 await bot_app.bot.delete_message(chat_id=chat_id, message_id=msg_id)
@@ -259,7 +311,7 @@ async def _auto_resolve_vehicle_alerts(
                 chat_id=alert["sent_to"],
                 text=resolve_text,
                 parse_mode=ParseMode.HTML,
-                reply_markup=resolved_kb,
+                reply_markup=resolved_kb_dm,
             )
         except Exception as e:
             logger.debug("Could not send auto-resolve message: %s", e)
@@ -346,6 +398,7 @@ async def handle_back_to_alert(update, context, ack_id: int):
             severity, co, vname, ack_id=ack_id,
             alert_type=alert_type,
             vehicle_id=row.get("vehicle_id", ""),
+            lang=getattr(user, "language", None) or "en",
         )
 
         await query.edit_message_text(
@@ -543,38 +596,61 @@ async def re_escalate_critical_alerts(app: Application):
                     pass
                 continue
 
-            kb = InlineKeyboardMarkup([[
+            # Keyboard for re-escalation reminders.
+            # DM deliveries get a callback "Open alert" button — safe
+            # since the recipient is the only viewer.  Group-post
+            # deliveries (sent_to=0) get NO keyboard: the back_alert
+            # callback would rewrite the edited reminder back into
+            # the original alert, erasing it for every other shift.
+            kb_dm = InlineKeyboardMarkup([[
                 InlineKeyboardButton(
                     "🔎 Open alert",
                     callback_data=f"back_alert_{deliveries[0]['id']}",
                 ),
             ]])
+            kb_group = None
 
             attempt_sent_anywhere = False
             for delivery in deliveries:
                 recipient_id = delivery.get("sent_to")
-                if not recipient_id:
+                # sent_to == 0 is the sentinel for a forum-group post
+                # (one message visible to many users).  Group posts get
+                # edited in place via (chat_id, message_id) just like a
+                # DM delivery, but the DND-queue / per-user lookup is
+                # skipped — Telegram per-topic mute is each member's
+                # personal silencer in that case.
+                is_group_post = recipient_id == 0
+                if not is_group_post and not recipient_id:
                     continue
 
-                # Respect DND: queue the reminder so it lands when the
-                # recipient is back online.
-                try:
-                    recipient = await _get_platform_db().get_user_by_telegram_id(recipient_id)
-                except Exception:
-                    recipient = None
-                if recipient and recipient.is_in_quiet_hours():
+                if not is_group_post:
+                    # Respect DND: queue the reminder so it lands when the
+                    # recipient is back online.  Uses the SSoT helper —
+                    # per-user override first, else derived from the
+                    # account's Working Hours for the user's role.
                     try:
-                        await tenant.queue_dnd_alert(
-                            account_id=account_id,
-                            telegram_id=recipient_id,
-                            alert_type=atype,
-                            vehicle_name=vname,
-                            alert_text=reminder_text,
-                        )
+                        recipient = await _get_platform_db().get_user_by_telegram_id(recipient_id)
                     except Exception:
-                        pass
-                    attempt_sent_anywhere = True
-                    continue
+                        recipient = None
+                    if recipient:
+                        from capabilities.alerting.dnd import is_user_dnd_active
+                        try:
+                            in_dnd = await is_user_dnd_active(recipient, tenant)
+                        except Exception:
+                            in_dnd = False
+                        if in_dnd:
+                            try:
+                                await tenant.queue_dnd_alert(
+                                    account_id=account_id,
+                                    telegram_id=recipient_id,
+                                    alert_type=atype,
+                                    vehicle_name=vname,
+                                    alert_text=reminder_text,
+                                )
+                            except Exception:
+                                pass
+                            attempt_sent_anywhere = True
+                            continue
 
                 msg_id = delivery.get("message_id")
                 chat_id = delivery.get("chat_id")
@@ -586,7 +662,7 @@ async def re_escalate_critical_alerts(app: Application):
                             message_id=msg_id,
                             text=reminder_text,
                             parse_mode=ParseMode.HTML,
-                            reply_markup=kb,
+                            reply_markup=kb_group if is_group_post else kb_dm,
                         )
                         edited = True
                     except TGBadRequest as e:
@@ -604,14 +680,27 @@ async def re_escalate_critical_alerts(app: Application):
                         )
 
                 if not edited:
-                    # Fallback: send fresh.  Only reached when edit
+                    if is_group_post:
+                        # Group-post edit failed (topic deleted, message
+                        # >48h old).  Skip the fresh-send fallback —
+                        # we'd need the topic's message_thread_id and
+                        # we'd also be spamming the topic with stale
+                        # reminders.  Next escalation cycle will retry.
+                        logger.debug(
+                            "re_escalate: skipping group-post fallback for delivery %s",
+                            delivery.get("id"),
+                        )
+                        continue
+                    # DM fallback: send fresh.  Only reached when edit
                     # is impossible (msg deleted, > 48 h old, etc.).
+                    # ``is_group_post`` is False here (already bailed
+                    # above), so the DM-keyboard is the right choice.
                     try:
                         await bot_app.bot.send_message(
                             chat_id=recipient_id,
                             text=reminder_text,
                             parse_mode=ParseMode.HTML,
-                            reply_markup=kb,
+                            reply_markup=kb_dm,
                         )
                     except Exception as e:
                         logger.debug(

@@ -18,6 +18,111 @@ from infra.services import get_platform_db, get_tenant_db
 logger = logging.getLogger("bot")
 
 
+# ════════════════════════════════════════════════════════════════════
+#  SSoT for "is this user currently in DND?"
+#  ────────────────────────────────────────────────────────────────────
+#  Two layered sources, evaluated in order:
+#
+#    1. Per-user OVERRIDE — when ``user.quiet_start`` AND
+#       ``user.quiet_end`` are both set, that window wins.  Evaluated
+#       in the user's own timezone (personal preference).
+#
+#    2. Account WORKING HOURS — when no per-user override exists, we
+#       derive DND from ``work_hours`` table for the user's role.
+#       Evaluated in account timezone (admins define shifts in the
+#       account's local time).  Union semantics across multiple shifts:
+#       on-shift if ANY matching row covers the current hour.
+#
+#  Fallback: if no per-user override AND no matching ``work_hours``
+#  rows exist for the user's role, DND is INACTIVE (alerts deliver
+#  24/7).  This matches today's behavior when ``quiet_start IS NULL``.
+#
+#  This function is THE place all alert-delivery paths consult before
+#  queuing a DND alert.  Do not duplicate this logic.
+# ════════════════════════════════════════════════════════════════════
+
+
+def _hour_in_window(hour: int, start: int, end: int) -> bool:
+    """True if integer ``hour`` (0-23) falls in [start, end), supporting
+    midnight wrap-around.
+
+    Examples:
+      _hour_in_window(8,  6, 14)  → True   (regular daytime window)
+      _hour_in_window(2, 22,  6)  → True   (overnight window wrapping 0)
+      _hour_in_window(8, 22,  6)  → False  (outside overnight window)
+      _hour_in_window(6, 12, 12)  → False  (zero-width window is undefined)
+    """
+    if start == end:
+        return False
+    if start < end:
+        return start <= hour < end
+    # Wrap-around: e.g., 22→6 covers 22, 23, 0, 1, 2, 3, 4, 5
+    return hour >= start or hour < end
+
+
+async def is_user_on_shift(user, tenant) -> bool:
+    """Return True if the user is currently inside any working-hours row
+    that applies to their role (in the account's timezone).
+
+    Looks up rows where ``target_role = 'all'`` OR
+    ``target_role = user.role``.  Union semantics: if ANY row covers
+    the current hour, returns True.
+
+    Returns True when no rows are configured for this user's role —
+    "no schedule defined" means "always on shift" so DND defaults to
+    off.  This preserves the legacy behavior where a user with no
+    ``quiet_start/end`` set received alerts 24/7.
+    """
+    role_val = user.role.value if hasattr(user.role, "value") else str(user.role)
+    try:
+        rows = await tenant.get_work_hours_for_role(user.account_id, role_val)
+    except Exception as e:
+        logger.debug("get_work_hours_for_role failed: %s — treating as no rows", e)
+        rows = []
+    if not rows:
+        return True
+
+    # Account timezone — work_hours columns store integers 0..23 in this tz.
+    account = await tenant.get_account(user.account_id)
+    tz_name = (getattr(account, "timezone", None) or "America/New_York")
+    try:
+        now_local = datetime.now(ZoneInfo(tz_name))
+    except Exception:
+        now_local = datetime.now(timezone.utc)
+    current_hour = now_local.hour
+
+    for row in rows:
+        try:
+            start = int(row.get("start_hour", 0))
+            end = int(row.get("end_hour", 0))
+        except (TypeError, ValueError):
+            continue
+        if _hour_in_window(current_hour, start, end):
+            return True
+    return False
+
+
+async def is_user_dnd_active(user, tenant) -> bool:
+    """Single source of truth for "should this user's alert be DND-queued?"
+
+    Returns True when delivery should be deferred (queue for shift-start),
+    False when delivery should proceed immediately.
+
+    Priority:
+      1. Per-user override (``quiet_start`` + ``quiet_end`` both set) —
+         the user explicitly defined a personal window.
+      2. Otherwise: derived from account ``work_hours`` for the user's
+         role — admin-managed, single-source-of-truth for the team.
+
+    Critical-severity alerts MUST bypass this check at the call site
+    via their own ``bypasses_dnd`` flag — this helper doesn't know
+    about severity.
+    """
+    if user.quiet_start is not None and user.quiet_end is not None:
+        return user.is_in_quiet_hours()
+    return not await is_user_on_shift(user, tenant)
+
+
 def _filter_handoff_for_driver(
     items: list[dict], vehicle_nums: list[str], *, name_key: str = "vehicle_name",
 ) -> list[dict]:

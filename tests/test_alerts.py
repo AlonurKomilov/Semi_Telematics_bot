@@ -6,12 +6,11 @@ import pytest_asyncio
 
 os.environ.setdefault("ENCRYPTION_KEY", "")
 
-from adapters.storage import Database, Role, User
+from adapters.storage import Role, User
 from capabilities.formatting import (
     format_critical_fault_alert,
     format_health_alert,
     format_low_fuel_alert,
-    format_new_fault_alert,
 )
 from interfaces.bot.keyboards import alert_settings_kb
 

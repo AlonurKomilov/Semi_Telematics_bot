@@ -28,7 +28,7 @@ class ScorecardMixin(_MixinBase):
         label: str = "", category: str = "",
         kind: str = "penalty", points: int = 0,
         cap: Optional[int] = None, enabled: bool = True,
-        # ── Audit Option C additions (all optional / nullable) ──
+        # ── additions (all optional / nullable) ──
         pillar: str = "",
         curve_x_zero: Optional[float] = None,
         curve_x_max:  Optional[float] = None,

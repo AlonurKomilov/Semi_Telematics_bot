@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-// Phase E27 — vite-plugin-pwa.
+// vite-plugin-pwa.
 // The miniapp is now a Telegram WebApp PWA: an install-able shell with
 // a runtime-cached copy of the driver scorecard so it stays useful when
 // a driver opens it on flaky cellular signal.

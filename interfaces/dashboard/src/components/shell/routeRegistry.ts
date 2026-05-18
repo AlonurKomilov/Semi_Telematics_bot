@@ -1,8 +1,9 @@
 import {
   LayoutDashboard, Truck, Bell, Bot, FileText, Mail, MapPin, BookOpen,
-  Thermometer, Wrench, Map, Route, Trophy, AlertTriangle,
+  Wrench, Map, Route, Trophy, AlertTriangle,
   Camera, ParkingSquare, Fuel, DollarSign, Users, Shield, Building2,
   Link as LinkIcon, ClipboardList, Clock, CreditCard, GraduationCap,
+  IdCard,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -32,8 +33,6 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     description: 'Trip history and active routes', keywords: ['trips','dispatch'] },
   { label: 'Geofences',   path: '/fleet/geofences', icon: MapPin,        group: 'Fleet',  permission: ['can_geofence_all', 'can_geofence_own'],
     description: 'Zones that trigger arrival/exit alerts', keywords: ['zones','boundaries'] },
-  { label: 'Weather',     path: '/fleet/weather',   icon: Thermometer,   group: 'Fleet',  permission: ['can_vehicle_all', 'can_vehicle_own'],
-    description: 'Weather along your active routes', keywords: ['forecast','storm'] },
   { label: 'Maintenance', path: '/maintenance',     icon: Wrench,        group: 'Fleet',  permission: ['can_maintenance_all', 'can_maintenance_own'],
     description: 'Scheduled service and open tasks', keywords: ['service','repair','tasks'] },
   { label: 'Parking',     path: '/fleet/parking',   icon: ParkingSquare, group: 'Fleet',  permission: ['can_alerts_all', 'can_alerts_own'],
@@ -62,6 +61,8 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     description: 'Operating cost per mile by truck', keywords: ['cpm','cost','per mile'] },
 
   // Workforce
+  { label: 'Drivers',         path: '/workforce/drivers', icon: IdCard,        group: 'Workforce', permission: ['can_manage_driver_docs'],
+    description: 'Driver profiles, CDL/medical docs, and vehicle assignments', keywords: ['cdl','medical','driver','documents'] },
   { label: 'Coaching',        path: '/coaching',         icon: GraduationCap, group: 'Workforce', permission: ['can_coaching_admin'],
     description: 'Driver coaching assignments and acks', keywords: ['training','review'] },
   { label: 'Payroll',         path: '/payroll',          icon: DollarSign,    group: 'Workforce', permission: ['can_payroll_admin'],

@@ -1,6 +1,6 @@
 """Navigation callback handlers — main menu and sub-menus."""
 
-from interfaces.bot.config import get_platform_db
+from interfaces.bot.state import get_platform_db
 from interfaces.bot.keyboards import (
     main_menu_kb, submenu_reports_kb, submenu_tools_kb,
     submenu_costs_kb, submenu_mgmt_kb,

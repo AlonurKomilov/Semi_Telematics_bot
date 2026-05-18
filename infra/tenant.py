@@ -1,14 +1,18 @@
 """TenantContext — per-account isolated runtime state.
 
 Each account gets its own TenantContext holding:
-  - TenantDB reference (companies, alerts, maintenance, etc.)
+  - Database reference (companies, alerts, maintenance, etc.)
   - Samsara MultiCompanyClient (lazily built)
   - company_display / org_ids dictionaries (per-tenant, not global)
   - LRU caches (known faults, active messages, rate limits)
   - Redis key prefix for namespaced caching
 
-This replaces the module-level globals in bot/state.py and the
-shared COMPANY_DISPLAY / ORG_IDS dicts in samsara_client.py.
+Per-tenant isolation lives at the data layer via ``account_id``
+filtering — every TenantContext shares the same ``Database`` instance
+but each only acts on its own rows.  The context object exists for
+the in-memory caches + Samsara client + Redis prefix; the DB
+reference is held here so call sites have a single object to pass
+through.
 """
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ from adapters.samsara.client import MultiCompanyClient, build_multi_company_clie
 from .config import SAMSARA_BASE_URL, RATE_LIMIT_SECONDS
 
 if TYPE_CHECKING:
-    from adapters.storage.tenant import TenantDB
+    from adapters.storage import Database
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +53,7 @@ class TenantContext:
         "_client_lock",
     )
 
-    def __init__(self, account_id: int, db: TenantDB):
+    def __init__(self, account_id: int, db: "Database"):
         self.account_id = account_id
         self.db = db
         self.samsara: MultiCompanyClient | None = None

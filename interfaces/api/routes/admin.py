@@ -383,7 +383,15 @@ async def set_user_companies(
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Set company access for a user. Empty list = access to all companies."""
+    """Set company access for a user. Empty list = access to all companies.
+
+    Drivers are restricted to a single company at a time.  When a
+    driver's assignment changes (Company A → Company B), the existing
+    driver documents folder is moved to
+    ``{Company A}/drivers/_archive/{YYYY-MM-DD}/user-{id}/`` so the
+    new company's folder starts empty but the carrier retains a dated
+    audit trail of records that were on file before the change.
+    """
     target = await platform_db.get_user(user_id)
     if not target or target.account_id != user["account_id"]:
         raise HTTPException(status_code=404, detail="User not found")
@@ -393,6 +401,19 @@ async def set_user_companies(
     if target_role == "owner":
         raise HTTPException(status_code=400, detail="Cannot restrict company access for owners")
 
+    # Drivers can only be assigned to one company at a time.  Multi-
+    # company drivers would split DOT 49 CFR Part 391 driver-qualification
+    # files across carriers in ways the archive flow can't reconcile.
+    if target_role == "driver" and len(body.company_ids) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "A driver can only be assigned to one company at a time. "
+                "Reassign to a single company; the previous folder will "
+                "be archived automatically."
+            ),
+        )
+
     # Validate company IDs belong to this account
     if body.company_ids:
         all_companies = await tenant_db.get_account_companies(user["account_id"])
@@ -401,19 +422,88 @@ async def set_user_companies(
         if invalid:
             raise HTTPException(status_code=400, detail=f"Invalid company IDs: {invalid}")
 
+    # Capture the BEFORE state so we know which companies the driver
+    # is leaving and can archive each one's folder before the
+    # assignment row is rewritten by set_user_companies().
+    archived_companies: list[str] = []
+    if target_role == "driver":
+        old_assignments = await platform_db.get_user_companies(user_id)
+        new_company_ids = set(body.company_ids)
+        codes_being_removed = [
+            a.company_code for a in old_assignments
+            if a.company_id not in new_company_ids
+        ]
+        if codes_being_removed:
+            archived_companies = await _archive_driver_folders(
+                platform_db, tenant_db, user["account_id"],
+                user_id, codes_being_removed,
+            )
+
     await platform_db.set_user_companies(
         user_id, target.account_id, body.company_ids,
         assigned_by=int(user["sub"]),
     )
 
+    audit_details = f"Companies: {body.company_ids or 'all (unrestricted)'}"
+    if archived_companies:
+        audit_details += f"; archived from: {archived_companies}"
     await tenant_db.add_audit_log(
         user["account_id"], int(user["sub"]),
         "company_assignment",
         target_type="user", target_id=str(user_id),
-        details=f"Companies: {body.company_ids or 'all (unrestricted)'}",
+        details=audit_details,
     )
 
-    return {"ok": True, "company_ids": body.company_ids, "unrestricted": len(body.company_ids) == 0}
+    return {
+        "ok": True,
+        "company_ids": body.company_ids,
+        "unrestricted": len(body.company_ids) == 0,
+        "archived_companies": archived_companies,
+    }
+
+
+async def _archive_driver_folders(
+    platform_db, tenant_db, account_id: int,
+    user_id: int, removed_company_codes: list[str],
+) -> list[str]:
+    """Move the driver's docs folder under each removed company to
+    that company's ``_archive/{date}/`` subtree.  Updates the bucket
+    column on existing driver_documents rows so the download/delete
+    routes can still find the files after the move.
+
+    Returns the list of company codes whose folders were actually
+    archived (i.e. had a non-empty source folder).  Errors during the
+    physical move are logged but don't fail the assignment write —
+    the company-change should always succeed at the DB level; storage
+    cleanup is best-effort.
+    """
+    from datetime import datetime, timezone
+    from adapters.storage.object_store import get_object_store_for_account
+    from capabilities.work_orders.storage import (
+        driver_docs_archive_bucket, driver_docs_bucket, resolve_company_folder,
+    )
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    store = await get_object_store_for_account(account_id, tenant_db)
+    archived: list[str] = []
+
+    for company_code in removed_company_codes:
+        try:
+            company_folder = await resolve_company_folder(
+                tenant_db, account_id, company_code,
+            )
+            src = driver_docs_bucket(company_folder, user_id)
+            dst = driver_docs_archive_bucket(company_folder, user_id, today)
+            moved = store.move_folder(src, dst)
+            if moved:
+                await platform_db.move_user_documents_bucket(user_id, src, dst)
+                archived.append(company_code)
+        except Exception as e:
+            logger.warning(
+                "Archive failed for driver=%d company=%s: %s",
+                user_id, company_code, e,
+            )
+    return archived
 
 
 # ── Invites ───────────────────────────────────────────────────
@@ -561,6 +651,26 @@ async def add_company(
         target_type="company", target_id=str(company.id),
         details=f"Code: {body.code}",
     )
+
+    # Kick off historical backfill on the ARQ worker (4truck-queue
+    # service) — runs in a *separate process* so the API stays
+    # responsive for live users.  A 90-day backfill on a large fleet
+    # can take 30-60s of Samsara round-trips; doing that inline in a
+    # FastAPI worker would tie up a connection slot for the duration.
+    # Idempotent (every writer dedups via UNIQUE/UPSERT), gap-aware
+    # (skips sources that already have coverage), and dedup'd at the
+    # queue level via job_id so rapid-fire admin actions don't spawn
+    # parallel backfills for the same account.
+    try:
+        from infra import jobs as _jobs
+        await _jobs.enqueue(
+            "backfill_account_initial",
+            account_id=user["account_id"],
+            job_id=f"backfill_acct_{user['account_id']}",
+        )
+    except Exception:
+        logger.exception("Failed to enqueue on-connect backfill for acct=%d", user["account_id"])
+
     return {"id": company.id, "code": company.code, "status": "created"}
 
 
@@ -586,6 +696,22 @@ async def update_company(
         target_type="company", target_id=str(company_id),
         details=str(list(kwargs.keys())),
     )
+
+    # Re-run backfill on the ARQ worker when the token is rotated —
+    # the new key may expose data the old one couldn't reach (different
+    # license / wider scope).  job_id collapses duplicate enqueues so a
+    # rapid double-PUT doesn't queue two parallel backfills.
+    if "samsara_api_key" in kwargs:
+        try:
+            from infra import jobs as _jobs
+            await _jobs.enqueue(
+                "backfill_account_initial",
+                account_id=user["account_id"],
+                job_id=f"backfill_acct_{user['account_id']}",
+            )
+        except Exception:
+            logger.exception("Failed to enqueue backfill on token rotation acct=%d", user["account_id"])
+
     return {"ok": True}
 
 
@@ -1248,7 +1374,7 @@ async def warehouse_status(
     }
 
 
-# ── Job queue diagnostics (Phase 3) ───────────────────────────
+# ── Job queue diagnostics ───────────────────────────
 #
 # Read-only endpoints that surface the state of the ARQ job queue.
 # Used by ops to:
@@ -1305,32 +1431,311 @@ async def trigger_prewarm_scorecards(
     return {"job_id": job.job_id, "function": "precompute_scorecards", "account_id": user["account_id"], "days": days}
 
 
-# ── Dual-write diagnostics (Phase 5b) ─────────────────────────
+# ── Storage quota (local-disk fallback for driver documents) ─────
 #
-# Surfaces the per-process counters from ``adapters.storage.dualwrite``
-# so ops can monitor how the SQLite→PostgreSQL dual-write phase is
-# tracking. Endpoint returns the same shape as warehouse-status so the
-# admin dashboard can poll it on the same cadence.
-#
-# Counters reset on process restart (they're in-memory). Aggregating
-# across workers requires Phase 6 metrics (Prometheus); this endpoint is
-# enough for one-process spot checks during the rollout.
+# Only meaningful for accounts that haven't connected Google Drive —
+# Drive-connected accounts use the user's own Drive quota. The local
+# fallback enforces a per-account cap so a single tenant can't fill
+# the host disk.
 
-@router.get("/dualwrite-status")
-async def dualwrite_status(
+class StorageQuotaUpdate(BaseModel):
+    quota_bytes: int = Field(..., ge=0)
+
+
+@router.get("/storage/quota")
+async def get_storage_quota(
     user: dict = Depends(require_permission("can_manage_account")),
+    tenant_db=Depends(get_tenant_db),
 ):
-    """Per-process dual-write counters + flag values.
+    """Return current storage usage and quota for the caller's account."""
+    used, quota = await tenant_db.get_storage_usage(user["account_id"])
+    return {
+        "used_bytes": used,
+        "quota_bytes": quota,
+        "remaining_bytes": max(0, quota - used),
+    }
 
-    Used during the SQLite → PostgreSQL migration to verify that
-    secondary writes are succeeding and reads are returning identical
-    row counts. Healthy state: ``writes_failed == 0``,
-    ``reads_diverged == 0``.
+
+@router.put("/storage/quota")
+async def update_storage_quota(
+    body: StorageQuotaUpdate,
+    user: dict = Depends(require_permission("can_manage_account")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Raise/lower the per-account local-disk storage cap."""
+    ok = await tenant_db.set_storage_quota(user["account_id"], body.quota_bytes)
+    if not ok:
+        raise HTTPException(404, "Account not found")
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "storage_quota_update",
+        target_type="account", target_id=str(user["account_id"]),
+        details=f"Set storage quota to {body.quota_bytes} bytes",
+    )
+    used, quota = await tenant_db.get_storage_usage(user["account_id"])
+    return {
+        "used_bytes": used,
+        "quota_bytes": quota,
+        "remaining_bytes": max(0, quota - used),
+    }
+
+
+# ── Account timezone (single source of truth for cron + display) ───
+#
+# Per-user override lives on ``users.timezone`` and is set via the
+# Profile page.  This admin endpoint sets the account-wide default —
+# every user without an override inherits it, every cron job uses it
+# to decide "is it 09:00 here yet?", every formatter renders against it.
+
+class AccountTimezoneUpdate(BaseModel):
+    timezone: str = Field(..., min_length=1)
+
+
+@router.get("/timezone")
+async def get_account_timezone(
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+):
+    """Return the account's default timezone plus the supported list."""
+    from capabilities.localization.tz import IANA_OPTIONS, DEFAULT_TIMEZONE
+    acct = await platform_db.get_account(user["account_id"])
+    return {
+        "timezone": getattr(acct, "timezone", DEFAULT_TIMEZONE) or DEFAULT_TIMEZONE,
+        "options": list(IANA_OPTIONS),
+    }
+
+
+@router.put("/timezone")
+async def set_account_timezone(
+    body: AccountTimezoneUpdate,
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Set the account's default timezone.  Validates against the
+    canonical IANA-options list so an admin can't enter ``"EST"``
+    (deprecated alias) or a typo."""
+    from capabilities.localization.tz import IANA_OPTIONS
+    tz_val = body.timezone.strip()
+    if tz_val not in IANA_OPTIONS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported timezone. Valid values: {', '.join(IANA_OPTIONS)}",
+        )
+    ok = await platform_db.update_account(user["account_id"], timezone=tz_val)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Account not found")
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "timezone_update",
+        target_type="account", target_id=str(user["account_id"]),
+        details=f"Set account timezone to {tz_val}",
+    )
+    return {"timezone": tz_val}
+
+
+# ── Forum routing (Telegram group topics) ─────────────────────
+
+@router.get("/forum-routing")
+async def get_forum_routing(
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+):
+    """Return the current forum-routing state for the account.
+
+    Powers the inline "Alert Routing" section in the Telegram Bot
+    admin card.  When no group is bound the response signals the
+    setup wizard should be rendered; when bound it lists each alert
+    type, the topic it maps to, and whether the route is active.
     """
-    from adapters.storage import dualwrite as _dw
+    from capabilities.alerting.forum_topics import FORUM_TOPIC_SPEC
+
+    account_id = user["account_id"]
+    group = await platform_db.get_forum_group(account_id)
+
+    # Render the topic catalog regardless of bound state — the
+    # dashboard uses it to show "what will be created" in the
+    # not-yet-connected state.
+    catalog = [
+        {
+            "alert_type":  spec.key,
+            "name":        spec.name,
+            "icon_emoji":  spec.icon_emoji,
+            "description": spec.description,
+            "pinned":      spec.pinned,
+        }
+        for spec in FORUM_TOPIC_SPEC
+    ]
+
+    if group is None:
+        return {
+            "connected": False,
+            "catalog": catalog,
+            "routes": [],
+        }
+
+    routes = await platform_db.list_alert_routes(account_id)
+    by_key = {r.alert_type: r for r in routes}
+    route_rows = []
+    for spec in FORUM_TOPIC_SPEC:
+        r = by_key.get(spec.key)
+        route_rows.append({
+            "alert_type":          spec.key,
+            "name":                spec.name,
+            "icon_emoji":          spec.icon_emoji,
+            "description":         spec.description,
+            "pinned":              spec.pinned,
+            "is_mapped":           r is not None,
+            "is_active":           bool(r and r.is_active),
+            "message_thread_id":   r.message_thread_id if r else None,
+            "topic_name_snapshot": r.topic_name_snapshot if r else "",
+        })
+
+    # Account-level group-routing settings.  Per-alert-type AI
+    # toggles let admins enable AI for some categories (e.g. Parking
+    # AI is useful; Health AI is noise) without an all-or-nothing
+    # global switch.  Only the alert types that actually generate AI
+    # content are exposed; the rest stay quiet.
+    _AI_CAPABLE = ("faults", "health", "parking", "camera")
+    ai_per_type: dict[str, bool] = {}
+    for key in _AI_CAPABLE:
+        val = await platform_db.get_account_setting(
+            account_id, f"forum_ai.{key}", default="1",
+        )
+        ai_per_type[key] = val != "0"
 
     return {
-        "dual_write_enabled": _dw.is_dual_write_enabled(),
-        "read_backend":       _dw.read_backend(),
-        "metrics":            _dw.get_metrics(),
+        "connected":      True,
+        "chat_id":        group.chat_id,
+        "chat_title":     group.chat_title,
+        "setup_status":   group.setup_status,
+        "last_setup_at":  group.last_setup_at,
+        "last_repair_at": group.last_repair_at,
+        "catalog":        catalog,
+        "routes":         route_rows,
+        "settings": {
+            "ai_per_type": ai_per_type,
+        },
     }
+
+
+class ForumRouteToggle(BaseModel):
+    is_active: bool
+
+
+class ForumSettingsUpdate(BaseModel):
+    # Map of alert_type → bool.  Only alert types in _AI_CAPABLE are
+    # honoured server-side; unknown keys are ignored so the API stays
+    # tolerant if the dashboard sends extras.
+    ai_per_type: Optional[dict[str, bool]] = None
+
+
+@router.put("/forum-routing/settings")
+async def update_forum_settings(
+    body: ForumSettingsUpdate,
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Update per-alert-type AI toggles for the group routing.
+
+    Each key in ``ai_per_type`` is a canonical alert key (``faults``,
+    ``health``, ``parking`` today — the only types with AI content).
+    Setting any of them to False makes future alerts of that type
+    post to the topic *without* the AI section; DM fallback (for
+    CRITICAL mirrors and non-routed accounts) still respects each
+    subscriber's per-user ``ai_*`` preference.
+    """
+    account_id = user["account_id"]
+    _AI_CAPABLE = ("faults", "health", "parking", "camera")
+    changed: list[str] = []
+    if body.ai_per_type:
+        for alert_type, enabled in body.ai_per_type.items():
+            if alert_type not in _AI_CAPABLE:
+                continue
+            await platform_db.set_account_setting(
+                account_id, f"forum_ai.{alert_type}",
+                "1" if enabled else "0",
+            )
+            changed.append(f"{alert_type}={'on' if enabled else 'off'}")
+
+    if changed:
+        await tenant_db.add_audit_log(
+            account_id, int(user["sub"]),
+            "forum_settings_update",
+            target_type="account", target_id=str(account_id),
+            details="ai_per_type: " + ", ".join(changed),
+        )
+    return {"ok": True, "changed": changed}
+
+
+@router.put("/forum-routing/{alert_type}")
+async def toggle_forum_route(
+    alert_type: str,
+    body: ForumRouteToggle,
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Soft-toggle a single alert→topic route.
+
+    Disabling sends future alerts of that type back to the per-user
+    DM path (subscribers respect their personal mute toggles again).
+    Re-enabling restores group routing.  The Telegram topic itself
+    is never touched — only the database row.
+    """
+    from adapters.storage.models import ALERT_TYPE_KEYS
+
+    if alert_type not in ALERT_TYPE_KEYS:
+        raise HTTPException(status_code=422, detail=f"Unknown alert_type: {alert_type}")
+
+    account_id = user["account_id"]
+    route = await platform_db.get_alert_route(account_id, alert_type)
+    if route is None:
+        # Soft-toggle only works for an existing (possibly inactive)
+        # row.  If the row doesn't exist at all the admin needs to
+        # run /setupforum or /repairforum first.
+        raise HTTPException(
+            status_code=404,
+            detail=f"No route exists for '{alert_type}'. Run /setupforum or /repairforum first.",
+        )
+
+    await platform_db.set_alert_route_active(
+        account_id, alert_type, body.is_active,
+    )
+    await tenant_db.add_audit_log(
+        account_id, int(user["sub"]),
+        "forum_route_toggle",
+        target_type="alert_type", target_id=alert_type,
+        details=f"is_active={body.is_active}",
+    )
+    return {"alert_type": alert_type, "is_active": body.is_active}
+
+
+@router.post("/forum-routing/disconnect")
+async def disconnect_forum_routing(
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Unbind the forum group from the account.
+
+    Removes the ``forum_groups`` row and every ``alert_routing`` row
+    in one shot — subsequent alerts fall straight back to per-user
+    DM delivery.  Topics themselves are NOT deleted from Telegram;
+    admins can clean those up via /resetforum in the group when they
+    want a clean slate.
+    """
+    account_id = user["account_id"]
+    group = await platform_db.get_forum_group(account_id)
+    if group is None:
+        return {"ok": True, "was_connected": False}
+
+    await platform_db.delete_forum_group(account_id)
+    await tenant_db.add_audit_log(
+        account_id, int(user["sub"]),
+        "forum_routing_disconnect",
+        target_type="account", target_id=str(account_id),
+        details=f"chat_id={group.chat_id}",
+    )
+    return {"ok": True, "was_connected": True, "chat_id": group.chat_id}

@@ -1,1 +1,1 @@
-"""costs capability — placeholder for Phase 6 service extraction."""
+"""costs capability — placeholder for service extraction."""

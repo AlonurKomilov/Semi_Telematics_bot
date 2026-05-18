@@ -1,6 +1,5 @@
 """Tests for keyboard builders — role-aware menus, sub-menus, and navigation."""
 
-import pytest
 
 from adapters.storage import Role
 from interfaces.bot.keyboards import (

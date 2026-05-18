@@ -19,18 +19,26 @@ from interfaces.api.rate_limit import limiter
 import adapters.storage as database
 import logging
 
-from infra.config import TELEGRAM_TOKEN
+from infra.config import TELEGRAM_TOKEN  # noqa: F401  (kept for other auth helpers below)
 
-# JWT settings
-_jwt_env = os.getenv("JWT_SECRET", "")
-if _jwt_env:
-    JWT_SECRET = _jwt_env
-else:
-    JWT_SECRET = TELEGRAM_TOKEN or "change-me"
+# JWT settings — JWT_SECRET is REQUIRED.  Previously this code fell back
+# to TELEGRAM_TOKEN, but that meant any bot-token rotation silently
+# invalidated every issued JWT and logged out the whole fleet.  The
+# fail-fast at startup forces operators to set a stable, dedicated
+# secret.  Tests provide one via tests/conftest.py.
+JWT_SECRET = os.getenv("JWT_SECRET", "").strip()
+if not JWT_SECRET:
+    raise RuntimeError(
+        "JWT_SECRET is not set.  Generate one with `openssl rand -hex 32` "
+        "and add it to .env before starting the API.  Without it the API "
+        "cannot sign or verify access tokens, and the old fallback to "
+        "TELEGRAM_TOKEN has been removed because rotating the bot token "
+        "would silently log every dashboard/miniapp user out."
+    )
+if len(JWT_SECRET) < 32:
     logging.getLogger("api.auth").warning(
-        "JWT_SECRET not set — falling back to TELEGRAM_TOKEN. "
-        "Set a dedicated JWT_SECRET in .env for production: "
-        "openssl rand -hex 32"
+        "JWT_SECRET is shorter than 32 chars (%d). Recommended: "
+        "openssl rand -hex 32 (gives 64 chars).", len(JWT_SECRET),
     )
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_SECONDS = 30 * 24 * 60 * 60  # 30 days
@@ -118,7 +126,8 @@ async def refresh_token(request: Request, authorization: str = __import__("fasta
     (e.g., when less than 1 hour remains).
     """
     from jose import JWTError as _JE
-    from infra.platform import get_platform_db; db = get_platform_db()
+    from infra.platform import get_platform_db
+    db = get_platform_db()
 
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid authorization header")
@@ -156,7 +165,8 @@ async def auth_telegram(request: Request, body: AuthRequest):
     account's bot token.  Falls back to the global TELEGRAM_TOKEN for legacy
     single-bot setups.
     """
-    from infra.platform import get_platform_db; db = get_platform_db()
+    from infra.platform import get_platform_db
+    db = get_platform_db()
     from infra.crypto import decrypt
 
     # Pre-parse user ID from initData (before HMAC validation)
@@ -252,7 +262,8 @@ async def auth_telegram_login(request: Request, body: LoginWidgetRequest):
     Supports per-account bot tokens: looks up user → account → bot token
     before validating the login widget hash.
     """
-    from infra.platform import get_platform_db; db = get_platform_db()
+    from infra.platform import get_platform_db
+    db = get_platform_db()
     from infra.crypto import decrypt
 
     user = await db.get_user_by_telegram_id(body.id)
@@ -314,7 +325,8 @@ async def auth_config(request: Request):
             payload = decode_jwt(auth_header[7:])
             account_id = payload.get("account_id")
             if account_id:
-                from infra.platform import get_platform_db; db = get_platform_db()
+                from infra.platform import get_platform_db
+                db = get_platform_db()
                 from infra.crypto import decrypt
                 account = await db.get_account(account_id)
                 if account and account.bot_username:
@@ -331,7 +343,8 @@ async def auth_config(request: Request):
             logging.getLogger("api.auth").debug("JWT account lookup failed, falling through: %s", e)
     # (account bots handle user auth; system bot is for platform admin only)
     try:
-        from infra.platform import get_platform_db; db = get_platform_db()
+        from infra.platform import get_platform_db
+        db = get_platform_db()
         from infra.crypto import decrypt
         accounts = await db.list_accounts()
         for acct in accounts:
@@ -440,7 +453,8 @@ class EmailRegisterRequest(BaseModel):
 @limiter.limit("10/minute")
 async def auth_email_login(request: Request, body: EmailLoginRequest):
     """Authenticate via email + password."""
-    from infra.platform import get_platform_db; db = get_platform_db()
+    from infra.platform import get_platform_db
+    db = get_platform_db()
 
     user = await db.get_user_by_email(body.email)
     if not user or not user.password_hash:
@@ -465,7 +479,8 @@ async def auth_email_login(request: Request, body: EmailLoginRequest):
 @limiter.limit("10/minute")
 async def auth_email_register(request: Request, body: EmailRegisterRequest):
     """Register a new user via email + password + invite code."""
-    from infra.platform import get_platform_db; db = get_platform_db()
+    from infra.platform import get_platform_db
+    db = get_platform_db()
 
     # Validate email format
     if not _EMAIL_RE.match(body.email):
@@ -540,14 +555,9 @@ async def auth_set_password(body: EmailLoginRequest):
     Requires valid JWT (user logged in via Telegram first).
     Lets them add email/password credentials for future dashboard logins.
     """
-    from fastapi import Request
-    from interfaces.api.deps import get_current_user
-    from infra.platform import get_platform_db; db = get_platform_db()
-
-    # Manually parse the auth header since we can't use Depends() here
-    # (the router is defined at module level, deps imported at call time)
-    # The frontend sends Authorization: Bearer <jwt> header.
-    # We just reuse decode_jwt directly.
+    # Stub: redirects to the canonical credentials route.  No DB access
+    # needed — the import + assignment that used to live here were dead
+    # weight, F841 once flake8 was wired up.
     raise HTTPException(
         status_code=501,
         detail="Use PUT /api/user/credentials instead",
@@ -574,7 +584,8 @@ async def auth_register_account(request: Request, body: RegisterAccountRequest):
     The owner can then configure their Telegram bot in admin settings.
     No Telegram interaction required for initial registration.
     """
-    from infra.platform import get_platform_db; db = get_platform_db()
+    from infra.platform import get_platform_db
+    db = get_platform_db()
 
     # Validate email format
     if not _EMAIL_RE.match(body.email):

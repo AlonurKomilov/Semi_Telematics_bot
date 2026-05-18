@@ -26,6 +26,9 @@ from .models import (
     User,
     AuthorizedChat,
     Invite,
+    ForumGroup,
+    AlertRoute,
+    ALERT_TYPE_KEYS,
 )
 
 from .core import _DatabaseCore
@@ -34,7 +37,9 @@ from .companies import CompaniesMixin
 from .users import UsersMixin
 from .invites import InvitesMixin
 from .chats import ChatsMixin
+from .forum_routing import ForumRoutingMixin
 from .maintenance import MaintenanceMixin
+from .work_orders import WorkOrdersMixin
 from .fuel import FuelMixin
 from .alerts import AlertsMixin
 from .settings import SettingsMixin
@@ -44,6 +49,16 @@ from .schedules import SchedulesMixin
 from .knowledge import KnowledgeBaseMixin
 from .permissions import PermissionsMixin
 from .driver_vehicles import DriverVehiclesMixin
+from .drivers import (
+    DriverProfileMixin,
+    DriverVehicleAssignmentsMixin,
+    DriverDocumentsMixin,
+)
+from .driver_future import (
+    DriverInspectionsMixin,
+    DriverTrainingsMixin,
+    DriverHosStatusMixin,
+)
 from .user_companies import UserCompaniesMixin
 
 from .billing import BillingMixin
@@ -54,8 +69,6 @@ from .warehouse import WarehouseMixin
 from .payroll import PayrollMixin
 from .coaching import CoachingMixin
 from .platform import PlatformDB
-from .tenant import TenantDB
-from .tenant_router import TenantRouter, LegacyRouter
 
 
 class Database(
@@ -64,7 +77,9 @@ class Database(
     UsersMixin,
     InvitesMixin,
     ChatsMixin,
+    ForumRoutingMixin,
     MaintenanceMixin,
+    WorkOrdersMixin,
     FuelMixin,
     AlertsMixin,
     SettingsMixin,
@@ -74,15 +89,17 @@ class Database(
     KnowledgeBaseMixin,
     PermissionsMixin,
     DriverVehiclesMixin,
+    DriverProfileMixin,
+    DriverVehicleAssignmentsMixin,
+    DriverDocumentsMixin,
+    DriverInspectionsMixin,
+    DriverTrainingsMixin,
+    DriverHosStatusMixin,
     UserCompaniesMixin,
     BillingMixin,
     GeofenceMixin,
     CustomPoiMixin,
     ScorecardMixin,
-    # WarehouseMixin owns vehicle_state / safety_event_log / etc — needed
-    # for ingest_vehicle_state to upsert odometer + telemetry rows in the
-    # legacy single-DB layout.  Without this the LegacyRouter path crashes
-    # with "'Database' has no attribute 'upsert_vehicle_state'".
     WarehouseMixin,
     PayrollMixin,
     CoachingMixin,
@@ -108,8 +125,8 @@ __all__ = [
     "User",
     "AuthorizedChat",
     "Invite",
+    "ForumGroup",
+    "AlertRoute",
+    "ALERT_TYPE_KEYS",
     "PlatformDB",
-    "TenantDB",
-    "TenantRouter",
-    "LegacyRouter",
 ]

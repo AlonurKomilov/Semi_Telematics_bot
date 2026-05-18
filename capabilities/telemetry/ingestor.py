@@ -1,4 +1,4 @@
-"""Phase C — telemetry warehouse ingestor.
+"""telemetry warehouse ingestor.
 
 Pulls from Samsara on a schedule and persists the result into the
 per-tenant warehouse tables.  All four jobs are *pure functions* keyed
@@ -73,6 +73,11 @@ def _vehicle_overview_to_state_row(v: dict[str, Any]) -> dict[str, Any]:
         "fuel_pct":     fuel_val,
         "def_pct":      def_val,
         "odometer_mi":  None,  # not in the overview payload; backfilled by aggregate job if needed
+        # Engine hours follows the same overlay pattern — None here,
+        # filled in by ``get_current_engine_hours_readings`` before
+        # upsert.  Listed explicitly so the shape is self-describing.
+        "engine_hours":      None,
+        "engine_hours_time": None,
         "fault_count":  len(dtcs),
         "dtc_critical_count": crit,
         "last_driver_id":   "",  # filled by event ingest \u2014 overview lacks driver mapping
@@ -114,6 +119,10 @@ def _safety_event_to_log_row(e: dict[str, Any]) -> dict[str, Any]:
         "lon":              e.get("longitude") or e.get("lon"),
         "speed_mph":        e.get("speed_mph") or e.get("speedMilesPerHour"),
         "video_url":        e.get("video_url") or e.get("downloadForwardVideoUrl") or "",
+        # Promoted from raw_json to its own column so the dashboard's
+        # filter_by_allowed_companies check can skip the per-row JSON
+        # decode (~hundreds of ms saved on a 30-day window).
+        "company_code":     e.get("_org") or e.get("company") or "",
         "raw":              e,
     }
 
@@ -174,12 +183,14 @@ async def ingest_vehicle_state(account_id: int) -> int:
         logger.exception("ingest_vehicle_state: get_fleet_overview failed acct=%d", account_id)
         return 0
 
-    # Fetch current odometer for every active company in this account
-    # so we can merge the value before persisting.  Failures are
-    # non-fatal (some Samsara plans / vehicles without CAN bus gateways
-    # don't expose obdOdometerMeters); affected vehicles keep
-    # odometer_mi=None and the readers degrade to "—".
+    # Fetch current odometer + cumulative engine-hours for every active
+    # company so we can merge the values before persisting.  Failures
+    # are non-fatal (some Samsara plans / vehicles without CAN bus
+    # gateways don't expose obdOdometerMeters or obdEngineSeconds);
+    # affected vehicles keep the corresponding field as None and the
+    # readers degrade to "—".
     odometer_by_vehicle_id: dict[str, dict] = {}
+    engine_hours_by_vehicle_id: dict[str, dict] = {}
     # MultiCompanyClient exposes `.clients` (per-company SamsaraClient
     # instances); test stubs are flat single-company clients.  Iterate
     # the per-company map when present, otherwise call the flat stub.
@@ -188,33 +199,53 @@ async def ingest_vehicle_state(account_id: int) -> int:
         list(per_company_clients.values()) if per_company_clients else [client]
     )
     for company_client in fetch_targets:
-        if not hasattr(company_client, "get_current_odometer_readings"):
-            continue
-        try:
-            readings = await company_client.get_current_odometer_readings()
-        except Exception as e:
-            logger.debug("odometer fetch failed: %s", e)
-            continue
-        for reading in readings:
-            vehicle_id = reading.get("id")
-            if vehicle_id:
-                odometer_by_vehicle_id[str(vehicle_id)] = {
-                    "miles": reading.get("odometer_miles"),
-                    "time": reading.get("time"),
-                }
+        if hasattr(company_client, "get_current_odometer_readings"):
+            try:
+                readings = await company_client.get_current_odometer_readings()
+            except Exception as e:
+                logger.debug("odometer fetch failed: %s", e)
+                readings = []
+            for reading in readings:
+                vehicle_id = reading.get("id")
+                if vehicle_id:
+                    odometer_by_vehicle_id[str(vehicle_id)] = {
+                        "miles": reading.get("odometer_miles"),
+                        "time":  reading.get("time"),
+                    }
+        if hasattr(company_client, "get_current_engine_hours_readings"):
+            try:
+                hours_readings = await company_client.get_current_engine_hours_readings()
+            except Exception as e:
+                logger.debug("engine-hours fetch failed: %s", e)
+                hours_readings = []
+            for reading in hours_readings:
+                vehicle_id = reading.get("id")
+                if vehicle_id:
+                    engine_hours_by_vehicle_id[str(vehicle_id)] = {
+                        "hours": reading.get("engine_hours"),
+                        "time":  reading.get("time"),
+                    }
 
     rows = [_vehicle_overview_to_state_row(v) for v in fleet]
-    if odometer_by_vehicle_id:
-        for row in rows:
-            odometer = odometer_by_vehicle_id.get(str(row.get("vehicle_id") or ""))
-            if odometer:
-                row["odometer_mi"] = odometer.get("miles")
-                row["odometer_time"] = odometer.get("time")
+    for row in rows:
+        vid = str(row.get("vehicle_id") or "")
+        if not vid:
+            continue
+        odometer = odometer_by_vehicle_id.get(vid)
+        if odometer:
+            row["odometer_mi"] = odometer.get("miles")
+            row["odometer_time"] = odometer.get("time")
+        eng = engine_hours_by_vehicle_id.get(vid)
+        if eng:
+            row["engine_hours"] = eng.get("hours")
+            row["engine_hours_time"] = eng.get("time")
 
     n = await tenant.upsert_vehicle_state(account_id, rows)
     logger.info(
-        "ingest_vehicle_state acct=%d persisted=%d with_odometer=%d",
-        account_id, n, len(odometer_by_vehicle_id),
+        "ingest_vehicle_state acct=%d persisted=%d with_odometer=%d with_engine_hours=%d",
+        account_id, n,
+        len(odometer_by_vehicle_id),
+        len(engine_hours_by_vehicle_id),
     )
     return n
 
@@ -288,6 +319,10 @@ async def aggregate_telemetry_hourly(account_id: int) -> int:
     hour_label = prev_hour_start.strftime("%Y-%m-%dT%H:00:00")
 
     # Count harsh events per vehicle in the just-closed hour.
+    # Hard-coded column list — asyncpg cursors don't expose .description,
+    # see adapters/storage/warehouse.py:get_current_vehicles for the
+    # original incident.
+    cols = ["vehicle_id", "harsh_event_count", "max_speed_mph"]
     cur = await tenant._db.execute(
         """
         SELECT vehicle_id,
@@ -301,7 +336,6 @@ async def aggregate_telemetry_hourly(account_id: int) -> int:
         """,
         (account_id, prev_hour_start.isoformat(), hour_start.isoformat()),
     )
-    cols = [d[0] for d in cur.description]
     event_rows = [dict(zip(cols, r)) for r in await cur.fetchall()]
 
     rows: list[dict[str, Any]] = []
@@ -396,7 +430,7 @@ async def job_aggregate_telemetry_hourly(_app=None) -> None:
     await _for_each_active_account(aggregate_telemetry_hourly)
 
 
-# ── Phase 2 — vehicle health snapshot ────────────────────────────────
+# ── vehicle health snapshot ────────────────────────────────
 
 
 def _vehicle_health_to_snapshot_row(v: dict[str, Any]) -> dict[str, Any]:
@@ -443,7 +477,7 @@ async def job_ingest_vehicle_health(_app=None) -> None:
     await _for_each_active_account(ingest_vehicle_health)
 
 
-# ── Phase 2 — vehicle faults (snapshot + per-DTC detail) ────────────
+# ── vehicle faults (snapshot + per-DTC detail) ────────────
 
 
 def _faulted_to_snapshot_row(v: dict[str, Any]) -> dict[str, Any]:
@@ -531,7 +565,7 @@ async def job_ingest_vehicle_faults(_app=None) -> None:
     await _for_each_active_account(ingest_vehicle_faults)
 
 
-# ── Phase 2 — fleet weather ──────────────────────────────────────────
+# ── fleet weather ──────────────────────────────────────────
 
 
 def _weather_to_snapshot_row(v: dict[str, Any]) -> dict[str, Any]:
@@ -570,7 +604,7 @@ async def job_ingest_fleet_weather(_app=None) -> None:
     await _for_each_active_account(ingest_fleet_weather)
 
 
-# ── Phase 2 — fleet efficiency ───────────────────────────────────────
+# ── fleet efficiency ───────────────────────────────────────
 
 
 async def ingest_fleet_efficiency(account_id: int, *, days: int = 7) -> int:
@@ -608,7 +642,7 @@ async def job_ingest_fleet_efficiency(_app=None) -> None:
     await _for_each_active_account(_do)
 
 
-# ── Phase 4 — geofence definitions cache ─────────────────────────────
+# ── geofence definitions cache ─────────────────────────────
 
 
 async def ingest_geofence_definitions(account_id: int) -> int:

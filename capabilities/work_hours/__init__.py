@@ -1,1 +1,1 @@
-"""schedules capability — placeholder for Phase 6 service extraction."""
+"""schedules capability — placeholder for service extraction."""

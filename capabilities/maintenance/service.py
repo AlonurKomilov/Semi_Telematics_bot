@@ -8,6 +8,7 @@ Notification delivery stays in the bot interface layer
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
 from capabilities.iam.permissions import can
 from adapters.storage import Role
@@ -44,14 +45,25 @@ async def mark_overdue_tasks_by_date(account_id: int, tenant_db) -> list[dict]:
 
     Returns the list of tasks that were just marked overdue so the caller
     (bot scheduler) can send notifications for each.
+
+    Throttling: ``get_pending_tasks_by_date`` already filters to
+    ``alerted_at IS NULL``, and we stamp ``alerted_at`` here in the same
+    transaction.  Net effect — each task notifies exactly once per
+    crossing.  Recurring follow-up tasks spawn with ``alerted_at = NULL``
+    so they alert fresh on their own crossing.
     """
     overdue_tasks = await tenant_db.get_pending_tasks_by_date(account_id)
     if not overdue_tasks:
         return []
-    # One bulk UPDATE replaces N × per-task UPDATE-then-commit cycles.
+    overdue_ids = [t["id"] for t in overdue_tasks]
+    # Two bulk operations: flip status + stamp alerted_at. Both touch the
+    # same rows so we could fold into one UPDATE, but keeping them
+    # separate lets ``mark_tasks_alerted_bulk`` be reused from elsewhere
+    # (e.g. one-off "send a reminder for this task" code paths).
     await tenant_db.update_maintenance_status_bulk(
-        account_id, [t["id"] for t in overdue_tasks], "overdue",
+        account_id, overdue_ids, "overdue",
     )
+    await tenant_db.mark_tasks_alerted_bulk(account_id, overdue_ids)
     return list(overdue_tasks)
 
 
@@ -108,7 +120,10 @@ async def mark_overdue_tasks_by_mileage(
             task["_current_miles"] = round(current_miles, 1)
             newly_overdue.append(task)
 
-    # Two bulk operations replace 2 N per-row UPDATE-then-commit cycles.
+    # Three bulk operations replace 3 N per-row UPDATE-then-commit cycles.
+    # Marking ``alerted_at`` here (alongside the status flip) ensures the
+    # 6-h scheduler doesn't re-notify the same crossing forever; see the
+    # mark_overdue_tasks_by_date docstring for the throttling rationale.
     if odometer_updates:
         await tenant_db.update_maintenance_last_odometer_bulk(
             account_id, odometer_updates,
@@ -117,8 +132,180 @@ async def mark_overdue_tasks_by_mileage(
         await tenant_db.update_maintenance_status_bulk(
             account_id, overdue_ids, "overdue",
         )
+        await tenant_db.mark_tasks_alerted_bulk(account_id, overdue_ids)
 
     return newly_overdue
+
+
+# ── Engine-hours overdue scheduler ───────────────────────────────────────────
+
+
+async def mark_overdue_tasks_by_engine_hours(
+    account_id: int,
+    tenant_db,
+) -> list[dict]:
+    """Engine-hours twin of ``mark_overdue_tasks_by_mileage``.
+
+    Reads each vehicle's current engine_hours from the ``vehicle_state``
+    warehouse table (same path the mileage scheduler uses), then flips
+    any pending engine-hours task whose threshold has been crossed to
+    'overdue'.  Updates ``last_engine_hours`` for progress tracking on
+    all matching tasks (not just the newly-overdue ones).
+
+    Why a separate scheduler (not folded into the mileage one): keeps
+    the early-out "no tasks in this dimension" branch cheap and isolates
+    failures — if engine_hours readings are stale for some accounts, we
+    don't poison the mileage path's accuracy.
+    """
+    tasks = await tenant_db.get_pending_tasks_by_engine_hours()
+    if not tasks:
+        return []
+
+    state_rows = await tenant_db.get_vehicle_state(account_id)
+    hours_by_vehicle: dict[str, float] = {}
+    for row in state_rows:
+        name = row.get("vehicle_name") or ""
+        hrs = row.get("engine_hours")
+        if name and isinstance(hrs, (int, float)):
+            hours_by_vehicle[name] = float(hrs)
+
+    if not hours_by_vehicle:
+        logger.debug(
+            "mark_overdue_tasks_by_engine_hours acct=%d — warehouse has no engine_hours yet",
+            account_id,
+        )
+        return []
+
+    newly_overdue: list[dict] = []
+    hours_updates: list[tuple[int, float]] = []
+    overdue_ids: list[int] = []
+    for task in tasks:
+        current = hours_by_vehicle.get(task["vehicle_name"])
+        if current is None:
+            continue
+        due = task["due_engine_hours"]
+
+        hours_updates.append((int(task["id"]), round(current, 1)))
+
+        if current >= due:
+            overdue_ids.append(int(task["id"]))
+            task["_current_engine_hours"] = round(current, 1)
+            newly_overdue.append(task)
+
+    if hours_updates:
+        await tenant_db.update_maintenance_last_engine_hours_bulk(
+            account_id, hours_updates,
+        )
+    if overdue_ids:
+        await tenant_db.update_maintenance_status_bulk(
+            account_id, overdue_ids, "overdue",
+        )
+        await tenant_db.mark_tasks_alerted_bulk(account_id, overdue_ids)
+
+    return newly_overdue
+
+
+# ── Pre-overdue warning detector ─────────────────────────────────────────────
+
+
+async def detect_upcoming_warnings(
+    account_id: int,
+    tenant_db,
+    days_ahead: int = 7,
+    miles_ahead: float = 500.0,
+    engine_hours_ahead: float = 50.0,
+) -> list[dict]:
+    """Find tasks approaching their threshold but not yet overdue.
+
+    Returns the tasks (without mutating them); the caller is expected
+    to fan out a "due in 7 days / 500 mi" notification and then call
+    ``mark_tasks_warned_bulk`` with the IDs so the warning doesn't fire
+    every scheduler tick.
+
+    Default thresholds chosen to match common shop-scheduling lead times:
+      * 7 days  — covers a normal scheduling-and-appointment window
+      * 500 mi  — about 6-8 hours of highway driving (one shift)
+      * 50 hrs  — about a week of normal duty-cycle engine time
+
+    These are configurable so an account with very tight or very loose
+    intervals can override at the scheduler-job level without touching
+    business logic here.
+    """
+    tasks = await tenant_db.get_pending_tasks_for_warning(
+        account_id,
+        days_ahead=days_ahead,
+        miles_ahead=miles_ahead,
+        engine_hours_ahead=engine_hours_ahead,
+    )
+    return list(tasks)
+
+
+# ── Recurring task auto-spawn ────────────────────────────────────────────────
+
+
+# Task types whose recurrence cadence is regulated by federal/state
+# compliance rather than wear.  When a completed task has one of these
+# types AND no explicit ``recur_interval_*`` set, we default the next
+# instance to the regulatory interval so the operator can't forget to
+# schedule it.  Today only annual DOT inspections (49 CFR § 396.17);
+# extend this map for other compliance windows (e.g. IRP/IFTA filings,
+# state safety stickers) as they're added.
+COMPLIANCE_DEFAULT_INTERVAL_DAYS: dict[str, int] = {
+    "dot_inspection": 365,
+}
+
+
+async def spawn_recurring_if_completed(
+    task_id: int, account_id: int, new_status: str, tenant_db,
+) -> Optional[int]:
+    """Auto-create the next instance of a recurring task on completion.
+
+    Called from any status-mutation entry point (API route, bot wizard,
+    AI tool) immediately after the status flip succeeds.  Returns the
+    newly-spawned task ID or ``None`` if no follow-up was needed
+    (status != 'completed', or the parent task has no recurrence
+    interval set AND no compliance default applies).
+
+    Why this lives in the service layer (not the adapter):
+    the adapter's ``update_maintenance_status`` is called from bulk paths
+    too (scheduler marking dozens of tasks 'overdue' at once) where
+    spawning a child per row would be wrong.  Putting the spawn here
+    means only the *user-driven* completion path triggers it.
+
+    Accepts both ``"completed"`` (API + dashboard surface) and ``"done"``
+    (bot surface) as terminal states — see the adapter docstring for the
+    historical schism.
+
+    Compliance auto-renewal: if the parent's ``task_type`` is in
+    ``COMPLIANCE_DEFAULT_INTERVAL_DAYS`` and the user didn't set their
+    own ``recur_interval_days``, we patch the parent with the regulatory
+    default before calling the adapter's spawn.  This means a one-off
+    "dot_inspection" task ALSO spawns a 365-day follow-up — the user
+    isn't required to remember the compliance cadence.
+    """
+    if new_status not in ("completed", "done"):
+        return None
+
+    # Compliance auto-renewal — only kicks in when the user didn't
+    # already specify a recurrence, so a manually-set interval (e.g.
+    # 180 days for a stricter internal policy) wins over the default.
+    parent = await tenant_db.get_maintenance_task(task_id, account_id=account_id)
+    if parent:
+        task_type = parent.get("task_type") or ""
+        if (task_type in COMPLIANCE_DEFAULT_INTERVAL_DAYS
+                and not parent.get("recur_interval_days")
+                and not parent.get("recur_interval_miles")
+                and not parent.get("recur_interval_engine_hours")):
+            await tenant_db.update_maintenance_task(
+                task_id, account_id=account_id,
+                recur_interval_days=COMPLIANCE_DEFAULT_INTERVAL_DAYS[task_type],
+            )
+            logger.info(
+                "Compliance auto-renewal: patched task %d (%s) with %d-day default interval",
+                task_id, task_type, COMPLIANCE_DEFAULT_INTERVAL_DAYS[task_type],
+            )
+
+    return await tenant_db.spawn_recurring_followup(task_id, account_id=account_id)
 
 
 # ── Auto-maintenance from critical fault codes ────────────────────────────────

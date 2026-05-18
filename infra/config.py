@@ -8,11 +8,11 @@ of whether a Telegram bot is running.
 import os
 
 # ── Database ─────────────────────────────────────────────────────
-
-DATABASE_PATH = os.getenv("DATABASE_PATH", "data/bot.db")
-
-# Feature flag: set MULTI_TENANT_DB=1 to use per-tenant SQLite databases
-MULTI_TENANT = bool(os.getenv("MULTI_TENANT_DB"))
+#
+# ``DATABASE_URL`` (required) is read directly by
+# ``adapters/storage/core.py`` — see ``Database.initialize()`` for the
+# boot-time check.  The legacy ``DATABASE_PATH`` env var that used to
+# select a SQLite file was retired with the rest of the SQLite branch.
 
 # Warehouse-first reads.  When ON, hot read endpoints (fleet/vehicles,
 # safety/events, scorecards, faults, fuel) read from the local

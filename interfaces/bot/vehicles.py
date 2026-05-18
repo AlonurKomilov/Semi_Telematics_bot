@@ -21,7 +21,8 @@ from capabilities.vehicles.service import (
 )
 from capabilities.telemetry.service import get_vehicles_with_faults as _svc_with_faults
 
-from interfaces.bot.config import logger, _active_messages, get_client
+from interfaces.bot.config import logger
+from interfaces.bot.state import _active_messages, get_client
 from interfaces.bot.keyboards import back_kb, vehicle_kb, vehicle_picker_kb, vehicle_list_kb
 from interfaces.bot.helpers import (
     _show, _show_loading, _delete_old_messages, _company_line, _user_menu_kb,

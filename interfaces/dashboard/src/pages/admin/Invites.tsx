@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link as LinkIcon, Plus } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import type { InviteInfo, InvitesResponse } from '../../types';
@@ -34,6 +35,7 @@ function StatusBadge({ invite }: { invite: InviteInfo }) {
 }
 
 export default function Invites() {
+  const { t } = useTranslation();
   const [invites, setInvites] = useState<InviteInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -137,8 +139,8 @@ export default function Invites() {
     <div>
       <PageHeader
         icon={LinkIcon}
-        title="Invites"
-        description="Generate one-time links to add new users. Choose the role first — drivers can also be pre-bound to a truck number."
+        title={t('pages.invites_title')}
+        description={t('pages.invites_desc')}
         actions={
           <div className="flex items-center gap-2">
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -190,7 +192,7 @@ export default function Invites() {
       {showForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowForm(false)}>
           <div className="bg-card rounded-xl border border-border p-6 w-96" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-bold mb-4">Create Invite</h2>
+            <h2 className="text-lg font-bold mb-4">{t('modals.create_invite')}</h2>
 
             <label className="block text-sm text-muted-foreground mb-1">Role</label>
             <select value={role} onChange={(e) => setRole(e.target.value)} className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border mb-3">
@@ -211,7 +213,7 @@ export default function Invites() {
                   value={truckNum}
                   onChange={(e) => setTruckNum(e.target.value)}
                   className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border mb-3"
-                  placeholder="e.g. 101"
+                  placeholder={t('forms.truck_example')}
                 />
               </>
             )}
@@ -227,7 +229,7 @@ export default function Invites() {
             </select>
 
             <div className="flex justify-end gap-2">
-              <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">Cancel</button>
+              <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">{t('common.cancel')}</button>
               <button onClick={create} disabled={creating} className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium disabled:opacity-50">
                 {creating ? 'Creating...' : 'Create & Copy Link'}
               </button>

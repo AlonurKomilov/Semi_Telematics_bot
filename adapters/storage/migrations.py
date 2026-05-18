@@ -728,10 +728,9 @@ async def migrate_platform_geofences_table(conn) -> None:
 
 @_register("026_custom_poi_layers")
 async def migrate_custom_poi_layers_legacy(conn) -> None:
-    """Create custom_poi_layers + custom_poi_points tables (legacy DB).
+    """Create custom_poi_layers + custom_poi_points tables.
 
-    Mirrors the same migration in tenant_migrations.py so the single-DB
-    Database class also exposes the storage backing for custom POI layers.
+    Idempotent — falls through silently if the tables already exist.
     """
     cur = await conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='custom_poi_layers'"
@@ -780,7 +779,7 @@ async def migrate_custom_poi_layers_legacy(conn) -> None:
 
 @_register("027_score_rules_pillar_curves")
 async def migrate_score_rules_pillar_curves(conn) -> None:
-    """Add pillar + curve columns to score_rules (Audit Option C).
+    """Add pillar + curve columns to score_rules.
 
     All four columns are nullable / default-empty so existing override
     rows continue to behave exactly as before — the engine falls back
@@ -808,18 +807,14 @@ async def migrate_score_rules_pillar_curves(conn) -> None:
 
 @_register("028_warehouse_tables")
 async def migrate_warehouse_tables(conn) -> None:
-    """Create the telemetry warehouse tables on the legacy single-DB layout.
+    """Create the telemetry warehouse tables.
 
-    Phase C (multi-tenant) put these in ``tenant_schema.create_tables`` so
-    fresh tenant DBs get them; the legacy ``LegacyRouter`` path that uses
-    a single ``Database`` instance shared across the platform was missing
-    them entirely.  Without this migration, ``ingest_vehicle_state`` (and
-    every consumer that reads the warehouse) crashes with
-    ``'Database' object has no attribute 'upsert_vehicle_state'`` /
-    ``relation "vehicle_state" does not exist``.
+    Backs ``WarehouseMixin`` — vehicle_state, safety_event_log,
+    driver_efficiency_daily, vehicle_telemetry_hourly.  Without this
+    migration, ``ingest_vehicle_state`` (and every consumer that reads
+    the warehouse) crashes with ``relation "vehicle_state" does not
+    exist`` on a fresh Postgres install.
 
-    DDL kept identical to ``tenant_schema.py`` (incl. ``odometer_time``)
-    so a tenant migrating to multi-DB sees the same shape.
     PG-translation handled automatically by ``pg_adapter`` (TEXT/REAL
     pass through; INTEGER PRIMARY KEY AUTOINCREMENT → SERIAL).
     """
@@ -839,6 +834,8 @@ async def migrate_warehouse_tables(conn) -> None:
             def_pct             REAL,
             odometer_mi         REAL,
             odometer_time       TEXT,
+            engine_hours        REAL,
+            engine_hours_time   TEXT,
             fault_count         INTEGER NOT NULL DEFAULT 0,
             dtc_critical_count  INTEGER NOT NULL DEFAULT 0,
             last_driver_id      TEXT    NOT NULL DEFAULT '',
@@ -965,9 +962,9 @@ async def migrate_warehouse_tables(conn) -> None:
 
 @_register("029_vehicle_state_odometer_time")
 async def migrate_vehicle_state_odometer_time(conn) -> None:
-    """Add vehicle_state.odometer_time for legacy DBs that ran 028 before
-    the column was added to the canonical tenant_schema.  No-op when the
-    column is already present (Postgres ALTER TABLE IF NOT EXISTS form)."""
+    """Add ``vehicle_state.odometer_time`` for DBs that ran the original
+    028 migration before the column was added.  Idempotent — no-op when
+    the column is already present."""
     try:
         await conn.execute(
             "ALTER TABLE vehicle_state ADD COLUMN odometer_time TEXT"
@@ -1078,3 +1075,1254 @@ async def migrate_alert_history_severity_location(conn) -> None:
         await conn.commit()
     except Exception as e:
         logger.debug("idx_alert_history_active_sort skipped: %s", e)
+
+
+@_register("033_alert_history_subkey")
+async def migrate_alert_history_subkey(conn) -> None:
+    """Add alert_subkey column + per-subkey UNIQUE constraint.
+
+    Adds a ``alert_subkey`` column to ``alert_history`` plus a per-subkey
+    UNIQUE constraint so distinct event subtypes (rollingStop, braking,
+    etc.) don't collapse together when the same vehicle triggers them.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(alert_history)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "alert_subkey" in cols:
+            return  # already migrated
+
+        # Recover from a prior aborted migration: drop the leftover
+        # temp table so the RENAME doesn't crash on "already exists".
+        await conn.execute("DROP TABLE IF EXISTS _alert_history_subkey_old")
+        await conn.execute("ALTER TABLE alert_history RENAME TO _alert_history_subkey_old")
+        await conn.execute("""
+            CREATE TABLE alert_history (
+                id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id              INTEGER NOT NULL,
+                alert_type              TEXT    NOT NULL,
+                vehicle_id              TEXT    NOT NULL,
+                vehicle_name            TEXT    NOT NULL DEFAULT '',
+                chat_id                 BIGINT  NOT NULL DEFAULT 0,
+                message_id              BIGINT  NOT NULL DEFAULT 0,
+                occurrence_count        INTEGER NOT NULL DEFAULT 1,
+                first_seen              TEXT    NOT NULL,
+                last_seen               TEXT    NOT NULL,
+                last_detail             TEXT    NOT NULL DEFAULT '',
+                status                  TEXT    NOT NULL DEFAULT 'active',
+                severity                TEXT    NOT NULL DEFAULT 'warning',
+                location                TEXT    NOT NULL DEFAULT '',
+                reescalate_count        INTEGER NOT NULL DEFAULT 0,
+                reescalate_last_sent_at TEXT,
+                alert_subkey            TEXT    NOT NULL DEFAULT '',
+                UNIQUE(account_id, alert_type, vehicle_id, alert_subkey)
+            )
+        """)
+        await conn.execute("""
+            INSERT INTO alert_history (
+                id, account_id, alert_type, vehicle_id, vehicle_name,
+                chat_id, message_id, occurrence_count,
+                first_seen, last_seen, last_detail, status,
+                severity, location, reescalate_count, reescalate_last_sent_at,
+                alert_subkey
+            )
+            SELECT
+                id, account_id, alert_type, vehicle_id, vehicle_name,
+                chat_id, message_id, occurrence_count,
+                first_seen, last_seen, last_detail, status,
+                severity, location, reescalate_count, reescalate_last_sent_at,
+                CASE
+                    WHEN alert_type = 'events' AND instr(last_detail, ':') > 0
+                    THEN substr(last_detail, 1, instr(last_detail, ':') - 1)
+                    ELSE ''
+                END
+            FROM _alert_history_subkey_old
+        """)
+        await conn.execute("DROP TABLE _alert_history_subkey_old")
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_alert_history_active_sort "
+            "ON alert_history(account_id, status, severity, last_seen DESC)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_alert_history_active "
+            "ON alert_history(account_id, alert_type, vehicle_id, status)"
+        )
+        await conn.commit()
+        logger.info("Migration 033: alert_history alert_subkey added + UNIQUE updated")
+    except Exception as e:
+        logger.error("Migration 033 alert_subkey failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("034_phase2_legacy_warehouse_tables")
+async def migrate_phase2_legacy_warehouse_tables(conn) -> None:
+    """Backfill the Phase-2 warehouse tables that only existed in tenant DBs.
+
+    Missing-table backfill — calls to /api/fleet/weather,
+    /api/fleet/geofences, etc. were 500ing with
+    ``UndefinedTableError: relation "<table>" does not exist`` on
+    deployments that pre-dated these tables.
+
+    All ``CREATE TABLE IF NOT EXISTS`` — idempotent.
+    """
+    try:
+        # vehicle_fault_detail — per-DTC detail with cleared_at lifecycle
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS vehicle_fault_detail (
+                account_id      INTEGER NOT NULL,
+                vehicle_id      TEXT    NOT NULL,
+                dtc_id          TEXT    NOT NULL,
+                spn             INTEGER,
+                fmi             INTEGER,
+                description     TEXT    NOT NULL DEFAULT '',
+                severity        TEXT    NOT NULL DEFAULT '',
+                observed_at     TEXT    NOT NULL DEFAULT '',
+                cleared_at      TEXT,
+                raw_json        TEXT    NOT NULL DEFAULT '',
+                PRIMARY KEY (account_id, vehicle_id, dtc_id)
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_fault_detail_active "
+            "ON vehicle_fault_detail(account_id, vehicle_id, cleared_at)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_fault_detail_observed "
+            "ON vehicle_fault_detail(account_id, observed_at DESC)"
+        )
+
+        # fleet_weather_snapshot — cabin temperature per truck.
+        # Read by /api/fleet/weather; missing-table = 500.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS fleet_weather_snapshot (
+                vehicle_id      TEXT    NOT NULL PRIMARY KEY,
+                account_id      INTEGER NOT NULL,
+                vehicle_name    TEXT    NOT NULL DEFAULT '',
+                company_code    TEXT    NOT NULL DEFAULT '',
+                temp_f          REAL,
+                raw_json        TEXT    NOT NULL DEFAULT '',
+                captured_at     TEXT    NOT NULL DEFAULT '',
+                updated_at      TEXT    NOT NULL DEFAULT ''
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_fleet_weather_company "
+            "ON fleet_weather_snapshot(account_id, company_code)"
+        )
+
+        # fleet_efficiency_snapshot — windowed driver-efficiency cache.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS fleet_efficiency_snapshot (
+                account_id      INTEGER NOT NULL,
+                window_days     INTEGER NOT NULL,
+                company_code    TEXT    NOT NULL DEFAULT '',
+                payload_json    TEXT    NOT NULL DEFAULT '',
+                captured_at     TEXT    NOT NULL DEFAULT '',
+                updated_at      TEXT    NOT NULL DEFAULT '',
+                PRIMARY KEY (account_id, window_days, company_code)
+            )
+        """)
+
+        # geofence_definitions — read by /api/fleet/geofences;
+        # missing-table = 500.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS geofence_definitions (
+                geofence_id     TEXT    NOT NULL PRIMARY KEY,
+                account_id      INTEGER NOT NULL,
+                company_code    TEXT    NOT NULL DEFAULT '',
+                name            TEXT    NOT NULL DEFAULT '',
+                geofence_type   TEXT    NOT NULL DEFAULT '',
+                raw_json        TEXT    NOT NULL DEFAULT '',
+                captured_at     TEXT    NOT NULL DEFAULT '',
+                updated_at      TEXT    NOT NULL DEFAULT ''
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_geofence_definitions_company "
+            "ON geofence_definitions(account_id, company_code)"
+        )
+
+        await conn.commit()
+        logger.info("Migration 034: Phase-2 warehouse tables ensured on legacy DB")
+    except Exception as e:
+        logger.error("Migration 034 phase2 tables failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("035_warehouse_legacy_column_alignment")
+async def migrate_warehouse_legacy_column_alignment(conn) -> None:
+    """Align legacy warehouse columns with the canonical tenant schema.
+
+    Migration 028 created ``vehicle_telemetry_hourly`` and
+    ``vehicle_fault_snapshot`` for the legacy single-DB Postgres path,
+    but with column names that drifted from the tenant schema:
+
+    * ``vehicle_telemetry_hourly.top_speed_mph`` (legacy)
+      vs ``max_speed_mph`` (tenant; what the reader/ingestor query)
+    * ``vehicle_telemetry_hourly`` was missing ``harsh_event_count``
+    * ``vehicle_fault_snapshot`` was missing ``has_critical``
+
+    Result: ``UndefinedColumnError`` from production
+    (/api/vehicles/{name}/timeline 500s; scheduler fault_check crashes).
+
+    Strategy — additive only; never drop columns the legacy schema
+    already exposes.  Add the missing columns with safe defaults so
+    the codebase's tenant-shaped queries succeed; legacy callers that
+    referenced ``top_speed_mph`` keep working since that column stays.
+    """
+    # vehicle_telemetry_hourly — add the two missing columns.
+    for col, ddl in (
+        ("max_speed_mph", "REAL NOT NULL DEFAULT 0"),
+        ("harsh_event_count", "INTEGER NOT NULL DEFAULT 0"),
+    ):
+        try:
+            await conn.execute(
+                f"ALTER TABLE vehicle_telemetry_hourly ADD COLUMN {col} {ddl}"
+            )
+            await conn.commit()
+            logger.info("Migration 035: added vehicle_telemetry_hourly.%s", col)
+        except Exception as e:
+            logger.debug("vehicle_telemetry_hourly.%s skipped: %s", col, e)
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+
+    # vehicle_fault_snapshot — add has_critical.
+    try:
+        await conn.execute(
+            "ALTER TABLE vehicle_fault_snapshot "
+            "ADD COLUMN has_critical INTEGER NOT NULL DEFAULT 0"
+        )
+        await conn.commit()
+        logger.info("Migration 035: added vehicle_fault_snapshot.has_critical")
+    except Exception as e:
+        logger.debug("vehicle_fault_snapshot.has_critical skipped: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+    # Index used by the alerting hot path (sort by critical first).
+    try:
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vehicle_fault_critical "
+            "ON vehicle_fault_snapshot(account_id, has_critical)"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.debug("idx_vehicle_fault_critical skipped: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("036_warehouse_legacy_columns_v2")
+async def migrate_warehouse_legacy_columns_v2(conn) -> None:
+    """Retry 035 with explicit column-existence check.
+
+    Migration 035 wrapped each ``ALTER TABLE … ADD COLUMN`` in a generic
+    try/except so it could swallow the "duplicate column" error.  On
+    Postgres, when ANY statement in a transaction fails, every following
+    statement fails too with "current transaction is aborted" — so a
+    transient hiccup on the *first* ALTER silently flunked the rest, and
+    ``_mark_applied`` still recorded 035 as successful.  Production was
+    left without ``has_critical`` / ``max_speed_mph`` / ``harsh_event_count``
+    and the scheduler kept crashing on ``UndefinedColumnError``.
+
+    This v2 uses ``PRAGMA table_info`` (translated by pg_adapter) to
+    check column existence *before* ALTERing — the same pattern used by
+    the working migrations 031/032.  Each ALTER runs in its own clean
+    transaction so a stray failure can't poison the rest.
+    """
+    # Helper: add a column only when it's missing.
+    async def _ensure_col(table: str, col: str, ddl: str) -> None:
+        try:
+            cur = await conn.execute(f"PRAGMA table_info({table})")
+            existing = {r[1] for r in await cur.fetchall()}
+            if col in existing:
+                return
+            await conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
+            await conn.commit()
+            logger.info("Migration 036: added %s.%s", table, col)
+        except Exception as e:
+            logger.error("Migration 036: failed to add %s.%s — %s", table, col, e)
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+
+    await _ensure_col("vehicle_telemetry_hourly", "max_speed_mph",     "REAL NOT NULL DEFAULT 0")
+    await _ensure_col("vehicle_telemetry_hourly", "harsh_event_count", "INTEGER NOT NULL DEFAULT 0")
+    await _ensure_col("vehicle_fault_snapshot",   "has_critical",      "INTEGER NOT NULL DEFAULT 0")
+
+    # Critical-faults index — recreate (IF NOT EXISTS makes this safe).
+    try:
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vehicle_fault_critical "
+            "ON vehicle_fault_snapshot(account_id, has_critical)"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.debug("idx_vehicle_fault_critical skipped: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("037_safety_event_log_company_code")
+async def migrate_safety_event_log_company_code(conn) -> None:
+    """Add ``company_code`` column to ``safety_event_log``.
+
+    The dashboard's ``/api/safety/events`` route applies a
+    ``filter_by_allowed_companies`` defence-in-depth check that needs
+    each row's company.  Today that company is buried in ``raw_json``
+    and we ``json.loads`` every row just to read it — for a 30-day
+    window with ~1500 events that's hundreds of ms of pure-CPU waste
+    per request.  Promoting ``company_code`` to a real column lets
+    the reader skip the JSON decode entirely (other warehouse tables
+    already have it; this brings safety_event_log in line).
+
+    Additive, idempotent.  Old rows backfill to the empty string;
+    the ingestor populates new rows going forward.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(safety_event_log)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "company_code" in cols:
+            return
+        await conn.execute(
+            "ALTER TABLE safety_event_log "
+            "ADD COLUMN company_code TEXT NOT NULL DEFAULT ''"
+        )
+        await conn.commit()
+        logger.info("Migration 037: added safety_event_log.company_code")
+    except Exception as e:
+        logger.error("Migration 037 company_code failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("038_maintenance_alerted_at")
+async def migrate_maintenance_alerted_at(conn) -> None:
+    """Add ``alerted_at`` to ``maintenance_tasks`` for alert throttling.
+
+    See the tenant-DB twin (``migrate_add_maintenance_alerted_at``) for
+    the full rationale.  This is the legacy/single-tenant copy so old
+    deployments running off the platform DB also pick up the column.
+    Additive, idempotent.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(maintenance_tasks)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "alerted_at" in cols:
+            return
+        await conn.execute(
+            "ALTER TABLE maintenance_tasks ADD COLUMN alerted_at TEXT"
+        )
+        await conn.commit()
+        logger.info("Migration 038: added maintenance_tasks.alerted_at")
+    except Exception as e:
+        logger.error("Migration 038 alerted_at failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("039_maintenance_priority_engine_hours_columns")
+async def migrate_maintenance_priority_engine_hours_columns(conn) -> None:
+    """Add priority + engine_hours + warning_sent_at + work_order_id columns.
+
+    Twin of the tenant-DB ``migrate_extend_maintenance_tasks_columns``;
+    see that function's docstring for the per-column rationale.  Single
+    migration that adds all 6 columns idempotently so legacy single-
+    tenant deployments don't accumulate version-table rows per column.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(maintenance_tasks)")
+        cols = {r[1] for r in await cur.fetchall()}
+        to_add = [
+            ("priority",                    "TEXT NOT NULL DEFAULT 'medium'"),
+            ("due_engine_hours",            "REAL"),
+            ("last_engine_hours",           "REAL"),
+            ("recur_interval_engine_hours", "REAL"),
+            ("warning_sent_at",             "TEXT"),
+            ("work_order_id",               "INTEGER"),
+        ]
+        added = 0
+        for col_name, col_def in to_add:
+            if col_name in cols:
+                continue
+            await conn.execute(
+                f"ALTER TABLE maintenance_tasks ADD COLUMN {col_name} {col_def}"
+            )
+            added += 1
+        if added:
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_maintenance_tasks_status_priority "
+                "ON maintenance_tasks(account_id, status, priority)"
+            )
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_maintenance_tasks_work_order "
+                "ON maintenance_tasks(work_order_id)"
+            )
+            await conn.commit()
+            logger.info("Migration 039: added %d maintenance_tasks column(s)", added)
+    except Exception as e:
+        logger.error("Migration 039 phase3 columns failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("040_work_orders_skeleton")
+async def migrate_work_orders_skeleton(conn) -> None:
+    """Create work_orders / work_order_parts / work_order_attachments.
+
+    Twin of the tenant-DB ``migrate_create_work_orders_tables``.  Tables
+    only — no routes or UI yet.  See project memory
+    ``project-work-orders-module`` for the planned Work Orders module
+    that will consume these.
+    """
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS work_orders (
+                id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id               INTEGER NOT NULL,
+                company_code             TEXT    NOT NULL DEFAULT '',
+                vehicle_id               TEXT    NOT NULL DEFAULT '',
+                vehicle_name             TEXT    NOT NULL DEFAULT '',
+                vendor_name              TEXT    NOT NULL DEFAULT '',
+                vendor_address           TEXT    NOT NULL DEFAULT '',
+                vendor_phone             TEXT    NOT NULL DEFAULT '',
+                service_date             TEXT,
+                odometer_at_service      REAL,
+                engine_hours_at_service  REAL,
+                labor_cost               REAL    NOT NULL DEFAULT 0,
+                parts_cost               REAL    NOT NULL DEFAULT 0,
+                tax_amount               REAL    NOT NULL DEFAULT 0,
+                total_cost               REAL    NOT NULL DEFAULT 0,
+                invoice_number           TEXT    NOT NULL DEFAULT '',
+                payment_method           TEXT    NOT NULL DEFAULT '',
+                payment_status           TEXT    NOT NULL DEFAULT 'unpaid',
+                status                   TEXT    NOT NULL DEFAULT 'draft',
+                notes                    TEXT    NOT NULL DEFAULT '',
+                created_by               BIGINT  NOT NULL,
+                created_at               TEXT    NOT NULL,
+                updated_at               TEXT    NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_work_orders_vehicle
+                ON work_orders(account_id, vehicle_name, service_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_work_orders_status
+                ON work_orders(account_id, status);
+
+            CREATE TABLE IF NOT EXISTS work_order_parts (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                work_order_id       INTEGER NOT NULL,
+                part_name           TEXT    NOT NULL DEFAULT '',
+                part_number         TEXT    NOT NULL DEFAULT '',
+                quantity            REAL    NOT NULL DEFAULT 1,
+                unit_cost           REAL    NOT NULL DEFAULT 0,
+                total_cost          REAL    NOT NULL DEFAULT 0,
+                warranty_months     INTEGER NOT NULL DEFAULT 0,
+                notes               TEXT    NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_work_order_parts_wo
+                ON work_order_parts(work_order_id);
+
+            CREATE TABLE IF NOT EXISTS work_order_attachments (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                work_order_id       INTEGER NOT NULL,
+                file_path           TEXT    NOT NULL,
+                file_name           TEXT    NOT NULL DEFAULT '',
+                file_size           INTEGER NOT NULL DEFAULT 0,
+                content_type        TEXT    NOT NULL DEFAULT '',
+                kind                TEXT    NOT NULL DEFAULT 'other',
+                uploaded_by         BIGINT  NOT NULL,
+                uploaded_at         TEXT    NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_work_order_attachments_wo
+                ON work_order_attachments(work_order_id);
+        """)
+        await conn.commit()
+        logger.info("Migration 040: created work_orders skeleton tables")
+    except Exception as e:
+        logger.error("Migration 040 work_orders skeleton failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("041_maintenance_attestation")
+async def migrate_maintenance_attestation(conn) -> None:
+    """Add ``attested_by`` + ``attested_at`` to ``maintenance_tasks``.
+
+    Twin of the tenant-DB ``migrate_add_maintenance_attestation``.
+    Driver sign-off columns for the DOT audit trail.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(maintenance_tasks)")
+        cols = {r[1] for r in await cur.fetchall()}
+        added = 0
+        for col_name, col_def in [
+            ("attested_by", "BIGINT"),
+            ("attested_at", "TEXT"),
+        ]:
+            if col_name in cols:
+                continue
+            await conn.execute(
+                f"ALTER TABLE maintenance_tasks ADD COLUMN {col_name} {col_def}"
+            )
+            added += 1
+        if added:
+            await conn.commit()
+            logger.info("Migration 041: added %d attestation column(s)", added)
+    except Exception as e:
+        logger.error("Migration 041 attestation failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("042_maintenance_spawned_from_id")
+async def migrate_maintenance_spawned_from(conn) -> None:
+    """Add ``spawned_from_id`` to ``maintenance_tasks`` (legacy DB).
+
+    Twin of the tenant-DB ``migrate_add_maintenance_spawned_from``;
+    lineage column for the dashboard's auto-renewal breadcrumb.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(maintenance_tasks)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "spawned_from_id" in cols:
+            return
+        await conn.execute(
+            "ALTER TABLE maintenance_tasks ADD COLUMN spawned_from_id INTEGER"
+        )
+        await conn.commit()
+        logger.info("Migration 042: added maintenance_tasks.spawned_from_id")
+    except Exception as e:
+        logger.error("Migration 042 spawned_from_id failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+# ── Driver Module — legacy SQLite migrations ──────────────────
+#
+# Same logical migrations as the ones in ``platform_migrations.py``
+# but registered with version IDs so they apply to legacy single-file
+# SQLite databases (which is also what the test harness uses).  Each
+# is internally idempotent so running BOTH the legacy-versioned path
+# AND the platform-migration path is safe.
+
+
+@_register("042b_users_samsara_driver_id")
+async def migrate_users_samsara_driver_id(conn) -> None:
+    """Add ``users.samsara_driver_id`` — twin of the migration in
+    ``platform_migrations.py``.  Required so the new driver-profile
+    SELECT (which reads samsara_driver_id) doesn't ``no such column``
+    on legacy single-file SQLite databases."""
+    try:
+        cur = await conn.execute("PRAGMA table_info(users)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "samsara_driver_id" not in cols:
+            await conn.execute(
+                "ALTER TABLE users ADD COLUMN samsara_driver_id TEXT"
+            )
+            await conn.commit()
+            logger.info("Migration 042b: added users.samsara_driver_id")
+    except Exception as e:
+        logger.error("Migration 042b failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("043_driver_profile_columns")
+async def migrate_driver_profile_columns(conn) -> None:
+    """Add 11 driver-profile columns to users (CDL, medical, hire date,
+    contact).  All nullable; non-driver rows unaffected."""
+    cols_to_add = (
+        ("cdl_number",       "TEXT"),
+        ("cdl_state",        "TEXT"),
+        ("cdl_class",        "TEXT"),
+        ("cdl_expires",      "TEXT"),
+        ("med_card_expires", "TEXT"),
+        ("hire_date",        "TEXT"),
+        ("termination_date", "TEXT"),
+        ("dob",              "TEXT"),
+        ("phone",            "TEXT"),
+        ("home_address",     "TEXT"),
+        ("driver_notes",     "TEXT"),
+    )
+    try:
+        cur = await conn.execute("PRAGMA table_info(users)")
+        cols = {r[1] for r in await cur.fetchall()}
+        added = 0
+        for name, sqltype in cols_to_add:
+            if name not in cols:
+                await conn.execute(
+                    f"ALTER TABLE users ADD COLUMN {name} {sqltype}"
+                )
+                added += 1
+        if added:
+            await conn.commit()
+            logger.info("Migration 043: added %d driver-profile column(s)", added)
+    except Exception as e:
+        logger.error("Migration 043 driver-profile failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("044_driver_vehicle_assignments")
+async def migrate_create_driver_vehicle_assignments(conn) -> None:
+    """Create driver_vehicle_assignments — single source of truth for
+    driver↔vehicle mapping with history."""
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS driver_vehicle_assignments (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                user_id         INTEGER NOT NULL,
+                vehicle_name    TEXT    NOT NULL,
+                vehicle_id      TEXT,
+                is_primary      INTEGER NOT NULL DEFAULT 0,
+                assigned_by     INTEGER,
+                assigned_at     TEXT    NOT NULL,
+                unassigned_at   TEXT,
+                notes           TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_dva_active
+                ON driver_vehicle_assignments(user_id, unassigned_at);
+            CREATE INDEX IF NOT EXISTS idx_dva_vehicle
+                ON driver_vehicle_assignments(account_id, vehicle_name, unassigned_at);
+            CREATE INDEX IF NOT EXISTS idx_dva_account
+                ON driver_vehicle_assignments(account_id, unassigned_at);
+        """)
+        await conn.commit()
+        logger.info("Migration 044: created driver_vehicle_assignments")
+    except Exception as e:
+        logger.error("Migration 044 driver_vehicle_assignments failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("045_driver_documents")
+async def migrate_create_driver_documents(conn) -> None:
+    """Create driver_documents — per-driver document store with
+    expiration tracking.  Files are addressed via ``object_key`` in
+    the existing ``ObjectStore`` (Google Drive or local disk)."""
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS driver_documents (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                user_id         INTEGER NOT NULL,
+                doc_type        TEXT    NOT NULL,
+                bucket          TEXT    NOT NULL DEFAULT 'driver_documents',
+                object_key      TEXT    NOT NULL,
+                drive_file_id   TEXT,
+                file_name       TEXT    NOT NULL,
+                file_size       INTEGER,
+                mime_type       TEXT,
+                issued_at       TEXT,
+                expires_at      TEXT,
+                status          TEXT    NOT NULL DEFAULT 'active',
+                uploaded_by     INTEGER,
+                uploaded_at     TEXT    NOT NULL,
+                notes           TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_docs_user
+                ON driver_documents(user_id, status);
+            CREATE INDEX IF NOT EXISTS idx_docs_expiring
+                ON driver_documents(account_id, expires_at, status);
+            CREATE INDEX IF NOT EXISTS idx_docs_account_type
+                ON driver_documents(account_id, doc_type, status);
+        """)
+        await conn.commit()
+        logger.info("Migration 045: created driver_documents")
+    except Exception as e:
+        logger.error("Migration 045 driver_documents failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("046_account_storage_quota")
+async def migrate_add_account_storage_quota(conn) -> None:
+    """Add storage_quota_bytes / storage_used_bytes to accounts (for
+    local-disk-fallback quota enforcement)."""
+    try:
+        cur = await conn.execute("PRAGMA table_info(accounts)")
+        cols = {r[1] for r in await cur.fetchall()}
+        added = 0
+        if "storage_quota_bytes" not in cols:
+            await conn.execute(
+                "ALTER TABLE accounts ADD COLUMN storage_quota_bytes "
+                "INTEGER NOT NULL DEFAULT 524288000"
+            )
+            added += 1
+        if "storage_used_bytes" not in cols:
+            await conn.execute(
+                "ALTER TABLE accounts ADD COLUMN storage_used_bytes "
+                "INTEGER NOT NULL DEFAULT 0"
+            )
+            added += 1
+        if added:
+            await conn.commit()
+            logger.info("Migration 046: added %d storage-quota column(s)", added)
+    except Exception as e:
+        logger.error("Migration 046 storage-quota failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("047_driver_vehicle_assignments_backfill")
+async def migrate_backfill_driver_vehicle_assignments(conn) -> None:
+    """Backfill driver_vehicle_assignments from existing data sources
+    (driver_trucks first, then users.truck_num).  Additive only — no
+    deletes."""
+    try:
+        cur = await conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name='driver_vehicle_assignments'"
+        )
+        if not (await cur.fetchone()):
+            return
+
+        now = __import__("datetime").datetime.utcnow().isoformat()
+        inserted = 0
+
+        # 1) From driver_trucks
+        cur = await conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name='driver_trucks'"
+        )
+        if await cur.fetchone():
+            cur = await conn.execute(
+                "SELECT dt.user_id, dt.account_id, dt.truck_num, "
+                "       dt.is_primary, COALESCE(dt.assigned_by, 0), "
+                "       COALESCE(dt.assigned_at, ?) "
+                "FROM driver_trucks dt "
+                "WHERE NOT EXISTS ("
+                "    SELECT 1 FROM driver_vehicle_assignments dva "
+                "    WHERE dva.user_id = dt.user_id "
+                "      AND dva.vehicle_name = dt.truck_num "
+                "      AND dva.unassigned_at IS NULL"
+                ")",
+                (now,),
+            )
+            for user_id, acct_id, vehicle, is_primary, by_id, at in await cur.fetchall():
+                await conn.execute(
+                    "INSERT INTO driver_vehicle_assignments "
+                    "(account_id, user_id, vehicle_name, is_primary, "
+                    " assigned_by, assigned_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (acct_id, user_id, vehicle, is_primary, by_id, at),
+                )
+                inserted += 1
+
+        # 2) From users.truck_num for drivers still missing an active row
+        cur = await conn.execute(
+            "SELECT u.id, u.account_id, u.truck_num FROM users u "
+            "WHERE u.truck_num IS NOT NULL AND u.truck_num != '' "
+            "  AND u.is_active = 1 "
+            "  AND NOT EXISTS ("
+            "      SELECT 1 FROM driver_vehicle_assignments dva "
+            "      WHERE dva.user_id = u.id "
+            "        AND dva.unassigned_at IS NULL"
+            "  )"
+        )
+        for user_id, acct_id, truck in await cur.fetchall():
+            await conn.execute(
+                "INSERT INTO driver_vehicle_assignments "
+                "(account_id, user_id, vehicle_name, is_primary, "
+                " assigned_by, assigned_at) "
+                "VALUES (?, ?, ?, 1, 0, ?)",
+                (acct_id, user_id, truck, now),
+            )
+            inserted += 1
+
+        if inserted:
+            await conn.commit()
+            logger.info("Migration 047: backfilled %d driver_vehicle_assignments row(s)", inserted)
+    except Exception as e:
+        logger.error("Migration 047 backfill failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("048_driver_document_notifications")
+async def migrate_create_driver_document_notifications(conn) -> None:
+    """Per-(doc_id, bucket_days) ledger for the daily expiration scheduler.
+
+    The composite PK is the dedup hook — re-running the scheduler the
+    same day or weeks later won't re-fire an already-sent bucket for
+    the same doc.
+    """
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS driver_document_notifications (
+                doc_id        INTEGER NOT NULL,
+                bucket_days   INTEGER NOT NULL,
+                notified_at   TEXT    NOT NULL,
+                PRIMARY KEY (doc_id, bucket_days)
+            );
+            CREATE INDEX IF NOT EXISTS idx_doc_notif_doc
+                ON driver_document_notifications(doc_id);
+        """)
+        await conn.commit()
+        logger.info("Migration 048: created driver_document_notifications table")
+    except Exception as e:
+        logger.error("Migration 048 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("049_payroll_tables")
+async def migrate_create_payroll_tables(conn) -> None:
+    """Create payroll tables on the unified Database.
+
+    Historically these lived on ``TenantDB`` and were created by
+    ``tenant_schema.create_tables``.  After the platform/tenant DB
+    unification they need an explicit migration so SQLite-mode tenants
+    pick them up on the next startup (``_initialize_sqlite`` doesn't
+    run ``platform_migrations.run_all``).
+
+    Idempotent — CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS
+    means a re-run is a no-op for tenants already on the new schema.
+    """
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS bonus_rules (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                name            TEXT    NOT NULL,
+                kind            TEXT    NOT NULL DEFAULT 'score_threshold',
+                score_min       REAL,
+                event_type      TEXT,
+                max_count       INTEGER,
+                period_days     INTEGER NOT NULL DEFAULT 30,
+                amount_cents    INTEGER NOT NULL DEFAULT 0,
+                active          INTEGER NOT NULL DEFAULT 1,
+                created_at      TEXT    NOT NULL DEFAULT '',
+                updated_at      TEXT    NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_bonus_rules_account
+                ON bonus_rules(account_id, active);
+
+            CREATE TABLE IF NOT EXISTS driver_pay_settings (
+                account_id      INTEGER NOT NULL,
+                driver_id       TEXT    NOT NULL,
+                base_pay_cents  INTEGER NOT NULL DEFAULT 0,
+                opt_in          INTEGER NOT NULL DEFAULT 1,
+                updated_at      TEXT    NOT NULL DEFAULT '',
+                PRIMARY KEY (account_id, driver_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS payroll_runs (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                period_start    TEXT    NOT NULL,
+                period_end      TEXT    NOT NULL,
+                status          TEXT    NOT NULL DEFAULT 'draft',
+                created_by      INTEGER NOT NULL DEFAULT 0,
+                created_at      TEXT    NOT NULL DEFAULT '',
+                finalized_at    TEXT,
+                total_cents     INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(account_id, period_start, period_end)
+            );
+            CREATE INDEX IF NOT EXISTS idx_payroll_runs_account
+                ON payroll_runs(account_id, period_start);
+
+            CREATE TABLE IF NOT EXISTS payroll_run_items (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id            INTEGER NOT NULL REFERENCES payroll_runs(id),
+                driver_id         TEXT    NOT NULL,
+                driver_name       TEXT    NOT NULL DEFAULT '',
+                base_pay_cents    INTEGER NOT NULL DEFAULT 0,
+                bonus_total_cents INTEGER NOT NULL DEFAULT 0,
+                total_cents       INTEGER NOT NULL DEFAULT 0,
+                breakdown_json    TEXT    NOT NULL DEFAULT '[]',
+                created_at        TEXT    NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_payroll_items_run
+                ON payroll_run_items(run_id);
+            CREATE INDEX IF NOT EXISTS idx_payroll_items_driver
+                ON payroll_run_items(driver_id);
+        """)
+        await conn.commit()
+        logger.info("Migration 049: created payroll tables")
+    except Exception as e:
+        logger.error("Migration 049 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("050_driver_future_tables")
+async def migrate_create_driver_future_tables(conn) -> None:
+    """Foundation tables for upcoming driver-facing modules.
+
+    Schema-only — the full features (inspections, trainings, HOS
+    cache) land in follow-on PRs.  Tables are created now so the
+    migration ordering stays simple and adapter stubs in
+    ``capabilities/drivers/`` can be filled in without another schema
+    migration.
+
+    Idempotent.
+    """
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS driver_inspections (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                user_id         INTEGER NOT NULL,
+                vehicle_name    TEXT,
+                inspection_type TEXT    NOT NULL,
+                status          TEXT    NOT NULL DEFAULT 'pass',
+                inspected_at    TEXT    NOT NULL,
+                defects_json    TEXT,
+                notes           TEXT,
+                created_at      TEXT    NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_inspections_user
+                ON driver_inspections(user_id, inspected_at);
+            CREATE INDEX IF NOT EXISTS idx_inspections_account
+                ON driver_inspections(account_id, inspected_at);
+
+            CREATE TABLE IF NOT EXISTS driver_trainings (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id         INTEGER NOT NULL,
+                user_id            INTEGER NOT NULL,
+                training_type      TEXT    NOT NULL,
+                provider           TEXT,
+                completed_at       TEXT,
+                expires_at         TEXT,
+                certificate_doc_id INTEGER,
+                status             TEXT    NOT NULL DEFAULT 'completed',
+                notes              TEXT,
+                created_at         TEXT    NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_trainings_user
+                ON driver_trainings(user_id, status);
+            CREATE INDEX IF NOT EXISTS idx_trainings_expiring
+                ON driver_trainings(account_id, expires_at);
+
+            CREATE TABLE IF NOT EXISTS driver_hos_status (
+                user_id                 INTEGER PRIMARY KEY,
+                account_id              INTEGER NOT NULL,
+                samsara_driver_id       TEXT,
+                duty_status             TEXT,
+                drive_seconds_today     INTEGER DEFAULT 0,
+                on_duty_seconds_today   INTEGER DEFAULT 0,
+                cycle_seconds_remaining INTEGER,
+                shift_seconds_remaining INTEGER,
+                last_status_change      TEXT,
+                updated_at              TEXT    NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_hos_account
+                ON driver_hos_status(account_id);
+        """)
+        await conn.commit()
+        logger.info("Migration 050: created driver_inspections / trainings / hos_status")
+    except Exception as e:
+        logger.error("Migration 050 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("051_coaching_tables")
+async def migrate_create_coaching_tables(conn) -> None:
+    """Create coaching tables on the unified Database.
+
+    Historically these lived on ``TenantDB`` and were created by
+    ``tenant_schema.create_tables``.  Same gap as 049 (payroll) — the
+    SQLite-mode init path doesn't run platform_migrations, so we
+    need an explicit migration here.
+
+    Idempotent.
+    """
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS coaching_topics (
+                account_id       INTEGER NOT NULL,
+                key              TEXT    NOT NULL,
+                label            TEXT    NOT NULL DEFAULT '',
+                default_message  TEXT    NOT NULL DEFAULT '',
+                active           INTEGER NOT NULL DEFAULT 1,
+                updated_at       TEXT    NOT NULL DEFAULT '',
+                PRIMARY KEY (account_id, key)
+            );
+
+            CREATE TABLE IF NOT EXISTS coaching_rules (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                name            TEXT    NOT NULL,
+                kind            TEXT    NOT NULL DEFAULT 'score_threshold',
+                score_max       REAL,
+                event_type      TEXT,
+                min_count       INTEGER,
+                period_days     INTEGER NOT NULL DEFAULT 7,
+                topic_key       TEXT    NOT NULL DEFAULT '',
+                severity        TEXT    NOT NULL DEFAULT 'medium',
+                message         TEXT    NOT NULL DEFAULT '',
+                active          INTEGER NOT NULL DEFAULT 1,
+                created_at      TEXT    NOT NULL DEFAULT '',
+                updated_at      TEXT    NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_coaching_rules_account
+                ON coaching_rules(account_id, active);
+
+            CREATE TABLE IF NOT EXISTS coaching_assignments (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                driver_id       TEXT    NOT NULL,
+                rule_id         INTEGER,
+                topic_key       TEXT    NOT NULL DEFAULT '',
+                severity        TEXT    NOT NULL DEFAULT 'medium',
+                reason          TEXT    NOT NULL DEFAULT '',
+                status          TEXT    NOT NULL DEFAULT 'pending',
+                assigned_by     INTEGER NOT NULL DEFAULT 0,
+                assigned_at     TEXT    NOT NULL DEFAULT '',
+                due_at          TEXT,
+                acknowledged_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_coaching_assignments_account
+                ON coaching_assignments(account_id, status);
+            CREATE INDEX IF NOT EXISTS idx_coaching_assignments_driver
+                ON coaching_assignments(account_id, driver_id, status);
+
+            CREATE TABLE IF NOT EXISTS coaching_acknowledgments (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                assignment_id   INTEGER NOT NULL REFERENCES coaching_assignments(id),
+                driver_id       TEXT    NOT NULL,
+                acked_at        TEXT    NOT NULL DEFAULT '',
+                note            TEXT    NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_coaching_acks_assignment
+                ON coaching_acknowledgments(assignment_id);
+        """)
+        await conn.commit()
+        logger.info("Migration 051: created coaching tables")
+    except Exception as e:
+        logger.error("Migration 051 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("052_account_timezone")
+async def migrate_add_account_timezone(conn) -> None:
+    """Add ``accounts.timezone`` for the account-level timezone default.
+
+    Per-user ``users.timezone`` is the optional override; this column
+    is the account-wide default that admins set via Settings, and the
+    fallback every cron + display formatter consults via
+    ``capabilities.localization.tz.effective_tz_for_*``.
+    Idempotent.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(accounts)")
+        existing = {r[1] for r in await cur.fetchall()}
+        if "timezone" in existing:
+            return
+        await conn.execute(
+            "ALTER TABLE accounts ADD COLUMN timezone "
+            "TEXT NOT NULL DEFAULT 'America/New_York'"
+        )
+        await conn.commit()
+        logger.info("Migration 052: added accounts.timezone column")
+    except Exception as e:
+        logger.error("Migration 052 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("053_forum_routing")
+async def migrate_forum_routing(conn) -> None:
+    """Tables for per-account Telegram forum groups + alert→topic routing.
+
+    ``forum_groups`` binds an account to its Telegram supergroup (one
+    per account); ``alert_routing`` maps each canonical alert type to
+    a specific topic (``message_thread_id``) inside that group.
+
+    Both tables are additive — no existing alert delivery code reads
+    them yet.  The pipeline refactor in Phase 4 turns them on.
+    """
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS forum_groups (
+                account_id          INTEGER PRIMARY KEY REFERENCES accounts(id),
+                chat_id             BIGINT  NOT NULL,
+                chat_title          TEXT    NOT NULL DEFAULT '',
+                is_forum_enabled    INTEGER NOT NULL DEFAULT 0,
+                setup_status        TEXT    NOT NULL DEFAULT 'pending',
+                last_setup_at       TEXT,
+                last_repair_at      TEXT,
+                created_by_user_id  INTEGER NOT NULL REFERENCES users(id),
+                created_at          TEXT    NOT NULL,
+                updated_at          TEXT    NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_forum_groups_chat
+                ON forum_groups(chat_id);
+
+            CREATE TABLE IF NOT EXISTS alert_routing (
+                id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id              INTEGER NOT NULL REFERENCES accounts(id),
+                alert_type              TEXT    NOT NULL,
+                chat_id                 BIGINT  NOT NULL,
+                message_thread_id       BIGINT  NOT NULL,
+                topic_name_snapshot     TEXT    NOT NULL DEFAULT '',
+                icon_emoji              TEXT    NOT NULL DEFAULT '',
+                is_active               INTEGER NOT NULL DEFAULT 1,
+                created_at              TEXT    NOT NULL,
+                updated_at              TEXT    NOT NULL,
+                UNIQUE(account_id, alert_type)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_alert_routing_account
+                ON alert_routing(account_id, is_active);
+        """)
+        await conn.commit()
+        logger.info("Migration 053: created forum_groups + alert_routing tables")
+    except Exception as e:
+        logger.error("Migration 053 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
+@_register("054_forum_topics_seen")
+async def migrate_forum_topics_seen(conn) -> None:
+    """Index of forum topics observed by the bot.
+
+    Populated by service-message handlers (forum_topic_created /
+    forum_topic_edited) — these fire whenever any member or the bot
+    itself creates or renames a topic in a forum group.  The
+    ``/setupforum`` and ``/repairforum`` commands consult this
+    index *before* calling ``createForumTopic``: when a topic with
+    the target name already exists in the chat (e.g. an orphan
+    from a previous timed-out create attempt), the bot adopts it
+    instead of creating a duplicate.
+
+    Telegram's Bot API has no ``getForumTopics`` method, so this
+    table is the only way for the bot to know what topics exist
+    in a forum chat.  Bootstrapping happens organically: every
+    topic event sent in the chat updates the index.
+    """
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS forum_topics_seen (
+                chat_id           BIGINT NOT NULL,
+                message_thread_id BIGINT NOT NULL,
+                name              TEXT   NOT NULL,
+                last_seen_at      TEXT   NOT NULL,
+                PRIMARY KEY (chat_id, message_thread_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_forum_topics_seen_name
+                ON forum_topics_seen(chat_id, name);
+        """)
+        await conn.commit()
+        logger.info("Migration 054: created forum_topics_seen table")
+    except Exception as e:
+        logger.error("Migration 054 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
+@_register("055_vehicle_state_engine_hours")
+async def migrate_vehicle_state_engine_hours(conn) -> None:
+    """Add ``vehicle_state.engine_hours`` + ``engine_hours_time``.
+
+    Without these columns, ``mark_overdue_tasks_by_engine_hours`` exits
+    early ("warehouse has no engine_hours yet") and engine-hours
+    maintenance tasks never flip to overdue.  Adds the parallel of
+    ``odometer_mi`` / ``odometer_time`` so the ingestor can stamp the
+    cumulative OBD engine-hours counter on each 60s refresh.
+
+    Idempotent — silently no-ops when the columns are already present
+    (same pattern as migration 029).
+    """
+    for col, ddl in (
+        ("engine_hours",      "ALTER TABLE vehicle_state ADD COLUMN engine_hours REAL"),
+        ("engine_hours_time", "ALTER TABLE vehicle_state ADD COLUMN engine_hours_time TEXT"),
+    ):
+        try:
+            await conn.execute(ddl)
+            await conn.commit()
+            logger.info("Migration 055: added vehicle_state.%s", col)
+        except Exception as e:
+            logger.debug("vehicle_state.%s migration skipped: %s", col, e)
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+
+
+@_register("056_maintenance_tasks_last_odometer")
+async def migrate_maintenance_tasks_last_odometer(conn) -> None:
+    """Add the missing ``maintenance_tasks.last_odometer`` column.
+
+    The column is referenced across the storage adapter, scheduler
+    service, bot UI, and DOT-binder report, but no prior migration
+    ever created it.  Production overdue-mileage cron fails with
+    ``UndefinedColumnError: column "last_odometer" of relation
+    "maintenance_tasks" does not exist`` every 6 hours until this lands.
+
+    Twin of ``last_engine_hours`` added in migration 039 — same shape
+    (REAL, nullable, filled in by ``update_maintenance_last_odometer_bulk``
+    on each scheduler tick).
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE maintenance_tasks ADD COLUMN last_odometer REAL"
+        )
+        await conn.commit()
+        logger.info("Migration 056: added maintenance_tasks.last_odometer")
+    except Exception as e:
+        logger.debug("maintenance_tasks.last_odometer migration skipped: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass

@@ -6,9 +6,7 @@ duplicating Samsara client interaction + company-display setup.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
 
-from constants import METERS_PER_MILE
 from infra.services import get_client
 from capabilities.vehicles.service import prepare_companies
 

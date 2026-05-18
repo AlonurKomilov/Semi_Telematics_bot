@@ -5,7 +5,7 @@ Each rule is a pure function over the merged ``signals`` dict produced by
 returns the number of times the rule fires for the window; the engine
 multiplies that by ``points`` (clamped by ``cap``) — *legacy flat path*.
 
-Audit Option C added a parallel **curve path**: when ``curve_kind`` is
+added a parallel **curve path**: when ``curve_kind`` is
 non-null the rule evaluates as a smooth linear ramp over an exposure
 metric (miles / drive-hours / pct), letting Safety penalties scale with
 how much a driver actually drove instead of crossing brittle thresholds.
@@ -268,8 +268,14 @@ DEFAULT_RULES: tuple[Rule, ...] = (
         ) else 0,
     ),
     Rule(
+        # the label "All assigned trucks fault-free" read
+        # as a driver-behavior win, but the driver doesn't control DTCs.
+        # Re-labelled to make it explicit this is a vehicle-health
+        # signal that happens to live in the driver-compliance pillar
+        # because compliance is where we surface fleet hygiene.
+        # Cap stays at +8 (small reward) so it doesn't dominate score.
         id="compliance.vehicle_health_clean",
-        label="All assigned trucks fault-free",
+        label="Paired truck fault-free (vehicle hygiene)",
         category="compliance", pillar=PILLAR_COMPLIANCE, kind="bonus", points=4, cap=8,
         condition=lambda s: 1 if (
             s.get("vehicle_health", {}).get("vehicles_assigned", 0) > 0

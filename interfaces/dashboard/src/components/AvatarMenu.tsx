@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Settings, LogOut, ChevronDown } from 'lucide-react';
+import { UserCog, LogOut, ChevronDown } from 'lucide-react';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { useAuth } from '../context/AuthContext';
 
@@ -74,12 +74,16 @@ export function AvatarMenu() {
             <p className="text-xs text-muted-foreground capitalize mt-0.5">{role}</p>
           </div>
 
-          {/* User actions */}
+          {/* AvatarMenu is the *personal* menu — only "things about
+              me".  Account-wide settings (admins only) live in the
+              sidebar under Admin → Settings, so they're discoverable
+              alongside other admin pages instead of buried in the
+              user dropdown. */}
           <div className="py-1">
             <MenuButton
-              icon={<Settings size={14} />}
-              label="Account Settings"
-              onClick={() => go('/admin/settings')}
+              icon={<UserCog size={14} />}
+              label="My Profile"
+              onClick={() => go('/profile')}
             />
           </div>
 

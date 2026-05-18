@@ -6,12 +6,11 @@ Uses a temporary in-memory database for isolation.
 import os
 import pytest
 import pytest_asyncio
-from unittest.mock import patch
 
 # Ensure encryption is not active during DB tests (unless explicitly tested)
 os.environ.setdefault("ENCRYPTION_KEY", "")
 
-from adapters.storage import Database, Role, Account, Company, User, Invite
+from adapters.storage import Role, Account, User, Invite
 
 
 # ── Fixtures ──────────────────────────────────────────────────────

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
 
 from .core import _DatabaseCore
 from .accounts import AccountsMixin
@@ -14,6 +13,11 @@ from .chats import ChatsMixin
 from .knowledge import KnowledgeBaseMixin
 from .permissions import PermissionsMixin
 from .driver_vehicles import DriverVehiclesMixin
+from .drivers import (
+    DriverProfileMixin,
+    DriverVehicleAssignmentsMixin,
+    DriverDocumentsMixin,
+)
 from .user_companies import UserCompaniesMixin
 from .billing import BillingMixin
 from .ai_chat import AIChatHistoryMixin
@@ -31,6 +35,9 @@ class PlatformDB(
     KnowledgeBaseMixin,
     PermissionsMixin,
     DriverVehiclesMixin,
+    DriverProfileMixin,
+    DriverVehicleAssignmentsMixin,
+    DriverDocumentsMixin,
     UserCompaniesMixin,
     BillingMixin,
     AIChatHistoryMixin,
@@ -42,22 +49,17 @@ class PlatformDB(
     """
 
     async def initialize(self):
-        """Open DB and create platform schema."""
-        os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
-        self._db = await self._open_connection()
-        await platform_schema.create_tables(self._db)
-        await platform_migrations.run_all(self._db)
+        """Open the PG pool and create the platform schema.
 
-        # Spin up read pool
-        for _ in range(self._pool_size):
-            conn = await self._open_connection()
-            self._all_readers.append(conn)
-            self._read_pool.put_nowait(conn)
-
-        logger.info(
-            "Platform DB ready at %s (writer + %d readers)",
-            self.path, self._pool_size,
-        )
+        Delegates to ``_DatabaseCore.initialize`` (which opens the
+        asyncpg pool and runs both tenant ``schema`` / ``migrations``
+        and platform ``platform_schema`` / ``platform_migrations``) so
+        PlatformDB shares the production code path; the override is
+        only needed because the constructor was historically the
+        single entry point used by the test suite.
+        """
+        await super().initialize()
+        logger.info("Platform DB ready (PostgreSQL)")
 
     # ── Error log (built-in error reporter) ─────────────────────
 

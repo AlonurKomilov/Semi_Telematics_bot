@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
 
 from capabilities.ai.registry import (
     MODEL_REGISTRY,
@@ -690,7 +689,6 @@ async def generate(prompt: str, system: str = ASSISTANT_SYSTEM,
                    language: str = "en",
                    user_context: dict | None = None) -> str:
     """Generate a response with automatic fallback on 429."""
-    import asyncio
 
     _saved_exc: Exception | None = None
     try:

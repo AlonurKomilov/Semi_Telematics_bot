@@ -4,7 +4,7 @@ the window.
 
 Driver↔truck mapping comes from the efficiency record's
 ``_vehicle_summaries`` (already loaded for the efficiency signal), so
-no extra DB join is needed for Phase 1.
+no extra DB join is needed for .
 """
 
 from __future__ import annotations

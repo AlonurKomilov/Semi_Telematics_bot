@@ -1,6 +1,5 @@
 """Cost-Per-Mile Dashboard — fuel cost / odometer miles per truck."""
 
-import asyncio
 import io
 import csv
 from datetime import datetime as _dt
@@ -15,7 +14,8 @@ from capabilities.costs.service import compute_fleet_cpm
 from adapters.samsara.client import populate_company_display
 from infra.context import get_company_display
 
-from interfaces.bot.config import logger, get_client, get_tenant_db
+from interfaces.bot.config import logger
+from interfaces.bot.state import get_tenant_db
 from interfaces.bot.keyboards import back_kb, costmile_format_kb
 from interfaces.bot.helpers import _show, _show_loading, _safe_error
 from interfaces.bot.auth import _require_registered

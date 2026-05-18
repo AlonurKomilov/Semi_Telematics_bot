@@ -88,21 +88,42 @@ def _render_parking_map(lat: float, lng: float) -> bytes | None:
 
 async def _save_parking_map(
     account_id: int, vehicle_id: str, lat: float, lng: float,
+    tenant_db,
+    company_code: str = "",
 ) -> str:
-    """Render and save a parking map image to the configured object
-    store for dashboard display.
+    """Render and save a parking-event map image to the account's
+    configured object store.
 
-    Returns the URL/relative path on success, or "" on failure.
+    Routes through ``get_object_store_for_account`` so when an account
+    has connected Google Drive, parking-map screenshots land in their
+    Drive at the same hierarchy used by work orders and dashcam
+    captures.  ``tenant_db`` is passed in by the caller (parking
+    check loop) which already has a resolved tenant handle — avoids a
+    redundant ``get_tenant_db`` call per event.
+
+    ``company_code`` routes the image into the per-company Drive
+    folder; empty falls back to ``unnamed-company``.
+
+    Returns the URL/object-store path on success, or "" on failure.
     """
     import asyncio
     map_bytes = await asyncio.to_thread(_render_parking_map, lat, lng)
     if not map_bytes:
         return ""
     try:
-        from adapters.storage.object_store import get_object_store
+        from adapters.storage.object_store import get_object_store_for_account
+        from capabilities.work_orders.storage import resolve_company_folder
         safe_vid = vehicle_id.replace("/", "_").replace("\\", "_")
-        key = f"{account_id}_{safe_vid}.png"
-        return get_object_store().put("parking_maps", key, map_bytes)
+        # Mirrors the work-orders + camera-images layout so a user
+        # browsing their Drive sees consistent ``{COMPANY}/...``
+        # folders across modules.
+        company_folder = await resolve_company_folder(
+            tenant_db, account_id, company_code,
+        )
+        bucket = f"{company_folder}/parking-maps"
+        key = f"{safe_vid}.png"
+        store = await get_object_store_for_account(account_id, tenant_db)
+        return store.put(bucket, key, map_bytes)
     except Exception as e:
         logger.debug("Failed to save parking map: %s", e)
         return ""

@@ -19,8 +19,7 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from pydantic import BaseModel, Field
 
-from interfaces.api.deps import get_current_user, get_platform_db, require_permission
-from adapters.storage.models import Role
+from interfaces.api.deps import get_platform_db, require_permission
 
 logger = logging.getLogger(__name__)
 

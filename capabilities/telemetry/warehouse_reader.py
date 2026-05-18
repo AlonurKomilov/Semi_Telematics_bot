@@ -1,4 +1,4 @@
-"""Phase C — warehouse reader facade.
+"""warehouse reader facade.
 
 Thin layer that the API routes call.  Inspects the
 ``WAREHOUSE_READS_ENABLED`` config flag and either:
@@ -63,6 +63,8 @@ def _warehouse_row_to_overview(row: dict[str, Any]) -> dict[str, Any]:
     """
     odometer_miles = row.get("odometer_mi")
     odometer_time = row.get("odometer_time")
+    engine_hours = row.get("engine_hours")
+    engine_hours_time = row.get("engine_hours_time")
     return {
         "id":   row.get("vehicle_id"),
         "name": row.get("vehicle_name") or "",
@@ -89,6 +91,13 @@ def _warehouse_row_to_overview(row: dict[str, Any]) -> dict[str, Any]:
         # in the vehicles route can consume it without knowing whether
         # the row came from the warehouse or a live Samsara fallback.
         "odometer": {"miles": odometer_miles, "time": odometer_time} if odometer_miles is not None else {},
+        # Engine hours follows the same pattern — nested dict so
+        # ``_extract_engine_hours`` works the same against warehouse
+        # rows and a hypothetical live shape.
+        "engine_hours_reading": (
+            {"hours": engine_hours, "time": engine_hours_time}
+            if engine_hours is not None else {}
+        ),
         # Approximate fault payload \u2014 enough for ``_extract_fault_count``
         # to return the warehouse-tracked count without reshaping.
         "fault_codes": {
@@ -147,8 +156,15 @@ async def get_safety_events(
     vehicle_id: str | None = None,
     driver_id: str | None = None,
     samsara_fallback=None,
+    include_raw: bool = True,
 ) -> list[dict[str, Any]]:
-    """Return safety events from the warehouse, or fall back to live."""
+    """Return safety events from the warehouse, or fall back to live.
+
+    *include_raw* (passthrough to the DB layer) — set False from
+    list-view callers (dashboard `/safety/events`) to skip the per-row
+    ``json.loads(raw_json)``.  Alerting + reporting flows keep the
+    default True because they need the full live-Samsara event shape.
+    """
     if not _enabled():
         if samsara_fallback is None:
             return []
@@ -163,6 +179,7 @@ async def get_safety_events(
         event_type=event_type,
         vehicle_id=vehicle_id,
         driver_id=driver_id,
+        include_raw=include_raw,
     )
     if not rows and samsara_fallback is not None:
         return await samsara_fallback()
@@ -200,7 +217,7 @@ async def get_vehicle_telemetry_hourly(
     vehicle_id: str | None = None,
     hours: int = 168,
 ) -> list[dict[str, Any]]:
-    """Per-vehicle hourly roll-up window (Phase E25 — VehicleDetail
+    """Per-vehicle hourly roll-up window (VehicleDetail
     timeline).  Always reads from the warehouse: this data has no
     live-Samsara equivalent (it's an aggregation produced by the
     fan-out job).  Returns an empty list when the flag is off or the
@@ -216,7 +233,7 @@ async def get_vehicle_telemetry_hourly(
     )
 
 
-# ── Phase 2 — vehicle health snapshot ────────────────────────────────
+# ── vehicle health snapshot ────────────────────────────────
 
 
 async def get_vehicle_health(
@@ -250,7 +267,36 @@ async def get_vehicle_health(
     return rows
 
 
-# ── Phase 2 — vehicles with faults / critical faults ────────────────
+# ── vehicles with faults / critical faults ────────────────
+
+
+async def get_vehicle_fault_snapshot(
+    account_id: int,
+    vehicle_name: str,
+) -> dict[str, Any] | None:
+    """Read the fault snapshot (full DTC details) for one vehicle.
+
+    Returns the parsed Samsara-shape dict including
+    ``fault_codes.j1939.diagnosticTroubleCodes`` with real
+    ``spnDescription`` / ``fmiDescription`` — so /vehicles/{name}/faults
+    can render real names instead of the empty-dict placeholders the
+    ``vehicle_state`` row only carries the count for.
+
+    Returns None when the warehouse flag is off, the tenant DB isn't
+    available, or no fault snapshot exists for the vehicle.
+    """
+    if not _enabled():
+        return None
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        return None
+    try:
+        return await tenant.get_vehicle_fault_snapshot_by_name(
+            account_id, vehicle_name,
+        )
+    except AttributeError:
+        # Older mixin without the helper — graceful no-op.
+        return None
 
 
 async def get_vehicles_with_faults(
@@ -281,7 +327,7 @@ async def get_vehicles_with_faults(
     return faulted, total, breakdown
 
 
-# ── Phase 2 — fleet weather ──────────────────────────────────────────
+# ── fleet weather ──────────────────────────────────────────
 
 
 async def get_fleet_weather(
@@ -305,7 +351,7 @@ async def get_fleet_weather(
     return rows
 
 
-# ── Phase 2 — fleet efficiency ───────────────────────────────────────
+# ── fleet efficiency ───────────────────────────────────────
 
 
 async def get_fleet_efficiency(

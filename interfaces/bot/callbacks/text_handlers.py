@@ -7,7 +7,8 @@ from capabilities.iam.permissions import role_display
 from adapters.samsara.client import populate_company_display
 from capabilities.formatting import format_invite_created
 
-from interfaces.bot.config import get_platform_db, get_tenant_db, invalidate_client, logger
+from interfaces.bot.config import logger
+from interfaces.bot.state import get_platform_db, get_tenant_db, invalidate_client
 from interfaces.bot.keyboards import back_kb, invite_kb
 from interfaces.bot.helpers import _show, _safe_error, make_invite_link
 from capabilities.localization.i18n import t
@@ -24,7 +25,17 @@ from interfaces.bot.geofences import handle_add_zone_text
 
 async def handle_text(update, context):
     """Handle text replies for pending interactive prompts."""
-    # Silently ignore unauthorized group chats
+    # Defense in depth: this handler is registered with
+    # ``filters.ChatType.PRIVATE`` but if any future code path
+    # invokes it directly with a group update, the AI fallback at
+    # the bottom would burn tokens replying to alerts in forum
+    # topics.  Bail early on any non-private chat.
+    chat = update.effective_chat
+    if chat and chat.type != "private":
+        return
+    # Silently ignore unauthorized group chats (kept for the legacy
+    # entry points; with the chat-type guard above this is a no-op
+    # in normal flow).
     if not await _group_chat_guard(update):
         return
 
@@ -311,7 +322,7 @@ async def handle_text(update, context):
             [InlineKeyboardButton(t('common.back'), callback_data=f"comenu_{code}")],
         ]))
 
-    # ── Invite driver (truck number) ────────────────────────────
+    # ── Invite driver (vehicle number — required) ───────────────
     elif pending == "invite_driver":
         user = context.user_data.get("_db_user")
         if not user:
@@ -321,25 +332,46 @@ async def handle_text(update, context):
             return
         context.user_data["_db_user"] = user
 
-        truck_num = None if text.lower() == "skip" else text
+        # Drivers MUST have a vehicle — without one the alert pipeline
+        # has nothing to filter against, and the new
+        # ``driver_vehicle_assignments`` row can't be seeded.  Reject
+        # ``/skip`` and any blank entry, re-prompting the admin.
+        vehicle_num = text.strip()
+        if not vehicle_num or vehicle_num.lower() in ("skip", "/skip"):
+            # Stay in ``invite_driver`` state so the next text retries.
+            await _show(update, context, [
+                t('invite.driver_vehicle_required')
+            ], keyboard=back_kb())
+            return
+
         try:
             invite = await get_platform_db().create_invite(
                 account_id=user.account_id,
                 created_by=user.id,
                 role=Role.DRIVER,
                 department="operations",
-                truck_num=truck_num,
+                truck_num=vehicle_num,
             )
-            truck_label = truck_num or t('invite.vehicle_not_assigned')
             link = make_invite_link(invite.code, context)
             invite_text = format_invite_created(
                 invite.code, role_display(Role.DRIVER),
                 "operations",
                 invite_link=link,
             )
-            if truck_num:
-                invite_text += "\n  " + t('invite.vehicle_assigned', vehicle=vehicle_num)
+            invite_text += "\n  " + t('invite.vehicle_assigned', vehicle=vehicle_num)
+
+            # Samsara cross-reference suggestion — best-effort, fire-and-
+            # forget.  Looking up who currently drives this truck in
+            # Samsara gives the admin a head-start on linking
+            # ``samsara_driver_id`` from the dashboard.  Soft-fail when
+            # the fleet API is unreachable or the truck isn't assigned.
+            hint = await _samsara_driver_hint(user.account_id, vehicle_num)
+            if hint:
+                invite_text += "\n\n" + hint
+
             kb = invite_kb(link)
+            # Clear the pending state — invite created successfully.
+            context.user_data.pop("_pending", None)
             await _show(update, context, [invite_text], keyboard=kb)
         except Exception as e:
             await _show(update, context, [_safe_error(e)], keyboard=back_kb())
@@ -377,3 +409,38 @@ async def handle_text(update, context):
 
     else:
         await cmd_start(update, context)
+
+
+async def _samsara_driver_hint(account_id: int, vehicle_num: str) -> str | None:
+    """If Samsara has a static driver assigned to ``vehicle_num``,
+    return a one-liner hint the admin can use to confirm the link
+    target.  Returns ``None`` on any failure (unreachable Samsara,
+    no assignment, malformed response) — this is purely additive UX
+    and must not block the invite-created message.
+    """
+    try:
+        from infra.services import get_client as _get_samsara
+        samsara = await _get_samsara(account_id)
+    except Exception:
+        return None
+
+    needle = vehicle_num.strip().lower()
+    # Try each company's static-assignment map; first hit wins.
+    try:
+        for code, single in samsara.clients.items():
+            try:
+                mapping = await single.get_static_driver_assignments()
+            except Exception:
+                continue
+            driver_name = mapping.get(needle)
+            if driver_name:
+                return (
+                    f"💡 <b>Samsara link suggestion</b>\n"
+                    f"  Truck <b>#{vehicle_num}</b> is currently driven by "
+                    f"<b>{driver_name}</b> ({code}) in Samsara.\n"
+                    f"  Open the Drivers page after the invite is accepted "
+                    f"to link the Samsara ID."
+                )
+    except Exception:
+        return None
+    return None

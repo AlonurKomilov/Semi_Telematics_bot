@@ -5,7 +5,7 @@ from telegram.ext import ContextTypes
 from capabilities.localization.i18n import t
 
 from adapters.storage import Role
-from capabilities.iam.permissions import can, role_display, role_emoji, role_rank, validate_invite_role, validate_role_change
+from capabilities.iam.permissions import can, role_display, role_emoji, validate_invite_role, validate_role_change
 from adapters.samsara.client import SamsaraClient, populate_company_display
 from capabilities.formatting import (
     format_account_info,
@@ -14,10 +14,8 @@ from capabilities.formatting import (
     format_org_added,
 )
 
-from interfaces.bot.config import (
-    logger, SAMSARA_BASE_URL,
-    invalidate_client, get_platform_db, get_tenant_db,
-)
+from interfaces.bot.config import logger, SAMSARA_BASE_URL
+from interfaces.bot.state import invalidate_client, get_platform_db, get_tenant_db
 from interfaces.bot.keyboards import back_kb, invite_kb
 from interfaces.bot.helpers import _show, _show_loading, _user_menu_kb, _safe_error, make_invite_link
 from interfaces.bot.auth import _require_registered

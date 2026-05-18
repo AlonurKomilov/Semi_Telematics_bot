@@ -12,7 +12,8 @@ from telegram.ext import ContextTypes, Application
 from capabilities.iam.permissions import can
 from adapters.samsara.client import populate_company_display
 
-from interfaces.bot.config import logger, get_platform_db, get_tenant_db
+from interfaces.bot.config import logger
+from interfaces.bot.state import get_platform_db, get_tenant_db
 from infra.isolation import run_account_job
 from infra.bot_registry import get_app_for_account
 from interfaces.bot.keyboards import back_kb, geofence_list_kb

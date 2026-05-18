@@ -26,6 +26,7 @@ async def create_tables(conn) -> None:
             webhook_secret      TEXT    NOT NULL DEFAULT '',
             payroll_enabled     INTEGER NOT NULL DEFAULT 0,
             coaching_enabled    INTEGER NOT NULL DEFAULT 0,
+            timezone            TEXT    NOT NULL DEFAULT 'America/New_York',
             created_at          TEXT    NOT NULL
         );
 

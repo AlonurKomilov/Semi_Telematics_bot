@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Camera, Filter } from 'lucide-react';
 import { apiFetch, apiJSON } from '../../api/client';
 import DataTable from '../../components/DataTable';
@@ -66,6 +67,7 @@ const columns: AnyColumn[] = [
 ];
 
 export default function Cameras() {
+  const { t } = useTranslation();
   const [checks, setChecks] = useState<CameraCheck[]>([]);
   const [vehicleFilter, setVehicleFilter] = useState('');
   const [showHistory, setShowHistory] = useState(false);
@@ -116,8 +118,8 @@ export default function Cameras() {
       <div>
         <PageHeader
           icon={Camera}
-          title="Cameras"
-          description="Health checks for in-cab dashcams. Diagnose obstructed lenses, lost connections, and dirty cameras at a glance."
+          title={t('pages.cameras_title')}
+          description={t('pages.cameras_desc_short')}
         />
         <ErrorState message={error} />
       </div>
@@ -128,8 +130,8 @@ export default function Cameras() {
     <div>
       <PageHeader
         icon={Camera}
-        title="Cameras"
-        description="Health checks for in-cab dashcams. Diagnose obstructed lenses, lost connections, and dirty cameras — click a row for the latest snapshot."
+        title={t('pages.cameras_title')}
+        description={t('pages.cameras_desc_long')}
         actions={
           <div className="flex items-center gap-2">
             <button

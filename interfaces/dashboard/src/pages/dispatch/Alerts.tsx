@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiJSON } from '../../api/client';
@@ -12,9 +13,11 @@ import {
   LastUpdated,
   FilterBar,
   FilterChips,
+  DateRangePresets,
 } from '../../components/shell';
 import type { Alert, AlertsResponse, BulkAckResponse } from '../../types';
 import type { AnyColumn } from '../../types';
+import { formatAlertDescription } from '../../utils/alertDescription';
 
 const ALERT_TYPES = ['all', 'fault', 'health', 'fuel', 'events', 'parking'] as const;
 type AlertType = typeof ALERT_TYPES[number];
@@ -80,13 +83,14 @@ const historyColumns: AnyColumn[] = [
 ];
 
 export default function Alerts() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>('pending');
   const [selected, setSelected] = useState<Set<string | number>>(new Set());
   const [typeFilter, setTypeFilter] = useState<AlertType>('all');
   const [severityFilter, setSeverityFilter] = useState<'all' | 'critical' | 'warning' | 'info'>('all');
   const [vehicleSearch, setVehicleSearch] = useState('');
-  const [days, setDays] = useState(7);
+  const [days, setDays] = useState(30);
   const [bulkError, setBulkError] = useState('');
   const [acking, setAcking] = useState(false);
   // Server-side pagination — see /alerts/pending {page, total_pages}.
@@ -160,11 +164,11 @@ export default function Alerts() {
     <div>
       <PageHeader
         icon={Bell}
-        title="Alerts"
+        title={t('alerts.page_title')}
         description={
           tab === 'pending'
-            ? 'Notifications that still need acknowledgement. Tick rows to bulk-acknowledge.'
-            : 'Past alerts and how they were resolved. Use filters to narrow down by vehicle or type.'
+            ? t('alerts.page_description_pending')
+            : t('alerts.page_description_history')
         }
         actions={
           <div className="flex items-center gap-3">
@@ -175,7 +179,7 @@ export default function Alerts() {
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-md text-xs font-medium text-primary-foreground transition"
               >
                 <CheckCircle2 size={13} />
-                {acking ? 'Acknowledging…' : `Acknowledge (${selected.size})`}
+                {acking ? t('alerts.acknowledging') : t('alerts.acknowledge_n', { n: selected.size })}
               </button>
             )}
             <LastUpdated
@@ -188,17 +192,17 @@ export default function Alerts() {
       />
 
       <div className="flex gap-1 mb-4 border-b border-border">
-        {(['pending', 'history'] as const).map((t) => (
+        {(['pending', 'history'] as const).map((tabId) => (
           <button
-            key={t}
-            onClick={() => { setTab(t); setPage(1); }}
-            className={`px-4 py-2 text-sm font-medium transition capitalize border-b-2 -mb-px ${
-              tab === t
+            key={tabId}
+            onClick={() => { setTab(tabId); setPage(1); }}
+            className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
+              tab === tabId
                 ? 'border-primary text-foreground'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
-            {t}
+            {tabId === 'pending' ? t('alerts.tab_pending') : t('alerts.tab_history')}
           </button>
         ))}
       </div>
@@ -220,21 +224,17 @@ export default function Alerts() {
         />
         <input
           type="text"
-          placeholder="Vehicle name…"
+          placeholder={t('alerts.vehicle_placeholder')}
           value={vehicleSearch}
           onChange={(e) => { setVehicleSearch(e.target.value); setPage(1); }}
           className="bg-background border border-border rounded-md px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:border-ring w-44"
         />
         {tab === 'history' && (
-          <select
+          <DateRangePresets
             value={days}
-            onChange={(e) => { setDays(Number(e.target.value)); setPage(1); }}
-            className="bg-background border border-border rounded-md px-2 py-1.5 text-sm text-foreground/80"
-          >
-            {[7, 14, 30, 60, 90].map((d) => (
-              <option key={d} value={d}>{d} days</option>
-            ))}
-          </select>
+            onChange={(d) => { setDays(d); setPage(1); }}
+            isFetching={isFetching}
+          />
         )}
       </FilterBar>
 
@@ -311,20 +311,25 @@ export default function Alerts() {
                     {(a.occurrence_count ?? 1) > 1 && (
                       <span
                         className="ml-2 inline-block px-2 py-0.5 rounded-full text-xs font-bold bg-orange-500/15 text-orange-500"
-                        title="Total occurrences"
+                        title={t('alerts.total_occurrences')}
                       >
                         × {a.occurrence_count}
                       </span>
                     )}
                   </td>
-                  {/* Description — first 60 chars of last_detail with
-                      full text on hover.  Mirrors mini-app's tap-to-
-                      expand pattern but desktop UX uses tooltip. */}
+                  {/* Description — friendly sentence rendered by the
+                      shared formatter so dispatchers don't have to
+                      decode ``parking:unsafe:8h`` / ``fuel:19`` / raw
+                      event-IDs.  Raw ``last_detail`` stays available
+                      on hover for support follow-ups. */}
                   <td
                     className="px-4 py-3 text-sm text-muted-foreground max-w-xs"
                     title={(a as Alert & { last_detail?: string }).last_detail || (a as Alert & { message?: string }).message || ''}
                   >
-                    {truncate((a as Alert & { last_detail?: string }).last_detail ?? (a as Alert & { message?: string }).message ?? '—', 60)}
+                    {truncate(
+                      formatAlertDescription(a as Alert & { last_detail?: string; message?: string }),
+                      80,
+                    )}
                   </td>
                   {/* Location snapshot from alert_history.location.
                       Empty when the truck didn't have GPS at first fire. */}

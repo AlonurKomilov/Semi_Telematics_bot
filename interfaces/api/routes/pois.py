@@ -32,7 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from interfaces.api.deps import require_permission, require_permission_any
-from interfaces.bot.config import get_tenant_db
+from interfaces.bot.state import get_tenant_db
 
 logger = logging.getLogger(__name__)
 

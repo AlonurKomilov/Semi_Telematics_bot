@@ -4,16 +4,12 @@ This module owns all mutable state that was previously in bot/config.py.
 Pure env-var configuration stays in bot/config.py (read-only).
 For backward compatibility, bot/config.py re-exports everything from here.
 
-NOTE (Phase 8): ``db`` and ``router`` are no longer created at import
+NOTE: ``db`` and ``router`` are no longer created at import
 time.  They are lazy proxies that delegate to ``core.platform`` after
 ``core.startup.initialize()`` has been called.
 """
 
-import os
-
-from typing import Union
-
-from adapters.storage import Database, TenantRouter, LegacyRouter
+from adapters.storage import Database
 
 # Service functions (canonical home: core.services).
 # Re-exported here so ``from interfaces.bot.state import get_client`` keeps working.
@@ -31,24 +27,23 @@ from infra.services import (  # noqa: F401
 from infra.config import SAMSARA_BASE_URL, RATE_LIMIT_SECONDS  # noqa: F401
 
 # ── Database ─────────────────────────────────────────────────────
-# Lazy delegation to core.platform — unified DB layer (Phase 8).
-# The old module-level `db = Database(...)` is replaced by a property-
-# like accessor.  Most callers still import ``db`` from here or from
+# Lazy delegation to infra.platform — unified DB layer.  The old
+# module-level ``db = Database(...)`` is replaced by a property-like
+# accessor.  Most callers still import ``db`` from here or from
 # bot.config and call ``db.xxx()`` — those keep working because after
-# ``core.startup.initialize()`` runs, ``core.platform._db`` is ready.
-
-# Feature flag (still read from env for backward compat)
-MULTI_TENANT = bool(os.getenv("MULTI_TENANT_DB"))
+# ``infra.startup.initialize()`` runs, ``infra.platform._db`` is ready.
 
 
 def _get_db() -> Database:
-    """Return the platform Database via core.platform (lazy)."""
+    """Return the Database singleton via infra.platform (lazy)."""
     from infra.platform import get_db
     return get_db()
 
 
-def _get_router() -> Union[TenantRouter, LegacyRouter]:
-    """Return the platform router via core.platform (lazy)."""
+def _get_router():
+    """Return the router shim via infra.platform (lazy).  The shim
+    preserves the historical ``.platform`` / ``.get_tenant()`` surface
+    on top of the single Database singleton."""
     from infra.platform import get_router
     return get_router()
 

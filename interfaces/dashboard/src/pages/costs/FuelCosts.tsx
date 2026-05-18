@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Fuel, Plus } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataTable from '../../components/DataTable';
@@ -51,6 +52,7 @@ function today(): string {
 }
 
 export default function FuelCosts() {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<'entries' | 'summary'>('entries');
   const [entries, setEntries] = useState<FuelEntry[]>([]);
   const [summaryData, setSummaryData] = useState<FuelSummaryVehicle[]>([]);
@@ -120,8 +122,8 @@ export default function FuelCosts() {
     <div>
       <PageHeader
         icon={Fuel}
-        title="Fuel Costs"
-        description="Log fuel purchases and track per-vehicle spend over time. Combined with odometer readings this powers the Cost-per-Mile report."
+        title={t('pages.fuel_costs_title')}
+        description={t('pages.fuel_costs_desc')}
         actions={
           <button
             onClick={() => setShowForm(!showForm)}

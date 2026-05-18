@@ -30,7 +30,7 @@ def from_driver_records(drivers: list[dict]) -> dict[str, dict]:
             "antic_pct":     float(d.get("_antic_pct", 0) or 0),
             # ── Exposure metrics — promoted to the top-level signals
             # dict so curve evaluators (per-mile / per-hour) can read
-            # them without digging into ``_raw``.  Audit Phase 0.
+            # them without digging into ``_raw``. Audit .
             "miles":         float(d.get("_miles", 0) or 0),
             "drive_hours":   float(d.get("_drive_h", 0) or 0),
             "idle_hours":    float(d.get("_idle_h", 0) or 0),

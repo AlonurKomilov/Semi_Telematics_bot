@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 ACCOUNT_JOB_TIMEOUT = 120
 # Camera checks download snapshots + run Gemini Vision per vehicle — needs more time
 CAMERA_JOB_TIMEOUT = 600
+# Auto-report generation iterates through every subscriber, queries the
+# warehouse, renders a PDF, and uploads it via Telegram — that loop can
+# legitimately take well over 2 min on accounts with many subscribers
+# or large windows.  Match the camera-job budget.
+AUTO_REPORTS_JOB_TIMEOUT = 600
 
 
 async def run_account_job(

@@ -1,4 +1,4 @@
-"""Vehicle-keyed efficiency signal — Phase B (vehicle-primary scorecards).
+"""Vehicle-keyed efficiency signal (vehicle-primary scorecards).
 
 The driver-keyed equivalent in ``efficiency.py`` consumes the
 ``driverSummaries`` payload (one row per driver, drive-time aggregated

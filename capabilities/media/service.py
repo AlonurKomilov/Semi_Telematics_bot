@@ -7,7 +7,9 @@ import logging
 
 import capabilities.ai as ai
 from adapters.samsara.client import populate_company_display
-from adapters.storage.object_store import get_object_store
+# Per-account object store imported lazily inside save_camera_image
+# so this module stays import-cheap (the GDrive backend pulls in
+# google-api-python-client only when a tenant has opted into it).
 from infra.services import get_platform_db, get_tenant_db
 
 logger = logging.getLogger("bot")
@@ -146,16 +148,42 @@ async def analyze_snapshot(
 
 # ── Store results in DB ─────────────────────────────────────────
 
-def save_camera_image(
+async def save_camera_image(
     account_id: int, vehicle_name: str,
     camera_type: str, image_bytes: bytes,
+    tenant_db,
+    company_code: str = "",
 ) -> str:
-    """Save dashcam screenshot to the configured object store.
-    Returns the URL/relative path to persist in DB."""
+    """Save dashcam screenshot to the account's configured object store.
+
+    Routes through ``get_object_store_for_account`` so when an account
+    has Google Drive connected, dashcam captures land in their Drive
+    instead of platform disk.  Returns the URL / object-store path
+    (or Drive file ID for GDrive backends) to persist in the DB.
+
+    ``tenant_db`` is passed in (vs resolved internally) because the
+    caller — ``save_camera_results`` — already has it; avoiding the
+    extra resolve keeps the per-vehicle loop fast.
+
+    ``company_code`` is the Samsara org code (``_org``) for the
+    vehicle's owning company.  Used to route the image into the
+    per-company Drive folder; empty falls back to ``unnamed-company``.
+    """
     try:
+        from adapters.storage.object_store import get_object_store_for_account
+        from capabilities.work_orders.storage import resolve_company_folder
         safe_name = vehicle_name.replace("/", "_").replace("\\", "_")
-        key = f"{account_id}_{safe_name}_{camera_type}.jpg"
-        return get_object_store().put("camera_images", key, image_bytes)
+        # Bucket path mirrors the work-orders layout so a user browsing
+        # their Drive sees ``{COMPANY}/camera-images/…`` next to
+        # ``{COMPANY}/work-orders/…`` — consistent structure per
+        # company, no opaque account-id prefix.
+        company_folder = await resolve_company_folder(
+            tenant_db, account_id, company_code,
+        )
+        bucket = f"{company_folder}/camera-images"
+        key = f"{safe_name}_{camera_type}.jpg"
+        store = await get_object_store_for_account(account_id, tenant_db)
+        return store.put(bucket, key, image_bytes)
     except Exception as e:
         logger.debug(f"Camera image save failed: {e}")
         return ""
@@ -168,11 +196,13 @@ async def save_camera_results(account_id: int, results: list[dict]):
         try:
             img_path = ""
             if r.get("image_bytes"):
-                img_path = save_camera_image(
+                img_path = await save_camera_image(
                     account_id,
                     r.get("vehicle", "?"),
                     r.get("camera_type", "forward"),
                     r["image_bytes"],
+                    tenant_db=tenant,
+                    company_code=r.get("_org", ""),
                 )
             await tenant.save_camera_check(
                 account_id=account_id,

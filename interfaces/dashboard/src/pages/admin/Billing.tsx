@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CreditCard, ExternalLink } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { PageHeader, CardSkeleton } from '../../components/shell';
@@ -295,6 +296,7 @@ function UsageTable({ items }: { items: UsageSnapshot[] }) {
 // ── Main Page ─────────────────────────────────────────────────────
 
 export default function Billing() {
+  const { t } = useTranslation();
   const [summary, setSummary] = useState<BillingSummary | null>(null);
   const [usage, setUsage] = useState<UsageSnapshot[]>([]);
   const [loadingMain, setLoadingMain] = useState(true);
@@ -354,8 +356,8 @@ export default function Billing() {
       <div className="p-6 max-w-4xl mx-auto">
         <PageHeader
           icon={CreditCard}
-          title="Billing & Subscription"
-          description="Manage your plan, monitor AI usage, and review billing history."
+          title={t('pages.billing_title')}
+          description={t('pages.billing_desc_short')}
         />
         <div className="space-y-3">
           <CardSkeleton height="h-32" />
@@ -369,8 +371,8 @@ export default function Billing() {
     <div className="p-6 max-w-4xl mx-auto">
       <PageHeader
         icon={CreditCard}
-        title="Billing & Subscription"
-        description="Manage your plan, monitor AI usage, and review billing history. Stripe customers can update card details and download invoices in the customer portal."
+        title={t('pages.billing_title')}
+        description={t('pages.billing_desc_long')}
         actions={
           summary?.provider === 'stripe' ? (
             <button

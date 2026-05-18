@@ -108,6 +108,13 @@ class FeatureSet:
     can_payroll_view_own: bool = False  # view own paystub history (driver self-service)
     can_coaching_admin: bool = False    # manage coaching rules + assign manually + view all
     can_coaching_view_own: bool = False # see + acknowledge own coaching assignments
+    # Driver Module — profile + document management.
+    # Admin permission grants full CRUD on any driver in the account
+    # (used by Workforce → Drivers admin page).  "Own" permission
+    # lets a driver view their own profile + documents from the
+    # miniapp (read-only in MVP; re-upload requests go to admin).
+    can_manage_driver_docs: bool = False   # create / update / upload / delete for any driver
+    can_driver_docs_own: bool = False      # read own profile + documents
 
 
 # ─── Role → Permission Map ───────────────────────────────────────
@@ -135,6 +142,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_risk_report_all=True, can_risk_report_own=True,
         can_payroll_admin=True, can_payroll_view_own=True,
         can_coaching_admin=True, can_coaching_view_own=True,
+        can_manage_driver_docs=True, can_driver_docs_own=True,
     ),
     Role.ADMIN: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=True,
@@ -158,6 +166,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_risk_report_all=True, can_risk_report_own=True,
         can_payroll_admin=True, can_payroll_view_own=True,
         can_coaching_admin=True, can_coaching_view_own=True,
+        can_manage_driver_docs=True, can_driver_docs_own=True,
     ),
     Role.FLEET: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=True,
@@ -180,6 +189,9 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_risk_report_all=False, can_risk_report_own=True,
         can_payroll_admin=False, can_payroll_view_own=False,
         can_coaching_admin=True, can_coaching_view_own=False,
+        # Fleet managers handle driver records day-to-day (assignments,
+        # CDL renewals) so they get the admin permission too.
+        can_manage_driver_docs=True, can_driver_docs_own=False,
     ),
     Role.SAFETY: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=False,
@@ -201,6 +213,11 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_risk_report_all=True, can_risk_report_own=True,
         can_payroll_admin=False, can_payroll_view_own=False,
         can_coaching_admin=True, can_coaching_view_own=False,
+        # Safety needs read-only access for compliance checks (CDL /
+        # medical card expirations) — read-only via the admin route
+        # is fine for MVP; a future ``can_view_driver_docs`` could
+        # split read from write if needed.
+        can_manage_driver_docs=True, can_driver_docs_own=False,
     ),
     Role.DISPATCHER: FeatureSet(
         can_faults=False, can_critical=False, can_fuel=True,
@@ -246,6 +263,9 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_risk_report_all=False, can_risk_report_own=True,
         can_payroll_admin=False, can_payroll_view_own=True,
         can_coaching_admin=False, can_coaching_view_own=True,
+        # Drivers see their own profile + documents (read-only); they
+        # never see other drivers' records.
+        can_manage_driver_docs=False, can_driver_docs_own=True,
     ),
 }
 

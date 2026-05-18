@@ -3,7 +3,6 @@
 import os
 import platform
 import socket
-import sys
 from datetime import timedelta
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -16,7 +15,8 @@ from capabilities.formatting import (
     format_admin_account_detail,
 )
 
-from interfaces.bot.config import logger, invalidate_client, get_platform_db, get_tenant_db
+from interfaces.bot.config import logger
+from interfaces.bot.state import invalidate_client, get_platform_db, get_tenant_db
 from interfaces.bot.keyboards import system_owner_kb
 from interfaces.bot.helpers import _show, _show_loading, _safe_error
 from interfaces.bot.auth import _require_system_owner
@@ -239,7 +239,7 @@ async def cmd_sys_ai_stats(update: Update, context: ContextTypes.DEFAULT_TYPE,
     await _show_loading(update, context, "⏳ Loading AI stats…")
     try:
         import capabilities.ai as ai
-        from capabilities.ai.registry import MODEL_PRICING, MODEL_REGISTRY
+        from capabilities.ai.registry import MODEL_REGISTRY
         from capabilities.formatting.admin import _fmt_tokens
 
         stats = await get_platform_db().get_ai_usage_all_accounts(days=days)

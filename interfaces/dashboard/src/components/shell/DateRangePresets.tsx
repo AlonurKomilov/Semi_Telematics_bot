@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Calendar, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 
 /**
  * Quick-select day-range picker with optional custom-range calendar.
@@ -22,6 +22,14 @@ export interface DateRangePresetsProps {
   onChange: (days: number) => void;
   /** Allowed presets — defaults to the same set the competitor exposes. */
   options?: { label: string; days: number }[];
+  /**
+   * When true, render a subtle spinner inside the trigger so the user
+   * sees feedback while the new period's data is being fetched.  Pages
+   * pass React Query's ``isFetching`` here.  Without this the only
+   * cue that a 7→90 day switch did anything was the eventual table
+   * re-render, which on a slow Samsara fallback looked frozen.
+   */
+  isFetching?: boolean;
 }
 
 const DEFAULT_OPTIONS = [
@@ -133,6 +141,7 @@ export default function DateRangePresets({
   value,
   onChange,
   options = DEFAULT_OPTIONS,
+  isFetching = false,
 }: DateRangePresetsProps) {
   const [open, setOpen] = useState(false);
   const [showCal, setShowCal] = useState(false);
@@ -190,8 +199,13 @@ export default function DateRangePresets({
         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background border border-border rounded-md text-sm text-foreground/80 hover:bg-muted transition"
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-busy={isFetching}
       >
-        <Calendar size={13} className="text-muted-foreground" />
+        {isFetching ? (
+          <Loader2 size={13} className="animate-spin text-primary" aria-label="Loading" />
+        ) : (
+          <Calendar size={13} className="text-muted-foreground" />
+        )}
         {isCustom ? `Last ${value} days` : labelFor(value, options)}
         <ChevronDown size={12} className="text-muted-foreground" />
       </button>

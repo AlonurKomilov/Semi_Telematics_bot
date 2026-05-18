@@ -1,4 +1,17 @@
-"""Work schedules and shift handoff CRUD mixin."""
+"""Work schedules and shift handoff CRUD mixin.
+
+Timezone contract
+─────────────────
+``work_hours.start_hour`` and ``work_hours.end_hour`` are **integers
+0..23 stored in the ACCOUNT'S timezone** (``accounts.timezone``).
+Admins define shifts in the account's local time; the DND derivation
+in ``capabilities/alerting/dnd.py:is_user_on_shift`` converts UTC-now
+to account-tz before comparing.
+
+Per-user DND overrides on ``users.quiet_start`` / ``users.quiet_end``
+are a separate concept and are evaluated in the **user's own
+timezone** (personal preference, may differ from account tz).
+"""
 
 from __future__ import annotations
 
@@ -13,7 +26,11 @@ class SchedulesMixin:
         start_hour: int, end_hour: int, created_by: int,
         target_role: str = "all",
     ) -> dict:
-        """Create a working-hour preset for an account."""
+        """Create a working-hour preset for an account.
+
+        ``start_hour`` / ``end_hour`` are 0..23 in the account's
+        timezone — see module docstring for the SSoT contract.
+        """
         now = self._now()
         cur = await self._db.execute(
             """INSERT INTO work_hours

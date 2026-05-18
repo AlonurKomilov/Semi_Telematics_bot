@@ -20,10 +20,12 @@ import {
   Icon24HideOutline,
   Icon24UserCircleOutline,
 } from '@vkontakte/icons';
+import { useTranslation } from 'react-i18next';
 import { apiFetch, apiJSON } from '../api/client';
 import { BottomSheet } from '../components/BottomSheet';
 import { Snackbar } from '../components/Snackbar';
 import { ScoreSkeleton } from '../components/Skeleton';
+import { MyDriverInfo } from '../components/MyDriverInfo';
 import { haptics } from '../hooks/useTelegram';
 import { useUnitSystem } from '../hooks/useUnitSystem';
 import { setUnitSystem, type UnitSystem } from '../utils/units';
@@ -46,16 +48,21 @@ interface UserMe {
   permissions: Record<string, boolean>;
 }
 
+// Same order + native-script labels as the dashboard's
+// ``LANGUAGE_OPTIONS`` (interfaces/dashboard/src/utils/languages.ts).
+// Native scripts read correctly regardless of the user's current UI
+// language — a Punjabi speaker recognises ਪੰਜਾਬੀ instantly, whereas
+// the previous "Punjabi" / "Amharic" labels assumed English.
 const LANG_OPTIONS = [
   { value: 'en', label: 'English' },
-  { value: 'ru', label: 'Русский' },
-  { value: 'uk', label: 'Українська' },
   { value: 'es', label: 'Español' },
   { value: 'fr', label: 'Français' },
-  { value: 'pa', label: 'Punjabi' },
+  { value: 'pa', label: 'ਪੰਜਾਬੀ' },
+  { value: 'ru', label: 'Русский' },
   { value: 'so', label: 'Soomaali' },
-  { value: 'am', label: 'Amharic' },
-  { value: 'uz', label: "O\u2018zbekcha" },
+  { value: 'uk', label: 'Українська' },
+  { value: 'uz', label: 'Oʻzbekcha' },
+  { value: 'am', label: 'አማርኛ' },
 ];
 
 const ROLE_LABELS: Record<string, string> = {
@@ -122,6 +129,7 @@ function quietLabel(start: number | null, end: number | null): string {
 }
 
 export function ProfilePage() {
+  const { i18n, t } = useTranslation();
   const [me, setMe] = useState<UserMe | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -188,6 +196,10 @@ export function ProfilePage() {
     if (next === me?.language) return;
     if (savingLang) return;
     setSavingLang(true);
+    // Switch i18next first so the UI flips immediately, before the
+    // backend round-trip. localStorage persistence is baked into the
+    // detector config so a reload picks up the same choice.
+    void i18n.changeLanguage(next);
     try {
       await apiFetch('/api/user/preferences', {
         method: 'PUT',
@@ -195,11 +207,11 @@ export function ProfilePage() {
       });
       setMe(m => (m ? { ...m, language: next } : m));
       haptics.success();
-      toast('Language saved');
+      toast(t('toasts.language_saved'));
     } catch (e) {
       console.error('Save language failed:', e);
       haptics.error();
-      toast('Failed to save language', 'error');
+      toast(t('toasts.language_save_failed'), 'error');
     } finally {
       setSavingLang(false);
     }
@@ -218,11 +230,11 @@ export function ProfilePage() {
       setMe(m => (m ? { ...m, quiet_start: startHour, quiet_end: endHour } : m));
       setQuietSheetOpen(false);
       haptics.success();
-      toast('Quiet hours saved');
+      toast(t('toasts.quiet_saved'));
     } catch (e) {
       console.error('Save quiet hours failed:', e);
       haptics.error();
-      toast('Failed to save quiet hours', 'error');
+      toast(t('toasts.quiet_save_failed'), 'error');
     } finally {
       setSavingQuiet(false);
     }
@@ -241,12 +253,12 @@ export function ProfilePage() {
       setShowPassword(false);
       setCredSheetOpen(false);
       haptics.success();
-      toast('Credentials saved');
+      toast(t('toasts.credentials_saved'));
       load();
     } catch (e) {
       console.error('Save credentials failed:', e);
       haptics.error();
-      toast('Failed to save credentials', 'error');
+      toast(t('toasts.credentials_save_failed'), 'error');
     } finally {
       setSavingCreds(false);
     }
@@ -314,55 +326,60 @@ export function ProfilePage() {
 
       {/* ── Assignment ────────────────────────────────────────── */}
       <div className="profile-section">
-        <div className="profile-section__header">Assignment</div>
+        <div className="profile-section__header">{t('profile.assignment')}</div>
         {vehicleText && (
           <div className="profile-row profile-row--static">
-            <span className="profile-row__label">Vehicle(s)</span>
+            <span className="profile-row__label">{t('profile.vehicle_label')}</span>
             <span className="profile-row__value">{vehicleText}</span>
           </div>
         )}
         <div className="profile-row profile-row--static">
-          <span className="profile-row__label">Company</span>
+          <span className="profile-row__label">{t('profile.company')}</span>
           <span className="profile-row__value">{companyText}</span>
         </div>
         {me.department && (
           <div className="profile-row profile-row--static">
-            <span className="profile-row__label">Department</span>
+            <span className="profile-row__label">{t('profile.department')}</span>
             <span className="profile-row__value">{me.department}</span>
           </div>
         )}
       </div>
 
+      {/* ── Driver self-view (docs + assigned vehicle) ───────
+          MyDriverInfo hides itself for non-drivers, so it's
+          safe to render unconditionally here. */}
+      <MyDriverInfo onToast={toast} />
+
       {/* ── Preferences ──────────────────────────────────────── */}
       <div className="profile-section">
-        <div className="profile-section__header">Preferences</div>
+        <div className="profile-section__header">{t('profile.preferences')}</div>
         <button className="profile-row" onClick={() => { haptics.selection(); setLangSheetOpen(true); }}>
           <span className="profile-row__icon"><Icon24GlobeOutline width={20} height={20} /></span>
-          <span className="profile-row__label">Language</span>
+          <span className="profile-row__label">{t('profile.language_section')}</span>
           <span className="profile-row__value">{langLabel(me.language)} ›</span>
         </button>
         <button className="profile-row" onClick={() => { haptics.selection(); setQuietSheetOpen(true); }}>
           <span className="profile-row__icon"><Icon24NotificationOutline width={20} height={20} /></span>
-          <span className="profile-row__label">Quiet hours</span>
+          <span className="profile-row__label">{t('profile.quiet_hours')}</span>
           <span className="profile-row__value">{quietLabel(me.quiet_start, me.quiet_end)} ›</span>
         </button>
         <button className="profile-row" onClick={() => { haptics.selection(); setUnitSheetOpen(true); }}>
           <span className="profile-row__icon"><Icon24SpeedometerMiddleOutline width={20} height={20} /></span>
-          <span className="profile-row__label">Units</span>
-          <span className="profile-row__value">{units === 'metric' ? 'Metric (km/h)' : 'Imperial (mph)'} ›</span>
+          <span className="profile-row__label">{t('profile.units')}</span>
+          <span className="profile-row__value">{units === 'metric' ? t('profile.units_metric') : t('profile.units_imperial')} ›</span>
         </button>
       </div>
 
       {/* ── Dashboard login ──────────────────────────────────── */}
       <div className="profile-section">
-        <div className="profile-section__header">Dashboard login</div>
+        <div className="profile-section__header">{t('profile.dashboard_login')}</div>
         <button
           className="profile-row"
           onClick={() => { haptics.selection(); setCredSheetOpen(true); }}
         >
           <span className="profile-row__icon"><Icon24KeyOutline width={20} height={20} /></span>
           <span className="profile-row__label">
-            {me.has_password && me.email ? 'Email' : 'Set email + password'}
+            {me.has_password && me.email ? t('profile.email') : t('profile.set_email_password')}
           </span>
           <span className="profile-row__value">
             {me.has_password && me.email ? `${me.email} ›` : '›'}
@@ -370,17 +387,17 @@ export function ProfilePage() {
         </button>
         {!me.has_password && (
           <p className="profile-section__footer">
-            Add credentials so you can also log in from the web dashboard.
+            {t('profile.credentials_hint')}
           </p>
         )}
       </div>
 
       {/* ── Access ───────────────────────────────────────────── */}
       <div className="profile-section">
-        <div className="profile-section__header">Access</div>
+        <div className="profile-section__header">{t('profile.access')}</div>
         <button className="profile-row" onClick={() => { haptics.selection(); setPermSheetOpen(true); }}>
           <span className="profile-row__icon"><Icon24CheckShieldOutline width={20} height={20} /></span>
-          <span className="profile-row__label">Features enabled</span>
+          <span className="profile-row__label">{t('profile.features_enabled')}</span>
           <span className="profile-row__value">{enabledPerms} of {perms.length} ›</span>
         </button>
       </div>
@@ -403,7 +420,7 @@ export function ProfilePage() {
         title={
           <span className="sheet__title-inner">
             <Icon24GlobeOutline width={20} height={20} />
-            Choose language
+            {t('profile.choose_language')}
           </span>
         }
       >
@@ -427,17 +444,17 @@ export function ProfilePage() {
         title={
           <span className="sheet__title-inner">
             <Icon24NotificationOutline width={20} height={20} />
-            Quiet hours
+            {t('profile.quiet_hours')}
           </span>
         }
       >
         <p className="sheet-body__desc">
-          No alert pushes between these hours (your local time).
-          {me.timezone && <> Timezone: <strong>{me.timezone}</strong>.</>}
+          {t('profile.quiet_desc')}
+          {me.timezone && <> {t('profile.quiet_timezone')} <strong>{me.timezone}</strong>.</>}
         </p>
         <div style={{ display: 'flex', gap: 12 }}>
           <label className="profile-input-label" style={{ flex: 1 }}>
-            Start
+            {t('profile.quiet_start')}
             <input
               type="time"
               value={quietStart}
@@ -446,7 +463,7 @@ export function ProfilePage() {
             />
           </label>
           <label className="profile-input-label" style={{ flex: 1 }}>
-            End
+            {t('profile.quiet_end')}
             <input
               type="time"
               value={quietEnd}
@@ -461,7 +478,7 @@ export function ProfilePage() {
             disabled={savingQuiet}
             onClick={() => { setQuietStart(''); setQuietEnd(''); saveQuietHours(); }}
           >
-            Turn off
+            {t('profile.quiet_turn_off')}
           </button>
           <button
             className="profile-save-btn"
@@ -469,7 +486,7 @@ export function ProfilePage() {
             disabled={savingQuiet}
             onClick={saveQuietHours}
           >
-            {savingQuiet ? 'Saving…' : 'Save'}
+            {savingQuiet ? t('profile.saving') : t('profile.saved')}
           </button>
         </div>
       </BottomSheet>
@@ -481,31 +498,31 @@ export function ProfilePage() {
         title={
           <span className="sheet__title-inner">
             <Icon24KeyOutline width={20} height={20} />
-            {me.has_password ? 'Update credentials' : 'Dashboard login'}
+            {me.has_password ? t('profile.update_credentials') : t('profile.dashboard_login')}
           </span>
         }
       >
         <p className="sheet-body__desc">
           {me.has_password
-            ? 'Update your email or set a new password for the web dashboard.'
-            : 'Add an email + password to log in from the web dashboard. You can keep using Telegram either way.'}
+            ? t('profile.credentials_desc_update')
+            : t('profile.credentials_desc_set')}
         </p>
         <label className="profile-input-label">
-          Email
+          {t('profile.email')}
           <input
             type="email"
-            placeholder="you@example.com"
+            placeholder={t('profile.email_placeholder')}
             value={email}
             onChange={e => setEmail(e.target.value)}
             className="profile-time-input"
           />
         </label>
         <label className="profile-input-label" style={{ marginTop: 12 }}>
-          Password
+          {t('profile.password_label')}
           <div className="profile-password-wrap">
             <input
               type={showPassword ? 'text' : 'password'}
-              placeholder="At least 8 characters"
+              placeholder={t('profile.password_placeholder')}
               value={password}
               onChange={e => setPassword(e.target.value)}
               className="profile-time-input profile-time-input--password"
@@ -514,7 +531,7 @@ export function ProfilePage() {
               className="profile-password-toggle"
               onClick={() => setShowPassword(v => !v)}
               type="button"
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-label={showPassword ? t('profile.hide_password') : t('profile.show_password')}
             >
               {showPassword
                 ? <Icon24HideOutline width={20} height={20} />
@@ -524,7 +541,7 @@ export function ProfilePage() {
           </div>
         </label>
         {password.length > 0 && password.length < 8 && (
-          <p className="profile-input-hint">Password must be at least 8 characters</p>
+          <p className="profile-input-hint">{t('profile.password_min_hint')}</p>
         )}
         <button
           className="profile-save-btn"
@@ -533,8 +550,8 @@ export function ProfilePage() {
           onClick={saveCredentials}
         >
           {savingCreds
-            ? 'Saving…'
-            : me.has_password ? 'Update credentials' : 'Save credentials'}
+            ? t('profile.saving')
+            : me.has_password ? t('profile.update_credentials') : t('profile.save_credentials')}
         </button>
       </BottomSheet>
 
@@ -545,7 +562,7 @@ export function ProfilePage() {
         title={
           <span className="sheet__title-inner">
             <Icon24SpeedometerMiddleOutline width={20} height={20} />
-            Choose units
+            {t('profile.choose_units')}
           </span>
         }
       >
@@ -561,7 +578,7 @@ export function ProfilePage() {
             }}
           >
             <span className="profile-row__label">
-              {u === 'metric' ? 'Metric (km/h, km)' : 'Imperial (mph, mi)'}
+              {u === 'metric' ? t('profile.units_metric_full') : t('profile.units_imperial_full')}
             </span>
             {units === u && (
               <Icon24CheckCircleOutline
@@ -580,7 +597,7 @@ export function ProfilePage() {
         title={
           <span className="sheet__title-inner">
             <Icon24CheckShieldOutline width={20} height={20} />
-            Your access
+            {t('profile.your_access')}
           </span>
         }
       >
@@ -597,7 +614,7 @@ export function ProfilePage() {
         ))}
         {enabledPerms < perms.length && (
           <p className="sheet-body__desc" style={{ marginTop: 12 }}>
-            Contact your admin to enable additional features.
+            {t('profile.contact_admin_for_more')}
           </p>
         )}
       </BottomSheet>

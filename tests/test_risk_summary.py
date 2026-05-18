@@ -1,4 +1,4 @@
-"""Tests for the Stakeholder Risk Summary feature (Phase 1)."""
+"""Tests for the Stakeholder Risk Summary feature."""
 
 from __future__ import annotations
 
@@ -103,7 +103,7 @@ def _fake_profile(subject_type: str = "vehicle") -> RiskProfile:
         company="Test Fleet",
         days=30,
         total_score=82,
-        grade="B",
+        tier="Gold",
         pillars={
             "safety": {"subtotal": 35, "cap": 40, "has_data": True},
             "efficiency": {"subtotal": 27, "cap": 30, "has_data": True},

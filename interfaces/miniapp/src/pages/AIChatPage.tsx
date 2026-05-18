@@ -8,6 +8,7 @@
  */
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Icon24SendOutline,
   Icon24DeleteOutline,
@@ -18,6 +19,7 @@ import { apiJSON, classifyError } from '../api/client';
 import { Snackbar, type SnackbarKind } from '../components/Snackbar';
 import { ListRowsSkeleton } from '../components/Skeleton';
 import { haptics } from '../hooks/useTelegram';
+import { formatAIResponse } from '../utils/formatAI';
 
 interface Props {
   active: boolean;
@@ -77,6 +79,7 @@ function getSuggestedQuestions(role?: string): string[] {
 }
 
 export const AIChatPage = memo(function AIChatPage({ active, userRole }: Props) {
+  const { t } = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -91,7 +94,7 @@ export const AIChatPage = memo(function AIChatPage({ active, userRole }: Props) 
     let cancelled = false;
     (async () => {
       try {
-        const data = await apiJSON<HistoryResponse>('/ai/history');
+        const data = await apiJSON<HistoryResponse>('/api/ai/history');
         if (!cancelled) {
           setMessages(data.messages || []);
           if ((data.messages || []).length === 0) {
@@ -131,10 +134,16 @@ export const AIChatPage = memo(function AIChatPage({ active, userRole }: Props) 
     setSuggestions([]);
     setSending(true);
     try {
-      const data = await apiJSON<ChatResponse>('/ai/chat', {
+      // 90s timeout — the AI agent can take 30-60s when reasoning
+      // over live fleet data + alerts + scorecard.  The default
+      // ``REQUEST_TIMEOUT_MS`` (30s) was firing mid-reply and
+      // surfacing as "No connection" toasts on legitimately-running
+      // requests.
+      const data = await apiJSON<ChatResponse>('/api/ai/chat', {
         method: 'POST',
         body: JSON.stringify({ message: trimmed }),
         headers: { 'Content-Type': 'application/json' },
+        timeoutMs: 90_000,
       });
       setMessages(prev => [...prev, { role: 'model', text: data.reply }]);
       if (data.suggestions && data.suggestions.length > 0) {
@@ -162,7 +171,7 @@ export const AIChatPage = memo(function AIChatPage({ active, userRole }: Props) 
     if (sending || messages.length === 0) return;
     if (!confirm('Clear conversation history?')) return;
     try {
-      await apiJSON('/ai/history', { method: 'DELETE' });
+      await apiJSON('/api/ai/history', { method: 'DELETE' });
       setMessages([]);
       setSuggestions(getSuggestedQuestions(userRole));
       setSnack({ kind: 'success', text: 'History cleared' });
@@ -199,7 +208,7 @@ export const AIChatPage = memo(function AIChatPage({ active, userRole }: Props) 
             type="button"
             onClick={onClear}
             disabled={sending}
-            aria-label="Clear conversation"
+            aria-label={t('common.cancel')}
             style={{
               background: 'transparent', border: 0, cursor: 'pointer', padding: 6,
               color: 'var(--tgui--hint_color, #999)',
@@ -228,36 +237,49 @@ export const AIChatPage = memo(function AIChatPage({ active, userRole }: Props) 
           </div>
         )}
 
-        {messages.map((m, i) => (
-          <div
-            key={i}
-            style={{
-              display: 'flex',
-              justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start',
-              marginBottom: 8,
-            }}
-          >
+        {messages.map((m, i) => {
+          const isUser = m.role === 'user';
+          // User messages stay as literal text (no HTML evaluation —
+          // a driver typing "<script>" should see exactly that).
+          // Model replies route through formatAIResponse() so the
+          // backend's HTML/markdown is rendered properly instead of
+          // showing raw "<p>" / "<b>" tags as plain text.
+          const bubbleStyle = {
+            maxWidth: '78%',
+            padding: '8px 12px',
+            borderRadius: 14,
+            background: isUser
+              ? 'var(--tgui--button_color, #2481cc)'
+              : 'var(--tgui--secondary_bg_color, #2a2a2a)',
+            color: isUser
+              ? 'var(--tgui--button_text_color, #fff)'
+              : 'var(--tgui--text_color, #fff)',
+            whiteSpace: isUser ? ('pre-wrap' as const) : ('normal' as const),
+            wordBreak: 'break-word' as const,
+            fontSize: 14,
+            lineHeight: 1.4,
+          };
+          return (
             <div
+              key={i}
               style={{
-                maxWidth: '78%',
-                padding: '8px 12px',
-                borderRadius: 14,
-                background: m.role === 'user'
-                  ? 'var(--tgui--button_color, #2481cc)'
-                  : 'var(--tgui--secondary_bg_color, #2a2a2a)',
-                color: m.role === 'user'
-                  ? 'var(--tgui--button_text_color, #fff)'
-                  : 'var(--tgui--text_color, #fff)',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                fontSize: 14,
-                lineHeight: 1.4,
+                display: 'flex',
+                justifyContent: isUser ? 'flex-end' : 'flex-start',
+                marginBottom: 8,
               }}
             >
-              {m.text}
+              {isUser ? (
+                <div style={bubbleStyle}>{m.text}</div>
+              ) : (
+                <div
+                  className="ai-bubble"
+                  style={bubbleStyle}
+                  dangerouslySetInnerHTML={{ __html: formatAIResponse(m.text) }}
+                />
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {sending && (
           <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 8 }}>
@@ -328,7 +350,7 @@ export const AIChatPage = memo(function AIChatPage({ active, userRole }: Props) 
         <button
           type="submit"
           disabled={sending || !input.trim()}
-          aria-label="Send message"
+          aria-label={t('ai.send')}
           style={{
             width: 40, height: 40, borderRadius: 20, border: 0,
             background: input.trim() && !sending

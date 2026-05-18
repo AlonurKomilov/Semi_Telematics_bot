@@ -8,13 +8,11 @@ hour conversion, generates the requested PDF, and sends it via Telegram.
 
 import asyncio
 from datetime import datetime as _dt, timezone as _tz_mod
-from zoneinfo import ZoneInfo as _ZI
 
 from telegram import Update
 from telegram.ext import ContextTypes, Application
 from telegram.constants import ParseMode
 
-from adapters.storage import Role
 from capabilities.iam.permissions import can
 from adapters.samsara.client import populate_company_display
 from capabilities.reporting import (
@@ -27,9 +25,10 @@ from capabilities.reporting import (
 )
 
 from capabilities.localization.i18n import t
-from interfaces.bot.config import logger, get_platform_db, get_tenant_db
+from interfaces.bot.config import logger
+from interfaces.bot.state import get_platform_db, get_tenant_db
 from infra.bot_registry import get_app_for_account
-from infra.isolation import run_account_job
+from infra.isolation import AUTO_REPORTS_JOB_TIMEOUT, run_account_job
 from capabilities.vehicles.service import (
     prepare_companies,
     get_fleet_overview as _svc_fleet_overview,
@@ -39,7 +38,7 @@ from capabilities.telemetry.service import (
 )
 
 # NOTE: `db` singleton removed — use get_platform_db() / get_tenant_db() instead
-from interfaces.bot.keyboards import back_kb, auto_reports_menu_kb
+from interfaces.bot.keyboards import auto_reports_menu_kb
 from interfaces.bot.helpers import _show
 from interfaces.bot.auth import _require_registered
 
@@ -234,7 +233,6 @@ async def _generate_report_pdf(account_id: int, report_type: str):
 
         elif report_type == "camera":
             from interfaces.bot.cameras import _gather_snapshots, _analyze_snapshot, _save_camera_results
-            import capabilities.ai as _ai
 
             snapshots, _ = await _gather_snapshots(account_id)
             if not snapshots:
@@ -342,5 +340,8 @@ async def send_auto_reports(app: Application):
                         exc_info=True,
                     )
 
-        await run_account_job(_run(), account_id=account.id,
-                              job_name="auto_reports")
+        await run_account_job(
+            _run(), account_id=account.id,
+            job_name="auto_reports",
+            timeout=AUTO_REPORTS_JOB_TIMEOUT,
+        )

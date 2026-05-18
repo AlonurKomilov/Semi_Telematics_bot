@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DollarSign } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataTable from '../../components/DataTable';
@@ -46,6 +47,7 @@ const cols: AnyColumn[] = [
 ];
 
 export default function CostPerMile() {
+  const { t } = useTranslation();
   const [vehicles, setVehicles] = useState<CPMVehicle[]>([]);
   const [fleet, setFleet] = useState<{ avg_cpm: number; avg_mpg: number; total_miles: number; total_cost: number } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,8 +72,8 @@ export default function CostPerMile() {
     <div>
       <PageHeader
         icon={DollarSign}
-        title="Cost per Mile"
-        description="Operating cost per mile by vehicle, calculated from your fuel entries and odometer readings. Compare to fleet average to spot outliers."
+        title={t('pages.cost_per_mile_title')}
+        description={t('pages.cost_per_mile_desc')}
       />
 
       {/* Fleet summary cards */}

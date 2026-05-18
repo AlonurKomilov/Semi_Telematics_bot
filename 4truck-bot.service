@@ -13,7 +13,16 @@ WorkingDirectory=/home/abcdev/projects/Semi_Telematics_bot
 ExecStart=/usr/bin/python3 /home/abcdev/projects/Semi_Telematics_bot/run.py
 Restart=always
 RestartSec=5
-TimeoutStopSec=10
+# 60s so systemd waits for run.py's full graceful drain.
+# run.py shuts down in this order on SIGTERM:
+#   1. APScheduler stops accepting new jobs
+#   2. In-flight async tasks drain (up to SHUTDOWN_DRAIN_SEC=40)
+#   3. Bot HTTPX clients stop AFTER the drain (so video → text
+#      delivery chains complete — see the regression fixed earlier
+#      where 10s SIGKILL truncated mid-fanout deliveries)
+#   4. Platform shutdown (Redis, DB, caches)
+# Anything tighter than ~50s risks SIGKILL mid-cleanup again.
+TimeoutStopSec=60
 StandardOutput=append:/home/abcdev/projects/Semi_Telematics_bot/bot.log
 StandardError=append:/home/abcdev/projects/Semi_Telematics_bot/bot.log
 EnvironmentFile=/home/abcdev/projects/Semi_Telematics_bot/.env

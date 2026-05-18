@@ -49,8 +49,17 @@ class FuelMixin:
         end_date: Optional[str] = None,
     ) -> list[dict]:
         """Per-vehicle fuel summary: total gallons, total cost, avg price, entry count."""
+        # ``MIN(company_code)`` keeps the per-vehicle row count
+        # identical to the SQLite-lenient behaviour (one row per
+        # vehicle, with one of its company codes picked
+        # deterministically) while satisfying Postgres' strict
+        # GROUP BY rule.  Edge case where a single vehicle has fuel
+        # entries under multiple companies — rare but possible after
+        # re-org — surfaces the lexicographically earliest code; the
+        # report is by-vehicle anyway, so this matches user intent.
         q = (
-            "SELECT vehicle_name, company_code,"
+            "SELECT vehicle_name,"
+            " MIN(company_code) as company_code,"
             " COUNT(*) as entries,"
             " SUM(gallons) as total_gallons,"
             " SUM(total_cost) as total_cost,"

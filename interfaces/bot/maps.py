@@ -12,10 +12,11 @@ from adapters.storage import Role
 from capabilities.iam.permissions import can
 from adapters.samsara.client import populate_company_display
 from infra.context import get_company_display
-from capabilities.location.service import classify_vehicle_status, STATUS_COLORS, get_fleet_for_map as _svc_fleet_for_map
+from capabilities.location.service import classify_vehicle_status, get_fleet_for_map as _svc_fleet_for_map
 from capabilities.reporting.map_renderer import render_fleet_map as _render_map
 
-from interfaces.bot.config import logger, get_tenant_db
+from interfaces.bot.config import logger
+from interfaces.bot.state import get_tenant_db
 from interfaces.bot.keyboards import back_kb, livemap_refresh_kb
 from interfaces.bot.helpers import _show, _show_loading, _safe_error
 from interfaces.bot.auth import _require_registered

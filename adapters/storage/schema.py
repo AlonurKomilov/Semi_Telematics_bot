@@ -46,6 +46,7 @@ async def create_tables(conn) -> None:
             slug        TEXT    NOT NULL UNIQUE,
             tier        TEXT    NOT NULL DEFAULT 'free',
             is_active   INTEGER NOT NULL DEFAULT 1,
+            timezone    TEXT    NOT NULL DEFAULT 'America/New_York',
             created_at  TEXT    NOT NULL
         );
 
@@ -107,6 +108,7 @@ async def create_tables(conn) -> None:
             description     TEXT    NOT NULL DEFAULT '',
             due_date        TEXT,
             due_miles       REAL,
+            last_odometer   REAL,
             status          TEXT    NOT NULL DEFAULT 'pending',
             created_by      BIGINT  NOT NULL,
             created_at      TEXT    NOT NULL,
@@ -155,12 +157,10 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_digest_subs_active
             ON digest_subscriptions(is_active, send_hour);
 
-        -- account_settings: per-tenant key/value store for feature flags,
-        -- AI model preferences, pillar caps, etc.
-        -- NOTE: this table lives in each *tenant* DB, not the platform DB.
-        -- All callers must use get_tenant_db(account_id) to read/write it —
-        -- using the platform DB in multi-tenant mode silently targets the
-        -- wrong (empty) database.
+        -- account_settings: per-account key/value store for feature flags,
+        -- AI model preferences, pillar caps, etc.  Isolation is enforced
+        -- by the account_id predicate on every read/write (same pattern
+        -- as the rest of the tenant tables).
         CREATE TABLE IF NOT EXISTS account_settings (
             account_id  INTEGER NOT NULL REFERENCES accounts(id),
             key         TEXT    NOT NULL,
@@ -299,7 +299,7 @@ async def create_tables(conn) -> None:
             points          INTEGER NOT NULL DEFAULT 0,
             cap             INTEGER,
             enabled         INTEGER NOT NULL DEFAULT 1,
-            -- Audit Option C: pillar tag + per-rule curve anchors.
+            -- pillar tag + per-rule curve anchors.
             -- All nullable so older overrides round-trip unchanged.
             pillar          TEXT    NOT NULL DEFAULT '',
             curve_x_zero    REAL,

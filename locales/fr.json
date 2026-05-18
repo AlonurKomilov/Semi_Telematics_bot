@@ -524,7 +524,8 @@
     "share_step3": "3. Entrer le code :",
     "driver_title": "🚛 <b>Inviter un chauffeur</b>",
     "step2": "<b>Étape 2/2</b> — Numéro de camion",
-    "driver_prompt": "Entrez le numéro de camion pour ce chauffeur\n(ou tapez <b>passer</b> pour laisser vide) :",
+    "driver_prompt": "Entrez le numéro de camion pour ce chauffeur :",
+    "driver_vehicle_required": "⚠️ Un numéro de camion est requis pour les chauffeurs.\n\nEntrez le numéro de camion — par exemple <code>107</code> — afin que les alertes parviennent au chauffeur.",
     "vehicle_assigned": "🚛 Camion : #{vehicle}",
     "vehicle_not_assigned": "non assigné"
   },

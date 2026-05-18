@@ -1,4 +1,4 @@
-"""Tests for Phase E new endpoints (user-facing).
+"""Tests for new endpoints (user-facing).
 
 Covers:
 - ``GET /api/vehicles/{name}/timeline`` (E25 — VehicleDetail timeline).
@@ -29,10 +29,8 @@ from interfaces.api.auth import create_jwt
 
 
 @pytest_asyncio.fixture
-async def phase_e_app(tmp_path, monkeypatch):
-    db_path = str(tmp_path / "phase_e.db")
-    database = Database(db_path)
-    await database.initialize()
+async def phase_e_app(pg_db, monkeypatch):
+    database = pg_db
 
     acct = await database.create_account("PhaseE Co")
     await database.add_company(acct.id, "PE", "key_pe", "PhaseE Co")
@@ -47,9 +45,7 @@ async def phase_e_app(tmp_path, monkeypatch):
     token_driver = create_jwt(driver.telegram_id, acct.id, "driver")
 
     import infra.platform as _cp
-    from adapters.storage.tenant_router import LegacyRouter
-    _old_router, _old_db = _cp._router, _cp._db
-    _cp._router = LegacyRouter(database)
+    _old_db = _cp._db
     _cp._db = database
 
     # ── Stubs for /timeline ───────────────────────────────────────
@@ -86,7 +82,7 @@ async def phase_e_app(tmp_path, monkeypatch):
     )
 
     # ── Stubs for /heatmap ────────────────────────────────────────
-    # Patch tenant.get_safety_events_warehouse via the LegacyRouter's tenant DB.
+    # Patch the Database get_safety_events_warehouse method directly.
     async def _fake_events_warehouse(account_id, *, days=30, limit=10000, **kw):
         return [
             {"lat": 40.0, "lon": -74.0, "vehicle_name": "T-9"},
@@ -113,8 +109,8 @@ async def phase_e_app(tmp_path, monkeypatch):
         "token_owner": token_owner, "token_driver": token_driver,
     }
 
-    _cp._router, _cp._db = _old_router, _old_db
-    await database.close()
+    _cp._db = _old_db
+    # database.close() handled by the pg_db fixture's own teardown
 
 
 def _h(token: str) -> dict:

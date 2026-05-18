@@ -5,7 +5,7 @@ import os
 from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import FileResponse
 
-from interfaces.api.deps import require_permission, require_permission_any, get_tenant_db, get_user_vehicle_nums
+from interfaces.api.deps import require_permission_any, get_tenant_db, get_user_vehicle_nums
 
 router = APIRouter(prefix="/parking", tags=["parking"])
 

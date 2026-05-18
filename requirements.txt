@@ -3,7 +3,10 @@ aiohttp==3.10.11
 python-dotenv==1.0.1
 apscheduler==3.10.4
 reportlab==4.4.10
-aiosqlite==0.20.0
+# aiosqlite intentionally NOT listed here — production runs Postgres
+# only (cutover 2026-05-08).  The legacy SQLite branch in
+# adapters/storage/core.py is gated to test runs and the test suite
+# pulls aiosqlite from requirements-dev.txt.  See ARCHITECTURE.md.
 cachetools>=5.3
 redis>=5.0
 cryptography>=41.0
@@ -12,6 +15,10 @@ staticmap>=0.5.7
 google-generativeai>=0.8
 google-api-python-client>=2.120
 google-auth>=2.28
+# OAuth Web Flow helper for per-account "Bring Your Own Drive" backend
+# (adapters/storage/object_store_gdrive.py).  google-auth doesn't ship
+# the Flow class — it lives in this separate package.
+google-auth-oauthlib>=1.2
 python-multipart>=0.0.9
 
 # API server

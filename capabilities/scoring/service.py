@@ -4,7 +4,7 @@ This is the entrypoint the API / bot / nightly snapshot job all call.
 It is the *only* layer that touches I/O (Samsara client, tenant DB).
 ``engine.py`` and the signal modules stay pure-data.
 
-Phase B (April 2026) — ``evaluate_subjects(subject='driver'|'vehicle')``
+``evaluate_subjects(subject='driver'|'vehicle')``
 is now the canonical entrypoint.  ``evaluate_drivers`` is preserved as a
 thin alias for back-compat of bot/AI-tool callers; the API layer uses
 ``evaluate_subjects`` directly.
@@ -65,7 +65,7 @@ async def evaluate_subjects(
 
     - ``"driver"`` (legacy default): one card per driver, exposure
       aggregated across all the trucks that driver operated.
-    - ``"vehicle"`` (Phase B): one card per truck, with telemetry that
+    - ``"vehicle"``: one card per truck, with telemetry that
       vehicle's own engine/idle/eco data and any safety events tagged
       with that vehicle.  This is the credibility-fix path — a fleet of
       80 trucks with only 18 registered drivers will now produce 80
@@ -96,7 +96,7 @@ async def evaluate_subjects(
     _t0 = _time.perf_counter()
     _stage: dict[str, float] = {}
 
-    # Phase 6 observability — record each stage as a Prometheus
+    # observability — record each stage as a Prometheus
     # histogram alongside the structured-log line. Stays a no-op when
     # prometheus_client isn't installed.
     from infra import observability as _obs
@@ -297,7 +297,7 @@ async def evaluate_subjects(
     for sc in scorecards:
         eff_rec = eff_by_subject[sc.subject_id]
         raw     = eff_rec["_raw"]
-        # Pillar block (Audit Option C) — the new canonical shape.
+        # Pillar block — the new canonical shape.
         # Retains legacy top-level ``score / base / bonus_total /
         # penalty_total / bonuses / penalties`` aliases so the dashboard
         # can transition over one release.
@@ -316,7 +316,7 @@ async def evaluate_subjects(
             for name, ps in sc.pillars.items()
         }
         out.append({
-            # New canonical subject fields (Phase B)
+            # New canonical subject fields
             "subject_id":   sc.subject_id,
             "subject_name": sc.subject_name,
             "subject_type": sc.subject_type,
@@ -326,7 +326,7 @@ async def evaluate_subjects(
             "driver_id":    sc.subject_id,
             "driver_name":  sc.subject_name,
             "company":      eff_rec["company"],
-            # Phase F (driver-inline) — when the subject is a vehicle,
+            # when the subject is a vehicle,
             # surface the Samsara-paired driver name (if any) so the
             # dashboard can show "Truck 42 \u2014 Jane Doe" without an
             # extra round-trip.  ``raw["_driver_name"]`` is populated

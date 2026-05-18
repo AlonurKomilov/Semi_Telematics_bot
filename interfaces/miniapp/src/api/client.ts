@@ -56,6 +56,11 @@ export function clearToken(): void {
 
 type ApiFetchOpts = Omit<RequestInit, 'body'> & {
   body?: BodyInit | Record<string, unknown> | null;
+  /** Per-call override for the abort timeout.  Default is
+   *  ``REQUEST_TIMEOUT_MS`` (30s) which fits most endpoints; AI
+   *  chat replies can take longer when the model is reasoning over
+   *  fleet data, so callers there should pass ``timeoutMs: 90_000``. */
+  timeoutMs?: number;
 };
 
 export async function apiFetch(path: string, opts: ApiFetchOpts = {}): Promise<Response> {
@@ -84,11 +89,16 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}): Promise<R
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const limitMs = opts.timeoutMs ?? REQUEST_TIMEOUT_MS;
+  const timeout = setTimeout(() => controller.abort(), limitMs);
 
+  // Strip the custom opt before forwarding to fetch() so it doesn't
+  // end up as a stray header / option the browser doesn't recognise.
+  const { timeoutMs: _drop, ...fetchOpts } = opts;
+  void _drop;
   try {
     const res = await fetch(path, {
-      ...opts,
+      ...fetchOpts,
       headers,
       body: body as BodyInit,
       signal: controller.signal,

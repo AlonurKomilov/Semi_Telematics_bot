@@ -228,7 +228,7 @@ export default function LiveMap() {
   const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch]         = useState('');
-  // Phase E26 — 30-day safety-event heat layer toggle.
+ // 30-day safety-event heat layer toggle.
   const [heatOn, setHeatOn] = useState(false);
   const heatLayerRef = useRef<L.Layer | null>(null);
 
@@ -295,7 +295,7 @@ export default function LiveMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady]);
 
-  // ── Phase E26 — safety-event heat layer ────────────────────────────────
+ // ── safety-event heat layer ────────────────────────────────
   useEffect(() => {
     if (!isReady || !leafletMap.current) return;
     let cancelled = false;
@@ -706,7 +706,7 @@ export default function LiveMap() {
               ),
             )}
           </div>
-          {/* Phase E26 — safety-event heat layer toggle */}
+          {/* safety-event heat layer toggle */}
           <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
             <input
               type="checkbox"

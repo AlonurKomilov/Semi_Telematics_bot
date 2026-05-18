@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Mail } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { PageHeader, CardSkeleton, ErrorState } from '../../components/shell';
 import type { Subscription } from '../../types';
+import { TIMEZONE_OPTIONS, timezoneLabelWithTime } from '../../utils/timezones';
+import { useNow } from '../../hooks/useNow';
 
 const REPORT_TYPES: Record<string, string> = {
   faults: '🔧 Faults',
@@ -22,18 +25,12 @@ function fmtHour(h: number) {
   return h < 12 ? `${h}:00 AM` : `${h - 12}:00 PM`;
 }
 
-const COMMON_TIMEZONES = [
-  'America/New_York',
-  'America/Chicago',
-  'America/Denver',
-  'America/Los_Angeles',
-  'America/Phoenix',
-  'America/Anchorage',
-  'Pacific/Honolulu',
-  'UTC',
-];
 
 export default function Subscriptions() {
+  const { t } = useTranslation();
+  // Ticks every minute so the "current time in zone X" suffix in the
+  // timezone picker stays fresh while the page is open.
+  const now = useNow();
   const [sub, setSub] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -100,8 +97,8 @@ export default function Subscriptions() {
       <div className="max-w-xl">
         <PageHeader
           icon={Mail}
-          title="Report Subscriptions"
-          description="Schedule a recurring email with the report of your choice. Pick the frequency, hour, and time zone — you can unsubscribe any time."
+          title={t('pages.subscriptions_title')}
+          description={t('pages.subscriptions_desc')}
         />
         <CardSkeleton height="h-48" />
       </div>
@@ -112,8 +109,8 @@ export default function Subscriptions() {
     <div className="max-w-xl">
       <PageHeader
         icon={Mail}
-        title="Report Subscriptions"
-        description="Schedule a recurring email with the report of your choice. Pick the frequency, hour, and time zone — you can unsubscribe any time."
+        title={t('pages.subscriptions_title')}
+        description={t('pages.subscriptions_desc')}
       />
 
       {error && <div className="mb-3"><ErrorState message={error} /></div>}
@@ -180,7 +177,11 @@ export default function Subscriptions() {
           <div className="flex-1">
             <label className="block text-sm text-muted-foreground mb-1">Timezone</label>
             <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border">
-              {COMMON_TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz.replace(/_/g, ' ')}</option>)}
+              {TIMEZONE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {timezoneLabelWithTime(o.value, now)}
+                </option>
+              ))}
             </select>
           </div>
         </div>

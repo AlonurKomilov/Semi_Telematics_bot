@@ -6,7 +6,7 @@ import os
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -25,13 +25,15 @@ from interfaces.api.routes import costs as costs_routes
 from interfaces.api.routes import user as user_routes
 from interfaces.api.routes import admin as admin_routes
 from interfaces.api.routes import maintenance as maintenance_routes
+from interfaces.api.routes import work_orders as work_orders_routes
+from interfaces.api.routes import storage as storage_routes
 from interfaces.api.routes import ai as ai_routes
 from interfaces.api.routes import knowledge as knowledge_routes
 from interfaces.api.routes import permissions as permissions_routes
 from interfaces.api.routes import billing as billing_routes
-from interfaces.api.routes import files as files_routes
 from interfaces.api.routes import payroll as payroll_routes
 from interfaces.api.routes import coaching as coaching_routes
+from interfaces.api.routes import drivers as drivers_routes
 from interfaces.api.auth import router as auth_router
 from interfaces.api.rate_limit import limiter
 
@@ -50,17 +52,44 @@ _extra = os.getenv("CORS_ALLOWED_ORIGINS", "")
 if _extra:
     _ALLOWED_ORIGINS.extend(o.strip() for o in _extra.split(",") if o.strip())
 
-# Max request body size (bytes) — 2 MB at app level; nginx also enforces 5 MB
+# Max request body size — two limits so JSON endpoints keep a tight DoS
+# cap while file-upload endpoints get the headroom they need.  Routes
+# enforce their own per-endpoint caps (work-order attachments 10 MB,
+# driver documents 20 MB, POI CSV 5 MB); the middleware is the outer
+# envelope so a malformed payload can't tie up gunicorn parsing a
+# multi-MB body before the route's own size check rejects it.
 _MAX_BODY_SIZE = int(os.getenv("MAX_BODY_SIZE", str(2 * 1024 * 1024)))
+_MAX_UPLOAD_BODY_SIZE = int(os.getenv("MAX_UPLOAD_BODY_SIZE", str(25 * 1024 * 1024)))
+
+# Path *suffixes* (post-prefix) that accept large multipart uploads.
+# Match by ``str.endswith`` so /api and /api/v1 prefixes both work.
+_UPLOAD_PATH_SUFFIXES = (
+    "/attachments",   # work-order invoice/photo/warranty uploads (10 MB cap in-route)
+    "/documents",     # driver license/medical/insurance uploads (20 MB cap in-route)
+)
 
 
 class LimitBodyMiddleware(BaseHTTPMiddleware):
-    """Reject requests with Content-Length exceeding the configured limit."""
+    """Reject requests with Content-Length exceeding the configured limit.
+
+    Picks the cap by path: upload endpoints get
+    ``MAX_UPLOAD_BODY_SIZE`` (25 MB default), every other endpoint gets
+    ``MAX_BODY_SIZE`` (2 MB default).  POST is the only method that
+    carries uploaded bytes here — the predicate doesn't gate on method
+    so a misrouted GET still gets the same 413.
+    """
 
     async def dispatch(self, request: Request, call_next):
         cl = request.headers.get("content-length")
-        if cl and int(cl) > _MAX_BODY_SIZE:
-            return Response("Request body too large", status_code=413)
+        if cl:
+            path = request.url.path
+            limit = (
+                _MAX_UPLOAD_BODY_SIZE
+                if any(path.endswith(s) for s in _UPLOAD_PATH_SUFFIXES)
+                else _MAX_BODY_SIZE
+            )
+            if int(cl) > limit:
+                return Response("Request body too large", status_code=413)
         return await call_next(request)
 
 
@@ -76,7 +105,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
 
 class ApiNoStoreMiddleware(BaseHTTPMiddleware):
-    """Phase 4: stamp ``Cache-Control: no-store`` on every /api/* response.
+    """stamp ``Cache-Control: no-store`` on every /api/* response.
 
     Defensive guard for the Cloudflare rollout. Cloudflare's default
     behaviour is to NOT cache anything with an Authorization header,
@@ -119,7 +148,7 @@ async def _lifespan(app: FastAPI):
     worker is safe (just wasteful — the second worker's call is a
     no-op).
 
-    Phase 6: also kicks off the ARQ queue-depth poller so Prometheus
+    also kicks off the ARQ queue-depth poller so Prometheus
     has a Gauge to scrape. Cancelled cleanly on shutdown.
     """
     import asyncio
@@ -131,7 +160,7 @@ async def _lifespan(app: FastAPI):
     else:
         logger.info("API lifespan: reusing platform from parent (legacy run.py mode)")
 
-    # Phase 6: queue-depth poller (no-op when prometheus deps absent).
+    # queue-depth poller (no-op when prometheus deps absent).
     from infra import observability as _obs
     queue_poller = asyncio.create_task(
         _obs.poll_arq_queue_depth(), name="arq-queue-depth-poller",
@@ -191,7 +220,7 @@ def create_api() -> FastAPI:
     # Request ID for distributed tracing
     app.add_middleware(RequestIDMiddleware)
 
-    # Phase 4: API responses must never hit a CDN cache. We stamp
+    # API responses must never hit a CDN cache. We stamp
     # no-store on every /api/* response unless the route handler set
     # an explicit Cache-Control header itself. Registered close to the
     # innermost so the route handler's own headers take precedence.
@@ -238,18 +267,42 @@ def create_api() -> FastAPI:
         app.include_router(admin_routes.router, prefix=prefix)
         app.include_router(permissions_routes.router, prefix=prefix)
         app.include_router(maintenance_routes.router, prefix=prefix)
+        app.include_router(work_orders_routes.router, prefix=prefix)
+        app.include_router(storage_routes.router, prefix=prefix)
         app.include_router(ai_routes.router, prefix=prefix)
         app.include_router(knowledge_routes.router, prefix=prefix)
         app.include_router(billing_routes.router, prefix=prefix)
-        app.include_router(files_routes.router, prefix=prefix)
         app.include_router(payroll_routes.router, prefix=prefix)
         app.include_router(coaching_routes.router, prefix=prefix)
+        app.include_router(drivers_routes.router, prefix=prefix)
 
-    # ── Phase 6: observability ─────────────────────────────
+    # ── observability ─────────────────────────────
     # Wire /metrics + OTel auto-instrumentation BEFORE the static
     # mounts so /metrics is reachable at the API root, not under /miniapp/.
     from infra import observability as _obs
     _obs.init_observability(app)
+
+    # Public legal pages — required by Google OAuth verification.
+    # Served at the apex so the URLs (https://4truck.us/privacy,
+    # /terms) appear unchanged in the OAuth consent screen and from
+    # external links. Nginx proxies these two paths to the API.
+    _legal_dir = os.path.join(os.path.dirname(__file__), "static", "legal")
+
+    @app.get("/privacy", include_in_schema=False)
+    async def privacy_policy():
+        return FileResponse(
+            os.path.join(_legal_dir, "privacy.html"),
+            media_type="text/html",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+
+    @app.get("/terms", include_in_schema=False)
+    async def terms_of_service():
+        return FileResponse(
+            os.path.join(_legal_dir, "terms.html"),
+            media_type="text/html",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
 
     # Serve miniapp static files (Telegram Mini App) — built via `npm run build`
     miniapp_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "miniapp", "dist")
@@ -278,6 +331,25 @@ def create_api() -> FastAPI:
     if os.path.isdir(dashboard_dir):
         dashboard_index = os.path.join(dashboard_dir, "index.html")
 
+        # ``index.html`` must never be cached: it contains hashed
+        # ``<script src="…">`` references, and a stale cached copy will
+        # ask the browser for chunk hashes that no longer exist after
+        # the next deploy.  Asset files (hashed JS/CSS under
+        # ``/assets/*``) are safe to cache forever — their hashes
+        # change with every build, so cache invalidation is automatic.
+        _DASHBOARD_NO_STORE = {"Cache-Control": "no-store, must-revalidate"}
+
+        # Explicit root handlers.  Starlette's ``StaticFiles(html=True)``
+        # serves ``index.html`` for ``/dashboard`` and ``/dashboard/``
+        # without giving us a hook to set headers — without these two
+        # routes, the first page-load after a deploy lands on a cached
+        # HTML referencing old chunk hashes, which then 404 forever
+        # (or until the user hard-refreshes).
+        @app.get("/dashboard")
+        @app.get("/dashboard/")
+        async def dashboard_root():
+            return FileResponse(dashboard_index, headers=_DASHBOARD_NO_STORE)
+
         # SPA catch-all: serve index.html for any /dashboard/* path that
         # doesn't match a real static file (e.g. /dashboard/fleet/weather)
         @app.get("/dashboard/{full_path:path}")
@@ -286,12 +358,19 @@ def create_api() -> FastAPI:
             file_path = os.path.join(dashboard_dir, full_path)
             if os.path.isfile(file_path):
                 return FileResponse(file_path)
-            # no-store so the browser always fetches fresh HTML after a deploy
-            # (hashed JS/CSS assets are safe to cache; the HTML must not be)
-            return FileResponse(
-                dashboard_index,
-                headers={"Cache-Control": "no-store, must-revalidate"},
-            )
+            # /dashboard/assets/* are hash-named bundles emitted by Vite.
+            # When the browser asks for a hash that no longer exists on
+            # disk (stale index.html cached client-side after a deploy
+            # rotated the hashes), we must NOT fall back to index.html —
+            # the browser would receive ``text/html`` where it expects
+            # ``application/javascript`` and strict-MIME checking would
+            # reject the module with ``Failed to load module script``.
+            # Returning 404 instead lets the dashboard's runtime catch
+            # the import failure and prompt a reload to fetch the new
+            # index.html (with the up-to-date hashes).
+            if full_path.startswith("assets/"):
+                raise HTTPException(status_code=404, detail="Asset not found")
+            return FileResponse(dashboard_index, headers=_DASHBOARD_NO_STORE)
 
         app.mount(
             "/dashboard",

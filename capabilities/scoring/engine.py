@@ -3,7 +3,7 @@
 No I/O, no DB, no clock — fully unit-testable.  Signal collection and
 override loading happen in ``service.py``.
 
-Audit Option C structure (April 2026 redesign):
+structure (April 2026 redesign):
     - Three pillars: Safety / Efficiency / Compliance with caps 50/25/25.
     - Each pillar starts full (= cap).  Penalties drag down within the
       pillar's own budget; bonuses can refund up to the cap; nothing
@@ -52,7 +52,7 @@ class PillarSummary:
     penalties: list[ScoreEvent] = field(default_factory=list)
 
 
-# Phase B — subject abstraction.  Scorecards are now keyed by
+# subject abstraction. Scorecards are now keyed by
 # ``subject_id``/``subject_name``/``subject_type`` so the same engine
 # can score either a driver or a vehicle.  ``driver_id``/``driver_name``
 # remain as @property aliases for back-compat of the JSON contract

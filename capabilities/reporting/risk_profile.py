@@ -40,7 +40,7 @@ class RiskProfile:
 
     # Score
     total_score: Optional[int] = None       # 0-100
-    grade: Optional[str] = None             # "A" / "B" / "C" / ...
+    tier: Optional[str] = None              # "Platinum" / "Gold" / "Silver" / "Bronze" / "Red"
     pillars: dict[str, dict] = field(default_factory=dict)  # safety/efficiency/compliance/maintenance
     breakdown: dict[str, Any] = field(default_factory=dict)  # raw scoring engine breakdown
 
@@ -68,18 +68,27 @@ class RiskProfile:
     generated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-def _grade_from_score(score: Optional[int]) -> str:
+def _tier_from_score(score: Optional[int]) -> str:
+    """Map a 0-100 composite score to a metallic tier label.
+
+    Thresholds (85/70/55/40) match the dashboard's ``SCORE_BUCKETS``
+    so the same driver never renders one tier in the dashboard table
+    and a different one on their Risk Summary PDF.  Returns the
+    English tier name — PDFs are English-only today; if/when we
+    localise PDFs we'll route through the same ``tier.*`` i18n keys
+    the frontend uses.
+    """
     if score is None:
         return "—"
-    if score >= 90:
-        return "A"
-    if score >= 80:
-        return "B"
+    if score >= 85:
+        return "Platinum"
     if score >= 70:
-        return "C"
-    if score >= 60:
-        return "D"
-    return "F"
+        return "Gold"
+    if score >= 55:
+        return "Silver"
+    if score >= 40:
+        return "Bronze"
+    return "Red"
 
 
 def _percentile(value: float, population: list[float]) -> int:
@@ -285,7 +294,7 @@ async def build_risk_profile(
         company=company,
         days=days,
         total_score=total_score,
-        grade=_grade_from_score(total_score),
+        tier=_tier_from_score(total_score),
         pillars=pillars,
         breakdown=breakdown,
         daily_history=history,

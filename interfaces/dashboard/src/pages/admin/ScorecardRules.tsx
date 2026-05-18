@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Trophy } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import {
@@ -22,7 +23,7 @@ interface ScoreRule {
   cap: number | null;
   enabled: boolean;
   overridden: boolean;
-  // Audit Option C — curve metadata (read-only kind, editable anchors)
+ // curve metadata (read-only kind, editable anchors)
   curve_kind?: string | null;
   curve_x_zero?: number | null;
   curve_x_max?:  number | null;
@@ -70,6 +71,7 @@ type CategoryFilter = (typeof CATEGORIES)[number];
 // ── Page ─────────────────────────────────────────────────────────
 
 export default function ScorecardRules() {
+  const { t } = useTranslation();
   const [rules, setRules]     = useState<ScoreRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
@@ -183,8 +185,8 @@ export default function ScorecardRules() {
     <div>
       <PageHeader
         icon={Trophy}
-        title="Scorecard Rules"
-        description="Tune how driver scores are calculated — adjust point values and caps for each behaviour. Changes apply at the next evaluation cycle."
+        title={t('pages.scorecard_rules_title')}
+        description={t('pages.scorecard_rules_desc')}
       />
 
       {/* KPI strip */}
@@ -219,7 +221,7 @@ export default function ScorecardRules() {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search rules…"
+          placeholder={t('forms.search_rules_placeholder')}
           className="flex-1 min-w-[200px] bg-muted border border-border rounded px-3 py-1.5 text-sm"
         />
       </div>
@@ -445,13 +447,14 @@ function RuleRow({
 function CurveInput({
   label, value, onChange,
 }: { label: string; value: number | null; onChange: (v: number | null) => void }) {
+  const { t } = useTranslation();
   return (
     <label className="flex flex-col gap-1">
       <span className="text-muted-foreground text-[10px]">{label}</span>
       <input
         type="number"
         value={value ?? ''}
-        placeholder="default"
+        placeholder={t('forms.default_placeholder')}
         onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
         className="bg-muted border border-border rounded px-2 py-1 text-sm tabular-nums"
       />

@@ -1,106 +1,67 @@
 """Database core — connection management, row converters, helpers.
 
-Backend selection:
-  - If DATABASE_URL env var is set (postgresql://...), uses asyncpg via
-    adapters.storage.pg_adapter.  All mixin SQL (? placeholders, etc.)
-    is automatically translated.
-  - Otherwise uses aiosqlite (SQLite with WAL mode).
+PostgreSQL is the only supported backend.  ``DATABASE_URL`` is
+mandatory; we refuse to boot without it.  The SQLite branch that used
+to live here was retired (cutover 2026-05-08); the only remaining
+SQLite consumers are the test suite's per-test fixtures which run
+against a ``testcontainers`` Postgres instance instead.
 """
 
 from __future__ import annotations
 
 import asyncio
-import aiosqlite
 import logging
 import os
 import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Any
 
 from .models import Role, Account, Company, User, AuthorizedChat, Invite
 from . import schema, migrations, platform_schema, platform_migrations
 
 logger = logging.getLogger(__name__)
 
-# Default number of read-pool connections per database.
-# Each connection runs in its own thread via aiosqlite, so N connections
-# allow N concurrent reads under WAL mode.
 _DEFAULT_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "4"))
 
-# PostgreSQL DSN — when set, the PG backend is used instead of SQLite
+# PostgreSQL DSN — REQUIRED.  Initialise() reads this at runtime so
+# tests can monkeypatch it (see tests/conftest.py pg_db fixture).
 _DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 
 class _DatabaseCore:
     """Base class providing connection lifecycle, row converters, and utilities.
 
-    SQLite (default): writer connection in self._db, N-reader pool.
-    PostgreSQL (DATABASE_URL set): asyncpg pool, self._db is a _PgConnection
-    that proxies the pool.  All mixin SQL is translated automatically.
+    All operations go through an asyncpg pool wrapped by
+    ``_PgConnection`` (adapters/storage/pg_adapter.py) which exposes
+    the SQLite-compatible API the mixins were originally written for.
     """
 
-    def __init__(self, path: str = "data/bot.db", pool_size: int = _DEFAULT_POOL_SIZE):
+    def __init__(self, path: str = "", pool_size: int = _DEFAULT_POOL_SIZE):
+        # ``path`` is retained for backwards compatibility with callers
+        # that pass a SQLite-style file path; it is ignored in the PG
+        # branch and exists only so existing constructors don't have to
+        # be rewritten.
         self.path = path
         self._pool_size = pool_size
-        self._db: Optional[aiosqlite.Connection] = None  # writer connection (SQLite) or PgConnection (PG)
-        self._read_pool: asyncio.Queue = asyncio.Queue()
-        self._all_readers: list = []
-        self._pg_pool = None  # set when using PostgreSQL
+        self._db: Optional[Any] = None  # _PgConnection wrapper
+        self._pg_pool = None
 
     @property
     def _using_postgres(self) -> bool:
         return self._pg_pool is not None
 
-    async def _open_connection(self) -> aiosqlite.Connection:
-        """Open a new aiosqlite connection with standard pragmas. (SQLite only)"""
-        conn = await aiosqlite.connect(self.path)
-        conn.row_factory = aiosqlite.Row
-        await conn.execute("PRAGMA journal_mode=WAL")
-        await conn.execute("PRAGMA foreign_keys=ON")
-        return conn
-
     async def initialize(self):
-        """Open DB, create/migrate schema, and spin up the read pool.
+        """Open the PG pool, create the schema, and run all migrations.
 
-        Backend is selected by DATABASE_URL env var:
-          - Set → asyncpg / PostgreSQL
-          - Unset → aiosqlite / SQLite (default)
+        ``DATABASE_URL`` is required — we refuse to start without it
+        rather than silently fall back to a sentinel backend.
         """
-        if _DATABASE_URL:
-            await self._initialize_pg()
-        else:
-            await self._initialize_sqlite()
-
-    async def _initialize_sqlite(self):
-        """SQLite startup: WAL mode, schema, migrations, read pool.
-
-        Platform-only tables (``subscriptions``, ``billing_usage_snapshots``,
-        ``ai_chat_history``, etc.) live in ``platform_schema`` and are created
-        on-demand by ``PlatformDB.initialize()`` in multi-tenant mode. Legacy
-        single-file SQLite databases that need them already have them from
-        prior runs; running ``platform_migrations.run_all`` here would
-        re-trigger the destructive ``migrate_email_unique_per_account``
-        rebuild, which corrupts FK references on tables that point to
-        ``users(id)``. PG mode runs them in ``_initialize_pg``.
-        """
-        os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
-        self._db = await self._open_connection()
-        await schema.create_tables(self._db)
-        await migrations.run_all(self._db)
-
-        # Spin up read-pool connections
-        for _ in range(self._pool_size):
-            conn = await self._open_connection()
-            self._all_readers.append(conn)
-            self._read_pool.put_nowait(conn)
-
-        logger.info(
-            "Database ready at %s (writer + %d readers)", self.path, self._pool_size,
-        )
-
-    async def _initialize_pg(self):
-        """PostgreSQL startup: asyncpg pool, schema, migrations."""
+        if not _DATABASE_URL:
+            raise RuntimeError(
+                "DATABASE_URL is required.  Set DATABASE_URL=postgresql://... "
+                "in your .env (see .env.example) and restart."
+            )
         from .pg_adapter import open_pg_pool
         self._pg_pool = await open_pg_pool(_DATABASE_URL, pool_size=self._pool_size)
         # Use a single pooled connection as the "writer" for schema/migrations
@@ -109,15 +70,13 @@ class _DatabaseCore:
         await migrations.run_all(self._db)
         await platform_schema.create_tables(self._db)
         await platform_migrations.run_all(self._db)
-        # Subsequent mixin calls reuse the same pool via self._db
-        logger.info("Database ready (PostgreSQL via asyncpg, pool_size=%d)", self._pool_size)
+        logger.info(
+            "Database ready (PostgreSQL via asyncpg, pool_size=%d)", self._pool_size,
+        )
 
     @asynccontextmanager
     async def acquire(self):
-        """Check out a read connection from the pool.
-
-        SQLite: returns a pooled aiosqlite connection.
-        PostgreSQL: returns a fresh pooled asyncpg connection.
+        """Check out a read connection from the asyncpg pool.
 
         Usage::
 
@@ -125,15 +84,8 @@ class _DatabaseCore:
                 cur = await conn.execute("SELECT ...")
                 rows = await cur.fetchall()
         """
-        if self._using_postgres:
-            async with self._pg_pool.connection() as conn:
-                yield conn
-        else:
-            conn = await self._read_pool.get()
-            try:
-                yield conn
-            finally:
-                self._read_pool.put_nowait(conn)
+        async with self._pg_pool.connection() as conn:
+            yield conn
 
     async def read_all(self, sql: str, params: tuple = ()) -> list:
         """Execute *sql* on a pooled read connection and return all rows.
@@ -153,36 +105,23 @@ class _DatabaseCore:
             return await cur.fetchone()
 
     async def close(self):
-        if self._using_postgres:
-            # Release the writer connection BEFORE closing the pool —
-            # otherwise asyncpg's pool.close() blocks for command_timeout
-            # seconds waiting for the in-flight connection to drain
-            # (manifests as a 60s "hang" on shutdown).
-            if self._db is not None:
-                try:
-                    await self._db.close()
-                except Exception:
-                    pass
-                self._db = None
+        # Release the writer connection BEFORE closing the pool — otherwise
+        # asyncpg's pool.close() blocks for command_timeout seconds
+        # waiting for the in-flight connection to drain (manifests as a
+        # 60-second hang on shutdown).
+        if self._db is not None:
+            try:
+                await self._db.close()
+            except Exception:
+                pass
+            self._db = None
+        if self._pg_pool is not None:
             await self._pg_pool.close()
             self._pg_pool = None
-            return
-        for conn in self._all_readers:
-            await conn.close()
-        self._all_readers.clear()
-        # Drain the queue
-        while not self._read_pool.empty():
-            try:
-                self._read_pool.get_nowait()
-            except asyncio.QueueEmpty:
-                break
-        if self._db:
-            await self._db.close()
-            self._db = None
 
     @asynccontextmanager
     async def transaction(self):
-        """Async context manager for an IMMEDIATE transaction.
+        """Async context manager for a transaction.
 
         Usage::
             async with db.transaction():
@@ -190,7 +129,7 @@ class _DatabaseCore:
                 await db._db.execute(...)
         Commits on success, rolls back on exception.
         """
-        await self._db.execute("BEGIN IMMEDIATE")
+        await self._db.execute("BEGIN")
         try:
             yield
             await self._db.execute("COMMIT")
@@ -232,6 +171,7 @@ class _DatabaseCore:
             webhook_secret=row["webhook_secret"] if "webhook_secret" in row.keys() else "",
             payroll_enabled=bool(row["payroll_enabled"]) if "payroll_enabled" in row.keys() else False,
             coaching_enabled=bool(row["coaching_enabled"]) if "coaching_enabled" in row.keys() else False,
+            timezone=row["timezone"] if "timezone" in row.keys() else "America/New_York",
         )
 
     def _row_to_company(self, row) -> Company:

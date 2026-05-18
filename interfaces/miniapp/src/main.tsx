@@ -4,6 +4,7 @@ import '@telegram-apps/telegram-ui/dist/styles.css';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
+import './i18n';
 import './index.css';
 import App from './App';
 

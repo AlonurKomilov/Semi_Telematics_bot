@@ -8,7 +8,6 @@ import sys
 # Ensure encryption is not active during tests
 os.environ.setdefault("ENCRYPTION_KEY", "")
 
-import pytest
 import pytest_asyncio
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -16,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from httpx import ASGITransport, AsyncClient
 
 from adapters.storage import Database, Role
-from interfaces.api.auth import create_jwt, JWT_SECRET
+from interfaces.api.auth import create_jwt
 
 
 # ---------------------------------------------------------------------------
@@ -24,11 +23,14 @@ from interfaces.api.auth import create_jwt, JWT_SECRET
 # ---------------------------------------------------------------------------
 
 @pytest_asyncio.fixture
-async def db_and_app(tmp_path):
-    """Provide a test DB, seed it, and return (db, FastAPI app, tokens)."""
-    db_path = str(tmp_path / "test.db")
-    database = Database(db_path)
-    await database.initialize()
+async def db_and_app(pg_db):
+    """Provide a test DB, seed it, and return (db, FastAPI app, tokens).
+
+    Uses the shared ``pg_db`` fixture (testcontainers PG with per-test
+    schema reset) — production runs Postgres, so route tests should
+    exercise the same engine.
+    """
+    database = pg_db
 
     # Seed two accounts
     acct_a = await database.create_account("Tenant A")
@@ -47,12 +49,9 @@ async def db_and_app(tmp_path):
     token_b = create_jwt(owner_b.telegram_id, acct_b.id, "owner")
     token_driver = create_jwt(driver_a.telegram_id, acct_a.id, "driver")
 
-    # Patch core.platform so api/deps.py and bot.state lazy proxy resolve correctly
+    # Patch infra.platform so api/deps.py and bot.state lazy proxy resolve correctly
     import infra.platform as _cp
-    from adapters.storage.tenant_router import LegacyRouter
-    _old_router = _cp._router
     _old_cp_db = _cp._db
-    _cp._router = LegacyRouter(database)
     _cp._db = database
 
     # Import app after patching
@@ -69,9 +68,8 @@ async def db_and_app(tmp_path):
         "token_driver": token_driver,
     }
 
-    _cp._router = _old_router
     _cp._db = _old_cp_db
-    await database.close()
+    # database.close() is handled by the pg_db fixture's own teardown.
 
 
 def _headers(token: str) -> dict:
@@ -218,6 +216,10 @@ class TestMaintenanceAPI:
                     "vehicle_name": "TruckNew",
                     "task_type": "brake_check",
                     "description": "Check brakes",
+                    # ``due_date`` (or ``due_miles``) is required by the
+                    # TaskCreate validator so the task can actually become
+                    # overdue and notify someone.
+                    "due_date": "2026-12-31",
                 },
             )
             assert r.status_code == 200

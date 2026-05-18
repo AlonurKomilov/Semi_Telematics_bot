@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { GraduationCap } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
@@ -55,6 +56,7 @@ const SEVERITY_ICON: Record<string, string> = {
 // ── Page ─────────────────────────────────────────────────────────
 
 export default function Coaching() {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>('assignments');
   const { user, loading: authLoading } = useAuth();
   const disabled = user?.coaching_enabled === false;
@@ -64,8 +66,8 @@ export default function Coaching() {
       <div className="space-y-4">
         <PageHeader
           icon={GraduationCap}
-          title="Auto Coaching"
-          description="Automatic coaching assignments triggered by safety scorecards or unsafe events. Drivers acknowledge in Telegram or here."
+          title={t('pages.coaching_title')}
+          description={t('pages.coaching_desc_default')}
         />
         <CardSkeleton height="h-40" />
       </div>
@@ -77,8 +79,8 @@ export default function Coaching() {
       <div className="space-y-4">
         <PageHeader
           icon={GraduationCap}
-          title="Auto Coaching"
-          description="Automatic coaching assignments triggered by safety scorecards or unsafe events."
+          title={t('pages.coaching_title')}
+          description={t('pages.coaching_desc_short')}
         />
         <div className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-700 dark:text-yellow-300">
           Auto Coaching is not enabled for this account. Contact your administrator to activate this feature.
@@ -91,8 +93,8 @@ export default function Coaching() {
     <div className="space-y-4">
       <PageHeader
         icon={GraduationCap}
-        title="Auto Coaching"
-        description="Automatic coaching assignments triggered by safety scorecards or unsafe events. Configure rules and topics, then watch assignments accrue and get acknowledged."
+        title={t('pages.coaching_title')}
+        description={t('pages.coaching_desc_long')}
       />
 
       <div className="flex gap-2 border-b border-border/50">
@@ -119,6 +121,7 @@ export default function Coaching() {
 // ── Assignments Tab ──────────────────────────────────────────────
 
 function AssignmentsTab() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [driverFilter, setDriverFilter] = useState<string>('');
@@ -190,7 +193,7 @@ function AssignmentsTab() {
             value={drvId}
             onChange={(e) => setDrvId(e.target.value)}
             className="rounded border border-border/50 bg-background px-2 py-1 text-sm"
-            placeholder="driver id"
+            placeholder={t('forms.driver_id_placeholder')}
           />
         </div>
         <div>
@@ -225,7 +228,7 @@ function AssignmentsTab() {
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             className="w-full rounded border border-border/50 bg-background px-2 py-1 text-sm"
-            placeholder="optional"
+            placeholder={t('forms.optional_placeholder')}
           />
         </div>
         <button
@@ -256,7 +259,7 @@ function AssignmentsTab() {
         <input
           value={driverFilter}
           onChange={(e) => setDriverFilter(e.target.value)}
-          placeholder="filter by driver id"
+          placeholder={t('forms.filter_by_driver_id')}
           className="rounded border border-border/50 bg-background px-2 py-1 text-sm"
         />
         <button onClick={load} className="rounded border border-border/50 px-3 py-1 text-sm">
@@ -312,6 +315,7 @@ function AssignmentsTab() {
 // ── Rules Tab ────────────────────────────────────────────────────
 
 function RulesTab() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
 
   // Form state
@@ -450,7 +454,7 @@ function RulesTab() {
               <input
                 value={eventType}
                 onChange={(e) => setEventType(e.target.value)}
-                placeholder="hard_brake"
+                placeholder={t('forms.event_type_example')}
                 className="w-full rounded border border-border/50 bg-background px-2 py-1 text-sm"
               />
             </div>

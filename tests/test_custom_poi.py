@@ -36,10 +36,8 @@ from interfaces.api.auth import create_jwt
 # ---------------------------------------------------------------------------
 
 @pytest_asyncio.fixture
-async def app_ctx(tmp_path):
-    db_path = str(tmp_path / "custom_poi.db")
-    database = Database(db_path)
-    await database.initialize()
+async def app_ctx(pg_db):
+    database = pg_db
 
     acct_a = await database.create_account("Tenant A")
     acct_b = await database.create_account("Tenant B")
@@ -54,9 +52,7 @@ async def app_ctx(tmp_path):
     token_driver_a = create_jwt(driver_a.telegram_id, acct_a.id, "driver")
 
     import infra.platform as _cp
-    from adapters.storage.tenant_router import LegacyRouter
-    _old_router, _old_db = _cp._router, _cp._db
-    _cp._router = LegacyRouter(database)
+    _old_db = _cp._db
     _cp._db = database
 
     from interfaces.api.app import create_api
@@ -71,8 +67,8 @@ async def app_ctx(tmp_path):
         "driver_a_token": token_driver_a,
     }
 
-    _cp._router, _cp._db = _old_router, _old_db
-    await database.close()
+    _cp._db = _old_db
+    # database.close() handled by the pg_db fixture's own teardown
 
 
 def _h(token: str) -> dict:

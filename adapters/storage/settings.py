@@ -10,11 +10,12 @@ class SettingsMixin:
 
     # ── Account Settings (key-value) ──────────────────────────────
 
-    # Phase B (April 2026) — well-known setting keys.  Strings are
+    # well-known setting keys. Strings are
     # centralised here so the API, dashboard, and bot all reference the
     # same canonical name (typo-proof).
     KEY_SCORECARD_DEFAULT_SUBJECT = "scorecard_default_subject"
     KEY_SCORECARD_PILLAR_CAPS     = "scorecard_pillar_caps"       # JSON: {"safety":50,"efficiency":25,"compliance":25}
+    KEY_FORUM_INCLUDE_AI_NOTE     = "forum_include_ai_note"       # "1" / "0" — append AI Diagnosis section to group-routed alerts
 
     async def get_account_setting(self, account_id: int, key: str,
                                   default: str = "") -> str:

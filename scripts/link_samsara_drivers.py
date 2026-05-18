@@ -48,7 +48,6 @@ import csv
 import logging
 import os
 import sys
-from typing import Optional
 
 # Project root on sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

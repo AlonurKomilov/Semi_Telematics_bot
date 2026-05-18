@@ -14,7 +14,6 @@ Usage::
 import contextvars
 import json
 import logging
-import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -25,15 +24,18 @@ LOCALES_DIR = Path(__file__).resolve().parent.parent.parent / "locales"
 SUPPORTED_LANGUAGES = ("en", "es", "ru", "uk", "fr", "so", "am", "uz", "pa")
 
 LANGUAGE_NAMES = {
+    # Native-script names — kept aligned with the dashboard's
+    # ``utils/languages.ts`` and the miniapp's ``LANG_OPTIONS`` so the
+    # same label shows everywhere a user picks their UI language.
     "en": "English",
     "es": "Español",
-    "ru": "Русский",
-    "uk": "Українська",
     "fr": "Français",
-    "so": "Soomaali",
-    "am": "አማርኛ",
-    "uz": "O'zbek",
     "pa": "ਪੰਜਾਬੀ",
+    "ru": "Русский",
+    "so": "Soomaali",
+    "uk": "Українська",
+    "uz": "Oʻzbekcha",
+    "am": "አማርኛ",
 }
 
 LANGUAGE_FLAGS = {

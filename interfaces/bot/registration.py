@@ -16,7 +16,8 @@ from capabilities.formatting import (
     format_join_success,
 )
 
-from interfaces.bot.config import SUPPORT_CONTACT, logger, get_user_company_codes, get_platform_db, get_tenant_db
+from interfaces.bot.config import SUPPORT_CONTACT, logger
+from interfaces.bot.state import get_user_company_codes, get_platform_db, get_tenant_db
 from interfaces.bot.keyboards import main_menu_kb, system_owner_kb, unregistered_kb, back_kb, onboarding_kb
 from interfaces.bot.helpers import _show
 from interfaces.bot.auth import _get_user

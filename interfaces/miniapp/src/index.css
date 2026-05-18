@@ -828,9 +828,14 @@ body {
   align-items: center;
   margin-bottom: 1px;
 }
-.score-pillar--safety    .score-pillar__icon { color: #34c759; }
-.score-pillar--efficiency .score-pillar__icon { color: #0a84ff; }
-.score-pillar--compliance .score-pillar__icon { color: #bf5af2; }
+/* Pillar icon colours mirror the dashboard taxonomy so the same
+   driver doesn't see opposite signals on web vs phone:
+     • Safety       = red    (severity-coded: the dangerous pillar)
+     • Efficiency   = green  (the eco / fuel pillar)
+     • Compliance   = blue   (the procedural pillar) */
+.score-pillar--safety    .score-pillar__icon { color: var(--st-red); }
+.score-pillar--efficiency .score-pillar__icon { color: var(--st-green); }
+.score-pillar--compliance .score-pillar__icon { color: var(--st-blue); }
 .score-pillar__label {
   font-size: 10px;
   font-weight: 600;
@@ -942,6 +947,13 @@ body {
   line-height: 1.5;
   padding-bottom: 12px;
 }
+.score-footer-updated {
+  text-align: center;
+  font-size: 11px;
+  color: var(--tgui--hint_color);
+  margin: 12px 0 0;
+  padding: 0 16px;
+}
 .score-section__header {
   display: flex;
   align-items: center;
@@ -986,6 +998,41 @@ body {
 }
 .score-event-row__pts--win  { color: var(--st-green); }
 .score-event-row__pts--loss { color: var(--st-red); }
+
+/* Score Changes (explanation) section — driver-side mirror of the
+   dashboard ScoreExplanationCard.  Reuses .score-section frame so
+   spacing matches the surrounding rank / wins / losses blocks. */
+.score-explanation-delta {
+  font-size: 13px;
+  font-weight: 700;
+  margin-left: auto;
+}
+.score-explanation-subtitle {
+  font-size: 11px;
+  color: var(--tgui--hint_color);
+  padding: 4px 12px 6px;
+}
+.score-explanation-empty {
+  font-size: 12px;
+  color: var(--tgui--hint_color);
+  font-style: italic;
+  padding: 6px 12px 10px;
+}
+.score-explanation-group {
+  margin-top: 4px;
+}
+.score-explanation-group__header {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 12px 2px;
+  letter-spacing: 0.02em;
+}
+.score-explanation-group__header--good { color: var(--st-green); }
+.score-explanation-group__header--bad  { color: var(--st-red); }
+.score-event-row__occ {
+  font-size: 11px;
+  color: var(--tgui--hint_color);
+}
 
 /* "Show all N" expand button (finding #12) */
 .score-expand-btn {
@@ -2000,3 +2047,43 @@ button.profile-row:focus-visible {
   }
   .offline-banner { color: #fff; }
 }
+
+/* ── AI Chat bubble (model side) ───────────────────────────────────
+   The backend can return HTML markup; formatAIResponse() sanitizes
+   and we render via dangerouslySetInnerHTML.  Without these rules
+   the <ul>/<ol>/<table>/<p> children inherit the default browser
+   spacing which looks bloated inside a 280px Telegram bubble. */
+.ai-bubble p,
+.ai-bubble h2,
+.ai-bubble h3 { margin: 0 0 4px; }
+.ai-bubble p:last-child,
+.ai-bubble h2:last-child,
+.ai-bubble h3:last-child { margin-bottom: 0; }
+.ai-bubble h2 { font-size: 14px; font-weight: 700; }
+.ai-bubble h3 { font-size: 13px; font-weight: 600; }
+.ai-bubble strong { font-weight: 700; }
+.ai-bubble em     { font-style: italic; }
+.ai-bubble ul,
+.ai-bubble ol     { margin: 4px 0; padding-left: 18px; }
+.ai-bubble li     { margin-bottom: 2px; }
+.ai-bubble code   {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background: rgba(255,255,255,0.08);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.ai-bubble table  {
+  border-collapse: collapse;
+  margin: 4px 0;
+  font-size: 12px;
+  width: 100%;
+}
+.ai-bubble th,
+.ai-bubble td     {
+  padding: 3px 6px;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+  text-align: left;
+}
+.ai-bubble th     { font-weight: 600; opacity: 0.9; }
+.ai-bubble br     { line-height: 1.4; }

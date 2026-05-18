@@ -1,5 +1,6 @@
 import { useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FileText } from 'lucide-react';
 import { apiFetch, apiJSON } from '../../api/client';
 import { PageHeader } from '../../components/shell';
@@ -71,6 +72,7 @@ function Combobox({ value, onChange, options, placeholder }: ComboboxProps) {
 // ── Page ─────────────────────────────────────────────────────────
 
 export default function RiskSummary() {
+  const { t } = useTranslation();
   const [params] = useSearchParams();
   const [subjectType, setSubjectType] = useState<'driver' | 'vehicle'>(
     (params.get('subject_type') as 'driver' | 'vehicle') || 'vehicle',
@@ -165,8 +167,8 @@ export default function RiskSummary() {
     <div className="max-w-2xl">
       <PageHeader
         icon={FileText}
-        title="Stakeholder Risk Summary"
-        description="Generate a per-subject risk profile PDF or CSV. The same telemetry is used for every audience — only the tone, sections, and disclaimers change."
+        title={t('pages.risk_summary_title')}
+        description={t('pages.risk_summary_desc')}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">

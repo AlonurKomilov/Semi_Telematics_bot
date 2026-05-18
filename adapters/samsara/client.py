@@ -185,7 +185,7 @@ class SamsaraClient:
         return f"https://cloud.samsara.com/o/{self._org_id}/devices/{vehicle_id}/vehicle"
 
     async def _get(self, endpoint: str, params: Optional[dict] = None) -> dict:
-        # Phase 6 observability — record latency + status per endpoint.
+        # observability — record latency + status per endpoint.
         # ``endpoint`` is a static path (~30 distinct values) so the
         # Prometheus label cardinality stays bounded.
         import time as _time
@@ -228,6 +228,37 @@ class SamsaraClient:
         """Return list of all vehicles in the fleet."""
         data = await self._get("/fleet/vehicles")
         return data.get("data", [])
+
+    async def get_static_driver_assignments(self) -> dict[str, str]:
+        """Return ``{vehicle_name_lower: driver_name}`` for every truck
+        with a *static* driver assignment configured in Samsara.
+
+        The driver-efficiency endpoint only surfaces drivers who had
+        actual drive activity in the requested window — assignments
+        that exist in Samsara but had no recent drive time slip through
+        the cracks.  Asking ``/fleet/vehicles?decorations=staticAssignedDriver``
+        returns the current assignment regardless of activity.
+
+        Returns an empty dict if the API rejects the decoration param
+        (older accounts), or on any other error — callers treat that
+        as "no static-assignment data available."
+        """
+        try:
+            data = await self._get(
+                "/fleet/vehicles",
+                params={"decorations": "staticAssignedDriver"},
+            )
+        except Exception as e:
+            logger.debug("static_driver_assignments fetch failed: %s", e)
+            return {}
+        out: dict[str, str] = {}
+        for v in data.get("data", []) or []:
+            name = (v.get("name") or "").strip().lower()
+            sad = v.get("staticAssignedDriver") or {}
+            drv_name = (sad.get("name") or "").strip()
+            if name and drv_name:
+                out[name] = drv_name
+        return out
 
     # ── Fault Codes ──────────────────────────────────────────────
 
@@ -342,6 +373,38 @@ class SamsaraClient:
             logger.warning(f"Odometer stats unavailable (non-fatal): {e}")
             return []
 
+    async def get_current_engine_hours_readings(self) -> list[dict]:
+        """Return cumulative engine hours per vehicle — parallel to
+        ``get_current_odometer_readings``.
+
+        Calls /fleet/vehicles/stats?types=obdEngineSeconds which returns
+        the OBD-reported lifetime engine-on counter.  Some Samsara plans
+        / vehicles without the engine-hours signal return no value; those
+        vehicles simply drop out of the result.
+
+        Returns dicts: {id, name, engine_hours, time}.
+        """
+        try:
+            data = await self._get(
+                "/fleet/vehicles/stats",
+                params={"types": "obdEngineSeconds"},
+            )
+            results: list[dict] = []
+            for v in data.get("data", []):
+                eng = v.get("obdEngineSeconds", {})
+                if isinstance(eng, dict) and eng.get("value") is not None:
+                    seconds = eng["value"]
+                    results.append({
+                        "id": v.get("id", ""),
+                        "name": v.get("name", ""),
+                        "engine_hours": round(float(seconds) / 3600.0, 1),
+                        "time": eng.get("time", ""),
+                    })
+            return results
+        except Exception as e:
+            logger.warning(f"Engine-hours stats unavailable (non-fatal): {e}")
+            return []
+
     # ── Drivers ──────────────────────────────────────────────────
 
     async def get_drivers(self) -> list[dict]:
@@ -419,6 +482,66 @@ class SamsaraClient:
 
         all_events.sort(key=lambda x: x.get("time", ""), reverse=True)
         return all_events
+
+    async def get_safety_event(self, event_id: str) -> dict | None:
+        """Fetch a single safety event with fresh signed video URLs.
+
+        Samsara's ``downloadForwardVideoUrl`` / ``downloadInwardVideoUrl``
+        are S3 pre-signed URLs with an 8-hour expiry, so stored URLs
+        from the warehouse routinely outlive that window.
+
+        There is no ``GET /fleet/safety-events/{id}`` endpoint — that
+        path returns 404.  Workaround: the event_id's second segment
+        is a Unix-ms timestamp, so we hit the *list* endpoint with a
+        tight time window around that timestamp and find the row by
+        id.  Samsara re-signs the URLs on every list call, so the
+        returned ``video_url`` is fresh.
+
+        Returns ``None`` if we can't parse the timestamp, the token
+        lacks permission, or no event with the requested id falls in
+        the window.
+        """
+        # Parse the embedded timestamp.  Sample id: "281474990100062-1778375403968".
+        try:
+            ms = int(event_id.rsplit("-", 1)[1])
+            ts = datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+        except (ValueError, IndexError):
+            logger.warning("get_safety_event: cannot parse timestamp from %s", event_id)
+            return None
+
+        # ±10 min window.  Samsara emits events at ~real time and we
+        # only need to catch the single id, so a tight slice keeps the
+        # response tiny.
+        start = ts - timedelta(minutes=10)
+        end = ts + timedelta(minutes=10)
+        params: dict = {
+            "startTime": start.isoformat(),
+            "endTime":   end.isoformat(),
+        }
+
+        try:
+            resp = await self._get("/fleet/safety-events", params=params)
+        except SamsaraPermissionError:
+            logger.info("Events API: token lacks permission for event %s", event_id)
+            return None
+        except Exception as e:
+            logger.warning("get_safety_event(%s) failed: %s", event_id, e)
+            return None
+
+        for evt in (resp or {}).get("data", []) or []:
+            if evt.get("id") != event_id:
+                continue
+            labels = evt.get("behaviorLabels", []) or []
+            return {
+                "event_id":         evt.get("id", event_id),
+                "event_type":       (labels[0].get("label") if labels else "unknown"),
+                "event_name":       (labels[0].get("name") if labels else ""),
+                "video_url":        evt.get("downloadForwardVideoUrl"),
+                "inward_video_url": evt.get("downloadInwardVideoUrl"),
+                "vehicle":          evt.get("vehicle") or {},
+                "driver":           evt.get("driver") or {},
+            }
+        return None
 
     # ── Active-vehicle filter ────────────────────────────────────
 
@@ -1030,14 +1153,27 @@ class SamsaraClient:
             _driver_name (str|None), _fuel_gal, _mpg, _green_pct,
             _overspeed_min, _antic_brakes, _total_brakes, _antic_pct
         """
-        eng_task = asyncio.create_task(self.get_engine_hours(days))
+        # Fetch all three in parallel — engine hours (per-truck),
+        # driver efficiency (per-driver, activity-based), and Samsara's
+        # static driver→vehicle assignment.  The third source backfills
+        # the driver name for trucks that are assigned in Samsara but
+        # didn't have drive activity in the window (which would otherwise
+        # show as "no driver paired" on the dashboard).
+        eng_task    = asyncio.create_task(self.get_engine_hours(days))
+        static_task = asyncio.create_task(self.get_static_driver_assignments())
         try:
             drv_task = asyncio.create_task(self.get_driver_efficiency(days))
-            vehicles, drivers = await asyncio.gather(eng_task, drv_task)
+            vehicles, drivers, static_assignments = await asyncio.gather(
+                eng_task, drv_task, static_task,
+            )
         except Exception:
-            # Efficiency API may fail (license issue) — engine hours alone
+            # Efficiency API may fail (license issue) — engine hours alone.
             vehicles = await eng_task
             drivers = []
+            try:
+                static_assignments = await static_task
+            except Exception:
+                static_assignments = {}
 
         # Build lookup: vehicle_name (lowercase) → driver efficiency per-vehicle
         driver_by_truck: dict[str, dict] = {}
@@ -1062,7 +1198,12 @@ class SamsaraClient:
             if drv_data:
                 v.update(drv_data)
             else:
-                v["_driver_name"]    = None
+                # No activity-based pairing — fall back to Samsara's
+                # static assignment so dashboards still show the driver
+                # who's registered as "this truck's driver."  All the
+                # efficiency-derived fields stay None because we have
+                # no drive activity to report on.
+                v["_driver_name"]    = static_assignments.get(truck_key)
                 v["_fuel_gal"]       = None
                 v["_mpg"]            = None
                 v["_green_pct"]      = None
@@ -1826,6 +1967,36 @@ class MultiCompanyClient:
         await self._cache_set(cache_key, combined)
         return combined
 
+    # ── drivers ──────────────────────────────────────────────────
+
+    async def get_drivers(self, company: str | None = None) -> list[dict]:
+        """Drivers from every (or one) Samsara org, tagged with ``_org``.
+
+        Powers the dashboard's Samsara-driver picker and the daily
+        sync job that flags drift between local ``users.samsara_driver_id``
+        and the live Samsara fleet.  Cached at the same TTL as the
+        vehicle list — driver rosters churn at the same cadence.
+        """
+        cache_key = f"drivers:{company or 'all'}"
+        cached = await self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        async def _fn(c):
+            return await c.get_drivers()
+
+        per_co = await self._run_per_company(_fn, company=company)
+        combined: list[dict] = []
+        for code, drivers in per_co.items():
+            combined.extend(self._tag(drivers, code))
+        # Active first (Samsara doesn't sort), then by name for stable UI.
+        combined.sort(key=lambda d: (
+            bool(d.get("deactivatedAtMs")),  # active (None/0) first
+            (d.get("name") or "").lower(),
+        ))
+        await self._cache_set(cache_key, combined)
+        return combined
+
     # ── faults ───────────────────────────────────────────────────
 
     async def get_vehicles_with_faults(
@@ -1899,6 +2070,29 @@ class MultiCompanyClient:
 
         per_co = await self._run_per_company(_fn, company=company)
         combined = []
+        for code, readings in per_co.items():
+            for r in readings:
+                r["_org"] = code
+            combined.extend(readings)
+        combined.sort(key=lambda x: x.get("name", ""))
+        await self._cache_set(cache_key, combined)
+        return combined
+
+    async def get_current_engine_hours_readings(
+        self, company: str | None = None,
+    ) -> list[dict]:
+        """Return cumulative engine hours per vehicle — parallel to
+        ``get_current_odometer_readings`` for multi-company accounts."""
+        cache_key = f"engine_hours:{company or 'all'}"
+        cached = await self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        async def _fn(c):
+            return await c.get_current_engine_hours_readings()
+
+        per_co = await self._run_per_company(_fn, company=company)
+        combined: list[dict] = []
         for code, readings in per_co.items():
             for r in readings:
                 r["_org"] = code
@@ -2083,6 +2277,28 @@ class MultiCompanyClient:
         combined.sort(key=lambda x: x.get("time", ""), reverse=True)
         await self._cache_set(cache_key, combined)
         return combined
+
+    async def get_safety_event(self, event_id: str) -> dict | None:
+        """Find a single safety event across all companies.
+
+        Used by /api/safety/events/{id}/video to re-sign Samsara's S3
+        URLs on every click (the stored ones expire after 8 hours).
+        We don't know upfront which company holds the event, so we
+        ask each per-company client and return the first non-empty
+        result.  In production this is 1-2 companies per account.
+
+        Returns ``None`` when no company has the event.
+        """
+        for code, client in self.clients.items():
+            try:
+                evt = await client.get_safety_event(event_id)
+            except Exception as e:
+                logger.debug("get_safety_event(%s) failed for %s: %s", event_id, code, e)
+                continue
+            if evt:
+                evt["_org"] = code
+                return evt
+        return None
 
     # ── engine states ────────────────────────────────────────────
 

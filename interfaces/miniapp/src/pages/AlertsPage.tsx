@@ -7,6 +7,7 @@
  */
 
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Icon24WarningTriangleOutline,
   Icon24FlashOutline,
@@ -251,6 +252,7 @@ const AlertCard = memo(function AlertCard({
 });
 
 export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Props) {
+  const { t } = useTranslation();
   const [alerts, setAlerts]           = useState<Alert[]>([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState<ClassifiedError | null>(null);
@@ -371,7 +373,7 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
       setAlerts(snapshot);
       onCountChange?.(snapshot.length);
       haptics.error();
-      toast('Failed to acknowledge — try again', 'error');
+      toast(t('toasts.ack_failed'), 'error');
     } finally {
       setBulkAcking(false);
     }
@@ -393,7 +395,7 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
     try {
       await apiFetch(`/api/alerts/${id}/acknowledge`, { method: 'POST' });
       haptics.success();
-      toast('Alert acknowledged', 'success');
+      toast(t('toasts.ack_success'), 'success');
     } catch (e) {
       console.error('Failed to acknowledge alert:', e);
       if (snapshot) {
@@ -405,11 +407,11 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
         });
       }
       haptics.error();
-      toast('Failed to acknowledge — try again', 'error');
+      toast(t('toasts.ack_failed'), 'error');
     } finally {
       setAcking(prev => { const next = new Set(prev); next.delete(id); return next; });
     }
-  }, [onCountChange]);
+  }, [onCountChange, t]);
 
   // Mute the alert for 7 days — pauses Telegram delivery without acking.
   // The card stays in the list (you still see it muted with a 🔇 marker)
@@ -424,15 +426,15 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
       });
       setMutedIds(prev => new Set(prev).add(id));
       haptics.success();
-      toast('Muted for 7 days', 'success');
+      toast(t('toasts.mute_7d'), 'success');
     } catch (e) {
       console.error('Failed to mute alert:', e);
       haptics.error();
-      toast('Failed to mute — try again', 'error');
+      toast(t('toasts.mute_failed'), 'error');
     } finally {
       setMuting(prev => { const next = new Set(prev); next.delete(id); return next; });
     }
-  }, [mutedIds]);
+  }, [mutedIds, t]);
 
   // ── Derived data ──────────────────────────────────────────────────
 
@@ -507,12 +509,12 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
     return (
       <>
         <div className="centered">
-          <Placeholder header="All Clear" description="No pending alerts — you're all set.">
+          <Placeholder header={t('alerts.all_clear_header')} description={t('alerts.all_clear_desc')}>
             <Icon24CheckCircleOutline width={48} height={48} style={{ opacity: 0.4 }} />
           </Placeholder>
           <button className="alerts-history-btn" onClick={openHistory}>
             <Icon24HistoryBackwardOutline width={16} height={16} />
-            View last {historyDays} days
+            {t('alerts.view_last_n_days', { n: historyDays })}
           </button>
         </div>
         {historyOpen && renderHistorySheet()}
@@ -531,7 +533,7 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
         title={
           <span className="sheet__title-inner">
             <Icon24HistoryBackwardOutline width={18} height={18} />
-            Alert History
+            {t('alerts.history_title')}
           </span>
         }
         height="full"
@@ -554,8 +556,8 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
         {!historyLoading && history && history.length === 0 && (
           <div className="centered" style={{ minHeight: 200 }}>
             <Placeholder
-              header="No history"
-              description={`Nothing in the last ${historyDays} days.`}
+              header={t('alerts.no_history_header')}
+              description={t('alerts.no_history_desc', { n: historyDays })}
             >
               <Icon24SearchSlashOutline width={40} height={40} style={{ opacity: 0.35 }} />
             </Placeholder>
@@ -728,7 +730,7 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
       {visible.length === 0 && (
         <div className="centered" style={{ minHeight: 160 }}>
           <Placeholder
-            header="No matches"
+            header={t('alerts.no_matches_header')}
             description={`No ${typeFilter !== 'all' ? (ALERT_TYPE_LABELS[typeFilter] ?? typeFilter) : ''} alerts${vehicleFilter !== 'all' ? ` for ${vehicleFilter}` : ''} pending.`}
           >
             <Icon24SearchSlashOutline width={40} height={40} style={{ opacity: 0.35 }} />

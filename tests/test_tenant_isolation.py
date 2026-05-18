@@ -6,7 +6,6 @@ reading, updating, or deleting another tenant's resources.
 
 from __future__ import annotations
 
-import pytest
 import pytest_asyncio
 
 from adapters.storage import Database, Role

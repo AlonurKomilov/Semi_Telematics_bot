@@ -12,6 +12,25 @@ import { ErrorState, CardSkeleton } from '../../components/shell';
 import type { Vehicle, VehiclesResponse, HealthResponse, FaultsResponse, Fault, HealthData, AIDiagnoseResponse } from '../../types';
 import { formatAIResponse } from '../../utils/formatAI';
 
+interface CabinWeather {
+  temp_f: number | null;
+  temp_c: number | null;
+  baro_inhg: number | null;
+  temp_time: string | null;
+}
+
+interface FleetWeatherEntry {
+  name: string;
+  temp_f: number | null;
+  temp_c: number | null;
+  baro_inhg: number | null;
+  temp_time: string | null;
+}
+
+interface FleetWeatherResponse {
+  vehicles: FleetWeatherEntry[];
+}
+
 export default function VehicleDetail() {
   const { name } = useParams<{ name: string }>();
   const { has } = usePermissions();
@@ -19,6 +38,7 @@ export default function VehicleDetail() {
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [faults, setFaults] = useState<FaultsResponse | null>(null);
+  const [weather, setWeather] = useState<CabinWeather | null>(null);
   const [error, setError] = useState('');
 
   // ── Inline AI Diagnosis state ─────────────────────────────
@@ -44,6 +64,24 @@ export default function VehicleDetail() {
     if (has('can_faults')) {
       apiJSON<FaultsResponse>(`/vehicles/${encoded}/faults`)
         .then(setFaults)
+        .catch(() => {});
+    }
+
+    // Cabin weather lives in the all-vehicles /fleet/weather feed.
+    // There's no per-vehicle endpoint, so we filter the response by name.
+    if (has('can_health')) {
+      apiJSON<FleetWeatherResponse>('/fleet/weather')
+        .then((d) => {
+          const entry = (d.vehicles || []).find((w) => w.name === name);
+          if (entry) {
+            setWeather({
+              temp_f: entry.temp_f,
+              temp_c: entry.temp_c,
+              baro_inhg: entry.baro_inhg,
+              temp_time: entry.temp_time,
+            });
+          }
+        })
         .catch(() => {});
     }
   }, [name, has]);
@@ -121,15 +159,28 @@ export default function VehicleDetail() {
           </Row>
           <Row label="Fuel" value={fuel != null ? `${Math.round(fuel)}%` : '—'} />
           {defPct != null && <Row label="DEF" value={`${Math.round(defPct)}%`} />}
-          {/* Odometer comes from the warehouse via /api/vehicles/{name},
-              refreshed every 60s by ingest_vehicle_state.  Hidden when
-              the vehicle has no CAN bus gateway (odometer_miles=null). */}
-          {v.odometer_miles != null && (
-            <Row
-              label="Odometer"
-              value={`${Math.round(v.odometer_miles).toLocaleString()} mi`}
-            />
-          )}
+          {/* Odometer + engine hours both come from the warehouse via
+              /api/vehicles/{name}, refreshed every 60s by
+              ingest_vehicle_state.  Always rendered (with "—" when the
+              vehicle has no CAN bus gateway / Samsara plan doesn't
+              expose the signal yet) so users can see the field is
+              tracked even before the first reading lands. */}
+          <Row
+            label="Odometer"
+            value={
+              v.odometer_miles != null
+                ? `${Math.round(v.odometer_miles).toLocaleString()} mi`
+                : '—'
+            }
+          />
+          <Row
+            label="Engine Hours"
+            value={
+              v.engine_hours != null
+                ? `${Math.round(v.engine_hours).toLocaleString()} h`
+                : '—'
+            }
+          />
         </div>
 
         {/* Location card.  Address links to Google Maps using the actual
@@ -158,6 +209,18 @@ export default function VehicleDetail() {
             <Row label="Engine Load" value={h.load_pct != null ? `${h.load_pct.toFixed(0)}%` : '—'} />
             <Row label="RPM" value={h.rpm != null ? Math.round(h.rpm) : '—'} />
             <Row label="Seatbelt" value={h.seatbelt ?? '—'} />
+            {weather && (weather.temp_f != null || weather.baro_inhg != null) && (
+              <>
+                <Row
+                  label="Cabin Temp"
+                  value={weather.temp_f != null ? `${weather.temp_f}°F` : '—'}
+                />
+                <Row
+                  label="Barometer"
+                  value={weather.baro_inhg != null ? `${weather.baro_inhg} inHg` : '—'}
+                />
+              </>
+            )}
             {healthAlerts.length > 0 && (
               <div className="mt-2">
                 <p className="text-sm text-muted-foreground mb-1">Health Alerts:</p>
@@ -250,13 +313,13 @@ export default function VehicleDetail() {
         )}
       </div>
 
-      {/* Phase E25 — 7-day hourly telemetry timeline */}
+      {/* 7-day hourly telemetry timeline */}
       <TimelineCard vehicleName={name!} />
     </div>
   );
 }
 
-// ── Timeline (Phase E25) ───────────────────────────────────
+// ── Timeline ───────────────────────────────────
 
 interface TimelinePoint {
   hour_utc: string;

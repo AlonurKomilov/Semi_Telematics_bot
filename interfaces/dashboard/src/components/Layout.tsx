@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { Search, Menu, X } from 'lucide-react';
 import Sidebar from './Sidebar';
 import { ThemeToggle } from './ThemeToggle';
+import { LanguageSelector } from './LanguageSelector';
 import { AvatarMenu } from './AvatarMenu';
 import Breadcrumb from './shell/Breadcrumb';
 import CommandPalette from './shell/CommandPalette';
@@ -80,6 +81,7 @@ export default function Layout() {
             >
               <Search size={18} />
             </button>
+            <LanguageSelector />
             <ThemeToggle />
             <AvatarMenu />
           </div>

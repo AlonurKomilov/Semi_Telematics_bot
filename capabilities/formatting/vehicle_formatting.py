@@ -3,7 +3,7 @@
 from infra.context import get_company_display
 from capabilities.formatting.helpers import (
     _t, _fmt_time, _light_badges, _short_location,
-    _fuel_bar, _split_message, _company_tag,
+    _fuel_bar, _split_message,
 )
 
 
@@ -54,7 +54,7 @@ def format_vehicle_detail(v: dict, show_company: bool = False,
         lines.append(f"  ✅  <b>{_t('vehicle.no_faults')}</b>")
         lines.append(f"  {_t('vehicle.no_faults_note')}")
     else:
-        lines.append(f"  ── ── ── ── ── ── ──")
+        lines.append("  ── ── ── ── ── ── ──")
         lines.append(f"  🔧  <b>{len(dtcs)} {_t('vehicle.active_faults')}</b>")
 
         for i, dtc in enumerate(dtcs, 1):

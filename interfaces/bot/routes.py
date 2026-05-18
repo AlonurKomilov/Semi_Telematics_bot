@@ -2,7 +2,6 @@
 
 import asyncio
 from datetime import datetime as _dt, timedelta, timezone
-from constants import TZ_ET as _TZ_ET
 from capabilities.localization.i18n import t
 
 from telegram import Update
@@ -11,10 +10,11 @@ from telegram.ext import ContextTypes
 from adapters.storage import Role
 from capabilities.iam.permissions import can
 from adapters.samsara.client import populate_company_display
-from capabilities.routes.service import total_route_miles, get_vehicle_gps_history
+from capabilities.routes.service import get_vehicle_gps_history
 from capabilities.reporting.map_renderer import render_route_map as _render_route
 
-from interfaces.bot.config import logger, get_tenant_db
+from interfaces.bot.config import logger
+from interfaces.bot.state import get_tenant_db
 from interfaces.bot.keyboards import back_kb, route_date_kb
 from interfaces.bot.helpers import _show, _show_loading, _safe_error
 from interfaces.bot.auth import _require_registered

@@ -2,6 +2,7 @@
 
 import json
 import os
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import FileResponse
@@ -16,6 +17,14 @@ import infra.cache as _redis_cache
 router = APIRouter(prefix="/safety", tags=["safety"])
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+# grace period: drivers with fewer than this many daily
+# snapshots haven't been around long enough to be ranked fairly.
+# Two weeks of daily history is the practical minimum — enough for
+# trend logic to work and for one-week-vs-prior-week comparison.
+# Tenants whose drivers have shorter tenure (just-onboarded fleets)
+# will see everyone flagged probationary until snapshots accrue.
+PROBATIONARY_MIN_SNAPSHOTS = 14
 
 
 # ── Scorecards ────────────────────────────────────────────────
@@ -92,7 +101,7 @@ async def scorecards_composite(
     company: str | None = Query(None),
     subject: str | None = Query(
         None, pattern="^(driver|vehicle)$",
-        description="Phase B: which dimension to score along. "
+        description="which dimension to score along. "
                     "``driver`` (legacy) returns one card per "
                     "registered driver; ``vehicle`` returns one card per "
                     "truck (fixes the 80-trucks vs 18-drivers credibility "
@@ -105,7 +114,7 @@ async def scorecards_composite(
     tenant=Depends(get_tenant_db),
     platform_db=Depends(get_platform_db),
 ):
-    """Composite scorecards — driver- or vehicle-keyed (Phase B).
+    """Composite scorecards — driver- or vehicle-keyed.
 
     Returns each subject's 0-100 composite score plus the pillar /
     bonus / penalty breakdown that produced it.  The original Samsara
@@ -129,7 +138,7 @@ async def scorecards_composite(
     # collapser this kills the cache-stampede + cold-start tail latency
     # that was producing 504s under load.
 
-    # Phase F: vehicle is now the canonical default subject \u2014 the
+    # vehicle is now the canonical default subject \u2014 the
     # dashboard no longer offers a driver/truck toggle and per-vehicle
     # data is universally richer than per-driver in this telematics
     # stack.  The per-tenant ``KEY_SCORECARD_DEFAULT_SUBJECT`` setting
@@ -164,9 +173,17 @@ async def scorecards_composite(
             f"scorecards:composite:{user['account_id']}:"
             f"{subject}:{days}:{company or '_'}"
         )
+        # Scorecard data changes slowly (composite scores reflect
+        # multi-day windows of activity), so we can hold the cache
+        # much longer than the default 2-min fresh / 10-min stale.
+        # New tuning: 30 min fresh, 2 h stale.  Combined with an
+        # every-2-h prewarm cron, that means a freshly-prewarmed
+        # entry serves the common dashboard windows (7/14/30/60/90)
+        # for the *entire interval* between cron fires.  Users no
+        # longer pay the 30-45 s cold-compute cost for "Last 30 days".
         return await _redis_cache.get_or_compute(
             _cache_key, _compute_payload,
-            fresh_for=120, max_stale=600, lock_ttl=45,
+            fresh_for=1800, max_stale=7200, lock_ttl=45,
         )
 
     # Own-perm path bypasses the shared SWR cache because results are
@@ -255,6 +272,12 @@ async def _build_scorecards_payload(
         sid = str(c.get("subject_id") or c.get("driver_id") or "")
         trend = trends_map.get(sid, [])
         c["score_trend"] = trend
+        # grace period — drivers with fewer than
+        # ``PROBATIONARY_MIN_SNAPSHOTS`` daily snapshots haven't
+        # accrued enough history to be ranked fairly.  Marked
+        # ``probationary`` so the UI can show a banner and the
+        # ranking endpoints can exclude them from the leaderboard.
+        c["probationary"] = len(trend) < PROBATIONARY_MIN_SNAPSHOTS
         if len(trend) >= 2:
             ref_idx = max(0, len(trend) - 8)
             c["week_delta"] = int(c.get("total") or 0) - int(trend[ref_idx])
@@ -272,6 +295,10 @@ async def _build_scorecards_payload(
         "count":      len(cards),
         "days":       days,
         "subject":    subject,
+        # Wall-clock at the moment the scorecards were computed. The
+        # dashboard surfaces this as "Last updated …" so operators
+        # know whether the warehouse snapshot is minutes or hours old.
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
 
 
@@ -285,13 +312,13 @@ async def scorecards_history(
     ),
     subject_id: str | None = Query(
         None,
-        description="Phase B canonical name for the subject identifier. "
+        description="canonical name for the subject identifier. "
                     "When both ``driver_id`` and ``subject_id`` are set, "
                     "``subject_id`` wins.",
     ),
     subject: str = Query(
         "driver", pattern="^(driver|vehicle)$",
-        description="Phase B: subject type — ``driver`` or ``vehicle``. "
+        description="subject type — ``driver`` or ``vehicle``. "
                     "Selects which row family in the snapshot table to read.",
     ),
     days: int = Query(30, ge=1, le=180),
@@ -348,7 +375,236 @@ async def scorecards_history(
     }
 
 
-# ── Driver miniapp scorecard (Phase D) ────────────────────────
+# ── Score explanation ─────────────────────────────────
+#
+# "Why did my score change?" — diffs the latest snapshot against
+# one ~N days ago.  No new table is needed: the existing
+# ``daily_scorecard_snapshots.breakdown_json`` already carries the
+# full bonuses + penalties arrays at each snapshot.  This endpoint
+# is the lightweight audit trail discussed in the roadmap.
+
+def _index_events(events: list[dict]) -> dict[str, dict]:
+    """Index a snapshot's ``bonuses`` or ``penalties`` array by ``rule_id``.
+
+    Same rule fired multiple times in a window already aggregates into
+    a single event with ``occurrences > 1``, so a flat dict keyed by
+    rule_id is correct.  Falls back to ``label`` when ``rule_id`` is
+    missing (legacy snapshots predating the rule_id field).
+    """
+    out: dict[str, dict] = {}
+    for e in events or []:
+        key = str(e.get("rule_id") or e.get("label") or "")
+        if key:
+            out[key] = e
+    return out
+
+
+def _diff_event_sets(prev: dict[str, dict], curr: dict[str, dict]) -> dict:
+    """Compute the four-way diff between two indexed event maps.
+
+    Returns ``added`` / ``cleared`` / ``increased`` / ``decreased``
+    lists so the UI can render a clear "since {N} days ago" panel.
+    """
+    added: list[dict] = []
+    cleared: list[dict] = []
+    increased: list[dict] = []
+    decreased: list[dict] = []
+    for rid, ev in curr.items():
+        if rid not in prev:
+            added.append(ev)
+        else:
+            occ_from = int(prev[rid].get("occurrences", 1) or 1)
+            occ_to = int(ev.get("occurrences", 1) or 1)
+            if occ_to > occ_from:
+                increased.append({**ev, "occ_from": occ_from, "occ_to": occ_to,
+                                  "occ_delta": occ_to - occ_from})
+            elif occ_to < occ_from:
+                decreased.append({**ev, "occ_from": occ_from, "occ_to": occ_to,
+                                  "occ_delta": occ_to - occ_from})
+    for rid, ev in prev.items():
+        if rid not in curr:
+            cleared.append(ev)
+    return {
+        "added": added,
+        "cleared": cleared,
+        "increased": increased,
+        "decreased": decreased,
+    }
+
+
+@router.get("/scorecards/me/explanation")
+async def my_scorecard_explanation(
+    days: int = Query(
+        7, ge=1, le=90,
+        description="Compare today's snapshot to the one ~N days ago.",
+    ),
+    user: dict = Depends(require_permission_any("can_scorecard_all", "can_scorecard_own")),
+    tenant=Depends(get_tenant_db),
+):
+    """Driver-facing explanation: diff between today's snapshot and one
+    ~N days ago for the calling user.  Auto-resolves the caller's
+    subject from their truck assignment so the miniapp doesn't need
+    to know its own subject_id.  Same diff payload as
+    ``/scorecards/{subject_id}/explanation`` but with RBAC inlined:
+    drivers can only see their own explanation, never another driver's.
+
+    Must be registered BEFORE the path-param explanation endpoint —
+    Starlette matches routes in registration order and ``/me`` would
+    otherwise be captured as a literal subject_id by the wildcard.
+    """
+    my_trucks = await get_user_vehicle_nums(user)
+    if not my_trucks:
+        raise HTTPException(
+            status_code=404,
+            detail="No driver/truck assignment for caller — ask an admin to "
+                   "link your Telegram user to a truck_num.",
+        )
+    my_cards = await _svc_evaluate_subjects(
+        user["account_id"], subject="driver", days=days, vehicle_nums=my_trucks,
+    )
+    if not my_cards:
+        raise HTTPException(
+            status_code=404,
+            detail="No scorecard for your truck(s) in the requested window.",
+        )
+    my_id = str(my_cards[0].get("subject_id") or my_cards[0].get("driver_id") or "")
+
+    rows = await tenant.get_scorecard_snapshot_history(
+        user["account_id"],
+        subject_type="driver",
+        subject_id=my_id,
+        days=days + 1,
+    )
+    if not rows or len(rows) < 2:
+        return {
+            "subject_id": my_id,
+            "subject_type": "driver",
+            "available": False,
+            "reason": "not_enough_snapshots",
+            "snapshots_available": len(rows or []),
+        }
+    curr_row = rows[0]
+    prev_row = rows[-1]
+    try:
+        curr_bd = json.loads(curr_row.get("breakdown_json") or "{}")
+        prev_bd = json.loads(prev_row.get("breakdown_json") or "{}")
+    except (TypeError, ValueError):
+        return {
+            "subject_id": my_id,
+            "subject_type": "driver",
+            "available": False,
+            "reason": "breakdown_unparseable",
+        }
+    penalties_diff = _diff_event_sets(
+        _index_events(prev_bd.get("penalties", [])),
+        _index_events(curr_bd.get("penalties", [])),
+    )
+    bonuses_diff = _diff_event_sets(
+        _index_events(prev_bd.get("bonuses", [])),
+        _index_events(curr_bd.get("bonuses", [])),
+    )
+    return {
+        "subject_id": my_id,
+        "subject_type": "driver",
+        "available": True,
+        "from_date": prev_row["snapshot_date"],
+        "to_date": curr_row["snapshot_date"],
+        "from_score": int(prev_row.get("total_score") or 0),
+        "to_score": int(curr_row.get("total_score") or 0),
+        "score_delta": int(curr_row.get("total_score") or 0) - int(prev_row.get("total_score") or 0),
+        "penalties_added":     penalties_diff["added"],
+        "penalties_cleared":   penalties_diff["cleared"],
+        "penalties_increased": penalties_diff["increased"],
+        "penalties_decreased": penalties_diff["decreased"],
+        "bonuses_earned":      bonuses_diff["added"],
+        "bonuses_lost":        bonuses_diff["cleared"],
+        "bonuses_increased":   bonuses_diff["increased"],
+        "bonuses_decreased":   bonuses_diff["decreased"],
+    }
+
+
+@router.get("/scorecards/{subject_id}/explanation")
+async def scorecard_explanation(
+    subject_id: str,
+    subject_type: str = Query("driver", pattern="^(driver|vehicle)$"),
+    days: int = Query(
+        7, ge=1, le=90,
+        description="Compare today's snapshot to the one ~N days ago.",
+    ),
+    user: dict = Depends(require_permission_any("can_scorecard_all", "can_scorecard_own")),
+    tenant=Depends(get_tenant_db),
+):
+    """Score explanation — diff between today's snapshot and one N days ago.
+
+    Surfaces what changed: new penalties, cleared penalties, bonuses
+    earned/lost, and per-rule occurrence-count changes.  Returns
+    ``{"available": False, ...}`` when fewer than two snapshots exist
+    in the window so the UI can render an empty-state message rather
+    than a confusing "nothing changed" panel.
+    """
+    rows = await tenant.get_scorecard_snapshot_history(
+        user["account_id"],
+        subject_type=subject_type,
+        subject_id=subject_id,
+        days=days + 1,
+    )
+    # ``rows`` is newest → oldest; we need at least two snapshots to diff.
+    if not rows or len(rows) < 2:
+        return {
+            "subject_id": subject_id,
+            "subject_type": subject_type,
+            "available": False,
+            "reason": "not_enough_snapshots",
+            "snapshots_available": len(rows or []),
+        }
+    curr_row = rows[0]
+    # The oldest row in the window is the comparison baseline — picks
+    # whatever exists if the snapshotter missed a day.
+    prev_row = rows[-1]
+
+    try:
+        curr_bd = json.loads(curr_row.get("breakdown_json") or "{}")
+        prev_bd = json.loads(prev_row.get("breakdown_json") or "{}")
+    except (TypeError, ValueError):
+        return {
+            "subject_id": subject_id,
+            "subject_type": subject_type,
+            "available": False,
+            "reason": "breakdown_unparseable",
+        }
+
+    penalties_diff = _diff_event_sets(
+        _index_events(prev_bd.get("penalties", [])),
+        _index_events(curr_bd.get("penalties", [])),
+    )
+    bonuses_diff = _diff_event_sets(
+        _index_events(prev_bd.get("bonuses", [])),
+        _index_events(curr_bd.get("bonuses", [])),
+    )
+    return {
+        "subject_id": subject_id,
+        "subject_type": subject_type,
+        "available": True,
+        "from_date": prev_row["snapshot_date"],
+        "to_date": curr_row["snapshot_date"],
+        "from_score": int(prev_row.get("total_score") or 0),
+        "to_score": int(curr_row.get("total_score") or 0),
+        "score_delta": int(curr_row.get("total_score") or 0) - int(prev_row.get("total_score") or 0),
+        # Each list is a flat array of ScoreEventBreakdown-shaped dicts;
+        # ``increased`` / ``decreased`` entries additionally carry
+        # ``occ_from`` / ``occ_to`` / ``occ_delta``.
+        "penalties_added":     penalties_diff["added"],
+        "penalties_cleared":   penalties_diff["cleared"],
+        "penalties_increased": penalties_diff["increased"],
+        "penalties_decreased": penalties_diff["decreased"],
+        "bonuses_earned":      bonuses_diff["added"],
+        "bonuses_lost":        bonuses_diff["cleared"],
+        "bonuses_increased":   bonuses_diff["increased"],
+        "bonuses_decreased":   bonuses_diff["decreased"],
+    }
+
+
+# ── Driver miniapp scorecard ────────────────────────
 
 
 def _rank_in(sorted_scores: list[int], my_score: int) -> dict:
@@ -422,34 +678,72 @@ async def my_scorecard(
     me = my_cards[0]
     my_id = me["subject_id"]
 
+    # Probationary detection — pull the trend batch once
+    # and mark every driver whose snapshot count is below the grace
+    # threshold.  Probationary drivers are excluded from the rank
+    # pool below so new hires don't outrank veterans simply because
+    # they have no events yet.
+    _probationary_ids: set[str] = set()
+    try:
+        _trend_days = max(PROBATIONARY_MIN_SNAPSHOTS, min(int(days), 30))
+        _trends = await tenant.get_scorecard_trends_batch(
+            user["account_id"], subject_type="driver", days=_trend_days,
+        )
+        for c in all_cards:
+            sid = str(c.get("subject_id") or c.get("driver_id") or "")
+            trend = _trends.get(sid, [])
+            is_probationary = len(trend) < PROBATIONARY_MIN_SNAPSHOTS
+            c["probationary"] = is_probationary
+            if is_probationary:
+                _probationary_ids.add(sid)
+        # Propagate flag onto the caller's own card too.
+        me["probationary"] = my_id in _probationary_ids
+    except Exception:  # pragma: no cover — defensive
+        me["probationary"] = False
+
     # Per-pillar rank — sort the full leaderboard by each pillar's
     # subtotal DESC, find caller's position.  Pillars with
-    # ``has_data: false`` are excluded from the leaderboard for that
-    # pillar so ranks stay meaningful.
+    # ``has_data: false`` are excluded.  Probationary drivers are
+    # excluded so they neither claim a top rank nor inflate ``total``.
+    # If the CALLER is probationary, rank is left null entirely (a
+    # rank chip alongside the "your score is still building" banner
+    # would contradict itself).
     pillar_names = ("safety", "efficiency", "compliance")
-    rank_in_pillar: dict = {}
-    for p in pillar_names:
-        scores: list[int] = []
-        my_subtotal: int | None = None
-        for c in all_cards:
-            pdata = (c.get("pillars") or {}).get(p) or {}
-            if not pdata.get("has_data", False):
-                continue
-            sub = int(pdata.get("subtotal") or 0)
-            scores.append(sub)
-            if c["subject_id"] == my_id:
-                my_subtotal = sub
-        scores.sort(reverse=True)
-        if my_subtotal is None:
-            rank_in_pillar[p] = {"pos": 0, "total": len(scores)}
-        else:
-            rank_in_pillar[p] = _rank_in(scores, my_subtotal)
+    rank_in_pillar: dict | None
+    rank_total: dict | None
+    if me.get("probationary"):
+        rank_in_pillar = None
+        rank_total = None
+    else:
+        rank_in_pillar = {}
+        for p in pillar_names:
+            scores: list[int] = []
+            my_subtotal: int | None = None
+            for c in all_cards:
+                sid = str(c.get("subject_id") or "")
+                if sid in _probationary_ids:
+                    continue
+                pdata = (c.get("pillars") or {}).get(p) or {}
+                if not pdata.get("has_data", False):
+                    continue
+                sub = int(pdata.get("subtotal") or 0)
+                scores.append(sub)
+                if c["subject_id"] == my_id:
+                    my_subtotal = sub
+            scores.sort(reverse=True)
+            if my_subtotal is None:
+                rank_in_pillar[p] = {"pos": 0, "total": len(scores)}
+            else:
+                rank_in_pillar[p] = _rank_in(scores, my_subtotal)
 
-    # Total-score rank (sort all_cards by ``total`` DESC).
-    total_scores = sorted(
-        (int(c.get("total") or 0) for c in all_cards), reverse=True,
-    )
-    rank_total = _rank_in(total_scores, int(me.get("total") or 0))
+        # Total-score rank — same probationary filter applied.
+        total_scores = sorted(
+            (int(c.get("total") or 0)
+             for c in all_cards
+             if str(c.get("subject_id") or "") not in _probationary_ids),
+            reverse=True,
+        )
+        rank_total = _rank_in(total_scores, int(me.get("total") or 0))
 
     # Week delta — compare against the snapshot ~7 days ago.  Pull
     # 14 days of history so we can pick the entry closest to "7 days
@@ -487,7 +781,16 @@ async def my_scorecard(
         "rank_total":       None if own_only else rank_total,
         "week_delta":       week_delta,
         "days":             days,
-        "account_size":     None if own_only else len(all_cards),
+        # ``account_size`` excludes probationary drivers so the
+        # miniapp "You vs N drivers" line matches the cohort the
+        # caller is actually being ranked against.
+        "account_size":     None if own_only else sum(
+            1 for c in all_cards
+            if str(c.get("subject_id") or "") not in _probationary_ids
+        ),
+        # Wall-clock at compute time — surfaced as the miniapp footer
+        # "Updated …" line so drivers know freshness without polling.
+        "generated_at":     datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
 
 
@@ -771,39 +1074,57 @@ async def safety_events(
         return await client.get_events(days=days, company=company)
 
     from capabilities.telemetry import warehouse_reader as _wh
+    # include_raw=False skips the per-row ``json.loads(raw_json)`` in
+    # the warehouse layer — saves hundreds of ms on a 30-day window.
+    # The list view doesn't need the full Samsara event shape; the
+    # video modal fetches inward-camera info on demand via the
+    # /events/{id}/video proxy endpoint.
     wh_rows = await _wh.get_safety_events(
         user["account_id"],
         days=days,
         event_type=event_type,
         samsara_fallback=_live,
+        include_raw=False,
     )
-    # Warehouse rows wrap the original live-shape dict in ``raw``;
-    # live fallback returns live-shape dicts directly.  Normalise so
-    # downstream filters can rely on the live keys (event_id/time/g_force/_org/…).
-    raw = [(r.get("raw") or r) for r in wh_rows]
-    raw = filter_by_allowed_companies(raw, allowed)
 
-    events = []
-    for e in raw:
-        g = e.get("g_force", 0) or 0
-        ev = {
-            "event_id": e.get("event_id", ""),
-            "event_type": e.get("event_type", "unknown"),
-            "severity": _classify_severity(e.get("event_type", ""), g),
-            "driver_id": e.get("driver_id", ""),
-            "driver_name": e.get("driver_name", "Unknown"),
-            "vehicle_id": e.get("vehicle_id", ""),
-            "vehicle_name": e.get("vehicle_name", ""),
-            "time": e.get("time", ""),
-            "g_force": round(g, 2),
-            "latitude": e.get("latitude"),
-            "longitude": e.get("longitude"),
-            "video_url": e.get("video_url", ""),
-            "inward_video_url": e.get("inward_video_url", ""),
-            "coaching_state": e.get("coaching_state", ""),
-            "company": e.get("_org", ""),
+    # Helper to read either a warehouse column or the live-Samsara key,
+    # since the cold-start fallback returns live-shape dicts directly.
+    def _row_to_event(r: dict) -> dict:
+        # ``occurred_at`` is the warehouse column; ``time`` is the
+        # live-Samsara field.  Take whichever exists.
+        time_val = r.get("occurred_at") or r.get("time") or ""
+        # Severity: trust the column the ingestor wrote ("low"/"medium"/
+        # "high" / "" / mapped by classify_event_severity).  When that
+        # column is empty (cold-start live fallback path) recompute
+        # from g-force as a one-time fallback.
+        severity = r.get("severity") or ""
+        g_force_raw = r.get("g_force", 0) or 0
+        if not severity:
+            severity = _classify_severity(r.get("event_type", ""), g_force_raw)
+        return {
+            "event_id":    r.get("samsara_event_id") or r.get("event_id") or "",
+            "event_type":  r.get("event_type") or "unknown",
+            "severity":    severity,
+            "driver_id":   r.get("driver_id") or "",
+            "driver_name": r.get("driver_name") or "Unknown",
+            "vehicle_id":  r.get("vehicle_id") or "",
+            "vehicle_name": r.get("vehicle_name") or "",
+            "time":        time_val,
+            "g_force":     round(float(g_force_raw), 2),
+            "latitude":    r.get("lat") if "lat" in r else r.get("latitude"),
+            "longitude":   r.get("lon") if "lon" in r else r.get("longitude"),
+            "video_url":   r.get("video_url") or "",
+            # company_code is the warehouse column; _org is the live key.
+            "company":     r.get("company_code") or r.get("_org") or "",
         }
-        events.append(ev)
+
+    # Reshape rows first — ``_row_to_event`` normalises the
+    # company under one key ("company") regardless of whether the row
+    # came from the warehouse (``company_code`` column) or the live
+    # Samsara fallback (``_org`` key).  Then a single
+    # ``filter_by_allowed_companies`` call enforces the access rule.
+    events = [_row_to_event(r) for r in wh_rows]
+    events = filter_by_allowed_companies(events, allowed, key="company")
 
     # If user only has _own, filter to their assigned vehicle
     if user.get("_matched_perm") == "can_events_own":
@@ -836,13 +1157,68 @@ async def safety_events(
     }
 
 
+@router.get("/events/{event_id}/video")
+async def safety_event_video(
+    event_id: str,
+    angle: str = Query("forward", pattern="^(forward|inward)$"),
+    user: dict = Depends(require_permission_any("can_events_all", "can_events_own")),
+):
+    """Return a freshly-signed Samsara video URL as JSON.
+
+    Stored URLs in ``safety_event_log`` are S3 pre-signed with an 8-hour
+    expiry; anything the user clicks more than 8h after the event was
+    ingested gets 403 ``Request has expired`` from S3.  This endpoint
+    re-fetches the event from Samsara on every call so the URL is
+    always fresh.
+
+    Returns JSON ``{"url": "...", ...}`` rather than a 302 redirect so
+    the dashboard can authenticate the request with its Bearer token —
+    a plain ``<video src=...>`` GET from the browser would not include
+    custom headers and the JWT-required dependency would 422.  S3
+    itself doesn't require auth, so the returned URL can be assigned
+    directly to ``<video src>`` once the dashboard has it.
+
+    Driver-role users (``can_events_own``) can only fetch videos for
+    events on their assigned truck(s).
+    """
+    client = await get_client(user["account_id"])
+    evt = await client.get_safety_event(event_id)
+    if not evt:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    # Driver isolation — check the event's vehicle against the caller's
+    # assignments.  Permission-by-truck is already enforced for
+    # /events listing; we re-check here so a known event_id from
+    # another driver's truck can't be opened via direct URL.
+    if user.get("_matched_perm") == "can_events_own":
+        trucks = await get_user_vehicle_nums(user)
+        if not trucks:
+            raise HTTPException(status_code=403, detail="No truck assignments")
+        vname = (evt.get("vehicle") or {}).get("name", "")
+        if not any(t.lower() in (vname or "").lower() for t in trucks):
+            raise HTTPException(status_code=403, detail="Event not in your assignments")
+
+    url = evt.get("inward_video_url") if angle == "inward" else evt.get("video_url")
+    if not url:
+        raise HTTPException(status_code=404, detail=f"No {angle} video for this event")
+    return {
+        "event_id": event_id,
+        "angle": angle,
+        "url": url,
+        # Echo the other angle when present so the dashboard can switch
+        # tabs without a second round-trip.
+        "forward_url": evt.get("video_url") or "",
+        "inward_url": evt.get("inward_video_url") or "",
+    }
+
+
 @router.get("/events/heatmap")
 async def safety_events_heatmap(
     days: int = Query(30, ge=1, le=90),
     user: dict = Depends(require_permission_any("can_events_all", "can_events_own")),
 ):
     """Lat/lon density of safety events over the trailing window
-    (Phase E26 \u2014 LiveMap heat layer).
+    ( \u2014 LiveMap heat layer).
 
     Reads directly from the per-tenant ``safety_event_log`` warehouse
     table.  Returns an empty ``points`` list when the warehouse flag

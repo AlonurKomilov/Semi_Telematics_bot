@@ -1,8 +1,8 @@
-"""Phase 3 — Auto Coaching unit + integration tests.
+"""Auto Coaching unit + integration tests.
 
 Covers:
   * Pure rule evaluation matrix (score_threshold, incident_count)
-  * CoachingMixin CRUD round-trip on TenantDB
+  * CoachingMixin CRUD round-trip on Database
   * service.create_rule + assign_manual + acknowledge lifecycle
   * coaching_enabled kill-switch (raises CoachingDisabledError)
   * engine.evaluate end-to-end with synthetic drivers + idempotency
@@ -22,7 +22,7 @@ import pytest_asyncio
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from adapters.storage.tenant import TenantDB
+from adapters.storage import Database
 from capabilities.coaching import engine as coaching_engine
 from capabilities.coaching import service as coaching_service
 from capabilities.coaching.engine import (
@@ -43,11 +43,14 @@ ACCOUNT_ID = 1
 # ── fixtures ─────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture
-async def tenant(tmp_path):
-    db = TenantDB(str(tmp_path / "tenant.db"), ACCOUNT_ID)
-    await db.initialize()
-    yield db
-    await db.close()
+async def tenant(pg_db):
+    """Per-test PG database — same engine as production.
+
+    Forwards to the shared ``pg_db`` fixture (testcontainers PG with
+    per-test schema reset) so the original "construct a fresh tenant
+    DB" intent is preserved without the legacy SQLite path.
+    """
+    yield pg_db
 
 
 def _patch_services(monkeypatch, tenant_db, *, coaching_enabled: bool = True,

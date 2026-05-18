@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Bot, ChevronDown, Send, Trash2, Copy, Check, RefreshCw, Sparkles, MessageSquare, Pencil, Download, RotateCcw } from 'lucide-react';
 import { apiJSON, apiJSONAI, apiStreamChat } from '../../api/client';
@@ -74,6 +75,7 @@ function chatSubject(role?: string): string {
 }
 
 export default function Chat() {
+  const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -388,7 +390,7 @@ export default function Chat() {
               <button
                 onClick={() => setModelOpen(!modelOpen)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors bg-muted border-border hover:border-ring text-foreground/80 cursor-pointer"
-                title="Switch AI model"
+                title={t('chat.switch_model')}
               >
                 <span className="max-w-[140px] truncate">
                   {models.find((m) => m.name === currentModel)?.display || currentModel}
@@ -422,10 +424,10 @@ export default function Chat() {
                             <span className="truncate">{m.display}</span>
                             <span className="flex items-center gap-1 ml-2 flex-shrink-0">
                               {m.name === accountDefault && isAdmin && (
-                                <span className="text-[10px] text-yellow-500">default</span>
+                                <span className="text-[10px] text-yellow-500">{t('chat.model_default')}</span>
                               )}
                               {m.name === currentModel && (
-                                <span className="text-[10px] text-primary">active</span>
+                                <span className="text-[10px] text-primary">{t('chat.model_active')}</span>
                               )}
                             </span>
                           </div>
@@ -455,10 +457,10 @@ export default function Chat() {
               <button
                 onClick={exportChat}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors bg-muted hover:bg-muted/80 text-muted-foreground border border-border"
-                title="Export conversation as .txt"
+                title={t('chat.export_conversation')}
               >
                 <Download size={13} />
-                Export
+                {t('chat.export')}
               </button>
               <button
                 onClick={handleClearClick}
@@ -469,7 +471,7 @@ export default function Chat() {
                 }`}
               >
                 <Trash2 size={13} />
-                {clearConfirm ? 'Confirm?' : 'Clear'}
+                {clearConfirm ? t('chat.confirm_clear') : t('chat.clear')}
               </button>
             </>
           )}
@@ -487,7 +489,7 @@ export default function Chat() {
           }`}
         >
           <MessageSquare size={14} />
-          Chat
+          {t('chat.tab_chat')}
         </button>
         <button
           onClick={() => switchTab('briefing')}
@@ -510,10 +512,10 @@ export default function Chat() {
             {messages.length === 0 && !loading && (
               <div className="text-center text-muted-foreground mt-16">
                 <Bot size={40} className="mx-auto mb-3 text-primary/40" />
-                <p className="text-lg font-medium">AI Assistant</p>
+                <p className="text-lg font-medium">{t('chat.title')}</p>
                 <p className="text-sm mt-1">
                   {user?.role === 'driver'
-                    ? 'Ask anything about your assigned truck.'
+                    ? t('chat.ask_driver')
                     : `Ask anything about ${chatSubject(user?.role)} \u2014 vehicles, faults, fuel, events, maintenance.`}
                 </p>
                 <div className="mt-6 flex flex-wrap justify-center gap-2">
@@ -544,7 +546,7 @@ export default function Chat() {
                       <button
                         onClick={() => editMessage(msg.text)}
                         className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
-                        title="Edit message"
+                        title={t('chat.edit_message')}
                       >
                         <Pencil size={11} />
                       </button>
@@ -566,7 +568,7 @@ export default function Chat() {
                       <button
                         onClick={() => copyMessage(msg.text, i)}
                         className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground ml-auto"
-                        title="Copy response"
+                        title={t('chat.copy_response')}
                       >
                         {copiedIdx === i
                           ? <Check size={11} className="text-green-500" />

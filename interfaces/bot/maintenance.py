@@ -1,7 +1,6 @@
 """Maintenance Scheduler — task CRUD, truck picker, odometer checks."""
 
-from datetime import datetime as _dt, timezone, timedelta
-from constants import TZ_ET as _TZ_ET
+from datetime import datetime as _dt
 from capabilities.localization.i18n import t
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -14,13 +13,17 @@ from adapters.samsara.client import populate_company_display
 from infra.context import get_company_display
 from infra.bot_registry import get_app_for_account
 
-from interfaces.bot.config import logger, get_user_company_codes, get_platform_db, get_tenant_db
+from interfaces.bot.config import logger
+from interfaces.bot.state import get_platform_db, get_tenant_db
 from infra.isolation import run_account_job
 from capabilities.telemetry.service import get_vehicle_odometer
 from capabilities.vehicles.service import get_fleet_overview as _svc_fleet_overview
 from capabilities.maintenance.service import (
     mark_overdue_tasks_by_date,
     mark_overdue_tasks_by_mileage,
+    mark_overdue_tasks_by_engine_hours,
+    detect_upcoming_warnings,
+    spawn_recurring_if_completed,
     TASK_TYPES,
     has_maintenance_access,
 )
@@ -157,7 +160,7 @@ async def cmd_maint_select_vehicle(update: Update, context: ContextTypes.DEFAULT
     await _show(update, context, [
         f"🚛 Truck: <b>#{vehicle_name}</b>"
         + (f" — {get_company_display().get(company, company)}" if company else "")
-        + f"\n\n<b>Step 2/5</b> — Select task type:"
+        + "\n\n<b>Step 2/5</b> — Select task type:"
     ], keyboard=maint_type_kb())
 
 
@@ -247,7 +250,7 @@ async def _finalize_task(update, context):
 
     try:
         tenant = await get_tenant_db(user.account_id)
-        task_id = await tenant.add_maintenance_task(
+        await tenant.add_maintenance_task(
             account_id=user.account_id,
             company_code=wiz.get("company", ""),
             vehicle_id=wiz.get("vehicle_id", ""),
@@ -360,9 +363,9 @@ async def cmd_maint_detail(update: Update, context: ContextTypes.DEFAULT_TYPE,
     company_display = get_company_display().get(company, company) if company else ""
 
     lines = [
-        f"━━━━━━━━━━━━━━━━━━━",
+        "━━━━━━━━━━━━━━━━━━━",
         f"  {emoji}  <b>Task #{task['id']}</b>",
-        f"━━━━━━━━━━━━━━━━━━━\n",
+        "━━━━━━━━━━━━━━━━━━━\n",
         f"  🚛 Truck: <b>#{task['vehicle_name']}</b>",
     ]
     if company_display:
@@ -398,37 +401,35 @@ async def cmd_maint_done(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.callback_query.answer("⛔ Task not found", show_alert=True)
         return
 
-    await tenant.update_maintenance_status(task_id, "done")
+    await tenant.update_maintenance_status(task_id, "done", account_id=user.account_id)
 
-    # Handle recurring tasks — auto-create next occurrence
-    recur_days = task.get("recur_interval_days")
-    recur_miles = task.get("recur_interval_miles")
+    # Driver attestation: stamp who confirmed completion and when.
+    # The user pressing the "mark done" button in the bot IS the
+    # attestation; we capture their telegram_id + the timestamp into
+    # the audit columns so the DOT binder can show "Driver John Doe
+    # confirmed oil change on 2026-04-12 at 11:42".  Best-effort: if
+    # the user doesn't have a telegram_id (system action), skip.
+    if getattr(user, "telegram_id", None):
+        try:
+            await tenant.record_task_attestation(
+                task_id, account_id=user.account_id,
+                attested_by=int(user.telegram_id),
+            )
+        except Exception as e:
+            logger.debug("attestation stamp failed for task %d: %s", task_id, e)
+
+    # Delegate recurring-task spawn to the service layer (SSOT — same
+    # function powers the API route's completion path).  The previous
+    # inline implementation here used strptime on ``due_date`` and only
+    # spawned a child when *both* parent fields were present; the service
+    # version computes the new due_date from "now + interval_days" so it
+    # works for tasks created with only a date OR only miles.  Also
+    # auto-renews compliance tasks (DOT inspection → 365-day default).
     next_info = ""
-    if recur_days or recur_miles:
-        new_due_date = None
-        new_due_miles = None
-        if recur_days and task.get("due_date"):
-            try:
-                old = _dt.strptime(task["due_date"], "%Y-%m-%d")
-                new_due_date = (old + timedelta(days=recur_days)).strftime("%Y-%m-%d")
-            except ValueError:
-                pass
-        if recur_miles and task.get("due_miles"):
-            new_due_miles = task["due_miles"] + recur_miles
-
-        await tenant.add_maintenance_task(
-            account_id=task["account_id"],
-            company_code=task.get("company_code", ""),
-            vehicle_id=task.get("vehicle_id", ""),
-            vehicle_name=task["vehicle_name"],
-            task_type=task["task_type"],
-            description=task.get("description", ""),
-            due_date=new_due_date,
-            due_miles=new_due_miles,
-            created_by=task["created_by"],
-            recur_interval_days=recur_days,
-            recur_interval_miles=recur_miles,
-        )
+    spawned_id = await spawn_recurring_if_completed(
+        task_id, user.account_id, "done", tenant,
+    )
+    if spawned_id:
         next_info = "\n\n🔄 Recurring task — next occurrence created automatically."
 
     type_label = _task_label(task["task_type"])
@@ -775,6 +776,17 @@ async def check_overdue_maintenance(app: Application):
                         f"  📋 {type_label}\n"
                         f"  📅 Due: {task.get('due_date', '?')}\n"
                     )
+                    # Forum routing: post once to the group's
+                    # Maintenance topic when configured.  When that
+                    # succeeds we skip the per-user DM fanout that
+                    # follows — group members see the alert there.
+                    from capabilities.alerting.pipeline import post_alert_to_topic
+                    posted = await post_alert_to_topic(
+                        bot_app, account_id=acct.id,
+                        alert_type="maintenance", text=notify_text,
+                    )
+                    if posted:
+                        continue
                     if task["created_by"]:
                         await bot_app.bot.send_message(
                             chat_id=task["created_by"],
@@ -829,6 +841,13 @@ async def check_overdue_by_mileage(app: Application):
                         f"  🛣 Due at: {due_miles:,.0f} mi\n"
                         f"  📏 Current: {current_miles:,.0f} mi\n"
                     )
+                    from capabilities.alerting.pipeline import post_alert_to_topic
+                    posted = await post_alert_to_topic(
+                        bot_app, account_id=acct.id,
+                        alert_type="maintenance", text=notify_text,
+                    )
+                    if posted:
+                        continue
                     if task["created_by"]:
                         await bot_app.bot.send_message(
                             chat_id=task["created_by"],
@@ -847,6 +866,148 @@ async def check_overdue_by_mileage(app: Application):
 
     if total_marked:
         logger.info(f"Marked {total_marked} maintenance task(s) as overdue (mileage)")
+
+
+async def check_overdue_by_engine_hours(app: Application):
+    """Scheduled job: engine-hours threshold crossings.
+
+    Runs every 6 hours alongside the mileage check.  Business logic
+    (warehouse read + status flip + alerted_at stamp) is in the service
+    layer; this thin wrapper handles per-account fan-out and the
+    Telegram notification format.
+    """
+    try:
+        accounts = await get_platform_db().list_accounts()
+    except Exception as e:
+        logger.error(f"Engine-hours check — cannot list accounts: {e}", exc_info=True)
+        return
+
+    total_marked = 0
+    for account in accounts:
+        async def _run(acct=account):
+            nonlocal total_marked
+            bot_app = get_app_for_account(acct.id)
+            if not bot_app:
+                logger.warning("No bot for account %d — skipping engine-hours check", acct.id)
+                return
+            tenant = await get_tenant_db(acct.id)
+            newly_overdue = await mark_overdue_tasks_by_engine_hours(acct.id, tenant)
+            total_marked += len(newly_overdue)
+            for task in newly_overdue:
+                try:
+                    type_label = _task_label(task["task_type"])
+                    due = task["due_engine_hours"]
+                    current = task.get("_current_engine_hours", due)
+                    notify_text = (
+                        f"🔴 <b>Overdue Maintenance (Engine Hours)</b>\n\n"
+                        f"  🚛 #{task['vehicle_name']}\n"
+                        f"  📋 {type_label}\n"
+                        f"  ⏱ Due at: {due:,.0f} hrs\n"
+                        f"  📏 Current: {current:,.0f} hrs\n"
+                    )
+                    from capabilities.alerting.pipeline import post_alert_to_topic
+                    posted = await post_alert_to_topic(
+                        bot_app, account_id=acct.id,
+                        alert_type="maintenance", text=notify_text,
+                    )
+                    if posted:
+                        continue
+                    if task["created_by"]:
+                        await bot_app.bot.send_message(
+                            chat_id=task["created_by"],
+                            text=notify_text,
+                            parse_mode=ParseMode.HTML,
+                        )
+                    await _notify_account_admins(
+                        bot_app, acct.id, notify_text,
+                        exclude=task["created_by"],
+                    )
+                except Exception as e:
+                    logger.debug(f"Engine-hours overdue notification failed: {e}")
+
+        await run_account_job(_run(), account_id=account.id,
+                              job_name="overdue_engine_hours_check")
+
+    if total_marked:
+        logger.info(f"Marked {total_marked} maintenance task(s) as overdue (engine hours)")
+
+
+async def check_upcoming_maintenance_warnings(app: Application):
+    """Daily pre-overdue warning ("due in 7d / 500 mi / 50 hrs").
+
+    Fires once per task per cycle: ``warning_sent_at`` is stamped after
+    the notification so subsequent ticks skip warned tasks.  The actual
+    overdue alert (``alerted_at``) is independent — a task can be warned
+    today and still trigger the overdue notification 3 days later when
+    it crosses.
+    """
+    try:
+        accounts = await get_platform_db().list_accounts()
+    except Exception as e:
+        logger.error(f"Maintenance warning check — cannot list accounts: {e}", exc_info=True)
+        return
+
+    total_warned = 0
+    for account in accounts:
+        async def _run(acct=account):
+            nonlocal total_warned
+            bot_app = get_app_for_account(acct.id)
+            if not bot_app:
+                return
+            tenant = await get_tenant_db(acct.id)
+            upcoming = await detect_upcoming_warnings(acct.id, tenant)
+            if not upcoming:
+                return
+            warned_ids: list[int] = []
+            for task in upcoming:
+                try:
+                    type_label = _task_label(task["task_type"])
+                    # Compose a short summary of which dimension(s) are
+                    # approaching — date, miles, hours, or any combination.
+                    bits: list[str] = []
+                    if task.get("due_date"):
+                        bits.append(f"📅 by {task['due_date'][:10]}")
+                    if task.get("due_miles") and task.get("last_odometer"):
+                        remaining = float(task["due_miles"]) - float(task["last_odometer"])
+                        bits.append(f"🛣 {remaining:,.0f} mi to go")
+                    if task.get("due_engine_hours") and task.get("last_engine_hours"):
+                        remaining_h = float(task["due_engine_hours"]) - float(task["last_engine_hours"])
+                        bits.append(f"⏱ {remaining_h:,.0f} hrs to go")
+                    summary = " · ".join(bits) if bits else "approaching"
+                    notify_text = (
+                        f"🟠 <b>Maintenance Due Soon</b>\n\n"
+                        f"  🚛 #{task['vehicle_name']}\n"
+                        f"  📋 {type_label}\n"
+                        f"  {summary}\n"
+                    )
+                    from capabilities.alerting.pipeline import post_alert_to_topic
+                    posted = await post_alert_to_topic(
+                        bot_app, account_id=acct.id,
+                        alert_type="maintenance", text=notify_text,
+                    )
+                    if not posted:
+                        if task["created_by"]:
+                            await bot_app.bot.send_message(
+                                chat_id=task["created_by"],
+                                text=notify_text,
+                                parse_mode=ParseMode.HTML,
+                            )
+                        await _notify_account_admins(
+                            bot_app, acct.id, notify_text,
+                            exclude=task["created_by"],
+                        )
+                    warned_ids.append(int(task["id"]))
+                except Exception as e:
+                    logger.debug(f"Upcoming-warning notification failed: {e}")
+            if warned_ids:
+                await tenant.mark_tasks_warned_bulk(acct.id, warned_ids)
+                total_warned += len(warned_ids)
+
+        await run_account_job(_run(), account_id=account.id,
+                              job_name="upcoming_warning_check")
+
+    if total_warned:
+        logger.info(f"Sent {total_warned} upcoming-maintenance warning(s)")
 
 
 async def _notify_account_admins(app: Application, account_id: int, text: str,

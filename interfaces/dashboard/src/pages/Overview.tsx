@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -139,6 +140,7 @@ function DriverOverview({
   navigate: ReturnType<typeof useNavigate>;
   greeting?: string;
 }) {
+  const { t } = useTranslation();
   const truck = stats.my_vehicle;
   const fuelTone =
     truck?.fuel_pct == null
@@ -163,8 +165,8 @@ function DriverOverview({
       )}
       <PageHeader
         icon={Truck}
-        title="My Dashboard"
-        description="Live status, fuel, faults, and quick links to your routes, scorecard, and alerts."
+        title={t('pages.overview_title')}
+        description={t('pages.overview_desc')}
       />
 
       {!truck ? (
@@ -613,6 +615,7 @@ function RoleOverview({
 // ── Main component ───────────────────────────────────────────
 
 export default function Overview() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { has } = usePermissions();
   const { user } = useAuth();

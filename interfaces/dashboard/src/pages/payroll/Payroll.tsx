@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DollarSign } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
@@ -59,6 +60,7 @@ type Tab = 'rules' | 'runs' | 'settings';
 // ── Page ─────────────────────────────────────────────────────────
 
 export default function Payroll() {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>('runs');
   const { user, loading: authLoading } = useAuth();
   const disabled = user?.payroll_enabled === false;
@@ -68,8 +70,8 @@ export default function Payroll() {
       <div className="space-y-4">
         <PageHeader
           icon={DollarSign}
-          title="Payroll"
-          description="Pay-for-performance: base pay plus bonuses earned from scorecard rules. Drivers can self-serve their paystubs in Telegram or the mobile mini-app."
+          title={t('pages.payroll_title')}
+          description={t('pages.payroll_desc_long')}
         />
         <CardSkeleton height="h-40" />
       </div>
@@ -81,8 +83,8 @@ export default function Payroll() {
       <div className="space-y-4">
         <PageHeader
           icon={DollarSign}
-          title="Payroll"
-          description="Pay-for-performance: base pay plus bonuses earned from scorecard rules."
+          title={t('pages.payroll_title')}
+          description={t('pages.payroll_desc_short')}
         />
         <div className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-700 dark:text-yellow-300">
           Payroll is not enabled for this account. Contact your administrator to activate Pay-for-Performance.
@@ -95,8 +97,8 @@ export default function Payroll() {
     <div className="space-y-4">
       <PageHeader
         icon={DollarSign}
-        title="Payroll"
-        description="Pay-for-performance: base pay plus bonuses earned from scorecard rules. Drivers can self-serve their paystubs in Telegram or the mobile mini-app."
+        title={t('pages.payroll_title')}
+        description={t('pages.payroll_desc_long')}
       />
 
       <div className="flex gap-2 border-b border-border/50">

@@ -2,7 +2,7 @@
 
 Architecture
 ------------
-Phase 5 of the DB-as-SSOT roadmap separates blobs (camera images,
+of the DB-as-SSOT roadmap separates blobs (camera images,
 parking maps, user avatars) from telemetry data.  Telemetry lives in
 the per-tenant SQLite warehouse; blobs live behind this Protocol.
 
@@ -82,6 +82,20 @@ class ObjectStore(Protocol):
         local representation return ``None``."""
         ...
 
+    def move_folder(self, src_bucket: str, dst_bucket: str) -> bool:
+        """Re-parent / move the folder at ``src_bucket`` to ``dst_bucket``.
+
+        Used by the driver-company-change archive flow: when a driver
+        is reassigned, their ``{company}/drivers/user-{id}/`` folder
+        is moved to ``{company}/drivers/_archive/{date}/user-{id}/``.
+
+        Returns ``True`` on success, ``False`` when the source doesn't
+        exist (idempotent — already-archived users don't break the
+        flow).  Backends without folder-level operations are free to
+        no-op + return False; callers fall back gracefully.
+        """
+        ...
+
 
 # ── Disk-backed implementation ──────────────────────────────────────
 
@@ -155,15 +169,64 @@ class DiskObjectStore:
         full = self._full(bucket, key)
         return full if os.path.exists(full) else None
 
+    def move_folder(self, src_bucket: str, dst_bucket: str) -> bool:
+        """Move ``<root>/<src_bucket>`` to ``<root>/<dst_bucket>``.
 
-# ── Module singleton ─────────────────────────────────────────────────
+        Creates any missing intermediate directories in the destination
+        path.  Returns False when the source doesn't exist (caller
+        treats it as idempotent — driver had no docs yet).
+        """
+        import shutil
+        if os.path.isabs(self._root):
+            base = self._root
+        else:
+            base = os.path.join(self._PROJECT_ROOT, self._root)
+        src = os.path.join(base, src_bucket)
+        dst = os.path.join(base, dst_bucket)
+        if not os.path.exists(src):
+            return False
+        try:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.move(src, dst)
+            return True
+        except Exception as e:
+            logger.warning(
+                "DiskObjectStore.move_folder failed %s -> %s: %s",
+                src_bucket, dst_bucket, e,
+            )
+            return False
+
+
+# ── Module singletons ────────────────────────────────────────────────
 
 _store: ObjectStore | None = None
 
+# Per-account cache.  Keyed by ``account_id``.  Stays for the process
+# lifetime — backend choice is immutable until the account reconfigures
+# via the Settings page, at which point ``invalidate_object_store_for_account``
+# is called to flush the entry.  Disk is cheap to recreate; the GDrive
+# backend caches folder IDs internally so re-creating it loses that
+# cache — invalidate sparingly.
+_per_account_stores: dict[int, ObjectStore] = {}
+
+
+# Convention: settings keys under ``account_settings`` for the storage
+# backend choice.  Module-level constants so callers stay typo-safe.
+STORAGE_BACKEND_KEY = "storage.backend"           # "disk" | "gdrive"
+STORAGE_GDRIVE_REFRESH_TOKEN = "storage.gdrive.refresh_token"  # encrypted
+STORAGE_GDRIVE_ROOT_FOLDER_ID = "storage.gdrive.root_folder_id"
+STORAGE_GDRIVE_USER_EMAIL = "storage.gdrive.user_email"  # for display only
+
 
 def get_object_store() -> ObjectStore:
-    """Return the configured object store.  Lazy so tests can override
-    ``config.OBJECT_STORE_BACKEND`` between calls."""
+    """Return the platform-wide default object store.
+
+    Used by callers that don't have an account context — startup
+    routines, system-level operations.  For per-account uploads
+    (work-orders, maintenance attachments, etc.) use
+    ``get_object_store_for_account`` so each tenant can plug in their
+    own Google Drive without affecting other accounts.
+    """
     global _store
     if _store is None:
         backend = (config.OBJECT_STORE_BACKEND or "disk").lower()
@@ -178,8 +241,76 @@ def get_object_store() -> ObjectStore:
     return _store
 
 
+async def get_object_store_for_account(account_id: int, tenant_db) -> ObjectStore:
+    """Return the object store configured for one tenant account.
+
+    Reads ``account_settings.storage.backend`` to decide which backend
+    to spin up.  Defaults to ``DiskObjectStore`` (the safe platform
+    fallback) when no preference is recorded — every account works
+    out-of-the-box without configuration.
+
+    Caches the result for the process lifetime so each account pays
+    the connect/credential cost once.  Use
+    ``invalidate_object_store_for_account`` after a Settings change to
+    flush the cache.
+
+    Args:
+        account_id: tenant identifier (account)
+        tenant_db: ``Database`` instance with ``get_account_setting`` —
+            passed in so this module doesn't import the adapter at
+            module load time (would create a circular dep at startup).
+    """
+    cached = _per_account_stores.get(account_id)
+    if cached is not None:
+        return cached
+
+    backend = (
+        await tenant_db.get_account_setting(account_id, STORAGE_BACKEND_KEY, "disk")
+    ) or "disk"
+    backend = backend.lower()
+
+    if backend == "disk":
+        # DiskObjectStore is stateless; safe to share a single instance
+        # across accounts because the account_id-prefixed path keeps
+        # tenants isolated on disk.
+        store: ObjectStore = DiskObjectStore()
+    elif backend == "gdrive":
+        # Late import so DiskObjectStore-only setups don't pay the
+        # google-api-python-client import cost on every startup.
+        try:
+            from .object_store_gdrive import GDriveObjectStore
+            store = await GDriveObjectStore.connect(account_id, tenant_db)
+        except Exception as e:
+            logger.error(
+                "GDrive backend unavailable for account %d (falling back to disk): %s",
+                account_id, e,
+            )
+            store = DiskObjectStore()
+    else:
+        logger.warning(
+            "Unknown storage backend %r for account %d — using disk",
+            backend, account_id,
+        )
+        store = DiskObjectStore()
+
+    _per_account_stores[account_id] = store
+    return store
+
+
+def invalidate_object_store_for_account(account_id: int) -> None:
+    """Drop the cached ObjectStore for an account.
+
+    Called after the user changes their storage backend in Settings or
+    refreshes their Google Drive credentials.  The next
+    ``get_object_store_for_account`` call rebuilds from current
+    ``account_settings``.
+    """
+    _per_account_stores.pop(account_id, None)
+
+
 def reset_object_store() -> None:
-    """Test hook: clear the cached singleton so the next call rebuilds
-    from current ``config`` values."""
+    """Test hook: clear all caches so the next call rebuilds from
+    current ``config`` + ``account_settings`` values."""
     global _store
     _store = None
+    _per_account_stores.clear()

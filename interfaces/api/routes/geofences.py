@@ -20,7 +20,7 @@ from interfaces.api.deps import (
     filter_by_allowed_companies,
 )
 from capabilities.geofencing.geometry import geofence_shape_type as _geofence_shape_type
-from interfaces.bot.config import get_tenant_db
+from interfaces.bot.state import get_tenant_db
 
 router = APIRouter(prefix="/fleet/geofences", tags=["geofences"])
 

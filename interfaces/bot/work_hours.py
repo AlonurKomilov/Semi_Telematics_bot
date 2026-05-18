@@ -4,7 +4,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from capabilities.iam.permissions import can
-from interfaces.bot.config import logger, get_tenant_db
+from interfaces.bot.config import logger
+from interfaces.bot.state import get_tenant_db
 from interfaces.bot.keyboards import (
     work_hours_kb, work_hour_detail_kb,
     work_hour_picker_kb, work_hour_role_picker_kb,

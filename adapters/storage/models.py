@@ -49,6 +49,7 @@ class Account:
     webhook_secret: str = ""
     payroll_enabled: bool = False
     coaching_enabled: bool = False
+    timezone: str = "America/New_York"
 
 @dataclass
 class Company:
@@ -163,6 +164,71 @@ class AuthorizedChat:
     added_by: int            # user.id who authorized
     is_active: bool
     created_at: str
+
+# ─── Forum routing (Telegram group topics) ──────────────────────
+
+# Canonical alert-type keys used by both alert_routing and the bot
+# pipeline.  Adding a new alert type means: (a) appending to this
+# tuple, (b) extending FORUM_TOPIC_SPEC in capabilities/alerting/
+# forum_topics.py with name + icon, (c) emitting send_alert() calls
+# with that key.  Order here mirrors the documented Option C topic
+# list so dashboards and the bot setup wizard render in the same
+# sequence.
+ALERT_TYPE_KEYS: tuple[str, ...] = (
+    "faults",
+    "health",
+    "fuel",
+    "events",
+    "camera",
+    "parking",
+    "geofence",
+    "scorecard",
+    "maintenance",
+    "documents",
+    "system",
+)
+
+
+@dataclass
+class ForumGroup:
+    """A Telegram supergroup with topics enabled, bound to one account.
+
+    One account → at most one forum_group.  The bot must be an admin
+    of this chat with the ``can_manage_topics`` right or every topic
+    API call returns ``BAD_REQUEST: not enough rights``.
+    """
+    account_id: int
+    chat_id: int               # Telegram chat_id (negative)
+    chat_title: str
+    is_forum_enabled: bool     # True if Telegram returned is_forum=true at setup
+    setup_status: str          # 'pending' / 'provisioned' / 'partial' / 'error'
+    last_setup_at: Optional[str]
+    last_repair_at: Optional[str]
+    created_by_user_id: int
+    created_at: str
+    updated_at: str
+
+
+@dataclass
+class AlertRoute:
+    """Mapping from (account_id, alert_type) to a Telegram topic.
+
+    ``message_thread_id`` is the Telegram topic id returned by
+    ``createForumTopic``; ``chat_id`` always refers back to the
+    forum_groups row for the same account (denormalised so the
+    routing-hot-path send_alert() lookup is a single index hit).
+    """
+    id: int
+    account_id: int
+    alert_type: str            # one of ALERT_TYPE_KEYS
+    chat_id: int
+    message_thread_id: int
+    topic_name_snapshot: str   # name at provisioning time (drift detection)
+    icon_emoji: str            # default icon used when created
+    is_active: bool            # soft-disable without delete
+    created_at: str
+    updated_at: str
+
 
 @dataclass
 class Invite:

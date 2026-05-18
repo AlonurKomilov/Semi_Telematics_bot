@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { setToken } from '../api/client';
 import { Button } from '../components/ui/button';
@@ -8,6 +9,7 @@ import type { TelegramLoginData } from '../types';
 type Mode = 'login' | 'register';
 
 export default function Login() {
+  const { t } = useTranslation();
   const { loginWithTelegram, loginWithEmail, registerWithEmail } = useAuth();
   const containerRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<Mode>('login');
@@ -170,8 +172,8 @@ export default function Login() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background px-4">
       <div className="mb-8 text-center">
-        <h1 className="text-4xl font-bold mb-2">🚛 4truck</h1>
-        <p className="text-muted-foreground">Telematics platform for drivers, dispatch, safety & operations</p>
+        <h1 className="text-4xl font-bold mb-2">4truck</h1>
+        <p className="text-muted-foreground">{t('auth.tagline')}</p>
       </div>
 
       <div className="bg-card rounded-xl p-8 shadow-lg border border-border w-full max-w-sm">
@@ -205,13 +207,13 @@ export default function Login() {
             <>
               <Input
                 type="text"
-                placeholder="Display name"
+                placeholder={t('auth.display_name')}
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
               />
               <Input
                 type="text"
-                placeholder="Invite code"
+                placeholder={t('auth.invite_code')}
                 value={inviteCode}
                 onChange={(e) => setInviteCode(e.target.value)}
                 required
@@ -220,14 +222,14 @@ export default function Login() {
           )}
           <Input
             type="email"
-            placeholder="Email"
+            placeholder={t('auth.email')}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
           />
           <Input
             type="password"
-            placeholder="Password"
+            placeholder={t('auth.password')}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
@@ -242,7 +244,7 @@ export default function Login() {
                 onChange={(e) => setRememberMe(e.target.checked)}
                 className="w-4 h-4 rounded border-border accent-primary cursor-pointer"
               />
-              <span className="text-sm text-muted-foreground">Remember me for 30 days</span>
+              <span className="text-sm text-muted-foreground">{t('auth.remember_me')}</span>
             </label>
           )}
 
@@ -276,19 +278,19 @@ export default function Login() {
               onClick={() => setShowDisconnect(true)}
               className="text-xs text-muted-foreground hover:text-foreground/80 transition-colors underline underline-offset-2"
             >
-              Disconnect Telegram session
+              {t('login_tg.disconnect_session')}
             </button>
           </div>
         ) : (
           <div className="mt-3 p-3 bg-muted border border-border rounded-lg text-xs text-foreground/80 space-y-3">
-            <p className="font-medium text-foreground/90">Switch Telegram account:</p>
+            <p className="font-medium text-foreground/90">{t('login_tg.switch_account')}</p>
 
-            <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground">
-              <li>Open your <b className="text-foreground/80">Telegram</b> app on phone or desktop</li>
-              <li>Go to <b className="text-foreground/80">Telegram</b> service chat — tap the search icon 🔍 and type <b className="text-foreground/80">"Telegram"</b>, then select the one with ✅ verified badge that says <b className="text-foreground/80">"service notifications"</b></li>
-              <li>Scroll to the message that says <b className="text-foreground/80">"You have successfully logged in on 4truck.us via @{botUsername}"</b></li>
-              <li>Tap the <b className="text-primary">"Disconnect"</b> button below that message</li>
-              <li>Come back here and press <b className="text-foreground/80">"Refresh widget"</b> below</li>
+            <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground [&_b]:text-foreground/80">
+              <li dangerouslySetInnerHTML={{ __html: t('login_tg.step_open_telegram') }} />
+              <li dangerouslySetInnerHTML={{ __html: t('login_tg.step_search_service') }} />
+              <li dangerouslySetInnerHTML={{ __html: t('login_tg.step_find_message', { bot: botUsername }) }} />
+              <li dangerouslySetInnerHTML={{ __html: t('login_tg.step_tap_disconnect') }} />
+              <li dangerouslySetInnerHTML={{ __html: t('login_tg.step_refresh_widget') }} />
             </ol>
 
             <div className="flex gap-2 pt-1">
@@ -297,7 +299,7 @@ export default function Login() {
                 onClick={handleRefreshWidget}
                 className="flex-1 text-xs h-8"
               >
-                Refresh widget
+                {t('login_tg.refresh_widget')}
               </Button>
               <Button
                 type="button"
@@ -305,7 +307,7 @@ export default function Login() {
                 onClick={() => setShowDisconnect(false)}
                 className="flex-1 text-xs h-8"
               >
-                Cancel
+                {t('common.cancel')}
               </Button>
             </div>
           </div>
@@ -314,7 +316,7 @@ export default function Login() {
         {/* Divider before bot login */}
         <div className="flex items-center my-5">
           <div className="flex-1 border-t border-border" />
-          <span className="px-3 text-xs text-muted-foreground">or</span>
+          <span className="px-3 text-xs text-muted-foreground">{t('login_tg.or_separator')}</span>
           <div className="flex-1 border-t border-border" />
         </div>
 
@@ -326,7 +328,7 @@ export default function Login() {
             className="w-full py-2.5 bg-muted hover:bg-muted/80 border border-border text-foreground text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
           >
             <span>🤖</span>
-            <span>Login via Telegram Bot</span>
+            <span>{t('login_tg.login_via_bot')}</span>
           </button>
         )}
 
@@ -334,12 +336,12 @@ export default function Login() {
           <div className="p-4 bg-muted border border-border rounded-lg space-y-3">
             <div className="flex items-center gap-2">
               <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
-              <span className="text-sm text-foreground/90">Waiting for approval...</span>
+              <span className="text-sm text-foreground/90">{t('login_tg.waiting_approval')}</span>
             </div>
-            <p className="text-xs text-muted-foreground">
-              A link to <b className="text-foreground/80">@app_4truck_bot</b> was opened.
-              Tap <b className="text-foreground/80">Start</b> in the bot to approve your login.
-            </p>
+            <p
+              className="text-xs text-muted-foreground [&_b]:text-foreground/80"
+              dangerouslySetInnerHTML={{ __html: t('login_tg.bot_link_opened', { bot: 'app_4truck_bot' }) }}
+            />
             {botLoginLink && (
               <a
                 href={botLoginLink}
@@ -347,7 +349,7 @@ export default function Login() {
                 rel="noopener noreferrer"
                 className="block text-center text-xs text-primary hover:text-primary/80 underline underline-offset-2"
               >
-                Didn't open? Click here to open the bot
+                {t('login_tg.didnt_open')}
               </a>
             )}
             <button
@@ -355,7 +357,7 @@ export default function Login() {
               onClick={cancelBotLogin}
               className="w-full py-1.5 bg-muted hover:bg-muted/80 text-foreground/80 text-xs font-medium rounded transition-colors"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
         )}

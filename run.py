@@ -103,9 +103,12 @@ async def run_api():
 
 async def main():
     mode_parts = []
-    if _ENABLE_API:       mode_parts.append("API")
-    if _ENABLE_BOT:       mode_parts.append("Bot")
-    if _ENABLE_SCHEDULER: mode_parts.append("Scheduler")
+    if _ENABLE_API:
+        mode_parts.append("API")
+    if _ENABLE_BOT:
+        mode_parts.append("Bot")
+    if _ENABLE_SCHEDULER:
+        mode_parts.append("Scheduler")
     logger.info("Starting 4truck — services: %s", "+".join(mode_parts) or "none")
 
     # ── 1. Platform infrastructure (always required) ─────────────
@@ -191,8 +194,64 @@ async def main():
     logger.info("Shutdown signal received")
 
     # ── 7. Cleanup ───────────────────────────────────────────────
+    # Order matters.  Previously the scheduler shut down with
+    # ``wait=False`` *after* the bots, so any in-flight scheduled job
+    # (e.g. a ``check_events`` mid-fanout) lost the bot's HTTPX client
+    # under its feet and the remaining subscribers got
+    # ``RuntimeError('This HTTPXRequest is not initialized!')``.  That
+    # explained the production symptom of videos arriving without the
+    # follow-up text message when the service was restarted during a
+    # delivery cycle.
+    #
+    # Drain the scheduler first (``wait=True``) so every job that was
+    # already running gets to complete, then stop the bots — by that
+    # point nothing else is calling ``bot.send_*``.
+
     if api_task:
         api_task.cancel()
+
+    if scheduler:
+        # Stop accepting new jobs and let in-flight async tasks finish
+        # naturally.  ``wait=False`` here is deliberate: the wait=True
+        # path is *blocking* (it joins on a thread executor) and would
+        # freeze the event loop while our async jobs are still inside
+        # asyncio.gather.  We do the awaiting ourselves below.
+        scheduler.shutdown(wait=False)
+
+        # Drain running async jobs with a bounded grace period.  Long
+        # enough to cover a normal events-check fanout (~30s) but
+        # bounded so systemd's TimeoutStopSec can't be exceeded.  Tune
+        # via SHUTDOWN_DRAIN_SEC env var; bump TimeoutStopSec in the
+        # systemd unit to a few seconds more than this.
+        drain_secs = int(os.getenv("SHUTDOWN_DRAIN_SEC", "40"))
+        deadline = asyncio.get_event_loop().time() + drain_secs
+        current = asyncio.current_task()
+        # Pending async jobs are scheduled as separate tasks by
+        # APScheduler.  ``all_tasks() - {current}`` yields everything
+        # else we're sharing the loop with (API task already cancelled
+        # above; bot polling tasks still running but those won't block).
+        while True:
+            pending = [
+                t for t in asyncio.all_tasks()
+                if t is not current and not t.done()
+                and "Application.run_polling" not in repr(t)
+            ]
+            if not pending:
+                break
+            remaining = deadline - asyncio.get_event_loop().time()
+            if remaining <= 0:
+                logger.warning(
+                    "Shutdown drain timeout (%ds) — %d task(s) still running",
+                    drain_secs, len(pending),
+                )
+                break
+            try:
+                await asyncio.wait(pending, timeout=min(2.0, remaining))
+            except Exception:
+                break
+
+        import infra.cache as _rcache
+        await _rcache.release_lock("scheduler:global")
 
     if registry:
         await registry.stop_all()
@@ -202,11 +261,6 @@ async def main():
             await tg_app.updater.stop()
         await tg_app.stop()
         await tg_app.shutdown()
-
-    if scheduler:
-        scheduler.shutdown(wait=False)
-        import infra.cache as _rcache
-        await _rcache.release_lock("scheduler:global")
 
     # Platform shutdown (Redis, DB, caches)
     await infra.startup.shutdown()

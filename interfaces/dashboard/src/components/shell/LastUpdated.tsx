@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate } from '../../utils/datetime';
+
 interface LastUpdatedProps {
   fetchedAt?: number | null;
   isFetching?: boolean;
   onRefresh?: () => void;
 }
 
-function formatRelative(ts: number): string {
+function formatRelative(ts: number, tz: string): string {
   const diff = Math.max(0, Date.now() - ts);
   const sec = Math.floor(diff / 1000);
   if (sec < 5) return 'just now';
@@ -16,7 +19,9 @@ function formatRelative(ts: number): string {
   if (min < 60) return `${min}m ago`;
   const hr = Math.floor(min / 60);
   if (hr < 24) return `${hr}h ago`;
-  return new Date(ts).toLocaleString();
+  // Older than a day — show an absolute timestamp rendered in the
+  // user's effective timezone (was browser locale before).
+  return formatDate(ts, { timeZone: tz });
 }
 
 export default function LastUpdated({
@@ -25,6 +30,7 @@ export default function LastUpdated({
   onRefresh,
 }: LastUpdatedProps) {
   const [, setTick] = useState(0);
+  const tz = useTimezone();
 
   useEffect(() => {
     if (!fetchedAt) return;
@@ -32,7 +38,7 @@ export default function LastUpdated({
     return () => clearInterval(id);
   }, [fetchedAt]);
 
-  const label = fetchedAt ? formatRelative(fetchedAt) : '—';
+  const label = fetchedAt ? formatRelative(fetchedAt, tz) : '—';
 
   return (
     <button

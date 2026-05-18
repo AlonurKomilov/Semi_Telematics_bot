@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="4truck">
+  <rect width="1024" height="1024" rx="128" ry="128" fill="#ffffff"/>
+  <text x="512" y="520" text-anchor="middle"
+        font-family="'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif"
+        font-weight="900" font-size="280" letter-spacing="-6"
+        fill="#0f172a" dominant-baseline="middle">4truck</text>
+  <rect x="282" y="640" width="460" height="26" rx="13" ry="13" fill="#2563eb"/>
+</svg>

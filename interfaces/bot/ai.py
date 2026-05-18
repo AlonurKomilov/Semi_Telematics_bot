@@ -12,14 +12,14 @@ from telegram.ext import ContextTypes
 from adapters.storage import Role
 from capabilities.iam.permissions import can, is_management_role
 
-from interfaces.bot.config import logger, get_client, get_platform_db, get_tenant_db
+from interfaces.bot.config import logger
+from interfaces.bot.state import get_client, get_platform_db, get_tenant_db
 from interfaces.bot.helpers import _show, _show_loading, escape_html
 from interfaces.bot.keyboards import back_kb
 from interfaces.bot.auth import _require_registered
 from capabilities.localization.i18n import t
 
 import capabilities.ai as ai
-import re as _re
 from capabilities.ai.usage import build_user_ai_context, log_ai_usage as _log_ai_usage_fn, parse_ai_suggestions as _parse_suggestions
 
 

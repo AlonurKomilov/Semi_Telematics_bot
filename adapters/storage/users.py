@@ -42,6 +42,18 @@ class UsersMixin:
         row = await cur.fetchone()
         return self._row_to_user(row) if row else None
 
+    async def get_user_by_id(self, user_id: int) -> Optional[User]:
+        """Look up a user by their internal primary key.  Returns
+        terminated users too — callers that want to hide them must
+        filter on ``termination_date`` themselves (the driver-list
+        endpoint does this)."""
+        cur = await self._db.execute(
+            "SELECT * FROM users WHERE id = ? AND is_active = 1",
+            (user_id,),
+        )
+        row = await cur.fetchone()
+        return self._row_to_user(row) if row else None
+
     async def get_user_by_email(self, email: str) -> Optional[User]:
         """Look up a user by email address."""
         cur = await self._db.execute(
@@ -165,6 +177,16 @@ class UsersMixin:
             f"UPDATE users SET {set_clause} WHERE id = ?", values,
         )
         await self._db.commit()
+        # Drop the resolved-tz cache when the column changed so the
+        # next display / cron tick picks up the new value within the
+        # cache TTL.  Cheap; the helper module no-ops if it's never
+        # been imported (it lazy-loads on first call).
+        if "timezone" in updates:
+            try:
+                from capabilities.localization.tz import invalidate_user
+                invalidate_user(user_id)
+            except Exception:
+                pass
         return True
 
     async def toggle_alerts(self, telegram_id: int) -> bool:

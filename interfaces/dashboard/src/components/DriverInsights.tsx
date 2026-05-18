@@ -1,14 +1,14 @@
-import { useMemo, useState } from 'react';
-import {
-  TrendingUp, TrendingDown, Minus, AlertTriangle, Sparkles,
-  Lightbulb, Shield, ShieldAlert, ShieldCheck, ChevronRight,
-} from 'lucide-react';
+import { useMemo } from 'react';
+import { AlertTriangle, Sparkles, Lightbulb } from 'lucide-react';
 import type { CompositeScorecard, ScoreEventBreakdown } from '../types';
 
 // ── Risk band ─────────────────────────────────────────────────
 //
 // Maps the 0-100 score to LOW/MEDIUM/HIGH using the same thresholds
-// as our scoreColor helper for visual consistency.
+// as our scoreColor helper.  The chip that used to surface this
+// alongside a "rising/falling" trend pill was removed (it duplicated
+// what the gauge + AI Insights already show), but the band still
+// drives the AI Insights headline copy so the function stays.
 
 type RiskBand = 'low' | 'medium' | 'high';
 
@@ -18,21 +18,20 @@ function riskBand(score: number): RiskBand {
   return 'high';
 }
 
-const RISK_META: Record<RiskBand, { label: string; cls: string; icon: typeof Shield }> = {
-  low:    { label: 'LOW RISK',    cls: 'bg-green-500/15 text-green-700 dark:text-green-400',   icon: ShieldCheck },
-  medium: { label: 'MEDIUM RISK', cls: 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400', icon: Shield },
-  high:   { label: 'HIGH RISK',   cls: 'bg-red-500/15 text-red-700 dark:text-red-400',         icon: ShieldAlert },
-};
-
 // ── Trend direction ───────────────────────────────────────────
+//
+// 'unknown' covers brand-new drivers and any account whose nightly
+// snapshots haven't accrued the 4-point minimum yet.  Surfacing
+// 'steady' there was misleading — a driver with no history isn't
+// actually stable, we just can't tell.
 
-type TrendDir = 'rising' | 'falling' | 'steady';
+type TrendDir = 'rising' | 'falling' | 'steady' | 'unknown';
 
 function trendDirection(trend: number[] | undefined): { dir: TrendDir; delta: number } {
-  if (!trend || trend.length < 4) return { dir: 'steady', delta: 0 };
+  if (!trend || trend.length < 4) return { dir: 'unknown', delta: 0 };
   const recent = trend.slice(-3);
   const prior = trend.slice(-6, -3);
-  if (prior.length === 0) return { dir: 'steady', delta: 0 };
+  if (prior.length === 0) return { dir: 'unknown', delta: 0 };
   const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
   const delta = Math.round(avg(recent) - avg(prior));
   if (delta >= 3) return { dir: 'rising', delta };
@@ -58,18 +57,23 @@ function bucketSeverity(events: ScoreEventBreakdown[]): { severe: number; modera
 }
 
 // ── Period comparison (last half vs prior half) ───────────────
+//
+// ``hasData`` is false when the trend array is too thin to split into
+// two halves — we render "—" in that state instead of showing zeros
+// that look like real "zero events" data.
 
 interface PeriodCompare {
   window: number;
   last: number;
   prior: number;
   delta: number;
+  hasData: boolean;
 }
 
 function periodCompare(trend: number[] | undefined, days: number): PeriodCompare {
   const t = trend ?? [];
   if (t.length < 2) {
-    return { window: Math.max(1, Math.floor(days / 2)), last: 0, prior: 0, delta: 0 };
+    return { window: Math.max(1, Math.floor(days / 2)), last: 0, prior: 0, delta: 0, hasData: false };
   }
   const half = Math.max(1, Math.min(Math.floor(days / 2), Math.floor(t.length / 2)));
   const last = t.slice(-half);
@@ -80,6 +84,7 @@ function periodCompare(trend: number[] | undefined, days: number): PeriodCompare
     last: Math.round(sum(last)),
     prior: Math.round(sum(prior)),
     delta: Math.round(sum(last)) - Math.round(sum(prior)),
+    hasData: true,
   };
 }
 
@@ -92,6 +97,36 @@ function topIssue(penalties: ScoreEventBreakdown[]): ScoreEventBreakdown | null 
 
 // ── AI insights ───────────────────────────────────────────────
 
+// Rule-id-keyed coaching map — replaces the previous label-substring
+// heuristic which generated wrong copy when the top issue was a
+// hardware problem (e.g. obstructed camera) or label punctuation
+// changed.  Anything not in this map and not in NON_BEHAVIOR_RULE_IDS
+// falls back to a generic message.  Hardware issues route to a
+// fleet-side action instead of a driver one-on-one.
+const COACHING_BY_RULE: Record<string, string> = {
+  'safety.crash':              'Schedule a 1:1 incident review and re-test on collision-avoidance.',
+  'safety.near_collision':     'Coach on following distance and look-ahead scanning — keep at least one truck-length per 10 mph.',
+  'safety.harsh_brake':        'Discuss anticipatory braking and look-ahead scanning.',
+  'safety.harsh_turn':         'Review cornering technique and approach speed.',
+  'safety.overspeed_rate':     'Review speed-limit awareness and cruise-control use.',
+  'safety.distracted_driving': 'Coach on phone-down policy and the cost of distractions.',
+  'safety.mobile_usage':       'Reinforce phone-down policy — zero tolerance while in motion.',
+  'safety.forward_collision':  'Coach on following distance and forward awareness.',
+  'safety.rolling_stop':       'Reinforce full-stop policy at signs and lights.',
+  'eff.green_band_low':        'Review fuel-economy habits — idling, coasting, and cruise discipline.',
+  'eff.idle_pct_high':         'Review idle-reduction policy and PTO usage.',
+};
+
+const HARDWARE_ACTION_BY_RULE: Record<string, string> = {
+  'compliance.camera_obstructed':   'Fleet action: inspect and re-align the dashcam mount; clean the lens.',
+  'compliance.active_dtc':          'Fleet action: pull the truck for diagnostics — driver did not cause this.',
+  'compliance.health_critical':     'Fleet action: schedule immediate service for the affected truck.',
+  'compliance.health_minor':        'Fleet action: top up DEF / address the minor alert on the assigned truck.',
+  'compliance.maintenance_overdue': 'Ops action: schedule the overdue maintenance task.',
+  'compliance.pti_overdue':         'Ops action: enforce pre-trip inspection completion on this driver\'s shifts.',
+  'efficiency.fuel_anomaly':        'Fleet/finance action: review the flagged fuel entries for theft or fuelling error.',
+};
+
 function buildInsights(
   card: CompositeScorecard,
   band: RiskBand,
@@ -99,11 +134,17 @@ function buildInsights(
   sev: { severe: number; moderate: number; minor: number },
   top: ScoreEventBreakdown | null,
   comp: PeriodCompare,
-): { headline: string; bullets: string[]; coaching: string | null } {
+): { headline: string | null; bullets: string[]; coaching: string | null } {
   const bullets: string[] = [];
-  let headline: string;
 
-  if (band === 'high') {
+  // ── Headline ─────────────────────────────────────────────────
+  // For the all-clear case (LOW + steady + no severe events) the
+  // headline just restates the chips above it.  Suppress to reduce
+ // visual duplication.
+  let headline: string | null;
+  if (band === 'low' && td.dir === 'steady' && sev.severe === 0) {
+    headline = null;
+  } else if (band === 'high') {
     headline = `Driver's risk level is high${td.dir === 'rising' ? ' and trending worse' : ''}.`;
   } else if (band === 'medium') {
     headline = td.dir === 'rising'
@@ -114,52 +155,44 @@ function buildInsights(
       ? `Driver's risk level is low, but recent trend shows an increase in events.`
       : td.dir === 'falling'
       ? `Driver's risk level is low and improving.`
-      : `Driver's risk level is low with a stable trend.`;
+      : null;  // unknown trend on a low-risk driver: nothing meaningful to say
   }
 
+  // ── Bullets ──────────────────────────────────────────────────
   if (sev.severe > 0) {
     bullets.push(`${sev.severe} severe event${sev.severe > 1 ? 's' : ''} recorded — review urgently.`);
   }
+ // drop the duplicate "Top issue: ..." bullet. The
+  // standalone TOP ISSUE card above already surfaces the same fact.
+  // Keep the bullet only when occurrence count adds context the
+  // standalone card lacks (single-row card only shows ``1×``).
   if (top && top.occurrences > 1) {
     bullets.push(`${top.occurrences} ${top.label} event${top.occurrences > 1 ? 's' : ''} accounted for the largest score impact.`);
-  } else if (top) {
-    bullets.push(`Top issue: ${top.label} (${Math.abs(top.points)} pts).`);
   }
-  if (comp.delta > 0) {
+  if (comp.hasData && comp.delta > 0) {
     bullets.push(`Last ${comp.window}d total ${comp.last} vs prior ${comp.window}d ${comp.prior} — gap of +${comp.delta} points needs attention.`);
-  } else if (comp.delta < 0) {
+  } else if (comp.hasData && comp.delta < 0) {
     bullets.push(`Last ${comp.window}d total ${comp.last} vs prior ${comp.window}d ${comp.prior} — improving by ${Math.abs(comp.delta)} points.`);
   }
   if (card.insufficient_data) {
     bullets.push(`Insufficient drive time this window — score is provisional.`);
   }
-  if (bullets.length === 0) {
-    bullets.push('No notable patterns this window.');
-  }
 
+  // ── Coaching ─────────────────────────────────────────────────
   let coaching: string | null = null;
   if (top) {
-    const t = top.label.toLowerCase();
-    if (t.includes('following')) {
-      coaching = 'Coach on following distance — keep at least one truck-length per 10 mph.';
-    } else if (t.includes('brake') || t.includes('braking')) {
-      coaching = 'Discuss anticipatory braking and look-ahead scanning.';
-    } else if (t.includes('speed')) {
-      coaching = 'Review speed-limit awareness and cruise control use.';
-    } else if (t.includes('lane')) {
-      coaching = 'Coach on lane discipline and turn-signal use.';
-    } else if (t.includes('parking')) {
-      coaching = 'Discuss safe-parking selection and pre-trip planning for stops.';
-    } else if (t.includes('seatbelt')) {
-      coaching = 'Reinforce seatbelt policy — zero tolerance.';
-    } else if (t.includes('mobile') || t.includes('phone') || t.includes('distract')) {
-      coaching = 'Coach on phone-down policy and the cost of distractions.';
-    } else if (t.includes('crash') || t.includes('collision')) {
-      coaching = 'Schedule a 1:1 incident review and re-test on collision-avoidance.';
-    } else if (t.includes('idle') || t.includes('eco') || t.includes('coast') || t.includes('cruise')) {
-      coaching = 'Review fuel-economy habits — idling, coasting, and cruise discipline.';
+    if (top.rule_id && HARDWARE_ACTION_BY_RULE[top.rule_id]) {
+      coaching = HARDWARE_ACTION_BY_RULE[top.rule_id];
+    } else if (top.rule_id && COACHING_BY_RULE[top.rule_id]) {
+      coaching = COACHING_BY_RULE[top.rule_id];
+    } else if (top.rule_id && NON_BEHAVIOR_RULE_IDS.has(top.rule_id)) {
+      coaching = 'Fleet/ops action — not a driver-behavior issue, route to the appropriate team.';
     } else {
-      coaching = `Discuss ${top.label} habits in this week's one-on-one session.`;
+      // Genuine driving habit we don't have specific copy for —
+      // generic but at least pointing at "behavior" not "habit"
+      // since the latter overpromises insight into the driver's
+      // intent.
+      coaching = `Review ${top.label.toLowerCase()} events in this week's one-on-one session.`;
     }
   } else if (band !== 'low') {
     coaching = 'Schedule a refresher session and review the weekly scorecard together.';
@@ -168,45 +201,16 @@ function buildInsights(
   return { headline, bullets, coaching };
 }
 
-// ── Event categories grouped by pillar ────────────────────────
+// ── Pillar grouping ───────────────────────────────────────────
 //
-// The competitor flat-lists 13 categories. Ours groups them by the
-// same Safety / Compliance / Efficiency pillars our composite score
-// already uses, so each pillar in the matrix mirrors the gauge above.
+// Events (bonuses + penalties) are grouped by the backend ``pillar``
+// field on each event.  The previous design pre-rendered every
+// possible category as a zero-count row — on a clean driver that
+// meant ~18 empty rows of visual noise.  The merged view shows only
+// events that actually fired, plus a per-pillar subtotal so users
+// still see which pillar earned / lost the points.
 
 type PillarKey = 'safety' | 'compliance' | 'efficiency';
-
-interface CategoryDef {
-  key: string;       // substring matched against event label
-  label: string;
-  pillar: PillarKey;
-}
-
-const KNOWN_CATEGORIES: CategoryDef[] = [
-  // Safety ─ harsh / collision / distraction events
-  { key: 'crash',         label: 'Crash',                     pillar: 'safety' },
-  { key: 'collision',     label: 'Forward Collision Warning', pillar: 'safety' },
-  { key: 'following',     label: 'Following Distance',        pillar: 'safety' },
-  { key: 'brake',         label: 'Harsh Brake',               pillar: 'safety' },
-  { key: 'turn',          label: 'Harsh Turn',                pillar: 'safety' },
-  { key: 'lane',          label: 'Lane Departure',            pillar: 'safety' },
-  { key: 'speed',         label: 'Speeding',                  pillar: 'safety' },
-  { key: 'mobile',        label: 'Mobile Usage',              pillar: 'safety' },
-  { key: 'distract',      label: 'Inattentive Driving',       pillar: 'safety' },
-  { key: 'drowsy',        label: 'Drowsy',                    pillar: 'safety' },
-
-  // Compliance ─ rules-of-the-road & policy
-  { key: 'rolling',       label: 'Rolling Stop',              pillar: 'compliance' },
-  { key: 'seatbelt',      label: 'No Seatbelt',               pillar: 'compliance' },
-  { key: 'parking',       label: 'Unsafe Parking',            pillar: 'compliance' },
-
-  // Efficiency ─ fuel & driving economy
-  { key: 'idle',          label: 'Excessive Idling',          pillar: 'efficiency' },
-  { key: 'coast',         label: 'Insufficient Coast',        pillar: 'efficiency' },
-  { key: 'cruise',        label: 'Insufficient Cruise',       pillar: 'efficiency' },
-  { key: 'anticipat',     label: 'Anticipatory Braking',      pillar: 'efficiency' },
-  { key: 'eco',           label: 'Low Eco %',                 pillar: 'efficiency' },
-];
 
 const PILLAR_META: Record<PillarKey, { label: string; cls: string; bar: string }> = {
   safety:     { label: 'Safety',     cls: 'text-red-600 dark:text-red-400',     bar: 'bg-red-500' },
@@ -214,9 +218,19 @@ const PILLAR_META: Record<PillarKey, { label: string; cls: string; bar: string }
   efficiency: { label: 'Efficiency', cls: 'text-green-600 dark:text-green-400', bar: 'bg-green-500' },
 };
 
-function matchCategory(label: string, key: string): boolean {
-  return label.toLowerCase().includes(key);
-}
+// Hardware / vehicle-state rules that aren't a driver-behavior habit
+// — we want them in the matrix and the penalty list (they affect
+// score) but the auto-generated Coaching Action shouldn't tell a
+// manager to "discuss [hardware] habits."  See A6 in the audit.
+const NON_BEHAVIOR_RULE_IDS = new Set<string>([
+  'compliance.camera_obstructed',
+  'compliance.active_dtc',
+  'compliance.health_critical',
+  'compliance.health_minor',
+  'compliance.maintenance_overdue',
+  'compliance.pti_overdue',
+  'efficiency.fuel_anomaly',
+]);
 
 // Score-bar fill colour graded by attainment % (subtotal ÷ cap).
 // Mirrors the same green→amber→red ramp the gauge uses so the row
@@ -249,76 +263,43 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
     [card, band, trend, sev, top, comp],
   );
 
-  // Build per-pillar groups with counts + max for bar scaling.
-  const grouped = useMemo(() => {
-    return (['safety', 'compliance', 'efficiency'] as const).map((pillar) => {
-      const cats = KNOWN_CATEGORIES.filter((c) => c.pillar === pillar).map((c) => {
-        const events = (card.penalties || []).filter((e) => matchCategory(e.label, c.key));
-        const count = events.reduce((n, e) => n + (e.occurrences || 1), 0);
-        return { ...c, count };
+  // Group bonuses + penalties together by backend ``pillar``.  Empty
+  // pillars render a "no events — full credit" line rather than
+  // 18 zero-count rows.  Events with no pillar field fall back to
+  // 'compliance' (covers legacy snapshots predating the field).
+  const pillarBlocks = useMemo(() => {
+    const all: ScoreEventBreakdown[] = [
+      ...(card.penalties || []),
+      ...(card.bonuses || []),
+    ];
+    return (['safety', 'compliance', 'efficiency'] as const).map((pk) => {
+      const events = all.filter((e) => {
+        const p = (e.pillar as PillarKey | undefined) || 'compliance';
+        return p === pk;
       });
-      const total = cats.reduce((n, c) => n + c.count, 0);
-      const max = Math.max(1, ...cats.map((c) => c.count));
-      return { pillar, cats, total, max };
+      // Penalties first (worst impact first), then bonuses descending
+      // by points — keeps "what hurt me" above "what helped me."
+      events.sort((a, b) => {
+        const aPen = a.kind === 'penalty' ? 0 : 1;
+        const bPen = b.kind === 'penalty' ? 0 : 1;
+        if (aPen !== bPen) return aPen - bPen;
+        return Math.abs(b.points) - Math.abs(a.points);
+      });
+      return { pillar: pk, events };
     });
-  }, [card.penalties]);
+  }, [card.bonuses, card.penalties]);
 
-  const matrixTotal = grouped.reduce((n, g) => n + g.total, 0);
+  const totalEvents = pillarBlocks.reduce((n, p) => n + p.events.length, 0);
 
-  // Default-expand the pillar with the most events; the others stay
-  // collapsed so the drawer reads compact.
-  const defaultExpanded = useMemo(() => {
-    const top = [...grouped].sort((a, b) => b.total - a.total)[0];
-    return top?.total ? top.pillar : 'safety';
-  }, [grouped]);
-  const [expanded, setExpanded] = useState<Record<PillarKey, boolean>>({
-    safety: defaultExpanded === 'safety',
-    compliance: defaultExpanded === 'compliance',
-    efficiency: defaultExpanded === 'efficiency',
-  });
-
-  const RiskIcon = RISK_META[band].icon;
-  const TrendIcon = trend.dir === 'rising' ? TrendingUp : trend.dir === 'falling' ? TrendingDown : Minus;
-  const trendCls =
-    trend.dir === 'rising' ? 'text-amber-600 dark:text-amber-400'
-    : trend.dir === 'falling' ? 'text-green-600 dark:text-green-400'
-    : 'text-muted-foreground';
-  const trendWord =
-    trend.dir === 'rising' ? 'Rising'
-    : trend.dir === 'falling' ? 'Falling'
-    : 'Steady';
+  // Risk band, trend direction, severity buckets and period
+  // comparison are computed (and used by buildInsights for AI bullets)
+  // but no longer rendered as standalone chips/cells above the
+  // Top-Issue / AI-Insights / Pillar-matrix stack — feedback was that
+  // the chip strip duplicated info that is already in AI Insights and
+  // the gauge below, taking screen real estate without adding signal.
 
   return (
     <div className="space-y-3 mb-5">
-      {/* Risk band + trend on one tight row */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span
-          className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold tracking-wide ${RISK_META[band].cls}`}
-          title={`Score ${card.score}`}
-        >
-          <RiskIcon size={11} />
-          {RISK_META[band].label}
-        </span>
-        <span className="text-muted-foreground text-[11px]">—</span>
-        <span className={`inline-flex items-center gap-1 text-[11px] font-semibold ${trendCls}`}>
-          <TrendIcon size={11} />
-          {trendWord}{trend.delta !== 0 && ` (${trend.delta > 0 ? '+' : ''}${trend.delta})`}
-        </span>
-      </div>
-
-      {/* Severity buckets — single tight row */}
-      <div className="grid grid-cols-3 gap-1.5">
-        <SeverityCell label="Severe" value={sev.severe} tone="critical" />
-        <SeverityCell label="Moderate" value={sev.moderate} tone="warning" />
-        <SeverityCell label="Minor" value={sev.minor} tone="muted" />
-      </div>
-
-      {/* Period comparison — inline with delta arrow */}
-      <div className="grid grid-cols-2 gap-1.5">
-        <PeriodCell label={`Last ${comp.window}d`} value={comp.last} delta={comp.delta} showDelta />
-        <PeriodCell label={`Prior ${comp.window}d`} value={comp.prior} />
-      </div>
-
       {/* Top Issue */}
       {top && (
         <div className="bg-muted/30 border border-border rounded-md px-2.5 py-1.5">
@@ -336,129 +317,137 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
         </div>
       )}
 
-      {/* AI insights */}
-      <div className="bg-gradient-to-br from-primary/5 via-card to-card border border-primary/20 rounded-lg p-2.5">
-        <div className="flex items-center gap-1.5 mb-1.5">
-          <Sparkles size={13} className="text-primary" />
-          <p className="text-xs font-semibold text-foreground">AI Insights</p>
-        </div>
-        <p className="text-[13px] text-foreground/90 mb-1.5">{insights.headline}</p>
-        <ul className="space-y-0.5">
-          {insights.bullets.map((b, i) => (
-            <li key={i} className="text-xs text-foreground/80 flex items-start gap-1.5">
-              <span className="text-primary/60 mt-0.5">·</span>
-              <span>{b}</span>
-            </li>
-          ))}
-        </ul>
-
-        {insights.coaching && (
-          <div className="mt-2 bg-background/60 border border-primary/30 rounded-md px-2 py-1.5">
-            <div className="flex items-center gap-1.5 mb-0.5">
-              <Lightbulb size={11} className="text-primary" />
-              <p className="text-[10px] uppercase tracking-wide text-primary font-bold">
-                Coaching Action
-              </p>
-            </div>
-            <p className="text-xs text-foreground/90 leading-snug">{insights.coaching}</p>
+      {/* AI insights — suppressed entirely when there's nothing
+           meaningful to add over the chips/cards above (low-risk
+           steady driver with no severe events, no period delta, and
+           no top issue).  See . */}
+      {(insights.headline || insights.bullets.length > 0 || insights.coaching) && (
+        <div className="bg-gradient-to-br from-primary/5 via-card to-card border border-primary/20 rounded-lg p-2.5">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <Sparkles size={13} className="text-primary" />
+            <p className="text-xs font-semibold text-foreground">AI Insights</p>
           </div>
-        )}
-      </div>
+          {insights.headline && (
+            <p className="text-[13px] text-foreground/90 mb-1.5">{insights.headline}</p>
+          )}
+          {insights.bullets.length > 0 && (
+            <ul className="space-y-0.5">
+              {insights.bullets.map((b, i) => (
+                <li key={i} className="text-xs text-foreground/80 flex items-start gap-1.5">
+                  <span className="text-primary/60 mt-0.5">·</span>
+                  <span>{b}</span>
+                </li>
+              ))}
+            </ul>
+          )}
 
-      {/* Pillar breakdown — score subtotal AND event matrix in one card.
-           Each pillar header shows: name · score X/Y · attainment bar ·
-           event count · chevron. Expanded body lists the categories.
-           Replaces the old standalone "Pillar breakdown" progress bars
-           in the parent drawer so the same data isn't duplicated. */}
+          {insights.coaching && (
+            <div className="mt-2 bg-background/60 border border-primary/30 rounded-md px-2 py-1.5">
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <Lightbulb size={11} className="text-primary" />
+                <p className="text-[10px] uppercase tracking-wide text-primary font-bold">
+                  {top && top.rule_id && HARDWARE_ACTION_BY_RULE[top.rule_id]
+                    ? 'Fleet / Ops Action'
+                    : 'Coaching Action'}
+                </p>
+              </div>
+              <p className="text-xs text-foreground/90 leading-snug">{insights.coaching}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Pillars · Your Events — merged pillar header + signed-points
+           event list under each pillar.  Replaces the old penalty-only
+           matrix-with-zero-rows AND the standalone BONUSES/PENALTIES
+           section in the drawer below.  One source of truth per
+           event: no more "Camera obstructed shown twice on the same
+           screen" duplication.  Hardware/ops events get an inline
+           "↳ Fleet action: …" note so the manager knows it's not a
+           coaching matter. */}
       <div className="bg-card border border-border rounded-lg overflow-hidden">
         <div className="flex items-center justify-between px-3 py-2 border-b border-border">
           <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
-            Pillars · Events by category
+            Pillars · Your Events
           </p>
           <p className="text-[10px] text-muted-foreground tabular-nums">
-            {matrixTotal} event{matrixTotal === 1 ? '' : 's'}
+            {totalEvents} event{totalEvents === 1 ? '' : 's'}
           </p>
         </div>
         <div className="divide-y divide-border">
-          {grouped.map(({ pillar, cats, total, max }) => {
+          {pillarBlocks.map(({ pillar, events }) => {
             const meta = PILLAR_META[pillar];
-            const isOpen = expanded[pillar];
             const p = card.pillars?.[pillar];
             const hasScore = !!p?.has_data;
             const subtotal = hasScore ? p!.subtotal : 0;
             const cap = hasScore ? p!.cap : 0;
             const pct = hasScore && cap ? Math.round((subtotal / cap) * 100) : 0;
             const fill = pillarFillColor(pct);
-
             return (
-              <div key={pillar}>
-                <button
-                  onClick={() =>
-                    setExpanded((prev) => ({ ...prev, [pillar]: !prev[pillar] }))
-                  }
-                  className="w-full px-3 py-2 text-left hover:bg-muted/40 transition"
-                  aria-expanded={isOpen}
-                >
-                  {/* Top row: chevron · pillar name · score X/Y · event count */}
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-1.5 min-w-0">
-                      <ChevronRight
-                        size={12}
-                        className={`text-muted-foreground transition-transform shrink-0 ${isOpen ? 'rotate-90' : ''}`}
-                      />
-                      <span className={`text-xs font-semibold ${meta.cls}`}>{meta.label}</span>
-                      {hasScore ? (
-                        <span className="text-[10px] tabular-nums text-muted-foreground">
-                          {subtotal}/{cap}
-                        </span>
-                      ) : (
-                        <span className="text-[10px] italic text-muted-foreground">n/a</span>
-                      )}
-                    </span>
-                    <span className="flex items-center gap-1 shrink-0">
+              <div key={pillar} className="px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span className={`text-xs font-semibold ${meta.cls}`}>{meta.label}</span>
+                    {hasScore ? (
                       <span
-                        className={`tabular-nums text-xs font-semibold ${total > 0 ? 'text-foreground' : 'text-muted-foreground/60'}`}
+                        className="text-[10px] tabular-nums text-muted-foreground"
+                        title={`${subtotal} of ${cap} points earned in this pillar`}
                       >
-                        {total}
+                        {subtotal}/{cap} pts
                       </span>
-                      <span className="text-[10px] text-muted-foreground">event{total === 1 ? '' : 's'}</span>
+                    ) : (
+                      <span className="text-[10px] italic text-muted-foreground">n/a</span>
+                    )}
+                  </span>
+                  {events.length > 0 && (
+                    <span className="text-[10px] text-muted-foreground tabular-nums">
+                      {events.length} event{events.length === 1 ? '' : 's'}
                     </span>
-                  </div>
-                  {/* Score attainment bar — same green→red ramp as the gauge */}
-                  {hasScore && (
-                    <div className="h-1 bg-muted rounded-full overflow-hidden mt-1.5">
-                      <div
-                        className={`h-full rounded-full transition-all ${fill}`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
                   )}
-                </button>
-                {isOpen && (
-                  <ul className="px-3 pb-2 pt-0.5 space-y-1">
-                    {cats.map((c) => {
-                      const catPct = (c.count / max) * 100;
-                      const dim = c.count === 0;
+                </div>
+                {hasScore && (
+                  <div className="h-1 bg-muted rounded-full overflow-hidden mt-1.5 mb-1.5">
+                    <div
+                      className={`h-full rounded-full transition-all ${fill}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                )}
+                {events.length === 0 ? (
+                  <p className="text-[11px] italic text-muted-foreground">
+                    No events this window — full credit.
+                  </p>
+                ) : (
+                  <ul className="space-y-1 mt-1">
+                    {events.map((e) => {
+                      const isBonus = e.kind === 'bonus';
+                      const pointsColor = isBonus
+                        ? 'text-green-600 dark:text-green-400'
+                        : 'text-red-600 dark:text-red-400';
+                      const hardwareAction = e.rule_id ? HARDWARE_ACTION_BY_RULE[e.rule_id] : undefined;
                       return (
-                        <li key={c.key} className="flex items-center gap-2 text-[11px]">
-                          <span
-                            className={`flex-1 truncate ${dim ? 'text-muted-foreground/60' : 'text-foreground'}`}
-                          >
-                            {c.label}
-                          </span>
-                          <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden max-w-[60px]">
-                            {c.count > 0 && (
-                              <div
-                                className={`h-full rounded-full ${meta.bar}`}
-                                style={{ width: `${catPct}%` }}
-                              />
-                            )}
+                        <li key={`${e.rule_id || e.label}-${e.kind}`} className="text-[11px]">
+                          <div className="flex items-baseline gap-2">
+                            <span className={`shrink-0 ${pointsColor} text-[10px]`} aria-hidden>
+                              {isBonus ? '✓' : '✗'}
+                            </span>
+                            <span className="flex-1 truncate text-foreground">
+                              {e.label}
+                              {e.occurrences > 1 && (
+                                <span className="text-muted-foreground ml-1">({e.occurrences}×)</span>
+                              )}
+                            </span>
+                            <span
+                              className={`tabular-nums font-semibold shrink-0 ${pointsColor}`}
+                            >
+                              {e.points > 0 ? '+' : ''}{e.points}
+                            </span>
                           </div>
-                          <span
-                            className={`tabular-nums w-5 text-right ${dim ? 'text-muted-foreground/60' : 'text-foreground'}`}
-                          >
-                            {c.count}
-                          </span>
+                          {hardwareAction && (
+                            <p className="text-[10px] text-muted-foreground italic mt-0.5 pl-4 leading-snug">
+                              ↳ {hardwareAction}
+                            </p>
+                          )}
                         </li>
                       );
                     })}
@@ -480,50 +469,3 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
   );
 }
 
-// ── Cells ─────────────────────────────────────────────────────
-
-function SeverityCell({
-  label, value, tone,
-}: {
-  label: string;
-  value: number;
-  tone: 'critical' | 'warning' | 'muted';
-}) {
-  const cls =
-    tone === 'critical' ? 'text-destructive'
-    : tone === 'warning' ? 'text-yellow-700 dark:text-yellow-400'
-    : 'text-muted-foreground';
-  return (
-    <div className="bg-card border border-border rounded-md px-2 py-1.5 text-center">
-      <p className={`text-lg font-bold tabular-nums leading-none ${cls}`}>{value}</p>
-      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mt-0.5">{label}</p>
-    </div>
-  );
-}
-
-function PeriodCell({
-  label, value, delta, showDelta,
-}: {
-  label: string;
-  value: number;
-  delta?: number;
-  showDelta?: boolean;
-}) {
-  const deltaCls =
-    !delta ? 'text-muted-foreground'
-    : delta > 0 ? 'text-amber-600 dark:text-amber-400'
-    : 'text-green-600 dark:text-green-400';
-  return (
-    <div className="bg-card border border-border rounded-md px-2 py-1.5 text-center">
-      <div className="flex items-baseline justify-center gap-1.5">
-        <p className="text-base font-semibold tabular-nums text-foreground leading-none">{value}</p>
-        {showDelta && delta !== undefined && delta !== 0 && (
-          <span className={`text-[10px] font-bold tabular-nums ${deltaCls}`}>
-            {delta > 0 ? '+' : ''}{delta}
-          </span>
-        )}
-      </div>
-      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mt-0.5">{label}</p>
-    </div>
-  );
-}

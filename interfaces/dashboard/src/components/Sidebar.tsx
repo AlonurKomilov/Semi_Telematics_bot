@@ -1,94 +1,119 @@
 import { NavLink } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   LayoutDashboard, Truck, Bell, Bot, FileText, Mail, MapPin, BookOpen,
-  Thermometer, Wrench, Map, Route, Trophy, AlertTriangle,
+  Wrench, Map, Route, Trophy, AlertTriangle,
   Camera, ParkingSquare, Fuel, DollarSign, Users, Shield, Building2,
-  Link, ClipboardList, Clock, CreditCard, GraduationCap, type LucideIcon,
+  Link, ClipboardList, Clock, CreditCard, GraduationCap, Receipt,
+  TrendingUp, Cloud, IdCard, Settings as SettingsIcon,
+  type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import type { Permissions } from '../types';
 
+// NavItem labels are i18n keys looked up at render time with t().
+// titleKey is null when the group has no header (top + tail groups).
 interface NavItem {
-  label: string;
+  labelKey: string;
   path: string;
   icon: LucideIcon;
   permission: string | string[] | null;
 }
 
 interface NavGroup {
-  title: string | null;
+  titleKey: string | null;
   items: NavItem[];
 }
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    title: null,
+    titleKey: null,
     items: [
-      { label: 'Overview',     path: '/',        icon: LayoutDashboard, permission: null },
-      { label: 'AI Assistant', path: '/ai/chat', icon: Bot,             permission: ['can_vehicle_all', 'can_vehicle_own'] },
+      { labelKey: 'nav.overview',     path: '/',        icon: LayoutDashboard, permission: null },
+      { labelKey: 'nav.ai_assistant', path: '/ai/chat', icon: Bot,             permission: ['can_vehicle_all', 'can_vehicle_own'] },
     ],
   },
   {
-    title: 'Fleet',
+    titleKey: 'nav.fleet_group',
     items: [
-      { label: 'Live Map',    path: '/fleet/map',       icon: Map,           permission: ['can_location_map', 'can_location_own'] },
-      { label: 'Vehicles',    path: '/fleet/vehicles',  icon: Truck,         permission: ['can_vehicle_all', 'can_vehicle_own'] },
-      { label: 'Routes',      path: '/fleet/routes',    icon: Route,         permission: ['can_route_all', 'can_route_own'] },
-      { label: 'Geofences',   path: '/fleet/geofences', icon: MapPin,        permission: ['can_geofence_all', 'can_geofence_own'] },
-      { label: 'Weather',     path: '/fleet/weather',   icon: Thermometer,   permission: ['can_vehicle_all', 'can_vehicle_own'] },
-      { label: 'Maintenance', path: '/maintenance',     icon: Wrench,        permission: ['can_maintenance_all', 'can_maintenance_own'] },
-      { label: 'Parking',     path: '/fleet/parking',   icon: ParkingSquare, permission: ['can_alerts_all', 'can_alerts_own'] },
+      { labelKey: 'nav.live_map',    path: '/fleet/map',       icon: Map,           permission: ['can_location_map', 'can_location_own'] },
+      { labelKey: 'nav.vehicles',    path: '/fleet/vehicles',  icon: Truck,         permission: ['can_vehicle_all', 'can_vehicle_own'] },
+      { labelKey: 'nav.routes',      path: '/fleet/routes',    icon: Route,         permission: ['can_route_all', 'can_route_own'] },
+      { labelKey: 'nav.geofences',   path: '/fleet/geofences', icon: MapPin,        permission: ['can_geofence_all', 'can_geofence_own'] },
+      { labelKey: 'nav.maintenance', path: '/maintenance',     icon: Wrench,        permission: ['can_maintenance_all', 'can_maintenance_own'] },
+      // Work Orders sits next to Maintenance — same permission family
+      // but separate page since the data model and workflow are
+      // distinct (shop-invoice records vs scheduled tasks).
+      { labelKey: 'nav.work_orders', path: '/work-orders',     icon: Receipt,       permission: ['can_maintenance_all', 'can_maintenance_own'] },
+      { labelKey: 'nav.parking',     path: '/fleet/parking',   icon: ParkingSquare, permission: ['can_alerts_all', 'can_alerts_own'] },
     ],
   },
   {
-    title: 'Safety',
+    titleKey: 'nav.safety_group',
     items: [
-      { label: 'Driver Scorecards', path: '/safety/scorecards', icon: Trophy,        permission: ['can_scorecard_all', 'can_scorecard_own'] },
-      { label: 'Safety Events',     path: '/safety/events',     icon: AlertTriangle, permission: ['can_events_all', 'can_events_own'] },
-      { label: 'Cameras',           path: '/safety/cameras',    icon: Camera,        permission: ['can_faults'] },
-      { label: 'Alerts',            path: '/safety/alerts',     icon: Bell,          permission: ['can_alerts_all', 'can_alerts_own'] },
+      { labelKey: 'nav.driver_scorecards', path: '/safety/scorecards', icon: Trophy,        permission: ['can_scorecard_all', 'can_scorecard_own'] },
+      { labelKey: 'nav.safety_events',     path: '/safety/events',     icon: AlertTriangle, permission: ['can_events_all', 'can_events_own'] },
+      { labelKey: 'nav.cameras',           path: '/safety/cameras',    icon: Camera,        permission: ['can_faults'] },
+      { labelKey: 'nav.alerts',            path: '/safety/alerts',     icon: Bell,          permission: ['can_alerts_all', 'can_alerts_own'] },
     ],
   },
   {
-    title: 'Reports',
+    titleKey: 'nav.reports_group',
     items: [
-      { label: 'Reports',       path: '/reports',               icon: FileText,   permission: null },
-      { label: 'Risk Summary',  path: '/reports/risk-summary',  icon: FileText,   permission: ['can_risk_report_all', 'can_risk_report_own'] },
-      { label: 'Subscriptions', path: '/reports/subscriptions', icon: Mail,       permission: null },
-      { label: 'Fuel Costs',    path: '/costs/fuel',            icon: Fuel,       permission: ['can_fuel_cost'] },
-      { label: 'Cost per Mile', path: '/costs/cpm',             icon: DollarSign, permission: ['can_cost_per_mile'] },
+      { labelKey: 'nav.reports',       path: '/reports',               icon: FileText,   permission: null },
+      { labelKey: 'nav.risk_summary',  path: '/reports/risk-summary',  icon: FileText,   permission: ['can_risk_report_all', 'can_risk_report_own'] },
+      { labelKey: 'nav.subscriptions', path: '/reports/subscriptions', icon: Mail,       permission: null },
+      { labelKey: 'nav.fuel_costs',    path: '/costs/fuel',            icon: Fuel,       permission: ['can_fuel_cost'] },
+      { labelKey: 'nav.cost_per_mile', path: '/costs/cpm',             icon: DollarSign, permission: ['can_cost_per_mile'] },
+      // Cost Reports — sits under Reports rather than next to Work
+      // Orders so a manager doing the quarterly review finds it
+      // alongside the other money reports.
+      { labelKey: 'nav.cost_reports',  path: '/cost-reports',          icon: TrendingUp, permission: ['can_maintenance_all'] },
     ],
   },
   {
-    title: 'Workforce',
+    titleKey: 'nav.workforce_group',
     items: [
-      { label: 'Coaching',        path: '/coaching',         icon: GraduationCap, permission: ['can_coaching_admin'] },
-      { label: 'Payroll',         path: '/payroll',          icon: DollarSign,    permission: ['can_payroll_admin'] },
-      { label: 'Working Hours',   path: '/admin/work-hours', icon: Clock,         permission: ['can_manage_account'] },
-      { label: 'Team Management', path: '/admin/users',      icon: Users,         permission: ['can_manage_users'] },
-      { label: 'Invites',         path: '/admin/invites',    icon: Link,          permission: ['can_invite'] },
+      { labelKey: 'nav.drivers',         path: '/workforce/drivers', icon: IdCard,        permission: ['can_manage_driver_docs'] },
+      { labelKey: 'nav.coaching',        path: '/coaching',         icon: GraduationCap, permission: ['can_coaching_admin'] },
+      { labelKey: 'nav.payroll',         path: '/payroll',          icon: DollarSign,    permission: ['can_payroll_admin'] },
+      { labelKey: 'nav.working_hours',   path: '/admin/work-hours', icon: Clock,         permission: ['can_manage_account'] },
+      { labelKey: 'nav.team_management', path: '/admin/users',      icon: Users,         permission: ['can_manage_users'] },
+      { labelKey: 'nav.invites',         path: '/admin/invites',    icon: Link,          permission: ['can_invite'] },
     ],
   },
   {
-    title: 'Admin',
+    titleKey: 'nav.admin_group',
     items: [
-      { label: 'Companies',        path: '/admin/companies',       icon: Building2,     permission: ['can_manage_companies'] },
-      { label: 'Role Permissions', path: '/admin/permissions',     icon: Shield,        permission: ['can_manage_account'] },
-      { label: 'Scorecard Rules',  path: '/admin/scorecard-rules', icon: Trophy,        permission: ['can_manage_account'] },
-      { label: 'Billing & Plan',   path: '/admin/billing',         icon: CreditCard,    permission: ['can_manage_billing'] },
-      { label: 'Audit Log',        path: '/admin/audit',           icon: ClipboardList, permission: ['can_manage_users'] },
+      { labelKey: 'nav.companies',        path: '/admin/companies',       icon: Building2,     permission: ['can_manage_companies'] },
+      { labelKey: 'nav.role_permissions', path: '/admin/permissions',     icon: Shield,        permission: ['can_manage_account'] },
+      { labelKey: 'nav.scorecard_rules',  path: '/admin/scorecard-rules', icon: Trophy,        permission: ['can_manage_account'] },
+      { labelKey: 'nav.billing',          path: '/admin/billing',         icon: CreditCard,    permission: ['can_manage_billing'] },
+      // Attachment Storage — account-level setting (where the fleet's
+      // bytes land: platform disk vs the user's connected Google Drive).
+      // Lives in the sidebar, not the avatar menu, because the choice
+      // affects the whole account, not just the logged-in user.
+      { labelKey: 'nav.storage',          path: '/admin/storage',         icon: Cloud,         permission: ['can_manage_account'] },
+      { labelKey: 'nav.audit_log',        path: '/admin/audit',           icon: ClipboardList, permission: ['can_manage_users'] },
+      // Account-wide settings (timezone, Telegram bot, working hours,
+      // feature flags). Lives in the sidebar so admins can find it
+      // without going through the user menu — personal preferences
+      // (display name, language, own timezone override, quiet hours)
+      // moved to /profile and stay accessible via the AvatarMenu.
+      { labelKey: 'nav.settings',         path: '/admin/settings',        icon: SettingsIcon,  permission: ['can_manage_account'] },
     ],
   },
   {
-    title: null,
+    titleKey: null,
     items: [
-      { label: 'Knowledge Base', path: '/knowledge', icon: BookOpen, permission: null },
+      { labelKey: 'nav.knowledge_base', path: '/knowledge', icon: BookOpen, permission: null },
     ],
   },
 ];
 
 export default function Sidebar() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const perms = user?.permissions ?? ({} as Partial<Permissions>);
 
   const hasAny = (...flags: string[]) =>
@@ -117,14 +142,14 @@ export default function Sidebar() {
 
       {/* Nav — scrolls independently */}
       <nav className="flex-1 overflow-y-auto py-2 scrollbar-thin">
-        {NAV_GROUPS.map((group) => {
+        {NAV_GROUPS.map((group, gi) => {
           const items = filterItems(group.items);
           if (items.length === 0) return null;
           return (
-            <div key={group.title ?? '_top'}>
-              {group.title && (
+            <div key={group.titleKey ?? `_top-${gi}`}>
+              {group.titleKey && (
                 <div className="px-4 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-                  {group.title}
+                  {t(group.titleKey)}
                 </div>
               )}
               {items.map((item) => {
@@ -143,7 +168,7 @@ export default function Sidebar() {
                     }
                   >
                     <Icon size={16} className="shrink-0" />
-                    {item.label}
+                    {t(item.labelKey)}
                   </NavLink>
                 );
               })}

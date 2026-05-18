@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import type { ElementType } from 'react';
-import { AlertTriangle, Zap, RotateCcw, MoveHorizontal, Truck, OctagonX, TrendingUp } from 'lucide-react';
+import { AlertTriangle, Zap, RotateCcw, MoveHorizontal, Truck, OctagonX, TrendingUp, Play } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataTable from '../../components/DataTable';
+import EventVideoModal from '../../components/EventVideoModal';
 import {
   PageHeader,
   EmptyState,
@@ -11,6 +13,8 @@ import {
   TableSkeleton,
   FilterBar,
   FilterChips,
+  useLoadingStage,
+  DateRangePresets,
 } from '../../components/shell';
 import type { SafetyEvent, SafetyEventsResponse, EventsSummary, AnyColumn } from '../../types';
 
@@ -56,14 +60,30 @@ function SeverityBadge({ severity }: { severity: string }) {
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${cls}`}>{severity}</span>;
 }
 
-const columns: AnyColumn[] = [
+// Strip Samsara's accusatory suffix words from a behavior label so the
+// table shows "Edge Railroad Crossing" instead of "Edge Railroad
+// Crossing Violation".  The event itself is unambiguous; the trailing
+// label adds visual noise and reads as punitive.
+const NOISE_SUFFIX_RE = /\s+(?:Violation|Detected|Detection|Event)$/i;
+function cleanEventLabel(raw: string): string {
+  // camelCase → spaced words, then strip suffix repeatedly.
+  let label = raw.replace(/([A-Z])/g, ' $1').trim();
+  for (let i = 0; i < 4 && NOISE_SUFFIX_RE.test(label); i++) {
+    label = label.replace(NOISE_SUFFIX_RE, '').trim();
+  }
+  return label;
+}
+
+// Columns shared across renders.  The Video column is appended inside
+// the component because it needs the modal-open callback from state.
+const baseColumns: AnyColumn[] = [
   {
     key: 'event_type',
     label: 'Event',
     render: (v) => (
       <span className="flex items-center gap-1.5">
         <EventIcon type={v as string} />
-        <span className="capitalize">{(v as string).replace(/([A-Z])/g, ' $1').trim()}</span>
+        <span className="capitalize">{cleanEventLabel(v as string)}</span>
       </span>
     ),
   },
@@ -87,27 +107,61 @@ const columns: AnyColumn[] = [
     label: 'Time',
     render: (v) => v ? new Date(v as string).toLocaleString() : '—',
   },
-  {
-    key: 'video_url',
-    label: 'Video',
-    render: (v) =>
-      v ? (
-        <a href={v as string} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-          View
-        </a>
-      ) : (
-        <span className="text-muted-foreground">—</span>
-      ),
-  },
 ];
 
 export default function Events() {
-  const [days, setDays] = useState(7);
+  const { t } = useTranslation();
+  // Default 30 days so the page lands with a full month of context;
+  // matches the Scorecards / Risk Summary defaults.  Users still get
+  // the 7 / 14 / 60 / 90 presets in the DateRangePresets menu.
+  const [days, setDays] = useState(30);
   const [typeFilter, setTypeFilter] = useState('all');
   const [driverSearch, setDriverSearch] = useState('');
+  // Inline video viewer state — null means closed.  Opening surfaces
+  // the Samsara-style player with vehicle/driver/location chrome plus
+  // a Download fallback.
+  const [viewingEvent, setViewingEvent] = useState<SafetyEvent | null>(null);
 
-  // React Query (Phase E23): cache events per (days, type, driver) tuple.
-  const { data, isLoading, error: queryError } = useQuery<SafetyEventsResponse>({
+  // Compose the Video column inside the component so its render can
+  // reach `setViewingEvent`.  Memoised so DataTable doesn't see a new
+  // columns array on every keystroke in the driver filter.
+  const columns: AnyColumn[] = useMemo(() => [
+    ...baseColumns,
+    {
+      key: 'video_url',
+      label: 'Video',
+      // Open the modal viewer instead of a raw S3 link.  Direct
+      // links 403 after the 8-hour pre-sign window expires and force
+      // a download instead of inline playback; the modal hits the
+      // /api/safety/events/{id}/video proxy on every load so the URL
+      // is always fresh.
+      render: (v, row) => {
+        const hasVideo = !!v;
+        const evt = row as SafetyEvent;
+        if (!hasVideo || !evt.event_id) {
+          return <span className="text-muted-foreground">—</span>;
+        }
+        return (
+          <button
+            type="button"
+            onClick={() => setViewingEvent(evt)}
+            className="inline-flex items-center gap-1 text-primary hover:underline text-sm"
+          >
+            <Play size={12} />
+            View
+          </button>
+        );
+      },
+    },
+  ], []);
+
+ // React Query: cache events per (days, type, driver) tuple.
+  // staleTime=60s — events ingest every 5 min so refetching on every
+  // mount (default ``staleTime=0``) just adds latency.  Within the
+  // minute, a remount uses the cached array; after that, React Query
+  // refetches in the background (placeholderData keeps the previous
+  // result on screen during the refetch).
+  const { data, isLoading, isFetching, error: queryError, refetch } = useQuery<SafetyEventsResponse>({
     queryKey: ['safety-events', days, typeFilter, driverSearch],
     queryFn: () => {
       const params = new URLSearchParams({ days: String(days) });
@@ -116,6 +170,7 @@ export default function Events() {
       return apiJSON<SafetyEventsResponse>(`/safety/events?${params}`);
     },
     placeholderData: (prev) => prev,
+    staleTime: 60_000,
   });
 
   const events  = data?.events ?? [];
@@ -123,13 +178,37 @@ export default function Events() {
   const loading = isLoading && !data;
   const error   = queryError instanceof Error ? queryError.message : (queryError ? 'Failed to load' : '');
 
+  // Loading stages — events fall back to live Samsara when the warehouse
+  // is cold, which can take 10-30+ seconds.  Without progressive
+  // feedback the page reads as "frozen."  See useLoadingStage docs.
+  const stage = useLoadingStage(loading);
+
+  // Hard timeout: once we cross 30s with no response, give the user a
+  // Retry button instead of an indefinite skeleton.
+  if (stage === 'timeout' && events.length === 0) {
+    return (
+      <div>
+        <PageHeader
+          icon={AlertTriangle}
+          title={t('events.page_title')}
+          description={t('events.page_description')}
+        />
+        <ErrorState
+          title={t('common.loading_takes_long')}
+          message={t('scorecards.loading_too_long_message')}
+          onRetry={() => refetch()}
+        />
+      </div>
+    );
+  }
+
   if (error && events.length === 0) {
     return (
       <div>
         <PageHeader
           icon={AlertTriangle}
-          title="Safety Events"
-          description="Harsh braking, lane departures, crashes, and other unsafe behaviour reported by the dashcam AI."
+          title={t('events.page_title')}
+          description={t('events.page_description')}
         />
         <ErrorState message={error} />
       </div>
@@ -140,18 +219,10 @@ export default function Events() {
     <div>
       <PageHeader
         icon={AlertTriangle}
-        title="Safety Events"
-        description="Harsh braking, lane departures, crashes, and other unsafe behaviour reported by the dashcam AI. Click a chip below to drill into a specific event type."
+        title={t('events.page_title')}
+        description={t('events.page_description_long')}
         actions={
-          <select
-            value={days}
-            onChange={(e) => setDays(Number(e.target.value))}
-            className="bg-background border border-border rounded-md px-2 py-1.5 text-sm text-foreground/80"
-          >
-            {[7, 14, 30].map((d) => (
-              <option key={d} value={d}>{d} days</option>
-            ))}
-          </select>
+          <DateRangePresets value={days} onChange={setDays} isFetching={isFetching} />
         }
       />
 
@@ -181,7 +252,7 @@ export default function Events() {
                 onClick={() => setTypeFilter(t === typeFilter ? 'all' : t)}
               >
                 <EventIcon type={t} size={12} />
-                {t.replace(/([A-Z])/g, ' $1').trim()} ({count})
+                {cleanEventLabel(t)} ({count})
               </span>
             ))}
         </div>
@@ -198,7 +269,7 @@ export default function Events() {
                 typeFilter === t ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'
               }`}
             >
-              {t === 'all' ? 'All' : t.replace(/([A-Z])/g, ' $1').trim()}
+              {t === 'all' ? 'All' : cleanEventLabel(t)}
             </button>
           ))}
         </div>
@@ -212,7 +283,15 @@ export default function Events() {
       </div>
 
       {loading ? (
-        <TableSkeleton rows={6} cols={5} />
+        <TableSkeleton
+          rows={6}
+          cols={5}
+          message={
+            stage === 'slow'
+              ? 'Still loading… Samsara may be slow.'
+              : 'Loading safety events…'
+          }
+        />
       ) : events.length === 0 ? (
         <EmptyState
           icon={AlertTriangle}
@@ -233,6 +312,17 @@ export default function Events() {
 
       {events.length > 0 && (
         <p className="text-xs text-muted-foreground mt-2">{events.length} event{events.length !== 1 ? 's' : ''}</p>
+      )}
+
+      {/* Inline video viewer — rendered at the page root so the modal
+          backdrop covers the full viewport.  Mounted only while an
+          event is selected to avoid keeping a hidden <video> in the
+          DOM (memory + battery on long sessions). */}
+      {viewingEvent && (
+        <EventVideoModal
+          event={viewingEvent}
+          onClose={() => setViewingEvent(null)}
+        />
       )}
     </div>
   );

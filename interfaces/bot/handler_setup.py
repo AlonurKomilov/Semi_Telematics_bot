@@ -43,6 +43,7 @@ def register_handlers(app: Application) -> None:
     from interfaces.bot.callbacks import handle_callback, handle_text
     from interfaces.bot.events import cmd_events
     from interfaces.bot.knowledge import cmd_tips
+    from interfaces.bot.work_orders import cmd_invoice, handle_invoice_message
 
     # Registration
     app.add_handler(CommandHandler("start", cmd_start))
@@ -96,6 +97,31 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("groups", cmd_groups))
     app.add_handler(CommandHandler("chatid", cmd_chatid))
 
+    # Forum-routing setup (Option C topic-based alert delivery)
+    from interfaces.bot.forum_setup import (
+        cmd_setup_forum, cmd_topics_status, cmd_repair_forum,
+        cmd_reset_forum, cmd_connect_forum, cmd_test_forum,
+        handle_forum_service_message,
+    )
+    app.add_handler(CommandHandler("setupforum", cmd_setup_forum))
+    app.add_handler(CommandHandler("topicsstatus", cmd_topics_status))
+    app.add_handler(CommandHandler("repairforum", cmd_repair_forum))
+    app.add_handler(CommandHandler("resetforum", cmd_reset_forum))
+    app.add_handler(CommandHandler("connectforum", cmd_connect_forum))
+    app.add_handler(CommandHandler("testforum", cmd_test_forum))
+
+    # Forum-topic discovery index: catches Telegram's service messages
+    # (forum_topic_created / forum_topic_edited) so subsequent
+    # /setupforum and /repairforum runs can adopt existing topics by
+    # name instead of creating duplicates.  Telegram has no
+    # getForumTopics API, so passive indexing is the only mechanism
+    # available to a bot.
+    app.add_handler(MessageHandler(
+        filters.StatusUpdate.FORUM_TOPIC_CREATED
+        | filters.StatusUpdate.FORUM_TOPIC_EDITED,
+        handle_forum_service_message,
+    ))
+
     # User settings & audit
     app.add_handler(CommandHandler("settings", cmd_settings))
     app.add_handler(CommandHandler("audit", cmd_audit))
@@ -107,6 +133,20 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("broadcast", cmd_broadcast))
     app.add_handler(CommandHandler("sysdisable", cmd_sys_disable_account))
 
+    # Work orders — /invoice command + file-receive handler for the
+    # photo/PDF upload step.  Registered BEFORE the generic text
+    # handler so the wizard state machine sees photos and documents
+    # before they hit the generic handler.
+    #
+    # ``filters.ChatType.PRIVATE`` restricts this to direct messages —
+    # photos posted inside a forum-routing group topic must not
+    # trigger the invoice wizard or any other private workflow.
+    app.add_handler(CommandHandler("invoice", cmd_invoice))
+    app.add_handler(MessageHandler(
+        filters.ChatType.PRIVATE & (filters.PHOTO | filters.Document.ALL),
+        handle_invoice_message,
+    ))
+
     # Callback router
     app.add_handler(CallbackQueryHandler(handle_callback))
 
@@ -115,7 +155,28 @@ def register_handlers(app: Application) -> None:
         filters.StatusUpdate.CHAT_SHARED, handle_chat_shared,
     ))
 
-    # Text input handler (for interactive prompts)
+    # Text input handler (for interactive prompts + AI free-text).
+    # ``filters.ChatType.PRIVATE`` keeps the AI + interactive prompts
+    # in 1:1 DM only — group topics are alert-delivery surfaces, not
+    # conversation surfaces.  Without this, every reply in a forum
+    # topic was being routed to the AI ("Thinking…") which is both a
+    # token-cost leak and a confusing UX.
     app.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND, handle_text,
+        filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
+        _maybe_invoice_or_text(handle_invoice_message, handle_text),
     ))
+
+
+def _maybe_invoice_or_text(invoice_handler, text_handler):
+    """Wrap two MessageHandlers so the invoice wizard gets first crack
+    at text input.  Telegram-bot doesn't support handler-priority for
+    the same filter, so we chain manually: if the user has an
+    ``_invoice`` wizard state pending, deliver to that; otherwise
+    fall through to the generic text handler.
+    """
+    async def _dispatch(update, context):
+        if context.user_data.get("_invoice"):
+            await invoice_handler(update, context)
+            return
+        await text_handler(update, context)
+    return _dispatch

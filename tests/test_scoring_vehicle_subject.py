@@ -1,4 +1,4 @@
-"""Phase B — vehicle-primary scorecard tests.
+"""vehicle-primary scorecard tests.
 
 Verifies the subject abstraction in the engine, the new
 ``evaluate_subjects(subject='vehicle')`` orchestrator path, and the

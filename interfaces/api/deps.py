@@ -1,12 +1,12 @@
 """FastAPI dependencies: auth, database, role checks, pagination."""
 
-from fastapi import Depends, HTTPException, Header, Query
+from fastapi import Depends, HTTPException, Header
 
 from jose import JWTError
 
 from interfaces.api.auth import decode_jwt
 from infra.platform import get_router as _get_router
-from capabilities.iam.permissions import can, get_account_permissions
+from capabilities.iam.permissions import get_account_permissions
 from adapters.storage import Role
 
 # ── Pagination defaults ──────────────────────────────────────────

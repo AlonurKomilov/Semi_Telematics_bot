@@ -1,8 +1,8 @@
-"""Phase 2 — Pay-for-Performance unit + integration tests.
+"""Pay-for-Performance unit + integration tests.
 
 Covers:
   * Pure rule evaluation matrix (score_threshold, incident_count)
-  * PayrollMixin CRUD round-trip on TenantDB
+  * PayrollMixin CRUD round-trip on Database
   * service.create_run / finalize_run lifecycle
   * payroll_enabled kill-switch (raises PayrollDisabledError)
   * compute_run end-to-end with a synthetic 3-driver fleet + 2 rules
@@ -22,7 +22,7 @@ import pytest_asyncio
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from adapters.storage.tenant import TenantDB
+from adapters.storage import Database
 from capabilities.payroll import engine as payroll_engine
 from capabilities.payroll import service as payroll_service
 from capabilities.payroll.engine import (
@@ -46,11 +46,13 @@ ACCOUNT_ID = 1
 # ── fixtures ─────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture
-async def tenant(tmp_path):
-    db = TenantDB(str(tmp_path / "tenant.db"), ACCOUNT_ID)
-    await db.initialize()
-    yield db
-    await db.close()
+async def tenant(pg_db):
+    """Per-test PG database — same engine as production.
+
+    Forwards to the shared ``pg_db`` fixture (testcontainers PG with
+    per-test schema reset).
+    """
+    yield pg_db
 
 
 def _patch_services(monkeypatch, tenant_db, *, payroll_enabled: bool = True,
@@ -166,7 +168,7 @@ class TestRuleEvaluation:
 # ── PayrollMixin CRUD round-trip ─────────────────────────────────
 
 class TestPayrollMixinCRUD:
-    async def test_bonus_rule_crud(self, tenant: TenantDB):
+    async def test_bonus_rule_crud(self, tenant: Database):
         rid = await tenant.create_bonus_rule(
             ACCOUNT_ID, name="r1", kind=KIND_SCORE_THRESHOLD,
             amount_cents=5000, score_min=80.0,
@@ -190,7 +192,7 @@ class TestPayrollMixinCRUD:
         await tenant.delete_bonus_rule(ACCOUNT_ID, rid)
         assert await tenant.get_bonus_rule(ACCOUNT_ID, rid) is None
 
-    async def test_driver_pay_settings_upsert(self, tenant: TenantDB):
+    async def test_driver_pay_settings_upsert(self, tenant: Database):
         await tenant.upsert_driver_pay_settings(
             ACCOUNT_ID, "DRV1", base_pay_cents=200000, opt_in=True,
         )
@@ -206,7 +208,7 @@ class TestPayrollMixinCRUD:
         assert rows[0]["base_pay_cents"] == 250000
         assert int(rows[0]["opt_in"]) == 0
 
-    async def test_payroll_run_with_items(self, tenant: TenantDB):
+    async def test_payroll_run_with_items(self, tenant: Database):
         run_id = await tenant.create_payroll_run(
             ACCOUNT_ID, period_start="2025-01-01",
             period_end="2025-01-31", created_by=0,
@@ -237,7 +239,7 @@ class TestPayrollMixinCRUD:
 # ── compute_run + service end-to-end with synthetic fleet ────────
 
 class TestComputeRun:
-    async def test_three_drivers_two_rules(self, tenant: TenantDB, monkeypatch):
+    async def test_three_drivers_two_rules(self, tenant: Database, monkeypatch):
         cards = [
             {"driver_id": "DRV1", "driver_name": "Alice", "score": 95},
             {"driver_id": "DRV2", "driver_name": "Bob",   "score": 70},
@@ -276,7 +278,7 @@ class TestComputeRun:
         # DRV3 (score 88, 1 event): base + score + low-hb
         assert by_driver["DRV3"].total_cents == 100000 + 5000 + 2500
 
-    async def test_opt_out_skipped(self, tenant: TenantDB, monkeypatch):
+    async def test_opt_out_skipped(self, tenant: Database, monkeypatch):
         cards = [{"driver_id": "DRV1", "driver_name": "Alice", "score": 99}]
         _patch_services(monkeypatch, tenant, cards=cards, safety_events=[])
         await tenant.upsert_driver_pay_settings(
@@ -290,7 +292,7 @@ class TestComputeRun:
 
 class TestServiceLifecycle:
     async def test_kill_switch_blocks_create_rule(
-        self, tenant: TenantDB, monkeypatch,
+        self, tenant: Database, monkeypatch,
     ):
         _patch_services(monkeypatch, tenant, payroll_enabled=False)
         with pytest.raises(PayrollDisabledError):
@@ -300,7 +302,7 @@ class TestServiceLifecycle:
             )
 
     async def test_kill_switch_blocks_create_run(
-        self, tenant: TenantDB, monkeypatch,
+        self, tenant: Database, monkeypatch,
     ):
         _patch_services(monkeypatch, tenant, payroll_enabled=False)
         with pytest.raises(PayrollDisabledError):
@@ -309,7 +311,7 @@ class TestServiceLifecycle:
                 period_start=date(2025, 1, 1), period_end=date(2025, 1, 31),
             )
 
-    async def test_create_rule_validation(self, tenant: TenantDB, monkeypatch):
+    async def test_create_rule_validation(self, tenant: Database, monkeypatch):
         _patch_services(monkeypatch, tenant)
         with pytest.raises(ValueError):
             await payroll_service.create_rule(
@@ -334,7 +336,7 @@ class TestServiceLifecycle:
             )
 
     async def test_run_lifecycle_finalize_then_blocks_double(
-        self, tenant: TenantDB, monkeypatch,
+        self, tenant: Database, monkeypatch,
     ):
         cards = [{"driver_id": "DRV1", "driver_name": "Alice", "score": 99}]
         _patch_services(monkeypatch, tenant, cards=cards, safety_events=[])
@@ -367,7 +369,7 @@ class TestServiceLifecycle:
                 ACCOUNT_ID, run_id, user_id=1,
             )
 
-    async def test_cancel_run(self, tenant: TenantDB, monkeypatch):
+    async def test_cancel_run(self, tenant: Database, monkeypatch):
         _patch_services(monkeypatch, tenant, cards=[], safety_events=[])
         # Create a draft directly via tenant
         rid = await tenant.create_payroll_run(
