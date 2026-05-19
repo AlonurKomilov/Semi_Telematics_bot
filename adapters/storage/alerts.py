@@ -658,6 +658,24 @@ class AlertsMixin(_MixinBase):
         except (KeyError, TypeError):
             return int(row[0])
 
+    async def get_active_alert_history_for_vehicle(
+        self, account_id: int, vehicle_id: str,
+    ) -> list[dict]:
+        """Active alerts for one (account, vehicle) — pushes the
+        vehicle_id filter into SQL instead of loading the full account
+        and filtering in Python.  Backed by
+        ``idx_alert_history_active`` (account_id, alert_type,
+        vehicle_id, status).
+        """
+        cur = await self._db.execute(
+            "SELECT * FROM alert_history "
+            "WHERE account_id = ? AND vehicle_id = ? AND status = 'active' "
+            "ORDER BY last_seen DESC",
+            (account_id, vehicle_id),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
     async def get_active_alert_history_for_account(self, account_id: int) -> list[dict]:
         """Return one row per *logical* active alert for the account.
 

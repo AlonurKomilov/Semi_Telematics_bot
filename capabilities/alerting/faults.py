@@ -233,10 +233,12 @@ async def check_new_faults(app: Application):
             if not bot_app:
                 logger.debug("No bot for account %d — skipping fault check", account_id)
                 continue
+            tenant = await get_tenant_db(account_id)
             await run_account_job(
                 _check_faults_account(bot_app, account_id, subs),
                 account_id=account_id,
                 job_name="fault_check",
+                tenant_db=tenant,
             )
 
     except Exception as e:

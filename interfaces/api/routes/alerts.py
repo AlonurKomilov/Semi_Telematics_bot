@@ -390,8 +390,11 @@ async def acknowledge_vehicle_alerts(
     much smaller blast radius.
     """
     telegram_id = int(user["sub"])
-    rows = await tenant_db.get_active_alert_history_for_account(user["account_id"])
-    targets = [r for r in rows if str(r.get("vehicle_id")) == str(vehicle_id)]
+    # Push the vehicle filter into SQL — previously this loaded every
+    # active alert for the account and filtered in Python.
+    targets = await tenant_db.get_active_alert_history_for_vehicle(
+        user["account_id"], str(vehicle_id),
+    )
     if not targets:
         return {"acked": 0, "vehicle_id": vehicle_id}
 

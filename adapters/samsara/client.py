@@ -146,13 +146,20 @@ class SamsaraClient:
         )
 
     async def _get_session(self) -> aiohttp.ClientSession:
+        # Aggressive per-call timeout: Samsara responds in <1s when
+        # healthy; anything past 5s is functionally an outage.  Letting
+        # individual requests sit for 30s starved the gunicorn worker
+        # pool during outages and cascaded into hangs on pure-internal
+        # endpoints (maintenance/work-orders/etc.) that don't even
+        # touch Samsara — see ``capabilities/samsara/circuit_breaker.py``
+        # for the broader resilience story.
         if self._session is not None and not self._session.closed:
             return self._session
         async with self._session_lock:
             if self._session is None or self._session.closed:
                 self._session = aiohttp.ClientSession(
                     headers={"Authorization": f"Bearer {self.api_key}"},
-                    timeout=aiohttp.ClientTimeout(total=30),
+                    timeout=aiohttp.ClientTimeout(total=5),
                 )
             return self._session
 
@@ -185,6 +192,15 @@ class SamsaraClient:
         return f"https://cloud.samsara.com/o/{self._org_id}/devices/{vehicle_id}/vehicle"
 
     async def _get(self, endpoint: str, params: Optional[dict] = None) -> dict:
+        # Every Samsara GET goes through the global circuit breaker.
+        # When the breaker is open (5 consecutive failures in 60s),
+        # this raises ``SamsaraUnavailable`` instantly with no HTTP
+        # attempt — preserving gunicorn workers for fast-path internal
+        # endpoints while Samsara is dark.
+        from adapters.samsara.circuit_breaker import samsara_breaker
+        return await samsara_breaker.call(self._get_raw, endpoint, params)
+
+    async def _get_raw(self, endpoint: str, params: Optional[dict] = None) -> dict:
         # observability — record latency + status per endpoint.
         # ``endpoint`` is a static path (~30 distinct values) so the
         # Prometheus label cardinality stays bounded.
@@ -1578,7 +1594,12 @@ class SamsaraClient:
         import os
 
         sem = asyncio.Semaphore(8)
-        timeout = aiohttp.ClientTimeout(total=60)
+        # Camera media downloads are JPEG blobs (up to ~512 KB) over a
+        # CDN URL — slower than a plain JSON call.  15s is the upper
+        # bound for "still healthy"; beyond that we abort and the
+        # camera-check skips this vehicle this cycle.  The 5s default
+        # on ``_get_session`` is too aggressive for image payloads.
+        timeout = aiohttp.ClientTimeout(total=15)
         session = self._session or aiohttp.ClientSession(timeout=timeout)
 
         # ── Tier 1: Camera media API (direct JPEG) ──────────────

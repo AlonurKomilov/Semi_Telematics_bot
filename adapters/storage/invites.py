@@ -53,33 +53,43 @@ class InvitesMixin:
         """Redeem an invite code → create user and mark invite used.
 
         Returns the new User or None if code is invalid/expired/used.
+
+        The entire flow (read invite → check user → create user → mark
+        invite used) is wrapped in a transaction so two concurrent
+        redemptions of the same code can't both create users.  The
+        winning transaction commits; the loser sees the marked-used
+        invite on its retry and returns None.
         """
-        invite = await self.get_invite(code)
-        if not invite or invite.is_used or invite.is_expired:
-            return None
+        async with self.transaction():
+            invite = await self.get_invite(code)
+            if not invite or invite.is_used or invite.is_expired:
+                return None
 
-        # Check user not already registered
-        existing = await self.get_user_by_telegram_id(telegram_id)
-        if existing:
-            return None  # already has an account
+            # Check user not already registered
+            existing = await self.get_user_by_telegram_id(telegram_id)
+            if existing:
+                return None  # already has an account
 
-        # Create user
-        user = await self.create_user(
-            telegram_id=telegram_id,
-            account_id=invite.account_id,
-            role=Role.from_str(invite.role),
-            department=invite.department,
-            truck_num=invite.truck_num,
-            display_name=display_name,
-        )
+            # Create user → mark invite used → commit, all in this
+            # transaction.  The users.telegram_id UNIQUE constraint
+            # serializes concurrent redemptions: a parallel transaction
+            # racing the same code will block on the users INSERT and
+            # then fail with UniqueViolation, rolling back its whole
+            # block (including its UPDATE on invites).
+            user = await self.create_user(
+                telegram_id=telegram_id,
+                account_id=invite.account_id,
+                role=Role.from_str(invite.role),
+                department=invite.department,
+                truck_num=invite.truck_num,
+                display_name=display_name,
+            )
 
-        # Mark invite as used
-        await self._db.execute(
-            "UPDATE invites SET used_by = ? WHERE id = ?",
-            (user.id, invite.id),
-        )
-        await self._db.commit()
-        return user
+            await self._db.execute(
+                "UPDATE invites SET used_by = ? WHERE id = ?",
+                (user.id, invite.id),
+            )
+            return user
 
     async def list_invites(
         self, account_id: int, pending_only: bool = True,

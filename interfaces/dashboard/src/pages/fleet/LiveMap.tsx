@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiJSON } from '../../api/client';
 import { useLeafletMap } from '../../hooks/useLeafletMap';
 import { usePoiLayers } from '../../hooks/usePoiLayers';
@@ -581,15 +581,23 @@ export default function LiveMap() {
 
   // ── Derived UI state ───────────────────────────────────────────────────────
 
-  const filtered = vehicles.filter((f) => {
-    const status = vehicleStatus(f);
-    if (statusFilter !== 'all' && status !== statusFilter) return false;
-    if (search && !f.properties.name.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
-
-  const counts: Record<string, number> = { all: vehicles.length, moving: 0, idle: 0, stopped: 0 };
-  vehicles.forEach((f) => { counts[vehicleStatus(f)]++; });
+  // Memo: filter + status counts in a single pass over ``vehicles``.
+  // Without the memo this body ran on every render (including every
+  // animation frame the parent re-rendered for) and re-walked the
+  // fleet twice for one filtered list + one counts object.
+  const { filtered, counts } = useMemo(() => {
+    const c: Record<string, number> = { all: vehicles.length, moving: 0, idle: 0, stopped: 0 };
+    const needle = search.toLowerCase();
+    const out: typeof vehicles = [];
+    for (const f of vehicles) {
+      const status = vehicleStatus(f);
+      c[status]++;
+      if (statusFilter !== 'all' && status !== statusFilter) continue;
+      if (needle && !f.properties.name.toLowerCase().includes(needle)) continue;
+      out.push(f);
+    }
+    return { filtered: out, counts: c };
+  }, [vehicles, statusFilter, search]);
 
   // ── POI route-line handler ────────────────────────────────────────────────
   /** Fetch a road-following route from OSRM and draw it on the map.

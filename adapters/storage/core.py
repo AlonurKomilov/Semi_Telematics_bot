@@ -9,7 +9,6 @@ against a ``testcontainers`` Postgres instance instead.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import secrets
@@ -62,16 +61,24 @@ class _DatabaseCore:
                 "DATABASE_URL is required.  Set DATABASE_URL=postgresql://... "
                 "in your .env (see .env.example) and restart."
             )
-        from .pg_adapter import open_pg_pool
+        from .pg_adapter import open_pg_pool, _PgConnection
         self._pg_pool = await open_pg_pool(_DATABASE_URL, pool_size=self._pool_size)
-        # Use a single pooled connection as the "writer" for schema/migrations
-        self._db = await self._pg_pool.acquire_connection()
+
+        # ``self._db`` is now a pool-PROXY, not a pinned connection.
+        # Each ``self._db.execute(...)`` acquires a fresh connection
+        # from the pool (or honors the contextvar pinned by
+        # ``Database.transaction()``).  This is the Tier 4 Phase 2
+        # pool refactor — the previous shared single connection +
+        # asyncio.Lock serialized every mutation through one socket.
+        self._db = _PgConnection(self._pg_pool)
+
         await schema.create_tables(self._db)
         await migrations.run_all(self._db)
         await platform_schema.create_tables(self._db)
         await platform_migrations.run_all(self._db)
         logger.info(
-            "Database ready (PostgreSQL via asyncpg, pool_size=%d)", self._pool_size,
+            "Database ready (PostgreSQL via asyncpg pool, pool_size=%d)",
+            self._pool_size,
         )
 
     @asynccontextmanager
@@ -105,10 +112,10 @@ class _DatabaseCore:
             return await cur.fetchone()
 
     async def close(self):
-        # Release the writer connection BEFORE closing the pool — otherwise
-        # asyncpg's pool.close() blocks for command_timeout seconds
-        # waiting for the in-flight connection to drain (manifests as a
-        # 60-second hang on shutdown).
+        # In the pool-proxy world ``self._db.close()`` is a no-op (the
+        # proxy doesn't own a connection), so the historical 60-second
+        # close hang from holding a pinned writer is no longer a risk —
+        # ``self._pg_pool.close()`` drains the pool directly.
         if self._db is not None:
             try:
                 await self._db.close()
@@ -127,15 +134,125 @@ class _DatabaseCore:
             async with db.transaction():
                 await db._db.execute(...)
                 await db._db.execute(...)
-        Commits on success, rolls back on exception.
+
+        Acquires one connection from the pool, pins it for the current
+        async-task tree via a contextvar so every ``self._db.execute(...)``
+        inside the block reuses it, runs an asyncpg native transaction,
+        and releases on exit.  Commits on success, rolls back on
+        exception.
+
+        Nested ``transaction()`` calls in the same task tree are a
+        no-op pass-through: the outer transaction's BEGIN/COMMIT
+        handles the lifecycle.  asyncpg savepoints aren't used yet
+        — partial rollback in nested blocks isn't supported and
+        callers shouldn't rely on it.
         """
-        await self._db.execute("BEGIN")
+        from .pg_adapter import _pinned_conn, _set_pinned_conn
+
+        already_pinned = _pinned_conn.get()
+        if already_pinned is not None:
+            # Nested transaction — just yield; the outer block owns
+            # commit/rollback.  A rollback in the inner raises, which
+            # propagates to the outer; the outer's except branch fires
+            # ROLLBACK and we end up in a consistent state.
+            yield
+            return
+
+        # Acquire a dedicated connection for the duration of the block.
+        conn = await self._pg_pool._pool.acquire()
+        token = _set_pinned_conn(conn)
+        try:
+            # Apply tenant scope on the pinned conn if set.  The
+            # ``_PgConnection._acquire`` GUC-stamp path won't fire here
+            # because the proxy will reuse this pinned conn directly.
+            from .pg_adapter import _current_account_id
+            aid = _current_account_id.get()
+            if aid is not None:
+                await conn.execute(
+                    "SELECT set_config('app.account_id', $1, false)", str(aid),
+                )
+
+            tx = conn.transaction()
+            await tx.start()
+            try:
+                yield
+                await tx.commit()
+            except BaseException:
+                await tx.rollback()
+                raise
+        finally:
+            _pinned_conn.reset(token)
+            # Clear GUC so the recycled pool slot doesn't leak scope.
+            try:
+                await conn.execute(
+                    "SELECT set_config('app.account_id', '', false)",
+                )
+            except Exception:
+                pass
+            await self._pg_pool._pool.release(conn)
+
+    @asynccontextmanager
+    async def with_account(self, account_id: int | None):
+        """Set ``app.account_id`` for the current async-task tree.
+
+        Postgres RLS policies read this GUC via
+        ``current_setting('app.account_id', true)::int`` to enforce
+        per-tenant isolation.  Without RLS enabled the value is a
+        harmless session variable; with RLS enabled it determines
+        which rows the wrapped queries can see.
+
+        Usage::
+            async with db.with_account(acc.id):
+                tasks = await db.get_pending_tasks()  # filtered by RLS
+
+        ``account_id=None`` clears the scope — used when entering a
+        cross-tenant admin section that should not be RLS-filtered.
+        Production behavior under RLS: rows with no matching account
+        return empty; use the ``4truck_admin`` BYPASSRLS role for
+        legitimate cross-tenant reads.
+
+        The scope is propagated via a contextvar in :mod:`pg_adapter`,
+        which is async-task-local — so two concurrent requests under
+        different accounts never see each other's GUC, even though the
+        pool reuses connections.  The pool-acquire hook in
+        ``_PgConnection._acquire`` stamps ``set_config`` on every
+        fresh acquire based on this contextvar.  If a transaction is
+        active (pinned conn), the GUC is applied immediately to that
+        conn so subsequent statements in the same transaction see the
+        new scope.
+        """
+        from .pg_adapter import (
+            _current_account_id, _set_current_account, _pinned_conn,
+        )
+
+        prev_account = _current_account_id.get()
+        token = _set_current_account(account_id)
+
+        # If we're inside a transaction (pinned conn), apply the GUC
+        # right now so the rest of the transaction sees it.  Pool-mode
+        # callers will pick up the new value on the next ``_acquire()``.
+        pinned = _pinned_conn.get()
+        new_str = "" if account_id is None else str(account_id)
+        if pinned is not None:
+            try:
+                await pinned.execute(
+                    "SELECT set_config('app.account_id', $1, false)", new_str,
+                )
+            except Exception as e:
+                logger.debug("with_account set_config failed: %s", e)
+
         try:
             yield
-            await self._db.execute("COMMIT")
-        except BaseException:
-            await self._db.execute("ROLLBACK")
-            raise
+        finally:
+            _current_account_id.reset(token)
+            if pinned is not None:
+                prev_str = "" if prev_account is None else str(prev_account)
+                try:
+                    await pinned.execute(
+                        "SELECT set_config('app.account_id', $1, false)", prev_str,
+                    )
+                except Exception:
+                    pass
 
     # ── Helpers ───────────────────────────────────────────────────
 

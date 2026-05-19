@@ -1,0 +1,160 @@
+# Redis Sentinel HA topology — single-host development / staging.
+#
+# Layout:
+#   redis-master       → port 8004  (writes + reads)
+#   redis-replica-1    → port 8005  (read-only replica of 8004)
+#   redis-replica-2    → port 8006  (read-only replica of 8004)
+#   sentinel-1         → port 26379 (quorum vote)
+#   sentinel-2         → port 26380 (quorum vote)
+#   sentinel-3         → port 26381 (quorum vote)
+#
+# Existing Redis on port 8002 (the project's current single-node) is
+# LEFT UNTOUCHED so a cutover can stage cleanly: deploy this topology,
+# point the app at it via REDIS_SENTINELS, smoke-test, and decommission
+# the old 8002 instance when comfortable.
+#
+# Port 6379 also untouched (used by another project on this host).
+#
+# Bring up:    docker-compose -f docker-compose.sentinel.yml up -d
+# Smoke test:  redis-cli -p 26379 -a 4truck-redis-pass sentinel get-master-addr-by-name mymaster
+# Tear down:   docker-compose -f docker-compose.sentinel.yml down
+#
+# **Real production HA** requires 3 separate hosts (one master/replica/
+# sentinel triple per host, ideally across availability zones).  This
+# single-host topology survives process crashes but NOT host failure.
+# For prod, use a managed Redis (AWS ElastiCache, Upstash, Redis Cloud)
+# or replicate the same compose across 3 physical/cloud VMs.
+
+version: '3.8'
+
+services:
+  redis-master:
+    image: redis:7-alpine
+    container_name: 4truck-redis-master
+    restart: unless-stopped
+    command: >
+      redis-server
+        --requirepass 4truck-redis-pass
+        --masterauth 4truck-redis-pass
+        --port 6379
+        --appendonly yes
+    ports:
+      - "127.0.0.1:8004:6379"
+    volumes:
+      - 4truck_redis_master:/data
+    networks:
+      - 4truck_redis_ha
+
+  redis-replica-1:
+    image: redis:7-alpine
+    container_name: 4truck-redis-replica-1
+    restart: unless-stopped
+    command: >
+      redis-server
+        --requirepass 4truck-redis-pass
+        --masterauth 4truck-redis-pass
+        --port 6379
+        --replicaof redis-master 6379
+    ports:
+      - "127.0.0.1:8005:6379"
+    networks:
+      - 4truck_redis_ha
+    depends_on:
+      - redis-master
+
+  redis-replica-2:
+    image: redis:7-alpine
+    container_name: 4truck-redis-replica-2
+    restart: unless-stopped
+    command: >
+      redis-server
+        --requirepass 4truck-redis-pass
+        --masterauth 4truck-redis-pass
+        --port 6379
+        --replicaof redis-master 6379
+    ports:
+      - "127.0.0.1:8006:6379"
+    networks:
+      - 4truck_redis_ha
+    depends_on:
+      - redis-master
+
+  # Sentinels — write their config inline at startup so no extra
+  # config files need to be mounted.  Each sentinel runs on a different
+  # host port; container port is 26379 inside the network.
+  sentinel-1:
+    image: redis:7-alpine
+    container_name: 4truck-sentinel-1
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        cat > /tmp/sentinel.conf <<EOF
+        port 26379
+        sentinel monitor mymaster redis-master 6379 2
+        sentinel auth-pass mymaster 4truck-redis-pass
+        sentinel down-after-milliseconds mymaster 5000
+        sentinel failover-timeout mymaster 10000
+        sentinel parallel-syncs mymaster 1
+        EOF
+        exec redis-sentinel /tmp/sentinel.conf
+    ports:
+      - "127.0.0.1:26379:26379"
+    networks:
+      - 4truck_redis_ha
+    depends_on:
+      - redis-master
+
+  sentinel-2:
+    image: redis:7-alpine
+    container_name: 4truck-sentinel-2
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        cat > /tmp/sentinel.conf <<EOF
+        port 26379
+        sentinel monitor mymaster redis-master 6379 2
+        sentinel auth-pass mymaster 4truck-redis-pass
+        sentinel down-after-milliseconds mymaster 5000
+        sentinel failover-timeout mymaster 10000
+        sentinel parallel-syncs mymaster 1
+        EOF
+        exec redis-sentinel /tmp/sentinel.conf
+    ports:
+      - "127.0.0.1:26380:26379"
+    networks:
+      - 4truck_redis_ha
+    depends_on:
+      - redis-master
+
+  sentinel-3:
+    image: redis:7-alpine
+    container_name: 4truck-sentinel-3
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        cat > /tmp/sentinel.conf <<EOF
+        port 26379
+        sentinel monitor mymaster redis-master 6379 2
+        sentinel auth-pass mymaster 4truck-redis-pass
+        sentinel down-after-milliseconds mymaster 5000
+        sentinel failover-timeout mymaster 10000
+        sentinel parallel-syncs mymaster 1
+        EOF
+        exec redis-sentinel /tmp/sentinel.conf
+    ports:
+      - "127.0.0.1:26381:26379"
+    networks:
+      - 4truck_redis_ha
+    depends_on:
+      - redis-master
+
+volumes:
+  4truck_redis_master:
+    name: 4truck_redis_master
+
+networks:
+  4truck_redis_ha:
+    name: 4truck_redis_ha

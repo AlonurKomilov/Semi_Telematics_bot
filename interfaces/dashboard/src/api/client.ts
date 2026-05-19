@@ -1,4 +1,8 @@
-const API_BASE = '/api';
+// API base — same-origin by default.  nginx subdomain blocks proxy
+// `/api/*` to the FastAPI backend, so dash.4truck.us/api/v1/foo hits
+// the API without cross-origin CORS.  Override at build time via
+// VITE_API_BASE if a deployment puts the API on a different host.
+const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api';
 const REQUEST_TIMEOUT_MS = 30_000; // 30 seconds
 const AI_REQUEST_TIMEOUT_MS = 90_000; // 90 seconds — Gemini agent round-trips can take 30-60s
 
@@ -48,14 +52,27 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}, timeoutMs 
     body = JSON.stringify(body);
   }
   // Chain caller's signal (if any) with our timeout signal so either can abort the request.
+  // ``abort()`` is called with an explicit reason so the surfaced
+  // DOMException carries a useful message instead of the browser's
+  // default "signal is aborted without reason" — that wording leaked
+  // straight into user-facing error banners and looked broken even
+  // though it was just a vanilla timeout.
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let didTimeout = false;
+  const timeout = setTimeout(() => {
+    didTimeout = true;
+    controller.abort(new DOMException(
+      `Request to ${path} timed out after ${Math.round(timeoutMs / 1000)}s. ` +
+      `The server may be busy — please try again.`,
+      'TimeoutError',
+    ));
+  }, timeoutMs);
   const externalSignal = opts.signal as AbortSignal | undefined;
   let externalAbortHandler: (() => void) | null = null;
   if (externalSignal) {
-    if (externalSignal.aborted) controller.abort();
+    if (externalSignal.aborted) controller.abort(externalSignal.reason);
     else {
-      externalAbortHandler = () => controller.abort();
+      externalAbortHandler = () => controller.abort(externalSignal.reason);
       externalSignal.addEventListener('abort', externalAbortHandler);
     }
   }
@@ -63,10 +80,22 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}, timeoutMs 
     const res = await fetch(`${API_BASE}${path}`, { ...opts, headers, body: body as BodyInit, signal: controller.signal });
     if (res.status === 401) {
       clearToken();
-      window.location.href = '/dashboard/';
+      window.location.href = '/';
       throw new Error('Unauthorized');
     }
     return res;
+  } catch (e) {
+    // Re-throw timeout errors with the explicit reason we set above
+    // so callers see "Request timed out…" instead of the browser's
+    // generic abort message.  External-signal aborts pass through
+    // unchanged so React Query cancellations still look like aborts.
+    if (didTimeout && e instanceof DOMException && e.name === 'AbortError') {
+      throw new Error(
+        `Request to ${path} timed out after ${Math.round(timeoutMs / 1000)}s. ` +
+        `The server may be busy — please try again.`,
+      );
+    }
+    throw e;
   } finally {
     clearTimeout(timeout);
     if (externalSignal && externalAbortHandler) {
@@ -127,7 +156,7 @@ export async function apiStreamChat(
 
   if (res.status === 401) {
     clearToken();
-    window.location.href = '/dashboard/';
+    window.location.href = '/';
     throw new Error('Unauthorized');
   }
   if (!res.ok) {

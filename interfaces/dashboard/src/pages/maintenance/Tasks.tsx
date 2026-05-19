@@ -307,25 +307,24 @@ export default function Tasks() {
     for (const t of allTasks) {
       if (t.status === 'completed') { completed.push(t); continue; }
       if (t.status === 'cancelled') { cancelled.push(t); continue; }
-      // Treat anything not yet completed as "pending" for bucketing
-      // purposes — covers status='pending' AND 'overdue' AND 'in_progress'
-      // so a scheduler-flipped overdue row still appears in the overdue
-      // chip.  Server's 'overdue' status is one signal; the date-vs-now
-      // calculation is the other (catches future-overdue or unflagged).
-      pending.push(t);
+      // Classify by overdue → due_soon → pending in priority order.
+      // Each task lands in EXACTLY ONE bucket so the chip counts sum to
+      // ``all``.  Previously every non-completed task was also pushed
+      // into ``pending`` and a flagged-overdue task showed up in both
+      // the Overdue and Pending chips, making the counts overlap.
       const isOverdueStatus = t.status === 'overdue';
+      let placed = false;
       if (t.due_date) {
         const due = new Date(t.due_date);
         if (!Number.isNaN(due.getTime())) {
           const startOfDue = new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime();
           const days = Math.round((startOfDue - startOfToday) / 86_400_000);
-          if (days < 0 || isOverdueStatus) overdue.push(t);
-          else if (days <= 7) dueSoon.push(t);
-          continue;
+          if (days < 0 || isOverdueStatus) { overdue.push(t); placed = true; }
+          else if (days <= 7) { dueSoon.push(t); placed = true; }
         }
       }
-      // Mileage-only overdue still picks up the scheduler flag.
-      if (isOverdueStatus) overdue.push(t);
+      if (!placed && isOverdueStatus) { overdue.push(t); placed = true; }
+      if (!placed) { pending.push(t); }
     }
     return { overdue, dueSoon, pending, completed, cancelled };
   }, [allTasks]);
@@ -804,7 +803,7 @@ export default function Tasks() {
           <label className="block">
             <span className="block text-xs text-muted-foreground mb-1">Due Date</span>
             <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
-              <span>Current: {_todayLabel()}</span>
+              <span title="Today's date — the period below is added to this">Today: {_todayLabel()}</span>
               <span className="text-primary">
                 Due: {fDueDate ? _formatDate(_periodDaysToDueDate(fDueDate)) : '—'}
               </span>
@@ -829,7 +828,11 @@ export default function Tasks() {
                   : '—'}
               </span>
             </div>
-            <MilesPicker value={fDueMiles} onChange={setFDueMiles} />
+            <MilesPicker
+              value={fDueMiles}
+              onChange={setFDueMiles}
+              mode={fOdometer != null ? 'period' : 'absolute'}
+            />
           </label>
           <label className="block">
             <span className="block text-xs text-muted-foreground mb-1">Due Engine Hours</span>
@@ -848,11 +851,15 @@ export default function Tasks() {
                 {fOdometerLoading
                   ? 'fetching telemetry…'
                   : fVehicle
-                    ? 'No engine-hours telemetry — value is saved as the absolute target.'
+                    ? null  /* picker now renders its own no-telemetry hint */
                     : 'Pick a vehicle to see its current engine hours.'}
               </p>
             )}
-            <HoursPicker value={fDueEngineHours} onChange={setFDueEngineHours} />
+            <HoursPicker
+              value={fDueEngineHours}
+              onChange={setFDueEngineHours}
+              mode={fEngineHours != null ? 'period' : 'absolute'}
+            />
           </label>
           <div className="flex items-end">
             <button type="submit" disabled={saving} className="w-full px-4 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition">
@@ -993,7 +1000,7 @@ export default function Tasks() {
                 lives on the work-order page itself. */}
             {selected.work_order_id && (
               <a
-                href={`/dashboard/work-orders/${selected.work_order_id}`}
+                href={`/work-orders/${selected.work_order_id}`}
                 className="mb-4 px-3 py-2 bg-green-500/10 border border-green-500/30 rounded text-xs text-green-700 dark:text-green-400 inline-flex items-center gap-1.5 hover:bg-green-500/20"
               >
                 <span aria-hidden>📄</span>
@@ -1062,7 +1069,7 @@ export default function Tasks() {
               <label className="block">
                 <span className="block text-xs text-muted-foreground mb-1">Due Date</span>
                 <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
-                  <span>Current: {_todayLabel()}</span>
+                  <span title="Today's date — the period below is added to this">Today: {_todayLabel()}</span>
                   <span className="text-primary">
                     Due: {eDueDate ? _formatDate(_periodDaysToDueDate(eDueDate)) : '—'}
                   </span>
@@ -1082,7 +1089,11 @@ export default function Tasks() {
                       : '—'}
                   </span>
                 </div>
-                <MilesPicker value={eDueMiles} onChange={setEDueMiles} />
+                <MilesPicker
+                  value={eDueMiles}
+                  onChange={setEDueMiles}
+                  mode={eOdometer != null ? 'period' : 'absolute'}
+                />
               </label>
               <label className="block">
                 <span className="block text-xs text-muted-foreground mb-1">Due Engine Hours</span>
@@ -1096,12 +1107,12 @@ export default function Tasks() {
                         : '—'}
                     </span>
                   </div>
-                ) : (
-                  <p className="text-[11px] text-muted-foreground mb-1">
-                    No engine-hours telemetry yet — the value below is saved as the absolute target.
-                  </p>
-                )}
-                <HoursPicker value={eDueEngineHours} onChange={setEDueEngineHours} />
+                ) : null  /* picker now renders its own no-telemetry hint */}
+                <HoursPicker
+                  value={eDueEngineHours}
+                  onChange={setEDueEngineHours}
+                  mode={eEngineHours != null ? 'period' : 'absolute'}
+                />
               </label>
               {/* Primary actions: Cancel + Update side-by-side so the
                   back-out option is obvious even with Esc/click-outside

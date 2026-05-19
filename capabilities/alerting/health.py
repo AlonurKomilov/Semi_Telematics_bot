@@ -117,10 +117,12 @@ async def check_health_alerts(app: Application):
             if not bot_app:
                 logger.debug("No bot for account %d — skipping health check", account_id)
                 continue
+            tenant = await get_tenant_db(account_id)
             await run_account_job(
                 _check_health_account(bot_app, account_id, subs, is_warmup),
                 account_id=account_id,
                 job_name="health_check",
+                tenant_db=tenant,
             )
 
             if is_warmup:

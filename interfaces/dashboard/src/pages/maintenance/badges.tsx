@@ -157,7 +157,10 @@ export function MileageProgress({ row }: { row: MaintenanceTask }) {
   if (row.due_miles == null) return <>—</>;
   if (row.last_odometer == null) {
     return (
-      <span className="text-muted-foreground text-xs">
+      <span
+        className="text-muted-foreground text-xs underline decoration-dotted decoration-muted-foreground/40 cursor-help"
+        title="No odometer telemetry from this truck — the target is shown without a progress bar.  Connect Samsara or another telematics provider to enable real-time mileage tracking."
+      >
         Due {Number(row.due_miles).toLocaleString()} mi
       </span>
     );

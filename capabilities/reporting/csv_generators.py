@@ -195,15 +195,30 @@ def generate_fuel_csv(
             v.get("model", _NA),
         ])
 
-    # Summary row
-    known_fuel = [v for v in all_vehicles if v.get("fuel", {}).get("value") is not None]
-    known_def = [v for v in all_vehicles if v.get("def_level", {}).get("value") is not None]
-    avg_fuel = round(sum(v["fuel"]["value"] for v in known_fuel) / len(known_fuel), 1) if known_fuel else _NA
-    avg_def = round(sum(v["def_level"]["value"] for v in known_def) / len(known_def), 1) if known_def else _NA
-    critical = sum(1 for v in all_vehicles if (v.get("fuel", {}).get("value") or 999) <= 15)
-    low = sum(1 for v in all_vehicles if 15 < (v.get("fuel", {}).get("value") or 999) <= 30)
-    good = sum(1 for v in all_vehicles if (v.get("fuel", {}).get("value") or 0) > 30)
-    no_data = sum(1 for v in all_vehicles if v.get("fuel", {}).get("value") is None)
+    # Summary row — single-pass accumulator over all_vehicles instead
+    # of 7 separate comprehensions (each O(N) — fold to one O(N) walk).
+    fuel_sum, fuel_n = 0.0, 0
+    def_sum, def_n = 0.0, 0
+    critical = low = good = no_data = 0
+    for v in all_vehicles:
+        f = v.get("fuel", {}).get("value")
+        d = v.get("def_level", {}).get("value")
+        if f is None:
+            no_data += 1
+        else:
+            fuel_sum += f
+            fuel_n += 1
+            if f <= 15:
+                critical += 1
+            elif f <= 30:
+                low += 1
+            else:
+                good += 1
+        if d is not None:
+            def_sum += d
+            def_n += 1
+    avg_fuel = round(fuel_sum / fuel_n, 1) if fuel_n else _NA
+    avg_def  = round(def_sum / def_n, 1) if def_n else _NA
     writer.writerow([])
     writer.writerow([
         "SUMMARY", f"{len(all_vehicles)} trucks",
@@ -282,17 +297,28 @@ def generate_health_csv(
             lr,
         ])
 
-    # Summary row
-    alert_count = sum(len(v.get("_health_alerts", [])) for v in vehicles)
-    with_alerts = sum(1 for v in vehicles if v.get("_health_alerts"))
-    eng_on = sum(1 for v in vehicles if v.get("_health", {}).get("engine_on"))
-    batts = [v["_health"]["battery_v"] for v in vehicles if v.get("_health", {}).get("battery_v") is not None]
-    avg_batt = round(sum(batts) / len(batts), 2) if batts else _NA
+    # Summary row — single pass over ``vehicles`` instead of 4 separate
+    # comprehensions.
+    alert_count = with_alerts = eng_on = 0
+    batt_sum, batt_n = 0.0, 0
+    for v in vehicles:
+        alerts_for_v = v.get("_health_alerts", []) or []
+        if alerts_for_v:
+            with_alerts += 1
+            alert_count += len(alerts_for_v)
+        h = v.get("_health", {}) or {}
+        if h.get("engine_on"):
+            eng_on += 1
+        bv = h.get("battery_v")
+        if bv is not None:
+            batt_sum += bv
+            batt_n += 1
+    avg_batt = round(batt_sum / batt_n, 2) if batt_n else _NA
     writer.writerow([])
     writer.writerow([
         "SUMMARY", f"{len(vehicles)} trucks",
         f"{eng_on} ON / {len(vehicles) - eng_on} OFF",
-        f"Avg: {avg_batt}V" if batts else _NA,
+        f"Avg: {avg_batt}V" if batt_n else _NA,
         "", "", "", "", "",
         f"{with_alerts} with alerts ({alert_count} total)", "", "",
     ])

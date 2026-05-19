@@ -23,21 +23,32 @@ class MaintenanceMixin:
         recur_interval_engine_hours: Optional[float] = None,
         work_order_id: Optional[int] = None,
         spawned_from_id: Optional[int] = None,
+        # Backfill values for the progress-bar columns.  Historically these
+        # were NULL at creation time and only filled by the 6-h scheduler
+        # (mark_overdue_tasks_by_mileage), which meant a brand-new task
+        # showed "no telemetry" in the dashboard until the next tick.
+        # Callers that have current telemetry on hand (dashboard create,
+        # bot wizard, fault auto-create) pass it here so the progress bar
+        # appears immediately after creation.
+        last_odometer: Optional[float] = None,
+        last_engine_hours: Optional[float] = None,
     ) -> int:
         now = self._now()
         cur = await self._db.execute(
             """INSERT INTO maintenance_tasks
                (account_id, company_code, vehicle_id, vehicle_name,
                 task_type, description, due_date, due_miles, due_engine_hours,
-                priority, created_by, created_at,
+                priority, created_by, created_at, updated_at,
                 recur_interval_days, recur_interval_miles, recur_interval_engine_hours,
-                work_order_id, spawned_from_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                work_order_id, spawned_from_id,
+                last_odometer, last_engine_hours)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, company_code, vehicle_id, vehicle_name,
              task_type, description, due_date, due_miles, due_engine_hours,
-             priority, created_by, now,
+             priority, created_by, now, now,
              recur_interval_days, recur_interval_miles, recur_interval_engine_hours,
-             work_order_id, spawned_from_id),
+             work_order_id, spawned_from_id,
+             last_odometer, last_engine_hours),
         )
         await self._db.commit()
         return cur.lastrowid
@@ -65,16 +76,19 @@ class MaintenanceMixin:
         # is stamped for either.  We don't migrate one to the other here
         # (would invalidate existing audit logs / external integrations);
         # we just make both surfaces work.
-        completed_at = self._now() if status in ("done", "completed") else None
+        now = self._now()
+        completed_at = now if status in ("done", "completed") else None
         if account_id:
             cur = await self._db.execute(
-                "UPDATE maintenance_tasks SET status = ?, completed_at = ? WHERE id = ? AND account_id = ?",
-                (status, completed_at, task_id, account_id),
+                "UPDATE maintenance_tasks SET status = ?, completed_at = ?, updated_at = ? "
+                "WHERE id = ? AND account_id = ?",
+                (status, completed_at, now, task_id, account_id),
             )
         else:
             cur = await self._db.execute(
-                "UPDATE maintenance_tasks SET status = ?, completed_at = ? WHERE id = ?",
-                (status, completed_at, task_id),
+                "UPDATE maintenance_tasks SET status = ?, completed_at = ?, updated_at = ? "
+                "WHERE id = ?",
+                (status, completed_at, now, task_id),
             )
         await self._db.commit()
         return cur.rowcount > 0
@@ -182,6 +196,10 @@ class MaintenanceMixin:
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
             return False
+        # Always stamp updated_at on a successful write so the dashboard's
+        # "Updated" column reflects the last edit (migration 058 added
+        # the column; before that, the field was always NULL).
+        updates["updated_at"] = self._now()
         set_clause = ", ".join(f"{k} = ?" for k in updates)
         if account_id:
             values = list(updates.values()) + [task_id, account_id]
@@ -237,24 +255,29 @@ class MaintenanceMixin:
             )
         await self._db.commit()
 
-    async def get_pending_tasks_by_miles(self) -> list[dict]:
-        """Get all pending tasks with due_miles set (across all accounts).
+    async def get_pending_tasks_by_miles(self, account_id: int) -> list[dict]:
+        """Get pending tasks with due_miles set for one account.
 
         Skips tasks with ``alerted_at IS NOT NULL`` — already-notified tasks
         stay in the result set for ``last_odometer`` progress updates, but
         the service layer filters those out before triggering notifications.
         Actually simpler: filter here so neither the progress UPDATE nor the
         notification fires twice for the same crossing.
+
+        ``account_id`` is required — without it the cron hot-path full-scans
+        every account's tasks every 6h.  The existing
+        ``(account_id, status, priority)`` index covers this query.
         """
         cur = await self._db.execute(
             "SELECT * FROM maintenance_tasks"
-            " WHERE status = 'pending' AND due_miles IS NOT NULL"
-            " AND alerted_at IS NULL",
+            " WHERE account_id = ? AND status = 'pending'"
+            " AND due_miles IS NOT NULL AND alerted_at IS NULL",
+            (account_id,),
         )
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
-    async def get_pending_tasks_by_engine_hours(self) -> list[dict]:
+    async def get_pending_tasks_by_engine_hours(self, account_id: int) -> list[dict]:
         """Engine-hours twin of ``get_pending_tasks_by_miles``.
 
         Mileage misses wear on trucks that run heavy idle (PTO, reefer,
@@ -265,8 +288,9 @@ class MaintenanceMixin:
         """
         cur = await self._db.execute(
             "SELECT * FROM maintenance_tasks"
-            " WHERE status = 'pending' AND due_engine_hours IS NOT NULL"
-            " AND alerted_at IS NULL",
+            " WHERE account_id = ? AND status = 'pending'"
+            " AND due_engine_hours IS NOT NULL AND alerted_at IS NULL",
+            (account_id,),
         )
         rows = await cur.fetchall()
         return [dict(r) for r in rows]

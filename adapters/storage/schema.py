@@ -112,6 +112,7 @@ async def create_tables(conn) -> None:
             status          TEXT    NOT NULL DEFAULT 'pending',
             created_by      BIGINT  NOT NULL,
             created_at      TEXT    NOT NULL,
+            updated_at      TEXT,
             completed_at    TEXT
         );
 

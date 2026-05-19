@@ -562,3 +562,118 @@ class TestStartup:
         finally:
             _cp._db = _saved_db
             infra.startup.tenant_registry = _saved_reg
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Tier 4 Phase 2 — pool refactor + RLS GUC isolation
+# ═══════════════════════════════════════════════════════════════════
+
+class TestPoolGucIsolation:
+    """Two parallel ``with_account`` blocks see isolated ``app.account_id``.
+
+    The whole point of the Tier 4 Phase 2 pool refactor: the old shared
+    single-connection design had a race where one task's
+    ``set_config('app.account_id', '1')`` could leak to another
+    concurrent task between awaits.  In the pool world, each task tree
+    pins its own connection via contextvars and the pool acquire-hook
+    stamps the GUC from a contextvar.
+
+    These tests deliberately interleave two tasks to confirm the leak
+    no longer happens.
+    """
+
+    async def test_parallel_with_account_no_leak(self, db):
+        """Two concurrent ``with_account`` blocks must not see each
+        other's GUC.
+
+        Without the refactor, task B's set_config could overwrite task
+        A's GUC mid-block.  With contextvars, each task sees only its
+        own.
+        """
+        async def read_account_id() -> str:
+            cur = await db._db.execute(
+                "SELECT current_setting('app.account_id', true) AS v"
+            )
+            row = await cur.fetchone()
+            return row["v"] or "" if row else ""
+
+        async def task(account_id: int, results: list) -> None:
+            # Set our own scope, await a few times to interleave with
+            # the other task, then verify our scope is still ours.
+            async with db.with_account(account_id):
+                await asyncio.sleep(0)  # yield to peer
+                v1 = await read_account_id()
+                await asyncio.sleep(0)
+                v2 = await read_account_id()
+                results.append((account_id, v1, v2))
+
+        # Note: under the legacy shared-conn design these two tasks
+        # would interleave their SET on the same connection and see
+        # each other's value.  Under the pool refactor, each task tree
+        # has its own contextvar and each ``execute()`` acquires its
+        # own conn that's stamped from that contextvar.
+        results: list[tuple[int, str, str]] = []
+        await asyncio.gather(
+            task(101, results),
+            task(202, results),
+            task(303, results),
+        )
+        # Each task should only ever see ITS OWN account_id.
+        for acct, v1, v2 in results:
+            assert v1 == str(acct), f"task {acct} saw v1={v1!r}"
+            assert v2 == str(acct), f"task {acct} saw v2={v2!r}"
+
+    async def test_transaction_pins_conn(self, db):
+        """``Database.transaction()`` reuses one connection across calls.
+
+        We can't observe asyncpg's connection identity directly through
+        the proxy, but we can prove it indirectly via session-scoped
+        state: a temp table created in the transaction must be visible
+        to a subsequent ``execute()`` in the same block (would NOT be
+        on a different connection — TEMP TABLES are session-local).
+
+        Use SELECT not INSERT here — the proxy's INSERT path auto-appends
+        ``RETURNING id`` which would error on a no-id table and abort the
+        transaction.  Unrelated to pinning.
+        """
+        async with db.transaction():
+            await db._db.execute(
+                "CREATE TEMPORARY TABLE _tier4_pin_check (v INTEGER) ON COMMIT DROP"
+            )
+            # Empty SELECT — proves the table is reachable on the same conn.
+            cur = await db._db.execute("SELECT COUNT(*) AS c FROM _tier4_pin_check")
+            row = await cur.fetchone()
+            assert row["c"] == 0, "TEMP TABLE not visible — pinning broken"
+
+    async def test_transaction_rolls_back_on_exception(self, seeded_db):
+        """``Database.transaction()`` rollback on exception leaves no
+        partial state behind."""
+        db = seeded_db["db"]
+        acct_id = seeded_db["account"].id
+
+        before_count_cur = await db._db.execute(
+            "SELECT COUNT(*) AS c FROM maintenance_tasks WHERE account_id = ?",
+            (acct_id,),
+        )
+        before = (await before_count_cur.fetchone())["c"]
+
+        with pytest.raises(RuntimeError):
+            async with db.transaction():
+                await db._db.execute(
+                    """INSERT INTO maintenance_tasks
+                       (account_id, vehicle_name, task_type, status,
+                        due_date, due_miles, created_by, created_at)
+                       VALUES (?, ?, 'oil_change', 'pending',
+                               '2099-01-01', 0, 1, '2026-01-01T00:00:00')""",
+                    (acct_id, "TIER4-TEST-TRUCK"),
+                )
+                raise RuntimeError("forced rollback")
+
+        after_count_cur = await db._db.execute(
+            "SELECT COUNT(*) AS c FROM maintenance_tasks WHERE account_id = ?",
+            (acct_id,),
+        )
+        after = (await after_count_cur.fetchone())["c"]
+        assert after == before, (
+            f"Rollback failed — count went from {before} to {after}"
+        )

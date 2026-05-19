@@ -40,6 +40,52 @@ def has_maintenance_access(role: str) -> bool:
 logger = logging.getLogger(__name__)
 
 
+async def fetch_current_telemetry_for_vehicle(
+    tenant_db,
+    account_id: int,
+    vehicle_name: str,
+) -> tuple[Optional[float], Optional[float]]:
+    """Look up the current odometer and engine-hours reading for a vehicle.
+
+    Used by ``add_maintenance_task`` callers (API route, bot wizard,
+    fault auto-create) to backfill ``last_odometer`` / ``last_engine_hours``
+    at task-creation time so the dashboard's progress bar shows up
+    immediately instead of waiting up to 6 hours for the next mileage
+    scheduler tick.
+
+    Returns ``(odometer_mi, engine_hours)`` from the ``vehicle_state``
+    warehouse row that matches ``vehicle_name`` exactly.  Both fields
+    are ``None`` when the truck isn't in the warehouse (no Samsara
+    telemetry, name mismatch, or device doesn't report odometer).
+
+    Best-effort: any read failure returns ``(None, None)`` rather than
+    propagating — task creation MUST NOT depend on the warehouse being
+    available.  The 6-h scheduler will eventually backfill if telemetry
+    arrives later.
+    """
+    if not vehicle_name:
+        return (None, None)
+    try:
+        rows = await tenant_db.get_vehicle_state(
+            account_id, vehicle_nums=[vehicle_name],
+        )
+    except Exception as e:
+        logger.debug(
+            "fetch_current_telemetry_for_vehicle(acct=%d, name=%r) failed: %s",
+            account_id, vehicle_name, e,
+        )
+        return (None, None)
+    if not rows:
+        return (None, None)
+    row = rows[0]
+    odo = row.get("odometer_mi")
+    hrs = row.get("engine_hours")
+    return (
+        float(odo) if isinstance(odo, (int, float)) else None,
+        float(hrs) if isinstance(hrs, (int, float)) else None,
+    )
+
+
 async def mark_overdue_tasks_by_date(account_id: int, tenant_db) -> list[dict]:
     """Mark all pending tasks whose due_date has passed as 'overdue'.
 
@@ -83,7 +129,7 @@ async def mark_overdue_tasks_by_mileage(
     Returns the list of tasks newly marked overdue so the caller can
     push a notification.
     """
-    tasks = await tenant_db.get_pending_tasks_by_miles()
+    tasks = await tenant_db.get_pending_tasks_by_miles(account_id)
     if not tasks:
         return []
 
@@ -157,7 +203,7 @@ async def mark_overdue_tasks_by_engine_hours(
     failures — if engine_hours readings are stale for some accounts, we
     don't poison the mileage path's accuracy.
     """
-    tasks = await tenant_db.get_pending_tasks_by_engine_hours()
+    tasks = await tenant_db.get_pending_tasks_by_engine_hours(account_id)
     if not tasks:
         return []
 

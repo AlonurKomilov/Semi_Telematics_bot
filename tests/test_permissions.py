@@ -207,3 +207,54 @@ class TestPrivilegeEscalation:
                 assert not getattr(perms, field_name), (
                     f"Driver should not have fleet-wide {field_name}"
                 )
+
+
+
+class TestPermSsotDriftDetection:
+    """Guard against drift between the canonical FeatureSet and the
+    dashboard's Role Permissions admin UI.
+
+    Every flag in ``FeatureSet`` must be customizable from the
+    dashboard's RolePermissions.tsx ``PERM_GROUPS`` constant.  When a
+    new flag is added to ``permissions.py`` but the admin UI is not
+    updated, this test fails — preventing the regression that was
+    found 2026-05-19 (4 flags were defined but invisible in the UI).
+
+    A flag is considered "exposed" when its string name appears as a
+    quoted literal inside the PERM_GROUPS array of RolePermissions.tsx.
+    This is a substring match rather than an AST parse so the test
+    works against the .tsx source without a TS toolchain.
+    """
+
+    def test_every_flag_appears_in_dashboard_perm_groups(self):
+        import os
+        import re
+        from capabilities.iam.permissions import FeatureSet
+
+        repo_root = os.path.dirname(os.path.dirname(__file__))
+        tsx_path = os.path.join(
+            repo_root,
+            "interfaces/dashboard/src/pages/admin/RolePermissions.tsx",
+        )
+        with open(tsx_path) as f:
+            content = f.read()
+
+        # Extract just the PERM_GROUPS block so we don't accidentally
+        # match a flag that's referenced elsewhere in the file
+        # (e.g. an isolated TypeScript type reference).
+        block = re.search(
+            r"const PERM_GROUPS[^=]*=\s*\[(.+?)\];\s*\n",
+            content,
+            re.DOTALL,
+        )
+        assert block, "Could not locate PERM_GROUPS in RolePermissions.tsx"
+        groups_src = block.group(1)
+
+        flag_names = [f.name for f in FeatureSet.__dataclass_fields__.values()]
+        missing = [n for n in flag_names if f"'{n}'" not in groups_src and f'"{n}"' not in groups_src]
+
+        assert not missing, (
+            f"FeatureSet flags missing from dashboard's PERM_GROUPS: {sorted(missing)}\n"
+            "Add them to interfaces/dashboard/src/pages/admin/RolePermissions.tsx "
+            "so admins can customize them per account."
+        )

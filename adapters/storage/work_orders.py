@@ -211,6 +211,29 @@ class WorkOrdersMixin:
         )
         return [dict(r) for r in await cur.fetchall()]
 
+    async def list_work_order_parts_bulk(
+        self, work_order_ids: list[int],
+    ) -> dict[int, list[dict]]:
+        """Bulk variant — one query returning ``{work_order_id: [parts...]}``.
+
+        Replaces the N+1 pattern where ``dot_binder`` called
+        ``list_work_order_parts(wo_id)`` inside a per-work-order loop.
+        """
+        if not work_order_ids:
+            return {}
+        placeholders = ",".join("?" * len(work_order_ids))
+        cur = await self._db.execute(
+            f"SELECT * FROM work_order_parts "
+            f"WHERE work_order_id IN ({placeholders}) "
+            f"ORDER BY work_order_id, id",
+            tuple(work_order_ids),
+        )
+        out: dict[int, list[dict]] = {wo_id: [] for wo_id in work_order_ids}
+        for r in await cur.fetchall():
+            row = dict(r)
+            out.setdefault(int(row["work_order_id"]), []).append(row)
+        return out
+
     async def delete_work_order_part(self, part_id: int) -> bool:
         cur = await self._db.execute(
             "DELETE FROM work_order_parts WHERE id = ?", (part_id,),
@@ -258,6 +281,28 @@ class WorkOrdersMixin:
             (work_order_id,),
         )
         return [dict(r) for r in await cur.fetchall()]
+
+    async def count_work_order_attachments_bulk(
+        self, work_order_ids: list[int],
+    ) -> dict[int, int]:
+        """Bulk count by work_order_id — one grouped query replaces N
+        per-WO ``list_work_order_attachments`` calls when the caller
+        only needs the count (DOT-binder summary)."""
+        if not work_order_ids:
+            return {}
+        placeholders = ",".join("?" * len(work_order_ids))
+        cur = await self._db.execute(
+            f"SELECT work_order_id, COUNT(*) AS c "
+            f"FROM work_order_attachments "
+            f"WHERE work_order_id IN ({placeholders}) "
+            f"GROUP BY work_order_id",
+            tuple(work_order_ids),
+        )
+        out: dict[int, int] = {wo_id: 0 for wo_id in work_order_ids}
+        for r in await cur.fetchall():
+            row = dict(r)
+            out[int(row["work_order_id"])] = int(row["c"])
+        return out
 
     async def get_work_order_attachment(
         self, attachment_id: int,

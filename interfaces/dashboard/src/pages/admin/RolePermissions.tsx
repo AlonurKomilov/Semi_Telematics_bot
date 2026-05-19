@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Shield } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useRoleView } from '../../context/RoleViewContext';
+import { useAuth } from '../../context/AuthContext';
 import { PageHeader, CardSkeleton } from '../../components/shell';
 
 const ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'driver'] as const;
@@ -11,9 +12,9 @@ const ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'driver'] as c
 const ROLE_LABELS: Record<string, string> = {
   owner: 'Owner',
   admin: 'Admin',
-  fleet: 'Fleet Manager',
-  safety: 'Safety Manager',
-  dispatcher: 'Dispatcher',
+  fleet: 'Fleet',
+  safety: 'Safety',
+  dispatcher: 'Dispatch',
   driver: 'Driver',
 };
 
@@ -47,73 +48,95 @@ const SCOPE_OPTIONS: { value: ScopeValue; label: string; active: string }[] = [
   { value: 'all', label: 'All', active: 'bg-green-600 text-white' },
 ];
 
+// PERM_GROUPS — admin-facing organization of permission flags.
+//
+// Structure deliberately mirrors the dashboard sidebar so an admin can
+// jump from "I see this in the nav" to "this is where I customize it"
+// without re-learning the layout.  Until 2026-05-19 the grouping had
+// no relationship to the sidebar: "Core" was a junk drawer, "Fleet"
+// held reports, "Safety & Compliance" held cost reports, and feature-
+// group names collided with role names ("Fleet" group vs "Fleet
+// Manager" role column).  The five groups below match the five
+// sidebar sections; flag names themselves are unchanged so backend
+// enforcement keeps working.
 const PERM_GROUPS: PermGroup[] = [
   {
-    title: 'Core',
-    icon: '📊',
-    flags: [
-      { allKey: 'can_vehicle_all', ownKey: 'can_vehicle_own', label: 'Vehicles', scoped: true },
-      { allKey: 'can_alerts_all', ownKey: 'can_alerts_own', label: 'Alerts', scoped: true },
-      { allKey: 'can_geofence_all', ownKey: 'can_geofence_own', label: 'Geofences', scoped: true },
-      { key: 'can_digest', label: 'Report Subscriptions' },
-    ],
-  },
-  {
-    title: 'Fleet',
+    // Fleet Operations — the day-to-day operational features:
+    // where vehicles are, where they go, what's wrong with them.
+    // Absorbs the old Dispatch group; the old "Fleet" / "Dispatch"
+    // split tracked the role boundary, not the feature boundary.
+    title: 'Fleet Operations',
     icon: '🚛',
     flags: [
-      { key: 'can_faults', label: 'Faults Report' },
-      { key: 'can_critical', label: 'Critical Faults' },
-      { key: 'can_health', label: 'Health Report' },
-      { key: 'can_efficiency', label: 'Efficiency Report' },
-      { key: 'can_fuel', label: 'Fuel Report' },
-      { allKey: 'can_maintenance_all', ownKey: 'can_maintenance_own', label: 'Maintenance', scoped: true },
-      { key: 'can_rolling_stopped', label: 'Rolling / Stopped' },
-    ],
-  },
-  {
-    title: 'Dispatch',
-    icon: '🗺️',
-    flags: [
       { allKey: 'can_location_map', ownKey: 'can_location_own', label: 'Live Map', scoped: true },
-      { allKey: 'can_route_all', ownKey: 'can_route_own', label: 'Routes', scoped: true },
+      { allKey: 'can_vehicle_all',  ownKey: 'can_vehicle_own',  label: 'Vehicles', scoped: true },
+      { allKey: 'can_route_all',    ownKey: 'can_route_own',    label: 'Routes', scoped: true },
+      { allKey: 'can_geofence_all', ownKey: 'can_geofence_own', label: 'Geofences', scoped: true },
+      { allKey: 'can_maintenance_all', ownKey: 'can_maintenance_own', label: 'Maintenance & Work Orders', scoped: true },
+      { key: 'can_manage_poi_layers', label: 'Manage POI Layers' },
+      { key: 'can_rolling_stopped', label: 'Vehicle Movement Status' },
     ],
   },
   {
+    // Safety & Compliance — driver scoring, safety events, alerts.
+    // ``can_alerts_*`` lived under Core previously; it's a safety
+    // feature in the dashboard sidebar (/safety/alerts) so it belongs
+    // here.
     title: 'Safety & Compliance',
     icon: '🛡️',
     flags: [
-      { allKey: 'can_scorecard_all', ownKey: 'can_scorecard_own', label: 'Scorecards', scoped: true },
-      { allKey: 'can_events_all', ownKey: 'can_events_own', label: 'Safety Events', scoped: true },
-      { allKey: 'can_risk_report_all', ownKey: 'can_risk_report_own', label: 'Stakeholder Risk Summary', scoped: true },
-      { key: 'can_fuel_cost', label: 'Fuel Costs' },
+      { allKey: 'can_scorecard_all', ownKey: 'can_scorecard_own', label: 'Driver Scorecards', scoped: true },
+      { allKey: 'can_events_all',    ownKey: 'can_events_own',    label: 'Safety Events', scoped: true },
+      { allKey: 'can_alerts_all',    ownKey: 'can_alerts_own',    label: 'Alerts', scoped: true },
+    ],
+  },
+  {
+    // Reports & Costs — anything that's "viewing aggregated data".
+    // Pulled the report flags out of Fleet (faults/health/efficiency/
+    // fuel), the cost flags out of Safety (fuel_cost, cost_per_mile),
+    // and Risk Summary from Safety — they're all reports.
+    title: 'Reports & Costs',
+    icon: '📊',
+    flags: [
+      { key: 'can_faults',     label: 'Faults Report' },
+      { key: 'can_critical',   label: 'Critical Faults Report' },
+      { key: 'can_health',     label: 'Health Report' },
+      { key: 'can_efficiency', label: 'Efficiency Report' },
+      { key: 'can_fuel',       label: 'Fuel Report' },
+      { allKey: 'can_risk_report_all', ownKey: 'can_risk_report_own', label: 'Risk Summary Report', scoped: true },
+      { key: 'can_digest',       label: 'Auto-Report Subscriptions' },
+      { key: 'can_fuel_cost',    label: 'Fuel Costs' },
       { key: 'can_cost_per_mile', label: 'Cost per Mile' },
     ],
   },
   {
-    title: 'Admin',
+    // Workforce — driver-facing identity and HR-adjacent features.
+    // Absorbs the previous standalone "Coaching" and "Payroll" groups
+    // because they share a Workforce subject area in the dashboard
+    // sidebar (/workforce/drivers, /coaching, /payroll).
+    title: 'Workforce',
+    icon: '🪪',
+    flags: [
+      { key: 'can_manage_driver_docs', label: 'Manage Driver Documents' },
+      { key: 'can_driver_docs_own',    label: 'View Own Driver Documents' },
+      { key: 'can_coaching_admin',     label: 'Manage Coaching Rules & Assignments' },
+      { key: 'can_coaching_view_own',  label: 'View & Acknowledge Own Coaching' },
+      { key: 'can_payroll_admin',      label: 'Manage Bonus Rules & Payroll Runs' },
+      { key: 'can_payroll_view_own',   label: 'View Own Paystubs' },
+    ],
+  },
+  {
+    // Administration — account-level controls.  Renamed from "Admin"
+    // to avoid collision with the Admin ROLE column header at the top
+    // of the page.
+    title: 'Administration',
     icon: '👥',
     flags: [
-      { key: 'can_manage_account', label: 'Account Settings' },
-      { key: 'can_manage_users', label: 'Manage Users' },
+      { key: 'can_manage_account',   label: 'Account Settings' },
+      { key: 'can_manage_users',     label: 'Manage Users' },
       { key: 'can_manage_companies', label: 'Manage Companies' },
-      { key: 'can_invite', label: 'Send Invites' },
-    ],
-  },
-  {
-    title: 'Payroll',
-    icon: '💵',
-    flags: [
-      { key: 'can_payroll_admin', label: 'Manage Bonus Rules & Runs' },
-      { key: 'can_payroll_view_own', label: 'View Own Paystubs' },
-    ],
-  },
-  {
-    title: 'Coaching',
-    icon: '🎓',
-    flags: [
-      { key: 'can_coaching_admin', label: 'Manage Coaching Rules & Assignments' },
-      { key: 'can_coaching_view_own', label: 'View & Acknowledge Own Coaching' },
+      { key: 'can_invite',           label: 'Send Invites' },
+      { key: 'can_manage_billing',   label: 'Manage Billing & Subscription' },
     ],
   },
 ];
@@ -139,6 +162,7 @@ interface OverridesData {
 export default function RolePermissions() {
   const { t } = useTranslation();
   const { refreshPermissions } = useRoleView();
+  const { refreshUser } = useAuth();
   const qc = useQueryClient();
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -265,6 +289,11 @@ export default function RolePermissions() {
       setSuccess(label);
       await load();
       refreshPermissions();
+      // Force the saving admin's OWN /user/me to refresh so their
+      // sidebar/route guards reflect the change immediately, without
+      // waiting for the next tab-focus event.  Other already-logged-in
+      // users on this account pick up the change on their next focus.
+      try { await refreshUser(); } catch { /* best-effort */ }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save');
     } finally {

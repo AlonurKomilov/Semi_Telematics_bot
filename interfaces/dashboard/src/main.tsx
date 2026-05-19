@@ -48,7 +48,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
-          <BrowserRouter basename="/dashboard">
+          <BrowserRouter basename={import.meta.env.VITE_ROUTER_BASE ?? ''}>
             <AuthProvider>
               <RoleViewProvider>
                 <App />

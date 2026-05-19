@@ -23,6 +23,10 @@ interface AuthContextValue {
   loginWithEmail: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   registerWithEmail: (email: string, password: string, displayName: string, inviteCode: string) => Promise<void>;
   logout: () => void;
+  /** Force re-fetch of /user/me — used by the Role Permissions admin
+   * page after a save so the saving admin's own UI updates without
+   * waiting for the next focus-triggered refresh. */
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -90,6 +94,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { fetchUser(); }, [fetchUser]);
 
+  // Re-fetch /user/me on window focus so permission changes propagate
+  // within seconds.  Without this, an admin tightening a permission via
+  // the Role Permissions page would take up to the JWT lifetime (~30
+  // days) to affect already-logged-in dashboard tabs.  Focus is the
+  // natural trigger — every time a user comes back to the tab we get a
+  // fresh permission read.  Cost: one /user/me HTTP request per tab
+  // focus event.
+  useEffect(() => {
+    const onFocus = () => {
+      if (getToken()) fetchUser();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [fetchUser]);
+
   const loginWithTelegram = useCallback(async (tgData: TelegramLoginData, rememberMe = false) => {
     const res = await apiJSON<AuthResponse>('/auth/telegram-login', {
       method: 'POST',
@@ -125,7 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, loginWithTelegram, loginWithEmail, registerWithEmail, logout }}>
+    <AuthContext.Provider value={{ user, loading, loginWithTelegram, loginWithEmail, registerWithEmail, logout, refreshUser: fetchUser }}>
       {children}
     </AuthContext.Provider>
   );

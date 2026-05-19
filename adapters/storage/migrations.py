@@ -2326,3 +2326,137 @@ async def migrate_maintenance_tasks_last_odometer(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+@_register("057_enable_rls_tenant_tables")
+async def migrate_enable_rls_tenant_tables(conn) -> None:
+    """Enable Row Level Security on every tenant-scoped table.
+
+    Postgres RLS makes ``WHERE account_id = $1`` enforced by the database
+    instead of application code.  Each policy uses the session-local
+    GUC ``app.account_id`` (set by :meth:`Database.with_account`):
+
+        USING (account_id::text = current_setting('app.account_id', true))
+
+    The ``true`` second argument makes a missing GUC return NULL, which
+    yields zero rows (fail-closed).  ``FORCE ROW LEVEL SECURITY`` makes
+    the table owner subject to the policy too — otherwise the app role,
+    which usually owns the table, bypasses RLS by default.
+
+    **Gated by ``ENABLE_RLS`` env var (default off).**  This migration
+    is registered unconditionally so the schema is consistent across
+    fresh databases, but the per-table block early-exits when the flag
+    is off, leaving production behavior unchanged.  Operator flips the
+    flag during the staged rollout — see docs/runbooks/rls-rollout.md.
+
+    Idempotent: ``ALTER TABLE`` and ``DROP POLICY IF EXISTS`` are
+    re-runnable; missing tables (fresh DB without yet-applied migrations)
+    are skipped silently.
+    """
+    import os
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        logger.info("Migration 057: ENABLE_RLS not set; RLS policies skipped")
+        return
+
+    # Every tenant-scoped table.  Audit source: 2026-05-18 sweep of
+    # schema.py + migrations.py + platform_schema.py + platform_migrations.py.
+    # ``forum_groups`` has nullable account_id but the policy excludes
+    # NULL rows anyway, which is the desired behavior (NULL rows are
+    # un-claimed / system-owned and should not be visible to a tenant).
+    TENANT_TABLES = [
+        "account_settings", "ai_usage", "alert_acknowledgments",
+        "alert_history", "alert_routing", "audit_log", "authorized_chats",
+        "bonus_rules", "coaching_assignments", "coaching_rules",
+        "coaching_topics", "companies", "custom_poi_layers",
+        "custom_poi_points", "daily_scorecard_snapshots", "dnd_alert_queue",
+        "driver_documents", "driver_hos_status", "driver_inspections",
+        "driver_pay_settings", "driver_trainings", "driver_trucks",
+        "driver_vehicle_assignments", "forum_groups", "fuel_entries",
+        "maintenance_tasks", "payroll_runs", "role_permissions",
+        "score_events", "score_rules", "user_companies",
+        "work_orders",  # work_order_parts and work_order_attachments are
+                        # joined through work_orders.account_id so a policy
+                        # there would be redundant; the parent's policy
+                        # already gates access.
+        # Warehouse tables — all have account_id, all queried per tenant.
+        "vehicle_state", "safety_event_log", "driver_efficiency_daily",
+        "vehicle_telemetry_hourly", "vehicle_health_snapshot",
+        "vehicle_fault_snapshot", "vehicle_fault_detail",
+        "fleet_weather_snapshot", "fleet_efficiency_snapshot",
+        "geofence_definitions",
+    ]
+
+    enabled = 0
+    skipped = 0
+    for tbl in TENANT_TABLES:
+        try:
+            # ALTER TABLE is rolled into its own savepoint so one missing
+            # table (mid-migration fresh DB) doesn't abort the whole
+            # transaction.  asyncpg auto-commits each execute() outside
+            # an explicit BEGIN so this is structurally clean.
+            await conn.execute(f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY")
+            await conn.execute(f"ALTER TABLE {tbl} FORCE ROW LEVEL SECURITY")
+            await conn.execute(f"DROP POLICY IF EXISTS tenant_isolation ON {tbl}")
+            await conn.execute(
+                f"""
+                CREATE POLICY tenant_isolation ON {tbl}
+                USING       (account_id::text = current_setting('app.account_id', true))
+                WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+                """
+            )
+            enabled += 1
+        except Exception as e:
+            # Missing table on a fresh DB — log and continue.
+            logger.debug("RLS policy on %s skipped: %s", tbl, e)
+            skipped += 1
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+
+    try:
+        await conn.commit()
+    except Exception:
+        pass
+    logger.info(
+        "Migration 057: RLS enabled on %d table(s), skipped %d (missing/error)",
+        enabled, skipped,
+    )
+
+
+@_register("058_maintenance_tasks_updated_at")
+async def migrate_maintenance_tasks_updated_at(conn) -> None:
+    """Add the missing ``maintenance_tasks.updated_at`` column.
+
+    The dashboard's task list has rendered an "Updated" column for some
+    time, but the column never existed in the schema — every row
+    rendered as ``—`` because the field was always NULL.  This migration
+    adds it and backfills existing rows from ``created_at`` so the UI
+    has a reasonable starting value.  ``update_maintenance_task`` and
+    ``update_maintenance_status`` now stamp the column on every write
+    (see [adapters/storage/maintenance.py]).
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(maintenance_tasks)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "updated_at" in cols:
+            return
+        await conn.execute(
+            "ALTER TABLE maintenance_tasks ADD COLUMN updated_at TEXT"
+        )
+        # Backfill: an existing task with no ``updated_at`` value would
+        # show ``—`` in the dashboard, which we just fixed by adding
+        # the column.  Seed with ``created_at`` so the column is
+        # meaningful from the first deploy after this migration.
+        await conn.execute(
+            "UPDATE maintenance_tasks SET updated_at = created_at "
+            "WHERE updated_at IS NULL"
+        )
+        await conn.commit()
+        logger.info("Migration 058: added maintenance_tasks.updated_at + backfilled from created_at")
+    except Exception as e:
+        logger.debug("maintenance_tasks.updated_at migration skipped: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass

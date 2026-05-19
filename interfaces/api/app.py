@@ -40,9 +40,16 @@ from interfaces.api.rate_limit import limiter
 logger = logging.getLogger(__name__)
 
 # ── Allowed CORS origins ─────────────────────────────────────────
+# The dedicated subdomains (dash/api/app/bot) replace the apex /dashboard
+# /api /miniapp /webhook paths.  Apex is kept in the allowlist so legacy
+# bookmarks still authenticate during the 301-redirect window.
 _ALLOWED_ORIGINS = [
     "https://4truck.us",
     "https://www.4truck.us",
+    "https://dash.4truck.us",
+    "https://api.4truck.us",
+    "https://app.4truck.us",
+    "https://bot.4truck.us",
     "https://web.telegram.org",
     "https://weba.telegram.org",
     "https://webk.telegram.org",
@@ -192,7 +199,11 @@ def create_api() -> FastAPI:
 
     # Rate limiter
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    # slowapi's handler signature is narrower than Starlette's generic
+    # ExceptionHandler (RateLimitExceeded vs the broader Exception base).
+    # The runtime contract is fine — slowapi only fires this for its own
+    # exception type — so silence the Pylance arg-type complaint here.
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
     # Global exception handler — structured JSON for unhandled errors
     @app.exception_handler(Exception)
@@ -282,11 +293,24 @@ def create_api() -> FastAPI:
     from infra import observability as _obs
     _obs.init_observability(app)
 
-    # Public legal pages — required by Google OAuth verification.
-    # Served at the apex so the URLs (https://4truck.us/privacy,
-    # /terms) appear unchanged in the OAuth consent screen and from
-    # external links. Nginx proxies these two paths to the API.
-    _legal_dir = os.path.join(os.path.dirname(__file__), "static", "legal")
+    # Public apex pages — landing, privacy, terms.
+    # Google OAuth verification reviewers visit the app home page,
+    # privacy policy, and terms URLs declared in the OAuth consent
+    # screen.  All three must serve real, human-readable content (a
+    # 404 at the apex is an automatic verification rejection).  Nginx
+    # proxies ``/``, ``/privacy``, and ``/terms`` to FastAPI which
+    # serves the static HTML below.
+    _static_dir = os.path.join(os.path.dirname(__file__), "static")
+    _landing_dir = os.path.join(_static_dir, "landing")
+    _legal_dir = os.path.join(_static_dir, "legal")
+
+    @app.get("/", include_in_schema=False)
+    async def landing_page():
+        return FileResponse(
+            os.path.join(_landing_dir, "index.html"),
+            media_type="text/html",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
 
     @app.get("/privacy", include_in_schema=False)
     async def privacy_policy():

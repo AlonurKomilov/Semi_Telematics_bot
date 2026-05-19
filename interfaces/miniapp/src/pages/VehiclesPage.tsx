@@ -15,7 +15,7 @@
  *  - Fault count color scales: orange ≥1, red ≥3
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Placeholder } from '@telegram-apps/telegram-ui';
 import {
@@ -104,6 +104,29 @@ export function VehiclesPage({ active, onGoToMap, timezone }: Props) {
   const [maintSheetOpen, setMaintSheetOpen] = useState(false);
 
   const debouncedSearch = useDebouncedValue(search, 200);
+
+  // Memo placed above all early returns so the hook is called every
+  // render in the same order (Rules of Hooks).  Filter + sort happens
+  // once per (vehicles, debouncedSearch, sortOrder) change instead of
+  // re-running on every keystroke / re-render.
+  const filtered = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase();
+    const source = q
+      ? vehicles.filter(v =>
+          v.name.toLowerCase().includes(q) ||
+          (v.company ?? '').toLowerCase().includes(q) ||
+          (v.address ?? '').toLowerCase().includes(q),
+        )
+      : [...vehicles];
+    return source.sort((a, b) => {
+      if (sortOrder === 'name')   return a.name.localeCompare(b.name);
+      if (sortOrder === 'faults') return (b.fault_count ?? 0) - (a.fault_count ?? 0);
+      // 'status': moving → idle → stopped; alphabetical within group
+      const ra = STATUS_RANK[vehicleStatus(a)] ?? 3;
+      const rb = STATUS_RANK[vehicleStatus(b)] ?? 3;
+      return ra !== rb ? ra - rb : a.name.localeCompare(b.name);
+    });
+  }, [vehicles, debouncedSearch, sortOrder]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -264,23 +287,6 @@ export function VehiclesPage({ active, onGoToMap, timezone }: Props) {
   }
 
   // ── Multi-vehicle fleet list ───────────────────────────────────────────
-  const q = debouncedSearch.trim().toLowerCase();
-  const filtered = (q
-    ? vehicles.filter(v =>
-        v.name.toLowerCase().includes(q) ||
-        (v.company ?? '').toLowerCase().includes(q) ||
-        (v.address ?? '').toLowerCase().includes(q),
-      )
-    : [...vehicles]
-  ).sort((a, b) => {
-    if (sortOrder === 'name')   return a.name.localeCompare(b.name);
-    if (sortOrder === 'faults') return (b.fault_count ?? 0) - (a.fault_count ?? 0);
-    // 'status': moving → idle → stopped; alphabetical within group
-    const ra = STATUS_RANK[vehicleStatus(a)] ?? 3;
-    const rb = STATUS_RANK[vehicleStatus(b)] ?? 3;
-    return ra !== rb ? ra - rb : a.name.localeCompare(b.name);
-  });
-
   return (
     <div ref={ptr.ref} style={{ overflowY: 'auto', height: '100%' }}>
       <div className={`ptr ${ptr.pulling > 0 || ptr.refreshing ? 'ptr--active' : ''}`}>

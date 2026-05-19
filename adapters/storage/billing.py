@@ -38,32 +38,38 @@ class BillingMixin:
         return dict(row)
 
     async def get_or_create_subscription(self, account_id: int, tier: str = "free") -> dict:
-        """Return existing subscription or create a stub one for the account."""
-        sub = await self.get_subscription(account_id)
-        if sub:
-            return sub
-        now = datetime.now(timezone.utc).isoformat()
-        await self._db.execute(
-            """
-            INSERT INTO subscriptions
-                (account_id, tier, status,
-                 base_vehicles, monthly_base_usd, extra_vehicle_cents,
-                 created_at, updated_at)
-            VALUES (?, ?, 'active', ?, ?, ?, ?, ?)
-            ON CONFLICT(account_id) DO NOTHING
-            """,
-            (
-                account_id,
-                tier,
-                _TIER_BASE_VEHICLES.get(tier, 10),
-                _TIER_MONTHLY_BASE.get(tier, 0),
-                _TIER_EXTRA_CENTS.get(tier, 0),
-                now,
-                now,
-            ),
-        )
-        await self._db.commit()
-        return await self.get_subscription(account_id)
+        """Return existing subscription or create a stub one for the account.
+
+        Read-modify-write wrapped in a transaction so concurrent callers
+        on a pooled connection layout cannot both pass the SELECT-then-INSERT
+        gap.  ON CONFLICT DO NOTHING covers the unique-key race; the
+        transaction ensures the final SELECT sees the row that won.
+        """
+        async with self.transaction():
+            sub = await self.get_subscription(account_id)
+            if sub:
+                return sub
+            now = datetime.now(timezone.utc).isoformat()
+            await self._db.execute(
+                """
+                INSERT INTO subscriptions
+                    (account_id, tier, status,
+                     base_vehicles, monthly_base_usd, extra_vehicle_cents,
+                     created_at, updated_at)
+                VALUES (?, ?, 'active', ?, ?, ?, ?, ?)
+                ON CONFLICT(account_id) DO NOTHING
+                """,
+                (
+                    account_id,
+                    tier,
+                    _TIER_BASE_VEHICLES.get(tier, 10),
+                    _TIER_MONTHLY_BASE.get(tier, 0),
+                    _TIER_EXTRA_CENTS.get(tier, 0),
+                    now,
+                    now,
+                ),
+            )
+            return await self.get_subscription(account_id)
 
     async def update_subscription(self, account_id: int, **fields) -> None:
         """Update arbitrary fields on a subscription row.

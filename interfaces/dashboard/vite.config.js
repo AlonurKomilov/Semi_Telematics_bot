@@ -9,7 +9,11 @@ export default defineConfig({
       '@': path.resolve(path.dirname(new URL(import.meta.url).pathname), './src'),
     },
   },
-  base: '/dashboard/',
+  // base + router are now served at site root for the dedicated
+  // dash.4truck.us subdomain.  Legacy apex paths (4truck.us/dashboard/*)
+  // are 301-redirected by nginx so existing bookmarks still resolve.
+  // Override via VITE_BASE_PATH for alternate deployments.
+  base: process.env.VITE_BASE_PATH ?? '/',
   build: {
     outDir: 'dist',
     emptyOutDir: true,

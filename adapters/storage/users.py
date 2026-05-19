@@ -274,15 +274,43 @@ class UsersMixin:
         active_companies = await self.count_all_companies(active_only=True)
         alert_subs = await self.get_all_alert_subscribers()
 
-        # Per-account breakdown
+        # Per-account breakdown.  Two bulk queries replace the previous
+        # N+1 (one users + one companies query per account).  We group
+        # in Python by account_id; row count stays the same but the
+        # round-trip cost collapses to 2 regardless of fleet size.
         account_details = []
+        active_ids = [a.id for a in active_accounts]
+        if active_ids:
+            placeholders = ",".join("?" * len(active_ids))
+            cur_u = await self._db.execute(
+                f"SELECT * FROM users "
+                f"WHERE account_id IN ({placeholders}) AND is_active = 1 "
+                f"ORDER BY account_id, role, created_at",
+                tuple(active_ids),
+            )
+            users_by_acct: dict[int, list] = {aid: [] for aid in active_ids}
+            for r in await cur_u.fetchall():
+                u = self._row_to_user(r)
+                users_by_acct.setdefault(u.account_id, []).append(u)
+
+            cur_c = await self._db.execute(
+                f"SELECT * FROM companies "
+                f"WHERE account_id IN ({placeholders}) AND is_active = 1 "
+                f"ORDER BY account_id, code",
+                tuple(active_ids),
+            )
+            companies_by_acct: dict[int, list] = {aid: [] for aid in active_ids}
+            for r in await cur_c.fetchall():
+                co = self._row_to_company(r)
+                companies_by_acct.setdefault(co.account_id, []).append(co)
+        else:
+            users_by_acct, companies_by_acct = {}, {}
+
         for acct in active_accounts:
-            users = await self.list_account_users(acct.id)
-            companies = await self.get_account_companies(acct.id)
             account_details.append({
-                "account": acct,
-                "users": users,
-                "companies": companies,
+                "account":   acct,
+                "users":     users_by_acct.get(acct.id, []),
+                "companies": companies_by_acct.get(acct.id, []),
             })
 
         return {

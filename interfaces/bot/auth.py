@@ -137,6 +137,22 @@ def _require_registered(func):
 
         context.user_data["_db_user"] = user
 
+        # Prime the per-account permissions cache + bind it to this
+        # task's contextvar so downstream sync ``can(user.role, ...)``
+        # calls honor per-account overrides set via the dashboard's
+        # Role Permissions admin page.  Without this, the bot would
+        # silently read only the Python ROLE_PERMISSIONS defaults and
+        # ignore admin customizations.  Cheap on cache hit; awaits a
+        # single DB read on first miss per (account, role) tuple.
+        try:
+            from capabilities.iam.permissions import prime_account_permissions
+            await prime_account_permissions(user.account_id, user.role)
+        except Exception:
+            # Best-effort: a DB hiccup here shouldn't block the handler;
+            # ``can()`` falls back to the Python defaults exactly like
+            # before this priming was added.
+            pass
+
         # Set per-request ContextVar so formatters/reports see the right
         # company display names and org IDs for this user's account.
         tenant = await get_tenant_db(user.account_id)

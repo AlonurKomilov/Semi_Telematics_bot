@@ -25,6 +25,7 @@ from interfaces.api.deps import (
     filter_by_allowed_companies,
     filter_by_assigned_trucks,
 )
+from adapters.storage import Role
 from capabilities.iam.permissions import can
 from capabilities.vehicles.service import get_fleet_overview as _svc_fleet_overview
 from capabilities.telemetry.service import get_fleet_weather as _svc_fleet_weather
@@ -100,7 +101,10 @@ async def overview_stats(
 ):
     """Aggregated fleet stats for the overview page (role-aware)."""
     account_id = user["account_id"]
-    role = user.get("role", "driver")
+    # JWT payloads store role as a string; coerce to the str-backed enum so
+    # type-checkers see a real Role and downstream ``can()`` calls type-check
+    # against their declared signature.
+    role = Role(user.get("role", "driver"))
 
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
@@ -111,7 +115,7 @@ async def overview_stats(
     # Skip the role-gated calls so a driver doesn't open three connections
     # only to discard the results.
     fetch_alerts = (
-        role == "driver"
+        role == Role.DRIVER
         or can(role, "can_alerts_all")
         or can(role, "can_alerts_own")
     )
@@ -126,7 +130,7 @@ async def overview_stats(
     )
     overview = filter_by_allowed_companies(overview, allowed)
 
-    if role == "driver":
+    if role == Role.DRIVER:
         trucks = await get_user_vehicle_nums(user)
         truck_num = trucks[0] if trucks else None
         my_truck = None

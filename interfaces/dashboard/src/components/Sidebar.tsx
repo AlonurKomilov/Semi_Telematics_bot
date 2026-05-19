@@ -9,6 +9,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useRoleView } from '../context/RoleViewContext';
+import { PersonaSelector } from './PersonaSelector';
 import type { Permissions } from '../types';
 
 // NavItem labels are i18n keys looked up at render time with t().
@@ -114,10 +116,13 @@ const NAV_GROUPS: NavGroup[] = [
 export default function Sidebar() {
   const { user } = useAuth();
   const { t } = useTranslation();
-  const perms = user?.permissions ?? ({} as Partial<Permissions>);
-
-  const hasAny = (...flags: string[]) =>
-    flags.some((f) => !!perms[f as keyof Permissions]);
+  // ``viewHasAny`` is the active-persona-aware permission check from
+  // RoleViewContext.  For non-switchable roles (Fleet/Safety/Dispatcher/
+  // Driver) it falls back to the user's own permissions.  For Owner/
+  // Admin previewing as another role, it uses that role's perm set so
+  // the sidebar reflects what the previewed persona would see — no
+  // bouncing back to "but they're Owner so show everything".
+  const { viewHasAny } = useRoleView();
 
   const isFeatureVisible = (item: NavItem) => {
     if (item.path === '/payroll') return user?.payroll_enabled !== false;
@@ -129,15 +134,22 @@ export default function Sidebar() {
     items.filter((item) => {
       if (!isFeatureVisible(item)) return false;
       if (!item.permission) return true;
-      return hasAny(...(Array.isArray(item.permission) ? item.permission : [item.permission]));
+      const flags = Array.isArray(item.permission) ? item.permission : [item.permission];
+      return viewHasAny(...flags);
     });
 
   return (
     <aside className="w-56 bg-card border-r border-border flex flex-col shrink-0 h-screen">
-      {/* Logo — always visible, never scrolls */}
-      <div className="h-14 flex items-center px-4 border-b border-border shrink-0 gap-2">
+      {/* Logo + persona selector — sit on the same row so the persona
+          control reads as part of "where am I" rather than "who am I".
+          The selector lives next to the 4truck mark, right-aligned so
+          there's a clear visual gap between brand and view-control. */}
+      <div className="h-14 flex items-center px-3 border-b border-border shrink-0 gap-2">
         <Truck size={20} className="text-primary shrink-0" />
         <span className="text-lg font-bold text-foreground">4truck</span>
+        <div className="ml-auto">
+          <PersonaSelector />
+        </div>
       </div>
 
       {/* Nav — scrolls independently */}

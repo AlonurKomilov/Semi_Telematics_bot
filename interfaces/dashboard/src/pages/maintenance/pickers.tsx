@@ -92,10 +92,17 @@ export function VehiclePicker({
   );
 }
 
-// Period-based pickers. The input value is the *interval* (how many
-// miles/hours/days from "now"), not the absolute due value. The page
-// renders Current + Due readouts above the picker for context; this
-// component owns only the period field and its preset shortcuts.
+// Period-based pickers.  By default the input value is the *interval*
+// (how many miles/hours/days from "now") and the page renders a
+// "Current / Due" readout above the picker; the form-submit code
+// computes ``due = current + interval`` before sending to the API.
+//
+// When telemetry is missing (``mode='absolute'``), the interval model
+// breaks because ``current`` is unknown.  The picker then renders the
+// presets as ABSOLUTE targets instead and shows a one-line hint
+// explaining the change in semantics.  This is the difference between
+// "schedule oil at +5,000 miles" and "schedule oil at 250,000 miles" —
+// the user input is the same number, but the meaning differs.
 
 const MILE_PRESETS = [3_000, 5_000, 10_000, 15_000, 25_000, 50_000];
 
@@ -107,19 +114,31 @@ const HOUR_PRESETS = [250, 500, 1_000, 2_000, 5_000];
 // reminder all the way out to an annual DOT inspection.
 const DAY_PRESETS = [7, 30, 60, 90, 180, 365];
 
+type PickerMode = 'period' | 'absolute';
+
 function presetLabel(p: number): string {
-  return p >= 1000 ? `+${p / 1000}k` : `+${p}`;
+  // Plain "3k" / "30" — no "+" prefix, which used to imply "add to
+  // existing value".  The buttons SET the input, not ADD, so the
+  // prefix was misleading.  The hover title (set by each picker) still
+  // disambiguates period vs absolute mode.
+  return p >= 1000 ? `${p / 1000}k` : `${p}`;
 }
 
 export function MilesPicker({
   value,
   onChange,
   placeholder = 'e.g. 3000',
+  mode = 'period',
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  mode?: PickerMode;
 }) {
+  const presetTitle = (p: number) =>
+    mode === 'absolute'
+      ? `${p.toLocaleString()} miles (absolute target — no telemetry to add from)`
+      : `${p.toLocaleString()} miles from current odometer`;
   return (
     <div>
       <input
@@ -131,12 +150,17 @@ export function MilesPicker({
         placeholder={placeholder}
         className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
       />
+      {mode === 'absolute' && (
+        <p className="text-[11px] text-muted-foreground mt-1">
+          No odometer telemetry — value is the absolute target.
+        </p>
+      )}
       <div className="flex flex-wrap gap-1 mt-1.5">
         {MILE_PRESETS.map(p => (
           <button
             key={p}
             type="button"
-            title={`${p.toLocaleString()} miles from current`}
+            title={presetTitle(p)}
             onClick={() => onChange(String(p))}
             className="px-1.5 py-0.5 text-xs bg-muted border border-border rounded hover:bg-primary/20 hover:border-primary/50 transition-colors cursor-pointer"
           >
@@ -152,11 +176,17 @@ export function HoursPicker({
   value,
   onChange,
   placeholder = 'e.g. 500',
+  mode = 'period',
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  mode?: PickerMode;
 }) {
+  const presetTitle = (p: number) =>
+    mode === 'absolute'
+      ? `${p.toLocaleString()} hours (absolute target — no telemetry to add from)`
+      : `${p.toLocaleString()} hours from current engine hours`;
   return (
     <div>
       <input
@@ -168,12 +198,17 @@ export function HoursPicker({
         placeholder={placeholder}
         className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
       />
+      {mode === 'absolute' && (
+        <p className="text-[11px] text-muted-foreground mt-1">
+          No engine-hours telemetry — value is the absolute target.
+        </p>
+      )}
       <div className="flex flex-wrap gap-1 mt-1.5">
         {HOUR_PRESETS.map(p => (
           <button
             key={p}
             type="button"
-            title={`${p.toLocaleString()} hours from current`}
+            title={presetTitle(p)}
             onClick={() => onChange(String(p))}
             className="px-1.5 py-0.5 text-xs bg-muted border border-border rounded hover:bg-primary/20 hover:border-primary/50 transition-colors cursor-pointer"
           >
@@ -194,6 +229,8 @@ export function DaysPicker({
   onChange: (v: string) => void;
   placeholder?: string;
 }) {
+  // Days are always a period from today — no absolute-mode variant
+  // because "today" is always known (unlike odometer/engine hours).
   return (
     <div>
       <input

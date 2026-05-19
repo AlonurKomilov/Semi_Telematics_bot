@@ -22,13 +22,106 @@ logger = logging.getLogger(__name__)
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:8002/0")
 _REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", "50"))
 
+# Sentinel topology — comma-separated host:port list + master name.
+# When both are set, Sentinel mode is used and REDIS_URL is ignored for
+# the master connection (the auth/db come from REDIS_URL components if
+# present, but the host is resolved via Sentinel).  Defaults: not used.
+#
+# Example .env for HA:
+#   REDIS_SENTINELS=sentinel-1:26379,sentinel-2:26379,sentinel-3:26379
+#   REDIS_MASTER_NAME=mymaster
+#   REDIS_URL=redis://:s3cr3t@unused/0   ← auth + db come from here
+_REDIS_SENTINELS = os.getenv("REDIS_SENTINELS", "").strip()
+_REDIS_MASTER_NAME = os.getenv("REDIS_MASTER_NAME", "mymaster").strip()
+
 _pool: Optional[aioredis.Redis] = None
 _available: bool = False
 
 
+def _parse_sentinels() -> list[tuple[str, int]]:
+    """Parse REDIS_SENTINELS into a list of (host, port) tuples."""
+    out: list[tuple[str, int]] = []
+    for entry in _REDIS_SENTINELS.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        if ":" in entry:
+            host, port_str = entry.rsplit(":", 1)
+            try:
+                out.append((host, int(port_str)))
+            except ValueError:
+                logger.warning("Skipping malformed REDIS_SENTINELS entry: %s", entry)
+        else:
+            out.append((entry, 26379))  # default Sentinel port
+    return out
+
+
 async def init_redis() -> bool:
-    """Initialize the Redis connection pool.  Returns True if connected."""
+    """Initialize the Redis connection pool.  Returns True if connected.
+
+    Picks between two modes:
+
+    * **Sentinel** (production HA): when ``REDIS_SENTINELS`` is set, uses
+      ``redis.asyncio.sentinel.Sentinel`` to resolve the current master.
+      Auth + DB-index are taken from ``REDIS_URL`` if present so the same
+      env can carry credentials.  Failover takes ~30s — operations during
+      that window may raise transient ``ConnectionError`` which the
+      caller fail-open path absorbs.
+
+    * **Direct** (dev / single-node): uses ``aioredis.from_url(REDIS_URL)``.
+      No failover; the previous default behavior.
+
+    Either mode falls back to "Redis disabled" on connection failure so
+    the bot keeps running with in-memory cache.
+    """
     global _pool, _available
+
+    sentinel_list = _parse_sentinels()
+
+    if sentinel_list:
+        try:
+            from redis.asyncio.sentinel import Sentinel
+            # Extract auth + db from REDIS_URL if it carries them.
+            # ``redis://:password@host/0`` → password='password', db=0.
+            # Sentinel.master_for accepts these directly.
+            from urllib.parse import urlparse
+            parsed = urlparse(REDIS_URL or "redis://:@unused/0")
+            password = parsed.password
+            db = 0
+            if parsed.path and parsed.path != "/":
+                try:
+                    db = int(parsed.path.lstrip("/"))
+                except ValueError:
+                    db = 0
+
+            sentinel = Sentinel(
+                sentinel_list,
+                socket_connect_timeout=5,
+                password=password,
+            )
+            _pool = sentinel.master_for(
+                _REDIS_MASTER_NAME,
+                db=db,
+                password=password,
+                decode_responses=True,
+                socket_connect_timeout=5,
+                max_connections=_REDIS_MAX_CONNECTIONS,
+                retry_on_timeout=True,
+            )
+            await _pool.ping()  # type: ignore[misc]
+            _available = True
+            logger.info(
+                "Redis connected via Sentinel (master=%s, sentinels=%d, max_conn=%d)",
+                _REDIS_MASTER_NAME, len(sentinel_list), _REDIS_MAX_CONNECTIONS,
+            )
+            return True
+        except Exception as e:
+            logger.warning(
+                "Sentinel mode failed (%s) — falling back to in-memory", e,
+            )
+            _pool = None
+            _available = False
+            return False
 
     if not REDIS_URL:
         logger.info("REDIS_URL not set — Redis disabled")

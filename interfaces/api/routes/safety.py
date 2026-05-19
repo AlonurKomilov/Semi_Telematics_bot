@@ -715,34 +715,39 @@ async def my_scorecard(
         rank_in_pillar = None
         rank_total = None
     else:
-        rank_in_pillar = {}
-        for p in pillar_names:
-            scores: list[int] = []
-            my_subtotal: int | None = None
-            for c in all_cards:
-                sid = str(c.get("subject_id") or "")
-                if sid in _probationary_ids:
-                    continue
-                pdata = (c.get("pillars") or {}).get(p) or {}
+        # Single walk over all_cards collecting per-pillar score lists
+        # + total-score list + each pillar's "mine" subtotal.  Previous
+        # version walked the full leaderboard 4× (3 pillars + total).
+        pillar_scores: dict[str, list[int]] = {p: [] for p in pillar_names}
+        my_pillar_subtotal: dict[str, int | None] = {p: None for p in pillar_names}
+        total_scores: list[int] = []
+        for c in all_cards:
+            sid = str(c.get("subject_id") or "")
+            if sid in _probationary_ids:
+                continue
+            total_scores.append(int(c.get("total") or 0))
+            pillars_data = c.get("pillars") or {}
+            is_me = c.get("subject_id") == my_id
+            for p in pillar_names:
+                pdata = pillars_data.get(p) or {}
                 if not pdata.get("has_data", False):
                     continue
                 sub = int(pdata.get("subtotal") or 0)
-                scores.append(sub)
-                if c["subject_id"] == my_id:
-                    my_subtotal = sub
+                pillar_scores[p].append(sub)
+                if is_me:
+                    my_pillar_subtotal[p] = sub
+
+        rank_in_pillar = {}
+        for p in pillar_names:
+            scores = pillar_scores[p]
             scores.sort(reverse=True)
-            if my_subtotal is None:
+            mine = my_pillar_subtotal[p]
+            if mine is None:
                 rank_in_pillar[p] = {"pos": 0, "total": len(scores)}
             else:
-                rank_in_pillar[p] = _rank_in(scores, my_subtotal)
+                rank_in_pillar[p] = _rank_in(scores, mine)
 
-        # Total-score rank — same probationary filter applied.
-        total_scores = sorted(
-            (int(c.get("total") or 0)
-             for c in all_cards
-             if str(c.get("subject_id") or "") not in _probationary_ids),
-            reverse=True,
-        )
+        total_scores.sort(reverse=True)
         rank_total = _rank_in(total_scores, int(me.get("total") or 0))
 
     # Week delta — compare against the snapshot ~7 days ago.  Pull

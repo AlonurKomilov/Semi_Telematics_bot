@@ -21,7 +21,7 @@ from capabilities.drivers.samsara_sync import (
 from capabilities.localization.tz import is_local_hour
 from infra.bot_registry import get_app_for_account
 from infra.isolation import run_account_job
-from infra.services import get_client as _get_samsara
+from infra.services import get_client as _get_samsara, get_tenant_db as _get_tenant_db_rls
 from interfaces.bot.state import get_platform_db
 
 # Fires at 10:00 LOCAL for each account — one hour after the doc-expiry
@@ -124,9 +124,11 @@ async def check_driver_samsara_sync(_app: Application | None = None) -> None:
                             "Sync digest to admin %s failed: %s", u.telegram_id, e,
                         )
 
+        tenant_db_rls = await _get_tenant_db_rls(account.id)
         await run_account_job(
             _run(), account_id=account.id,
             job_name="driver_samsara_sync",
+            tenant_db=tenant_db_rls,
         )
 
     if total_sent or total_mismatches:

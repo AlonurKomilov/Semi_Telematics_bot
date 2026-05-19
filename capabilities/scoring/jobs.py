@@ -200,21 +200,26 @@ async def check_scorecard_drop_alerts(_app=None) -> None:
         # Check snapshots for both subject types
         for subject in SUBJECTS_TO_SNAPSHOT:
             try:
-                cur = await tenant._db.execute(
-                    """SELECT subject_id, subject_name, total_score
-                       FROM daily_scorecard_snapshots
-                       WHERE account_id = ? AND subject_type = ? AND snapshot_date = ?""",
-                    (acc.id, subject, yesterday),
-                )
-                today_rows = {r["subject_id"]: r for r in await cur.fetchall()}
+                # Both SELECTs in one transaction so a concurrent snapshot
+                # writer can't insert/delete between the two reads and
+                # invalidate the today-vs-prior comparison.  Read-only
+                # transaction is enough; no UPDATE here.
+                async with tenant.transaction():
+                    cur = await tenant._db.execute(
+                        """SELECT subject_id, subject_name, total_score
+                           FROM daily_scorecard_snapshots
+                           WHERE account_id = ? AND subject_type = ? AND snapshot_date = ?""",
+                        (acc.id, subject, yesterday),
+                    )
+                    today_rows = {r["subject_id"]: r for r in await cur.fetchall()}
 
-                cur = await tenant._db.execute(
-                    """SELECT subject_id, total_score
-                       FROM daily_scorecard_snapshots
-                       WHERE account_id = ? AND subject_type = ? AND snapshot_date = ?""",
-                    (acc.id, subject, prior_week),
-                )
-                prior_rows = {r["subject_id"]: r["total_score"] for r in await cur.fetchall()}
+                    cur = await tenant._db.execute(
+                        """SELECT subject_id, total_score
+                           FROM daily_scorecard_snapshots
+                           WHERE account_id = ? AND subject_type = ? AND snapshot_date = ?""",
+                        (acc.id, subject, prior_week),
+                    )
+                    prior_rows = {r["subject_id"]: r["total_score"] for r in await cur.fetchall()}
             except Exception:
                 logger.exception("scorecard_drop_alerts: DB read failed acct=%d subject=%s", acc.id, subject)
                 continue

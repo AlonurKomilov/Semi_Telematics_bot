@@ -19,12 +19,12 @@ export default defineConfig({
         theme_color: '#0a84ff',
         background_color: '#000000',
         display: 'standalone',
-        scope: '/miniapp/',
-        start_url: '/miniapp/',
+        scope: '/',
+        start_url: '/',
         icons: [],
       },
       workbox: {
-        navigateFallback: '/miniapp/index.html',
+        navigateFallback: '/index.html',
         // Don't precache map tiles or large images — they're served by
         // third parties and would blow the cache budget.
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
@@ -78,7 +78,11 @@ export default defineConfig({
       },
     }),
   ],
-  base: '/miniapp/',
+  // base now serves at site root for the dedicated app.4truck.us
+  // subdomain.  Legacy apex paths (4truck.us/miniapp/*) are 301-redirected
+  // by nginx so existing Telegram WebView shortcuts still resolve until
+  // the bot's WEBAPP_URL env var has been updated to https://app.4truck.us.
+  base: process.env.VITE_BASE_PATH ?? '/',
   build: {
     outDir: 'dist',
     emptyOutDir: true,

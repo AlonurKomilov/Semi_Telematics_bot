@@ -31,6 +31,7 @@ async def run_account_job(
     account_id: int,
     job_name: str,
     timeout: int | None = None,
+    tenant_db: Any = None,
 ) -> bool:
     """Run a per-account coroutine with timeout and fault isolation.
 
@@ -39,6 +40,12 @@ async def run_account_job(
         account_id: Account being processed (for logging).
         job_name: Human-readable job name (for logging).
         timeout: Override the default timeout in seconds.
+        tenant_db: Optional tenant Database — when provided, the job runs
+            inside ``tenant_db.with_account(account_id)`` so Postgres RLS
+            policies see the right ``app.account_id`` for the duration.
+            Pass it from callers that already have the db handle on
+            hand (most scheduler jobs); pass ``None`` for jobs that
+            don't touch the tenant DB at all.
 
     Returns:
         True if the job completed successfully, False on error/timeout.
@@ -46,7 +53,11 @@ async def run_account_job(
     job_timeout = timeout if timeout is not None else ACCOUNT_JOB_TIMEOUT
     try:
         async with asyncio.timeout(job_timeout):
-            await coro
+            if tenant_db is not None:
+                async with tenant_db.with_account(account_id):
+                    await coro
+            else:
+                await coro
         return True
     except TimeoutError:
         logger.error(

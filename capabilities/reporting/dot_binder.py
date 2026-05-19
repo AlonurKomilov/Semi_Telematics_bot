@@ -172,8 +172,11 @@ async def build_dot_binder(
         v = (t.get("vehicle_name") or "").strip()
         tasks_by_vehicle.setdefault(v, []).append(t)
 
-    # Work orders + parts.  Pull all in-window orders once, then group.
-    # Parts are fetched per work order — cheap; usually 0-6 rows.
+    # Work orders + parts + attachment counts.  Pull all in-window
+    # orders once, then group by vehicle.  Parts and attachment counts
+    # are fetched in *two* bulk queries (one per table) up front —
+    # previously the binder hit the DB 2 × per work order inside the
+    # per-vehicle loop, an N+1 that scaled badly on large fleets.
     all_work_orders = await tenant_db.list_work_orders(account_id)
     in_window = [
         w for w in all_work_orders
@@ -184,6 +187,10 @@ async def build_dot_binder(
     for w in in_window:
         v = (w.get("vehicle_name") or "").strip()
         work_orders_by_vehicle.setdefault(v, []).append(w)
+
+    in_window_ids = [int(w["id"]) for w in in_window if w.get("id") is not None]
+    parts_by_wo = await tenant_db.list_work_order_parts_bulk(in_window_ids)
+    attach_counts = await tenant_db.count_work_order_attachments_bulk(in_window_ids)
 
     vehicles: list[BinderVehicle] = []
     total_completed = 0
@@ -240,8 +247,7 @@ async def build_dot_binder(
             reverse=True,
         ):
             wo_id = int(w["id"])
-            parts_rows = await tenant_db.list_work_order_parts(wo_id)
-            attach_rows = await tenant_db.list_work_order_attachments(wo_id)
+            parts_rows = parts_by_wo.get(wo_id, [])
             binder_wos.append(BinderWorkOrder(
                 id=wo_id,
                 service_date=w.get("service_date"),
@@ -258,7 +264,7 @@ async def build_dot_binder(
                         warranty_months=int(p.get("warranty_months") or 0),
                     ) for p in parts_rows
                 ],
-                attachment_count=len(attach_rows),
+                attachment_count=attach_counts.get(wo_id, 0),
             ))
             vendor = (w.get("vendor_name") or "").strip()
             if vendor:

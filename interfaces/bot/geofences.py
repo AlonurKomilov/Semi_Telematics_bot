@@ -16,6 +16,7 @@ from interfaces.bot.config import logger
 from interfaces.bot.state import get_platform_db, get_tenant_db
 from infra.isolation import run_account_job
 from infra.bot_registry import get_app_for_account
+from infra.services import get_tenant_db as _get_tenant_db_rls
 from interfaces.bot.keyboards import back_kb, geofence_list_kb
 from interfaces.bot.helpers import _show, _show_loading, _safe_error
 from interfaces.bot.auth import _require_registered
@@ -396,10 +397,12 @@ async def check_geofence_events(app: Application):
             if not bot_app:
                 logger.debug("No bot for account %d — skipping geofence check", account.id)
                 continue
+            tenant_db_rls = await _get_tenant_db_rls(account.id)
             await run_account_job(
                 _check_geofences_account(bot_app, account),
                 account_id=account.id,
                 job_name="geofence_check",
+                tenant_db=tenant_db_rls,
             )
 
     except Exception as e:

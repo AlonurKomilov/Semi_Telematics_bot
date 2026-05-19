@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
-import { Search, Menu, X } from 'lucide-react';
+import { Search, Menu, X, Eye } from 'lucide-react';
 import Sidebar from './Sidebar';
 import { ThemeToggle } from './ThemeToggle';
 import { LanguageSelector } from './LanguageSelector';
@@ -8,10 +8,16 @@ import { AvatarMenu } from './AvatarMenu';
 import Breadcrumb from './shell/Breadcrumb';
 import CommandPalette from './shell/CommandPalette';
 import KeyboardShortcuts from './shell/KeyboardShortcuts';
+import { useRoleView } from '../context/RoleViewContext';
 
 export default function Layout() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  // Role-view preview banner — shown only when Owner/Admin has switched
+  // to view as another role (e.g. "Previewing as Fleet").  Subtle bar
+  // above the header so the operator can't forget they're not in their
+  // own role.
+  const { isPreviewing, viewLabel, switchView } = useRoleView();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -50,6 +56,28 @@ export default function Layout() {
       )}
 
       <div className="flex-1 flex flex-col overflow-hidden bg-background">
+        {isPreviewing && (
+          <div
+            className="bg-primary/10 border-b border-primary/30 text-primary text-[12px] px-4 py-1.5 flex items-center justify-between gap-3 shrink-0"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="flex items-center gap-2">
+              <Eye size={13} />
+              <span>
+                Previewing dashboard as <span className="font-medium">{viewLabel}</span> —
+                data and permissions are unchanged
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={() => switchView('owner')}
+              className="text-[11px] underline opacity-80 hover:opacity-100"
+            >
+              Exit preview
+            </button>
+          </div>
+        )}
         <header className="h-14 bg-card border-b border-border flex items-center justify-between px-3 lg:px-4 shrink-0 gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <button

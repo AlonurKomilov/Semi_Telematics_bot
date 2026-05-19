@@ -127,12 +127,20 @@ async def list_tasks(
         status=status,
         vehicle_name=vehicle,
     )
-    # Filter to assigned trucks for _own permission
+    # Filter to assigned trucks for _own permission.  Pre-compile a
+    # single alternation regex from the driver's truck-num set so the
+    # inner ``in`` loop collapses to one scan per task — was O(tasks ×
+    # needles); now O(tasks).  Substring semantics preserved so
+    # "Truck-107A" still matches needle "107".
     if not can(user["role"], "can_maintenance_all"):
         trucks = await get_user_vehicle_nums(user)
         if trucks:
-            needles = {t.lower() for t in trucks}
-            tasks = [t for t in tasks if any(n in (t.get("vehicle_name") or "").lower() for n in needles)]
+            import re
+            pattern = re.compile("|".join(re.escape(t.lower()) for t in trucks if t))
+            tasks = [
+                t for t in tasks
+                if pattern.search((t.get("vehicle_name") or "").lower())
+            ]
 
     paged = paginate(tasks, page, page_size)
     # Resolve telegram_id → display_name once and enrich each row so the
@@ -141,6 +149,49 @@ async def list_tasks(
     # across accounts.
     name_map = await _build_user_name_map(user["account_id"], platform_db)
     items = [_enrich_task(t, name_map) for t in paged["items"]]
+
+    # Enrich with LIVE telemetry from vehicle_state so the dashboard's
+    # progress bar reflects current odometer / engine-hours, even for
+    # tasks the 6-h scheduler hasn't touched yet (newly created tasks,
+    # or tasks where the alerted_at filter strands last_odometer at the
+    # value it had when the first alert fired — see Bug B notes).
+    #
+    # One bulk warehouse read per request, keyed by unique vehicle_name.
+    # Falls through silently on any warehouse error; the row just keeps
+    # whatever last_odometer / last_engine_hours was stored.
+    unique_names = {t.get("vehicle_name") for t in items if t.get("vehicle_name")}
+    if unique_names:
+        try:
+            state_rows = await tenant_db.get_vehicle_state(
+                user["account_id"], vehicle_nums=list(unique_names),
+            )
+            live_by_name: dict[str, dict] = {}
+            for row in state_rows:
+                nm = row.get("vehicle_name") or ""
+                if nm:
+                    live_by_name[nm] = row
+            for t in items:
+                live = live_by_name.get(t.get("vehicle_name") or "")
+                if not live:
+                    continue
+                # Use the live value when the stored one is NULL, or
+                # when the live reading is newer (higher odometer /
+                # higher engine-hours).  Never go backwards — a glitchy
+                # warehouse read shouldn't undo a real reading.
+                live_odo = live.get("odometer_mi")
+                if isinstance(live_odo, (int, float)):
+                    stored_odo = t.get("last_odometer")
+                    if stored_odo is None or float(live_odo) > float(stored_odo):
+                        t["last_odometer"] = float(live_odo)
+                live_hrs = live.get("engine_hours")
+                if isinstance(live_hrs, (int, float)):
+                    stored_hrs = t.get("last_engine_hours")
+                    if stored_hrs is None or float(live_hrs) > float(stored_hrs):
+                        t["last_engine_hours"] = float(live_hrs)
+        except Exception:
+            # Warehouse outage shouldn't break the list view.
+            pass
+
     return {"tasks": items, "count": paged["total"],
             "page": paged["page"], "page_size": paged["page_size"],
             "total_pages": paged["total_pages"]}
@@ -168,7 +219,33 @@ async def get_task(
             if not any(n in (task.get("vehicle_name") or "").lower() for n in needles):
                 raise HTTPException(status_code=404, detail="Task not found")
     name_map = await _build_user_name_map(user["account_id"], platform_db)
-    return _enrich_task(task, name_map)
+    enriched = _enrich_task(task, name_map)
+
+    # Mirror the list-view live-telemetry merge so the modal and the
+    # list show the same odometer / engine-hours readings.  Live wins
+    # only when newer than the stored value.
+    vehicle_name = enriched.get("vehicle_name")
+    if vehicle_name:
+        try:
+            state_rows = await tenant_db.get_vehicle_state(
+                user["account_id"], vehicle_nums=[vehicle_name],
+            )
+            if state_rows:
+                live = state_rows[0]
+                live_odo = live.get("odometer_mi")
+                if isinstance(live_odo, (int, float)):
+                    stored_odo = enriched.get("last_odometer")
+                    if stored_odo is None or float(live_odo) > float(stored_odo):
+                        enriched["last_odometer"] = float(live_odo)
+                live_hrs = live.get("engine_hours")
+                if isinstance(live_hrs, (int, float)):
+                    stored_hrs = enriched.get("last_engine_hours")
+                    if stored_hrs is None or float(live_hrs) > float(stored_hrs):
+                        enriched["last_engine_hours"] = float(live_hrs)
+        except Exception:
+            pass
+
+    return enriched
 
 
 @router.post("/tasks")
@@ -178,6 +255,18 @@ async def create_task(
     tenant_db=Depends(get_tenant_db),
 ):
     """Create a new maintenance task."""
+    # Backfill last_odometer + last_engine_hours from the warehouse so the
+    # dashboard's progress bar appears immediately for trucks that report
+    # telemetry — previously the bar showed "no telemetry" until the next
+    # 6-h scheduler tick.  Best-effort: no telemetry → both None, the
+    # scheduler will fill in later.
+    from capabilities.maintenance.service import (
+        fetch_current_telemetry_for_vehicle,
+    )
+    last_odo, last_hrs = await fetch_current_telemetry_for_vehicle(
+        tenant_db, user["account_id"], body.vehicle_name,
+    )
+
     task_id = await tenant_db.add_maintenance_task(
         account_id=user["account_id"],
         company_code=body.company_code,
@@ -192,6 +281,8 @@ async def create_task(
         recur_interval_miles=body.recur_interval_miles,
         recur_interval_engine_hours=body.recur_interval_engine_hours,
         work_order_id=body.work_order_id,
+        last_odometer=last_odo,
+        last_engine_hours=last_hrs,
     )
     await tenant_db.add_audit_log(
         user["account_id"], int(user["sub"]),

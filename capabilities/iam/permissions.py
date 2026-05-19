@@ -23,6 +23,7 @@ Two-tier authority model:
 
 from __future__ import annotations
 
+import contextvars as _ctxvars
 import logging
 import os
 from dataclasses import dataclass
@@ -339,13 +340,98 @@ def invalidate_permissions_cache(
 _permissions_cache: dict[tuple, FeatureSet] = {}
 
 
+# ─── Active-account contextvar (for per-account `can()` lookups) ──────
+# When set (typically by the bot's _require_registered decorator at
+# handler entry), the sync ``can()`` function below resolves through
+# the per-account permissions cache instead of the hardcoded defaults.
+# Pre-priming the cache via ``prime_account_permissions`` is what
+# makes a sync check honour DB overrides without changing 101 call
+# sites in the bot to ``await can_for_account(...)``.
+#
+# Setting the var to None means "no account context" — ``can()`` falls
+# back to the Python defaults exactly as it did before this addition.
+_active_account_id: _ctxvars.ContextVar[Optional[int]] = _ctxvars.ContextVar(
+    "iam_active_account_id", default=None,
+)
+
+
+async def prime_account_permissions(account_id: int, role: Role) -> None:
+    """Warm the per-account permission cache and bind it to this task tree.
+
+    Call once at the top of an async handler (e.g. inside the bot's
+    ``_require_registered`` decorator).  After this returns, every
+    downstream sync ``can(role, "flag")`` call in the same task picks
+    up the per-account permission overrides without an explicit await.
+
+    Cheap when already cached — a hit returns in microseconds.  Safe to
+    call multiple times.
+    """
+    await get_account_permissions(role, account_id, None)
+    _active_account_id.set(account_id)
+
+
 def can(role: Role, feature: str) -> bool:
     """Check if a role has a specific feature permission.
 
+    Resolution order:
+      1. If an active account context is set (see
+         :func:`prime_account_permissions`) AND the per-account
+         permission cache holds an entry for ``(account_id, role)``,
+         use that.  This is how the bot honors per-account overrides
+         set via the dashboard's Role Permissions admin page without
+         every call-site needing ``await``.
+      2. Otherwise, fall back to the hardcoded ``ROLE_PERMISSIONS``
+         defaults — same behavior as before this change.
+
+    For surfaces that already operate in an async context with a known
+    account_id (FastAPI deps, ad-hoc scripts), prefer
+    :func:`can_for_account` — it's explicit and doesn't rely on the
+    contextvar being primed upstream.
+
     Usage:  can(user.role, "can_faults")
     """
+    aid = _active_account_id.get()
+    if aid is not None:
+        role_str = role.value if hasattr(role, "value") else role
+        cached = _permissions_cache.get((aid, role_str, None))
+        if cached is not None:
+            return bool(getattr(cached, feature, False))
     perms = get_permissions(role)
     return getattr(perms, feature, False)
+
+
+async def can_for_account(
+    account_id: int,
+    role: Role,
+    feature: str,
+    company_id: Optional[int] = None,
+) -> bool:
+    """Account-aware permission check honoring DB overrides.
+
+    Async twin of :func:`can` — resolves through
+    :func:`get_account_permissions` so per-account customizations
+    (set via the dashboard's Role Permissions admin page) take effect.
+    Falls back to the hardcoded ``ROLE_PERMISSIONS`` defaults when no
+    override exists for this account.
+
+    Cached per ``(account_id, role, company_id)`` in
+    ``_permissions_cache``; cache is invalidated by
+    :func:`invalidate_permissions_cache` whenever an admin saves a
+    permission change, so cleared values propagate within the same
+    process on the next call.
+
+    Usage::
+        if not await can_for_account(user.account_id, user.role, "can_faults"):
+            ...
+
+    Surfaces that should call this instead of :func:`can`:
+      * Bot handlers (interfaces/bot/*) — was previously stuck on
+        Python defaults; this closes the SSOT gap.
+      * Long-running scheduler jobs that operate on behalf of one
+        account at a time.
+    """
+    perms = await get_account_permissions(role, account_id, company_id)
+    return bool(getattr(perms, feature, False))
 
 
 # ─── Role Display Helpers ─────────────────────────────────────────

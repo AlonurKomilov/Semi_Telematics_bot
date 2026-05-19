@@ -500,7 +500,7 @@ class TestMaintenanceTasks:
             acct.id, "TFC", "Truck 102", "brakes",
             "Brake check", created_by=owner.id,
         )
-        tasks = await db.get_pending_tasks_by_miles()
+        tasks = await db.get_pending_tasks_by_miles(acct.id)
         assert len(tasks) == 1
         assert tasks[0]["vehicle_name"] == "Truck 101"
 

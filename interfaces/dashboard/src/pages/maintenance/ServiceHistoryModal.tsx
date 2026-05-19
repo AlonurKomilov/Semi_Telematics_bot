@@ -131,7 +131,7 @@ export function ServiceHistoryModal({
                       )}
                       {task.work_order_id && (
                         <a
-                          href={`/dashboard/work-orders/${task.work_order_id}`}
+                          href={`/work-orders/${task.work_order_id}`}
                           className="text-xs mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 bg-muted hover:bg-muted/80 border border-border rounded text-foreground"
                           onClick={e => e.stopPropagation()}
                         >

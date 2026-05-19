@@ -22,6 +22,7 @@ codebase never needs to know which backend is active.
 
 from __future__ import annotations
 
+import contextvars
 import os
 import re
 import logging
@@ -30,6 +31,54 @@ from typing import Any, AsyncIterator
 from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
+
+
+# ── Connection-state contextvars ─────────────────────────────────────
+# When set, ``_pinned_conn`` carries the asyncpg.Connection that the
+# current async-task tree must reuse for every ``execute()`` — populated
+# by ``Database.transaction()`` so multi-statement transactions don't
+# get scattered across separate pool acquires (which would lose
+# atomicity entirely).
+#
+# ``_current_account_id`` carries the tenant scope.  Set by
+# ``Database.with_account()``; consumed by the pool acquire hook to
+# ``SELECT set_config('app.account_id', ...)`` on every fresh
+# connection.  Contextvars are async-task-local, so two concurrent
+# requests under different accounts never see each other's GUC — the
+# main reason this refactor exists.
+_pinned_conn: contextvars.ContextVar = contextvars.ContextVar(
+    "_pg_pinned_conn", default=None,
+)
+_current_account_id: contextvars.ContextVar = contextvars.ContextVar(
+    "_pg_current_account_id", default=None,
+)
+
+
+def _set_pinned_conn(conn):
+    """Set the pinned connection for the current task tree.
+
+    Returns the contextvar token caller must pass to ``_pinned_conn.reset()``
+    on exit.  Used by ``Database.transaction()``.
+    """
+    return _pinned_conn.set(conn)
+
+
+def _set_current_account(account_id):
+    """Set the per-task ``app.account_id`` scope.
+
+    ``account_id=None`` clears the scope.  Returns a token to reset.
+    """
+    return _current_account_id.set(account_id)
+
+
+def _get_current_account():
+    """Read the current task's ``app.account_id`` (or None if unset)."""
+    return _current_account_id.get()
+
+
+def _get_pinned_conn():
+    """Read the pinned conn for the current task (or None if unpinned)."""
+    return _pinned_conn.get()
 
 
 # Pattern matching the SQLite interval-modifier strings the codebase
@@ -75,6 +124,7 @@ def _maybe_coerce_interval_param(value: Any) -> Any:
     if td_kwarg is None:
         return value  # month/year — leave for caller / PG to error visibly
     return timedelta(**{td_kwarg: qty})
+
 
 # SQLite PRAGMA pattern — skip entirely in PostgreSQL
 _PRAGMA_RE = re.compile(r"^\s*PRAGMA\s+", re.IGNORECASE)
@@ -461,32 +511,104 @@ class _PgRow:
 # ── asyncpg connection shim ────────────────────────────────────────
 
 class _PgConnection:
-    """Wraps an asyncpg Connection to expose the aiosqlite API used by mixins.
+    """Pool-backed proxy exposing the aiosqlite API used by mixins.
+
+    Previously this class wrapped a single pinned asyncpg connection
+    plus a global ``asyncio.Lock`` — every mixin call serialized through
+    that one connection.  Now it's a proxy around the pool: each
+    ``execute()`` acquires a fresh connection unless the current
+    async-task tree has pinned one via ``_pinned_conn`` (set by
+    :meth:`Database.transaction`).  No more global lock; concurrent
+    requests run in parallel against the pool.
+
+    Two modes per call:
+
+    * **Pinned** — when ``_pinned_conn`` is set (inside a
+      ``Database.transaction()`` block): every ``execute()`` reuses that
+      one connection so multi-statement transactions retain atomicity.
+    * **Pooled** — otherwise: each ``execute()`` acquires-runs-releases
+      around the underlying ``asyncpg.Pool``.  Before yielding the
+      acquired connection, the proxy applies ``app.account_id`` from
+      ``_current_account_id`` so Postgres RLS sees the right tenant
+      scope on every query without an explicit per-method GUC reset.
 
     Implements:
       execute(sql, params) → _PgCursor
-      executescript(sql)   → None
-      fetchall()           — not used directly (go through cursor)
-      commit()             → no-op (autocommit or managed by _PgPool)
-      close()              → releases connection to pool
+      executemany(sql, params_seq) → _PgCursor
+      executescript(sql)   → None  (whole script runs on one acquired conn)
+      commit()             → no-op (transactions handled by transaction())
+      close()              → no-op (no long-held resources)
+
+    The ``pinned_conn`` constructor arg keeps the historical signature
+    working for ``_PgPool.acquire_connection()`` — passes a specific
+    asyncpg.Connection that this proxy will reuse for every operation,
+    bypassing the pool.  Used by ``Database.acquire()`` and by the
+    legacy migration path in ``core.initialize()``.
     """
 
-    def __init__(self, conn, pool):
-        self._conn = conn
-        self._pool = pool
+    def __init__(self, pool, pinned_conn=None):
+        self._pool = pool  # _PgPool wrapping the asyncpg.Pool
+        # When set at construction time, this proxy ALWAYS uses this
+        # connection (e.g. the explicit acquire() context manager).
+        # When None, the proxy honors the contextvar pinning (set by
+        # transaction()) and otherwise pool-acquires per call.
+        self._construct_pinned = pinned_conn
         self._in_transaction = False
         # row_factory attribute to satisfy aiosqlite.Row compat checks
         self.row_factory = None
-        # asyncpg Connections are NOT safe for concurrent use — only one
-        # operation can be in flight at a time, otherwise asyncpg raises
-        # "another operation is in progress". Mixins share a single
-        # ``self._db`` (this object) across all coroutines, so without a
-        # lock parallel API requests collide. The lock serialises every
-        # underlying ``self._conn.*`` call. Reads that need parallelism
-        # should use ``Database.acquire()`` which checks out a fresh
-        # pool connection per request.
-        import asyncio as _asyncio
-        self._lock = _asyncio.Lock()
+
+    @asynccontextmanager
+    async def _acquire(self) -> AsyncIterator[Any]:
+        """Yield an asyncpg.Connection for one operation.
+
+        Priority order:
+          1. Constructor-pinned conn (legacy path / explicit acquire())
+          2. Contextvar-pinned conn (active transaction)
+          3. Fresh acquire from the pool — also stamps app.account_id
+             from ``_current_account_id`` before yielding, then resets
+             the GUC after the operation so a recycled pool conn doesn't
+             leak the previous caller's tenant scope.
+        """
+        if self._construct_pinned is not None:
+            # Constructor-pinned: don't acquire/release, just yield.
+            # GUC is the caller's responsibility (set explicitly on
+            # entry/exit of the pin window).
+            yield self._construct_pinned
+            return
+
+        pinned = _pinned_conn.get()
+        if pinned is not None:
+            # Active transaction — reuse its connection.  GUC was set
+            # when the transaction started so it's already correct.
+            yield pinned
+            return
+
+        # Fresh acquire from the pool.  Stamp the GUC on entry so RLS
+        # sees the right tenant; reset on exit so the next caller of
+        # this pool slot starts clean.
+        acquired = await self._pool._pool.acquire()
+        try:
+            aid = _current_account_id.get()
+            aid_str = "" if aid is None else str(aid)
+            try:
+                await acquired.execute(
+                    "SELECT set_config('app.account_id', $1, false)", aid_str,
+                )
+            except Exception as e:
+                # Don't fail the whole call if set_config doesn't apply
+                # (e.g. running against an old DB that doesn't recognize
+                # the GUC).  Log debug only; the query will still run
+                # without the tenant scope, which is the legacy behavior.
+                logger.debug("set_config app.account_id failed: %s", e)
+            yield acquired
+        finally:
+            try:
+                await acquired.execute(
+                    "SELECT set_config('app.account_id', '', false)",
+                )
+            except Exception:
+                pass
+            await self._pool._pool.release(acquired)
 
     async def execute(self, sql: str, params: tuple = ()) -> _PgCursor:
         pg_sql = _sqlite_to_pg_sql(sql)
@@ -503,10 +625,10 @@ class _PgConnection:
 
         stripped = pg_sql.strip().upper()
 
-        async with self._lock:
+        async with self._acquire() as conn:
             # For SELECT / RETURNING, fetch rows.  rowcount = len(rows).
             if stripped.startswith("SELECT") or "RETURNING" in stripped:
-                rows = await self._conn.fetch(pg_sql, *params)
+                rows = await conn.fetch(pg_sql, *params)
                 return _PgCursor(rows, rowcount=len(rows))
 
             # For INSERT with lastrowid, append RETURNING id.
@@ -529,7 +651,7 @@ class _PgConnection:
             ):
                 try:
                     returning_sql = pg_sql.rstrip().rstrip(";") + " RETURNING id"
-                    row = await self._conn.fetchrow(returning_sql, *params)
+                    row = await conn.fetchrow(returning_sql, *params)
                     lastrowid = row["id"] if row else 0
                     return _PgCursor(
                         [row] if row else [],
@@ -538,7 +660,7 @@ class _PgConnection:
                     )
                 except Exception:
                     # If RETURNING id fails (no id column), fall back.
-                    status = await self._conn.execute(pg_sql, *params)
+                    status = await conn.execute(pg_sql, *params)
                     return _PgCursor([], rowcount=_parse_status_rowcount(status))
 
             # UPDATE / DELETE / DDL — asyncpg returns a status string
@@ -546,26 +668,27 @@ class _PgConnection:
             # affected row count.  Parsing it lets callers gate on
             # ``cur.rowcount > 0`` (used in maintenance, parking,
             # permissions, geofence, etc.).
-            status = await self._conn.execute(pg_sql, *params)
+            status = await conn.execute(pg_sql, *params)
             return _PgCursor([], rowcount=_parse_status_rowcount(status))
 
     async def executemany(self, sql: str, params_seq) -> "_PgCursor":
         """Run the same statement many times — aiosqlite-compatible.
 
-        aiosqlite exposes ``Connection.executemany(sql, [(a,b), …])``;
-        asyncpg's equivalent is ``Connection.executemany(sql, …)`` but
-        only works for plain ``execute`` (no SELECT result rows), and
-        the parameter placeholders are ``$1, $2`` while our callers use
-        ``?``.  Re-using our existing single-statement ``execute`` keeps
-        the translation logic in one place — slower than asyncpg's
-        native batch but the call sites are off the hot path
-        (per-cycle bulk UPDATE in maintenance, etc.).
+        Now holds one pool connection for the entire batch instead of
+        acquiring per row — much cheaper for the per-cycle bulk UPDATE
+        in maintenance, etc.  Without this, a 500-row batch would do
+        1000 acquire/release round trips against the pool.
         """
         params_list = list(params_seq)
         if not params_list:
             return _PgCursor([])
-        for p in params_list:
-            await self.execute(sql, tuple(p))
+        # Pin the batch to one connection so all rows share the same
+        # session (critical for ``app.account_id`` consistency and to
+        # avoid pool-acquire churn).
+        async with self._acquire() as conn:
+            sub_proxy = _PgConnection(self._pool, pinned_conn=conn)
+            for p in params_list:
+                await sub_proxy.execute(sql, tuple(p))
         return _PgCursor([])
 
     async def executescript(self, script: str) -> None:
@@ -573,6 +696,10 @@ class _PgConnection:
 
         Strips ``--`` line comments before splitting so a stray ``;`` inside
         a comment ("``-- foo; bar``") doesn't tear a CREATE TABLE in two.
+
+        All statements run on a single acquired connection so multi-step
+        DDL (e.g. CREATE TABLE followed by CREATE INDEX on the same
+        table) shares one session.
         """
         # Strip ``--`` line comments to end-of-line so a ``;`` inside a
         # comment (e.g. "-- One row per account.  Stripe IDs stored here;
@@ -585,7 +712,7 @@ class _PgConnection:
             clean_lines.append(line)
         clean_script = "\n".join(clean_lines)
 
-        async with self._lock:
+        async with self._acquire() as conn:
             for stmt in clean_script.split(";"):
                 stmt = stmt.strip()
                 if not stmt:
@@ -594,7 +721,7 @@ class _PgConnection:
                 if not pg_stmt.strip():
                     continue
                 try:
-                    await self._conn.execute(pg_stmt)
+                    await conn.execute(pg_stmt)
                 except Exception as e:
                     # CREATE IF NOT EXISTS can still fail in PG on concurrent init
                     if "already exists" in str(e).lower():
@@ -603,11 +730,23 @@ class _PgConnection:
                         raise
 
     async def commit(self) -> None:
-        """No-op — asyncpg uses explicit transactions or autocommit."""
+        """No-op — transaction lifecycle lives on ``Database.transaction()``."""
+        pass
+
+    async def rollback(self) -> None:
+        """No-op — transaction lifecycle lives on ``Database.transaction()``."""
         pass
 
     async def close(self) -> None:
-        await self._pool.release(self._conn)
+        """No long-held resources to release.
+
+        The legacy implementation released a pinned connection back to
+        the pool on close().  In the pool-proxy world there's nothing
+        to release — each ``execute()`` already returned its connection.
+        Constructor-pinned proxies are managed by their owner
+        (e.g. ``Database.acquire()``'s context manager).
+        """
+        pass
 
 
 # ── Pool / factory ────────────────────────────────────────────────
@@ -633,11 +772,27 @@ class _PgPool:
                     self._min_size, self._max_size)
 
     async def acquire_connection(self) -> _PgConnection:
+        """Return a *constructor-pinned* proxy holding one pool conn.
+
+        Used by ``Database.acquire()`` and the legacy migration init
+        path.  Caller must ``await proxy._release()`` when done so the
+        underlying asyncpg connection returns to the pool.
+
+        Most callers should NOT use this — pass the pool-backed
+        ``Database._db`` proxy instead, which acquires per operation.
+        """
         conn = await self._pool.acquire()
-        return _PgConnection(conn, self._pool)
+        proxy = _PgConnection(self, pinned_conn=conn)
+        return proxy
 
     async def release(self, conn) -> None:
-        await self._pool.release(conn)
+        """Release an asyncpg.Connection (or a constructor-pinned proxy) back to the pool."""
+        # Accept either a raw asyncpg conn or our _PgConnection wrapper.
+        target = getattr(conn, "_construct_pinned", None)
+        if target is not None:
+            await self._pool.release(target)
+        else:
+            await self._pool.release(conn)
 
     async def close(self) -> None:
         if self._pool:
@@ -646,11 +801,17 @@ class _PgPool:
 
     @asynccontextmanager
     async def connection(self) -> AsyncIterator[_PgConnection]:
-        conn = await self.acquire_connection()
+        """Yield a constructor-pinned proxy backed by one pool connection.
+
+        Used by ``Database.acquire()`` for read parallelism (``read_all``
+        / ``read_one``).  The proxy is owned by the caller for the
+        duration of the ``with`` block, then released on exit.
+        """
+        proxy = await self.acquire_connection()
         try:
-            yield conn
+            yield proxy
         finally:
-            await conn.close()
+            await self.release(proxy)
 
 
 async def open_pg_pool(dsn: str, pool_size: int = 4) -> _PgPool:

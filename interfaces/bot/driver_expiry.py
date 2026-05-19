@@ -20,6 +20,7 @@ from capabilities.drivers.expiration import (
 from capabilities.localization.tz import is_local_hour
 from infra.bot_registry import get_app_for_account
 from infra.isolation import run_account_job
+from infra.services import get_tenant_db as _get_tenant_db_rls
 from interfaces.bot.state import get_platform_db
 
 # Per-account local hour at which this job's per-account body runs.
@@ -151,9 +152,11 @@ async def check_document_expirations(_app: Application | None = None) -> None:
 
                 total_alerts += 1
 
+        tenant_db_rls = await _get_tenant_db_rls(account.id)
         await run_account_job(
             _run(), account_id=account.id,
             job_name="driver_doc_expiry_check",
+            tenant_db=tenant_db_rls,
         )
 
     if total_alerts or total_expired:

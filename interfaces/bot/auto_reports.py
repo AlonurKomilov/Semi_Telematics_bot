@@ -29,6 +29,7 @@ from interfaces.bot.config import logger
 from interfaces.bot.state import get_platform_db, get_tenant_db
 from infra.bot_registry import get_app_for_account
 from infra.isolation import AUTO_REPORTS_JOB_TIMEOUT, run_account_job
+from infra.services import get_tenant_db as _get_tenant_db_rls
 from capabilities.vehicles.service import (
     prepare_companies,
     get_fleet_overview as _svc_fleet_overview,
@@ -340,8 +341,10 @@ async def send_auto_reports(app: Application):
                         exc_info=True,
                     )
 
+        tenant_db_rls = await _get_tenant_db_rls(account.id)
         await run_account_job(
             _run(), account_id=account.id,
             job_name="auto_reports",
             timeout=AUTO_REPORTS_JOB_TIMEOUT,
+            tenant_db=tenant_db_rls,
         )

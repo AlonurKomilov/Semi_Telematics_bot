@@ -168,8 +168,19 @@ def require_permission_any(*features: str):
 
 
 async def get_tenant_db(user: dict = Depends(get_current_user)):
-    """Get the tenant database for the current user's account."""
-    return await _get_router().get_tenant(user["account_id"])
+    """Get the tenant database for the current user's account.
+
+    The yield form lets us wrap the request in ``with_account`` so
+    Postgres RLS (migration 057, gated by ENABLE_RLS) can filter every
+    query by ``account_id``.  When RLS is off, ``with_account`` just
+    SET-and-resets a session variable — harmless overhead.
+
+    The previous return form returned the bare ``Database``; callers
+    don't need to change since FastAPI handles both forms.
+    """
+    tenant = await _get_router().get_tenant(user["account_id"])
+    async with tenant.with_account(user["account_id"]):
+        yield tenant
 
 
 async def get_platform_db():

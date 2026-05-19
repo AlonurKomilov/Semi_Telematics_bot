@@ -16,6 +16,7 @@ from infra.bot_registry import get_app_for_account
 from interfaces.bot.config import logger
 from interfaces.bot.state import get_platform_db, get_tenant_db
 from infra.isolation import run_account_job
+from infra.services import get_tenant_db as _get_tenant_db_rls
 from capabilities.telemetry.service import get_vehicle_odometer
 from capabilities.vehicles.service import get_fleet_overview as _svc_fleet_overview
 from capabilities.maintenance.service import (
@@ -250,6 +251,16 @@ async def _finalize_task(update, context):
 
     try:
         tenant = await get_tenant_db(user.account_id)
+        # Backfill last_odometer + last_engine_hours from the warehouse so
+        # the dashboard's progress bar shows up immediately after creation
+        # (otherwise it would show "no telemetry" until the next 6-h
+        # mileage-scheduler tick).
+        from capabilities.maintenance.service import (
+            fetch_current_telemetry_for_vehicle,
+        )
+        last_odo, last_hrs = await fetch_current_telemetry_for_vehicle(
+            tenant, user.account_id, wiz.get("vehicle", ""),
+        )
         await tenant.add_maintenance_task(
             account_id=user.account_id,
             company_code=wiz.get("company", ""),
@@ -260,6 +271,8 @@ async def _finalize_task(update, context):
             due_date=wiz.get("due_date"),
             due_miles=wiz.get("due_miles"),
             created_by=user.telegram_id,
+            last_odometer=last_odo,
+            last_engine_hours=last_hrs,
         )
         context.user_data.pop("_pending", None)
         context.user_data.pop("_maint", None)
@@ -676,7 +689,19 @@ async def handle_maintenance_text(update: Update, context: ContextTypes.DEFAULT_
         return True
 
     elif pending == "maint_desc":
-        wiz["description"] = text
+        # Same min-length rule as the API (interfaces/api/routes/maintenance.py
+        # TaskCreate.description: Field(..., min_length=3)).  Empty + short
+        # descriptions historically slipped through the bot path and showed
+        # up in the dashboard as single-char gibberish ("f", "x", etc.).
+        # Tap Skip to omit; otherwise needs 3+ chars.
+        text_stripped = (text or "").strip()
+        if len(text_stripped) > 0 and len(text_stripped) < 3:
+            await _show(update, context, [
+                "❌ Description is too short. Use at least 3 characters "
+                "or tap ⏭ to skip:"
+            ], keyboard=maint_desc_kb())
+            return True
+        wiz["description"] = text_stripped
         await _finalize_task(update, context)
         return True
 
@@ -798,8 +823,10 @@ async def check_overdue_maintenance(app: Application):
                 except Exception as e:
                     logger.debug(f"Overdue notification failed: {e}")
 
+        tenant_db_rls = await _get_tenant_db_rls(account.id)
         await run_account_job(_run(), account_id=account.id,
-                              job_name="overdue_date_check")
+                              job_name="overdue_date_check",
+                              tenant_db=tenant_db_rls)
 
     if total_marked:
         logger.info(f"Marked {total_marked} maintenance task(s) as overdue (date)")
@@ -861,8 +888,10 @@ async def check_overdue_by_mileage(app: Application):
                 except Exception as e:
                     logger.debug(f"Mileage overdue notification failed: {e}")
 
+        tenant_db_rls = await _get_tenant_db_rls(account.id)
         await run_account_job(_run(), account_id=account.id,
-                              job_name="overdue_mileage_check")
+                              job_name="overdue_mileage_check",
+                              tenant_db=tenant_db_rls)
 
     if total_marked:
         logger.info(f"Marked {total_marked} maintenance task(s) as overdue (mileage)")
@@ -925,8 +954,10 @@ async def check_overdue_by_engine_hours(app: Application):
                 except Exception as e:
                     logger.debug(f"Engine-hours overdue notification failed: {e}")
 
+        tenant_db_rls = await _get_tenant_db_rls(account.id)
         await run_account_job(_run(), account_id=account.id,
-                              job_name="overdue_engine_hours_check")
+                              job_name="overdue_engine_hours_check",
+                              tenant_db=tenant_db_rls)
 
     if total_marked:
         logger.info(f"Marked {total_marked} maintenance task(s) as overdue (engine hours)")
@@ -1003,8 +1034,10 @@ async def check_upcoming_maintenance_warnings(app: Application):
                 await tenant.mark_tasks_warned_bulk(acct.id, warned_ids)
                 total_warned += len(warned_ids)
 
+        tenant_db_rls = await _get_tenant_db_rls(account.id)
         await run_account_job(_run(), account_id=account.id,
-                              job_name="upcoming_warning_check")
+                              job_name="upcoming_warning_check",
+                              tenant_db=tenant_db_rls)
 
     if total_warned:
         logger.info(f"Sent {total_warned} upcoming-maintenance warning(s)")

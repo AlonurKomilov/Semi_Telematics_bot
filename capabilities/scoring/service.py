@@ -225,6 +225,37 @@ async def evaluate_subjects(
     _mark("efficiency_fetch", _t)
 
     # ── 3. Score each subject ────────────────────────────────────
+    # Pre-bucket each input list by lowercased vehicle name *once*
+    # before the per-subject loop.  Each signal-aggregate previously
+    # walked the full list and filtered by needles per driver, giving
+    # O(N_drivers × N_records).  With the bucket we hand each
+    # aggregate only the records for the driver's trucks
+    # (O(N_records) total, instead of × N_drivers).
+    def _bucket_by_vehicle(rows: list[dict]) -> dict[str, list[dict]]:
+        out: dict[str, list[dict]] = {}
+        for r in rows:
+            v = (r.get("vehicle_name") or "").strip().lower()
+            if v:
+                out.setdefault(v, []).append(r)
+        return out
+
+    maint_by_vehicle  = _bucket_by_vehicle(maint_tasks)
+    camera_by_vehicle = _bucket_by_vehicle(camera_checks)
+    fuel_by_vehicle   = _bucket_by_vehicle(fuel_entries)
+    health_by_vehicle = _bucket_by_vehicle(health_records)
+
+    def _slice_for(bucket: dict[str, list[dict]], truck_names: list[str]) -> list[dict]:
+        if not truck_names:
+            return []
+        # Flatten in driver-truck order; dedupe-by-id not needed because
+        # the buckets are partitioned by vehicle_name.
+        out: list[dict] = []
+        for tn in truck_names:
+            rows = bucket.get((tn or "").strip().lower())
+            if rows:
+                out.extend(rows)
+        return out
+
     _t = _time.perf_counter()
     scorecards: list[Scorecard] = []
     for sid, eff in eff_by_subject.items():
@@ -246,16 +277,20 @@ async def evaluate_subjects(
             # name still matches via the primary lookup.
             "events":        events_by_subject.get(sid, {"count": 0, "by_type": {}}),
             "maintenance":   maint_signals.aggregate(
-                                 maint_tasks, truck_names, days,
+                                 _slice_for(maint_by_vehicle, truck_names),
+                                 truck_names, days,
                              ),
             "cameras":       camera_signals.aggregate(
-                                 camera_checks, truck_names, days,
+                                 _slice_for(camera_by_vehicle, truck_names),
+                                 truck_names, days,
                              ),
             "fuel":          fuel_signals.aggregate(
-                                 fuel_entries, truck_names, days,
+                                 _slice_for(fuel_by_vehicle, truck_names),
+                                 truck_names, days,
                              ),
             "vehicle_health": health_signals.aggregate(
-                                 health_records, faulted_vehicles, truck_names,
+                                 _slice_for(health_by_vehicle, truck_names),
+                                 faulted_vehicles, truck_names,
                              ),
         }
         sc = score(

@@ -76,10 +76,12 @@ async def check_events(app: Application):
             if not bot_app:
                 logger.debug("No bot for account %d — skipping events check", account.id)
                 continue
+            tenant = await get_tenant_db(account.id)
             await run_account_job(
                 _check_events_account(bot_app, account),
                 account_id=account.id,
                 job_name="events_check",
+                tenant_db=tenant,
             )
 
     except Exception as e:
