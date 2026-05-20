@@ -254,7 +254,7 @@ function DriverOverview({
               tone={(stats.my_alerts ?? 0) > 0 ? 'info' : 'default'}
               icon={Bell}
               hint="Open notifications for your truck"
-              onClick={() => navigate('/safety/alerts')}
+              onClick={() => navigate('/alerts')}
             />
             <KpiCard
               label="My scorecard"
@@ -262,7 +262,7 @@ function DriverOverview({
               tone="info"
               icon={ShieldAlert}
               hint="Safety score & ranking"
-              onClick={() => navigate('/safety/scorecards')}
+              onClick={() => navigate('/driver-scorecards')}
             />
             <KpiCard
               label="My routes"
@@ -270,7 +270,7 @@ function DriverOverview({
               tone="info"
               icon={Route}
               hint="Recent and upcoming trips"
-              onClick={() => navigate('/fleet/routes')}
+              onClick={() => navigate('/routes')}
             />
             <KpiCard
               label="Ask AI"
@@ -342,7 +342,7 @@ function RoleOverview({
     alertItems.push({
       label: 'pending alerts',
       count: stats.pending_alerts ?? 0,
-      href: '/safety/alerts',
+      href: '/alerts',
       icon: Bell,
       tone: 'info',
     });
@@ -351,7 +351,7 @@ function RoleOverview({
     alertItems.push({
       label: 'low-fuel trucks',
       count: stats.low_fuel ?? 0,
-      href: '/fleet/vehicles',
+      href: '/vehicles',
       icon: Fuel,
       tone: 'critical',
     });
@@ -361,7 +361,7 @@ function RoleOverview({
     alertItems.push({
       label: 'parked unsafely',
       count: unsafeParking,
-      href: '/fleet/parking',
+      href: '/parking',
       icon: ParkingCircle,
       tone: 'critical',
     });
@@ -379,7 +379,7 @@ function RoleOverview({
     alertItems.push({
       label: 'with active faults',
       count: stats.faults ?? 0,
-      href: '/fleet/vehicles',
+      href: '/vehicles',
       icon: Wrench,
       tone: 'warning',
     });
@@ -393,7 +393,7 @@ function RoleOverview({
       value: total,
       icon: Truck,
       hint: total > 0 ? `${movingPct}% currently moving` : undefined,
-      href: has('can_vehicle_all') ? '/fleet/vehicles' : undefined,
+      href: has('can_vehicle_all') ? '/vehicles' : undefined,
     },
     {
       key: 'moving',
@@ -426,7 +426,7 @@ function RoleOverview({
       tone: (stats.pending_alerts ?? 0) > 0 ? 'info' : 'default',
       icon: Bell,
       hint: 'Need acknowledgement',
-      href: '/safety/alerts',
+      href: '/alerts',
       permission: (h) => h('can_alerts_all') || h('can_alerts_own'),
       showWhen: () => stats.pending_alerts !== undefined,
     },
@@ -447,7 +447,7 @@ function RoleOverview({
       tone: (stats.faults ?? 0) > 0 ? 'warning' : 'positive',
       icon: Wrench,
       hint: 'Open diagnostic codes',
-      href: '/fleet/vehicles',
+      href: '/vehicles',
       permission: (h) => h('can_faults'),
       showWhen: () => stats.faults !== undefined,
     },
@@ -469,7 +469,7 @@ function RoleOverview({
       tone: 'critical',
       icon: ParkingCircle,
       hint: 'Drivers parked outside safe zones',
-      href: '/fleet/parking',
+      href: '/parking',
       permission: (h) => h('can_alerts_all') || h('can_alerts_own'),
       showWhen: () => unsafeParking > 0,
     },
@@ -490,7 +490,7 @@ function RoleOverview({
       tone: 'info',
       icon: Truck,
       hint: 'Filter by status, fuel, or faults',
-      href: '/fleet/vehicles',
+      href: '/vehicles',
       permission: (h) => h('can_vehicle_all'),
     },
     {
@@ -500,7 +500,7 @@ function RoleOverview({
       tone: 'info',
       icon: Route,
       hint: 'Trip history per truck',
-      href: '/fleet/routes',
+      href: '/routes',
       permission: (h) => h('can_route_all') || h('can_route_own'),
     },
   ];

@@ -36,8 +36,24 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Build dashboard
-        run: cd interfaces/dashboard && npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts && npm run build
+      - name: Install dashboard deps
+        run: cd interfaces/dashboard && (npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts)
+
+      # Dashboard pre-flight: drift guard catches stray persona literals
+      # outside useShellConfig, tsc catches type breaks, then the build
+      # itself catches Vite-time failures.  All three must pass before
+      # the Docker image ships.
+      - name: Dashboard — role-drift guard
+        run: cd interfaces/dashboard && npm run check:role-drift
+
+      - name: Dashboard — type check
+        run: cd interfaces/dashboard && npx tsc --noEmit
+
+      - name: Dashboard — Vitest smoke
+        run: cd interfaces/dashboard && npm test
+
+      - name: Dashboard — production build
+        run: cd interfaces/dashboard && npm run build
 
       - name: Run tests
         run: python -m pytest tests/ -x -q --tb=short
@@ -127,3 +143,21 @@ jobs:
             echo "❌ Health check failed after 60s"
             docker compose logs --tail=50 bot
             exit 1
+
+  # ── 4. Post-deploy host smoke ───────────────────────
+  # Hits each public hostname (dash/fleet/dispatch/safety/app/api/bot
+  # + apex) and verifies it responds the way nginx says it should.
+  # Persona subdomains are flagged as soft failures so a missing DNS
+  # record doesn't block a healthy deploy of the rest — pass --strict
+  # to fail on those too once DNS is fully provisioned.
+  verify-hosts:
+    needs: deploy
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Smoke-check all public hostnames
+        run: node interfaces/dashboard/scripts/check-hosts.mjs

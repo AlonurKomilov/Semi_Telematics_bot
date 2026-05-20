@@ -132,7 +132,7 @@ export default function VehicleDetail() {
   return (
     <div>
       <Link
-        to="/fleet/vehicles"
+        to="/vehicles"
         className="inline-flex items-center gap-1 text-primary hover:underline text-sm mb-4"
       >
         <ChevronLeft size={14} />

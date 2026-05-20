@@ -12,6 +12,7 @@ canonical vehicle resource at /api/vehicles/* — see routes/vehicles.py.
 from __future__ import annotations
 
 import asyncio
+import time
 
 from fastapi import APIRouter, Depends, Query
 
@@ -33,6 +34,50 @@ from capabilities.telemetry import warehouse_reader as _wh_reader
 from capabilities.location.service import classify_vehicle_status, get_fleet_for_map
 
 router = APIRouter(prefix="/fleet", tags=["fleet"])
+
+
+# ── overview/stats per-account TTL cache ─────────────────────────────────────
+# The stats endpoint is hit by every Hero strip on every open dashboard, plus
+# the Overview page itself.  N concurrent users on one account would otherwise
+# each pay the full cost of (a) get_fleet_for_map + (b) three DB reads, even
+# though the result is identical for everyone sharing the same role and
+# company filter.  A 15s in-process cache collapses that to one underlying
+# fetch per cache window per (account, role, company, companies-allowed)
+# tuple.  Matches the cadence of _engine_states_cache in location/service.py
+# so freshness stays uniform across the chain.
+#
+# Driver responses are NOT cached — they're per-user (filtered to assigned
+# trucks, include my_truck / my_alerts), and the upstream warehouse read is
+# already cheap for a single-vehicle slice.
+_STATS_TTL = 15.0
+_stats_cache: dict[tuple, tuple[float, dict]] = {}
+
+
+def _stats_cache_key(
+    account_id: int,
+    role: str,
+    company: str | None,
+    allowed: list[str],
+) -> tuple:
+    return (account_id, role, company or "", tuple(sorted(allowed)))
+
+
+def _stats_cache_get(key: tuple) -> dict | None:
+    entry = _stats_cache.get(key)
+    if entry and (time.monotonic() - entry[0]) < _STATS_TTL:
+        return entry[1]
+    return None
+
+
+def _stats_cache_put(key: tuple, value: dict) -> None:
+    _stats_cache[key] = (time.monotonic(), value)
+    # Cheap bound — at >1000 keys, evict anything past TTL.  Acceptable
+    # for a single FastAPI worker; cross-worker sharing would need Redis.
+    if len(_stats_cache) > 1000:
+        cutoff = time.monotonic() - _STATS_TTL
+        for k, v in list(_stats_cache.items()):
+            if v[0] < cutoff:
+                _stats_cache.pop(k, None)
 
 
 @router.get("/overview")
@@ -108,6 +153,18 @@ async def overview_stats(
 
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
+
+    # Cache lookup before any work.  Driver responses are per-user and
+    # not cached (see _STATS_TTL comment); every other role shares the
+    # same shape within (account, role, company, allowed) so one
+    # successful compute serves every Hero strip on every dashboard for
+    # the next _STATS_TTL seconds.
+    cache_key = None
+    if role != Role.DRIVER:
+        cache_key = _stats_cache_key(account_id, str(role), company, allowed)
+        cached = _stats_cache_get(cache_key)
+        if cached is not None:
+            return cached
 
     # Fan out the four independent reads concurrently. Without this, the
     # Samsara fetch (~200-500ms) blocks the three DB reads (~30-50ms each),
@@ -218,6 +275,8 @@ async def overview_stats(
     if fetch_maintenance:
         result["maintenance_due"] = len(maint_tasks) if maint_tasks else 0
 
+    if cache_key is not None:
+        _stats_cache_put(cache_key, result)
     return result
 
 

@@ -35,12 +35,12 @@ export const dispatchNav: NavGroup[] = [
     // map and alerts are one click away from any page.
     titleKey: 'nav.dispatching_group',
     items: [
-      { labelKey: 'nav.live_map',  path: '/fleet/map',       icon: Map,           permission: ['can_location_map', 'can_location_own'] },
-      { labelKey: 'nav.routes',    path: '/fleet/routes',    icon: Route,         permission: ['can_route_all', 'can_route_own'] },
-      { labelKey: 'nav.alerts',    path: '/safety/alerts',   icon: Bell,          permission: ['can_alerts_all', 'can_alerts_own'] },
-      { labelKey: 'nav.geofences', path: '/fleet/geofences', icon: MapPin,        permission: ['can_geofence_all', 'can_geofence_own'] },
-      { labelKey: 'nav.parking',   path: '/fleet/parking',   icon: ParkingSquare, permission: ['can_alerts_all', 'can_alerts_own'] },
-      { labelKey: 'nav.vehicles',  path: '/fleet/vehicles',  icon: Truck,         permission: ['can_vehicle_all', 'can_vehicle_own'] },
+      { labelKey: 'nav.live_map',  path: '/live-map',       icon: Map,           permission: ['can_location_map', 'can_location_own'] },
+      { labelKey: 'nav.routes',    path: '/routes',    icon: Route,         permission: ['can_route_all', 'can_route_own'] },
+      { labelKey: 'nav.alerts',    path: '/alerts',   icon: Bell,          permission: ['can_alerts_all', 'can_alerts_own'] },
+      { labelKey: 'nav.geofences', path: '/geofences', icon: MapPin,        permission: ['can_geofence_all', 'can_geofence_own'] },
+      { labelKey: 'nav.parking',   path: '/parking',   icon: ParkingSquare, permission: ['can_alerts_all', 'can_alerts_own'] },
+      { labelKey: 'nav.vehicles',  path: '/vehicles',  icon: Truck,         permission: ['can_vehicle_all', 'can_vehicle_own'] },
     ],
   },
   {
@@ -54,8 +54,8 @@ export const dispatchNav: NavGroup[] = [
     // event's footage before reassigning a route).
     titleKey: 'nav.safety_group',
     items: [
-      { labelKey: 'nav.safety_events', path: '/safety/events',  icon: AlertTriangle, permission: ['can_events_all', 'can_events_own'] },
-      { labelKey: 'nav.cameras',       path: '/safety/cameras', icon: Camera,        permission: ['can_faults'] },
+      { labelKey: 'nav.safety_events', path: '/safety-events',  icon: AlertTriangle, permission: ['can_events_all', 'can_events_own'] },
+      { labelKey: 'nav.cameras',       path: '/cameras', icon: Camera,        permission: ['can_faults'] },
     ],
   },
   {

@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiJSON } from '../../api/client';
 import { useLeafletMap } from '../../hooks/useLeafletMap';
 import { usePoiLayers } from '../../hooks/usePoiLayers';
+import { useShellConfig } from '../../hooks/useShellConfig';
 import PoiLayerPanel from '../../components/PoiLayerPanel';
 import MapTypeControl from '../../components/MapTypeControl';
 import { POI_LAYERS } from '../../config/poiLayers';
 import type { PoiFeature } from '../../hooks/usePoiLayers';
 import type { MapVehicleFeature, MapVehiclesResponse, MapVehicleProperties, LiveVehiclesResponse, LiveVehiclePosition } from '../../types';
 import type L from 'leaflet';
+import { OVERLAYS, SafetyEventOverlay } from './overlays';
 
 const REFRESH_MS      = 30_000;   // full data refresh (fuel, DEF, status)
 const LIVE_REFRESH_MS =  5_000;   // position-only fast refresh
@@ -228,9 +230,14 @@ export default function LiveMap() {
   const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch]         = useState('');
- // 30-day safety-event heat layer toggle.
-  const [heatOn, setHeatOn] = useState(false);
-  const heatLayerRef = useRef<L.Layer | null>(null);
+  // 30-day safety-event heat layer toggle.  Auto-on when the active
+  // persona is Safety so a safety manager opening the map immediately
+  // sees where incidents cluster; any persona can still flip it via
+  // the side-panel checkbox.  The actual layer lifecycle lives in
+  // SafetyEventOverlay — this page just owns the toggle state.
+  const { activeView, isSafetyView } = useShellConfig();
+  const [heatOn, setHeatOn] = useState(isSafetyView);
+  const PersonaOverlay = OVERLAYS[activeView] ?? OVERLAYS.fleet;
 
   // ── Map initialization + polling ──────────────────────────────────────────
 
@@ -295,56 +302,11 @@ export default function LiveMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady]);
 
- // ── safety-event heat layer ────────────────────────────────
-  useEffect(() => {
-    if (!isReady || !leafletMap.current) return;
-    let cancelled = false;
-    const Leaf = window.L as typeof L;
-    const LHeat = window.L as unknown as {
-      heatLayer?: (points: Array<[number, number, number]>, opts?: object) => L.Layer;
-    };
-
-    function clearHeat() {
-      if (heatLayerRef.current) {
-        heatLayerRef.current.remove();
-        heatLayerRef.current = null;
-      }
-    }
-
-    if (!heatOn) {
-      clearHeat();
-      return;
-    }
-    if (typeof LHeat.heatLayer !== 'function') {
-      // Plugin failed to load — silently no-op so the toggle is a noop
-      // instead of crashing.
-      return;
-    }
-
-    apiJSON<{ points: Array<[number, number, number]> }>(
-      '/safety/events/heatmap?days=30',
-    )
-      .then((d) => {
-        if (cancelled || !heatOn || !leafletMap.current) return;
-        clearHeat();
-        const layer = LHeat.heatLayer!(d.points || [], {
-          radius: 25,
-          blur: 18,
-          maxZoom: 12,
-        });
-        layer.addTo(leafletMap.current);
-        heatLayerRef.current = layer;
-      })
-      .catch(() => { /* heatmap is best-effort */ });
-
-    return () => {
-      cancelled = true;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const _ = Leaf;
-      clearHeat();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [heatOn, isReady]);
+  // The 30-day safety-event heatmap and any persona-specific layers
+  // live in pages/live-map/overlays — see their files for behaviour.
+  // The host owns ``heatOn`` so the side-panel checkbox stays
+  // co-located with the rest of the map controls, but the layer
+  // lifecycle (fetch / draw / cleanup) is the overlay's job.
 
   // ── Filter→map sync ────────────────────────────────────────────────────────
   // When a vehicle is selected: show ONLY that vehicle's marker (focus mode).
@@ -687,6 +649,25 @@ export default function LiveMap() {
           setMapType={setMapType}
           setShowLabels={setShowLabels}
           isReady={isReady}
+        />
+        {/* Persona-specific overlay — currently a no-op for most
+            personas; future Dispatch route-lines / Fleet health rings
+            mount here without touching this page. */}
+        <PersonaOverlay
+          leafletMap={leafletMap}
+          isReady={isReady}
+          vehicles={vehicles}
+          selected={selected}
+        />
+        {/* 30-day safety-event heat layer.  Rendered for every persona
+            so the side-panel toggle works universally; defaults to ON
+            for the Safety persona, OFF otherwise. */}
+        <SafetyEventOverlay
+          leafletMap={leafletMap}
+          isReady={isReady}
+          vehicles={vehicles}
+          selected={selected}
+          active={heatOn}
         />
       </div>
 

@@ -78,7 +78,7 @@ export default function OnboardingBanner({
       hint: geofenceCount > 0
         ? `${geofenceCount} zone${geofenceCount !== 1 ? 's' : ''}`
         : 'Mark yards, fuel stops, customer sites',
-      href: '/fleet/geofences',
+      href: '/geofences',
       done: geofenceCount > 0,
     },
   ];

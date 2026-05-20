@@ -29,11 +29,11 @@ export const safetyNav: NavGroup[] = [
   {
     titleKey: 'nav.safety_group',
     items: [
-      { labelKey: 'nav.driver_scorecards', path: '/safety/scorecards', icon: Trophy,        permission: ['can_scorecard_all', 'can_scorecard_own'] },
-      { labelKey: 'nav.safety_events',     path: '/safety/events',     icon: AlertTriangle, permission: ['can_events_all', 'can_events_own'] },
-      { labelKey: 'nav.cameras',           path: '/safety/cameras',    icon: Camera,        permission: ['can_faults'] },
-      { labelKey: 'nav.alerts',            path: '/safety/alerts',     icon: Bell,          permission: ['can_alerts_all', 'can_alerts_own'] },
-      { labelKey: 'nav.parking',           path: '/fleet/parking',     icon: ParkingSquare, permission: ['can_alerts_all', 'can_alerts_own'] },
+      { labelKey: 'nav.driver_scorecards', path: '/driver-scorecards', icon: Trophy,        permission: ['can_scorecard_all', 'can_scorecard_own'] },
+      { labelKey: 'nav.safety_events',     path: '/safety-events',     icon: AlertTriangle, permission: ['can_events_all', 'can_events_own'] },
+      { labelKey: 'nav.cameras',           path: '/cameras',    icon: Camera,        permission: ['can_faults'] },
+      { labelKey: 'nav.alerts',            path: '/alerts',     icon: Bell,          permission: ['can_alerts_all', 'can_alerts_own'] },
+      { labelKey: 'nav.parking',           path: '/parking',     icon: ParkingSquare, permission: ['can_alerts_all', 'can_alerts_own'] },
     ],
   },
   {
@@ -60,7 +60,7 @@ export const safetyNav: NavGroup[] = [
     // needs the Live Map to see where a vehicle was during an incident.
     titleKey: 'nav.fleet_group',
     items: [
-      { labelKey: 'nav.live_map', path: '/fleet/map', icon: Map, permission: ['can_location_map', 'can_location_own'] },
+      { labelKey: 'nav.live_map', path: '/live-map', icon: Map, permission: ['can_location_map', 'can_location_own'] },
     ],
   },
   {

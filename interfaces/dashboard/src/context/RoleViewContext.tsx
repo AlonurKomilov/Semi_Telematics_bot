@@ -36,9 +36,9 @@ const VIEW_ICONS: Record<string, string> = {
 const VIEW_HOME_ROUTE: Record<string, string> = {
   owner: '/',
   admin: '/',
-  fleet: '/fleet/map',
-  safety: '/safety/scorecards',
-  dispatcher: '/fleet/map',
+  fleet: '/live-map',
+  safety: '/driver-scorecards',
+  dispatcher: '/live-map',
   driver: '/',
 };
 

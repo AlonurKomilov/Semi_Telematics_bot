@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import { lazy, Suspense, type ReactNode } from 'react';
 // Shell selection: instead of a single hardcoded Layout, the router
 // resolves which shell to render based on the active persona via
@@ -135,27 +135,20 @@ export default function AppRouter() {
       <Route element={<Shell />}>
         <Route index element={L(<Overview />)} />
 
-        {/* Fleet */}
-        <Route path="fleet/vehicles" element={L(<P perm={['can_vehicle_all', 'can_vehicle_own']}><Vehicles /></P>)} />
-        <Route path="fleet/vehicle/:name" element={L(<P perm={['can_vehicle_all', 'can_vehicle_own']}><VehicleDetail /></P>)} />
-        <Route path="fleet/map" element={L(<P perm={['can_location_map', 'can_location_own']}><LiveMap /></P>)} />
-
-        {/* Fleet (cont.) — routes & geofences live with fleet operations */}
-        <Route path="fleet/routes" element={L(<P perm={['can_route_all', 'can_route_own']}><RoutesPage /></P>)} />
-        <Route path="fleet/geofences" element={L(<P perm={['can_geofence_all', 'can_geofence_own']}><Geofences /></P>)} />
-        <Route path="fleet/parking" element={L(<P perm={['can_alerts_all', 'can_alerts_own']}><Parking /></P>)} />
-
-        {/* Safety */}
-        <Route path="safety/scorecards" element={L(<P perm={['can_scorecard_all', 'can_scorecard_own']}><Scorecards /></P>)} />
-        <Route path="safety/events" element={L(<P perm={['can_events_all', 'can_events_own']}><Events /></P>)} />
-        <Route path="safety/cameras" element={L(<P perm="can_faults"><Cameras /></P>)} />
-        <Route path="safety/alerts" element={L(<P perm={['can_alerts_all', 'can_alerts_own']}><Alerts /></P>)} />
-
-        {/* Legacy URL redirects (preserve bookmarks) */}
-        <Route path="dispatch/alerts" element={<Navigate to="/safety/alerts" replace />} />
-        <Route path="dispatch/routes" element={<Navigate to="/fleet/routes" replace />} />
-        <Route path="dispatch/geofences" element={<Navigate to="/fleet/geofences" replace />} />
-        <Route path="safety/parking" element={<Navigate to="/fleet/parking" replace />} />
+        {/* Shared feature pages.  URL = feature name (single source of
+            truth); the persona context is carried by the subdomain
+            (fleet.4truck.us etc.) and the active shell, never the URL
+            path. */}
+        <Route path="live-map" element={L(<P perm={['can_location_map', 'can_location_own']}><LiveMap /></P>)} />
+        <Route path="vehicles" element={L(<P perm={['can_vehicle_all', 'can_vehicle_own']}><Vehicles /></P>)} />
+        <Route path="vehicles/:name" element={L(<P perm={['can_vehicle_all', 'can_vehicle_own']}><VehicleDetail /></P>)} />
+        <Route path="routes" element={L(<P perm={['can_route_all', 'can_route_own']}><RoutesPage /></P>)} />
+        <Route path="geofences" element={L(<P perm={['can_geofence_all', 'can_geofence_own']}><Geofences /></P>)} />
+        <Route path="parking" element={L(<P perm={['can_alerts_all', 'can_alerts_own']}><Parking /></P>)} />
+        <Route path="alerts" element={L(<P perm={['can_alerts_all', 'can_alerts_own']}><Alerts /></P>)} />
+        <Route path="driver-scorecards" element={L(<P perm={['can_scorecard_all', 'can_scorecard_own']}><Scorecards /></P>)} />
+        <Route path="safety-events" element={L(<P perm={['can_events_all', 'can_events_own']}><Events /></P>)} />
+        <Route path="cameras" element={L(<P perm="can_faults"><Cameras /></P>)} />
 
         {/* AI */}
         <Route path="ai/chat" element={L(<P perm="can_faults"><AIChat /></P>)} />

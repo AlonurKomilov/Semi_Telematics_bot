@@ -145,7 +145,7 @@ journalctl -u 4truck-queue -f --since "06:00"
 #   ... one per account, in parallel up to ARQ_MAX_JOBS ...
 ```
 
-First user to hit `/dashboard/safety/scorecards` after 06:00 should
+First user to hit `dash.4truck.us/driver-scorecards` after 06:00 should
 land in the SWR cache (look for absence of `scorecard.timing total=Xms`
 INFO line — that line only fires on cold-path > 1s).
 
