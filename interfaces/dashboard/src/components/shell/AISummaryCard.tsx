@@ -1,10 +1,10 @@
 import { Sparkles, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { DashboardStats } from '../../types';
+import { useShellConfig } from '../../hooks/useShellConfig';
 
 interface AISummaryCardProps {
   stats: DashboardStats;
-  role?: string;
 }
 
 /**
@@ -12,10 +12,15 @@ interface AISummaryCardProps {
  * no LLM round-trip required. Clicking through opens the AI assistant
  * with a primed question so they can dig in.
  *
- * Copy adapts to role so dispatchers/safety/admins don't read like
- * the page is talking to a fleet manager.
+ * Copy adapts to the active persona view so dispatchers/safety/admins
+ * don't read like the page is talking to a fleet manager.  An Owner
+ * previewing as Safety gets the safety-flavored copy automatically.
  */
-function buildNarrative(stats: DashboardStats, role?: string): string[] {
+function buildNarrative(
+  stats: DashboardStats,
+  subjectAll: string,
+  restingHint: string,
+): string[] {
   const lines: string[] = [];
   const f = stats.fleet || {};
   const total = f.total ?? 0;
@@ -24,14 +29,6 @@ function buildNarrative(stats: DashboardStats, role?: string): string[] {
   const idle = f.idle ?? 0;
 
   const movingPct = total > 0 ? Math.round((moving / total) * 100) : 0;
-
-  // Role-specific subject for the headline sentence — "fleet" reads
-  // wrong for safety/dispatch/admin roles. We use neutral phrasing.
-  const subjectAll = role === 'dispatcher'
-    ? 'trucks dispatched'
-    : role === 'safety'
-    ? 'trucks under watch'
-    : 'vehicles';
 
   if (total > 0) {
     if (movingPct >= 70) {
@@ -61,19 +58,15 @@ function buildNarrative(stats: DashboardStats, role?: string): string[] {
   }
 
   if (lines.length === 0) {
-    const restingHint = role === 'safety'
-      ? 'Use this time to review scorecards or work the coaching backlog.'
-      : role === 'dispatcher'
-      ? 'Use this time to plan upcoming routes.'
-      : 'Use this time to review scorecards or coaching backlogs.';
     lines.push(`Nothing critical is open. ${restingHint}`);
   }
   return lines;
 }
 
-export default function AISummaryCard({ stats, role }: AISummaryCardProps) {
+export default function AISummaryCard({ stats }: AISummaryCardProps) {
   const navigate = useNavigate();
-  const narrative = buildNarrative(stats, role);
+  const { aiSubjectAll, aiRestingHint } = useShellConfig();
+  const narrative = buildNarrative(stats, aiSubjectAll, aiRestingHint);
 
   return (
     <div className="bg-gradient-to-br from-primary/5 via-card to-card border border-primary/20 rounded-xl p-5 mb-6">

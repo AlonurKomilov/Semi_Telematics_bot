@@ -1,0 +1,138 @@
+/**
+ * DispatchShell — wrapper for the Dispatch persona.
+ *
+ * Phase 2 of the role-shell migration: this file is currently an exact
+ * clone of DefaultShell so behavior is unchanged.  Phase 3 will swap
+ * in ``dispatchNav`` (Dispatch-emphasized sidebar: Routes/Live Map/
+ * Geofences/Alerts up top) and Phase 4 will add a Dispatch hero
+ * (active routes count, on-time / delayed chips, ETA summary) above
+ * the main column.  Until those phases land the only difference
+ * between this shell and DefaultShell is the file you're editing —
+ * which is the point: future Dispatch-only changes go HERE without
+ * touching the shared shell.
+ */
+import { useEffect, useState } from 'react';
+import { Outlet } from 'react-router-dom';
+import { Search, Menu, X, Eye } from 'lucide-react';
+import Sidebar from '../components/Sidebar';
+import { ThemeToggle } from '../components/ThemeToggle';
+import { LanguageSelector } from '../components/LanguageSelector';
+import { AvatarMenu } from '../components/AvatarMenu';
+import Breadcrumb from '../components/shell/Breadcrumb';
+import CommandPalette from '../components/shell/CommandPalette';
+import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
+import { useRoleView } from '../context/RoleViewContext';
+import { dispatchNav } from './nav/dispatchNav';
+import DispatchHero from './heroes/DispatchHero';
+
+export default function DispatchShell() {
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const { isPreviewing, viewLabel, switchView } = useRoleView();
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      } else if (e.key === '/' && (e.target as HTMLElement)?.tagName !== 'INPUT' && (e.target as HTMLElement)?.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        setPaletteOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+      <div className="hidden lg:block">
+        <Sidebar navConfig={dispatchNav} />
+      </div>
+
+      {mobileSidebarOpen && (
+        <div
+          className="lg:hidden fixed inset-0 z-50 bg-black/50"
+          onClick={() => setMobileSidebarOpen(false)}
+        >
+          <div className="h-full" onClick={(e) => e.stopPropagation()}>
+            <Sidebar navConfig={dispatchNav} />
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 flex flex-col overflow-hidden bg-background">
+        {isPreviewing && (
+          <div
+            className="bg-primary/10 border-b border-primary/30 text-primary text-[12px] px-4 py-1.5 flex items-center justify-between gap-3 shrink-0"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="flex items-center gap-2">
+              <Eye size={13} />
+              <span>
+                Previewing dashboard as <span className="font-medium">{viewLabel}</span> —
+                data and permissions are unchanged
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={() => switchView('owner')}
+              className="text-[11px] underline opacity-80 hover:opacity-100"
+            >
+              Exit preview
+            </button>
+          </div>
+        )}
+        <header className="h-14 bg-card border-b border-border flex items-center justify-between px-3 lg:px-4 shrink-0 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              onClick={() => setMobileSidebarOpen((o) => !o)}
+              className="lg:hidden p-1.5 rounded hover:bg-muted text-muted-foreground"
+              aria-label="Toggle navigation"
+            >
+              {mobileSidebarOpen ? <X size={18} /> : <Menu size={18} />}
+            </button>
+            <Breadcrumb />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPaletteOpen(true)}
+              className="hidden md:inline-flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground bg-muted/40 border border-border rounded-md hover:bg-muted hover:text-foreground transition"
+              aria-label="Open command palette"
+            >
+              <Search size={13} />
+              <span>Search…</span>
+              <kbd className="ml-3 px-1.5 py-0.5 text-[10px] border border-border rounded bg-card">
+                ⌘K
+              </kbd>
+            </button>
+            <button
+              onClick={() => setPaletteOpen(true)}
+              className="md:hidden p-1.5 rounded hover:bg-muted text-muted-foreground"
+              aria-label="Open search"
+            >
+              <Search size={18} />
+            </button>
+            <LanguageSelector />
+            <ThemeToggle />
+            <AvatarMenu />
+          </div>
+        </header>
+
+        {/* Dispatch-tuned status strip — moving / idle / stopped +
+            pending alerts and unsafe parking, the metrics a dispatcher
+            triages by all day. */}
+        <DispatchHero />
+
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6 bg-background">
+          <Outlet />
+        </main>
+      </div>
+
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <KeyboardShortcuts onOpenSearch={() => setPaletteOpen(true)} />
+    </div>
+  );
+}

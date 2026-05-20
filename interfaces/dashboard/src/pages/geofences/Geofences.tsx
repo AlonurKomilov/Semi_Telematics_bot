@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { MapPin, Plus } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useShellConfig } from '../../hooks/useShellConfig';
 import { useLeafletMap } from '../../hooks/useLeafletMap';
 import { usePoiLayers } from '../../hooks/usePoiLayers';
 import PoiLayerPanel from '../../components/PoiLayerPanel';
@@ -64,7 +65,7 @@ export default function Geofences() {
   const { t } = useTranslation();
   const { has, role } = usePermissions();
   const canManage = has('can_geofence_all');
-  const isOwner = role === 'owner';
+  const { isOwner } = useShellConfig();
 
   const { mapRef, leafletMap, isReady, invalidateSize } = useLeafletMap();
   const poiHook = usePoiLayers(leafletMap, isReady);

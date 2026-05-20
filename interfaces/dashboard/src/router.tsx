@@ -1,6 +1,13 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense, type ReactNode } from 'react';
-import Layout from './components/Layout';
+// Shell selection: instead of a single hardcoded Layout, the router
+// resolves which shell to render based on the active persona via
+// :func:`pickShell` from shells/index.  Phase 0 of the migration has
+// every role mapped to DefaultShell so behavior is identical to the
+// pre-refactor world.  Subsequent phases will introduce FleetShell,
+// DispatchShell, SafetyShell etc. without touching this file.
+import { pickShell } from './shells';
+import { useRoleView } from './context/RoleViewContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
 /**
@@ -49,16 +56,20 @@ function lazyWithReload<T extends { default: React.ComponentType<unknown> }>(
 // browser cache miss) auto-recovers by reloading instead of dying
 // on ``Failed to fetch dynamically imported module``.
 const Overview         = lazyWithReload(() => import('./pages/Overview'));
-const Vehicles         = lazyWithReload(() => import('./pages/fleet/Vehicles'));
-const VehicleDetail    = lazyWithReload(() => import('./pages/fleet/VehicleDetail'));
-const LiveMap          = lazyWithReload(() => import('./pages/fleet/LiveMap'));
-const Alerts           = lazyWithReload(() => import('./pages/dispatch/Alerts'));
-const Geofences        = lazyWithReload(() => import('./pages/dispatch/Geofences'));
-const RoutesPage       = lazyWithReload(() => import('./pages/dispatch/Routes'));
-const Scorecards       = lazyWithReload(() => import('./pages/safety/Scorecards'));
-const Events           = lazyWithReload(() => import('./pages/safety/Events'));
-const Cameras          = lazyWithReload(() => import('./pages/safety/Cameras'));
-const Parking          = lazyWithReload(() => import('./pages/safety/Parking'));
+// Phase 1 of the role-shell migration moved these pages out of role-
+// named folders (pages/fleet/, pages/safety/, pages/dispatch/) into
+// feature-named folders so the directory structure stops competing
+// with role names.  URLs are unchanged.
+const Vehicles         = lazyWithReload(() => import('./pages/vehicles/Vehicles'));
+const VehicleDetail    = lazyWithReload(() => import('./pages/vehicles/VehicleDetail'));
+const LiveMap          = lazyWithReload(() => import('./pages/live-map/LiveMap'));
+const Alerts           = lazyWithReload(() => import('./pages/alerts/Alerts'));
+const Geofences        = lazyWithReload(() => import('./pages/geofences/Geofences'));
+const RoutesPage       = lazyWithReload(() => import('./pages/routes/Routes'));
+const Scorecards       = lazyWithReload(() => import('./pages/driver-scorecards/Scorecards'));
+const Events           = lazyWithReload(() => import('./pages/safety-events/Events'));
+const Cameras          = lazyWithReload(() => import('./pages/cameras/Cameras'));
+const Parking          = lazyWithReload(() => import('./pages/parking/Parking'));
 const Reports          = lazyWithReload(() => import('./pages/reports/Reports'));
 const Subscriptions    = lazyWithReload(() => import('./pages/reports/Subscriptions'));
 const RiskSummary      = lazyWithReload(() => import('./pages/reports/RiskSummary'));
@@ -107,15 +118,21 @@ function P({ perm, children }: { perm: string | string[]; children: ReactNode })
 }
 
 // Wrap each lazy element in Suspense so the skeleton renders inside the
-// Layout's main column rather than swapping the whole shell.
+// shell's main column rather than swapping the whole shell.
 function L(node: ReactNode) {
   return <Suspense fallback={<RouteSkeleton />}>{node}</Suspense>;
 }
 
 export default function AppRouter() {
+  // pickShell looks up the right top-level wrapper for the active
+  // persona (Owner/Admin → DefaultShell; future phases override per
+  // role).  Resolved once per render of AppRouter; switching persona
+  // re-renders this component because RoleViewContext updates.
+  const { activeView } = useRoleView();
+  const Shell = pickShell(activeView);
   return (
     <Routes>
-      <Route element={<Layout />}>
+      <Route element={<Shell />}>
         <Route index element={L(<Overview />)} />
 
         {/* Fleet */}

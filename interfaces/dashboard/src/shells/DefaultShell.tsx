@@ -1,16 +1,33 @@
+/**
+ * DefaultShell — the original Layout, owned by Owner / Admin.
+ *
+ * This is the all-encompassing dashboard wrapper: full sidebar (all
+ * groups via ``defaultNav``), generic header, role-preview banner when
+ * Owner/Admin is viewing as another persona.  Fleet / Dispatch /
+ * Safety personas will get their own shells (FleetShell, etc.) that
+ * subclass-via-composition: same building blocks, different nav
+ * config + landing emphasis + hero widget.
+ *
+ * Phase 0 of the role-shell migration moved this file from
+ * components/Layout.tsx → shells/DefaultShell.tsx unchanged.  The
+ * router now selects which shell to render based on the active
+ * persona; for Owner/Admin (the only switchable roles) and for any
+ * persona whose dedicated shell isn't built yet, this default shell
+ * renders.
+ */
 import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Search, Menu, X, Eye } from 'lucide-react';
-import Sidebar from './Sidebar';
-import { ThemeToggle } from './ThemeToggle';
-import { LanguageSelector } from './LanguageSelector';
-import { AvatarMenu } from './AvatarMenu';
-import Breadcrumb from './shell/Breadcrumb';
-import CommandPalette from './shell/CommandPalette';
-import KeyboardShortcuts from './shell/KeyboardShortcuts';
+import Sidebar from '../components/Sidebar';
+import { ThemeToggle } from '../components/ThemeToggle';
+import { LanguageSelector } from '../components/LanguageSelector';
+import { AvatarMenu } from '../components/AvatarMenu';
+import Breadcrumb from '../components/shell/Breadcrumb';
+import CommandPalette from '../components/shell/CommandPalette';
+import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
 import { useRoleView } from '../context/RoleViewContext';
 
-export default function Layout() {
+export default function DefaultShell() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   // Role-view preview banner — shown only when Owner/Admin has switched

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { apiJSON } from '../api/client';
 import { usePermissions } from '../hooks/usePermissions';
+import { useShellConfig } from '../hooks/useShellConfig';
 import { useAuth } from '../context/AuthContext';
 import {
   PageHeader,
@@ -547,7 +548,7 @@ function RoleOverview({
       <AlertStrip items={alertItems} />
 
       {/* Tier 2 — AI narrative */}
-      {total > 0 && <AISummaryCard stats={stats} role={role} />}
+      {total > 0 && <AISummaryCard stats={stats} />}
 
       {/* Tier 3 — current state (4-up status row) */}
       {statusTiles.length > 0 && (
@@ -619,8 +620,7 @@ export default function Overview() {
   const navigate = useNavigate();
   const { has } = usePermissions();
   const { user } = useAuth();
-  const role = user?.role;
-  const isDriver = role === 'driver';
+  const { realRole: role, isDriver, isOwnerOrAdmin } = useShellConfig();
   const greetingName = user?.display_name || '';
 
   const {
@@ -672,7 +672,7 @@ export default function Overview() {
 
   // Fresh-tenant onboarding: detect when the account has no vehicles yet.
   const fleetTotal = stats.fleet?.total ?? 0;
-  const showOnboarding = role === 'owner' || role === 'admin';
+  const showOnboarding = isOwnerOrAdmin;
 
   return (
     <>

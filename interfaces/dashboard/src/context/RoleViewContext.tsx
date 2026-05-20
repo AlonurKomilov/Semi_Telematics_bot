@@ -28,12 +28,17 @@ const VIEW_ICONS: Record<string, string> = {
 // "view as Fleet", we navigate to the Fleet persona's home page so the
 // preview lands where that role would normally start their day.
 // Owner/Admin keep landing on Overview (account-wide health card).
+//
+// Dispatch lands on the Live Map because dispatchers operate
+// visually from the map — they triage from the spatial view of
+// what's where rather than from a list of alerts.  (Their hero
+// strip surfaces pending alerts so they're not lost.)
 const VIEW_HOME_ROUTE: Record<string, string> = {
   owner: '/',
   admin: '/',
   fleet: '/fleet/map',
   safety: '/safety/scorecards',
-  dispatcher: '/safety/alerts',
+  dispatcher: '/fleet/map',
   driver: '/',
 };
 
@@ -53,6 +58,31 @@ const PREVIEWABLE_ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher'];
 // logout: the next login resets activeView to the user's real role anyway
 // (see the useEffect below).
 const STORAGE_KEY = 'roleView.activeView';
+
+// Branded subdomain → persona mapping.  When an Owner/Admin opens
+// fleet.4truck.us / dispatch.4truck.us / safety.4truck.us the dashboard
+// loads pre-switched into that persona's view (matching nav + hero),
+// even on a fresh login.  An explicit localStorage preference still wins
+// — the operator can override the subdomain default and the choice
+// persists.  Non-switchable users (e.g. a real Fleet user landing on
+// dispatch.) keep their actual role; the subdomain is a hint, not a
+// permission.
+const SUBDOMAIN_TO_ROLE: Record<string, string> = {
+  fleet: 'fleet',
+  dispatch: 'dispatcher',
+  safety: 'safety',
+};
+
+function getSubdomainRole(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const host = window.location.hostname.toLowerCase();
+    const label = host.split('.')[0];
+    return SUBDOMAIN_TO_ROLE[label] ?? null;
+  } catch {
+    return null;
+  }
+}
 
 interface RoleViewContextValue {
   activeView: string;
@@ -81,10 +111,13 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
   const realRole = user?.role ?? 'driver';
   const canSwitch = SWITCHABLE_ROLES.includes(realRole);
 
-  // Initial activeView: localStorage preference (only if user can switch
-  // AND the persisted value is a known role) → fall back to user's real
-  // role.  This way an Owner who picked "Fleet view" yesterday reopens
-  // the dashboard already in Fleet view.
+  // Initial activeView resolution order (switchable users only):
+  //   1. Explicit localStorage preference — user already chose a view
+  //   2. Branded subdomain hint — fleet./dispatch./safety. landing page
+  //   3. User's real role
+  // Non-switchable users always see their real role.  The subdomain
+  // check sits between persistence and default so the URL acts as a
+  // first-time hint without overriding a deliberate user choice.
   const [activeView, setActiveView] = useState(() => {
     if (!canSwitch) return realRole;
     try {
@@ -93,6 +126,8 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
     } catch {
       /* localStorage disabled — fall through */
     }
+    const subRole = getSubdomainRole();
+    if (subRole && subRole in VIEW_LABELS) return subRole;
     return realRole;
   });
   const [rolePermSets, setRolePermSets] = useState<Record<string, Partial<Permissions>>>({});
@@ -117,6 +152,8 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
   // If the user's real role changes (e.g. log out + log in as a different
   // account), reset activeView so we don't carry over the previous user's
   // persona preference.  Non-switchable users always see their real role.
+  // Switchable users follow the same resolution order as the initial
+  // mount: saved preference → subdomain hint → real role.
   useEffect(() => {
     if (!canSwitch) {
       setActiveView(realRole);
@@ -124,10 +161,16 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
     }
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (!saved || !(saved in VIEW_LABELS)) setActiveView(realRole);
+      if (saved && saved in VIEW_LABELS) return;
     } catch {
-      setActiveView(realRole);
+      /* localStorage disabled — fall through */
     }
+    const subRole = getSubdomainRole();
+    if (subRole && subRole in VIEW_LABELS) {
+      setActiveView(subRole);
+      return;
+    }
+    setActiveView(realRole);
   }, [realRole, canSwitch]);
 
   const switchView = useCallback((role: string) => {

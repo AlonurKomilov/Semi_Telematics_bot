@@ -102,8 +102,49 @@ If something breaks within minutes:
 
 For a hash-rotated SPA cache miss, `lazyWithReload` in [dashboard router](../../interfaces/dashboard/src/router.tsx) auto-reloads on chunk-load failure; users recover on next refresh.
 
+## Phase 2 — persona subdomains (`fleet.` / `dispatch.` / `safety.`)
+
+Adds branded entry points that pre-select the matching role-shell view on first load.  The SPA bundle is the same — `RoleViewContext` inspects `window.location.hostname` and chooses the initial `activeView`.  A localStorage choice still wins, so operators can override.
+
+Constraints:
+- Only Owner/Admin (the switchable roles) see the auto-switch.  A real Fleet user landing on `dispatch.` keeps Fleet view — the subdomain is a hint, not a permission grant.
+- Auth is still per-host localStorage.  An Owner already logged in on `dash.` will need to log in again on `fleet.` (cross-subdomain cookie auth is still future work).
+
+### Cutover
+
+1. **DNS** — add three Cloudflare A records (Proxied / orange-cloud) pointing to the same origin:
+
+       fleet     → <origin IP>
+       dispatch  → <origin IP>
+       safety    → <origin IP>
+
+   Confirm propagation:
+
+       dig +short fleet.4truck.us dispatch.4truck.us safety.4truck.us
+
+2. **TLS** — the cert at `/etc/nginx/ssl/4truck.crt` must cover the new hostnames.  If it's a wildcard `*.4truck.us` (recommended), nothing to do.  Otherwise reissue with the three new SANs (Cloudflare Origin CA → Create Certificate).
+
+3. **Deploy nginx** — `nginx/4truck.conf` already adds the three hostnames to the `dash.` server block's `server_name` and to the HTTP→HTTPS redirect.  Apply with:
+
+       sudo -v
+       make nginx-install
+
+4. **Deploy the dashboard build** — same `make dashboard-build`; no env changes.
+
+### Verification
+
+       curl -sIL https://fleet.4truck.us/    | grep HTTP   # → 200
+       curl -sIL https://dispatch.4truck.us/ | grep HTTP   # → 200
+       curl -sIL https://safety.4truck.us/   | grep HTTP   # → 200
+
+In a browser, log in as an Owner on each persona host with a clean localStorage — the dashboard should land directly in Fleet / Dispatch / Safety view (left nav + hero strip match).  Then switch personas via the sidebar selector; the choice persists on next reload of that host.
+
+### Rollback
+
+Remove the three hostnames from `server_name` lines (both the `dash.` server block and the HTTP→HTTPS redirect), `make nginx-install`.  DNS records can stay — they just won't resolve to a valid vhost.
+
 ## What didn't change
 
-- **JWT storage**: still localStorage on `dash.4truck.us` (not a cross-subdomain cookie yet).  The dashboard's API calls go to `dash.4truck.us/api/...` (same-origin via nginx proxy) so JWT survives.  Cross-subdomain cookie auth is reserved for [Phase 2](#) when we add `fleet.4truck.us` / `safety.4truck.us` / `dispatch.4truck.us` and need shared login.
+- **JWT storage**: still localStorage on `dash.4truck.us` (not a cross-subdomain cookie yet).  The dashboard's API calls go to `dash.4truck.us/api/...` (same-origin via nginx proxy) so JWT survives.  Cross-subdomain auth shared across `fleet.` / `dispatch.` / `safety.` requires moving the JWT to a cookie scoped to `.4truck.us` — deferred until a user actually needs single sign-on across persona hosts.
 - **Service worker**: the miniapp PWA's runtime caches still match `/api/*` patterns — works because miniapp's API calls go same-origin via `app.4truck.us/api/*`.
 - **PWA scope**: `start_url` and `scope` in the manifest changed from `/miniapp/` to `/`.  Existing installs on Telegram WebView will need to be re-installed (the SW scope changed).  Most users haven't "installed" the Mini App anyway — it runs in WebView session.

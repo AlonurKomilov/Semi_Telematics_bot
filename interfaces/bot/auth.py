@@ -181,6 +181,3 @@ def _require_system_owner(func):
             return
         return await func(update, context, **kwargs)
     return wrapper
-
-
-

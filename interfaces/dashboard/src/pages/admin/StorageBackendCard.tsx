@@ -300,16 +300,35 @@ function DiskUsageBar({
   const quota = usage.drive_quota;
   const limit = quota?.limit_bytes ?? null;
   const userTotalUsed = quota?.usage_bytes ?? null;
-  // % of the user's whole-Drive quota consumed.  Only renders the
-  // bar when both numbers are present (some Workspace tiers return
-  // no ``limit`` so the bar would be misleading).
-  const pct = (connected && limit && userTotalUsed !== null)
-    ? Math.min(100, Math.round((userTotalUsed / limit) * 100))
+
+  // Two-segment progress bar: the user's *other* Drive files (anything
+  // not created by 4truck) sit on the left in muted gray; 4truck's
+  // own slice stacks immediately after in the brand blue.  Both are
+  // expressed as a percentage of the whole-Drive quota so the user
+  // sees how much room is left across the entire account, not just
+  // our corner of it.
+  const pctTotal = (connected && limit && userTotalUsed !== null)
+    ? Math.min(100, (userTotalUsed / limit) * 100)
     : null;
-  const barColor = pct === null
+  const pctApp = (connected && limit)
+    ? Math.min(100, (usedByApp / limit) * 100)
+    : 0;
+  // The "other files" slice is whatever the user filled the Drive
+  // with outside of 4truck.  Clamped at zero so a momentarily
+  // inconsistent quota snapshot (Drive lags ~30 s behind writes)
+  // can't render a negative width.
+  const pctOther = pctTotal !== null
+    ? Math.max(0, pctTotal - pctApp)
+    : 0;
+  const pctTotalRounded = pctTotal !== null ? Math.round(pctTotal) : null;
+
+  // Threshold colour for the 4truck slice — when total drive usage
+  // is nearing the plan limit we tint the bar to a warning hue so
+  // the operator notices before Drive starts throttling uploads.
+  const appBarColor = pctTotal === null
     ? 'bg-muted'
-    : pct >= 90 ? 'bg-red-500'
-    : pct >= 70 ? 'bg-orange-500'
+    : pctTotal >= 90 ? 'bg-red-500'
+    : pctTotal >= 70 ? 'bg-orange-500'
     : 'bg-primary';
 
   return (
@@ -318,28 +337,50 @@ function DiskUsageBar({
         <span className="text-muted-foreground">Storage used by 4truck</span>
         <span className="font-medium tabular-nums">{formatBytes(usedByApp)}</span>
       </div>
-      {connected && pct !== null && (
+      {connected && pctTotal !== null && (
         <>
-          {/* Whole-Drive bar.  Caption explains the two numbers
-              clearly — ``used_by_app`` is just OUR slice; the
-              progress bar shows the user's full Drive consumption
-              so they can see if they're approaching their plan
-              limit (Drive throttles uploads past quota). */}
-          <div className="h-2 bg-background rounded-full overflow-hidden mb-1.5">
-            <div
-              className={`h-full ${barColor} transition-all`}
-              style={{ width: `${pct}%` }}
-            />
+          {/* Single bar, two stacked segments: left = your other
+              Drive files (muted), right = 4truck's slice (brand
+              colour).  Both share the bar so the operator sees one
+              progress meter instead of two competing ones. */}
+          <div className="h-2 bg-background rounded-full overflow-hidden mb-1.5 flex">
+            {pctOther > 0 && (
+              <div
+                className="h-full bg-muted-foreground/40 transition-all"
+                style={{ width: `${pctOther}%` }}
+                title={`Other Drive files: ${formatBytes((userTotalUsed ?? 0) - usedByApp)}`}
+              />
+            )}
+            {pctApp > 0 && (
+              <div
+                className={`h-full ${appBarColor} transition-all`}
+                style={{ width: `${pctApp}%` }}
+                title={`4truck: ${formatBytes(usedByApp)}`}
+              />
+            )}
           </div>
+
+          {/* Legend explaining which colour is which slice. */}
+          <div className="flex items-center gap-3 text-[11px] text-muted-foreground mb-1">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-sm bg-muted-foreground/40" />
+              Your other files
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className={`inline-block w-2 h-2 rounded-sm ${appBarColor}`} />
+              4truck
+            </span>
+          </div>
+
           <div className="flex items-baseline justify-between text-[11px] text-muted-foreground">
             <span>
               Whole-Drive total: <span className="font-medium text-foreground">{formatBytes(userTotalUsed)}</span> of {formatBytes(limit)}
             </span>
-            <span className="font-medium">{pct}%</span>
+            <span className="font-medium">{pctTotalRounded}%</span>
           </div>
         </>
       )}
-      {connected && pct === null && (
+      {connected && pctTotal === null && (
         <p className="text-[11px] text-muted-foreground">
           Drive quota unavailable (unlimited plan or API hiccup).
         </p>

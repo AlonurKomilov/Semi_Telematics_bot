@@ -2,18 +2,36 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef, ty
 import { apiJSON, getToken, setToken, clearToken, isTokenPersistent } from '../api/client';
 import type { User, TelegramLoginData, AuthResponse } from '../types';
 
-/** Refresh the token when less than this many ms remain. */
-const REFRESH_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — refresh in last week of 30-day token
 /** Poll interval for checking token expiry. */
 const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
-function getTokenExpiry(token: string): number | null {
+/** Refresh window for short (~8-hour) tokens. */
+const SHORT_REFRESH_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+/** Refresh window for long (~30-day) tokens. */
+const LONG_REFRESH_THRESHOLD_MS  = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function decodeJwtPayload(token: string): { exp?: number; remember?: boolean } | null {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+    return JSON.parse(atob(token.split('.')[1]));
   } catch {
     return null;
   }
+}
+
+function getTokenExpiry(token: string): number | null {
+  const payload = decodeJwtPayload(token);
+  return payload && typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+}
+
+/** Threshold below which we proactively refresh.  Short-lived
+ *  ("Remember me" off) tokens use a tight 30-minute window so we
+ *  don't waste an entire 8-hour session on a stale token; long-lived
+ *  tokens keep the original 7-day window. */
+function refreshThresholdFor(token: string): number {
+  const payload = decodeJwtPayload(token);
+  return payload && payload.remember === false
+    ? SHORT_REFRESH_THRESHOLD_MS
+    : LONG_REFRESH_THRESHOLD_MS;
 }
 
 interface AuthContextValue {
@@ -36,14 +54,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  /** Silently refresh the JWT if it's close to expiring. */
+  /** Silently refresh the JWT if it's close to expiring.  The
+   *  threshold is dynamic: short-lived ("Remember me" off) tokens
+   *  refresh in the last 30 minutes, long-lived tokens in the last
+   *  7 days.  Without this split, a freshly-issued 8-hour token
+   *  would trigger an immediate refresh because 7 days > 8 hours. */
   const refreshTokenIfNeeded = useCallback(async () => {
     const token = getToken();
     if (!token) return;
     const exp = getTokenExpiry(token);
     if (!exp) return;
     const remaining = exp - Date.now();
-    if (remaining > REFRESH_THRESHOLD_MS) return;
+    if (remaining > refreshThresholdFor(token)) return;
     try {
       const res = await apiJSON<AuthResponse>('/auth/refresh', { method: 'POST' });
       // Preserve the same storage (persistent vs session-only)
@@ -110,9 +132,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchUser]);
 
   const loginWithTelegram = useCallback(async (tgData: TelegramLoginData, rememberMe = false) => {
+    // The flag must reach the API so it can pick the right JWT TTL
+    // (long vs short).  Client-side storage choice (localStorage vs
+    // sessionStorage) is still controlled by ``setToken(..., persistent)``.
     const res = await apiJSON<AuthResponse>('/auth/telegram-login', {
       method: 'POST',
-      body: tgData as unknown as Record<string, unknown>,
+      body: { ...(tgData as unknown as Record<string, unknown>), remember_me: rememberMe },
     });
     setToken(res.access_token, rememberMe);
     await fetchUser();
@@ -121,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginWithEmail = useCallback(async (email: string, password: string, rememberMe = false) => {
     const res = await apiJSON<AuthResponse>('/auth/login', {
       method: 'POST',
-      body: { email, password },
+      body: { email, password, remember_me: rememberMe },
     });
     setToken(res.access_token, rememberMe);
     await fetchUser();
@@ -130,11 +155,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const registerWithEmail = useCallback(async (
     email: string, password: string, displayName: string, inviteCode: string
   ) => {
+    // Registration → long-lived session by default (account owners
+    // shouldn't be kicked out at end of shift; the backend also
+    // defaults remember_me=True on /register).
     const res = await apiJSON<AuthResponse>('/auth/register', {
       method: 'POST',
-      body: { email, password, display_name: displayName, invite_code: inviteCode },
+      body: {
+        email, password,
+        display_name: displayName,
+        invite_code: inviteCode,
+        remember_me: true,
+      },
     });
-    setToken(res.access_token);
+    setToken(res.access_token, true);
     await fetchUser();
   }, [fetchUser]);
 

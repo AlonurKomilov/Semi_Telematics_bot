@@ -385,7 +385,13 @@ async def _handle_bot_login(
     platform = get_platform_db()
     account = await platform.get_account(user.account_id)
     account_name = account.name if account else "your company"
-    jwt_token = create_jwt(user.telegram_id, user.account_id, user.role.value)
+    # Bot login is a deliberate, identity-confirming action (user
+    # tapped Approve in the bot), so issue the long-lived "remembered"
+    # session — same default we give Telegram Mini App / Login Widget.
+    jwt_token = create_jwt(
+        user.telegram_id, user.account_id, user.role.value,
+        remember_me=True,
+    )
 
     await redis_set(
         f"{BOT_LOGIN_PREFIX}{token}",

@@ -41,13 +41,39 @@ if len(JWT_SECRET) < 32:
         "openssl rand -hex 32 (gives 64 chars).", len(JWT_SECRET),
     )
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRY_SECONDS = 30 * 24 * 60 * 60  # 30 days
+
+# Two session lifetimes, picked at login time based on the
+# "Remember me" checkbox.  The checkbox used to be cosmetic — it only
+# controlled whether the client persisted the token in localStorage
+# (survives browser restart) vs sessionStorage (cleared on close) but
+# both paths got a 30-day JWT, so anyone who left their browser open
+# stayed logged in for a month regardless of their preference.
+#
+# Now:
+#   - "Remember me" checked  → 30-day token, persisted to localStorage
+#   - "Remember me" unchecked → 8-hour token, persisted to sessionStorage
+#                                (typical office shift, then re-auth)
+#
+# Both are env-overridable for ops flexibility.  The refresh endpoint
+# preserves whichever lifetime the original login chose, by reading the
+# ``remember`` claim baked into the JWT payload.
+JWT_EXPIRY_LONG_SECONDS = int(
+    os.getenv("JWT_EXPIRY_LONG_SECONDS", str(30 * 24 * 60 * 60))
+)
+JWT_EXPIRY_SHORT_SECONDS = int(
+    os.getenv("JWT_EXPIRY_SHORT_SECONDS", str(8 * 60 * 60))
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 class AuthRequest(BaseModel):
     init_data: str
+    # Mini App "Remember me" is implied (you always come back through
+    # Telegram), but plumbed for API symmetry with the email/password
+    # flow.  Defaults to True for Telegram Mini App users since they
+    # don't typically log out manually.
+    remember_me: bool = True
 
 
 class AuthResponse(BaseModel):
@@ -100,14 +126,31 @@ def validate_telegram_init_data(init_data: str, bot_token: str) -> dict:
     return json.loads(unquote(user_json))
 
 
-def create_jwt(telegram_id: int, account_id: int, role: str) -> str:
-    """Create a JWT token for an authenticated user."""
+def create_jwt(
+    telegram_id: int,
+    account_id: int,
+    role: str,
+    *,
+    remember_me: bool = False,
+) -> str:
+    """Create a JWT token for an authenticated user.
+
+    ``remember_me=True``  → 30-day TTL (long session).
+    ``remember_me=False`` → 8-hour TTL (short session, default).
+
+    The ``remember`` claim is embedded in the payload so the refresh
+    endpoint can keep issuing tokens of the same flavour without the
+    client having to re-supply the flag.
+    """
+    ttl = JWT_EXPIRY_LONG_SECONDS if remember_me else JWT_EXPIRY_SHORT_SECONDS
+    now = int(time.time())
     payload = {
         "sub": str(telegram_id),
         "account_id": account_id,
         "role": role,
-        "exp": int(time.time()) + JWT_EXPIRY_SECONDS,
-        "iat": int(time.time()),
+        "remember": bool(remember_me),
+        "exp": now + ttl,
+        "iat": now,
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
@@ -143,7 +186,16 @@ async def refresh_token(request: Request, authorization: str = __import__("fasta
     if not user or not user.is_active:
         raise HTTPException(status_code=403, detail="User no longer active")
 
-    new_token = create_jwt(user.telegram_id, user.account_id, user.role.value)
+    # Preserve the original session length — if the user opted into a
+    # long-lived session at login, refresh extends THAT, not a short
+    # one.  Tokens issued before this field existed default to True
+    # (the legacy 30-day behaviour) so refreshing them doesn't
+    # accidentally shorten an active session.
+    remember = bool(payload.get("remember", True))
+    new_token = create_jwt(
+        user.telegram_id, user.account_id, user.role.value,
+        remember_me=remember,
+    )
     return AuthResponse(
         access_token=new_token,
         user={
@@ -203,7 +255,10 @@ async def auth_telegram(request: Request, body: AuthRequest):
             detail="User not registered. Use the Telegram bot to register first.",
         )
 
-    token = create_jwt(user.telegram_id, user.account_id, user.role.value)
+    token = create_jwt(
+        user.telegram_id, user.account_id, user.role.value,
+        remember_me=body.remember_me,
+    )
     return AuthResponse(
         access_token=token,
         user={
@@ -223,6 +278,12 @@ class LoginWidgetRequest(BaseModel):
     photo_url: str = ""
     auth_date: int
     hash: str
+    # NOT part of the signed Telegram payload — sent alongside it by
+    # the dashboard.  Excluded from the hash check via the same empty-
+    # value filter applied to optional Telegram fields, so the widget
+    # signature stays intact.  Defaults to True since the Login Widget
+    # is typically used once per device.
+    remember_me: bool = True
 
 
 def validate_telegram_login_widget(data: dict, bot_token: str) -> None:
@@ -280,7 +341,12 @@ async def auth_telegram_login(request: Request, body: LoginWidgetRequest):
         # last_name="", photo_url="").  Telegram only signs the fields
         # that were actually present in the widget callback, so we must
         # exclude keys whose value is an empty string.
-        raw = {k: v for k, v in body.model_dump().items() if v != ""}
+        # ``remember_me`` is OUR field (not signed by Telegram), drop
+        # it before hashing or the signature check fails.
+        raw = {
+            k: v for k, v in body.model_dump().items()
+            if v != "" and k != "remember_me"
+        }
         validate_telegram_login_widget(raw, bot_token)
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
@@ -291,7 +357,10 @@ async def auth_telegram_login(request: Request, body: LoginWidgetRequest):
             detail="User not registered. Use the Telegram bot to register first.",
         )
 
-    token = create_jwt(user.telegram_id, user.account_id, user.role.value)
+    token = create_jwt(
+        user.telegram_id, user.account_id, user.role.value,
+        remember_me=body.remember_me,
+    )
     return AuthResponse(
         access_token=token,
         user={
@@ -440,6 +509,9 @@ def _verify_password(password: str, hashed: str) -> bool:
 class EmailLoginRequest(BaseModel):
     email: str
     password: str
+    # "Remember me" decides the JWT lifetime (long = 30 days vs short
+    # = 8 hours).  See ``create_jwt`` for the rationale.
+    remember_me: bool = False
 
 
 class EmailRegisterRequest(BaseModel):
@@ -447,6 +519,10 @@ class EmailRegisterRequest(BaseModel):
     password: str
     display_name: str = ""
     invite_code: str = ""
+    # New registrations get a long-lived session by default — the user
+    # just committed to an account; no reason to log them back out at
+    # the end of the shift.
+    remember_me: bool = True
 
 
 @router.post("/login", response_model=AuthResponse)
@@ -463,7 +539,10 @@ async def auth_email_login(request: Request, body: EmailLoginRequest):
     if not _verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    token = create_jwt(user.telegram_id, user.account_id, user.role.value)
+    token = create_jwt(
+        user.telegram_id, user.account_id, user.role.value,
+        remember_me=body.remember_me,
+    )
     return AuthResponse(
         access_token=token,
         user={
@@ -536,7 +615,10 @@ async def auth_email_register(request: Request, body: EmailRegisterRequest):
             "Ask your company admin for an invite link.",
         )
 
-    token = create_jwt(user.telegram_id, user.account_id, user.role.value)
+    token = create_jwt(
+        user.telegram_id, user.account_id, user.role.value,
+        remember_me=body.remember_me,
+    )
     return AuthResponse(
         access_token=token,
         user={
@@ -611,7 +693,10 @@ async def auth_register_account(request: Request, body: RegisterAccountRequest):
             display_name=body.display_name or body.email.split("@")[0],
         )
 
-        token = create_jwt(user.telegram_id, user.account_id, user.role.value)
+        token = create_jwt(
+            user.telegram_id, user.account_id, user.role.value,
+            remember_me=True,  # account owners always get the long session
+        )
         return AuthResponse(
             access_token=token,
             user={

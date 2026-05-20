@@ -260,10 +260,19 @@ async def start_google_oauth(
         state=state,
     )
 
+    # google-auth-oauthlib >= 1.2 enables PKCE by default: at
+    # authorization_url() time it generates a ``code_verifier`` and
+    # sends the matching code_challenge with the auth request.
+    # fetch_token() then has to send the SAME code_verifier back to
+    # Google or the token exchange fails with
+    # ``(invalid_grant) Missing code verifier``.  /start and /callback
+    # run in different request scopes (different Flow instances), so
+    # we persist the verifier alongside the state token.
     import time
     _pending_oauth[state] = {
         "account_id": user["account_id"],
         "user_sub": user["sub"],
+        "code_verifier": getattr(flow, "code_verifier", None),
         "ts": time.time(),
     }
     return {"authorize_url": auth_url}
@@ -301,30 +310,38 @@ async def google_oauth_callback(
     # would 422 every legitimate callback. We identify the account via
     # the opaque state token written into _pending_oauth at /google/start,
     # then resolve tenant_db ourselves from that account_id.
-    pending = _pending_oauth.pop(state, None)
-    if not pending:
+    #
+    # All redirects build an ABSOLUTE URL to the dashboard — the API
+    # callback lives on ``api.4truck.us`` and the dashboard SPA on
+    # ``dash.4truck.us``, so a relative ``/admin/storage`` would 404
+    # on the API host.  ``DASHBOARD_BASE_URL`` defaults to the dash
+    # subdomain; legacy apex deployments can override.  The path is
+    # ``/admin/storage`` (the dedicated Drive-management page) — not
+    # ``/admin/settings``, which is the generic account-settings page
+    # and has no Drive UI to surface the success / error banner.
+    dashboard_base = os.getenv("DASHBOARD_BASE_URL", "https://dash.4truck.us").rstrip("/")
+
+    def _back(qs: str) -> RedirectResponse:
         return RedirectResponse(
-            url="/dashboard/admin/settings?gdrive_error=expired",
+            url=f"{dashboard_base}/admin/storage?{qs}",
             status_code=303,
         )
+
+    pending = _pending_oauth.pop(state, None)
+    if not pending:
+        return _back("gdrive_error=expired")
     account_id = pending["account_id"]
 
     from infra.platform import get_router as _get_router
     tenant_db = await _get_router().get_tenant(account_id)
 
     if error:
-        return RedirectResponse(
-            url=f"/dashboard/admin/settings?gdrive_error={error}",
-            status_code=303,
-        )
+        return _back(f"gdrive_error={error}")
 
     try:
         from google_auth_oauthlib.flow import Flow
     except ImportError:
-        return RedirectResponse(
-            url="/dashboard/admin/settings?gdrive_error=oauthlib_missing",
-            status_code=303,
-        )
+        return _back("gdrive_error=oauthlib_missing")
 
     cfg = _oauth_client_config()
     flow = Flow.from_client_config(
@@ -333,25 +350,25 @@ async def google_oauth_callback(
         redirect_uri=cfg["web"]["redirect_uris"][0],
         state=state,
     )
+    # Restore the PKCE code_verifier captured at /start (see comment
+    # there for why this is necessary).  Without it, fetch_token()
+    # fails with ``(invalid_grant) Missing code verifier``.
+    stored_verifier = pending.get("code_verifier")
+    if stored_verifier:
+        flow.code_verifier = stored_verifier
 
     try:
         flow.fetch_token(code=code)
     except Exception as e:
         logger.error("OAuth token fetch failed for account %d: %s", account_id, e)
-        return RedirectResponse(
-            url="/dashboard/admin/settings?gdrive_error=token_exchange",
-            status_code=303,
-        )
+        return _back("gdrive_error=token_exchange")
 
     creds = flow.credentials
     if not creds.refresh_token:
         # ``prompt=consent`` should always issue one, but Google sometimes
         # withholds when the user previously granted with the same scope
         # and account.  Tell the user to revoke and retry.
-        return RedirectResponse(
-            url="/dashboard/admin/settings?gdrive_error=no_refresh_token",
-            status_code=303,
-        )
+        return _back("gdrive_error=no_refresh_token")
 
     # Pull the user's email (for display in Settings) + create the root
     # folder so we have an ID to store.  Both operations use the
@@ -361,9 +378,20 @@ async def google_oauth_callback(
         root_folder_id = _create_or_find_root_folder(creds)
     except Exception as e:
         logger.error("Post-OAuth setup failed for account %d: %s", account_id, e)
-        return RedirectResponse(
-            url="/dashboard/admin/settings?gdrive_error=drive_setup",
-            status_code=303,
+        return _back("gdrive_error=drive_setup")
+
+    # Pre-create the company / module folder tree so the user sees the
+    # full layout immediately when they open Drive — instead of an
+    # empty ``4truck`` folder that fills in lazily on first upload.
+    # Failures here are best-effort and don't block the connect flow
+    # (the per-upload find-or-create chain remains the source of truth).
+    try:
+        companies = await tenant_db.get_account_companies(account_id)
+        _prepare_company_folders(creds, root_folder_id, companies)
+    except Exception as e:
+        logger.warning(
+            "Drive prep: post-connect folder seeding failed for account %d: %s",
+            account_id, e,
         )
 
     encrypted_token = encrypt(creds.refresh_token)
@@ -379,10 +407,7 @@ async def google_oauth_callback(
         target_type="account", target_id=str(account_id),
         details=f"gdrive: {user_email}",
     )
-    return RedirectResponse(
-        url="/dashboard/admin/settings?gdrive_connected=1",
-        status_code=303,
-    )
+    return _back("gdrive_connected=1")
 
 
 # ── POST /storage/google/disconnect ──────────────────────────────────────────
@@ -463,3 +488,70 @@ def _create_or_find_root_folder(creds) -> str:
         fields="id",
     ).execute()
     return folder["id"]
+
+
+def _find_or_create_subfolder(svc, parent_id: str, name: str) -> str:
+    """Find a subfolder by name under ``parent_id``, creating if absent."""
+    safe = name.replace("'", "\\'")
+    q = (
+        f"name = '{safe}' and '{parent_id}' in parents "
+        f"and mimeType = 'application/vnd.google-apps.folder' "
+        f"and trashed = false"
+    )
+    res = svc.files().list(
+        q=q, spaces="drive", fields="files(id)", pageSize=1,
+    ).execute()
+    items = res.get("files", [])
+    if items:
+        return items[0]["id"]
+    folder = svc.files().create(
+        body={
+            "name": name,
+            "mimeType": "application/vnd.google-apps.folder",
+            "parents": [parent_id],
+        },
+        fields="id",
+    ).execute()
+    return folder["id"]
+
+
+def _prepare_company_folders(creds, root_folder_id: str, companies) -> None:
+    """Pre-create the per-company folder tree under ``4truck/``.
+
+    Lazy create-on-first-upload works fine functionally, but users who
+    connect Drive and immediately open ``drive.google.com`` see an
+    empty ``4truck`` folder — confusing.  Walking the company list at
+    OAuth callback time and creating the structure up-front makes the
+    layout discoverable from minute one::
+
+        4truck/
+          ├─ PREMIER TRUCKING/
+          │   ├─ work-orders/
+          │   ├─ camera-images/
+          │   ├─ parking-maps/
+          │   └─ drivers/
+          └─ CARGO FREIGHT/
+              └─ ...
+
+    Each ``find-or-create`` is idempotent so re-connecting Drive over an
+    existing folder tree is a no-op.  Failures are logged but don't
+    block the OAuth success path — the lazy fallback in
+    ``GDriveObjectStore._resolve_folder_chain`` still works.
+    """
+    from googleapiclient.discovery import build
+    from capabilities.work_orders.storage import sanitize_company_folder
+
+    svc = build("drive", "v3", credentials=creds, cache_discovery=False)
+    subdirs = ("work-orders", "camera-images", "parking-maps", "drivers")
+
+    for co in companies:
+        try:
+            name = sanitize_company_folder(co.display_name or co.code)
+            co_id = _find_or_create_subfolder(svc, root_folder_id, name)
+            for sub in subdirs:
+                _find_or_create_subfolder(svc, co_id, sub)
+        except Exception as e:
+            logger.warning(
+                "Drive prep: failed to create folders for company %s: %s",
+                getattr(co, "code", "?"), e,
+            )

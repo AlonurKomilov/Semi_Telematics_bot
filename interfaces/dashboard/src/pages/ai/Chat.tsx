@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Bot, ChevronDown, Send, Trash2, Copy, Check, RefreshCw, Sparkles, MessageSquare, Pencil, Download, RotateCcw } from 'lucide-react';
 import { apiJSON, apiJSONAI, apiStreamChat } from '../../api/client';
-import { useAuth } from '../../context/AuthContext';
+import { useShellConfig } from '../../hooks/useShellConfig';
 import type { AIChatMessage, AIChatResponse, AIHistoryResponse, AISummaryResponse, AIModel, AIModelsResponse, AIUsage } from '../../types';
 import { formatAIResponse } from '../../utils/formatAI';
 
@@ -15,8 +15,12 @@ interface LocalMessage extends AIChatMessage {
 
 // No hardcoded loading messages — we show real tool activity from the stream
 
-function getSuggestedQuestions(role?: string): string[] {
-  switch (role) {
+// Suggestion list is keyed by the active persona view — Owner previewing
+// as Safety should see safety-flavored prompts.  The briefingLabel and
+// chatSubject helpers used to live here too; they now come from
+// useShellConfig so all persona-tuned copy stays in one place.
+function getSuggestedQuestions(view?: string): string[] {
+  switch (view) {
     case 'driver':
       return [
         'How is my truck doing today?',
@@ -56,29 +60,11 @@ function getSuggestedQuestions(role?: string): string[] {
   }
 }
 
-/** Role-aware label for the assistant's primary briefing button. */
-function briefingLabel(role?: string): string {
-  if (role === 'driver') return 'My Truck Briefing';
-  if (role === 'dispatcher') return 'Dispatch Briefing';
-  if (role === 'safety') return 'Safety Briefing';
-  if (role === 'fleet') return 'Fleet Briefing';
-  return 'Operations Briefing';
-}
-
-/** Role-aware noun for the chat placeholder/loading copy. */
-function chatSubject(role?: string): string {
-  if (role === 'driver') return 'your truck';
-  if (role === 'dispatcher') return 'today’s dispatch';
-  if (role === 'safety') return 'safety & coaching';
-  if (role === 'fleet') return 'your fleet';
-  return 'your operation';
-}
-
 export default function Chat() {
   const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { activeView, isDriverView, briefingLabel, chatSubject } = useShellConfig();
 
   // ── Tab state ────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'chat' | 'briefing'>(() =>
@@ -371,7 +357,7 @@ export default function Chat() {
   }
 
 
-  const suggestedQuestions = getSuggestedQuestions(user?.role);
+  const suggestedQuestions = getSuggestedQuestions(activeView);
 
   return (
     <div className="flex flex-col h-[calc(100vh-6rem)]">
@@ -500,7 +486,7 @@ export default function Chat() {
           }`}
         >
           <Sparkles size={14} />
-          {briefingLabel(user?.role)}
+          {briefingLabel}
         </button>
       </div>
 
@@ -514,9 +500,9 @@ export default function Chat() {
                 <Bot size={40} className="mx-auto mb-3 text-primary/40" />
                 <p className="text-lg font-medium">{t('chat.title')}</p>
                 <p className="text-sm mt-1">
-                  {user?.role === 'driver'
+                  {isDriverView
                     ? t('chat.ask_driver')
-                    : `Ask anything about ${chatSubject(user?.role)} \u2014 vehicles, faults, fuel, events, maintenance.`}
+                    : `Ask anything about ${chatSubject} \u2014 vehicles, faults, fuel, events, maintenance.`}
                 </p>
                 <div className="mt-6 flex flex-wrap justify-center gap-2">
                   {suggestedQuestions.map((q) => (
@@ -652,7 +638,7 @@ export default function Chat() {
                 e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
               }}
               onKeyDown={handleKeyDown}
-              placeholder={`Ask about ${chatSubject(user?.role)}\u2026`}
+              placeholder={`Ask about ${chatSubject}\u2026`}
               rows={1}
               style={{ maxHeight: '120px' }}
               className="flex-1 bg-card text-foreground rounded-xl px-4 py-3 text-sm border border-border focus:border-ring focus:ring-2 focus:ring-ring/20 focus:outline-none resize-none transition-colors placeholder:text-muted-foreground/50"
@@ -675,7 +661,7 @@ export default function Chat() {
         <div className="flex-1 overflow-y-auto min-h-0">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-lg font-semibold">{briefingLabel(user?.role)}</h2>
+              <h2 className="text-lg font-semibold">{briefingLabel}</h2>
               {briefingTime && (
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Generated at {briefingTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -697,11 +683,11 @@ export default function Chat() {
           {!briefing && !briefingLoading && !briefingError && (
             <div className="text-center text-muted-foreground mt-16">
               <Sparkles size={40} className="mx-auto mb-3 text-primary/40" />
-              <p className="text-lg font-medium">{briefingLabel(user?.role)}</p>
+              <p className="text-lg font-medium">{briefingLabel}</p>
               <p className="text-sm mt-1">
-                {user?.role === 'driver'
+                {isDriverView
                   ? "Get a quick summary of your truck's current status, health, and any issues."
-                  : `Generate an executive summary of ${chatSubject(user?.role)} — status, health, events, and recommendations.`}
+                  : `Generate an executive summary of ${chatSubject} — status, health, events, and recommendations.`}
               </p>
               <button
                 onClick={generateBriefing}
@@ -720,7 +706,7 @@ export default function Chat() {
                   <span className="animate-bounce" style={{ animationDelay: '150ms' }}>&#9679;</span>
                   <span className="animate-bounce" style={{ animationDelay: '300ms' }}>&#9679;</span>
                 </span>
-                Analyzing {chatSubject(user?.role)}\u2026
+                Analyzing {chatSubject}\u2026
               </div>
             </div>
           )}

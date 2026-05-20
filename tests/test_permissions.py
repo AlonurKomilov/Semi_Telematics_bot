@@ -209,7 +209,6 @@ class TestPrivilegeEscalation:
                 )
 
 
-
 class TestPermSsotDriftDetection:
     """Guard against drift between the canonical FeatureSet and the
     dashboard's Role Permissions admin UI.

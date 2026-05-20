@@ -5,6 +5,7 @@ import { Settings as SettingsIcon } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import type { SettingsResponse, WorkSchedule, User, BotConfig } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { useShellConfig } from '../../hooks/useShellConfig';
 import {
   PageHeader,
   ErrorState,
@@ -65,7 +66,7 @@ export default function Settings() {
 
   // Bot config — only fetched for owners. Mutations write into the cache
   // directly so we don't need a separate `setBotConfig` setter.
-  const isOwner = authUser?.role === 'owner';
+  const { isOwner } = useShellConfig();
   const { data: botConfig } = useQuery({
     queryKey: ['admin-bot-config'],
     queryFn: () => apiJSON<BotConfig>('/admin/bot-config'),
@@ -263,7 +264,7 @@ export default function Settings() {
       )}
 
       {/* Telegram Bot (owner only) */}
-      {authUser?.role === 'owner' && (
+      {isOwner && (
         <section className="bg-card border border-border rounded-xl p-5">
           <h2 className="text-lg font-semibold mb-3">Telegram Bot</h2>
           {botSuccess && <p className="text-green-600 dark:text-green-400 text-sm mb-3">{botSuccess}</p>}
