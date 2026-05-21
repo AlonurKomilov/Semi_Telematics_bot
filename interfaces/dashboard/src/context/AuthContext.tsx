@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { apiJSON, getToken, setToken, clearToken, isTokenPersistent } from '../api/client';
+import { isSafeReturnTo, APEX_DOMAIN as SAFE_APEX_DOMAIN } from '../lib/safeReturnTo';
 import type { User, TelegramLoginData, AuthResponse } from '../types';
 
 /** Poll interval for checking token expiry. */
@@ -40,11 +41,62 @@ interface AuthContextValue {
   loginWithTelegram: (tgData: TelegramLoginData, rememberMe?: boolean) => Promise<void>;
   loginWithEmail: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   registerWithEmail: (email: string, password: string, displayName: string, inviteCode: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   /** Force re-fetch of /user/me — used by the Role Permissions admin
    * page after a save so the saving admin's own UI updates without
    * waiting for the next focus-triggered refresh. */
   refreshUser: () => Promise<void>;
+}
+
+// Role → preferred persona subdomain.  After a successful login we
+// inspect this map and, if the user landed at apex or a different
+// persona's host, redirect them to the host that matches their role.
+// Owner/Admin/Driver all land on dash. (driver gets the special-cased
+// DriverOverview component on the shared dashboard) while the three
+// operational personas get their own branded entry point.  Override
+// per-deployment via the VITE_APEX_DOMAIN env var; the default matches
+// production at 4truck.us.
+// Imported from ../lib/safeReturnTo so the apex constant and the
+// ``return_to`` validator stay in lockstep across the two redirect
+// sites (App.tsx and this file).
+const APEX_DOMAIN = SAFE_APEX_DOMAIN;
+const ROLE_TO_HOST: Record<string, string> = {
+  owner: `dash.${APEX_DOMAIN}`,
+  admin: `dash.${APEX_DOMAIN}`,
+  fleet: `fleet.${APEX_DOMAIN}`,
+  dispatcher: `dispatch.${APEX_DOMAIN}`,
+  safety: `safety.${APEX_DOMAIN}`,
+  driver: `dash.${APEX_DOMAIN}`,
+};
+
+function redirectAfterLoginIfNeeded(role: string | undefined): boolean {
+  if (!role) return false;
+  const target = ROLE_TO_HOST[role];
+  if (!target) return false;
+  if (typeof window === 'undefined') return false;
+  const currentHost = window.location.hostname.toLowerCase();
+  // Already on the right host (or on a non-production preview that
+  // doesn't match the mapping) — nothing to do.
+  if (currentHost === target) return false;
+  // Only redirect when we're on a 4truck.us host of some kind; preview
+  // deploys and local dev (localhost, *.vercel.app, etc.) should stay
+  // on their own host so the dev loop isn't broken.
+  if (!currentHost.endsWith(APEX_DOMAIN)) return false;
+  // Respect ?return_to=… if the user was bounced here from a specific
+  // page — e.g. clicking a "Settings" deep link while logged out.
+  // ``isSafeReturnTo`` parses the URL and matches the hostname against
+  // the apex exactly (or via the ``.4truck.us`` suffix), rejecting
+  // open-redirect payloads like ``https://4truck.us.attacker.com/``
+  // that an earlier ``includes(APEX_DOMAIN)`` substring check would
+  // have accepted.
+  const params = new URLSearchParams(window.location.search);
+  const returnTo = params.get('return_to');
+  if (isSafeReturnTo(returnTo)) {
+    window.location.href = returnTo!;
+    return true;
+  }
+  window.location.href = `https://${target}/`;
+  return true;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -76,9 +128,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const fetchUser = useCallback(async () => {
-    if (!getToken()) { setLoading(false); return; }
-    // Silently refresh on every page load if token is in its last 7 days
-    await refreshTokenIfNeeded();
+    // ALWAYS probe /user/me — the browser may still hold a valid
+    // ``.4truck.us`` cookie even when this host's localStorage is
+    // empty (the cookie travels across all subdomains via the apex
+    // login flow).  The previous ``if (!getToken()) return`` short-
+    // circuit hid the cookie-only session and made the apex
+    // /login page render the form for already-authenticated users.
+    // If there's neither cookie nor token, /user/me returns 401 and
+    // the catch below cleanly resolves to the unauthenticated state.
+    if (getToken()) {
+      // Silently refresh on every page load if a localStorage token
+      // is in its last 7 days — cookie sessions don't need this; the
+      // server refreshes the cookie on each /auth/refresh response.
+      await refreshTokenIfNeeded();
+    }
     try {
       const data = await apiJSON<User>('/user/me');
       setUser(data);
@@ -124,9 +187,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // fresh permission read.  Cost: one /user/me HTTP request per tab
   // focus event.
   useEffect(() => {
-    const onFocus = () => {
-      if (getToken()) fetchUser();
-    };
+    // Refetch on focus regardless of localStorage state — cookie-only
+    // sessions have no token to gate on, and the network cost is one
+    // /user/me per focus event either way.
+    const onFocus = () => { void fetchUser(); };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [fetchUser]);
@@ -140,6 +204,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: { ...(tgData as unknown as Record<string, unknown>), remember_me: rememberMe },
     });
     setToken(res.access_token, rememberMe);
+    if (redirectAfterLoginIfNeeded(res.user?.role)) return;
     await fetchUser();
   }, [fetchUser]);
 
@@ -149,6 +214,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: { email, password, remember_me: rememberMe },
     });
     setToken(res.access_token, rememberMe);
+    if (redirectAfterLoginIfNeeded(res.user?.role)) return;
     await fetchUser();
   }, [fetchUser]);
 
@@ -156,8 +222,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string, password: string, displayName: string, inviteCode: string
   ) => {
     // Registration → long-lived session by default (account owners
-    // shouldn't be kicked out at end of shift; the backend also
-    // defaults remember_me=True on /register).
+    // shouldn't be kicked out at end of shift).  Sent explicitly
+    // because the backend defaults ``remember_me`` to False.
     const res = await apiJSON<AuthResponse>('/auth/register', {
       method: 'POST',
       body: {
@@ -168,12 +234,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     });
     setToken(res.access_token, true);
+    if (redirectAfterLoginIfNeeded(res.user?.role)) return;
     await fetchUser();
   }, [fetchUser]);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    // Order matters here.  We deliberately do NOT call ``setUser(null)``
+    // — that would re-render App.tsx, which sees ``!user`` on a
+    // persona subdomain and fires its own bounce-to-apex with
+    // ``?return_to=<current page>``.  That bounce races the
+    // window.location.href below and frequently wins, leaving the
+    // user on ``apex/login?return_to=https://fleet.4truck.us/``
+    // instead of the clean ``apex/login`` we wanted.  After re-login,
+    // ``return_to`` would override role-forward and send a Fleet user
+    // back to fleet. (fine for that user) or — worse — bounce a
+    // freshly-logged-in Safety user to whichever persona host they
+    // logged out from.
+    //
+    // The navigation tear-down handles state cleanup; we don't need
+    // setUser.  Clear localStorage so any in-flight request stops
+    // sending the Bearer header, then await the server-side cookie
+    // clear, then navigate.
     clearToken();
-    setUser(null);
+    try {
+      await apiJSON('/auth/logout', { method: 'POST' });
+    } catch {
+      /* server unreachable — cookie expires on its own TTL */
+    }
+    if (typeof window !== 'undefined') {
+      const host = window.location.hostname.toLowerCase();
+      if (host === APEX_DOMAIN) {
+        // Already on apex — full reload re-evaluates auth (now cookie-
+        // less), App.tsx will render the Login form.
+        window.location.reload();
+        return;
+      }
+      if (host.endsWith(`.${APEX_DOMAIN}`)) {
+        window.location.href = `https://${APEX_DOMAIN}/login`;
+      }
+    }
   }, []);
 
   return (

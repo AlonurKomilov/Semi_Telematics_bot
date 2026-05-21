@@ -7,10 +7,11 @@ import os
 import re
 import secrets
 import time
+from typing import Literal
 from urllib.parse import parse_qs, unquote
 
 import bcrypt
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from jose import jwt
@@ -69,11 +70,13 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 class AuthRequest(BaseModel):
     init_data: str
-    # Mini App "Remember me" is implied (you always come back through
-    # Telegram), but plumbed for API symmetry with the email/password
-    # flow.  Defaults to True for Telegram Mini App users since they
-    # don't typically log out manually.
-    remember_me: bool = True
+    # ``remember_me`` defaults to False — clients must opt-in to
+    # 30-day tokens.  The dashboard's Mini App / Login flows always
+    # send an explicit value driven by the "Remember me" checkbox, so
+    # this default only fires for clients that omit the field (e.g.
+    # scripted callers).  Defaulting to False keeps the 8-hour short
+    # session the safe baseline.
+    remember_me: bool = False
 
 
 class AuthResponse(BaseModel):
@@ -160,9 +163,86 @@ def decode_jwt(token: str) -> dict:
     return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
 
 
+# ── Cookie-based session for cross-subdomain SSO ──────────────────────────────
+#
+# Login at any *.4truck.us subdomain (or apex) sets an HttpOnly cookie scoped
+# to ``.4truck.us`` so the same JWT is read on every subdomain — dash, fleet,
+# dispatch, safety.  This eliminates the per-host login that localStorage-only
+# auth forced, and lets a single Telegram Login Widget configured for one
+# domain (4truck.us) work for every persona entry point.
+#
+# The cookie is set IN ADDITION to returning ``access_token`` in the response
+# body so the Mini App (Telegram WebView, can't share cookies with the browser
+# context) continues to function with the existing Bearer-header flow.  The
+# server-side dependency in ``deps.get_current_user`` accepts either source.
+#
+# AUTH_COOKIE_DOMAIN defaults to ``.4truck.us`` so the cookie is sent to every
+# subdomain.  Operators on a non-production host (preview deploys, local dev)
+# override via the env var; setting it empty disables the cookie entirely.
+AUTH_COOKIE_NAME = "auth_token"
+AUTH_COOKIE_DOMAIN = os.getenv("AUTH_COOKIE_DOMAIN", ".4truck.us").strip() or None
+# SameSite=Lax is correct here — the cookie should survive top-level
+# navigations between subdomains (the role-based forward after login) but
+# stay out of cross-site iframe contexts.  Strict would block the post-login
+# redirect; None would expose us to CSRF for no benefit.
+AUTH_COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
+
+
+def _set_auth_cookie(response: Response, token: str, *, remember_me: bool) -> None:
+    """Attach the auth-token cookie to a response.
+
+    Lifetime matches the JWT itself so the browser cleans the cookie up when
+    the token expires; the cookie's Max-Age is the same TTL the JWT carries.
+    ``HttpOnly`` keeps the token out of JS reach (no XSS exfiltration);
+    ``Secure`` requires HTTPS (apex + every subdomain serve HTTPS in
+    production); ``SameSite=Lax`` keeps the cookie out of cross-site contexts
+    while still flowing on top-level navigations (the post-login redirect to
+    a persona subdomain works).
+    """
+    if not AUTH_COOKIE_DOMAIN:
+        return
+    max_age = JWT_EXPIRY_LONG_SECONDS if remember_me else JWT_EXPIRY_SHORT_SECONDS
+    response.set_cookie(
+        AUTH_COOKIE_NAME,
+        token,
+        max_age=max_age,
+        domain=AUTH_COOKIE_DOMAIN,
+        path="/",
+        secure=True,
+        httponly=True,
+        samesite=AUTH_COOKIE_SAMESITE,
+    )
+
+
+def _clear_auth_cookie(response: Response) -> None:
+    """Expire the auth cookie on the same domain it was set.
+
+    Some browsers (notably Chrome with strict cookie matching enabled)
+    refuse to clear a cookie when the delete response's attributes
+    diverge from the original Set-Cookie.  We therefore re-issue the
+    same name/domain/path/secure/httponly/samesite tuple with an
+    empty value and Max-Age=0 — guaranteed match, guaranteed clear.
+    Starlette's bare ``delete_cookie`` omits secure+httponly+samesite,
+    which is enough for most browsers but not all.
+    """
+    if not AUTH_COOKIE_DOMAIN:
+        return
+    response.set_cookie(
+        AUTH_COOKIE_NAME,
+        value="",
+        max_age=0,
+        expires=0,
+        domain=AUTH_COOKIE_DOMAIN,
+        path="/",
+        secure=True,
+        httponly=True,
+        samesite=AUTH_COOKIE_SAMESITE,
+    )
+
+
 @router.post("/refresh", response_model=AuthResponse)
 @limiter.limit("20/minute")
-async def refresh_token(request: Request, authorization: str = __import__("fastapi").Header(...)):
+async def refresh_token(request: Request, response: Response, authorization: str = __import__("fastapi").Header(...)):
     """Refresh a JWT token. Issue a new token if the current one is still valid.
 
     The client should call this before the current token expires
@@ -196,6 +276,7 @@ async def refresh_token(request: Request, authorization: str = __import__("fasta
         user.telegram_id, user.account_id, user.role.value,
         remember_me=remember,
     )
+    _set_auth_cookie(response, new_token, remember_me=remember)
     return AuthResponse(
         access_token=new_token,
         user={
@@ -209,7 +290,7 @@ async def refresh_token(request: Request, authorization: str = __import__("fasta
 
 @router.post("/telegram", response_model=AuthResponse)
 @limiter.limit("30/minute")
-async def auth_telegram(request: Request, body: AuthRequest):
+async def auth_telegram(request: Request, response: Response, body: AuthRequest):
     """Authenticate via Telegram Mini App initData.
 
     Supports per-account bot tokens: parses the user ID from initData first,
@@ -259,6 +340,7 @@ async def auth_telegram(request: Request, body: AuthRequest):
         user.telegram_id, user.account_id, user.role.value,
         remember_me=body.remember_me,
     )
+    _set_auth_cookie(response, token, remember_me=body.remember_me)
     return AuthResponse(
         access_token=token,
         user={
@@ -281,9 +363,10 @@ class LoginWidgetRequest(BaseModel):
     # NOT part of the signed Telegram payload — sent alongside it by
     # the dashboard.  Excluded from the hash check via the same empty-
     # value filter applied to optional Telegram fields, so the widget
-    # signature stays intact.  Defaults to True since the Login Widget
-    # is typically used once per device.
-    remember_me: bool = True
+    # signature stays intact.  Defaults to False so callers must
+    # explicitly opt-in to 30-day tokens (the dashboard always sends
+    # an explicit value from the "Remember me" checkbox).
+    remember_me: bool = False
 
 
 def validate_telegram_login_widget(data: dict, bot_token: str) -> None:
@@ -317,7 +400,7 @@ def validate_telegram_login_widget(data: dict, bot_token: str) -> None:
 
 @router.post("/telegram-login", response_model=AuthResponse)
 @limiter.limit("30/minute")
-async def auth_telegram_login(request: Request, body: LoginWidgetRequest):
+async def auth_telegram_login(request: Request, response: Response, body: LoginWidgetRequest):
     """Authenticate via Telegram Login Widget (desktop dashboard).
 
     Supports per-account bot tokens: looks up user → account → bot token
@@ -361,6 +444,7 @@ async def auth_telegram_login(request: Request, body: LoginWidgetRequest):
         user.telegram_id, user.account_id, user.role.value,
         remember_me=body.remember_me,
     )
+    _set_auth_cookie(response, token, remember_me=body.remember_me)
     return AuthResponse(
         access_token=token,
         user={
@@ -466,7 +550,7 @@ async def bot_login_init(request: Request):
 
 @router.get("/bot-login/check/{token}")
 @limiter.limit("60/minute")
-async def bot_login_check(request: Request, token: str):
+async def bot_login_check(request: Request, response: Response, token: str):
     """Poll for the result of a bot-login attempt.
 
     Returns:
@@ -488,6 +572,23 @@ async def bot_login_check(request: Request, token: str):
         # Clean up the token — one-time use
         from infra.cache import delete as redis_del
         await redis_del(f"{BOT_LOGIN_PREFIX}{token}")
+        # Set the cross-subdomain auth cookie so persona subdomains
+        # trust this session.  Without it the frontend would store the
+        # token in apex localStorage only (per-host), and any role-
+        # based forward to fleet./dispatch./safety. would land on a
+        # host with no session — bouncing the user back into a login
+        # loop.  Read ``remember`` from the JWT itself so the cookie
+        # lifetime matches what the bot decided when it minted the
+        # token; falls back to True (long session, the bot-login
+        # default per ``registration.start_bot_login_approval``).
+        access_token = data.get("access_token", "")
+        if access_token:
+            try:
+                claims = decode_jwt(access_token)
+                remember = bool(claims.get("remember", True))
+            except Exception:
+                remember = True
+            _set_auth_cookie(response, access_token, remember_me=remember)
         return data
 
     if data.get("status") == "rejected":
@@ -519,15 +620,16 @@ class EmailRegisterRequest(BaseModel):
     password: str
     display_name: str = ""
     invite_code: str = ""
-    # New registrations get a long-lived session by default — the user
-    # just committed to an account; no reason to log them back out at
-    # the end of the shift.
-    remember_me: bool = True
+    # Defaults to False so a forgotten ``remember_me`` field doesn't
+    # silently mint a 30-day token.  The dashboard register flow sends
+    # ``remember_me: true`` explicitly when it wants the long session;
+    # other clients have to opt-in too.
+    remember_me: bool = False
 
 
 @router.post("/login", response_model=AuthResponse)
 @limiter.limit("10/minute")
-async def auth_email_login(request: Request, body: EmailLoginRequest):
+async def auth_email_login(request: Request, response: Response, body: EmailLoginRequest):
     """Authenticate via email + password."""
     from infra.platform import get_platform_db
     db = get_platform_db()
@@ -543,6 +645,7 @@ async def auth_email_login(request: Request, body: EmailLoginRequest):
         user.telegram_id, user.account_id, user.role.value,
         remember_me=body.remember_me,
     )
+    _set_auth_cookie(response, token, remember_me=body.remember_me)
     return AuthResponse(
         access_token=token,
         user={
@@ -556,7 +659,7 @@ async def auth_email_login(request: Request, body: EmailLoginRequest):
 
 @router.post("/register", response_model=AuthResponse)
 @limiter.limit("10/minute")
-async def auth_email_register(request: Request, body: EmailRegisterRequest):
+async def auth_email_register(request: Request, response: Response, body: EmailRegisterRequest):
     """Register a new user via email + password + invite code."""
     from infra.platform import get_platform_db
     db = get_platform_db()
@@ -619,6 +722,7 @@ async def auth_email_register(request: Request, body: EmailRegisterRequest):
         user.telegram_id, user.account_id, user.role.value,
         remember_me=body.remember_me,
     )
+    _set_auth_cookie(response, token, remember_me=body.remember_me)
     return AuthResponse(
         access_token=token,
         user={
@@ -628,6 +732,20 @@ async def auth_email_register(request: Request, body: EmailRegisterRequest):
             "account_id": user.account_id,
         },
     )
+
+
+@router.post("/logout")
+async def auth_logout(response: Response):
+    """Clear the cross-subdomain auth cookie.
+
+    Idempotent — safe to call without an active session.  The Mini App and
+    other Bearer-header clients should also drop their stored token; this
+    endpoint only invalidates the cookie side of the session.  The JWT
+    itself remains valid until ``exp``; we don't maintain a server-side
+    revocation list (no use case has justified that complexity yet).
+    """
+    _clear_auth_cookie(response)
+    return {"ok": True}
 
 
 @router.post("/set-password")
@@ -659,7 +777,7 @@ class RegisterAccountRequest(BaseModel):
 
 @router.post("/register-account", response_model=AuthResponse)
 @limiter.limit("5/minute")
-async def auth_register_account(request: Request, body: RegisterAccountRequest):
+async def auth_register_account(request: Request, response: Response, body: RegisterAccountRequest):
     """Register a new company account via web at 4truck.us.
 
     Creates an account and an owner user with email/password credentials.
@@ -697,6 +815,7 @@ async def auth_register_account(request: Request, body: RegisterAccountRequest):
             user.telegram_id, user.account_id, user.role.value,
             remember_me=True,  # account owners always get the long session
         )
+        _set_auth_cookie(response, token, remember_me=True)
         return AuthResponse(
             access_token=token,
             user={

@@ -1,10 +1,10 @@
 """FastAPI dependencies: auth, database, role checks, pagination."""
 
-from fastapi import Depends, HTTPException, Header
+from fastapi import Cookie, Depends, HTTPException, Header
 
 from jose import JWTError
 
-from interfaces.api.auth import decode_jwt
+from interfaces.api.auth import AUTH_COOKIE_NAME, decode_jwt
 from infra.platform import get_router as _get_router
 from capabilities.iam.permissions import get_account_permissions
 from adapters.storage import Role
@@ -34,22 +34,53 @@ def paginate(items: list, page: int = 1, page_size: int = _DEFAULT_PAGE_SIZE) ->
     }
 
 
-async def get_current_user(authorization: str = Header(...)):
-    """Extract and validate JWT from Authorization header.
+async def get_current_user(
+    authorization: str | None = Header(default=None),
+    auth_token: str | None = Cookie(default=None, alias=AUTH_COOKIE_NAME),
+):
+    """Extract and validate JWT from either the Authorization header
+    or the cross-subdomain auth cookie.
+
+    Both sources are accepted so the same dependency works for the
+    desktop dashboard (cookie set on ``.4truck.us``), the Telegram Mini
+    App (Bearer header from localStorage — WebView can't share cookies
+    with the regular browser context), and direct API integrations
+    (Bearer header).
+
+    The Bearer header is tried FIRST; if it's present but invalid
+    (stale localStorage token, expired or tampered) we fall through to
+    the cookie rather than rejecting outright.  Without this fallback,
+    a user whose dash.4truck.us localStorage still holds an old token
+    from before the cross-subdomain rollout would get permanently
+    locked out even when their fresh ``.4truck.us`` cookie is valid.
 
     Returns the decoded token payload dict with keys:
     sub (telegram_id str), account_id, role, exp, iat.
     """
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid authorization header")
+    candidates: list[str] = []
+    if authorization and authorization.startswith("Bearer "):
+        candidates.append(authorization[7:])
+    if auth_token:
+        candidates.append(auth_token)
 
-    token = authorization[7:]
-    try:
-        payload = decode_jwt(token)
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    if not candidates:
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
-    return payload
+    last_error: JWTError | None = None
+    for token in candidates:
+        try:
+            return decode_jwt(token)
+        except JWTError as e:
+            last_error = e
+            continue
+
+    # Every candidate token failed to decode — surface the last error so
+    # logs say "Invalid" not "Not authenticated" (the credentials were
+    # supplied; they're just no good).
+    raise HTTPException(
+        status_code=401,
+        detail=f"Invalid or expired token: {last_error}" if last_error else "Invalid token",
+    )
 
 
 async def get_user_vehicle_num(user: dict) -> str | None:

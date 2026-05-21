@@ -86,6 +86,12 @@ const HOSTS = [
     expect: { status: 200 },
     label: 'Apex marketing host',
   },
+  {
+    host: `www.${BASE_DOMAIN}`,
+    path: '/',
+    expect: { status: 200, contains: '4truck' },
+    label: 'www. alias (301 → apex, then 200)',
+  },
 ];
 
 const TIMEOUT_MS = 10_000;

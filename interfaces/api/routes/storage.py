@@ -29,6 +29,7 @@ import logging
 import os
 import secrets
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
@@ -336,7 +337,13 @@ async def google_oauth_callback(
     tenant_db = await _get_router().get_tenant(account_id)
 
     if error:
-        return _back(f"gdrive_error={error}")
+        # Google's ``error`` query value is user-influenced (via the
+        # consent screen); percent-encode it before interpolating into
+        # the redirect URL so a crafted value can't smuggle additional
+        # query params or render unexpected content into the dashboard
+        # banner.  Starlette already blocks CRLF in Location headers,
+        # so this is defence-in-depth.
+        return _back(f"gdrive_error={quote(error, safe='')}")
 
     try:
         from google_auth_oauthlib.flow import Flow

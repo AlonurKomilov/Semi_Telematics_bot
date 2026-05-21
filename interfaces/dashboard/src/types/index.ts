@@ -77,6 +77,14 @@ export interface TelegramLoginData {
 export interface AuthResponse {
   access_token: string;
   token_type: string;
+  /** Login endpoints return a slim user envelope so the client can
+   * role-route immediately without a follow-up /user/me roundtrip. */
+  user?: {
+    telegram_id?: number;
+    name?: string;
+    role?: string;
+    account_id?: number;
+  };
 }
 
 // ── Fleet / Vehicles ─────────────────────────────────────────

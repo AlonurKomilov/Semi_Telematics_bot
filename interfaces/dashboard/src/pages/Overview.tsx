@@ -620,7 +620,23 @@ export default function Overview() {
   const navigate = useNavigate();
   const { has } = usePermissions();
   const { user } = useAuth();
-  const { realRole: role, isDriver, isOwnerOrAdmin } = useShellConfig();
+  // Two distinct roles drive this page:
+  //   - viewRole (= activeView) decides persona-tuned PRESENTATION:
+  //     the page title ("Fleet Overview" vs "Operations Overview"),
+  //     the KPI ordering (Fleet leads with vehicle status, Safety
+  //     leads with alerts, Dispatch leads with movement, etc.).
+  //     This is what makes "Owner previewing as Fleet" feel like the
+  //     Fleet view — same shell, same content layout, same copy.
+  //   - realRole pins gates that should NOT follow the preview:
+  //     ``isDriver`` (renders the DriverOverview branch — only for
+  //     actual drivers, never for previewers since Driver isn't even
+  //     in PREVIEWABLE_ROLES), and ``isOwnerOrAdmin`` (showOnboarding
+  //     banner — only nudges real account owners through setup).
+  const {
+    activeView: viewRole,
+    isDriver,
+    isOwnerOrAdmin,
+  } = useShellConfig();
   const greetingName = user?.display_name || '';
 
   const {
@@ -639,7 +655,7 @@ export default function Overview() {
 
   const headerCfg = isDriver
     ? { title: 'My Dashboard', description: 'Live status, fuel, faults, and quick links.' }
-    : configForRole(role);
+    : configForRole(viewRole);
 
   if (isLoading && !stats) {
     return (
@@ -690,7 +706,7 @@ export default function Overview() {
         isFetching={isFetching}
         refetch={refetch}
         greeting={greetingName}
-        role={role}
+        role={viewRole}
       />
     </>
   );

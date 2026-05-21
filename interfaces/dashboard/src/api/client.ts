@@ -77,10 +77,29 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}, timeoutMs 
     }
   }
   try {
-    const res = await fetch(`${API_BASE}${path}`, { ...opts, headers, body: body as BodyInit, signal: controller.signal });
+    // ``credentials: 'include'`` opts into sending the cross-subdomain
+    // ``auth_token`` cookie set by the backend on .4truck.us.  Without
+    // this, the browser would withhold the cookie on /api/* fetches
+    // (per the cross-site fetch default), and a user logged in via
+    // cookie at apex would silently fail every API call.  The Bearer
+    // header is still set when localStorage has a token, so the Mini
+    // App and direct integrations keep working unchanged.
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...opts,
+      headers,
+      body: body as BodyInit,
+      signal: controller.signal,
+      credentials: 'include',
+    });
     if (res.status === 401) {
+      // Clear stale localStorage but DON'T navigate from here.  The
+      // 401 simply means "no valid session" — App.tsx is the canonical
+      // place to decide what happens next (bounce to apex login on a
+      // persona subdomain, render Login on apex).  Forcing a
+      // ``location.href = '/'`` from here used to race with that
+      // decision and produced an extra flash of the wrong route on
+      // every cross-host auth handoff.
       clearToken();
-      window.location.href = '/';
       throw new Error('Unauthorized');
     }
     return res;
@@ -152,11 +171,12 @@ export async function apiStreamChat(
     headers,
     body: JSON.stringify({ message }),
     signal,
+    credentials: 'include',
   });
 
   if (res.status === 401) {
+    // Same rationale as apiFetch — App.tsx handles auth-less state.
     clearToken();
-    window.location.href = '/';
     throw new Error('Unauthorized');
   }
   if (!res.ok) {

@@ -73,6 +73,23 @@ const SUBDOMAIN_TO_ROLE: Record<string, string> = {
   safety: 'safety',
 };
 
+// Persona → host mapping (inverse of SUBDOMAIN_TO_ROLE plus the
+// owner/admin/driver cases that share dash.).  Used by ``switchView``
+// when an Owner/Admin picks a persona from the selector — the switch
+// becomes a navigation to the matching subdomain so the URL bar
+// reflects the active persona.  Mirrors ROLE_TO_HOST in AuthContext;
+// duplicated here intentionally because adding a new persona requires
+// updating BOTH the auth-redirect and the persona-selector flows.
+const APEX_DOMAIN = (import.meta.env.VITE_APEX_DOMAIN as string | undefined) ?? '4truck.us';
+const ROLE_HOST: Record<string, string> = {
+  owner: `dash.${APEX_DOMAIN}`,
+  admin: `dash.${APEX_DOMAIN}`,
+  fleet: `fleet.${APEX_DOMAIN}`,
+  dispatcher: `dispatch.${APEX_DOMAIN}`,
+  safety: `safety.${APEX_DOMAIN}`,
+  driver: `dash.${APEX_DOMAIN}`,
+};
+
 function getSubdomainRole(): string | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -122,7 +139,15 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
     if (!canSwitch) return realRole;
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved && saved in VIEW_LABELS) return saved;
+      // Validate against PREVIEWABLE_ROLES, not the wider VIEW_LABELS
+      // (which includes ``driver``).  Driver is intentionally excluded
+      // from the persona switcher — drivers use the Telegram Mini App,
+      // not the desktop dashboard — so a stale ``driver`` value in
+      // localStorage (from an older code path, a manual DevTools edit,
+      // or pre-fix data) must NOT auto-select Driver view for an
+      // Owner/Admin, which would render a stripped-down view they
+      // can't navigate out of without clearing storage.
+      if (saved && PREVIEWABLE_ROLES.includes(saved)) return saved;
     } catch {
       /* localStorage disabled — fall through */
     }
@@ -161,7 +186,11 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
     }
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved && saved in VIEW_LABELS) return;
+      // Same tightening as the useState initializer — only honor a
+      // persisted preview choice if it's one we actually offer in the
+      // switcher.  ``driver`` slipped through here before and stuck
+      // Owner/Admin in Driver view across reloads.
+      if (saved && PREVIEWABLE_ROLES.includes(saved)) return;
     } catch {
       /* localStorage disabled — fall through */
     }
@@ -175,7 +204,37 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
 
   const switchView = useCallback((role: string) => {
     if (!canSwitch) return;
-    if (!(role in VIEW_LABELS)) return;
+    // Defensive: only allow PREVIEWABLE roles, even though the
+    // PersonaSelector UI already filters to those.  Without this,
+    // any code path that ever calls ``switchView('driver')`` (test
+    // code, console exploration, future bug) would save 'driver' to
+    // localStorage and re-introduce the stuck-in-Driver-view bug.
+    if (!PREVIEWABLE_ROLES.includes(role)) return;
+
+    // Persona switching IS navigation.  When the target role lives on
+    // a different host (Owner on dash. picking Fleet → fleet.4truck.us),
+    // we navigate the browser so the URL bar reflects the active
+    // persona — bookmarkable, shareable, and consistent with the
+    // subdomain-auto-detect logic at mount time.  Same-host switches
+    // (Owner ↔ Admin both live on dash.) stay as a local state update
+    // so React Query caches and in-flight data don't get torn down for
+    // a cosmetic shell-swap.
+    //
+    // The current pathname + query is preserved so a user on
+    // dash.4truck.us/vehicles who picks "Fleet" lands on
+    // fleet.4truck.us/vehicles, not Fleet's default home.  If the
+    // page isn't accessible under the new persona's permissions the
+    // standard permission-denied UI handles that.
+    const targetHost = ROLE_HOST[role];
+    if (typeof window !== 'undefined' && targetHost) {
+      const currentHost = window.location.hostname.toLowerCase();
+      if (currentHost !== targetHost && currentHost.endsWith(APEX_DOMAIN)) {
+        const pathAndQuery = window.location.pathname + window.location.search;
+        window.location.href = `https://${targetHost}${pathAndQuery}`;
+        return;
+      }
+    }
+
     setActiveView(role);
     try {
       localStorage.setItem(STORAGE_KEY, role);
