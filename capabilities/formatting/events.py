@@ -90,31 +90,72 @@ def _clean_event_name(name: str) -> str:
     return cleaned or name
 
 
+# Safety-event severity tiers.  Crash is always critical (any g-force);
+# harsh-braking and acceleration depend on the magnitude; rolling-stop
+# and following-distance are behavior info.  Mapping is conservative —
+# better to under-alarm a borderline event than train users to ignore
+# the badge.
+_CRITICAL_EVENT_TYPES = frozenset({"crash"})
+_WARNING_EVENT_TYPES = frozenset(
+    {"braking", "acceleration", "harshTurn", "laneDeparture"}
+)
+_INFO_EVENT_TYPES = frozenset({"rollingStop", "followingDistance"})
+
+
+def _event_severity(etype: str, g_force: float) -> str:
+    """Pick a severity tier for a safety event.
+
+    Crash is always critical.  Other impact-style events tip critical
+    when the g-force crosses 0.6 (the "harsh / severe" threshold from
+    the dashboard's gforce histogram).
+    """
+    if etype in _CRITICAL_EVENT_TYPES:
+        return "critical"
+    if etype in _GFORCE_EVENT_TYPES and g_force >= 0.6:
+        return "critical"
+    if etype in _WARNING_EVENT_TYPES:
+        return "warning"
+    if etype in _INFO_EVENT_TYPES:
+        return "info"
+    return "warning"
+
+
+# Default action wording per event type — overrides the severity-based
+# default ("Schedule shop check") which makes no sense for behavior
+# coaching.  Caller can still pass an explicit ``action`` to override.
+_EVENT_ACTIONS: dict[str, str] = {
+    "crash":             "Confirm driver safety · dispatch response · review snapshot",
+    "braking":           "Coach driver · review snapshot",
+    "acceleration":      "Coach driver · review snapshot",
+    "harshTurn":         "Coach driver · review snapshot",
+    "laneDeparture":     "Coach driver on lane discipline",
+    "rollingStop":       "Coach driver on full stops",
+    "followingDistance": "Coach driver on following distance",
+}
+
+
 def format_event_alert(event: dict) -> str:
-    """Format a single event for push notification (HTML)."""
+    """Format a single safety event in the unified Option A grammar."""
+    from capabilities.formatting.severity import badge, marker
+
     etype = event.get("event_type", "unknown")
-    emoji = _EVENT_EMOJI.get(etype, "🚨")
-    # All values that originate from Samsara (names, locations) get
-    # HTML-escaped before going into the message — see _esc docstring.
+    g_force = event.get("g_force", 0.0)
+    sev = _event_severity(etype, g_force)
+
+    # Title — emoji + cleaned event name (e.g. "💥 Crash" / "🛑 Harsh Braking").
+    type_emoji = _EVENT_EMOJI.get(etype, "🚨")
     ename = _esc(_clean_event_name(event.get("event_name", "Event")))
+    title = f"{type_emoji} {ename}"
+
     vname = _esc(event.get("vehicle_name", "?"))
     dname = _esc(event.get("driver_name", "Unassigned"))
     lat = event.get("latitude")
     lng = event.get("longitude")
-    # Detection time: when Samsara saw the event (NOT when the bot
-    # delivered the message — that's in the Telegram envelope).
-    # The relative-ago suffix makes the polling/processing lag obvious
-    # so dispatchers don't mistake the alert as live-now.
-    raw_time = event.get("time", "")
-    time_str = _fmt_time(raw_time)
-    ago = _relative_ago(raw_time)
-    if ago:
-        time_str = f"{time_str} {ago}"
 
-    # Prefer a reverse-geocoded address when Samsara provided one
-    # (`address` is the flat alias populated by adapters/samsara/client.py).
-    # Fall back to nested reverseGeo.formattedLocation for any caller
-    # passing the raw event shape, then to lat/lng coords as last resort.
+    raw_time = event.get("time", "")
+    ago = _relative_ago(raw_time)
+    when = ago.strip("()") if ago else _fmt_time(raw_time)
+
     addr = (event.get("address") or "").strip()
     if not addr:
         loc = event.get("location") or {}
@@ -124,28 +165,33 @@ def format_event_alert(event: dict) -> str:
     elif lat is not None and lng is not None:
         loc_str = f"{lat:.4f}, {lng:.4f}"
     else:
-        loc_str = "—"
+        loc_str = ""
 
-    # Field labels ("Vehicle:", "Driver:", "Location:", "Time:") were
-    # dropped — the emoji already signals the meaning, and the trim
-    # matches the fault/fuel/health alert style.  Vehicle now uses
-    # "Truck #208" for consistency across alert types.
-    lines = [f"{emoji} <b>{ename}</b>\n"]
-    lines.append(f"  🚛  <b>Truck #{vname}</b>")
-    # Hide the driver row entirely when no driver is assigned to the
-    # rig — "Driver: Unassigned" is noise that pushes the actionable
-    # info (location, time) further down the message.
+    lines: list[str] = [f"<b>{badge(sev)}</b> — {title}", ""]
+
+    where_parts = [f"🚛 <b>Truck #{vname}</b>"]
+    if loc_str:
+        where_parts.append(f"📍 {loc_str}")
+    lines.append("  ·  ".join(where_parts))
+
+    when_parts: list[str] = []
     if dname and dname != "Unassigned":
-        lines.append(f"  👤  {dname}")
-    # G-force only renders for impact-style events; for rolling-stop /
-    # following-distance / lane-departure the field is just noise.
-    if etype in _GFORCE_EVENT_TYPES:
-        gf = event.get("g_force", 0.0)
-        lines.append(f"  ⚡  <b>{gf:.2f}g</b>")
-    lines.append(f"  📍  {loc_str}")
-    lines.append(f"  🕐  {time_str}")
+        when_parts.append(f"👤 {dname}")
+    if when:
+        when_parts.append(f"🕐 {when}")
+    if when_parts:
+        lines.append("  ·  ".join(when_parts))
 
-    return "\n".join(lines) + "\n"
+    # G-force only renders for impact-style events; behavior events
+    # carry no useful magnitude.
+    if etype in _GFORCE_EVENT_TYPES:
+        lines.append("")
+        lines.append(f"{marker(sev)} <b>{g_force:.2f}g</b> deceleration / acceleration")
+
+    lines.append("")
+    lines.append(f"💡 {_EVENT_ACTIONS.get(etype, 'Coach driver · review snapshot')}")
+
+    return "\n".join(lines)
 
 
 def format_events_dashboard(

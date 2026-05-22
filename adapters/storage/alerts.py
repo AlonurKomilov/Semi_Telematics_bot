@@ -490,6 +490,35 @@ class AlertsMixin(_MixinBase):
         )
         return dict(await row.fetchone())
 
+    async def get_earliest_human_ack(
+        self, account_id: int, alert_type: str, vehicle_id: str,
+    ) -> dict | None:
+        """Return the earliest *human* acknowledgment for an active alert.
+
+        Used by the auto-resolve path to surface "Acked by <name>"
+        context in the resolve receipt — so when one team member
+        handled the alert before it cleared, every other recipient
+        and the group topic see who closed the loop.
+
+        ``acknowledged_by = 0`` is the system sentinel set by
+        ``auto_resolve_alerts_by_vehicle`` for un-acked rows it
+        sweeps; filtering it out keeps the chip true to its meaning
+        ("a person handled this", not "the system auto-cleared it").
+
+        Must be called BEFORE ``auto_resolve_alerts_by_vehicle`` —
+        once that runs it overwrites ``acknowledged_at`` on all
+        previously-un-acked rows, hiding the real human-ack time.
+        """
+        cur = await self._db.execute(
+            "SELECT acknowledged_by, acknowledged_at FROM alert_acknowledgments "
+            "WHERE account_id = ? AND alert_type = ? AND vehicle_id = ? "
+            "AND acknowledged_by != 0 AND acknowledged_at IS NOT NULL "
+            "ORDER BY acknowledged_at ASC LIMIT 1",
+            (account_id, alert_type, vehicle_id),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
     async def auto_resolve_alerts_by_vehicle(
         self, account_id: int, alert_type: str, vehicle_id: str,
     ) -> list[dict]:

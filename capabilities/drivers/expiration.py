@@ -114,37 +114,49 @@ def classify_documents(
 def format_alert(doc: ExpiringDoc, *, for_driver: bool = True) -> str:
     """Build the Telegram message body for one expiring document.
 
-    Drivers see a personal "please upload renewal" framing; admins see
-    the same data with the driver-identity preserved (the bot appends
-    the driver's name before sending — see ``check_document_expirations``)."""
+    Uses the unified Option A grammar — see
+    ``capabilities/formatting/severity.py``.  Expired-today / expires-
+    tomorrow are critical (today = already non-compliant, tomorrow =
+    last chance); 7+ days is warning.
+
+    Drivers see a personal "please upload renewal" framing in the
+    action line; admins see a neutral compliance phrasing.  The bot
+    appends the driver's name before sending to admins — see
+    ``check_document_expirations``.
+    """
+    from capabilities.formatting.severity import badge, marker
+
     label = DOC_LABELS.get(doc.doc_type, doc.doc_type.replace("_", " ").title())
 
     if doc.bucket == 0:
-        header = f"🟥 <b>{label} expired today</b>"
+        sev = "critical"
+        title_phrase = f"{label} expired today"
         action = (
-            "Your document is no longer valid — please upload a renewal as soon as possible."
+            "Upload renewal immediately · document no longer valid"
             if for_driver
-            else "This document is no longer valid."
+            else "Document no longer valid · contact driver"
         )
     elif doc.bucket == 1:
-        header = f"🟥 <b>{label} expires tomorrow</b>"
+        sev = "critical"
+        title_phrase = f"{label} expires tomorrow"
         action = (
-            "Please upload the renewal today so you stay compliant."
+            "Upload renewal today to stay compliant"
             if for_driver
-            else "Document expires tomorrow."
+            else "Last day before expiry · contact driver"
         )
     else:
-        header = f"🟧 <b>{label} expires in {doc.bucket} days</b>"
+        sev = "warning"
+        title_phrase = f"{label} expires in {doc.bucket} days"
         action = (
-            "Please upload the renewal before the expiration date."
+            "Upload renewal before the expiration date"
             if for_driver
-            else f"Document expires in {doc.bucket} days."
+            else f"Expires in {doc.bucket} days · plan renewal"
         )
 
-    body = (
-        f"{header}\n\n"
-        f"  📄 {doc.file_name}\n"
-        f"  📅 Expires {doc.expires_at}\n\n"
-        f"{action}"
-    )
-    return body
+    body_marker = marker(sev)
+    lines: list[str] = [f"<b>{badge(sev)}</b> — {title_phrase}", ""]
+    lines.append(f"{body_marker} <b>{doc.file_name}</b>")
+    lines.append(f"      📅 Expires {doc.expires_at}")
+    lines.append("")
+    lines.append(f"💡 {action}")
+    return "\n".join(lines)

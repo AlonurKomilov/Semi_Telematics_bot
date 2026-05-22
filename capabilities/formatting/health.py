@@ -1,90 +1,94 @@
-"""Health alert and vehicle health dashboard formatters."""
+"""Health alert and vehicle health dashboard formatters.
+
+The single-alert formatter uses the unified Option A grammar — see
+``capabilities/formatting/severity.py``.  The dashboard formatter
+(``format_vehicle_health``) is a report, not an alert, so it keeps its
+existing tabular layout.
+"""
 
 from datetime import datetime, timezone
 from constants import TZ_ET as _TZ_ET
-from infra.context import get_company_display
 from capabilities.formatting.helpers import (
     _t, _health_icon, _company_tag, _split_message,
-    _short_location, _fmt_time, _relative_ago,
+    _short_location, _fmt_time, _relative_ago, escape_html,
 )
+from capabilities.formatting.severity import badge, marker, default_action
 
 
 def format_health_alert(vehicle: dict, alerts: list[str],
                         health: dict,
                         show_company: bool = False,
                         driver_name: str | None = None,
-                        detected_at: str | None = None) -> str:
-    """Format a vehicle health critical alert (battery, oil, coolant, DEF).
+                        detected_at: str | None = None,
+                        alert_id: int | str | None = None,
+                        action: str | None = None) -> str:
+    """Format a vehicle health alert in the unified Option A grammar.
 
-    *driver_name* and *detected_at* are optional context the alerting
-    pipeline now threads through so the dispatcher knows who to call
-    and how stale the reading is — the prior format had only the
-    sensor reading with no who/where/when context.
+    Severity is derived from the alert keys — battery / oil / coolant
+    issues are critical; low DEF and coolant DTCs are warnings.
     """
-    name = vehicle.get("name", "?")
-    co = vehicle.get("_org", "")
+    # See faults.py for the escape_html rationale — every
+    # Samsara-sourced or user-supplied string going into parse_mode=HTML
+    # is escaped at this boundary.
+    name = escape_html(str(vehicle.get("name", "?")))
+    co = escape_html(str(vehicle.get("_org", "")))
     loc = vehicle.get("location", {})
-    city = _short_location(loc)
+    city = escape_html(_short_location(loc))
+    driver_name = escape_html(driver_name) if driver_name else None
 
-    co_label = ""
-    if show_company and co:
-        co_label = f"\n  🏢  {get_company_display().get(co, co)}  ({co})"
-
-    # Severity — critical items
     is_critical = any(a in alerts for a in (
         "low_battery", "low_oil_pressure", "high_coolant_temp",
     ))
-    header = _t('alert_format.health_critical') if is_critical else _t('alert_format.health_warning')
+    sev = "critical" if is_critical else "warning"
+    title = _t("alert_format.title_health")
 
-    lines = [
-        "━━━━━━━━━━━━━━━━━━━━━",
-        f"  {header}",
-        "━━━━━━━━━━━━━━━━━━━━━",
-        "",
-        f"  🚛  <b>Truck #{name}</b>",
-    ]
-    if driver_name:
-        lines.append(f"  👤  {driver_name}")
-    if co_label:
-        lines.append(co_label.lstrip("\n"))
+    lines: list[str] = [f"<b>{badge(sev)}</b> — {title}", ""]
+
+    where_parts = [f"🚛 <b>Truck #{name}</b>"]
     if city and city != "—":
-        lines.append(f"  📍  {city}")
+        where_parts.append(f"📍 {city}")
+    lines.append("  ·  ".join(where_parts))
+
+    when_parts: list[str] = []
+    if show_company and co:
+        when_parts.append(f"🏢 {co}")
+    if driver_name:
+        when_parts.append(f"👤 {driver_name}")
     if detected_at:
-        time_str = _fmt_time(detected_at)
         ago = _relative_ago(detected_at)
-        if ago:
-            time_str = f"{time_str} {ago}"
-        lines.append(f"  🕐  {time_str}")
+        when_parts.append(f"🕐 {ago.strip('()') if ago else _fmt_time(detected_at)}")
+    if when_parts:
+        lines.append("  ·  ".join(when_parts))
+
     lines.append("")
 
-    # Show each alert condition with current value
-    alert_details = {
-        "low_battery": (
-            _t('alert_format.health_low_battery'),
-            f"{health.get('battery_v', '?')}V (threshold: 12.2V)",
-        ),
-        "low_oil_pressure": (
-            _t('alert_format.health_low_oil'),
-            f"{health.get('oil_psi', '?')} PSI (threshold: 10 PSI)",
-        ),
-        "high_coolant_temp": (
-            _t('alert_format.health_high_coolant'),
-            f"{health.get('coolant_c', '?')}°C (threshold: 105°C)",
-        ),
-        "low_def": (
-            _t('alert_format.health_low_def'),
-            f"{health.get('def_pct', '?')}% (threshold: 10%)",
-        ),
-        "coolant_dtc": (
-            _t('alert_format.health_coolant_fault'),
-            _t('alert_format.health_coolant_dtc'),
-        ),
+    # Per-condition body rows.  Plain English label + the sensor
+    # reading vs threshold so the user can judge how bad it is at a
+    # glance ("26 psi at idle (threshold 30)" reads as "barely under";
+    # "8 psi" as "engine is in trouble right now").
+    label_map = {
+        "low_battery": ("Low Battery",
+                        f"{health.get('battery_v', '?')}V (threshold 12.2V)"),
+        "low_oil_pressure": ("Low Oil Pressure",
+                             f"{health.get('oil_psi', '?')} psi (threshold 10 psi)"),
+        "high_coolant_temp": ("High Coolant Temperature",
+                              f"{health.get('coolant_c', '?')}°C (threshold 105°C)"),
+        "low_def": ("Low DEF Level",
+                    f"{health.get('def_pct', '?')}% (threshold 10%)"),
+        "coolant_dtc": ("Coolant System Fault", "J1939 DTC active"),
     }
 
-    for alert_key in alerts:
-        if alert_key in alert_details:
-            label, detail = alert_details[alert_key]
-            lines.append(f"  <b>{label}</b>\n       {detail}\n")
+    body_marker = marker(sev)
+    for key in alerts:
+        if key in label_map:
+            label, detail = label_map[key]
+            lines.append(f"{body_marker} <b>{label}</b>")
+            lines.append(f"      {detail}")
+
+    lines.append("")
+    lines.append(f"💡 {action or default_action(sev)}")
+    if alert_id is not None:
+        lines.append(f"🔖 #{alert_id}")
 
     return "\n".join(lines)
 

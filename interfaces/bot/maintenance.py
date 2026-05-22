@@ -766,6 +766,44 @@ _get_current_odometer = get_vehicle_odometer
 
 
 # ══════════════════════════════════════════════════════════════════
+# MAINTENANCE-ALERT FORMATTER (Option A grammar)
+# ══════════════════════════════════════════════════════════════════
+
+def _format_maintenance_alert(
+    *,
+    severity: str,
+    title: str,
+    vehicle_name: str,
+    task_label: str,
+    detail_lines: list[str],
+    action: str,
+) -> str:
+    """Build a single maintenance alert in the unified Option A grammar.
+
+    ``detail_lines`` are the rows that go under the body marker — one
+    per due-condition (e.g. ``"Due at 50,000 mi"`` + ``"Current 51,200 mi"``).
+
+    Every interpolated field is HTML-escaped — vehicle names and
+    task labels come from operator input, ``detail_lines`` may
+    embed Samsara values (mileage display strings are safe but a
+    custom task label is not).
+    """
+    from capabilities.formatting.helpers import escape_html
+    from capabilities.formatting.severity import badge, marker
+    body_marker = marker(severity)
+
+    lines: list[str] = [f"<b>{badge(severity)}</b> — {escape_html(title)}", ""]
+    lines.append(f"🚛 <b>Truck #{escape_html(str(vehicle_name))}</b>")
+    lines.append("")
+    lines.append(f"{body_marker} <b>{escape_html(str(task_label))}</b>")
+    for d in detail_lines:
+        lines.append(f"      {escape_html(str(d))}")
+    lines.append("")
+    lines.append(f"💡 {escape_html(action)}")
+    return "\n".join(lines)
+
+
+# ══════════════════════════════════════════════════════════════════
 # SCHEDULED JOBS
 # ══════════════════════════════════════════════════════════════════
 
@@ -795,11 +833,13 @@ async def check_overdue_maintenance(app: Application):
             for task in newly_overdue:
                 try:
                     type_label = _task_label(task["task_type"])
-                    notify_text = (
-                        f"🔴 <b>Overdue Maintenance</b>\n\n"
-                        f"  🚛 #{task['vehicle_name']}\n"
-                        f"  📋 {type_label}\n"
-                        f"  📅 Due: {task.get('due_date', '?')}\n"
+                    notify_text = _format_maintenance_alert(
+                        severity="warning",
+                        title="Overdue Maintenance",
+                        vehicle_name=task["vehicle_name"],
+                        task_label=type_label,
+                        detail_lines=[f"📅 Due {task.get('due_date', '?')}"],
+                        action="Schedule shop · update task once complete",
                     )
                     # Forum routing: post once to the group's
                     # Maintenance topic when configured.  When that
@@ -861,12 +901,16 @@ async def check_overdue_by_mileage(app: Application):
                     type_label = _task_label(task["task_type"])
                     due_miles = task["due_miles"]
                     current_miles = task.get("_current_miles", due_miles)
-                    notify_text = (
-                        f"🔴 <b>Overdue Maintenance (Mileage)</b>\n\n"
-                        f"  🚛 #{task['vehicle_name']}\n"
-                        f"  📋 {type_label}\n"
-                        f"  🛣 Due at: {due_miles:,.0f} mi\n"
-                        f"  📏 Current: {current_miles:,.0f} mi\n"
+                    notify_text = _format_maintenance_alert(
+                        severity="warning",
+                        title="Overdue Maintenance (Mileage)",
+                        vehicle_name=task["vehicle_name"],
+                        task_label=type_label,
+                        detail_lines=[
+                            f"🛣 Due at {due_miles:,.0f} mi",
+                            f"📏 Current {current_miles:,.0f} mi",
+                        ],
+                        action="Schedule shop · update task once complete",
                     )
                     from capabilities.alerting.pipeline import post_alert_to_topic
                     posted = await post_alert_to_topic(
@@ -927,12 +971,16 @@ async def check_overdue_by_engine_hours(app: Application):
                     type_label = _task_label(task["task_type"])
                     due = task["due_engine_hours"]
                     current = task.get("_current_engine_hours", due)
-                    notify_text = (
-                        f"🔴 <b>Overdue Maintenance (Engine Hours)</b>\n\n"
-                        f"  🚛 #{task['vehicle_name']}\n"
-                        f"  📋 {type_label}\n"
-                        f"  ⏱ Due at: {due:,.0f} hrs\n"
-                        f"  📏 Current: {current:,.0f} hrs\n"
+                    notify_text = _format_maintenance_alert(
+                        severity="warning",
+                        title="Overdue Maintenance (Engine Hours)",
+                        vehicle_name=task["vehicle_name"],
+                        task_label=type_label,
+                        detail_lines=[
+                            f"⏱ Due at {due:,.0f} hrs",
+                            f"📏 Current {current:,.0f} hrs",
+                        ],
+                        action="Schedule shop · update task once complete",
                     )
                     from capabilities.alerting.pipeline import post_alert_to_topic
                     posted = await post_alert_to_topic(
@@ -1004,12 +1052,13 @@ async def check_upcoming_maintenance_warnings(app: Application):
                     if task.get("due_engine_hours") and task.get("last_engine_hours"):
                         remaining_h = float(task["due_engine_hours"]) - float(task["last_engine_hours"])
                         bits.append(f"⏱ {remaining_h:,.0f} hrs to go")
-                    summary = " · ".join(bits) if bits else "approaching"
-                    notify_text = (
-                        f"🟠 <b>Maintenance Due Soon</b>\n\n"
-                        f"  🚛 #{task['vehicle_name']}\n"
-                        f"  📋 {type_label}\n"
-                        f"  {summary}\n"
+                    notify_text = _format_maintenance_alert(
+                        severity="info",
+                        title="Maintenance Due Soon",
+                        vehicle_name=task["vehicle_name"],
+                        task_label=type_label,
+                        detail_lines=bits if bits else ["approaching"],
+                        action="Plan shop visit · no immediate action needed",
                     )
                     from capabilities.alerting.pipeline import post_alert_to_topic
                     posted = await post_alert_to_topic(

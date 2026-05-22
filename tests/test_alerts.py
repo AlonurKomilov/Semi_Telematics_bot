@@ -135,13 +135,11 @@ class TestCriticalFaultFormatter:
                  "sourceAddressName": "ECU"}]
         lights = {"stopIsOn": True}
         result = format_critical_fault_alert(vehicle, dtcs, lights)
-        assert "CRITICAL FAULT" in result
+        assert "🔴 CRITICAL" in result
+        assert "Fault Detected" in result
         assert "Truck #101" in result
         assert "🛑 STOP" in result
         assert "Engine Temp" in result
-        # Note: the "Immediate attention required" hint footer was
-        # removed — the inline keyboard buttons (Open in Samsara /
-        # View Truck / Main Menu) cover the same call-to-action.
 
     def test_multiple_lights(self):
         vehicle = {"name": "202", "location": {}, "_org": "CO1"}
@@ -167,7 +165,8 @@ class TestCriticalFaultFormatter:
                  "sourceAddressName": "ECU"}]
         lights = {}
         result = format_critical_fault_alert(vehicle, dtcs, lights)
-        assert "CRITICAL FAULT" in result
+        assert "🔴 CRITICAL" in result
+        assert "Fault Detected" in result
 
 
 class TestHealthAlertFormatter:
@@ -178,16 +177,18 @@ class TestHealthAlertFormatter:
         health = {"battery_v": 11.5, "oil_psi": 8}
         alerts = ["low_battery", "low_oil_pressure"]
         result = format_health_alert(vehicle, alerts, health)
-        assert "CRITICAL HEALTH" in result
+        assert "🔴 CRITICAL" in result
+        assert "Engine Health" in result
         assert "11.5V" in result
-        assert "8 PSI" in result
+        assert "8 psi" in result
 
     def test_warning_header_for_def(self):
         vehicle = {"name": "502", "_org": "CO1"}
         health = {"def_pct": 5.2}
         alerts = ["low_def"]
         result = format_health_alert(vehicle, alerts, health)
-        assert "HEALTH WARNING" in result
+        assert "🟠 WARNING" in result
+        assert "Engine Health" in result
         assert "5.2%" in result
 
     def test_coolant_dtc_alert(self):
@@ -219,9 +220,10 @@ class TestLowFuelFormatter:
     def test_basic_output(self):
         vehicle = {"name": "601", "_org": "CO1"}
         result = format_low_fuel_alert(vehicle, 12.5)
-        assert "LOW FUEL ALERT" in result
+        assert "Low Fuel" in result
+        assert "🟠 WARNING" in result
         assert "Truck #601" in result
-        assert "12%" in result
+        assert "12% fuel remaining" in result
 
     def test_company_display(self):
         vehicle = {"name": "602", "_org": "ABC"}
@@ -231,8 +233,11 @@ class TestLowFuelFormatter:
     def test_zero_fuel(self):
         vehicle = {"name": "603", "_org": "CO1"}
         result = format_low_fuel_alert(vehicle, 0.0)
-        assert "0%" in result
-        assert "refueling" in result
+        assert "0% fuel remaining" in result
+        # 0% trips the critical severity (< 5%) so the critical action
+        # wording appears in the 💡 line.
+        assert "🔴 CRITICAL" in result
+        assert "Refuel immediately" in result
 
     def test_includes_driver_when_provided(self):
         vehicle = {"name": "604", "_org": "CO1"}

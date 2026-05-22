@@ -33,11 +33,30 @@ async def handle_alert_ack(update, context, ack_id: int):
         tenant = await get_tenant_db(acct_id) if acct_id else get_db()
         await tenant.acknowledge_alert(ack_id, tid)
 
-        # Update the message to show it's been acknowledged
+        # Update the message to show it's been acknowledged.  The
+        # Option A grammar appends a chip suffix to the existing 🔖 id
+        # line so the alert stays a single coherent block instead of
+        # gaining a trailing "Acknowledged by …" stanza on its own.
+        # Falls back to appending a new line when no id chip is found
+        # (legacy alerts, manually-edited messages, …).
         try:
             original_text = query.message.text_html or query.message.text or ""
             ack_name = query.from_user.full_name or str(tid)
-            ack_text = original_text + f"\n\n✅ <b>Acknowledged</b> by <a href='tg://user?id={tid}'>{ack_name}</a>"
+            ack_chip = (
+                f"  ·  ✅ Acked by "
+                f"<a href='tg://user?id={tid}'>{ack_name}</a>"
+            )
+            lines = original_text.split("\n")
+            patched = False
+            for i, ln in enumerate(lines):
+                if ln.lstrip().startswith("🔖"):
+                    lines[i] = ln + ack_chip
+                    patched = True
+                    break
+            ack_text = "\n".join(lines) if patched else (
+                original_text + f"\n\n✅ <b>Acknowledged</b> by "
+                f"<a href='tg://user?id={tid}'>{ack_name}</a>"
+            )
             # Keep only the truck view button
             new_kb = InlineKeyboardMarkup([
                 row for row in (query.message.reply_markup.inline_keyboard
@@ -73,8 +92,13 @@ def _build_resolve_detail(alert_type: str, detail: str) -> str:
     """Build human-readable detail for auto-resolved notifications.
 
     Parses the stored alert detail and returns a formatted string
-    describing what was originally alerted.
+    describing what was originally alerted.  Every field that
+    originated outside our code (DTC ``desc``, ``spn`` / ``fmi``
+    codes, raw fault ``entry``) is HTML-escaped before going into the
+    output — these flow through parse_mode=HTML and Samsara strings
+    occasionally contain ``<``, ``>``, or ``&``.
     """
+    from capabilities.formatting.helpers import escape_html
     if not detail:
         return ""
     lines: list[str] = []
@@ -87,24 +111,29 @@ def _build_resolve_detail(alert_type: str, detail: str) -> str:
             "coolant_dtc": "🌡 Coolant System Fault",
         }
         for code in detail.split("-"):
+            # Either the canonical label (safe constant) or a title-cased
+            # fallback derived from the code (alphanumeric — safe).
             label = label_map.get(code, code.replace("_", " ").title())
             lines.append(f"  ✅ {label} — normal")
     elif alert_type == "fault":
         for entry in detail.split("|"):
             if ":" in entry:
                 code_part, desc = entry.split(":", 1)
-                lines.append(f"  ✅ {code_part} — cleared")
+                lines.append(f"  ✅ {escape_html(code_part)} — cleared")
                 if desc:
-                    lines.append(f"       {desc}")
+                    lines.append(f"       {escape_html(desc)}")
             else:
                 spn_fmi = entry.split("-", 1)
                 if len(spn_fmi) == 2:
-                    lines.append(f"  ✅ SPN {spn_fmi[0]} / FMI {spn_fmi[1]} — cleared")
+                    lines.append(
+                        f"  ✅ SPN {escape_html(spn_fmi[0])} / "
+                        f"FMI {escape_html(spn_fmi[1])} — cleared"
+                    )
                 elif entry:
-                    lines.append(f"  ✅ {entry} — cleared")
+                    lines.append(f"  ✅ {escape_html(entry)} — cleared")
     elif alert_type == "fuel":
         fuel_val = detail.split(":")[-1] if ":" in detail else detail
-        lines.append(f"  ✅ Fuel was at {fuel_val}% — now above threshold")
+        lines.append(f"  ✅ Fuel was at {escape_html(fuel_val)}% — now above threshold")
     return "\n".join(lines)
 
 
@@ -135,6 +164,16 @@ async def _auto_resolve_vehicle_alerts(
     hist = await tenant.get_active_alert_history(account_id, alert_type, vehicle_id)
     first_seen_str = hist["first_seen"] if hist else ""
 
+    # Capture the earliest human ack BEFORE the auto-resolve sweep
+    # (which marks every un-acked row as system-acked with
+    # ``acknowledged_by = 0``).  When a real user handled the alert
+    # before it cleared, we surface "✅ Acked by <name>" on the
+    # resolve receipt so the rest of the team sees who closed the
+    # loop — even on the auto-resolve message they didn't trigger.
+    earliest_ack = await tenant.get_earliest_human_ack(
+        account_id, alert_type, vehicle_id,
+    )
+
     # Clear the single alert_history record (single source of truth)
     await tenant.clear_alert_history(account_id, alert_type, vehicle_id)
 
@@ -152,9 +191,9 @@ async def _auto_resolve_vehicle_alerts(
         logger.warning("No bot for account %d — skipping auto-resolve", account_id)
         return
 
-    vname = vehicle_name or resolved[0].get("vehicle_name", "?")
-    atype_label = alert_type.replace("_", " ").title()
-    alert_co = co or "?"
+    from capabilities.formatting.helpers import escape_html
+    vname = escape_html(str(vehicle_name or resolved[0].get("vehicle_name", "?")))
+    alert_co = escape_html(str(co or "?"))
 
     # Build resolve detail from the shared alert_key (same for all subscribers)
     alert_key = resolved[0].get("alert_key", "")
@@ -162,31 +201,90 @@ async def _auto_resolve_vehicle_alerts(
     detail = key_parts[2] if len(key_parts) > 2 else ""
     detail_lines = _build_resolve_detail(alert_type, detail)
 
-    # Compute duration once from shared first_seen (not per-subscriber created_at)
-    duration_str = ""
+    # Compute "cleared Xh Ym after first seen" once from shared first_seen.
+    duration_phrase = ""
     if first_seen_str:
         try:
             first_dt = datetime.fromisoformat(first_seen_str)
             mins = int((datetime.now(timezone.utc) - first_dt).total_seconds() / 60)
             if mins >= 60:
-                duration_str = f"  🕐 Active for <b>{mins // 60}h {mins % 60}m</b>\n"
+                duration_phrase = f"cleared {mins // 60}h {mins % 60}m after first seen"
+            elif mins >= 1:
+                duration_phrase = f"cleared {mins} min after first seen"
             else:
-                duration_str = f"  🕐 Active for <b>{mins} min</b>\n"
+                duration_phrase = "cleared in under a minute"
         except Exception as e:
             logger.debug("Could not compute alert duration: %s", e)
 
-    # Build the resolve message template once — same for all subscribers
-    resolve_text = (
-        "━━━━━━━━━━━━━━━━━━━\n"
-        f"  ✅  <b>AUTO-RESOLVED</b>\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        f"\n  🚛 Truck: <b>#{vname}</b>\n"
-        f"\n  {atype_label} alert resolved — condition cleared.\n"
-    )
+    # ── Build the receipt in Option A grammar ────────────────────
+    # 🟢 RESOLVED — <Type> Cleared
+    #
+    # 🚛 Truck #<name>  ·  🏢 <co>  ·  🕐 cleared 2h 14m after first seen
+    #
+    # ✅ <what was alerting>
+    #
+    # 💡 Condition cleared — no action needed
+    from capabilities.formatting.severity import badge, default_action
+    type_title_map = {
+        "fault":  "Fault Cleared",
+        "health": "Health Cleared",
+        "fuel":   "Fuel Restored",
+    }
+    title = type_title_map.get(alert_type, "Alert Cleared")
+
+    resolve_lines: list[str] = [f"<b>{badge('resolved')}</b> — {title}", ""]
+
+    where_parts = [f"🚛 <b>Truck #{vname}</b>"]
+    if alert_co and alert_co != "?":
+        where_parts.append(f"🏢 {alert_co}")
+    if duration_phrase:
+        where_parts.append(f"🕐 {duration_phrase}")
+    resolve_lines.append("  ·  ".join(where_parts))
+
     if detail_lines:
-        resolve_text += f"\n  <b>Was alerting:</b>\n{detail_lines}\n"
-    if duration_str:
-        resolve_text += f"\n{duration_str}"
+        # ``detail_lines`` already prefixes each row with ``  ✅`` — drop
+        # the leading whitespace so it sits flush with the new grammar.
+        cleaned = "\n".join(
+            ln.lstrip() for ln in detail_lines.split("\n") if ln.strip()
+        )
+        resolve_lines.append("")
+        resolve_lines.append(cleaned)
+
+    resolve_lines.append("")
+    resolve_lines.append(f"💡 {default_action('resolved')}")
+
+    # ── ACK chip (when a human acked before the system cleared) ──
+    if earliest_ack:
+        ack_tid = earliest_ack.get("acknowledged_by") or 0
+        ack_at = earliest_ack.get("acknowledged_at") or ""
+        ack_name: str | None = None
+        try:
+            acker = await get_platform_db().get_user_by_telegram_id(ack_tid)
+            if acker:
+                ack_name = acker.display_name or str(ack_tid)
+        except Exception as e:
+            logger.debug("Could not resolve acker name for %s: %s", ack_tid, e)
+        ack_name = ack_name or f"user {ack_tid}"
+
+        # "Acked Xh Ym before clear" — anchors the ACK to the same
+        # clock as the resolve duration above so the reader can place
+        # the two events in order at a glance.
+        gap_phrase = ""
+        if ack_at and first_seen_str:
+            try:
+                ack_dt = datetime.fromisoformat(ack_at)
+                clr_dt = datetime.now(timezone.utc)
+                gap_mins = int((clr_dt - ack_dt).total_seconds() / 60)
+                if gap_mins >= 60:
+                    gap_phrase = f" · {gap_mins // 60}h {gap_mins % 60}m before clear"
+                elif gap_mins >= 1:
+                    gap_phrase = f" · {gap_mins} min before clear"
+            except Exception as e:
+                logger.debug("Could not compute ack→clear gap: %s", e)
+
+        resolve_lines.append(f"🔖 ✅ Acked by <b>{ack_name}</b>{gap_phrase}")
+
+    resolve_text = "\n".join(resolve_lines)
 
     # Per-recipient: try to EDIT the existing alert message into a
     # ✅ resolved receipt instead of delete-old + send-new.  The user's
@@ -206,6 +304,33 @@ async def _auto_resolve_vehicle_alerts(
     # the message in place and would erase the "AUTO-RESOLVED" receipt
     # for every other shift reading the topic.
     resolved_kb_group = None
+
+    # Look up the forum topic for this alert type once so group resolves
+    # can route explicitly.  Telegram only routes a reply into the same
+    # topic as the original message when ``message_thread_id`` is passed
+    # alongside ``reply_to_message_id`` — relying on the reply-link alone
+    # leaks the resolution into the group's General topic (e.g. "Team
+    # Chat") whenever the original is too old / edited / not visible.
+    # That mismatched routing was visible to operators as Health and
+    # Fault "AUTO-RESOLVED" receipts landing in Team Chat instead of
+    # the Faults / Health topics where the live alerts post.
+    from capabilities.alerting.pipeline import (
+        _FORUM_ROUTING_ENABLED,
+        _PIPELINE_TO_ROUTE_KEY,
+    )
+    group_thread_id: int | None = None
+    if _FORUM_ROUTING_ENABLED:
+        _route_key = _PIPELINE_TO_ROUTE_KEY.get(alert_type)
+        if _route_key:
+            try:
+                _route = await get_platform_db().get_alert_route(account_id, _route_key)
+                if _route is not None:
+                    group_thread_id = _route.message_thread_id
+            except Exception as e:
+                logger.debug(
+                    "Could not look up forum route for auto-resolve "
+                    "(acct=%d type=%s): %s", account_id, alert_type, e,
+                )
 
     for alert in resolved:
         recipient_id = alert.get("sent_to")
@@ -245,6 +370,7 @@ async def _auto_resolve_vehicle_alerts(
                 try:
                     await bot_app.bot.send_message(
                         chat_id=chat_id,
+                        message_thread_id=group_thread_id,
                         text=resolve_text,
                         parse_mode=ParseMode.HTML,
                         reply_markup=resolved_kb_group,
@@ -257,9 +383,12 @@ async def _auto_resolve_vehicle_alerts(
                     )
                     # Last resort: post into the topic without a reply
                     # link so at least the resolution lands somewhere.
+                    # ``message_thread_id`` still applies — the reply was
+                    # only context, not what kept us inside the topic.
                     try:
                         await bot_app.bot.send_message(
                             chat_id=chat_id,
+                            message_thread_id=group_thread_id,
                             text=resolve_text,
                             parse_mode=ParseMode.HTML,
                             reply_markup=resolved_kb_group,
@@ -556,16 +685,22 @@ async def re_escalate_critical_alerts(app: Application):
             age_str = f"{age_min // 60}h {age_min % 60}m" if age_min >= 60 else f"{age_min} min"
 
             attempt_n = attempts_so_far + 1
-            reminder_text = (
-                "━━━━━━━━━━━━━━━━━━━\n"
-                f"  🔴  <b>UNACKNOWLEDGED ALERT</b>"
-                f" (reminder {attempt_n}/{REESCALATE_MAX_ATTEMPTS})\n"
-                "━━━━━━━━━━━━━━━━━━━\n"
-                f"\n  🚛 Truck: <b>#{vname}</b>"
-                f"\n  🩺 {atype.title()} alert #<b>{history_id}</b>"
-                f" active for <b>{age_str}</b>"
-                "\n\n  Please acknowledge or mute."
-            )
+            # Demote the badge to 🟡 REMINDER so a chronic open alert
+            # doesn't keep looking like a fresh 🔴/🟠 push.  The
+            # reminder counter ("reminder 2/4") sits on the same line
+            # so dispatch sees how aggressive the loop has been.
+            from capabilities.formatting.severity import badge as _badge
+            reminder_lines: list[str] = [
+                f"<b>{_badge('reminder')}</b> — Unacknowledged Alert  "
+                f"<i>(reminder {attempt_n}/{REESCALATE_MAX_ATTEMPTS})</i>",
+                "",
+                f"🚛 <b>Truck #{vname}</b>",
+                f"⏱ <b>{atype.title()}</b> alert active for <b>{age_str}</b>",
+                "",
+                "💡 Acknowledge or mute — auto-clears when the condition lifts",
+                f"🔖 #{history_id}",
+            ]
+            reminder_text = "\n".join(reminder_lines)
 
             # Resolve every still-active recipient delivery for this
             # logical alert.  We edit each subscriber's message in place

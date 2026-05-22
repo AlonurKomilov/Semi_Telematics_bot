@@ -389,7 +389,19 @@
     "ago_just_now": "hadda",
     "ago_minutes": "{n} daqiiqo ka hor",
     "ago_hours": "{n} saac ka hor",
-    "ago_days": "{n} maalmood ka hor"
+    "ago_days": "{n} maalmood ka hor",
+    "title_fault": "Fault Detected",
+    "title_health": "Engine Health",
+    "title_fuel": "Low Fuel",
+    "title_resolved_fault": "Fault Cleared",
+    "title_resolved_health": "Health Cleared",
+    "title_resolved_fuel": "Fuel Restored",
+    "action_critical_default": "Pull over safely · stop driving · call maintenance",
+    "action_warning_default": "Schedule shop check · drive normally",
+    "action_info_default": "Review at next service",
+    "action_resolved_default": "Condition cleared — no action needed",
+    "ack_suffix": "✅ Acked by {name} · {ago}",
+    "resolved_duration": "cleared {duration} after first seen"
   },
   "access": {
     "no_access": "⛔ Ma jirto gelitaan",

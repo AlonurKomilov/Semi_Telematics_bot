@@ -169,30 +169,45 @@ async def _check_cameras_account(
             )
         ) != "0"
 
+        # Option A grammar.  Severity = critical when any PROBLEM rows,
+        # warning otherwise.  The summary line replaces the bullet
+        # list with a one-line roll-up; each issue gets its own photo
+        # caption below so per-issue detail is not lost.
+        from capabilities.formatting.severity import badge
+        digest_sev = "critical" if problems else "warning"
+
+        roll_parts: list[str] = []
+        if problems:
+            roll_parts.append(f"🔴 {problems} problem(s)")
+        if warnings:
+            roll_parts.append(f"🔸 {warnings} warning(s)")
+
         topic_lines = [
-            "🎥 <b>Camera Alert (fleet-wide)</b>",
+            f"<b>{badge(digest_sev)}</b> — Camera Issues",
             "",
-            f"  🚨 {problems} problem(s)" if problems else "",
-            f"  ⚠️ {warnings} warning(s)" if warnings else "",
+            "📷 fleet-wide · " + "  ·  ".join(roll_parts) if roll_parts else "📷 fleet-wide",
             "",
         ]
         for r in new_issues[:10]:
-            icon = "🚨" if r.get("status") == "PROBLEM" else "⚠️"
+            row_marker = "🔴" if r.get("status") == "PROBLEM" else "🔸"
             cam_icon = {"forward": "🎥", "inward": "🪞"}.get(
                 r.get("camera_type", "forward"), "📷")
             co_label = f" ({r.get('company', '?')})" if show_co else ""
             if _include_ai:
                 summary = r.get("summary", "")[:120]
-                topic_lines.append(f"{icon} #{r['vehicle']}{co_label} {cam_icon} — {summary}")
+                topic_lines.append(
+                    f"{row_marker} <b>#{r['vehicle']}</b>{co_label} {cam_icon} — {summary}"
+                )
             else:
-                # AI off: just the indicator + identity, no description.
-                topic_lines.append(f"{icon} #{r['vehicle']}{co_label} {cam_icon}")
+                topic_lines.append(f"{row_marker} <b>#{r['vehicle']}</b>{co_label} {cam_icon}")
         if len(new_issues) > 10:
             topic_lines.append(f"\n… +{len(new_issues) - 10} more")
         if not _include_ai:
             topic_lines.append(
-                "\n<i>AI Analysis disabled for this topic — review images below.</i>"
+                "\n<i>AI analysis disabled — review images below.</i>"
             )
+        topic_lines.append("")
+        topic_lines.append("💡 Review images · contact driver for repeated issues")
         topic_text = "\n".join(filter(None, topic_lines))
         # No reply_markup for the group post: ``View Full Check`` and
         # ``Main Menu`` both rewrite the message in place via callback,
@@ -222,12 +237,12 @@ async def _check_cameras_account(
                         r for r in new_issues[:10] if r.get("image_bytes")
                     ]
                     for r in issues_with_photos:
-                        icon = "🚨" if r.get("status") == "PROBLEM" else "⚠️"
+                        row_marker = "🔴" if r.get("status") == "PROBLEM" else "🔸"
                         cam_icon = {"forward": "🎥", "inward": "🪞"}.get(
                             r.get("camera_type", "forward"), "📷")
                         co_label = f" ({r.get('company', '?')})" if show_co else ""
                         summary = r.get("summary", "") if _include_ai else ""
-                        caption = f"{icon} <b>#{r['vehicle']}{co_label}</b> {cam_icon}"
+                        caption = f"{row_marker} <b>#{r['vehicle']}{co_label}</b> {cam_icon}"
                         if summary:
                             caption += f"\n{summary[:900]}"
                         try:
@@ -267,29 +282,31 @@ async def _check_cameras_account(
 
         sub_problems = sum(1 for r in sub_issues if r.get("status") == "PROBLEM")
         sub_warnings = sum(1 for r in sub_issues if r.get("status") == "WARNING")
-        sub_header_lines = [
-            "━━━━━━━━━━━━━━━━━━━",
-            "  📷  <b>Camera Alert</b>",
-            "━━━━━━━━━━━━━━━━━━━",
-            "",
-        ]
+        from capabilities.formatting.severity import badge as _badge
+        sub_sev = "critical" if sub_problems else "warning"
+        sub_roll = []
         if sub_problems:
-            sub_header_lines.append(f"  🚨 {sub_problems} camera problem(s)")
+            sub_roll.append(f"🔴 {sub_problems} problem(s)")
         if sub_warnings:
-            sub_header_lines.append(f"  ⚠️ {sub_warnings} camera warning(s)")
+            sub_roll.append(f"🔸 {sub_warnings} warning(s)")
+        sub_header_lines = [
+            f"<b>{_badge(sub_sev)}</b> — Camera Issues",
+            "",
+            "📷 " + "  ·  ".join(sub_roll) if sub_roll else "📷 issues detected",
+        ]
         sub_header_text = "\n".join(sub_header_lines)
         if len(sub_issues) > 10:
-            sub_header_text += f"\n\n  ... +{len(sub_issues) - 10} more"
+            sub_header_text += f"\n\n… +{len(sub_issues) - 10} more"
 
         try:
             for r in sub_issues[:10]:
-                icon = "🚨" if r.get("status") == "PROBLEM" else "⚠️"
+                row_marker = "🔴" if r.get("status") == "PROBLEM" else "🔸"
                 cam_icon = {"forward": "🎥", "inward": "🪞"}.get(
                     r.get("camera_type", "forward"), "📷")
                 co_label = f" ({r.get('company', '?')})" if show_co else ""
                 summary = r.get("summary", "")[:200]
                 caption = (
-                    f"{icon} <b>#{r['vehicle']}{co_label}</b> {cam_icon}\n"
+                    f"{row_marker} <b>#{r['vehicle']}{co_label}</b> {cam_icon}\n"
                     f"{summary}"
                 )
                 if r.get("image_bytes"):

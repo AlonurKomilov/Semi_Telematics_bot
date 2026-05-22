@@ -1,4 +1,10 @@
-"""Telegram message formatting for parking alerts and resolutions."""
+"""Telegram message formatting for parking alerts and resolutions.
+
+Uses the unified Option A grammar — see
+``capabilities/formatting/severity.py``.  Parking has a third
+"breakdown" mode (AI failed to classify; truck appears disabled) which
+maps onto the CRITICAL severity tier with a distinct title.
+"""
 
 from __future__ import annotations
 
@@ -10,9 +16,21 @@ from telegram.ext import Application
 
 from adapters.storage import Role
 from capabilities.alerting.pipeline import AlertSeverity
+from capabilities.formatting.helpers import escape_html
+from capabilities.formatting.severity import badge
 from infra.services import get_platform_db, get_tenant_db
 
 logger = logging.getLogger("bot")
+
+
+def _duration_phrase(duration_h: float) -> str:
+    """Render a stop duration in the most readable unit."""
+    if duration_h >= 24:
+        return f"{duration_h / 24:.1f} days"
+    if duration_h >= 1:
+        return f"{duration_h:.1f}h"
+    mins = int(duration_h * 60)
+    return f"{mins} min"
 
 
 def _format_parking_alert(
@@ -21,70 +39,65 @@ def _format_parking_alert(
     severity: AlertSeverity,
     is_breakdown: bool = False,
 ) -> str:
-    """Format the parking alert message."""
-    sep = "━━━━━━━━━━━━━━━━━━━"
+    """Format the parking alert message in the unified Option A grammar.
 
-    if is_breakdown:
-        icon = "🆘"
-        level = "POSSIBLE BREAKDOWN"
-    elif severity == AlertSeverity.CRITICAL:
-        icon = "🚨"
-        level = "CRITICAL"
-    else:
-        icon = "⚠️"
-        level = "WARNING"
+    Breakdown is its own title but uses the CRITICAL severity tier so
+    the badge / body marker / DND-bypass behavior match every other
+    truly-urgent alert.
+    """
+    sev = "critical" if (is_breakdown or severity == AlertSeverity.CRITICAL) else "warning"
+    title = "Possible Breakdown" if is_breakdown else "Unauthorized Stop"
 
-    # Duration formatting
-    if duration_h >= 24:
-        dur_str = f"{duration_h / 24:.1f} days"
-    else:
-        dur_str = f"{duration_h:.1f}h"
+    # Escape every external string before HTML interpolation —
+    # ``address`` is geocoded text and ``ai_analysis`` is model
+    # output; both can carry stray ``<`` / ``>`` / ``&``.
+    vname = escape_html(str(vname))
+    address = escape_html(address) if address else ""
+    ai_analysis = escape_html(ai_analysis) if ai_analysis else ""
 
-    # Location class label
+    # Location-class chip — the AI's read on whether this is a safe
+    # stop (rest area / depot) or an unsafe one (roadside).  Drives
+    # the "what to do" decision more than coordinates do.
     class_labels = {
-        "unsafe": "🔴 Roadside / Highway",
-        "unknown": "🟡 Unverified Location",
-        "safe": "🟢 Designated Parking",
+        "unsafe":   "🔴 Roadside / Highway",
+        "unknown":  "🟡 Unverified Location",
+        "safe":     "🟢 Designated Parking",
         "geofence": "🟢 Inside Geofence",
     }
-    class_label = class_labels.get(loc_class, "🟡 Unknown")
+    class_label = class_labels.get(loc_class, "🟡 Unknown location class")
 
-    # Google Maps link
     maps_url = f"https://maps.google.com/?q={lat},{lng}"
 
-    title = "🆘  POSSIBLE BREAKDOWN" if is_breakdown else f"{icon}  UNSAFE PARKING — {level}"
-    text = (
-        f"{sep}\n"
-        f"  {title}\n"
-        f"{sep}\n"
-        f"\n  🚛 Truck: <b>#{vname}</b>\n"
-        f"\n  📍 <b>{lat:.5f}°, {lng:.5f}°</b>\n"
-    )
+    lines: list[str] = [f"<b>{badge(sev)}</b> — {title}", ""]
+
+    where_parts = [f"🚛 <b>Truck #{vname}</b>"]
     if address:
-        text += f"  🏷 {address}\n"
-    text += (
-        f"  {class_label}\n"
-        f"\n  🕐 Stopped for: <b>{dur_str}</b>\n"
-        f"\n  🗺 <a href='{maps_url}'>View on Map</a>\n"
-    )
+        where_parts.append(f"📍 {address}")
+    lines.append("  ·  ".join(where_parts))
+
+    lines.append(f"🕐 stopped for <b>{_duration_phrase(duration_h)}</b>")
+
+    # The class label carries its own status circle (🔴/🟡/🟢) so it
+    # serves as the body marker — no severity marker prefix here, the
+    # two would visually duplicate ("🔴 🔴 Roadside").
+    lines.append("")
+    lines.append(class_label)
+    lines.append(f"      <a href='{maps_url}'>View on map</a>  ·  "
+                 f"<code>{lat:.5f}, {lng:.5f}</code>")
 
     if ai_analysis:
-        text += f"\n  🤖 <b>AI Analysis:</b>\n  {ai_analysis}\n"
+        lines.append("")
+        lines.append(f"🤖 {ai_analysis}")
 
+    lines.append("")
     if is_breakdown:
-        text += (
-            "\n  🆘 <b>No AI classification possible.</b>\n"
-            "  Vehicle may be disabled or have a\n"
-            "  mechanical issue. Contact driver.\n"
-        )
-    elif severity == AlertSeverity.CRITICAL:
-        text += (
-            "\n  ❗ <b>Immediate attention required</b>\n"
-            "  Vehicle has been parked in an unsafe\n"
-            "  location for an extended period.\n"
-        )
+        lines.append("💡 Contact driver · vehicle may be disabled")
+    elif sev == "critical":
+        lines.append("💡 Verify with driver · escalate if no response")
+    else:
+        lines.append("💡 Contact driver · log reason if approved")
 
-    return text
+    return "\n".join(lines)
 
 
 async def _send_parking_resolved(
@@ -96,22 +109,21 @@ async def _send_parking_resolved(
 ):
     """Send notification that a parking event has been resolved (vehicle moved)."""
     duration_h = event.get("duration_hours", 0)
-    address = event.get("address", "Unknown")
+    address = escape_html(event.get("address", "Unknown"))
+    vname = escape_html(str(vname))
+    dur_str = _duration_phrase(duration_h)
 
-    if duration_h >= 24:
-        dur_str = f"{duration_h / 24:.1f} days"
-    else:
-        dur_str = f"{duration_h:.1f}h"
-
-    text = (
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "  ✅  <b>PARKING RESOLVED</b>\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        f"\n  🚛 Truck: <b>#{vname}</b>\n"
-        f"  📍 Was at: {address}\n"
-        f"  🕐 Parked for: <b>{dur_str}</b>\n"
-        f"\n  Vehicle is now moving.\n"
-    )
+    lines: list[str] = [f"<b>{badge('resolved')}</b> — Vehicle Moving", ""]
+    where_parts = [f"🚛 <b>Truck #{vname}</b>"]
+    if address and address != "Unknown":
+        where_parts.append(f"📍 was at {address}")
+    lines.append("  ·  ".join(where_parts))
+    lines.append(f"🕐 parked for <b>{dur_str}</b>")
+    lines.append("")
+    lines.append("✅ Stop cleared — vehicle resumed motion")
+    lines.append("")
+    lines.append("💡 No action needed")
+    text = "\n".join(lines)
 
     # Forum routing first: parking-resolved was previously DM-only so
     # the bound group's Parking topic never saw the resolution even

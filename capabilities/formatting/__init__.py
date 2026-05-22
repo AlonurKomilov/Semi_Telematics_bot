@@ -64,6 +64,7 @@ __all__ = [
     "format_vehicle_detail",
     "format_vehicle_picker",
     # faults
+    "format_fault_alert",
     "format_new_fault_alert",
     "format_critical_fault_alert",
     # health

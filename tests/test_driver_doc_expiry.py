@@ -130,10 +130,10 @@ class TestFormatAlert:
             file_name="cdl.pdf", expires_at="2026-05-13",
             days_until=0, bucket=0,
         )
-        driver = format_alert(doc, for_driver=True)
-        admin = format_alert(doc, for_driver=False)
+        driver = format_alert(doc, for_driver=True).lower()
+        admin = format_alert(doc, for_driver=False).lower()
         assert "expired today" in driver
-        # Driver framing has a "please upload" — admin framing doesn't.
+        # Driver framing has an "upload" CTA — admin framing doesn't.
         assert "upload" in driver
         assert "upload" not in admin
 
