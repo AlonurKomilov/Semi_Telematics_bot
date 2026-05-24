@@ -127,24 +127,26 @@ END $$;
 
 ## Known caveats
 
-### Single-writer GUC race
+### Single-writer GUC race — eliminated by the pool refactor
 
-Currently `Database._db` is a single shared asyncpg connection (the Tier 4 Phase 2 pool refactor is **not yet done**).  Two concurrent requests' `with_account` calls can interleave:
+Earlier drafts of this runbook flagged a race where two concurrent
+`with_account` calls could interleave on a single shared asyncpg
+connection.  **That race no longer exists** — the Phase 2 pool refactor
+shipped (see [adapters/storage/pg_adapter.py](../../adapters/storage/pg_adapter.py)):
 
-```
-  Request A:  SET app.account_id = '1'
-  Request A:  SELECT ...  ← runs under account 1's policy ✓
-  Request B:  SET app.account_id = '2'  ← B reaches the same conn
-  Request A:  SELECT ...  ← now runs under account 2's policy ✗
-```
+- `Database._db` is now a **pool proxy**, not a shared connection.
+- Two `contextvars` pin per-task state: `_pinned_conn` (the acquired
+  connection for the current async task) and `_current_account_id`
+  (the `app.account_id` value to stamp on every fresh acquire).
+- The global `asyncio.Lock` that previously serialized every query
+  is gone; each task gets its own pool slot.
+- Pool slots stamp `app.account_id` on entry and clear it on release,
+  so a recycled slot can never serve a query under the wrong tenant.
 
-In practice, the writer-lock in `_PgConnection` serializes every `execute()`, so within a single uninterrupted block (no `await` boundaries between two queries) the GUC is stable.  Between awaits, request B can take the lock and reset the GUC.
-
-**Mitigations applied:**
-- Scheduler jobs that operate on multiple tenants iterate ONE AT A TIME (sequential `for acc in accounts: await run_account_job(...)`); they never have two `with_account`s in flight.
-- API requests fully complete within a single FastAPI handler invocation — there's no parallelism within a single dependent chain.
-
-**Where the race would bite:** if you add a new code path that starts a long-running background task in the middle of a request without re-establishing the GUC.  The Tier 4 Phase 2 pool refactor eliminates this entirely.
+In other words, `with_account(N)` is now safe across `await`
+boundaries, parallel `asyncio.gather`, and any background-task
+fan-out — each branch picks up its own pool slot pre-stamped with
+its `account_id`.
 
 ### Migration 057 + fresh databases
 

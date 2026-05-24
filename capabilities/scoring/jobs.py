@@ -80,42 +80,46 @@ async def take_daily_scorecard_snapshots(_app=None) -> None:
         tenant = await get_tenant_db(acc.id)
         if tenant is None:
             continue
-        for subject in SUBJECTS_TO_SNAPSHOT:
-            try:
-                cards = await evaluate_subjects(
-                    acc.id, subject=subject, days=7,
-                    write_evidence=True, evidence_date=snapshot_date,
-                )
-            except Exception:
-                logger.exception(
-                    "scorecard snapshot: evaluate_subjects(%s) failed for account %d",
-                    subject, acc.id,
-                )
-                failed.append((acc.id, subject))
-                continue
-
-            for card in cards:
+        # Stamp ``app.account_id`` for RLS-enforced mode — every mixin
+        # query plus the explicit ``tenant._db.execute`` calls below
+        # rely on this GUC to find their rows.
+        async with tenant.with_account(acc.id):
+            for subject in SUBJECTS_TO_SNAPSHOT:
                 try:
-                    sid = str(card.get("subject_id") or card.get("driver_id")
-                              or card.get("driver_name"))
-                    sname = str(card.get("subject_name") or card.get("driver_name") or sid)
-                    await tenant.save_scorecard_snapshot(
-                        acc.id,
-                        snapshot_date=snapshot_date,
-                        subject_type=subject,
-                        subject_id=sid,
-                        subject_name=sname,
-                        total_score=int(card["score"]),
-                        window_days=7,
-                        breakdown=_breakdown_payload(card),
-                        source="nightly",
+                    cards = await evaluate_subjects(
+                        acc.id, subject=subject, days=7,
+                        write_evidence=True, evidence_date=snapshot_date,
                     )
-                    totals[subject] += 1
                 except Exception:
                     logger.exception(
-                        "scorecard snapshot: save failed acct=%d subject=%s id=%s",
-                        acc.id, subject, card.get("subject_id") or card.get("driver_id"),
+                        "scorecard snapshot: evaluate_subjects(%s) failed for account %d",
+                        subject, acc.id,
                     )
+                    failed.append((acc.id, subject))
+                    continue
+
+                for card in cards:
+                    try:
+                        sid = str(card.get("subject_id") or card.get("driver_id")
+                                  or card.get("driver_name"))
+                        sname = str(card.get("subject_name") or card.get("driver_name") or sid)
+                        await tenant.save_scorecard_snapshot(
+                            acc.id,
+                            snapshot_date=snapshot_date,
+                            subject_type=subject,
+                            subject_id=sid,
+                            subject_name=sname,
+                            total_score=int(card["score"]),
+                            window_days=7,
+                            breakdown=_breakdown_payload(card),
+                            source="nightly",
+                        )
+                        totals[subject] += 1
+                    except Exception:
+                        logger.exception(
+                            "scorecard snapshot: save failed acct=%d subject=%s id=%s",
+                            acc.id, subject, card.get("subject_id") or card.get("driver_id"),
+                        )
 
     logger.info(
         "scorecard snapshots written: drivers=%d vehicles=%d across %d accounts "
@@ -134,7 +138,8 @@ async def take_daily_scorecard_snapshots(_app=None) -> None:
         if tenant is None:
             continue
         try:
-            deleted = await tenant.prune_score_events(acc.id, keep_days=90)
+            async with tenant.with_account(acc.id):
+                deleted = await tenant.prune_score_events(acc.id, keep_days=90)
             if deleted:
                 logger.debug("score_events: pruned %d old rows for account %d", deleted, acc.id)
         except Exception:
@@ -175,100 +180,104 @@ async def check_scorecard_drop_alerts(_app=None) -> None:
         if tenant is None:
             continue
 
-        # Load per-account thresholds (fall back to defaults)
-        try:
-            raw_drop  = await tenant.get_account_setting(acc.id, "scorecard_alert_drop_threshold", "")
-            raw_floor = await tenant.get_account_setting(acc.id, "scorecard_alert_floor_threshold", "")
-            drop_threshold  = int(raw_drop)  if raw_drop.isdigit()  else DEFAULT_DROP_THRESHOLD
-            floor_threshold = int(raw_floor) if raw_floor.isdigit() else DEFAULT_FLOOR_THRESHOLD
-        except Exception:
-            drop_threshold  = DEFAULT_DROP_THRESHOLD
-            floor_threshold = DEFAULT_FLOOR_THRESHOLD
-
-        # Gather subscribers
-        try:
-            subscribers = await tenant.get_typed_alert_subscribers(acc.id, "events")
-        except Exception:
-            continue
-        if not subscribers:
-            continue
-
-        bot_app = get_app_for_account(acc.id)
-        if not bot_app:
-            continue
-
-        # Check snapshots for both subject types
-        for subject in SUBJECTS_TO_SNAPSHOT:
+        # Stamp ``app.account_id`` once for the entire per-account
+        # block so the raw ``tenant._db.execute`` reads below land
+        # under the right RLS policy.
+        async with tenant.with_account(acc.id):
+            # Load per-account thresholds (fall back to defaults)
             try:
-                # Both SELECTs in one transaction so a concurrent snapshot
-                # writer can't insert/delete between the two reads and
-                # invalidate the today-vs-prior comparison.  Read-only
-                # transaction is enough; no UPDATE here.
-                async with tenant.transaction():
-                    cur = await tenant._db.execute(
-                        """SELECT subject_id, subject_name, total_score
-                           FROM daily_scorecard_snapshots
-                           WHERE account_id = ? AND subject_type = ? AND snapshot_date = ?""",
-                        (acc.id, subject, yesterday),
-                    )
-                    today_rows = {r["subject_id"]: r for r in await cur.fetchall()}
-
-                    cur = await tenant._db.execute(
-                        """SELECT subject_id, total_score
-                           FROM daily_scorecard_snapshots
-                           WHERE account_id = ? AND subject_type = ? AND snapshot_date = ?""",
-                        (acc.id, subject, prior_week),
-                    )
-                    prior_rows = {r["subject_id"]: r["total_score"] for r in await cur.fetchall()}
+                raw_drop  = await tenant.get_account_setting(acc.id, "scorecard_alert_drop_threshold", "")
+                raw_floor = await tenant.get_account_setting(acc.id, "scorecard_alert_floor_threshold", "")
+                drop_threshold  = int(raw_drop)  if raw_drop.isdigit()  else DEFAULT_DROP_THRESHOLD
+                floor_threshold = int(raw_floor) if raw_floor.isdigit() else DEFAULT_FLOOR_THRESHOLD
             except Exception:
-                logger.exception("scorecard_drop_alerts: DB read failed acct=%d subject=%s", acc.id, subject)
+                drop_threshold  = DEFAULT_DROP_THRESHOLD
+                floor_threshold = DEFAULT_FLOOR_THRESHOLD
+
+            # Gather subscribers
+            try:
+                subscribers = await tenant.get_typed_alert_subscribers(acc.id, "events")
+            except Exception:
+                continue
+            if not subscribers:
                 continue
 
-            at_risk: list[tuple[str, str, int, int | None]] = []  # (sid, name, score, prior)
-            for sid, row in today_rows.items():
-                score_now = row["total_score"]
-                score_prior = prior_rows.get(sid)
-                drop = (score_prior - score_now) if score_prior is not None else None
-                if score_now <= floor_threshold or (drop is not None and drop >= drop_threshold):
-                    at_risk.append((sid, row["subject_name"], score_now, score_prior))
-
-            if not at_risk:
+            bot_app = get_app_for_account(acc.id)
+            if not bot_app:
                 continue
 
-            # Build alert message
-            subject_label = "truck" if subject == "vehicle" else "driver"
-            lines = [f"<b>⚠️ Scorecard Alert — {len(at_risk)} {subject_label}(s) need attention</b>"]
-            for sid, name, score_now, score_prior in sorted(at_risk, key=lambda x: x[2]):
-                if score_prior is not None:
-                    delta = score_prior - score_now
-                    lines.append(f"• {name}: <b>{score_now}</b> (▼{delta} from {score_prior})")
-                else:
-                    lines.append(f"• {name}: <b>{score_now}</b> (floor alert)")
-            lines.append(f"\n<i>Threshold: floor ≤{floor_threshold} or drop ≥{drop_threshold} pts</i>")
-            text = "\n".join(lines)
-
-            # Forum routing first.  When the account has a Scorecards
-            # topic configured the digest lands there once; otherwise
-            # we fall through to the legacy per-subscriber DM fanout.
-            from capabilities.alerting.pipeline import post_alert_to_topic
-            posted = await post_alert_to_topic(
-                bot_app, account_id=acc.id,
-                alert_type="scorecard", text=text,
-            )
-            if posted:
-                continue
-
-            for sub in subscribers:
-                if not sub.alerts_on:
-                    continue
+            # Check snapshots for both subject types
+            for subject in SUBJECTS_TO_SNAPSHOT:
                 try:
-                    await bot_app.bot.send_message(
-                        chat_id=sub.telegram_id,
-                        text=text,
-                        parse_mode="HTML",
-                    )
-                except Exception as e:
-                    logger.warning(
-                        "scorecard_drop_alerts: send failed acct=%d user=%d: %s",
-                        acc.id, sub.telegram_id, e,
-                    )
+                    # Both SELECTs in one transaction so a concurrent snapshot
+                    # writer can't insert/delete between the two reads and
+                    # invalidate the today-vs-prior comparison.  Read-only
+                    # transaction is enough; no UPDATE here.
+                    async with tenant.transaction():
+                        cur = await tenant._db.execute(
+                            """SELECT subject_id, subject_name, total_score
+                               FROM daily_scorecard_snapshots
+                               WHERE account_id = ? AND subject_type = ? AND snapshot_date = ?""",
+                            (acc.id, subject, yesterday),
+                        )
+                        today_rows = {r["subject_id"]: r for r in await cur.fetchall()}
+
+                        cur = await tenant._db.execute(
+                            """SELECT subject_id, total_score
+                               FROM daily_scorecard_snapshots
+                               WHERE account_id = ? AND subject_type = ? AND snapshot_date = ?""",
+                            (acc.id, subject, prior_week),
+                        )
+                        prior_rows = {r["subject_id"]: r["total_score"] for r in await cur.fetchall()}
+                except Exception:
+                    logger.exception("scorecard_drop_alerts: DB read failed acct=%d subject=%s", acc.id, subject)
+                    continue
+
+                at_risk: list[tuple[str, str, int, int | None]] = []  # (sid, name, score, prior)
+                for sid, row in today_rows.items():
+                    score_now = row["total_score"]
+                    score_prior = prior_rows.get(sid)
+                    drop = (score_prior - score_now) if score_prior is not None else None
+                    if score_now <= floor_threshold or (drop is not None and drop >= drop_threshold):
+                        at_risk.append((sid, row["subject_name"], score_now, score_prior))
+
+                if not at_risk:
+                    continue
+
+                # Build alert message
+                subject_label = "truck" if subject == "vehicle" else "driver"
+                lines = [f"<b>⚠️ Scorecard Alert — {len(at_risk)} {subject_label}(s) need attention</b>"]
+                for sid, name, score_now, score_prior in sorted(at_risk, key=lambda x: x[2]):
+                    if score_prior is not None:
+                        delta = score_prior - score_now
+                        lines.append(f"• {name}: <b>{score_now}</b> (▼{delta} from {score_prior})")
+                    else:
+                        lines.append(f"• {name}: <b>{score_now}</b> (floor alert)")
+                lines.append(f"\n<i>Threshold: floor ≤{floor_threshold} or drop ≥{drop_threshold} pts</i>")
+                text = "\n".join(lines)
+
+                # Forum routing first.  When the account has a Scorecards
+                # topic configured the digest lands there once; otherwise
+                # we fall through to the legacy per-subscriber DM fanout.
+                from capabilities.alerting.pipeline import post_alert_to_topic
+                posted = await post_alert_to_topic(
+                    bot_app, account_id=acc.id,
+                    alert_type="scorecard", text=text,
+                )
+                if posted:
+                    continue
+
+                for sub in subscribers:
+                    if not sub.alerts_on:
+                        continue
+                    try:
+                        await bot_app.bot.send_message(
+                            chat_id=sub.telegram_id,
+                            text=text,
+                            parse_mode="HTML",
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "scorecard_drop_alerts: send failed acct=%d user=%d: %s",
+                            acc.id, sub.telegram_id, e,
+                        )

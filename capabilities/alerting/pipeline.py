@@ -60,6 +60,41 @@ _PIPELINE_TO_ROUTE_KEY: dict[str, str] = {
 logger = logging.getLogger("bot")
 
 
+# ─────────────────────────────────────────────────────────────────────
+# Per-topic post lock — keeps photo+text pairs atomic in forum topics.
+#
+# Why: parking and camera alerts post a *photo* (the map / snapshot) and
+# then a *text reply* threaded to it.  Multiple vehicles run their
+# alert pipelines in parallel (``asyncio.gather`` over vehicles inside
+# the per-account check loop), so without serialization the two
+# send_photo / send_message calls from different vehicles interleave
+# on the Telegram API:
+#
+#   vehicle A: send_photo  → photoA
+#   vehicle B: send_photo  → photoB
+#   vehicle A: send_message (replies to photoA)
+#   vehicle B: send_message (replies to photoB)
+#
+# The reply links are intact, but the chat renders top-to-bottom as
+# ``photoA, photoB, textA, textB`` instead of ``photoA, textA, photoB,
+# textB`` — operators see two photos with no captions, then two
+# captions with no photos and can't tell which map belongs to which
+# alert.  The lock is per ``(account_id, alert_type)`` so cross-account
+# and cross-type traffic is still parallel; only within one topic do
+# we serialize.
+_TOPIC_POST_LOCKS: dict[tuple[int, str], asyncio.Lock] = {}
+
+
+def _topic_post_lock(account_id: int, alert_type: str) -> asyncio.Lock:
+    """Get or create the per-topic post lock for an account."""
+    key = (account_id, alert_type)
+    lock = _TOPIC_POST_LOCKS.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _TOPIC_POST_LOCKS[key] = lock
+    return lock
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Severity Tiers & Alert Configuration
 # ═══════════════════════════════════════════════════════════════════
@@ -348,55 +383,59 @@ async def _try_post_to_topic(
     thread_id = route.message_thread_id
 
     try:
-        # Send the leading media first (if any) so the text reply
-        # threads to it, mirroring the DM-fanout layout.
-        reply_to: int | None = None
-        if video_url:
-            try:
-                vmsg = await bot_app.bot.send_video(
-                    chat_id=chat_id,
-                    message_thread_id=thread_id,
-                    video=video_url,
-                    caption=f"🎥 {vehicle_name}",
-                    read_timeout=30,
-                    write_timeout=30,
-                )
-                reply_to = vmsg.message_id
-            except Exception as ve:
-                logger.debug("Forum video send failed for %s: %s", vehicle_name, ve)
-        elif photo_bytes:
-            try:
-                import io as _io
-                pmsg = await bot_app.bot.send_photo(
-                    chat_id=chat_id,
-                    message_thread_id=thread_id,
-                    photo=_io.BytesIO(photo_bytes),
-                    caption=f"📍 Parking location — #{vehicle_name}",
-                    read_timeout=15,
-                    write_timeout=15,
-                )
-                reply_to = pmsg.message_id
-            except Exception as pe:
-                logger.debug("Forum photo send failed for %s: %s", vehicle_name, pe)
+        # Hold the per-topic post lock for the duration of the
+        # photo+text pair so concurrent vehicles in the same topic
+        # don't interleave (see ``_TOPIC_POST_LOCKS`` rationale).
+        async with _topic_post_lock(account_id, alert_type):
+            # Send the leading media first (if any) so the text reply
+            # threads to it, mirroring the DM-fanout layout.
+            reply_to: int | None = None
+            if video_url:
+                try:
+                    vmsg = await bot_app.bot.send_video(
+                        chat_id=chat_id,
+                        message_thread_id=thread_id,
+                        video=video_url,
+                        caption=f"🎥 {vehicle_name}",
+                        read_timeout=30,
+                        write_timeout=30,
+                    )
+                    reply_to = vmsg.message_id
+                except Exception as ve:
+                    logger.debug("Forum video send failed for %s: %s", vehicle_name, ve)
+            elif photo_bytes:
+                try:
+                    import io as _io
+                    pmsg = await bot_app.bot.send_photo(
+                        chat_id=chat_id,
+                        message_thread_id=thread_id,
+                        photo=_io.BytesIO(photo_bytes),
+                        caption=f"📍 Parking location — #{vehicle_name}",
+                        read_timeout=15,
+                        write_timeout=15,
+                    )
+                    reply_to = pmsg.message_id
+                except Exception as pe:
+                    logger.debug("Forum photo send failed for %s: %s", vehicle_name, pe)
 
-        # Default-language buttons — the group is a shared surface,
-        # we can't pick one user's language without choosing badly
-        # for everyone else.  Future enhancement: per-account default
-        # language stored on forum_groups.
-        basic_kb = build_alert_keyboard(
-            severity, co, vehicle_name, alert_type=alert_type,
-            vehicle_id=vehicle_id, event_id=event_id, event_time=event_time,
-            lang="en",
-            for_group=True,
-        )
-        msg = await bot_app.bot.send_message(
-            chat_id=chat_id,
-            message_thread_id=thread_id,
-            text=send_text,
-            parse_mode=ParseMode.HTML,
-            reply_markup=basic_kb,
-            reply_to_message_id=reply_to,
-        )
+            # Default-language buttons — the group is a shared surface,
+            # we can't pick one user's language without choosing badly
+            # for everyone else.  Future enhancement: per-account default
+            # language stored on forum_groups.
+            basic_kb = build_alert_keyboard(
+                severity, co, vehicle_name, alert_type=alert_type,
+                vehicle_id=vehicle_id, event_id=event_id, event_time=event_time,
+                lang="en",
+                for_group=True,
+            )
+            msg = await bot_app.bot.send_message(
+                chat_id=chat_id,
+                message_thread_id=thread_id,
+                text=send_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=basic_kb,
+                reply_to_message_id=reply_to,
+            )
 
         # Record one alert_ack for the group post so the existing
         # callback-router can resolve the ack by id.  ``sent_to=0``

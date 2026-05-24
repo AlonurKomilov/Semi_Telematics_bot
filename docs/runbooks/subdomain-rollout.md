@@ -95,9 +95,14 @@ After the cutover, confirm each URL serves correctly:
 
 If something breaks within minutes:
 
-1. `cd /etc/nginx/sites-available && sudo cp 4truck.bak 4truck && sudo nginx -t && sudo systemctl reload nginx`
-   (Assuming you backed up the previous config — `make nginx-install` overwrites without a backup, so do it manually before step 2.)
-2. Re-run `setWebhook` against `https://4truck.us/webhook`.
+1. nginx config: `make nginx-install` now auto-backs-up the previous live config to `/etc/nginx/sites-available/4truck.<timestamp>.bak` and symlinks the most-recent one to `4truck.bak`.  Roll back with:
+
+       sudo cp /etc/nginx/sites-available/4truck.bak /etc/nginx/sites-available/4truck
+       sudo nginx -t && sudo systemctl reload nginx
+
+2. Re-run `setWebhook` against `https://4truck.us/webhook` (or whatever the previous URL was — `getWebhookInfo` tells you what it is now).
+3. In @BotFather, set the Mini App menu button URL back to the previous one.
+4. In Google Cloud Console, the old `https://4truck.us/api/storage/google/callback` redirect URI is still authorized (per step 7 above — keep it around until the new URI bakes), so OAuth still works against the apex during rollback.
 3. Revert `WEBAPP_URL` to `https://4truck.us/miniapp/`.
 
 For a hash-rotated SPA cache miss, `lazyWithReload` in [dashboard router](../../interfaces/dashboard/src/router.tsx) auto-reloads on chunk-load failure; users recover on next refresh.

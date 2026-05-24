@@ -358,6 +358,16 @@ nginx-install:
 	@echo "📋 Installing nginx config for 4truck.us..."
 	@# Remove old semi-telematics-bot conf if it exists (leftover from rename)
 	@sudo rm -f /etc/nginx/sites-enabled/semi-telematics-bot /etc/nginx/sites-available/semi-telematics-bot 2>/dev/null; true
+	@# Snapshot the existing live config before overwriting so the
+	@# subdomain-rollout runbook's rollback step has a `.bak` to copy
+	@# from.  Timestamped so successive installs don't clobber each
+	@# other; the most-recent one is also symlinked to ``.bak``.
+	@if sudo test -f /etc/nginx/sites-available/$(NGINX_CONF); then \
+		BAK="/etc/nginx/sites-available/$(NGINX_CONF).$$(date +%Y%m%d-%H%M%S).bak"; \
+		sudo cp /etc/nginx/sites-available/$(NGINX_CONF) "$$BAK"; \
+		sudo ln -sf "$$BAK" /etc/nginx/sites-available/$(NGINX_CONF).bak; \
+		echo "   🗂  Backed up previous config → $$BAK"; \
+	fi
 	@sudo cp $(NGINX_SRC) /etc/nginx/sites-available/$(NGINX_CONF)
 	@sudo ln -sf /etc/nginx/sites-available/$(NGINX_CONF) /etc/nginx/sites-enabled/$(NGINX_CONF)
 	@echo "🔍 Testing nginx config..."
@@ -365,6 +375,7 @@ nginx-install:
 	@sudo systemctl reload nginx
 	@echo "✅ Nginx config installed and reloaded"
 	@echo "   Other sites (2bot.org, analyticbot.org) are untouched"
+	@echo "   ↩  To roll back: sudo cp /etc/nginx/sites-available/$(NGINX_CONF).bak /etc/nginx/sites-available/$(NGINX_CONF) && sudo systemctl reload nginx"
 
 ## Test nginx config without applying
 nginx-test:

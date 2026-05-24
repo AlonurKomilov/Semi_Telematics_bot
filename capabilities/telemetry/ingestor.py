@@ -395,7 +395,15 @@ async def _for_each_active_account(coro_factory) -> None:
         async with sem:
             t_acct = _time.perf_counter()
             try:
-                await coro_factory(acc.id)
+                # Stamp the RLS GUC for this account so every
+                # ``tenant._db.execute(...)`` inside the ingestor sees
+                # ``app.account_id`` set.  Without this, RLS-enforced
+                # mode (ENABLE_RLS=1, application user NOBYPASSRLS)
+                # makes every aggregation query return zero rows —
+                # silently breaking the telemetry pipeline.
+                tenant_db = await get_tenant_db(acc.id)
+                async with tenant_db.with_account(acc.id):
+                    await coro_factory(acc.id)
             except Exception:
                 logger.exception("ingestor: per-account job failed acct=%d", acc.id)
             finally:
