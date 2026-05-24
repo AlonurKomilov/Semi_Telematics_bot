@@ -327,10 +327,26 @@ async def _check_faults_account(bot_app: Application, account_id: int, subs: lis
                             "\n  Check coolant level and temp"
                         )
 
-                    # Proactive AI — only if any subscriber enabled it
+                    # Proactive AI — only if any subscriber enabled it.
+                    # Bounded by the shared AI-note wall-clock budget so
+                    # one hung Vertex call can't blow the per-account
+                    # fault-check timeout.  Ships the alert without an
+                    # AI note on timeout (preferable to no alert at all).
                     ai_note = ""
                     if any(getattr(s, 'ai_fault', False) for s in subs):
-                        ai_note = await _get_ai_diagnosis_note(v, new_dtcs)
+                        try:
+                            import asyncio as _asyncio
+                            from capabilities.alerting.ai_maintenance import _AI_NOTE_TIMEOUT_S
+                            ai_note = await _asyncio.wait_for(
+                                _get_ai_diagnosis_note(v, new_dtcs),
+                                timeout=_AI_NOTE_TIMEOUT_S,
+                            )
+                        except (TimeoutError, _asyncio.TimeoutError):
+                            logger.warning(
+                                "AI fault diagnosis timed out for %s — shipping alert without it",
+                                v.get("name", "?"),
+                            )
+                            ai_note = ""
 
                     # Build the alert_key detail using SPN root only — NOT
                     # the FMI sub-code.  Same SPN reported with FMI 31, FMI

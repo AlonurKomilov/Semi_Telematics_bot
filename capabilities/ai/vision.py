@@ -74,13 +74,42 @@ async def analyze_camera_image(
         + (f"\n\nVehicle: {vehicle_name}" if vehicle_name else "")
     )
 
+    # Per-call + total wall-clock budgets.  Without these the
+    # ``generate_content`` thread can hang for many minutes when
+    # Vertex AI is slow/unavailable, and with sem=3 in the
+    # ``camera_check`` scheduler a few stuck images blow the 600s
+    # job budget and the whole cycle times out with no result.
+    # The current budgets keep a 50-truck fleet comfortably under
+    # the camera job's 10-minute deadline (50 ÷ 3 concurrency × 25s
+    # worst-case ≈ 7 minutes) while still letting a healthy call
+    # finish in ~10 seconds.
+    _VISION_PER_CALL_TIMEOUT_S = 25.0
+    _VISION_TOTAL_BUDGET_S = 45.0
+    _t0 = asyncio.get_event_loop().time()
+
     last_exc: Exception | None = None
     text = ""
     for attempt_model, attempt_loc in attempts:
+        # Stop trying fallbacks once we've burned the wall-clock
+        # budget — keeps a single bad image from monopolising its
+        # semaphore slot through 4-5 sequential 25s timeouts.
+        _elapsed = asyncio.get_event_loop().time() - _t0
+        _remaining = _VISION_TOTAL_BUDGET_S - _elapsed
+        if _remaining <= 0:
+            logger.warning(
+                "Vision: total budget (%.0fs) exhausted before %s; "
+                "giving up on this image",
+                _VISION_TOTAL_BUDGET_S, attempt_model,
+            )
+            break
+        _call_timeout = min(_VISION_PER_CALL_TIMEOUT_S, _remaining)
         try:
             model_obj = _ensure_model(attempt_model, attempt_loc)
-            response = await asyncio.to_thread(
-                model_obj.generate_content, [prompt_part, image_part]
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    model_obj.generate_content, [prompt_part, image_part],
+                ),
+                timeout=_call_timeout,
             )
             text = response.text.strip() if response.text else ""
             try:
@@ -104,6 +133,16 @@ async def analyze_camera_image(
                     f"Vision fallback succeeded with {attempt_model} "
                     f"after {model_name} failed"
                 )
+            break
+        except asyncio.TimeoutError as te:
+            # Timeout = infrastructure slowness, not a model-specific
+            # error.  Skipping straight to fallbacks here would just
+            # eat more time on the same hung backend; bail out.
+            last_exc = te
+            logger.warning(
+                "Vision %s timed out after %.0fs — giving up on this image",
+                attempt_model, _call_timeout,
+            )
             break
         except Exception as e:
             last_exc = e

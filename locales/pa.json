@@ -128,7 +128,8 @@
     "acknowledge": "✅ ਪ੍ਰਵਾਨ ਕਰੋ",
     "ai_diagnose": "🤖 AI ਤਸ਼ਖੀਸ਼",
     "open_in_samsara": "🔗 Samsara ਵਿੱਚ ਖੋਲ੍ਹੋ",
-    "watch_video": "🎥 ਵੀਡੀਓ ਦੇਖੋ"
+    "watch_video": "🎥 ਵੀਡੀਓ ਦੇਖੋ",
+    "view_on_map": "🗺 View on map"
   },
   "user_settings": {
     "header": "⚙️  <b>ਸੈਟਿੰਗਜ਼</b>",

@@ -219,7 +219,9 @@ async def _auto_resolve_vehicle_alerts(
     # ── Build the receipt in Option A grammar ────────────────────
     # 🟢 RESOLVED — <Type> Cleared
     #
-    # 🚛 Truck #<name>  ·  🏢 <co>  ·  🕐 cleared 2h 14m after first seen
+    # 🚛 Vehicle #<name>
+    # 🏢 <co>                                    (when set)
+    # 🕐 cleared 2h 14m after first seen
     #
     # ✅ <what was alerting>
     #
@@ -234,12 +236,12 @@ async def _auto_resolve_vehicle_alerts(
 
     resolve_lines: list[str] = [f"<b>{badge('resolved')}</b> — {title}", ""]
 
-    where_parts = [f"🚛 <b>Truck #{vname}</b>"]
+    # Stacked rows (see faults.py for the mobile-readability rationale).
+    resolve_lines.append(f"🚛 <b>Vehicle #{vname}</b>")
     if alert_co and alert_co != "?":
-        where_parts.append(f"🏢 {alert_co}")
+        resolve_lines.append(f"🏢 {alert_co}")
     if duration_phrase:
-        where_parts.append(f"🕐 {duration_phrase}")
-    resolve_lines.append("  ·  ".join(where_parts))
+        resolve_lines.append(f"🕐 {duration_phrase}")
 
     if detail_lines:
         # ``detail_lines`` already prefixes each row with ``  ✅`` — drop
@@ -254,8 +256,14 @@ async def _auto_resolve_vehicle_alerts(
     resolve_lines.append(f"💡 {default_action('resolved')}")
 
     # ── ACK chip (when a human acked before the system cleared) ──
-    if earliest_ack:
-        ack_tid = earliest_ack.get("acknowledged_by") or 0
+    # Belt-and-suspenders: only render the chip when the acker is a
+    # real Telegram user (strictly positive ID).  The SQL query
+    # already filters out the ``0`` (auto-resolve) and ``-1``
+    # (SYSTEM_USER_ID, AI auto-actions) sentinels, but the defensive
+    # check here guarantees the receipt never shows "Acked by user -1"
+    # or "Acked by user 0" if a new system sentinel is added later.
+    if earliest_ack and (earliest_ack.get("acknowledged_by") or 0) > 0:
+        ack_tid = earliest_ack["acknowledged_by"]
         ack_at = earliest_ack.get("acknowledged_at") or ""
         ack_name: str | None = None
         try:
@@ -264,6 +272,10 @@ async def _auto_resolve_vehicle_alerts(
                 ack_name = acker.display_name or str(ack_tid)
         except Exception as e:
             logger.debug("Could not resolve acker name for %s: %s", ack_tid, e)
+        # When the lookup fails (deleted user / cross-account
+        # weirdness), fall back to the bare telegram_id — never to a
+        # generic "user 0" / "user -1" because we already guarded
+        # against those above.
         ack_name = ack_name or f"user {ack_tid}"
 
         # "Acked Xh Ym before clear" — anchors the ACK to the same
@@ -694,7 +706,7 @@ async def re_escalate_critical_alerts(app: Application):
                 f"<b>{_badge('reminder')}</b> — Unacknowledged Alert  "
                 f"<i>(reminder {attempt_n}/{REESCALATE_MAX_ATTEMPTS})</i>",
                 "",
-                f"🚛 <b>Truck #{vname}</b>",
+                f"🚛 <b>Vehicle #{vname}</b>",
                 f"⏱ <b>{atype.title()}</b> alert active for <b>{age_str}</b>",
                 "",
                 "💡 Acknowledge or mute — auto-clears when the condition lifts",

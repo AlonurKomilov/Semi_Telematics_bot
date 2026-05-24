@@ -102,6 +102,53 @@ def _relative_ago(iso_str: str) -> str:
     return f"({_t('alert_format.ago_days').replace('{n}', str(days))})"
 
 
+def _when_chip(iso_str: str, tz_name: str | None = None) -> str:
+    """Mobile-friendly "absolute time · relative-ago" pair.
+
+    Examples
+    --------
+    Today (<24h old):  ``"11:57 PM · 10 min ago"``
+    Older same year:   ``"May 21, 11:57 PM · 2 d ago"``
+    Older than 1 year: ``"May 21, 2025  11:57 PM · 365 d ago"``
+
+    Drops the year for recent events so the line stays short on a
+    phone — the relative-ago suffix already carries the "how long
+    back" signal.  Returns ``""`` when ``iso_str`` is empty or
+    unparseable so callers can simply skip the row.
+    """
+    if not iso_str:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+    except Exception:
+        return ""
+
+    if tz_name:
+        try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo(tz_name)
+        except Exception:
+            tz = _TZ_ET
+    else:
+        tz = _TZ_ET
+    local = dt.astimezone(tz)
+
+    now_utc = datetime.now(timezone.utc)
+    delta_secs = (now_utc - dt).total_seconds()
+
+    # Same-day → clock only.  Older but same year → short date + clock.
+    # Older than ~1 year → full date with year for unambiguous archival.
+    if delta_secs < 86400:
+        abs_str = local.strftime("%I:%M %p")
+    elif delta_secs < 86400 * 365:
+        abs_str = local.strftime("%b %d, %I:%M %p")
+    else:
+        abs_str = local.strftime("%b %d, %Y  %I:%M %p")
+
+    ago = _relative_ago(iso_str).strip("()")
+    return f"{abs_str} · {ago}" if ago else abs_str
+
+
 def _light_badges(lights: dict) -> str:
     badges = []
     if lights.get("stopIsOn"):

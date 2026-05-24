@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from constants import TZ_ET as _TZ_ET
 from capabilities.formatting.helpers import (
     _t, _health_icon, _company_tag, _split_message,
-    _short_location, _fmt_time, _relative_ago, escape_html,
+    _short_location, _when_chip, escape_html,
 )
 from capabilities.formatting.severity import badge, marker, default_action
 
@@ -44,21 +44,17 @@ def format_health_alert(vehicle: dict, alerts: list[str],
 
     lines: list[str] = [f"<b>{badge(sev)}</b> — {title}", ""]
 
-    where_parts = [f"🚛 <b>Truck #{name}</b>"]
-    if city and city != "—":
-        where_parts.append(f"📍 {city}")
-    lines.append("  ·  ".join(where_parts))
-
-    when_parts: list[str] = []
-    if show_company and co:
-        when_parts.append(f"🏢 {co}")
+    # Stacked rows (see faults.py for the mobile-readability rationale).
+    lines.append(f"🚛 <b>Vehicle #{name}</b>")
     if driver_name:
-        when_parts.append(f"👤 {driver_name}")
-    if detected_at:
-        ago = _relative_ago(detected_at)
-        when_parts.append(f"🕐 {ago.strip('()') if ago else _fmt_time(detected_at)}")
-    if when_parts:
-        lines.append("  ·  ".join(when_parts))
+        lines.append(f"👤 {driver_name}")
+    if show_company and co:
+        lines.append(f"🏢 {co}")
+    if city and city != "—":
+        lines.append(f"📍 {city}")
+    when = _when_chip(detected_at)
+    if when:
+        lines.append(f"🕐 {when}")
 
     lines.append("")
 

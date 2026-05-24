@@ -66,24 +66,27 @@ def _format_parking_alert(
     }
     class_label = class_labels.get(loc_class, "🟡 Unknown location class")
 
-    maps_url = f"https://maps.google.com/?q={lat},{lng}"
-
     lines: list[str] = [f"<b>{badge(sev)}</b> — {title}", ""]
 
-    where_parts = [f"🚛 <b>Truck #{vname}</b>"]
+    # Stacked rows (see capabilities/formatting/faults.py rationale).
+    lines.append(f"🚛 <b>Vehicle #{vname}</b>")
     if address:
-        where_parts.append(f"📍 {address}")
-    lines.append("  ·  ".join(where_parts))
-
+        lines.append(f"📍 {address}")
     lines.append(f"🕐 stopped for <b>{_duration_phrase(duration_h)}</b>")
 
     # The class label carries its own status circle (🔴/🟡/🟢) so it
     # serves as the body marker — no severity marker prefix here, the
     # two would visually duplicate ("🔴 🔴 Roadside").
+    #
+    # ``<a href=…>View on map</a>`` used to live on the line below;
+    # it's been promoted to a URL button in the inline keyboard (see
+    # ``pipeline.build_alert_keyboard``'s ``maps_url`` parameter,
+    # populated by ``capabilities/parking/check.py``) — bigger tap
+    # target than an inline link, and group-safe.  Coordinates stay
+    # here as plain copyable text for anyone who needs the raw lat/lng.
     lines.append("")
     lines.append(class_label)
-    lines.append(f"      <a href='{maps_url}'>View on map</a>  ·  "
-                 f"<code>{lat:.5f}, {lng:.5f}</code>")
+    lines.append(f"      <code>{lat:.5f}, {lng:.5f}</code>")
 
     if ai_analysis:
         lines.append("")
@@ -106,18 +109,33 @@ async def _send_parking_resolved(
     vname: str,
     co: str,
     event: dict,
+    vid: str = "",
 ):
-    """Send notification that a parking event has been resolved (vehicle moved)."""
+    """Send notification that a parking event has been resolved (vehicle moved).
+
+    Threads the resolve receipt as a REPLY to the original parking
+    alert in each surface (group topic + per-recipient DMs), so the
+    chat shows ``UNSAFE PARKING`` → ``Vehicle Moving`` as a coherent
+    pair instead of two unrelated messages.  Matches what the
+    fault / health / fuel auto-resolve path does via
+    ``_auto_resolve_vehicle_alerts`` — fixes the operator-visible
+    inconsistency the user flagged ("parking resolved doesn't reply
+    like faults do").
+
+    Also calls ``auto_resolve_alerts_by_vehicle`` to mark the parking
+    ack rows resolved, otherwise they sit stale in the table forever
+    (parking previously bypassed the standard ack lifecycle and only
+    cleared its own ``parking_events`` row).
+    """
     duration_h = event.get("duration_hours", 0)
     address = escape_html(event.get("address", "Unknown"))
-    vname = escape_html(str(vname))
+    vname_esc = escape_html(str(vname))
     dur_str = _duration_phrase(duration_h)
 
     lines: list[str] = [f"<b>{badge('resolved')}</b> — Vehicle Moving", ""]
-    where_parts = [f"🚛 <b>Truck #{vname}</b>"]
+    lines.append(f"🚛 <b>Vehicle #{vname_esc}</b>")
     if address and address != "Unknown":
-        where_parts.append(f"📍 was at {address}")
-    lines.append("  ·  ".join(where_parts))
+        lines.append(f"📍 was at {address}")
     lines.append(f"🕐 parked for <b>{dur_str}</b>")
     lines.append("")
     lines.append("✅ Stop cleared — vehicle resumed motion")
@@ -125,34 +143,107 @@ async def _send_parking_resolved(
     lines.append("💡 No action needed")
     text = "\n".join(lines)
 
-    # Forum routing first: parking-resolved was previously DM-only so
-    # the bound group's Parking topic never saw the resolution even
-    # though the original "UNSAFE PARKING" alert posted there.  Post
-    # once to the topic; DM fanout below still runs for personal
-    # acknowledgement of the lifecycle.
-    try:
-        from capabilities.alerting.pipeline import post_alert_to_topic
-        await post_alert_to_topic(
-            bot_app, account_id=account_id,
-            alert_type="parking", text=text,
-        )
-    except Exception as e:
-        logger.debug("Parking resolved → group topic post failed: %s", e)
+    tenant = await get_tenant_db(account_id)
 
+    # Resolve every active parking ack row for this vehicle and get
+    # the rows back (with ``message_id`` / ``chat_id`` per surface)
+    # so we can thread the receipt as a reply to each original
+    # alert.  ``vid`` is the raw Samsara vehicle id; falls back to
+    # the display name when callers haven't been updated yet — older
+    # callers will skip the threading path and post fresh.
+    resolved_rows: list[dict] = []
+    if vid:
+        try:
+            resolved_rows = await tenant.auto_resolve_alerts_by_vehicle(
+                account_id, "parking", vid,
+            )
+        except Exception as e:
+            logger.debug("Parking auto-resolve sweep failed (acct=%s vid=%s): %s",
+                         account_id, vid, e)
+
+    # Look up the forum topic id once so the group-resolve send can
+    # route explicitly — same pattern + same rationale as the
+    # fault/health/fuel auto-resolve (see escalation.py).
+    from capabilities.alerting.pipeline import (
+        _FORUM_ROUTING_ENABLED, _PIPELINE_TO_ROUTE_KEY, post_alert_to_topic,
+    )
+    group_thread_id: int | None = None
+    if _FORUM_ROUTING_ENABLED:
+        route_key = _PIPELINE_TO_ROUTE_KEY.get("parking")
+        if route_key:
+            try:
+                route = await get_platform_db().get_alert_route(account_id, route_key)
+                if route is not None:
+                    group_thread_id = route.message_thread_id
+            except Exception as e:
+                logger.debug("Parking topic route lookup failed: %s", e)
+
+    # ── Thread the resolve as a reply, per surface ───────────────
+    group_posted = False
+    dm_replied: set[int] = set()  # telegram_ids that got a threaded DM resolve
+
+    for row in resolved_rows:
+        recipient_id = row.get("sent_to") or 0
+        msg_id = row.get("message_id")
+        chat_id = row.get("chat_id")
+        if not msg_id or not chat_id:
+            continue
+        is_group_post = recipient_id == 0
+        try:
+            if is_group_post:
+                await bot_app.bot.send_message(
+                    chat_id=chat_id,
+                    message_thread_id=group_thread_id,
+                    text=text,
+                    parse_mode=ParseMode.HTML,
+                    reply_to_message_id=msg_id,
+                )
+                group_posted = True
+            else:
+                await bot_app.bot.send_message(
+                    chat_id=chat_id,
+                    text=text,
+                    parse_mode=ParseMode.HTML,
+                    reply_to_message_id=msg_id,
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton(
+                            f"📋 View Vehicle #{vname_esc}",
+                            callback_data=f"covehicle_{co}_{vname}",
+                        )],
+                    ]),
+                )
+                dm_replied.add(recipient_id)
+        except Exception as e:
+            logger.debug(
+                "Parking resolve reply failed (chat=%s msg=%s): %s",
+                chat_id, msg_id, e,
+            )
+
+    # ── Group fallback: when we have no resolved-row to reply to ─
+    # (e.g. parking_events row existed but alert_acknowledgments was
+    # already cleaned).  Post a fresh message to the topic so the
+    # parking topic still sees the resolution.
+    if not group_posted:
+        try:
+            await post_alert_to_topic(
+                bot_app, account_id=account_id,
+                alert_type="parking", text=text,
+            )
+        except Exception as e:
+            logger.debug("Parking resolved → group topic post failed: %s", e)
+
+    # ── DM fanout for subscribers who didn't already get a threaded
+    # reply above (legacy callers without ``vid``, or new subscribers
+    # added after the alert fired).  DND check uses the SSoT helper.
     subscribers = await get_platform_db().get_all_typed_subscribers("parking")
     acct_subs = [s for s in subscribers if s.account_id == account_id]
 
-    tenant = await get_tenant_db(account_id)
     for sub in acct_subs:
-        # Substring match — consistent with pipeline.send_alert and
-        # alerting/service.filter_alerts_by_access.
+        if sub.telegram_id in dm_replied:
+            continue  # already got the threaded resolve above
         if sub.role == Role.DRIVER and sub.truck_num:
             if sub.truck_num.lower() not in vname.lower():
                 continue
-        # Respect DND / quiet hours for resolved notifications.  Uses
-        # SSoT helper so personal overrides AND derived-from-Working-
-        # Hours are both honored consistently with the rest of the
-        # alerting pipeline.
         from capabilities.alerting.dnd import is_user_dnd_active
         if await is_user_dnd_active(sub, tenant):
             await tenant.queue_dnd_alert(
@@ -170,7 +261,7 @@ async def _send_parking_resolved(
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton(
-                        f"📋 View Truck #{vname}",
+                        f"📋 View Vehicle #{vname_esc}",
                         callback_data=f"covehicle_{co}_{vname}",
                     )],
                     [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],

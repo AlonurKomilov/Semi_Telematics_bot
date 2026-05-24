@@ -128,7 +128,8 @@
     "acknowledge": "✅ Confirmar",
     "ai_diagnose": "🤖 Diagnóstico IA",
     "open_in_samsara": "🔗 Abrir en Samsara",
-    "watch_video": "🎥 Ver Video"
+    "watch_video": "🎥 Ver Video",
+    "view_on_map": "🗺 View on map"
   },
   "user_settings": {
     "header": "⚙️  <b>CONFIGURACIÓN</b>",

@@ -129,7 +129,8 @@
     "acknowledge": "✅ Acknowledge",
     "ai_diagnose": "🤖 AI Diagnose",
     "open_in_samsara": "🔗 Open in Samsara",
-    "watch_video": "🎥 Watch Video"
+    "watch_video": "🎥 Watch Video",
+    "view_on_map": "🗺 View on map"
   },
   "user_settings": {
     "header": "⚙️  <b>SETTINGS</b>",

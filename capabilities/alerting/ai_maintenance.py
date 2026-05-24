@@ -135,6 +135,19 @@ def _is_valid_ai_response(text: str | None) -> bool:
 
 
 # ── Proactive AI on Critical Alerts ──────────────────────────────
+#
+# Per-call wall-clock budget for the AI note generators below.  Both
+# ``check_health_alerts`` (120s) and ``check_new_faults`` (default 120s)
+# loop over every alerted vehicle and ``await`` the AI note before
+# calling ``send_alert``.  If ``ai.generate`` hangs (Vertex AI slowness
+# / network), one stuck call eats half the job budget; ten stuck calls
+# blow the budget and the job times out with no alerts shipped.
+#
+# 15s is the sweet spot: a healthy diagnosis takes ~3-5s and the
+# fallback to a different model on rate-limit fits inside the budget,
+# but a truly hung Vertex backend can't monopolise the loop.
+_AI_NOTE_TIMEOUT_S = 15.0
+
 
 async def _get_ai_diagnosis_note(vehicle: dict, dtcs: list[dict]) -> str:
     """Generate a short AI diagnosis note for critical fault alerts.

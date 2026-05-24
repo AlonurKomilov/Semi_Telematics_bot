@@ -500,10 +500,18 @@ class AlertsMixin(_MixinBase):
         handled the alert before it cleared, every other recipient
         and the group topic see who closed the loop.
 
-        ``acknowledged_by = 0`` is the system sentinel set by
-        ``auto_resolve_alerts_by_vehicle`` for un-acked rows it
-        sweeps; filtering it out keeps the chip true to its meaning
-        ("a person handled this", not "the system auto-cleared it").
+        ``acknowledged_by > 0`` filters out the two system sentinels:
+
+          * ``= 0`` — set by ``auto_resolve_alerts_by_vehicle`` when
+            it sweeps an un-acked row at clear time.
+          * ``= -1`` (``SYSTEM_USER_ID``) — set by AI auto-action
+            flows (AI maintenance auto-create, parking AI vision)
+            when the system itself takes an action.
+
+        Real Telegram user IDs are always strictly positive, so the
+        ``> 0`` predicate cleanly admits humans only.  Without it,
+        the receipt would render "Acked by user -1" when AI handled
+        the alert before it cleared.
 
         Must be called BEFORE ``auto_resolve_alerts_by_vehicle`` —
         once that runs it overwrites ``acknowledged_at`` on all
@@ -512,7 +520,7 @@ class AlertsMixin(_MixinBase):
         cur = await self._db.execute(
             "SELECT acknowledged_by, acknowledged_at FROM alert_acknowledgments "
             "WHERE account_id = ? AND alert_type = ? AND vehicle_id = ? "
-            "AND acknowledged_by != 0 AND acknowledged_at IS NOT NULL "
+            "AND acknowledged_by > 0 AND acknowledged_at IS NOT NULL "
             "ORDER BY acknowledged_at ASC LIMIT 1",
             (account_id, alert_type, vehicle_id),
         )

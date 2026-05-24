@@ -6,7 +6,7 @@ from collections import Counter
 from constants import TZ_ET as _TZ_ET
 from infra.context import get_company_display
 from capabilities.formatting.helpers import (
-    _t, _fmt_time, _relative_ago, _split_message,
+    _t, _relative_ago, _when_chip, _split_message,
 )
 
 
@@ -153,8 +153,7 @@ def format_event_alert(event: dict) -> str:
     lng = event.get("longitude")
 
     raw_time = event.get("time", "")
-    ago = _relative_ago(raw_time)
-    when = ago.strip("()") if ago else _fmt_time(raw_time)
+    when = _when_chip(raw_time)
 
     addr = (event.get("address") or "").strip()
     if not addr:
@@ -169,18 +168,14 @@ def format_event_alert(event: dict) -> str:
 
     lines: list[str] = [f"<b>{badge(sev)}</b> — {title}", ""]
 
-    where_parts = [f"🚛 <b>Truck #{vname}</b>"]
-    if loc_str:
-        where_parts.append(f"📍 {loc_str}")
-    lines.append("  ·  ".join(where_parts))
-
-    when_parts: list[str] = []
+    # Stacked rows (see faults.py for the mobile-readability rationale).
+    lines.append(f"🚛 <b>Vehicle #{vname}</b>")
     if dname and dname != "Unassigned":
-        when_parts.append(f"👤 {dname}")
+        lines.append(f"👤 {dname}")
+    if loc_str:
+        lines.append(f"📍 {loc_str}")
     if when:
-        when_parts.append(f"🕐 {when}")
-    if when_parts:
-        lines.append("  ·  ".join(when_parts))
+        lines.append(f"🕐 {when}")
 
     # G-force only renders for impact-style events; behavior events
     # carry no useful magnitude.

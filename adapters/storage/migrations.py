@@ -852,6 +852,13 @@ async def migrate_warehouse_tables(conn) -> None:
         "CREATE INDEX IF NOT EXISTS idx_vehicle_state_name "
         "ON vehicle_state(account_id, vehicle_name)"
     )
+    # Activity-window scan for billing — counts vehicles whose last
+    # Samsara signal landed within the past N days.  Pairs with the
+    # ``count_active_vehicles`` / ``compute_billing`` helpers.
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_vehicle_state_active_billing "
+        "ON vehicle_state(account_id, captured_at)"
+    )
 
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS safety_event_log (
@@ -2460,3 +2467,323 @@ async def migrate_maintenance_tasks_updated_at(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+@_register("059_vehicle_state_active_billing_index")
+async def migrate_vehicle_state_active_billing_index(conn) -> None:
+    """Index ``vehicle_state(account_id, captured_at)`` for billing scans.
+
+    The billing layer counts "active vehicles" (any Samsara signal in
+    the last 3 days) by scanning ``vehicle_state.captured_at`` per
+    account.  Without this index the query is a full sequential scan of
+    every vehicle ever seen for every account on every billing sync —
+    cheap at 10 fleets, ugly at 1000.
+    """
+    try:
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vehicle_state_active_billing "
+            "ON vehicle_state(account_id, captured_at)"
+        )
+        await conn.commit()
+        logger.info("Migration 059: created idx_vehicle_state_active_billing")
+    except Exception as e:
+        logger.debug("vehicle_state active-billing index migration skipped: %s", e)
+
+
+# ── 060: PTI (Pre-Trip Inspection) module ──────────────────────────────────
+#
+# Extends the bare ``driver_inspections`` table from migration 050 with the
+# full PTI workflow: per-item checklist snapshot, photo/video media, editable
+# per-account checklist templates, status workflow (scheduled → submitted →
+# approved / needs_service / rejected), and a one-time seed of the Standard
+# DOT default template (truck + trailer) for every existing account.
+
+# Default checklist — kept here (not in a Python module) so a fresh DB
+# migrated standalone still gets the seed without needing the capability
+# layer importable.  ``capabilities/pti/templates.py`` re-exports these for
+# runtime use; the seed below is the source of truth for new accounts.
+_STANDARD_DOT_TRUCK_ITEMS: list[tuple[str, str, str, bool, bool, int]] = [
+    # (item_key, label, category, requires_media, required, sort_order)
+    ("brakes_service",    "Service brake response",                "brakes",     False, True,  1),
+    ("brakes_parking",    "Parking brake hold",                    "brakes",     False, True,  2),
+    ("tires_walkaround",  "All tires — tread depth + sidewall",    "tires",      True,  True,  3),
+    ("lights_all",        "Headlights / brake / turn / hazard",    "lights",     False, True,  4),
+    ("mirrors",           "Mirrors — alignment + condition",       "mirrors",    False, True,  5),
+    ("wipers",            "Wipers + washer fluid",                 "cab",        False, True,  6),
+    ("horn",              "Horn",                                  "cab",        False, True,  7),
+    ("fluids",            "Oil / coolant / power steering",        "fluids",     False, True,  8),
+    ("belts_hoses",       "Belts + hoses",                         "engine",     False, True,  9),
+    ("battery",           "Battery + cable condition",             "engine",     False, True, 10),
+    ("seatbelt",          "Seatbelt + cab integrity",              "cab",        False, True, 11),
+    ("emergency_kit",     "Triangles / extinguisher / spare fuses", "safety",    False, True, 12),
+    ("fifth_wheel",       "Fifth wheel + coupling",                "coupling",   True,  True, 13),
+    ("suspension",        "Suspension + air bags",                 "chassis",    False, True, 14),
+    ("exhaust",           "Exhaust + air intake",                  "engine",     False, True, 15),
+    ("fuel_def",          "Fuel + DEF level",                      "fluids",     False, True, 16),
+    ("plate_visible",     "License plate + DOT number visible",    "exterior",   False, True, 17),
+    ("walkaround_damage", "Walkaround damage — 4 angles",          "walkaround", True,  True, 18),
+]
+
+_STANDARD_DOT_TRAILER_ITEMS: list[tuple[str, str, str, bool, bool, int]] = [
+    ("tr_tires",          "Trailer tires — tread + sidewall",      "tires",      True,  True,  1),
+    ("tr_lights",         "Trailer lights — brake / marker / turn", "lights",    False, True,  2),
+    ("tr_doors",          "Doors + latches + seal",                "exterior",   False, True,  3),
+    ("tr_floor",          "Cargo floor + walls",                   "interior",   False, True,  4),
+    ("tr_landing_gear",   "Landing gear",                          "chassis",    False, True,  5),
+    ("tr_brakes",         "Trailer brakes + air lines",            "brakes",     False, True,  6),
+    ("tr_suspension",     "Trailer suspension",                    "chassis",    False, True,  7),
+    ("tr_reflectors",     "Reflectors + conspicuity tape",         "exterior",   False, True,  8),
+    ("tr_plate",          "License plate visible",                 "exterior",   False, True,  9),
+    ("tr_damage",         "Walkaround damage — 4 angles",          "walkaround", True,  True, 10),
+]
+
+
+async def _seed_pti_template_for_account(
+    conn, account_id: int, vehicle_type: str, items: list[tuple],
+) -> None:
+    """Insert one default template + its items for an account.
+
+    Idempotent on the unique ``(account_id, vehicle_type, inspection_type,
+    version)`` constraint — re-running this migration won't double-seed.
+    """
+    now = (
+        __import__("datetime").datetime.now(
+            __import__("datetime").timezone.utc
+        ).isoformat()
+    )
+    cur = await conn.execute(
+        "SELECT id FROM pti_checklist_templates "
+        "WHERE account_id = ? AND vehicle_type = ? "
+        "AND inspection_type = 'weekly' AND is_active = 1",
+        (account_id, vehicle_type),
+    )
+    row = await cur.fetchone()
+    if row:
+        return
+    cur = await conn.execute(
+        "INSERT INTO pti_checklist_templates "
+        "(account_id, vehicle_type, inspection_type, version, is_active, "
+        " created_at, updated_at) "
+        "VALUES (?, ?, 'weekly', 1, 1, ?, ?)",
+        (account_id, vehicle_type, now, now),
+    )
+    template_id = cur.lastrowid
+    for item_key, label, category, requires_media, required, sort_order in items:
+        await conn.execute(
+            "INSERT INTO pti_checklist_template_items "
+            "(template_id, item_key, label, category, requires_media, "
+            " required, sort_order) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                template_id, item_key, label, category,
+                1 if requires_media else 0,
+                1 if required else 0,
+                sort_order,
+            ),
+        )
+
+
+@_register("060_pti_inspection_full")
+async def migrate_pti_inspection_full(conn) -> None:
+    """PTI workflow tables + Standard DOT template seed.
+
+    Five-part migration:
+
+    1. Extend ``driver_inspections`` from migration 050 with workflow
+       columns (scheduled_for, due_by, submitted_at, reviewed_at,
+       review_status, template_id, defects_count, has_oos_defect,
+       trailer_name, recurrence_parent_id).
+    2. Create ``pti_inspection_items`` — per-inspection checklist
+       snapshot, copied from the active template at spawn time so
+       template edits don't retroactively change submitted inspections.
+    3. Create ``pti_inspection_media`` — photo/video locator rows
+       backed by the existing ``ObjectStore`` (same path the work-orders
+       module uses).
+    4. Create ``pti_checklist_templates`` + ``pti_checklist_template_items``
+       — fleet-editable per-account checklist, versioned so a new
+       version can ship without breaking inspections in flight.
+    5. Seed Standard DOT template (truck + trailer) for every active
+       account.  Idempotent — re-running is a no-op when the templates
+       already exist.
+
+    See ``capabilities/pti/`` for the runtime layer.  Permissions and
+    cron wiring land in follow-up migrations / commits.
+    """
+    # ── Part 1: extend driver_inspections ──────────────────────────────
+    new_cols = [
+        ("trailer_name",          "TEXT"),
+        ("scheduled_for",         "TEXT"),
+        ("due_by",                "TEXT"),
+        ("submitted_at",          "TEXT"),
+        ("reviewed_at",           "TEXT"),
+        ("reviewed_by",           "BIGINT"),
+        ("review_status",         "TEXT"),
+        ("review_notes",          "TEXT"),
+        ("template_id",           "INTEGER"),
+        ("template_version",      "INTEGER"),
+        ("defects_count",         "INTEGER NOT NULL DEFAULT 0"),
+        ("has_oos_defect",        "INTEGER NOT NULL DEFAULT 0"),
+        ("recurrence_parent_id",  "INTEGER"),
+    ]
+    try:
+        cur = await conn.execute("PRAGMA table_info(driver_inspections)")
+        existing = {r[1] for r in await cur.fetchall()}
+    except Exception:
+        existing = set()
+    for col_name, col_def in new_cols:
+        if col_name in existing:
+            continue
+        try:
+            await conn.execute(
+                f"ALTER TABLE driver_inspections ADD COLUMN {col_name} {col_def}"
+            )
+        except Exception as e:
+            logger.debug("driver_inspections.%s already present: %s", col_name, e)
+
+    # ── Part 2-4: new tables ───────────────────────────────────────────
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS pti_inspection_items (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                inspection_id   INTEGER NOT NULL REFERENCES driver_inspections(id) ON DELETE CASCADE,
+                item_key        TEXT    NOT NULL,
+                label           TEXT    NOT NULL,
+                category        TEXT    NOT NULL DEFAULT '',
+                status          TEXT    NOT NULL DEFAULT 'pending',
+                notes           TEXT,
+                requires_media  INTEGER NOT NULL DEFAULT 0,
+                required        INTEGER NOT NULL DEFAULT 1,
+                sort_order      INTEGER NOT NULL DEFAULT 0,
+                completed_at    TEXT,
+                UNIQUE(inspection_id, item_key)
+            );
+            CREATE INDEX IF NOT EXISTS idx_pti_items_inspection
+                ON pti_inspection_items(inspection_id);
+
+            CREATE TABLE IF NOT EXISTS pti_inspection_media (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                inspection_id   INTEGER NOT NULL REFERENCES driver_inspections(id) ON DELETE CASCADE,
+                item_id         INTEGER REFERENCES pti_inspection_items(id) ON DELETE SET NULL,
+                media_type      TEXT    NOT NULL DEFAULT 'photo',
+                file_path       TEXT    NOT NULL,
+                file_name       TEXT    NOT NULL DEFAULT '',
+                file_size       INTEGER NOT NULL DEFAULT 0,
+                content_type    TEXT    NOT NULL DEFAULT '',
+                uploaded_by     BIGINT  NOT NULL DEFAULT 0,
+                uploaded_at     TEXT    NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_pti_media_inspection
+                ON pti_inspection_media(inspection_id);
+            CREATE INDEX IF NOT EXISTS idx_pti_media_item
+                ON pti_inspection_media(item_id);
+
+            CREATE TABLE IF NOT EXISTS pti_checklist_templates (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL REFERENCES accounts(id),
+                vehicle_type    TEXT    NOT NULL,
+                inspection_type TEXT    NOT NULL DEFAULT 'weekly',
+                version         INTEGER NOT NULL DEFAULT 1,
+                is_active       INTEGER NOT NULL DEFAULT 1,
+                created_at      TEXT    NOT NULL,
+                updated_at      TEXT    NOT NULL,
+                UNIQUE(account_id, vehicle_type, inspection_type, version)
+            );
+            CREATE INDEX IF NOT EXISTS idx_pti_templates_account
+                ON pti_checklist_templates(account_id, vehicle_type, is_active);
+
+            CREATE TABLE IF NOT EXISTS pti_checklist_template_items (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                template_id     INTEGER NOT NULL REFERENCES pti_checklist_templates(id) ON DELETE CASCADE,
+                item_key        TEXT    NOT NULL,
+                label           TEXT    NOT NULL,
+                category        TEXT    NOT NULL DEFAULT '',
+                requires_media  INTEGER NOT NULL DEFAULT 0,
+                required        INTEGER NOT NULL DEFAULT 1,
+                sort_order      INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(template_id, item_key)
+            );
+            CREATE INDEX IF NOT EXISTS idx_pti_template_items_template
+                ON pti_checklist_template_items(template_id);
+
+            -- Dashboard list filters by review_status + due_by, often
+            -- combined with account_id; this index covers both.
+            CREATE INDEX IF NOT EXISTS idx_driver_inspections_review
+                ON driver_inspections(account_id, review_status);
+            CREATE INDEX IF NOT EXISTS idx_driver_inspections_due
+                ON driver_inspections(account_id, due_by);
+        """)
+        await conn.commit()
+        logger.info("Migration 060: PTI tables + indexes created")
+    except Exception as e:
+        logger.error("Migration 060 table creation failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+    # ── Part 5: seed Standard DOT for every existing active account ───
+    try:
+        cur = await conn.execute(
+            "SELECT id FROM accounts WHERE is_active = 1"
+        )
+        account_ids = [r[0] for r in await cur.fetchall()]
+        seeded = 0
+        for aid in account_ids:
+            await _seed_pti_template_for_account(
+                conn, aid, "truck", _STANDARD_DOT_TRUCK_ITEMS,
+            )
+            await _seed_pti_template_for_account(
+                conn, aid, "trailer", _STANDARD_DOT_TRAILER_ITEMS,
+            )
+            seeded += 1
+        await conn.commit()
+        logger.info(
+            "Migration 060: seeded Standard DOT template for %d active accounts",
+            seeded,
+        )
+    except Exception as e:
+        logger.error("Migration 060 seed failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("061_maintenance_tasks_last_odometer_repair")
+async def migrate_maintenance_tasks_last_odometer_repair(conn) -> None:
+    """Idempotent repair for ``maintenance_tasks.last_odometer``.
+
+    Migration 056 (``056_maintenance_tasks_last_odometer``) tried to
+    add this column but its error handler logged failures at DEBUG
+    and swallowed them — so any production where the ``ALTER TABLE``
+    failed (race, permission, schema state, etc.) ended up with the
+    migration marked applied in ``_schema_versions`` but no column
+    on the table.  The overdue-mileage scheduler then fails every
+    6h with ``UndefinedColumnError: column "last_odometer" of
+    relation "maintenance_tasks" does not exist``.
+
+    This migration uses ``ADD COLUMN IF NOT EXISTS`` so it's safe
+    on databases where 056 DID succeed (no-op) AND repairs the ones
+    where it silently didn't.  Any unexpected error re-raises so
+    the migration runner records the real failure instead of
+    pretending success.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE maintenance_tasks "
+            "ADD COLUMN IF NOT EXISTS last_odometer REAL"
+        )
+        await conn.commit()
+        logger.info(
+            "Migration 061: ensured maintenance_tasks.last_odometer exists"
+        )
+    except Exception as e:
+        logger.error(
+            "Migration 061 failed: %s", e, exc_info=True,
+        )
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise

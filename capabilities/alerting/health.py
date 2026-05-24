@@ -238,10 +238,28 @@ async def _check_health_account(
                 detected_at=detected_at,
             )
 
-            # Proactive AI — only if any subscriber enabled it
+            # Proactive AI — only if any subscriber enabled it.
+            # Bounded by a wall-clock budget so a hung Vertex AI call
+            # can't blow the per-account health-check timeout (120s):
+            # one stuck call would otherwise eat 30+ s of that
+            # budget and a few stuck calls in a row would kill the
+            # whole cycle.  On timeout we ship the alert without an
+            # AI note — much better UX than no alert at all.
             ai_note = ""
             if any(getattr(s, 'ai_health', False) for s in subs):
-                ai_note = await _get_ai_health_note(v, list(new_alerts), health)
+                try:
+                    import asyncio as _asyncio
+                    from capabilities.alerting.ai_maintenance import _AI_NOTE_TIMEOUT_S
+                    ai_note = await _asyncio.wait_for(
+                        _get_ai_health_note(v, list(new_alerts), health),
+                        timeout=_AI_NOTE_TIMEOUT_S,
+                    )
+                except (TimeoutError, _asyncio.TimeoutError):
+                    logger.warning(
+                        "AI health note timed out for %s — shipping alert without it",
+                        v.get("name", "?"),
+                    )
+                    ai_note = ""
 
             # ── Universal pipeline ───────────────────
             await send_alert(

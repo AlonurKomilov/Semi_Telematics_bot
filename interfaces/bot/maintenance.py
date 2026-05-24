@@ -793,7 +793,7 @@ def _format_maintenance_alert(
     body_marker = marker(severity)
 
     lines: list[str] = [f"<b>{badge(severity)}</b> — {escape_html(title)}", ""]
-    lines.append(f"🚛 <b>Truck #{escape_html(str(vehicle_name))}</b>")
+    lines.append(f"🚛 <b>Vehicle #{escape_html(str(vehicle_name))}</b>")
     lines.append("")
     lines.append(f"{body_marker} <b>{escape_html(str(task_label))}</b>")
     for d in detail_lines:

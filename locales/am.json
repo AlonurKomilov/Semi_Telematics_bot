@@ -128,7 +128,8 @@
     "acknowledge": "✅ አረጋግጥ",
     "ai_diagnose": "🤖 AI ምርመራ",
     "open_in_samsara": "🔗 በSamsara ውስጥ ክፈት",
-    "watch_video": "🎥 ቪዲዮ ይመልከቱ"
+    "watch_video": "🎥 ቪዲዮ ይመልከቱ",
+    "view_on_map": "🗺 View on map"
   },
   "user_settings": {
     "header": "⚙️  <b>ማስተካከያዎች</b>",

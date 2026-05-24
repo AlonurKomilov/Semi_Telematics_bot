@@ -128,7 +128,8 @@
     "acknowledge": "✅ Подтвердить",
     "ai_diagnose": "🤖 ИИ-диагностика",
     "open_in_samsara": "🔗 Открыть в Samsara",
-    "watch_video": "🎥 Смотреть видео"
+    "watch_video": "🎥 Смотреть видео",
+    "view_on_map": "🗺 View on map"
   },
   "user_settings": {
     "header": "⚙️  <b>НАСТРОЙКИ</b>",

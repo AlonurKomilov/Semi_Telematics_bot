@@ -88,15 +88,48 @@ def samsara_vehicle_url(
 def samsara_event_url(
     org_id: str,
     event_id: str,
+    vehicle_name: str = "",
     dashboard_base: str = "",
 ) -> str | None:
-    """Build a Samsara Cloud deep-link for a safety event."""
+    """Build a Samsara Cloud deep-link for a safety event.
+
+    Samsara doesn't expose a per-event detail page at a stable URL —
+    the previous ``/fleet/reports/safety/event/{id}`` pattern 404s.
+    The working pattern lands on the safety inbox filtered to the
+    specific event via the ``deviceId`` + ``eventMs`` query params
+    (which Samsara's own UI generates from event clicks).
+
+    ``event_id`` is shaped ``"{deviceId}-{timestampMs}"`` (see
+    ``get_events``); split it to populate the query params.  When
+    *vehicle_name* is provided, add ``q=<name>`` so the inbox is
+    pre-filtered to that vehicle even if Samsara doesn't focus the
+    exact event row.
+
+    Returns None when *org_id* is empty, *event_id* is empty, or the
+    ``device-ms`` split fails (caller should omit the button).
+    """
     if not org_id or not event_id:
+        return None
+    try:
+        device_id, event_ms = event_id.rsplit("-", 1)
+        int(event_ms)  # validate ms parses; cheap throw if it doesn't
+    except (ValueError, AttributeError):
         return None
     if not dashboard_base:
         from infra.config import SAMSARA_DASHBOARD_URL
         dashboard_base = SAMSARA_DASHBOARD_URL
-    return f"{dashboard_base}/o/{org_id}/fleet/reports/safety/event/{event_id}"
+
+    from urllib.parse import urlencode
+    params: dict[str, str] = {
+        "deviceId": device_id,
+        "eventMs": event_ms,
+    }
+    if vehicle_name:
+        params["q"] = vehicle_name
+    return (
+        f"{dashboard_base}/o/{org_id}/fleet/reports/safety/inbox_feed"
+        f"?{urlencode(params)}"
+    )
 
 
 def samsara_fault_url(
@@ -104,13 +137,30 @@ def samsara_fault_url(
     vehicle_id: str,
     dashboard_base: str = "",
 ) -> str | None:
-    """Build a Samsara Cloud deep-link for a vehicle's fault/diagnostics page."""
+    """Build a Samsara Cloud deep-link for a vehicle's diagnostics page.
+
+    Lands on Samsara's **Maintenance Status** view for the vehicle —
+    the same page that lists Active Faults (SPN / FMI / count) and
+    Tire Faults.  This matches what the dispatcher actually wants
+    when they tap an Engine Fault alert: see the live DTC list, not
+    the generic vehicle profile page our previous
+    ``/devices/{id}/vehicle`` URL produced.
+
+    The ``?type=default`` query param is Samsara's own tab selector
+    (Summary tab); without it the page can land on a sub-tab the
+    user didn't intend.  The account-specific ``tags[]`` filter from
+    Samsara's own URL is intentionally omitted — that's UI state for
+    one operator and would confuse anyone else opening the link.
+    """
     if not org_id:
         return None
     if not dashboard_base:
         from infra.config import SAMSARA_DASHBOARD_URL
         dashboard_base = SAMSARA_DASHBOARD_URL
-    return f"{dashboard_base}/o/{org_id}/devices/{vehicle_id}/vehicle"
+    return (
+        f"{dashboard_base}/o/{org_id}/fleet/maintenance/status/{vehicle_id}"
+        f"?type=default"
+    )
 
 
 # Names that indicate ghost / deactivated records (case-insensitive)

@@ -60,6 +60,21 @@ _PIPELINE_TO_ROUTE_KEY: dict[str, str] = {
 logger = logging.getLogger("bot")
 
 
+# Telegram media-caption limit — applies to both ``send_photo`` and
+# ``send_video``.  Used by the photo+text merge path to decide whether
+# the assembled alert body fits inside one caption (preferred — one
+# coherent message) or has to fall back to the legacy two-message
+# pattern (photo, then text reply).  We leave a small safety margin
+# under the documented 1024 so HTML entity expansion or trailing
+# history-footer rows don't push us over.
+_CAPTION_CHAR_LIMIT = 1024
+
+
+def _caption_fits(text: str) -> bool:
+    """Whether ``text`` is short enough to sit inside one media caption."""
+    return len(text or "") <= _CAPTION_CHAR_LIMIT
+
+
 # ─────────────────────────────────────────────────────────────────────
 # Per-topic post lock — keeps photo+text pairs atomic in forum topics.
 #
@@ -169,6 +184,7 @@ def build_alert_keyboard(
     event_time: str = "",
     lang: str | None = None,
     for_group: bool = False,
+    maps_url: str | None = None,
 ) -> InlineKeyboardMarkup:
     """Build keyboard for an alert message based on severity.
 
@@ -214,7 +230,10 @@ def build_alert_keyboard(
     # "Open in Samsara" deep-link (URL button — opens browser)
     org_id = get_org_ids().get(co, "")
     if alert_type == "events" and event_id:
-        samsara_url = samsara_event_url(org_id, event_id)
+        # vehicle_name powers the ``?q=`` search filter inside
+        # Samsara's safety inbox so dispatch lands pre-filtered to
+        # the truck even if Samsara doesn't focus the exact event row.
+        samsara_url = samsara_event_url(org_id, event_id, vehicle_name=vehicle_name)
     elif alert_type in ("fault", "health"):
         samsara_url = samsara_fault_url(org_id, vehicle_id)
     else:
@@ -223,6 +242,19 @@ def build_alert_keyboard(
         rows.append([InlineKeyboardButton(
             t("alert_actions.open_in_samsara", lang=lang),
             url=samsara_url,
+        )])
+
+    # "View on map" URL button — same family as "Open in Samsara":
+    # tap-target friendly, opens in a browser, never touches the
+    # message, so it's safe in group topics where callbacks would
+    # rewrite the alert for every other shift.  Caller passes
+    # ``maps_url`` (already-built Google Maps deep-link) only for
+    # alerts where a specific lat/lng is meaningful (parking,
+    # safety events, future telematics events).
+    if maps_url:
+        rows.append([InlineKeyboardButton(
+            t("alert_actions.view_on_map", lang=lang),
+            url=maps_url,
         )])
 
     # View Truck + Main Menu both rewrite the message via callback.
@@ -357,6 +389,7 @@ async def _try_post_to_topic(
     photo_bytes: bytes | None,
     event_id: str,
     event_time: str,
+    maps_url: str | None = None,
 ) -> bool:
     """If a forum route exists for ``(account_id, alert_type)`` post the
     alert there and return True.  Returns False when no route is
@@ -387,55 +420,98 @@ async def _try_post_to_topic(
         # photo+text pair so concurrent vehicles in the same topic
         # don't interleave (see ``_TOPIC_POST_LOCKS`` rationale).
         async with _topic_post_lock(account_id, alert_type):
-            # Send the leading media first (if any) so the text reply
-            # threads to it, mirroring the DM-fanout layout.
-            reply_to: int | None = None
-            if video_url:
-                try:
-                    vmsg = await bot_app.bot.send_video(
-                        chat_id=chat_id,
-                        message_thread_id=thread_id,
-                        video=video_url,
-                        caption=f"🎥 {vehicle_name}",
-                        read_timeout=30,
-                        write_timeout=30,
-                    )
-                    reply_to = vmsg.message_id
-                except Exception as ve:
-                    logger.debug("Forum video send failed for %s: %s", vehicle_name, ve)
-            elif photo_bytes:
-                try:
-                    import io as _io
-                    pmsg = await bot_app.bot.send_photo(
-                        chat_id=chat_id,
-                        message_thread_id=thread_id,
-                        photo=_io.BytesIO(photo_bytes),
-                        caption=f"📍 Parking location — #{vehicle_name}",
-                        read_timeout=15,
-                        write_timeout=15,
-                    )
-                    reply_to = pmsg.message_id
-                except Exception as pe:
-                    logger.debug("Forum photo send failed for %s: %s", vehicle_name, pe)
-
-            # Default-language buttons — the group is a shared surface,
-            # we can't pick one user's language without choosing badly
-            # for everyone else.  Future enhancement: per-account default
-            # language stored on forum_groups.
+            # Build the keyboard once — used either on the merged
+            # photo-with-caption message OR on the trailing text
+            # reply in the fallback path.
             basic_kb = build_alert_keyboard(
                 severity, co, vehicle_name, alert_type=alert_type,
                 vehicle_id=vehicle_id, event_id=event_id, event_time=event_time,
                 lang="en",
                 for_group=True,
+                maps_url=maps_url,
             )
-            msg = await bot_app.bot.send_message(
-                chat_id=chat_id,
-                message_thread_id=thread_id,
-                text=send_text,
-                parse_mode=ParseMode.HTML,
-                reply_markup=basic_kb,
-                reply_to_message_id=reply_to,
-            )
+
+            # ── Merged path (preferred): one message per alert ──
+            # When there's media AND the alert body fits in a caption
+            # we send ``send_photo(caption=send_text)`` so the photo
+            # IS the alert.  Reads as a single coherent block in the
+            # topic — no more "two photos then two captions" confusion
+            # the operators reported on parking-rich check cycles.
+            msg = None
+            if (video_url or photo_bytes) and _caption_fits(send_text):
+                try:
+                    if video_url:
+                        msg = await bot_app.bot.send_video(
+                            chat_id=chat_id,
+                            message_thread_id=thread_id,
+                            video=video_url,
+                            caption=send_text,
+                            parse_mode=ParseMode.HTML,
+                            reply_markup=basic_kb,
+                            read_timeout=30, write_timeout=30,
+                        )
+                    else:
+                        import io as _io
+                        msg = await bot_app.bot.send_photo(
+                            chat_id=chat_id,
+                            message_thread_id=thread_id,
+                            photo=_io.BytesIO(photo_bytes),
+                            caption=send_text,
+                            parse_mode=ParseMode.HTML,
+                            reply_markup=basic_kb,
+                            read_timeout=15, write_timeout=15,
+                        )
+                except Exception as me:
+                    # Media send failed (Telegram-side error, S3 expiry on
+                    # video URL, etc.).  Drop through to the two-message
+                    # fallback so the alert still ships.
+                    logger.debug(
+                        "Forum media-with-caption send failed for %s: %s — "
+                        "falling back to media+reply", vehicle_name, me,
+                    )
+                    msg = None
+
+            # ── Fallback path (legacy two-message) ──
+            # Triggered when (a) there's no media, (b) the caption
+            # overflows the 1024-char Telegram limit, or (c) the
+            # media send above failed.  Identical behaviour to the
+            # pre-merge implementation.
+            if msg is None:
+                reply_to: int | None = None
+                if video_url:
+                    try:
+                        vmsg = await bot_app.bot.send_video(
+                            chat_id=chat_id,
+                            message_thread_id=thread_id,
+                            video=video_url,
+                            caption=f"🎥 {vehicle_name}",
+                            read_timeout=30, write_timeout=30,
+                        )
+                        reply_to = vmsg.message_id
+                    except Exception as ve:
+                        logger.debug("Forum video send failed for %s: %s", vehicle_name, ve)
+                elif photo_bytes:
+                    try:
+                        import io as _io
+                        pmsg = await bot_app.bot.send_photo(
+                            chat_id=chat_id,
+                            message_thread_id=thread_id,
+                            photo=_io.BytesIO(photo_bytes),
+                            caption=f"📍 Parking location — #{vehicle_name}",
+                            read_timeout=15, write_timeout=15,
+                        )
+                        reply_to = pmsg.message_id
+                    except Exception as pe:
+                        logger.debug("Forum photo send failed for %s: %s", vehicle_name, pe)
+
+                msg = await bot_app.bot.send_message(
+                    chat_id=chat_id,
+                    message_thread_id=thread_id,
+                    text=send_text,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=basic_kb,
+                    reply_to_message_id=reply_to,
+                )
 
         # Record one alert_ack for the group post so the existing
         # callback-router can resolve the ack by id.  ``sent_to=0``
@@ -461,6 +537,7 @@ async def _try_post_to_topic(
                 vehicle_id=vehicle_id, event_id=event_id, event_time=event_time,
                 lang="en",
                 for_group=True,
+                maps_url=maps_url,
             )
             try:
                 await bot_app.bot.edit_message_reply_markup(
@@ -530,6 +607,7 @@ async def send_alert(
     event_time: str = "",
     photo_bytes: bytes | None = None,
     bot_app: Application | None = None,
+    maps_url: str | None = None,
 ):
     """Universal alert delivery pipeline.
 
@@ -546,6 +624,18 @@ async def send_alert(
     vname = vehicle.get("name", "?")
     needs_ack = severity in (AlertSeverity.CRITICAL, AlertSeverity.WARNING)
     bypasses_dnd = severity == AlertSeverity.CRITICAL
+
+    # Auto-derive ``maps_url`` from ``vehicle["location"]`` so every
+    # alert that hands us a Samsara vehicle dict (fault, health, fuel)
+    # gets the 🗺 View on map button for free.  Callers with non-vehicle
+    # coord shapes (events.py uses ``event["latitude"]``) still pass
+    # ``maps_url=`` explicitly and override this fallback.
+    if maps_url is None:
+        _loc = vehicle.get("location") or {}
+        _lat = _loc.get("latitude")
+        _lng = _loc.get("longitude")
+        if _lat is not None and _lng is not None:
+            maps_url = f"https://maps.google.com/?q={_lat},{_lng}"
 
     # Resolve per-account bot — skip if no account bot registered
     if bot_app is None:
@@ -693,6 +783,7 @@ async def send_alert(
             photo_bytes=photo_bytes,
             event_id=event_id,
             event_time=event_time,
+            maps_url=maps_url,
         )
 
     # If the group post succeeded AND this isn't a CRITICAL we're
@@ -754,111 +845,131 @@ async def send_alert(
                     send_text += ai_note
             send_text += history_footer
 
-            # ── Send dashcam video first (events) so text can reply to it ──
-            video_msg_id = None
-            if video_url:
-                try:
-                    vmsg = await bot_app.bot.send_video(
-                        chat_id=sub.telegram_id,
-                        video=video_url,
-                        caption=f"🎥 {vname}",
-                        read_timeout=30,
-                        write_timeout=30,
-                    )
-                    video_msg_id = vmsg.message_id
-                except Exception as ve:
-                    logger.debug(f"Video send failed for {vname}: {ve}")
-
-            # ── Send map photo (parking alerts) so text can reply to it ──
-            photo_msg_id = None
-            if photo_bytes and not video_msg_id:
-                try:
-                    import io as _io
-                    pmsg = await bot_app.bot.send_photo(
-                        chat_id=sub.telegram_id,
-                        photo=_io.BytesIO(photo_bytes),
-                        caption=f"📍 Parking location — #{vname}",
-                        read_timeout=15,
-                        write_timeout=15,
-                    )
-                    photo_msg_id = pmsg.message_id
-                except Exception as pe:
-                    logger.debug(f"Photo send failed for {vname}: {pe}")
-
-            reply_to = video_msg_id or photo_msg_id
+            # ── Helper: send the alert as one merged photo+caption
+            # message when the body fits in 1024 chars, otherwise
+            # fall back to the legacy photo + text-reply pattern.
+            # Returns the message object the caller uses for ack
+            # tracking (photo message in merged path, text message
+            # in fallback).
+            async def _send_alert_dm(keyboard):
+                # Merged path — preferred when there's media AND the
+                # text fits in a Telegram caption.  One coherent
+                # message instead of "two photos / two captions"
+                # confusion the operators reported.
+                if (video_url or photo_bytes) and _caption_fits(send_text):
+                    try:
+                        if video_url:
+                            return await bot_app.bot.send_video(
+                                chat_id=sub.telegram_id,
+                                video=video_url,
+                                caption=send_text,
+                                parse_mode=ParseMode.HTML,
+                                reply_markup=keyboard,
+                                read_timeout=30, write_timeout=30,
+                            )
+                        import io as _io
+                        return await bot_app.bot.send_photo(
+                            chat_id=sub.telegram_id,
+                            photo=_io.BytesIO(photo_bytes),
+                            caption=send_text,
+                            parse_mode=ParseMode.HTML,
+                            reply_markup=keyboard,
+                            read_timeout=15, write_timeout=15,
+                        )
+                    except Exception as me:
+                        logger.debug(
+                            "DM media-with-caption send failed for %s: %s "
+                            "— falling back to media+reply", vname, me,
+                        )
+                # Fallback path — no media, caption overflow, or
+                # merged send failed above.  Photo/video posts
+                # first (caption = identity), then text replies to it.
+                _reply_to: int | None = None
+                if video_url:
+                    try:
+                        vmsg = await bot_app.bot.send_video(
+                            chat_id=sub.telegram_id,
+                            video=video_url,
+                            caption=f"🎥 {vname}",
+                            read_timeout=30, write_timeout=30,
+                        )
+                        _reply_to = vmsg.message_id
+                    except Exception as ve:
+                        logger.debug(f"Video send failed for {vname}: {ve}")
+                elif photo_bytes:
+                    try:
+                        import io as _io
+                        pmsg = await bot_app.bot.send_photo(
+                            chat_id=sub.telegram_id,
+                            photo=_io.BytesIO(photo_bytes),
+                            caption=f"📍 Parking location — #{vname}",
+                            read_timeout=15, write_timeout=15,
+                        )
+                        _reply_to = pmsg.message_id
+                    except Exception as pe:
+                        logger.debug(f"Photo send failed for {vname}: {pe}")
+                return await bot_app.bot.send_message(
+                    chat_id=sub.telegram_id,
+                    text=send_text,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=keyboard,
+                    reply_to_message_id=_reply_to,
+                )
 
             if needs_ack:
-                # ── Per-fire model: every alert is unique, always send-new.
-                # Edit-in-place and delete-old are intentionally OFF —
-                # each fire creates its own alert_history row with its
+                # Per-fire model: every alert is unique, always send-new.
+                # Each fire creates its own alert_history row with its
                 # own AlertID, so there is no "previous version" to
-                # collapse onto.  Users see a discrete message per
-                # event, which is the standard PagerDuty / Datadog /
-                # Samsara model and matches what dispatchers asked
-                # for ("each alert should have its own ID").
-                if False:
-                    # Legacy edit-in-place branch (kept for diff context;
-                    # never reached because the conditional is False).
-                    pass
-                else:
-                    sub_lang = getattr(sub, "language", None) or "en"
-                    basic_kb = build_alert_keyboard(
-                        severity, co, vname, alert_type=alert_type,
-                        vehicle_id=vid, event_id=event_id, event_time=event_time,
-                        lang=sub_lang,
-                    )
-                    msg = await bot_app.bot.send_message(
-                        chat_id=sub.telegram_id,
-                        text=send_text,
-                        parse_mode=ParseMode.HTML,
-                        reply_markup=basic_kb,
-                        reply_to_message_id=reply_to,
-                    )
-                    # ── Per-fire model: keep prior alert messages
-                    # untouched.  Each fire is its own AlertID and
-                    # users can refer back to earlier ones in their
-                    # chat history; the bot no longer rewrites or
-                    # deletes anything.
-                    alert_key = f"{co}:{vid}:{alert_key_detail}"
-                    ack_id = await tenant.create_alert_ack(
-                        account_id=account_id,
-                        alert_type=alert_type,
-                        vehicle_id=vid,
-                        vehicle_name=vname,
-                        alert_key=alert_key,
-                        message_id=msg.message_id,
-                        chat_id=sub.telegram_id,
-                        sent_to=sub.telegram_id,
-                    )
-                    # Swap the keyboard now that we have an ack_id
-                    ack_kb = build_alert_keyboard(
-                        severity, co, vname, ack_id=ack_id, alert_type=alert_type,
-                        vehicle_id=vid, event_id=event_id, event_time=event_time,
-                        lang=sub_lang,
-                    )
-                    await bot_app.bot.edit_message_reply_markup(
-                        chat_id=sub.telegram_id,
-                        message_id=msg.message_id,
-                        reply_markup=ack_kb,
-                    )
-            else:
-                # INFO — same per-fire model as CRITICAL/WARNING: each
-                # fire posts a fresh message, no edit-in-place, no
-                # delete-prior.  The dispatcher keeps each event in
-                # their chat history with its own AlertID.
+                # collapse onto — matches PagerDuty / Datadog / Samsara.
                 sub_lang = getattr(sub, "language", None) or "en"
                 basic_kb = build_alert_keyboard(
                     severity, co, vname, alert_type=alert_type,
                     vehicle_id=vid, event_id=event_id, event_time=event_time,
                     lang=sub_lang,
+                    maps_url=maps_url,
                 )
-                msg = await bot_app.bot.send_message(
+                msg = await _send_alert_dm(basic_kb)
+                # Per-fire model: keep prior alert messages untouched.
+                # Each fire is its own AlertID; users refer back to
+                # earlier ones in their chat history.
+                alert_key = f"{co}:{vid}:{alert_key_detail}"
+                ack_id = await tenant.create_alert_ack(
+                    account_id=account_id,
+                    alert_type=alert_type,
+                    vehicle_id=vid,
+                    vehicle_name=vname,
+                    alert_key=alert_key,
+                    message_id=msg.message_id,
                     chat_id=sub.telegram_id,
-                    text=send_text,
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=basic_kb,
-                    reply_to_message_id=reply_to,
+                    sent_to=sub.telegram_id,
                 )
+                # Swap the keyboard now that we have an ack_id.
+                # ``edit_message_reply_markup`` works on photo/video
+                # messages just as well as text — the keyboard sits
+                # under whichever message type ``_send_alert_dm`` chose.
+                ack_kb = build_alert_keyboard(
+                    severity, co, vname, ack_id=ack_id, alert_type=alert_type,
+                    vehicle_id=vid, event_id=event_id, event_time=event_time,
+                    lang=sub_lang,
+                    maps_url=maps_url,
+                )
+                await bot_app.bot.edit_message_reply_markup(
+                    chat_id=sub.telegram_id,
+                    message_id=msg.message_id,
+                    reply_markup=ack_kb,
+                )
+            else:
+                # INFO — same per-fire + merged-media model as
+                # CRITICAL/WARNING but no ack-keyboard swap (INFO
+                # doesn't show the Acknowledge button at all).
+                sub_lang = getattr(sub, "language", None) or "en"
+                basic_kb = build_alert_keyboard(
+                    severity, co, vname, alert_type=alert_type,
+                    vehicle_id=vid, event_id=event_id, event_time=event_time,
+                    lang=sub_lang,
+                    maps_url=maps_url,
+                )
+                msg = await _send_alert_dm(basic_kb)
                 alert_key = f"{co}:{vid}:{alert_key_detail}"
                 await tenant.create_info_alert_ack(
                     account_id=account_id,

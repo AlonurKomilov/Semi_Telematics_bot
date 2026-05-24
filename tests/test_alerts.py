@@ -137,7 +137,7 @@ class TestCriticalFaultFormatter:
         result = format_critical_fault_alert(vehicle, dtcs, lights)
         assert "🔴 CRITICAL" in result
         assert "Fault Detected" in result
-        assert "Truck #101" in result
+        assert "Vehicle #101" in result
         assert "🛑 STOP" in result
         assert "Engine Temp" in result
 
@@ -211,7 +211,7 @@ class TestHealthAlertFormatter:
         health = {"battery_v": 11.0}
         alerts = ["low_battery"]
         result = format_health_alert(vehicle, alerts, health)
-        assert "Truck #myTruck" in result
+        assert "Vehicle #myTruck" in result
 
 
 class TestLowFuelFormatter:
@@ -222,7 +222,7 @@ class TestLowFuelFormatter:
         result = format_low_fuel_alert(vehicle, 12.5)
         assert "Low Fuel" in result
         assert "🟠 WARNING" in result
-        assert "Truck #601" in result
+        assert "Vehicle #601" in result
         assert "12% fuel remaining" in result
 
     def test_company_display(self):

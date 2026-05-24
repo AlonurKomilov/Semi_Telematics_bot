@@ -24,34 +24,9 @@ plain-language impact + action serve everyone else.
 from __future__ import annotations
 
 from capabilities.formatting.helpers import (
-    _t, _short_location, _fmt_time, _relative_ago, escape_html,
+    _t, _short_location, _when_chip, escape_html,
 )
 from capabilities.formatting.severity import badge, marker, default_action
-
-
-def _carrier_chip(co: str, show_company: bool) -> str:
-    """Render the carrier as a compact chip (just the code if known,
-    full name when not).  The prior format printed both — long and
-    redundant once the user learned the carrier code.
-    """
-    if not show_company or not co:
-        return ""
-    return f"🏢 {co}"
-
-
-def _when_chip(detected_at: str | None) -> str:
-    """Time line, preferring the relative form for fresh alerts.
-
-    ``just now`` / ``4 min ago`` is what dispatch actually scans for;
-    the absolute timestamp only matters for follow-up — and it's still
-    available on the Samsara link button below the message.
-    """
-    if not detected_at:
-        return ""
-    ago = _relative_ago(detected_at)
-    if ago:
-        return f"🕐 {ago.strip('()')}"
-    return f"🕐 {_fmt_time(detected_at)}"
 
 
 def format_fault_alert(
@@ -93,21 +68,20 @@ def format_fault_alert(
     # ── Header: badge — title ─────────────────────────────────────
     lines: list[str] = [f"<b>{badge(sev)}</b> — {title}", ""]
 
-    # ── Where + when, two lines max ──────────────────────────────
-    where_parts = [f"🚛 <b>Truck #{name}</b>"]
+    # ── Stacked who/where/when rows ──────────────────────────────
+    # Each field on its own line for mobile readability — a phone
+    # screen wraps a "field · field" inline pair awkwardly when one
+    # of the fields is a long address.  Stacked reads top-to-bottom
+    # one glance per row.  Empty fields skip their row entirely so
+    # the body stays compact when there's no driver / no GPS fix.
+    lines.append(f"🚛 <b>Vehicle #{name}</b>")
+    if show_company and co:
+        lines.append(f"🏢 {co}")
     if city and city != "—":
-        where_parts.append(f"📍 {city}")
-    lines.append("  ·  ".join(where_parts))
-
-    when_parts: list[str] = []
-    carrier = _carrier_chip(co, show_company)
-    if carrier:
-        when_parts.append(carrier)
+        lines.append(f"📍 {city}")
     when = _when_chip(detected_at)
     if when:
-        when_parts.append(when)
-    if when_parts:
-        lines.append("  ·  ".join(when_parts))
+        lines.append(f"🕐 {when}")
 
     # ── Critical-only lights banner ──────────────────────────────
     # Only the truly red conditions get a lights row; warning/info

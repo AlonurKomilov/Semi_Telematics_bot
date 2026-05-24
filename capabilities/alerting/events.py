@@ -162,6 +162,20 @@ async def _check_events_account(bot_app: Application, account):
             vehicle_dict = {"id": vid, "name": vname, "_org": co}
             eid = event.get("event_id", "")
 
+            # Events carry lat/lng flat on the event dict (not under
+            # ``vehicle.location`` like the fault/health/fuel paths).
+            # Build the maps_url explicitly here so ``send_alert``'s
+            # vehicle-shaped fallback doesn't run for this caller and
+            # we still get the 🗺 View on map button.  Crash and
+            # harsh-event coordinates are exactly where dispatch
+            # wants to look first.
+            _ev_lat = event.get("latitude")
+            _ev_lng = event.get("longitude")
+            _ev_maps_url = (
+                f"https://maps.google.com/?q={_ev_lat},{_ev_lng}"
+                if _ev_lat is not None and _ev_lng is not None else None
+            )
+
             await send_alert(
                 bot_app,
                 account_id=account_id,
@@ -182,6 +196,7 @@ async def _check_events_account(bot_app: Application, account):
                 event_id=eid,
                 event_time=event.get("time", ""),
                 bot_app=bot_app,
+                maps_url=_ev_maps_url,
             )
         except Exception as e:
             logger.warning(f"Event alert for {event.get('vehicle_name', '?')}: {e}")

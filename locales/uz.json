@@ -128,7 +128,8 @@
     "acknowledge": "✅ Tasdiqlash",
     "ai_diagnose": "🤖 AI Diagnostika",
     "open_in_samsara": "🔗 Samsarada ochish",
-    "watch_video": "🎥 Videoni ko'rish"
+    "watch_video": "🎥 Videoni ko'rish",
+    "view_on_map": "🗺 View on map"
   },
   "user_settings": {
     "header": "⚙️  <b>SOZLAMALAR</b>",

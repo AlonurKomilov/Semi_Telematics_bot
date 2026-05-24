@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { apiJSON, getToken, setToken, clearToken, isTokenPersistent } from '../api/client';
 import { isSafeReturnTo, APEX_DOMAIN as SAFE_APEX_DOMAIN } from '../lib/safeReturnTo';
+import i18n from '../i18n';
 import type { User, TelegramLoginData, AuthResponse } from '../types';
 
 /** Poll interval for checking token expiry. */
@@ -150,16 +151,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // in English on first login. Only applies the first time per
       // session; users can still switch via the top-bar selector
       // (which writes back to the same endpoint).
+      //
+      // ``i18n`` is statically imported at the top — same instance
+      // ``main.tsx`` initialises at boot — so the previous dynamic
+      // ``await import('../i18n')`` was a Vite chunking-warning
+      // generator with no behavioural benefit.  The outer try/catch
+      // still guards against ``changeLanguage`` failures (unknown
+      // locale codes, detector errors).
       try {
         const lang = (data as { language?: string | null }).language;
-        if (lang && typeof lang === 'string') {
-          const i18n = (await import('../i18n')).default;
-          if (i18n.resolvedLanguage !== lang) {
-            await i18n.changeLanguage(lang);
-          }
+        if (lang && typeof lang === 'string' && i18n.resolvedLanguage !== lang) {
+          await i18n.changeLanguage(lang);
         }
       } catch {
-        /* i18n not yet loaded — selector still works */
+        /* changeLanguage failed — selector still works */
       }
     } catch {
       clearToken();

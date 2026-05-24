@@ -288,6 +288,7 @@ async def check_unsafe_parking(app: Application):
                         if existing.get("alert_level") in ("warning", "critical", "breakdown"):
                             await _send_parking_resolved(
                                 bot_app, account.id, vname, co, existing,
+                                vid=vid,
                             )
                     return
 
@@ -562,6 +563,12 @@ async def check_unsafe_parking(app: Application):
                 )
 
                 vehicle_dict = {"id": vid, "name": vname, "_org": co}
+                # Google Maps deep-link surfaced as a URL button next
+                # to Acknowledge / Open in Samsara.  URL buttons are
+                # group-safe (no callback rewriting the message) and
+                # offer a much bigger tap target than the previous
+                # inline ``<a href=…>View on map</a>`` text link.
+                _maps_url = f"https://maps.google.com/?q={lat},{lng}"
                 await send_alert(
                     app,
                     account_id=account.id,
@@ -574,6 +581,7 @@ async def check_unsafe_parking(app: Application):
                     alert_key_detail=f"parking:{loc_class}:{duration_h:.0f}h",
                     photo_bytes=map_bytes,
                     bot_app=bot_app,
+                    maps_url=_maps_url,
                 )
 
                except Exception as e:

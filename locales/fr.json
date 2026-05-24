@@ -128,7 +128,8 @@
     "acknowledge": "✅ Accuser réception",
     "ai_diagnose": "🤖 Diagnostic IA",
     "open_in_samsara": "🔗 Ouvrir dans Samsara",
-    "watch_video": "🎥 Voir la vidéo"
+    "watch_video": "🎥 Voir la vidéo",
+    "view_on_map": "🗺 View on map"
   },
   "user_settings": {
     "header": "⚙️  <b>PARAMÈTRES</b>",

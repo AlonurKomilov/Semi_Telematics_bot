@@ -8,7 +8,7 @@ its existing layout.
 
 from capabilities.formatting.helpers import (
     _t, _short_location, _fuel_bar, _company_tag,
-    _fmt_time, _relative_ago, escape_html,
+    _when_chip, escape_html,
 )
 from capabilities.formatting.severity import badge, marker
 
@@ -71,21 +71,17 @@ def format_low_fuel_alert(vehicle: dict, fuel_pct: float,
 
     lines: list[str] = [f"<b>{badge(sev)}</b> — {title}", ""]
 
-    where_parts = [f"🚛 <b>Truck #{name}</b>"]
-    if city and city != "—":
-        where_parts.append(f"📍 {city}")
-    lines.append("  ·  ".join(where_parts))
-
-    when_parts: list[str] = []
-    if show_company and co:
-        when_parts.append(f"🏢 {co}")
+    # Stacked rows (see faults.py for the mobile-readability rationale).
+    lines.append(f"🚛 <b>Vehicle #{name}</b>")
     if driver_name:
-        when_parts.append(f"👤 {driver_name}")
-    if detected_at:
-        ago = _relative_ago(detected_at)
-        when_parts.append(f"🕐 {ago.strip('()') if ago else _fmt_time(detected_at)}")
-    if when_parts:
-        lines.append("  ·  ".join(when_parts))
+        lines.append(f"👤 {driver_name}")
+    if show_company and co:
+        lines.append(f"🏢 {co}")
+    if city and city != "—":
+        lines.append(f"📍 {city}")
+    when = _when_chip(detected_at)
+    if when:
+        lines.append(f"🕐 {when}")
 
     lines.append("")
     body_marker = marker(sev)
