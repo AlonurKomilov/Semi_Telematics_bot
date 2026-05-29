@@ -1,5 +1,12 @@
 # Phase 5 Rollout — SQLite → PostgreSQL migration
 
+> **ARCHIVED — migration completed 2026-05-08.**
+> Production has been Postgres-only since the cutover; ``adapters/storage/core.py``
+> hard-requires ``DATABASE_URL`` (no SQLite fallback).  Files referenced below
+> (``adapters/storage/dualwrite.py``, ``scripts/export_sqlite_to_postgres.py``)
+> were retired post-cutover and no longer exist.  Kept here as a historical
+> post-mortem.
+
 The biggest scale-out step. SQLite-per-tenant is fine for hundreds of
 tenants but not for 10k+ — concurrent writes serialise on the per-file
 WAL lock, no read replicas, no real backups, no schema-per-tenant

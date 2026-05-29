@@ -2787,3 +2787,61 @@ async def migrate_maintenance_tasks_last_odometer_repair(conn) -> None:
         except Exception:
             pass
         raise
+
+
+@_register("068_alert_history_acknowledged_by")
+async def migrate_alert_history_acknowledged_by(conn) -> None:
+    """Record *who* acknowledged each logical alert on ``alert_history``.
+
+    Why
+    ───
+    Acknowledging an alert cascaded the actor (``acknowledged_by`` +
+    ``acknowledged_at``) onto the per-delivery ``alert_acknowledgments``
+    rows, but the canonical ``alert_history`` row — the one the
+    dashboard reads — only flipped ``status`` to 'cleared'.  So the
+    history row knew it was closed, but not by whom.
+
+    The dashboard now shows acknowledged alerts in the windowed view
+    (not just active ones), and each needs an accountability line:
+
+      * ``acknowledged_by > 0``  → human ack → "Acknowledged by {name}"
+      * ``acknowledged_by`` NULL → self-cleared by a check loop
+                                   (``clear_alert_history``) → "Auto-resolved"
+
+    Resolution to a display name happens at read time via a LEFT JOIN
+    onto ``users.telegram_id`` so renames flow through automatically.
+
+    ``idx_alert_history_window`` backs the new date-windowed query
+    (``WHERE account_id = ? AND first_seen >= ?``) the dashboard uses
+    to scope alerts to the selected range (7d / 30d / 90d).
+    """
+    cols: list[tuple[str, str]] = [
+        ("acknowledged_by",  "BIGINT"),
+        ("acknowledged_at",  "TEXT"),
+    ]
+    try:
+        for col_name, col_def in cols:
+            try:
+                await conn.execute(
+                    f"ALTER TABLE alert_history "
+                    f"ADD COLUMN IF NOT EXISTS {col_name} {col_def}"
+                )
+            except Exception as e:
+                logger.debug(
+                    "alert_history.%s already present: %s", col_name, e,
+                )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_alert_history_window "
+            "ON alert_history(account_id, first_seen DESC)"
+        )
+        await conn.commit()
+        logger.info(
+            "Migration 068: alert_history acknowledged_by/at + window index",
+        )
+    except Exception as e:
+        logger.error("Migration 068 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise

@@ -240,12 +240,35 @@ export interface Alert {
   /** Latest description line — already populated by the server in `message`. */
   last_detail?: string;
   message?: string;
-  acknowledged_by?: number;
-  acknowledged_at?: string;
+  /** Telegram id of the actor who acked; >0 = a human, null/0 = auto-resolved. */
+  acknowledged_by?: number | null;
+  acknowledged_at?: string | null;
+  /** Resolved display name for acknowledged_by (server LEFT JOIN). Blank when auto-resolved. */
+  acknowledged_by_name?: string;
 }
 
 export interface AlertsResponse {
   alerts: Alert[];
+  count: number;
+  page?: number;
+  page_size?: number;
+  total_pages?: number;
+}
+
+export interface VehicleAlertGroup {
+  vehicle_id: string;
+  vehicle_name: string;
+  alerts: Alert[];
+  alert_count: number;
+  critical_count: number;
+  warning_count: number;
+  info_count: number;
+  latest_seen: string;
+}
+
+export interface VehiclesAlertsResponse {
+  vehicles: VehicleAlertGroup[];
+  /** Total number of *vehicles* (not alerts) — drives the per-vehicle pagination footer. */
   count: number;
   page?: number;
   page_size?: number;

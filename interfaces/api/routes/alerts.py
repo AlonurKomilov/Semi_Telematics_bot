@@ -117,16 +117,41 @@ def _shape_history_for_pending_api(row: dict) -> dict:
         "last_detail": row.get("last_detail") or "",
         "message": row.get("last_detail") or "",
         "status": row.get("status") or "active",
+        # Ack attribution for the windowed dashboard view:
+        #   acknowledged_by > 0 + name → "Acknowledged by {name}"
+        #   cleared with no acknowledged_by → "Auto-resolved"
+        "acknowledged_by": row.get("acknowledged_by"),
+        "acknowledged_at": row.get("acknowledged_at"),
+        "acknowledged_by_name": row.get("acknowledged_by_name") or "",
         # Stable canonical key for clients that still cache by alert_key —
         # using the history.id makes it stable across re-fires.
         "alert_key": f"hist:{row.get('id')}",
     }
 
 
+def _norm_ack_state(value: str | None) -> str:
+    """Normalise the dashboard's status chip to the DB's ack_state.
+
+    'all' / 'acknowledged' pass through; anything else (including the
+    default and unknown values) collapses to 'active' so a missing or
+    garbled param can never silently widen the result to acked rows.
+    """
+    v = (value or "").lower()
+    return v if v in ("all", "acknowledged") else "active"
+
+
 @router.get("/pending")
 async def pending_alerts(
     alert_type: str | None = Query(None, description="Filter: fault, health, fuel, events"),
     vehicle: str | None = Query(None, description="Filter by vehicle name (substring)"),
+    severity: str | None = Query(None, description="Filter: critical, warning, info"),
+    # Ack-state chip: 'active' (not acknowledged, default), 'acknowledged'
+    # (human-acked or auto-resolved), or 'all'.
+    ack_state: str | None = Query(None, description="active | acknowledged | all"),
+    # Date window on first_seen — 'active' rows ignore it in practice
+    # (an active alert is current), but the acknowledged/all views use
+    # it so "last 30 days" actually bounds the historical set.
+    days: int | None = Query(None, ge=1, le=90),
     page: int = Query(1, ge=1, description="Page number"),
     # Cap raised 200 → 500 so a fleet with 300+ active logical alerts
     # can render in one round-trip on the dashboard / mini-app.  The
@@ -136,28 +161,34 @@ async def pending_alerts(
     user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Get all currently-active *logical* alerts for this account.
+    """Get logical alerts for this account within the requested window.
 
     Reads from `alert_history` (one row per (account, alert_type, vehicle))
     instead of `alert_acknowledgments` (one row per delivery × subscriber).
     Production data shows alert_acknowledgments has ~33× more rows than
     alert_history because every re-fire to every subscriber adds a row;
     `alert_history` is the SSOT and gives one entry per logical issue.
+
+    ``ack_state`` selects un-acked (default), acknowledged, or all;
+    ``days`` windows the acknowledged/all views on first_seen.
     """
+    state = _norm_ack_state(ack_state)
     # Drivers only see their own trucks; that filter happens in Python
     # because it joins against user→vehicle assignments.  Everyone else
     # gets the much faster SQL-paginated path that lets the DB engine
     # do top-K sort + LIMIT on the (now per-subtype) alert_history.
     is_driver_scope = user.get("_matched_perm") == "can_alerts_own"
     if is_driver_scope:
-        rows = await tenant_db.get_active_alert_history_for_account(user["account_id"])
+        # Fetch the full filtered set (no SQL LIMIT) because the
+        # per-truck access filter runs in Python; drivers have few
+        # trucks so the unbounded fetch stays cheap.
+        rows = await tenant_db.get_active_alert_history_for_account_paged(
+            user["account_id"],
+            alert_type=alert_type, vehicle_substring=vehicle,
+            severity=severity, ack_state=state, days=days,
+        )
         alerts = [_shape_history_for_pending_api(r) for r in rows]
         alerts = await _filter_own(user, alerts)
-        if alert_type:
-            alerts = [a for a in alerts if a.get("alert_type") == alert_type]
-        if vehicle:
-            q = vehicle.lower()
-            alerts = [a for a in alerts if q in (a.get("vehicle_name") or "").lower()]
         paged = paginate(alerts, page, page_size)
         return {"alerts": paged["items"], "count": paged["total"],
                 "page": paged["page"], "page_size": paged["page_size"],
@@ -167,10 +198,12 @@ async def pending_alerts(
     offset = (page - 1) * page_size
     total = await tenant_db.count_active_alert_history_for_account_filtered(
         user["account_id"], alert_type=alert_type, vehicle_substring=vehicle,
+        severity=severity, ack_state=state, days=days,
     )
     rows = await tenant_db.get_active_alert_history_for_account_paged(
         user["account_id"],
         alert_type=alert_type, vehicle_substring=vehicle,
+        severity=severity, ack_state=state, days=days,
         limit=page_size, offset=offset,
     )
     alerts = [_shape_history_for_pending_api(r) for r in rows]
@@ -178,6 +211,63 @@ async def pending_alerts(
     return {"alerts": alerts, "count": total,
             "page": page, "page_size": page_size,
             "total_pages": total_pages}
+
+
+@router.get("/pending/by-vehicle")
+async def pending_alerts_by_vehicle(
+    alert_type: str | None = Query(None, description="Filter: fault, health, fuel, events"),
+    vehicle: str | None = Query(None, description="Filter by vehicle name (substring)"),
+    severity: str | None = Query(None, description="Filter: critical, warning, info"),
+    ack_state: str | None = Query(None, description="active | acknowledged | all"),
+    days: int | None = Query(None, ge=1, le=90),
+    page: int = Query(1, ge=1, description="Page number (over vehicles, not alerts)"),
+    page_size: int = Query(50, ge=1, le=200, description="Vehicles per page (max 200)"),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Per-vehicle aggregated view of alerts within the window.
+
+    Pagination is over **vehicles**, not alert rows — so an account
+    with 2000 alerts spread across 80 trucks paginates as
+    ``Page 1 of 2`` (vehicles), not ``Page 1 of 22`` (alerts).
+    Each vehicle carries its alert list embedded so the front-end's
+    expand affordance stays a pure client toggle.  ``ack_state`` and
+    ``days`` mirror the per-alert /pending endpoint.
+    """
+    state = _norm_ack_state(ack_state)
+    is_driver_scope = user.get("_matched_perm") == "can_alerts_own"
+    offset = (page - 1) * page_size
+    vehicles, total = await tenant_db.get_active_vehicles_with_alerts_paged(
+        user["account_id"],
+        alert_type=alert_type, vehicle_substring=vehicle,
+        severity=severity, ack_state=state, days=days,
+        limit=page_size, offset=offset,
+    )
+    # Reshape embedded alerts for the same dashboard surface as /pending.
+    for v in vehicles:
+        v["alerts"] = [_shape_history_for_pending_api(a) for a in v["alerts"]]
+
+    if is_driver_scope:
+        trucks = await get_user_vehicle_nums(user)
+        if trucks is not None:
+            allowed = {(t or "").lower() for t in trucks}
+            vehicles = [
+                v for v in vehicles
+                if (v.get("vehicle_name") or "").lower() in allowed
+            ]
+            # After driver isolation we no longer know the true vehicle
+            # total without a second query; clamp to what we hand back
+            # so the footer's "of N vehicles" stays consistent.
+            total = min(total, len(vehicles)) if total else len(vehicles)
+
+    total_pages = max(1, (total + page_size - 1) // page_size) if total > 0 else 1
+    return {
+        "vehicles": vehicles,
+        "count": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+    }
 
 
 @router.get("/pending/count")
@@ -212,6 +302,7 @@ async def alert_history(
     alert_type: str | None = Query(None, description="Filter: fault, health, fuel, events"),
     vehicle: str | None = Query(None, description="Filter by vehicle name (substring)"),
     status: str | None = Query(None, description="Filter: acknowledged, expired, active"),
+    severity: str | None = Query(None, description="Filter: critical, warning, info"),
     page: int = Query(1, ge=1, description="Page number"),
     # Cap raised 200 → 500 so a fleet with 300+ active logical alerts
     # can render in one round-trip on the dashboard / mini-app.  The
@@ -235,6 +326,7 @@ async def alert_history(
         alert_type=alert_type,
         vehicle_substring=vehicle,
         status=status,
+        severity=severity,
     )
     alerts = await _filter_own(user, alerts)
     alerts = _dedup_by_alert_key(alerts)

@@ -586,3 +586,159 @@ class TestAlertConstants:
         from capabilities.alerting import _warmup_done
         assert "health" in _warmup_done
         assert "fuel" in _warmup_done
+
+
+# ══════════════════════════════════════════════════════════════════
+# ACK ATTRIBUTION + WINDOWED DASHBOARD QUERY  (migration 068)
+# ══════════════════════════════════════════════════════════════════
+
+class TestAckAttribution:
+    """alert_history.acknowledged_by stamping + the windowed,
+    ack-state-filtered dashboard queries with name resolution."""
+
+    @pytest.mark.asyncio
+    async def test_human_ack_stamps_actor_and_resolves_name(self, seeded_db):
+        db, account, _, owner, _, _ = seeded_db
+        # Give the owner a display name so the LEFT JOIN can resolve it.
+        await db._db.execute(
+            "UPDATE users SET display_name = ? WHERE telegram_id = ?",
+            ("Alice Owner", owner.telegram_id),
+        )
+        await db._db.commit()
+
+        hist = await db.upsert_alert_history(
+            account_id=account.id, alert_type="health",
+            vehicle_id="V1", vehicle_name="Truck 100",
+            last_detail="Low oil pressure", severity="critical",
+        )
+        cleared = await db.acknowledge_alert_history(
+            hist["id"], owner.telegram_id, account_id=account.id,
+        )
+        assert cleared is not None
+
+        # Acknowledged view resolves the human actor's name.
+        rows = await db.get_active_alert_history_for_account_paged(
+            account.id, ack_state="acknowledged",
+        )
+        assert len(rows) == 1
+        assert rows[0]["acknowledged_by"] == owner.telegram_id
+        assert rows[0]["acknowledged_by_name"] == "Alice Owner"
+        assert rows[0]["acknowledged_at"]
+
+    @pytest.mark.asyncio
+    async def test_auto_resolve_leaves_actor_null(self, seeded_db):
+        """clear_alert_history (a check-loop self-clear) leaves
+        acknowledged_by NULL → the UI renders 'Auto-resolved'."""
+        db, account, _, _, _, _ = seeded_db
+        await db.upsert_alert_history(
+            account_id=account.id, alert_type="fault",
+            vehicle_id="V2", vehicle_name="Truck 200",
+            last_detail="SPN 100", severity="warning",
+        )
+        await db.clear_alert_history(account.id, "fault", "V2")
+
+        rows = await db.get_active_alert_history_for_account_paged(
+            account.id, ack_state="acknowledged",
+        )
+        assert len(rows) == 1
+        assert not rows[0].get("acknowledged_by")
+        assert not rows[0].get("acknowledged_by_name")
+
+    @pytest.mark.asyncio
+    async def test_ack_state_active_excludes_cleared(self, seeded_db):
+        db, account, _, owner, _, _ = seeded_db
+        h1 = await db.upsert_alert_history(
+            account_id=account.id, alert_type="health",
+            vehicle_id="V1", vehicle_name="Truck 100",
+            last_detail="x", severity="warning",
+        )
+        await db.upsert_alert_history(
+            account_id=account.id, alert_type="fuel",
+            vehicle_id="V2", vehicle_name="Truck 200",
+            last_detail="y", severity="warning",
+        )
+        await db.acknowledge_alert_history(h1["id"], owner.telegram_id, account_id=account.id)
+
+        active = await db.get_active_alert_history_for_account_paged(
+            account.id, ack_state="active",
+        )
+        acked = await db.get_active_alert_history_for_account_paged(
+            account.id, ack_state="acknowledged",
+        )
+        all_rows = await db.get_active_alert_history_for_account_paged(
+            account.id, ack_state="all",
+        )
+        assert {r["vehicle_id"] for r in active} == {"V2"}
+        assert {r["vehicle_id"] for r in acked} == {"V1"}
+        assert {r["vehicle_id"] for r in all_rows} == {"V1", "V2"}
+
+    @pytest.mark.asyncio
+    async def test_count_matches_ack_state(self, seeded_db):
+        db, account, _, owner, _, _ = seeded_db
+        h1 = await db.upsert_alert_history(
+            account_id=account.id, alert_type="health",
+            vehicle_id="V1", vehicle_name="Truck 100",
+            last_detail="x", severity="warning",
+        )
+        await db.upsert_alert_history(
+            account_id=account.id, alert_type="fuel",
+            vehicle_id="V2", vehicle_name="Truck 200",
+            last_detail="y", severity="warning",
+        )
+        await db.acknowledge_alert_history(h1["id"], owner.telegram_id, account_id=account.id)
+
+        assert await db.count_active_alert_history_for_account_filtered(
+            account.id, ack_state="active") == 1
+        assert await db.count_active_alert_history_for_account_filtered(
+            account.id, ack_state="acknowledged") == 1
+        assert await db.count_active_alert_history_for_account_filtered(
+            account.id, ack_state="all") == 2
+
+    @pytest.mark.asyncio
+    async def test_days_window_filters_on_first_seen(self, seeded_db):
+        """An alert whose first_seen predates the window is excluded."""
+        db, account, _, _, _, _ = seeded_db
+        await db.upsert_alert_history(
+            account_id=account.id, alert_type="health",
+            vehicle_id="V_OLD", vehicle_name="Truck Old",
+            last_detail="x", severity="warning",
+        )
+        # Backdate first_seen 60 days into the past.
+        from datetime import datetime, timedelta, timezone
+        old = (datetime.now(timezone.utc) - timedelta(days=60)).isoformat()
+        await db._db.execute(
+            "UPDATE alert_history SET first_seen = ? WHERE vehicle_id = ?",
+            (old, "V_OLD"),
+        )
+        await db._db.commit()
+
+        in_30 = await db.get_active_alert_history_for_account_paged(
+            account.id, ack_state="all", days=30,
+        )
+        in_90 = await db.get_active_alert_history_for_account_paged(
+            account.id, ack_state="all", days=90,
+        )
+        assert {r["vehicle_id"] for r in in_30} == set()
+        assert {r["vehicle_id"] for r in in_90} == {"V_OLD"}
+
+    @pytest.mark.asyncio
+    async def test_per_vehicle_embeds_ack_name(self, seeded_db):
+        db, account, _, owner, _, _ = seeded_db
+        await db._db.execute(
+            "UPDATE users SET display_name = ? WHERE telegram_id = ?",
+            ("Bob Admin", owner.telegram_id),
+        )
+        await db._db.commit()
+        h1 = await db.upsert_alert_history(
+            account_id=account.id, alert_type="health",
+            vehicle_id="V1", vehicle_name="Truck 100",
+            last_detail="x", severity="critical",
+        )
+        await db.acknowledge_alert_history(h1["id"], owner.telegram_id, account_id=account.id)
+
+        vehicles, total = await db.get_active_vehicles_with_alerts_paged(
+            account.id, ack_state="acknowledged",
+        )
+        assert total == 1
+        assert vehicles[0]["vehicle_id"] == "V1"
+        assert vehicles[0]["alerts"][0]["acknowledged_by_name"] == "Bob Admin"

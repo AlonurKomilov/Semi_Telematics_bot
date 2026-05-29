@@ -26,19 +26,53 @@ class AlertsMixin(_MixinBase):
         self, account_id: int, alert_type: str,
         vehicle_id: str, vehicle_name: str, alert_key: str,
         message_id: int, chat_id: int, sent_to: int,
+        severity: str = "warning",
     ) -> int:
-        """Record a sent CRITICAL/WARNING alert that needs acknowledgment."""
+        """Record a sent CRITICAL/WARNING alert that needs acknowledgment.
+
+        Stamps ``expires_at`` per the severity TTL ladder so the row
+        ages out naturally if nobody acks and the system never
+        auto-resolves (chronic fault, dead driver, etc.):
+
+            critical  →  NULL    (never expires)
+            warning   →  +14 days
+            info      →  +7 days
+
+        The nightly stale-close job and the ``/alerts/pending``
+        dashboard query both honour ``expires_at`` so an aged-out
+        row stops appearing without manual sweep logic.
+        """
         now = self._now()
+        expires_at = self._compute_expires_at(severity, now)
         cur = await self._db.execute(
             """INSERT INTO alert_acknowledgments
                (account_id, alert_type, vehicle_id, vehicle_name, alert_key,
-                message_id, chat_id, sent_to, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                message_id, chat_id, sent_to, created_at, expires_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, alert_type, vehicle_id, vehicle_name, alert_key,
-             message_id, chat_id, sent_to, now),
+             message_id, chat_id, sent_to, now, expires_at),
         )
         await self._db.commit()
         return cur.lastrowid
+
+    @staticmethod
+    def _compute_expires_at(severity: str, created_at_iso: str) -> str | None:
+        """Compute ``expires_at`` for an ack row from severity + created_at.
+
+        Critical alerts return ``None`` — they must be human-acked or
+        system-resolved; never aged out by TTL.  Warning/info get a
+        rolling expiry based on the severity ladder.
+        """
+        from datetime import datetime, timedelta, timezone
+        sev = (severity or "warning").lower()
+        if sev == "critical":
+            return None
+        days = 7 if sev == "info" else 14  # warning is the default
+        try:
+            dt = datetime.fromisoformat(created_at_iso.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            dt = datetime.now(timezone.utc)
+        return (dt + timedelta(days=days)).isoformat()
 
     async def create_info_alert_ack(
         self, account_id: int, alert_type: str,
@@ -209,30 +243,74 @@ class AlertsMixin(_MixinBase):
         return touched
 
     async def acknowledge_alert(self, ack_id: int, user_id: int, account_id: int = 0) -> bool:
-        """Mark an alert as acknowledged — also acks all rows with the same alert_key."""
+        """Mark an alert as acknowledged.
+
+        Previously this cascaded only rows sharing the same
+        ``alert_key``.  Problem: per-recipient DM acks have
+        ``alert_key = "{co}:{vid}:{detail}"`` while the group-post
+        sentinel has ``alert_key = "{co}:{vid}:group"`` — different
+        strings, so the bot-side ack closed only one side and left
+        the other piling up in the table forever (visible on the
+        dashboard as ever-growing "pending" counts even after the
+        operator acked from Telegram).
+
+        New behaviour mirrors ``acknowledge_alert_history`` — cascade
+        across every delivery row for the (account, alert_type,
+        vehicle_id) tuple, regardless of which surface (group vs DM)
+        it lives on, AND clear the matching ``alert_history`` rows
+        so the canonical "is this in flight?" gate also closes.
+        Single ack from anywhere now closes everything related.
+
+        Native Postgres SQL with ``$N`` placeholders — passes through
+        the adapter's translator unchanged (the translator only
+        rewrites SQLite-specific patterns).
+        """
         now = self._now()
-        # Get the alert_key for this alert
+        # Get the ack row's tenant context.
         if account_id:
             cur = await self._db.execute(
-                "SELECT alert_key, account_id FROM alert_acknowledgments WHERE id = ? AND account_id = ?",
+                "SELECT alert_type, vehicle_id, account_id "
+                "FROM alert_acknowledgments "
+                "WHERE id = $1 AND account_id = $2",
                 (ack_id, account_id),
             )
         else:
             cur = await self._db.execute(
-                "SELECT alert_key, account_id FROM alert_acknowledgments WHERE id = ?",
+                "SELECT alert_type, vehicle_id, account_id "
+                "FROM alert_acknowledgments WHERE id = $1",
                 (ack_id,),
             )
         row = await cur.fetchone()
         if not row:
             return False
-        alert_key = row["alert_key"]
+        alert_type = row["alert_type"]
+        vehicle_id = row["vehicle_id"]
         row_account_id = row["account_id"]
-        # Ack all rows with the same alert_key (shared acknowledgment)
+
+        # 1. Cascade-ack every active delivery row for this logical alert —
+        #    closes both the per-recipient DM rows AND the group-post
+        #    sentinel (sent_to=0) in one shot.
         await self._db.execute(
-            "UPDATE alert_acknowledgments SET acknowledged_by = ?, acknowledged_at = ?, "
-            "status = 'acknowledged' "
-            "WHERE alert_key = ? AND account_id = ? AND acknowledged_at IS NULL",
-            (user_id, now, alert_key, row_account_id),
+            "UPDATE alert_acknowledgments "
+            "SET acknowledged_by = $1, acknowledged_at = $2, "
+            "    status = 'acknowledged' "
+            "WHERE account_id = $3 AND alert_type = $4 AND vehicle_id = $5 "
+            "  AND acknowledged_at IS NULL",
+            (user_id, now, row_account_id, alert_type, vehicle_id),
+        )
+
+        # 2. Clear the matching alert_history rows so the resolve flow's
+        #    "is this in flight?" gate also reflects the ack.  Without
+        #    this, the next health/fault check would re-fire receipts.
+        #    Stamp the actor so the dashboard can attribute the ack
+        #    (vs. a NULL acknowledged_by, which reads as "Auto-resolved").
+        await self._db.execute(
+            "UPDATE alert_history "
+            "SET status = 'cleared', last_seen = $1, "
+            "    acknowledged_by = $2, acknowledged_at = $3 "
+            "WHERE account_id = $4 AND alert_type = $5 AND vehicle_id = $6 "
+            "  AND status = 'active'",
+            (now, user_id, now, row_account_id, alert_type, vehicle_id),
         )
         await self._db.commit()
         return True
@@ -260,11 +338,17 @@ class AlertsMixin(_MixinBase):
         if not row:
             return None
         history = dict(row)
-        # 1. Clear the history record (this is what the dashboard reads)
+        # 1. Clear the history record (this is what the dashboard reads).
+        #    Stamp the actor + time so the windowed dashboard view can
+        #    render "Acknowledged by {name}" — a NULL acknowledged_by
+        #    later means the row was auto-resolved by a check loop
+        #    (clear_alert_history), which the UI labels "Auto-resolved".
         await self._db.execute(
-            "UPDATE alert_history SET status = 'cleared', last_seen = ? "
+            "UPDATE alert_history "
+            "SET status = 'cleared', last_seen = ?, "
+            "    acknowledged_by = ?, acknowledged_at = ? "
             "WHERE id = ? AND account_id = ?",
-            (now, history_id, account_id),
+            (now, user_id, now, history_id, account_id),
         )
         # 2. Cascade-ack every active delivery for this (account, type, vehicle)
         await self._db.execute(
@@ -283,6 +367,7 @@ class AlertsMixin(_MixinBase):
         alert_type: str | None = None,
         vehicle_substring: str | None = None,
         status: str | None = None,
+        severity: str | None = None,
     ) -> list[dict]:
         """Get alert acknowledgment history for an account.
 
@@ -301,6 +386,9 @@ class AlertsMixin(_MixinBase):
         if status:
             where.append("status = ?")
             args.append(status)
+        if severity:
+            where.append("severity = ?")
+            args.append(severity)
         rows = await self.read_all(
             f"SELECT * FROM alert_acknowledgments "
             f"WHERE {' AND '.join(where)} "
@@ -527,6 +615,55 @@ class AlertsMixin(_MixinBase):
         row = await cur.fetchone()
         return dict(row) if row else None
 
+    async def get_recent_alerts_for_resolution(
+        self, account_id: int, alert_type: str, vehicle_id: str,
+    ) -> list[dict]:
+        """Return the latest in-flight delivery row per surface for a
+        vehicle — used by the resolve path to thread the receipt as a
+        reply to the ORIGINAL alert.
+
+        "In-flight" means the alert hasn't been system-resolved yet:
+
+          * ``status = 'active'`` — un-acked, still waiting
+          * ``status = 'acknowledged' AND acknowledged_by != 0`` —
+            a real user (or AI sentinel = -1) acked it, but the
+            system hasn't auto-resolved (condition still present)
+
+        Excluded:
+
+          * ``status = 'superseded'`` — old, replaced by a newer alert
+          * ``status = 'acknowledged' AND acknowledged_by = 0`` —
+            the system already auto-resolved this delivery; including
+            it would make a fresh resolve cycle re-fire a "RESOLVED"
+            message for an alert that was cleared long ago.  This
+            scoping caught the regression where one account got 1000+
+            spurious "Health Cleared" messages because every healthy
+            vehicle that had ANY past resolved health alert re-fired
+            a receipt on each health-check tick.
+
+        Per-``sent_to`` dedup picks the most recent row so the group
+        post (sent_to=0) and each recipient DM get exactly one entry.
+        """
+        rows = await self.read_all(
+            "SELECT * FROM alert_acknowledgments "
+            "WHERE account_id = ? AND alert_type = ? AND vehicle_id = ? "
+            "AND ("
+            "    status = 'active' "
+            "    OR (status = 'acknowledged' AND acknowledged_by != 0)"
+            ") "
+            "ORDER BY created_at DESC",
+            (account_id, alert_type, vehicle_id),
+        )
+        seen: set = set()
+        latest: list[dict] = []
+        for r in rows:
+            recipient = r["sent_to"]
+            if recipient in seen:
+                continue
+            seen.add(recipient)
+            latest.append(dict(r))
+        return latest
+
     async def auto_resolve_alerts_by_vehicle(
         self, account_id: int, alert_type: str, vehicle_id: str,
     ) -> list[dict]:
@@ -564,7 +701,6 @@ class AlertsMixin(_MixinBase):
 
         Returns the cleared records (with message_id/chat_id for deletion).
         """
-        now = self._now()
         cur = await self._db.execute(
             "SELECT * FROM alert_history "
             "WHERE account_id = ? AND alert_type = ? "
@@ -620,44 +756,113 @@ class AlertsMixin(_MixinBase):
             # Tuple-row fallback (some adapter paths)
             return int(row[0])
 
+    @staticmethod
+    def _alert_filter_clause(
+        *,
+        alert_type: str | None = None,
+        severity: str | None = None,
+        vehicle_substring: str | None = None,
+        ack_state: str = "active",
+        days: int | None = None,
+        alias: str = "",
+    ) -> tuple[str, list]:
+        """Build the shared WHERE fragment used by the dashboard's
+        paged / count / per-vehicle queries so they stay in lock-step.
+
+        ``ack_state`` maps to the alert_history status:
+            "active"        → status = 'active'   (not acknowledged)
+            "acknowledged"  → status <> 'active'  (human ack or auto-resolve)
+            "all"           → no status filter
+
+        ``days`` windows on ``first_seen`` (when the alert *first*
+        fired) so a 7d view shows alerts that started in the last 7
+        days — a chronic alert that began 60 days ago doesn't leak
+        into the recent window even if it keeps re-firing.
+
+        ``alias`` prefixes columns (e.g. "h") for joined queries; pass
+        "" for single-table queries.  Returns ``(" AND ...", params)``
+        with leading-AND so callers append it after their own first
+        predicate; empty string when nothing applies.
+        """
+        p = f"{alias}." if alias else ""
+        clauses: list[str] = []
+        params: list = []
+        if ack_state == "active":
+            clauses.append(f"{p}status = 'active'")
+        elif ack_state == "acknowledged":
+            clauses.append(f"{p}status <> 'active'")
+        # "all" → no status predicate
+        if days:
+            from datetime import datetime, timedelta, timezone
+            cutoff = (
+                datetime.now(timezone.utc) - timedelta(days=int(days))
+            ).isoformat()
+            clauses.append(f"{p}first_seen >= ?")
+            params.append(cutoff)
+        if alert_type:
+            clauses.append(f"{p}alert_type = ?")
+            params.append(alert_type)
+        if severity:
+            clauses.append(f"{p}severity = ?")
+            params.append(severity)
+        if vehicle_substring:
+            clauses.append(f"LOWER({p}vehicle_name) LIKE ?")
+            params.append(f"%{vehicle_substring.lower()}%")
+        sql = (" AND " + " AND ".join(clauses)) if clauses else ""
+        return sql, params
+
     async def get_active_alert_history_for_account_paged(
         self, account_id: int,
         alert_type: str | None = None,
         vehicle_substring: str | None = None,
+        severity: str | None = None,
+        ack_state: str = "active",
+        days: int | None = None,
         limit: int | None = None,
         offset: int = 0,
     ) -> list[dict]:
-        """Paginated variant of ``get_active_alert_history_for_account``.
+        """Paginated logical-alert list for the dashboard.
 
-        Pushes optional alert_type / vehicle filters and LIMIT/OFFSET into
-        SQL so the API layer no longer has to fetch the entire account's
-        active set just to slice 100 rows.  After the per-subtype event
-        dedup, fleets routinely accumulate 1000+ active rows; the prior
-        full-fetch path was the dominant cost on the dashboard load.
+        Pushes optional alert_type / severity / vehicle / ack-state /
+        date-window filters and LIMIT/OFFSET into SQL so the API layer
+        never fetches the whole account just to slice one page.  After
+        the per-subtype event dedup, fleets routinely accumulate 1000+
+        rows, so server-side pagination is the difference between a
+        snappy and a multi-second dashboard load.
 
-        ORDER BY uses an inline CASE on severity (the existing index
-        only knows the text value) — with LIMIT applied, the engine can
-        do a top-K sort instead of a full sort, so this is a real win.
+        LEFT JOINs ``users`` to resolve ``acknowledged_by`` (a
+        telegram_id) into ``acknowledged_by_name`` at read time — a
+        rename flows through without a backfill.  A NULL name on a
+        cleared row means it was auto-resolved by a check loop, which
+        the UI labels "Auto-resolved" rather than attributing a human.
+
+        ORDER BY uses an inline CASE on severity — with LIMIT applied,
+        the engine can do a top-K sort instead of a full sort.
         """
         sql = (
-            "SELECT *, "
-            "  CASE severity "
+            "SELECT h.*, "
+            "  u.display_name AS acknowledged_by_name, "
+            "  CASE h.severity "
             "    WHEN 'critical' THEN 0 "
             "    WHEN 'warning'  THEN 1 "
             "    WHEN 'info'     THEN 2 "
             "    ELSE 3 "
             "  END AS _sev_rank "
-            "FROM alert_history "
-            "WHERE account_id = ? AND status = 'active' "
+            "FROM alert_history h "
+            "LEFT JOIN users u "
+            "       ON u.telegram_id = h.acknowledged_by "
+            "      AND u.account_id = h.account_id "
+            "WHERE h.account_id = ? "
         )
         params: list = [account_id]
-        if alert_type:
-            sql += "AND alert_type = ? "
-            params.append(alert_type)
-        if vehicle_substring:
-            sql += "AND LOWER(vehicle_name) LIKE ? "
-            params.append(f"%{vehicle_substring.lower()}%")
-        sql += "ORDER BY _sev_rank ASC, last_seen DESC "
+        frag, fp = self._alert_filter_clause(
+            alert_type=alert_type, severity=severity,
+            vehicle_substring=vehicle_substring,
+            ack_state=ack_state, days=days, alias="h",
+        )
+        sql += frag + " "
+        params += fp
+        sql += "ORDER BY _sev_rank ASC, h.last_seen DESC "
         if limit is not None:
             sql += "LIMIT ? OFFSET ? "
             params.extend([int(limit), int(offset)])
@@ -669,23 +874,28 @@ class AlertsMixin(_MixinBase):
         self, account_id: int,
         alert_type: str | None = None,
         vehicle_substring: str | None = None,
+        severity: str | None = None,
+        ack_state: str = "active",
+        days: int | None = None,
     ) -> int:
         """Filtered COUNT(*) matching the same WHERE as the paged query.
 
         Used by the API to compute the total page count without a
-        second full fetch.
+        second full fetch.  Mirrors every filter the paged query
+        applies so the totals stay consistent with what's displayed.
         """
         sql = (
             "SELECT COUNT(*) AS c FROM alert_history "
-            "WHERE account_id = ? AND status = 'active' "
+            "WHERE account_id = ? "
         )
         params: list = [account_id]
-        if alert_type:
-            sql += "AND alert_type = ? "
-            params.append(alert_type)
-        if vehicle_substring:
-            sql += "AND LOWER(vehicle_name) LIKE ? "
-            params.append(f"%{vehicle_substring.lower()}%")
+        frag, fp = self._alert_filter_clause(
+            alert_type=alert_type, severity=severity,
+            vehicle_substring=vehicle_substring,
+            ack_state=ack_state, days=days,
+        )
+        sql += frag
+        params += fp
         cur = await self._db.execute(sql, tuple(params))
         row = await cur.fetchone()
         if row is None:
@@ -694,6 +904,119 @@ class AlertsMixin(_MixinBase):
             return int(row["c"])
         except (KeyError, TypeError):
             return int(row[0])
+
+    async def get_active_vehicles_with_alerts_paged(
+        self, account_id: int,
+        *,
+        alert_type: str | None = None,
+        vehicle_substring: str | None = None,
+        severity: str | None = None,
+        ack_state: str = "active",
+        days: int | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[dict], int]:
+        """Return a page of *vehicles* (not alerts), each with its
+        alerts embedded — backs the dashboard's per-vehicle view.
+
+        Pagination counts what the user actually sees (vehicle cards)
+        instead of underlying alert rows: ``Page 1 of 22`` for 2164
+        alerts becomes ``Page 1 of 2`` for 80 vehicles.  All filters
+        (type / severity / vehicle / ack-state / date-window) mirror
+        the per-alert query via the shared ``_alert_filter_clause`` so
+        the two views agree on what's in scope.
+
+        Returns ``(vehicles, total_vehicle_count)``.  Each vehicle
+        dict carries vehicle_id, vehicle_name, an embedded ``alerts``
+        list (with ``acknowledged_by_name`` resolved), per-severity
+        counts, and latest_seen.
+        """
+        # ── 1. Filter fragment shared by all three queries ──────────
+        frag, fargs = self._alert_filter_clause(
+            alert_type=alert_type, severity=severity,
+            vehicle_substring=vehicle_substring,
+            ack_state=ack_state, days=days,
+        )
+        where_sql = "account_id = ?" + frag
+        args: list[Any] = [account_id, *fargs]
+
+        # ── 2. Page of vehicles with their aggregates ───────────────
+        sql_page = (
+            f"SELECT vehicle_id, "
+            f"       MAX(vehicle_name) AS vehicle_name, "
+            f"       COUNT(*) AS alert_count, "
+            f"       SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) AS critical_count, "
+            f"       SUM(CASE WHEN severity = 'warning'  THEN 1 ELSE 0 END) AS warning_count, "
+            f"       SUM(CASE WHEN severity = 'info'     THEN 1 ELSE 0 END) AS info_count, "
+            f"       MIN(CASE severity "
+            f"               WHEN 'critical' THEN 0 "
+            f"               WHEN 'warning'  THEN 1 "
+            f"               WHEN 'info'     THEN 2 "
+            f"               ELSE 3 END) AS sev_rank, "
+            f"       MAX(last_seen) AS latest_seen "
+            f"FROM alert_history "
+            f"WHERE {where_sql} "
+            f"GROUP BY vehicle_id "
+            f"ORDER BY sev_rank ASC, latest_seen DESC "
+            f"LIMIT ? OFFSET ?"
+        )
+        cur = await self._db.execute(sql_page, (*args, int(limit), int(offset)))
+        vehicle_rows = [dict(r) for r in await cur.fetchall()]
+
+        # ── 3. Count distinct vehicles for pagination total ─────────
+        sql_count = (
+            f"SELECT COUNT(*) AS c FROM ("
+            f"  SELECT 1 FROM alert_history WHERE {where_sql} GROUP BY vehicle_id"
+            f") AS sub"
+        )
+        cur = await self._db.execute(sql_count, tuple(args))
+        row = await cur.fetchone()
+        total = 0
+        if row is not None:
+            try:
+                total = int(row["c"])
+            except (KeyError, TypeError):
+                total = int(row[0])
+
+        # ── 4. Fetch alerts for the visible vehicles only ───────────
+        if not vehicle_rows:
+            return [], total
+        vehicle_ids = [v["vehicle_id"] for v in vehicle_rows]
+        placeholders = ",".join(["?"] * len(vehicle_ids))
+        h_frag, h_fargs = self._alert_filter_clause(
+            alert_type=alert_type, severity=severity,
+            vehicle_substring=vehicle_substring,
+            ack_state=ack_state, days=days, alias="h",
+        )
+        sql_alerts = (
+            f"SELECT h.*, "
+            f"  u.display_name AS acknowledged_by_name, "
+            f"  CASE h.severity "
+            f"    WHEN 'critical' THEN 0 "
+            f"    WHEN 'warning'  THEN 1 "
+            f"    WHEN 'info'     THEN 2 "
+            f"    ELSE 3 "
+            f"  END AS _sev_rank "
+            f"FROM alert_history h "
+            f"LEFT JOIN users u "
+            f"       ON u.telegram_id = h.acknowledged_by "
+            f"      AND u.account_id = h.account_id "
+            f"WHERE h.account_id = ?{h_frag} "
+            f"  AND h.vehicle_id IN ({placeholders}) "
+            f"ORDER BY _sev_rank ASC, h.last_seen DESC"
+        )
+        cur = await self._db.execute(
+            sql_alerts, (account_id, *h_fargs, *vehicle_ids),
+        )
+        alerts_rows = [dict(r) for r in await cur.fetchall()]
+
+        by_vid: dict[str, list[dict]] = {}
+        for a in alerts_rows:
+            by_vid.setdefault(a["vehicle_id"], []).append(a)
+        for v in vehicle_rows:
+            v["alerts"] = by_vid.get(v["vehicle_id"], [])
+
+        return vehicle_rows, total
 
     async def get_active_alert_history_for_vehicle(
         self, account_id: int, vehicle_id: str,
@@ -871,6 +1194,105 @@ class AlertsMixin(_MixinBase):
         )
         await self._db.commit()
         return cur.rowcount or 0
+
+    # ── Chronic-pattern suppression (Fix C) ────────────────────────
+
+    async def mute_chronic_pattern(
+        self,
+        account_id: int,
+        alert_type: str,
+        vehicle_id: str,
+        *,
+        hours: int = 24 * 7,
+        muted_by: int | None = None,
+        reason: str = "",
+    ) -> dict:
+        """Mute every future fire of ``(alert_type, vehicle_id)`` for
+        ``hours`` hours.  Used for chronic-known issues — operator
+        already knows about the broken sensor, doesn't want repeats
+        flooding the chat.
+
+        UPSERT shape: re-muting the same pattern UPDATEs the existing
+        row's ``muted_until`` rather than failing on the unique
+        constraint.  Returns the resulting row.
+
+        Native Postgres SQL with ``$N`` placeholders.
+        """
+        from datetime import datetime, timedelta, timezone
+        now_iso = self._now()
+        until_iso = (
+            datetime.now(timezone.utc) + timedelta(hours=hours)
+        ).isoformat()
+        await self._db.execute(
+            "INSERT INTO chronic_alert_suppressions "
+            "(account_id, alert_type, vehicle_id, muted_by, muted_until, "
+            " reason, created_at) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7) "
+            "ON CONFLICT (account_id, alert_type, vehicle_id) "
+            "DO UPDATE SET muted_until = $5, "
+            "              muted_by    = $4, "
+            "              reason      = $6",
+            (account_id, alert_type, vehicle_id, muted_by, until_iso,
+             reason, now_iso),
+        )
+        await self._db.commit()
+        return {
+            "account_id": account_id,
+            "alert_type":  alert_type,
+            "vehicle_id":  vehicle_id,
+            "muted_until": until_iso,
+            "hours":       hours,
+        }
+
+    async def is_chronic_pattern_muted(
+        self,
+        account_id: int,
+        alert_type: str,
+        vehicle_id: str,
+    ) -> bool:
+        """Hot-path check called by ``send_alert`` before every fire.
+
+        Returns True when a non-expired mute row exists for the
+        ``(account, alert_type, vehicle_id)`` triple.  Backed by the
+        partial index from migration 064 so the lookup is microseconds.
+        """
+        cur = await self._db.execute(
+            "SELECT 1 FROM chronic_alert_suppressions "
+            "WHERE account_id = $1 AND alert_type = $2 AND vehicle_id = $3 "
+            "  AND muted_until > $4::text "
+            "LIMIT 1",
+            (account_id, alert_type, vehicle_id, self._now()),
+        )
+        return (await cur.fetchone()) is not None
+
+    async def unmute_chronic_pattern(
+        self,
+        account_id: int,
+        alert_type: str,
+        vehicle_id: str,
+    ) -> int:
+        """Lift a chronic-pattern mute early.  Returns rows deleted (0/1)."""
+        cur = await self._db.execute(
+            "DELETE FROM chronic_alert_suppressions "
+            "WHERE account_id = $1 AND alert_type = $2 AND vehicle_id = $3",
+            (account_id, alert_type, vehicle_id),
+        )
+        await self._db.commit()
+        return cur.rowcount or 0
+
+    async def list_active_chronic_mutes(
+        self, account_id: int, *, limit: int = 500,
+    ) -> list[dict]:
+        """Return active chronic-pattern mutes for an account — used by
+        the dashboard to show a "muted patterns" badge so operators can
+        see what's silenced and lift mutes if needed."""
+        rows = await self.read_all(
+            "SELECT * FROM chronic_alert_suppressions "
+            "WHERE account_id = $1 AND muted_until > $2::text "
+            "ORDER BY muted_until ASC LIMIT $3",
+            (account_id, self._now(), int(limit)),
+        )
+        return [dict(r) for r in rows]
 
     # ── Re-escalation tracking ─────────────────────────────────────
 
