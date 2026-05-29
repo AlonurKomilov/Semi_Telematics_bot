@@ -14,8 +14,14 @@ const STATUS_CLASSES: Record<string, string> = {
 
 export default function StatusBadge({ status }: { status: string }) {
   const classes = STATUS_CLASSES[status] ?? 'bg-muted text-muted-foreground border-border/50';
+  // The base Badge component hard-codes ``rounded-4xl`` (fixed
+  // 32px) which ignores the user's Corners theme setting (Sharp /
+  // Rounded / Pill).  Overriding to ``rounded-md`` here maps the
+  // badge corners onto the ``--radius`` CSS variable so the Status
+  // badge matches the rest of the themed surface — sharp goes sharp,
+  // pill goes pill.
   return (
-    <Badge variant="outline" className={cn('text-xs font-medium', classes)}>
+    <Badge variant="outline" className={cn('text-xs font-medium rounded-md', classes)}>
       {status}
     </Badge>
   );

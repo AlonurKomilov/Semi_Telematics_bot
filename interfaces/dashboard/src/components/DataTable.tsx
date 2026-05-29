@@ -29,7 +29,11 @@ interface DataTableProps {
   columns: AnyColumn[];
   data: Record<string, unknown>[];
   onRowClick?: (row: Record<string, unknown>) => void;
-  searchKey?: string;
+  /** Field(s) to search.  String matches the legacy single-field
+   *  behavior; an array searches across all listed fields with OR
+   *  semantics so "turbo" in description still matches a row whose
+   *  vehicle_name doesn't contain it. */
+  searchKey?: string | string[];
   /**
  * when set, the table body scrolls within a fixed-height
    * container and the header stays pinned to the top.  Useful for
@@ -60,37 +64,67 @@ export default function DataTable({
 
   const tableColumns = useMemo<ColumnDef<Record<string, unknown>>[]>(
     () =>
-      columns.map((col) => ({
-        id: col.key,
-        accessorKey: col.key,
-        header: col.label,
-        enableSorting: col.sortable !== false,
-        cell: ({ getValue, row }) =>
-          col.render
-            ? col.render(getValue(), row.original)
-            : (getValue() as React.ReactNode) ?? '—',
-      })),
+      columns.map((col) => {
+        const def: ColumnDef<Record<string, unknown>> = {
+          id: col.key,
+          accessorKey: col.key,
+          header: col.label,
+          enableSorting: col.sortable !== false,
+          cell: ({ getValue, row }) =>
+            col.render
+              ? col.render(getValue(), row.original)
+              : (getValue() as React.ReactNode) ?? '—',
+        };
+        // Optional custom sort key — used for enum columns like
+        // priority where alphabetical (critical < high < low < medium)
+        // is wrong and a rank-based comparator (critical > high >
+        // medium > low) is what operators expect.
+        if (col.sortKey) {
+          def.sortingFn = (a, b) => {
+            const av = col.sortKey!(a.original);
+            const bv = col.sortKey!(b.original);
+            if (typeof av === 'number' && typeof bv === 'number') {
+              return av - bv;
+            }
+            return String(av).localeCompare(String(bv));
+          };
+        }
+        return def;
+      }),
     [columns],
   );
+
+  const searchKeys = useMemo(() => {
+    if (!searchKey) return [];
+    return Array.isArray(searchKey) ? searchKey : [searchKey];
+  }, [searchKey]);
+  const hasSearch = searchKeys.length > 0;
 
   const table = useReactTable({
     data,
     columns: tableColumns,
     state: {
       sorting,
-      globalFilter: searchKey ? globalFilter : undefined,
+      globalFilter: hasSearch ? globalFilter : undefined,
     },
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    globalFilterFn: searchKey
+    // OR-across-fields search: a hit in any of ``searchKeys`` keeps
+    // the row.  Lowercase-substring match keeps the API forgiving for
+    // free-text fields (descriptions, vehicle names with mixed case).
+    globalFilterFn: hasSearch
       ? (row, _colId, filterValue) => {
-          const val = row.original[searchKey];
-          return val
-            ? String(val).toLowerCase().includes(String(filterValue).toLowerCase())
-            : false;
+          const needle = String(filterValue).toLowerCase();
+          if (!needle) return true;
+          return searchKeys.some(k => {
+            const v = row.original[k];
+            return v
+              ? String(v).toLowerCase().includes(needle)
+              : false;
+          });
         }
       : undefined,
   });
@@ -102,7 +136,7 @@ export default function DataTable({
   return (
     <div>
       <div className="flex items-center justify-between mb-3 gap-3">
-        {searchKey ? (
+        {hasSearch ? (
           <Input
             placeholder={searchPlaceholder ?? 'Search...'}
             value={globalFilter}

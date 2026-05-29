@@ -673,6 +673,55 @@ def maint_miles_kb() -> InlineKeyboardMarkup:
     ])
 
 
+def maint_hours_kb() -> InlineKeyboardMarkup:
+    """Engine-hours step — skip or enter hours.
+
+    Parallel to ``maint_miles_kb``; engine-hours are independent of
+    odometer (heavy-idle PTO trucks accumulate hours without miles).
+    """
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⏭ No Hours Limit", callback_data="maint_skip_hours")],
+        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_maintenance")],
+    ])
+
+
+def maint_priority_kb() -> InlineKeyboardMarkup:
+    """Priority quick-pick — 4 buttons matching the dashboard enum."""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🟢 Low", callback_data="maint_prio_low"),
+            InlineKeyboardButton("🔵 Medium", callback_data="maint_prio_medium"),
+        ],
+        [
+            InlineKeyboardButton("🟠 High", callback_data="maint_prio_high"),
+            InlineKeyboardButton("🔴 Critical", callback_data="maint_prio_critical"),
+        ],
+        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_maintenance")],
+    ])
+
+
+def maint_recur_kb() -> InlineKeyboardMarkup:
+    """Recurrence picker — 4 buttons for none / by-days / by-miles / by-hours.
+
+    When the user taps a dimension other than 'none', the wizard prompts
+    for the interval value via free-text input (handled in
+    ``handle_maintenance_text``).
+    """
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("⏭ No Recurrence", callback_data="maint_recur_none"),
+        ],
+        [
+            InlineKeyboardButton("📅 Every N Days", callback_data="maint_recur_days"),
+            InlineKeyboardButton("🛣 Every N Miles", callback_data="maint_recur_miles"),
+        ],
+        [
+            InlineKeyboardButton("⏱ Every N Hours", callback_data="maint_recur_hours"),
+        ],
+        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_maintenance")],
+    ])
+
+
 def maint_desc_kb() -> InlineKeyboardMarkup:
     """Description step — skip button."""
     return InlineKeyboardMarkup([
@@ -697,14 +746,24 @@ def maint_task_detail_kb(task_id: int, status: str) -> InlineKeyboardMarkup:
 
 
 def maint_edit_kb(task_id: int) -> InlineKeyboardMarkup:
-    """Edit menu — pick which field to change."""
+    """Edit menu — pick which field to change.
+
+    Priority + engine-hours rows added for parity with the dashboard's
+    edit drawer (Tier-A maintenance audit, 2026-05-28).  Without them
+    a driver couldn't fix a wrong-priority or stale hours-threshold
+    without calling dispatch.
+    """
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("📋 Type", callback_data=f"maint_etype_{task_id}"),
-            InlineKeyboardButton("📅 Due Date", callback_data=f"maint_edate_{task_id}"),
+            InlineKeyboardButton("⚡ Priority", callback_data=f"maint_eprio_{task_id}"),
         ],
         [
+            InlineKeyboardButton("📅 Due Date", callback_data=f"maint_edate_{task_id}"),
             InlineKeyboardButton("🛣 Due Miles", callback_data=f"maint_emiles_{task_id}"),
+        ],
+        [
+            InlineKeyboardButton("⏱ Due Hours", callback_data=f"maint_ehours_{task_id}"),
             InlineKeyboardButton("📝 Description", callback_data=f"maint_edesc_{task_id}"),
         ],
         [InlineKeyboardButton("◀️ Back", callback_data=f"maint_detail_{task_id}")],

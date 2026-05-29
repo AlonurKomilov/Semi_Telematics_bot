@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import type { MaintenanceTask } from '../../types';
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -16,6 +16,15 @@ function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear()
     && a.getMonth() === b.getMonth()
     && a.getDate() === b.getDate();
+}
+
+// Parse a due_date that may be a bare YYYY-MM-DD or a full ISO string.
+// Bare YYYY-MM-DD lands on UTC midnight when fed straight to Date(),
+// which renders one calendar day early in negative timezones (US, etc).
+// Pinning to local midnight keeps the calendar slot accurate.
+function parseDueDate(value: string): Date {
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value + 'T00:00:00' : value;
+  return new Date(iso);
 }
 
 // Build the 6×7 grid (always 42 cells so calendar height is stable).
@@ -48,12 +57,30 @@ export function CalendarMonth({
   onTaskClick: (t: MaintenanceTask) => void;
 }) {
   const [viewDate, setViewDate] = useState<Date>(() => new Date());
+  // Day-detail popover state — when a day has more than 3 tasks, the
+  // operator clicks "+ N more" and the full list opens here.  ``null``
+  // when closed; ``{ date, tasks }`` while open.
+  const [dayDetail, setDayDetail] = useState<{
+    date: Date;
+    tasks: MaintenanceTask[];
+  } | null>(null);
+
+  // Escape closes the day-detail popover.  Matches the Tasks page
+  // pattern so the calendar feels consistent with the rest of the SPA.
+  useEffect(() => {
+    if (!dayDetail) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDayDetail(null);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [dayDetail]);
 
   const tasksByDay = useMemo(() => {
     const m = new Map<string, MaintenanceTask[]>();
     for (const t of tasks) {
       if (!t.due_date) continue;
-      const d = new Date(t.due_date);
+      const d = parseDueDate(t.due_date);
       if (Number.isNaN(d.getTime())) continue;
       const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
       const existing = m.get(key);
@@ -61,6 +88,29 @@ export function CalendarMonth({
       else m.set(key, [t]);
     }
     return m;
+  }, [tasks]);
+
+  // Mileage-only and engine-hours-only tasks — these have no calendar
+  // slot but the operator still needs to see them when planning the
+  // month.  We surface them in a footer panel below the grid with a
+  // "remaining" counter computed from the warehouse-merged
+  // last_odometer / last_engine_hours.  Honest about not projecting a
+  // date: that would need an odometer time-series the warehouse
+  // doesn't store today.  Sorted so the closest-to-due bubble up.
+  const noDateTasks = useMemo(() => {
+    const items = tasks.filter(t => !t.due_date
+      && (t.due_miles != null || t.due_engine_hours != null));
+    const remaining = (t: MaintenanceTask): number => {
+      if (t.due_miles != null && t.last_odometer != null) {
+        return t.due_miles - t.last_odometer;
+      }
+      if (t.due_engine_hours != null && t.last_engine_hours != null) {
+        return t.due_engine_hours - t.last_engine_hours;
+      }
+      // No telemetry — sink to the bottom of the list.
+      return Number.POSITIVE_INFINITY;
+    };
+    return [...items].sort((a, b) => remaining(a) - remaining(b));
   }, [tasks]);
 
   const cells = useMemo(() => buildMonthCells(viewDate), [viewDate]);
@@ -149,7 +199,7 @@ export function CalendarMonth({
                 {overflow > 0 && (
                   <button
                     type="button"
-                    onClick={() => onTaskClick(dayTasks[3])}
+                    onClick={() => setDayDetail({ date: cell, tasks: dayTasks })}
                     className="text-[10px] text-muted-foreground hover:text-foreground text-left px-1.5"
                   >
                     + {overflow} more
@@ -160,6 +210,119 @@ export function CalendarMonth({
           );
         })}
       </div>
+
+      {/* No-date tasks footer — mileage-only / hours-only tasks that
+          have no calendar position but still need to be visible in
+          the planning view.  Renders only when there are any, so the
+          footer doesn't take up space for date-only fleets. */}
+      {noDateTasks.length > 0 && (
+        <div className="border-t border-border bg-muted/20 px-4 py-3">
+          <p className="text-xs font-medium text-muted-foreground mb-2">
+            Mileage / hours-only tasks ({noDateTasks.length}) — no calendar date
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {noDateTasks.slice(0, 12).map(task => {
+              const dotCls = PRIORITY_DOT[task.priority || 'medium'] ?? PRIORITY_DOT.medium;
+              const remaining = task.due_miles != null && task.last_odometer != null
+                ? `${Math.max(0, Math.round(task.due_miles - task.last_odometer)).toLocaleString()} mi to go`
+                : task.due_engine_hours != null && task.last_engine_hours != null
+                  ? `${Math.max(0, Math.round(task.due_engine_hours - task.last_engine_hours)).toLocaleString()} h to go`
+                  : task.due_miles != null
+                    ? `due ${Number(task.due_miles).toLocaleString()} mi`
+                    : `due ${Number(task.due_engine_hours).toLocaleString()} h`;
+              return (
+                <button
+                  key={task.id}
+                  type="button"
+                  onClick={() => onTaskClick(task)}
+                  className="inline-flex items-center gap-1.5 px-2 py-1 text-[11px] rounded bg-card hover:bg-muted border border-border"
+                  title={`#${task.vehicle_name} · ${task.task_type} · ${task.description || 'no description'}`}
+                >
+                  <span aria-hidden className={`w-1.5 h-1.5 rounded-full ${dotCls}`} />
+                  <span className="font-mono">{task.vehicle_name}</span>
+                  <span className="text-muted-foreground">·</span>
+                  <span className="text-muted-foreground">{remaining}</span>
+                </button>
+              );
+            })}
+            {noDateTasks.length > 12 && (
+              <span className="self-center text-[11px] text-muted-foreground">
+                + {noDateTasks.length - 12} more (visible in list view)
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {dayDetail && (
+        <div
+          className="fixed inset-0 bg-black/60 z-50 flex justify-center items-start pt-20"
+          onClick={() => setDayDetail(null)}
+        >
+          <div
+            className="w-[480px] max-h-[70vh] bg-card border border-border rounded-xl p-5 shadow-2xl overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <h3 className="text-base font-semibold">
+                  {dayDetail.date.toLocaleDateString(undefined, {
+                    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+                  })}
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {dayDetail.tasks.length} task{dayDetail.tasks.length === 1 ? '' : 's'} due
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDayDetail(null)}
+                aria-label="Close"
+                className="text-muted-foreground hover:text-foreground p-1"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <ul className="space-y-2">
+              {dayDetail.tasks.map(task => {
+                const dotCls = PRIORITY_DOT[task.priority || 'medium'] ?? PRIORITY_DOT.medium;
+                return (
+                  <li key={task.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDayDetail(null);
+                        onTaskClick(task);
+                      }}
+                      className="w-full text-left p-2.5 rounded-lg bg-muted/40 hover:bg-muted border border-border/60 transition flex items-start gap-2"
+                    >
+                      <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${dotCls}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium flex items-center gap-2">
+                          <span className="font-mono">#{task.vehicle_name}</span>
+                          <span className="text-muted-foreground capitalize">
+                            {(task.task_type || '').replace(/_/g, ' ')}
+                          </span>
+                          {task.status === 'overdue' && (
+                            <span className="text-[10px] uppercase tracking-wide bg-red-500/15 text-red-700 dark:text-red-400 px-1.5 py-0.5 rounded">
+                              Overdue
+                            </span>
+                          )}
+                        </div>
+                        {task.description && (
+                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                            {task.description}
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

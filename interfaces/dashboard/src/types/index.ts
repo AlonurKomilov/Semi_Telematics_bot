@@ -360,6 +360,11 @@ export interface Column<T = Record<string, unknown>> {
   label: string;
   sortable?: boolean;
   render?: (value: unknown, row: T) => React.ReactNode;
+  /** Custom comparable value for sorting.  When set, the table sorts
+   *  by ``sortKey(row)`` instead of the raw cell value.  Use for
+   *  enum-style columns (priority, status) where alphabetical order
+   *  doesn't match operator expectations. */
+  sortKey?: (row: T) => number | string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -999,11 +1004,165 @@ export interface MaintenanceTask {
    *  history timeline ordering. */
   completed_at: string | null;
   updated_at: string;
+  /** ISO 8601 timestamp.  When set and in the future, the overdue and
+   *  pre-overdue schedulers skip this task — the operator has acknowledged
+   *  it ("parts on order", "shop visit booked") and snoozed the
+   *  repeating red flag.  Cleared automatically when it falls past now. */
+  snoozed_until?: string | null;
+  /** Lightweight single attachment — the latest upload replaces the
+   *  previous one.  Work Orders own the multi-file timeline for shop
+   *  visits; this is for driver-side roadside proof (DEF receipt,
+   *  in-house oil-change photo). */
+  attachment_name?: string | null;
+  attachment_content_type?: string | null;
+  /** Spend captured on completion for tasks closed outside the formal
+   *  Work Order flow.  Integer cents — UI converts to dollars on the
+   *  way in/out so no float drift on aggregate totals. */
+  cost_cents?: number | null;
+  vendor_name?: string | null;
+}
+
+export interface MaintenanceTemplate {
+  id: number;
+  account_id: number;
+  name: string;
+  task_type: string;
+  description: string;
+  priority: string;
+  /** Relative offsets — applied to "now" / current odometer / current
+   *  engine-hours when the template instantiates a real task. */
+  due_in_days: number | null;
+  due_in_miles: number | null;
+  due_in_hours: number | null;
+  recur_interval_days: number | null;
+  recur_interval_miles: number | null;
+  recur_interval_engine_hours: number | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface MaintenanceTasksResponse {
   tasks: MaintenanceTask[];
   count: number;
+}
+
+// ── PTI (Pre-Trip Inspection) ───────────────────────────────────────
+
+export interface PTIInspectionItem {
+  id: number;
+  inspection_id: number;
+  item_key: string;
+  label: string;
+  category: string;
+  /** 'pending' | 'ok' | 'minor' | 'major' | 'oos' | 'na' */
+  status: string;
+  notes: string | null;
+  requires_media: number;
+  required: number;
+  sort_order: number;
+  completed_at: string | null;
+  /** Snapshotted from the template at spawn. */
+  item_type?: string;
+  reference_image_url?: string | null;
+}
+
+export interface PTIInspectionMedia {
+  id: number;
+  inspection_id: number;
+  item_id: number | null;
+  media_type: 'photo' | 'video' | 'document';
+  file_path: string;
+  file_name: string;
+  file_size: number;
+  content_type: string;
+  uploaded_by: number;
+  uploaded_at: string;
+  /** ISO timestamp set when the driver baked annotations into this blob. */
+  annotated_at?: string | null;
+  /** Per-photo AI vision review (null = never checked). */
+  ai_review_status?: string | null;   // 'completed' | 'error'
+  ai_review_result?: string | null;    // JSON: {verdict, confidence, summary, model}
+  ai_reviewed_at?: string | null;
+  /** Hybrid-storage state: 'local' | 'syncing' | 'remote' | 'stuck'.
+   *  Legacy rows default to 'remote'.  Drives the small storage badge
+   *  on the gallery thumbnail (💾 / 🔄 / ☁ / ⚠). */
+  storage_state?: string | null;
+}
+
+export interface PTIInspectionRow {
+  id: number;
+  account_id: number;
+  user_id: number;
+  vehicle_name: string;
+  trailer_name: string | null;
+  inspection_type: string;
+  status: 'scheduled' | 'in_progress' | 'submitted' | 'reviewed' | 'revision_required';
+  review_status: 'approved' | 'needs_service' | 'rejected' | 'revision_required' | null;
+  review_notes: string | null;
+  scheduled_for: string | null;
+  due_by: string | null;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  reviewed_by: number | null;
+  defects_count: number;
+  has_oos_defect: number;
+  template_id: number;
+  template_version: number;
+  created_at: string;
+  inspected_at: string;
+  /** Base64 PNG data URL — present once captured. */
+  driver_signature?: string | null;
+  driver_signed_at?: string | null;
+  reviewer_signature?: string | null;
+  reviewer_signed_at?: string | null;
+  /** Where the inspection happened (vehicle telematics or device GPS). */
+  location_lat?: number | null;
+  location_lon?: number | null;
+  location_source?: string | null;   // 'vehicle' | 'device'
+  location_at?: string | null;
+}
+
+export interface PTIInspectionDetail extends PTIInspectionRow {
+  items: PTIInspectionItem[];
+  media: PTIInspectionMedia[];
+  /** Resolved name of the user who reviewed (server joins users). */
+  reviewed_by_name?: string;
+  /** Resolved display name of the driver who submitted. */
+  driver_name?: string;
+}
+
+export interface PTIInspectionsResponse {
+  items: PTIInspectionRow[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface PTITemplateItem {
+  id: number;
+  template_id: number;
+  item_key: string;
+  label: string;
+  category: string;
+  requires_media: number;
+  required: number;
+  sort_order: number;
+  /** 'check' (status buttons) | 'photo' (guided photo) | 'document' (upload). */
+  item_type?: string;
+  /** ObjectStore filename of the reference example photo (null = none). */
+  reference_image_url?: string | null;
+}
+
+export interface PTITemplate {
+  id: number;
+  account_id: number;
+  vehicle_type: 'truck' | 'trailer';
+  inspection_type: string;
+  version: number;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+  items: PTITemplateItem[];
 }
 
 // ── Work Orders ──────────────────────────────────────────────

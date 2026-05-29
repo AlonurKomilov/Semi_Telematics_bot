@@ -1,0 +1,7 @@
+"""Notification transports for out-of-band alerts.
+
+Currently only ``email`` is implemented (stdlib smtplib, no external SDK).
+SMS transport is a future extension — pluggable behind the same shape.
+"""
+
+from .email import send_email, is_email_configured  # noqa: F401

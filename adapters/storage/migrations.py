@@ -2789,6 +2789,297 @@ async def migrate_maintenance_tasks_last_odometer_repair(conn) -> None:
         raise
 
 
+@_register("062_driver_inspections_alerted_at")
+async def migrate_driver_inspections_alerted_at(conn) -> None:
+    """Add ``driver_inspections.alerted_at`` for PTI ping throttle.
+
+    The PTI bot reminder cron pings each driver whose inspection is in
+    the due-soon window.  Without a throttle column, the hourly cron
+    re-pings every tick.  ``alerted_at`` is stamped after a successful
+    send; the cron skips rows where it's already set in the current
+    cycle (same pattern maintenance_tasks uses for overdue alerts).
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE driver_inspections "
+            "ADD COLUMN IF NOT EXISTS alerted_at TEXT"
+        )
+        await conn.commit()
+        logger.info("Migration 062: ensured driver_inspections.alerted_at exists")
+    except Exception as e:
+        logger.error("Migration 062 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
+@_register("063_alert_ack_expires_at")
+async def migrate_alert_ack_expires_at(conn) -> None:
+    """Add ``alert_acknowledgments.expires_at`` — first-class TTL.
+
+    Why
+    ───
+    Before this column existed, ack rows had only two ways to close:
+    a user tapping Acknowledge, or the system auto-resolving when
+    the underlying condition cleared.  If neither happened (chronic
+    fault on a known-broken truck, driver who never acks), the rows
+    accumulated unbounded — one account hit 1895 pending rows.
+
+    ``expires_at`` lets the system express "this alert has aged out
+    of operational relevance" as a first-class property of the row,
+    instead of bolting on a periodic "stale sweep" that pretends
+    those rows don't exist.  Dashboard queries can WHERE-filter on
+    it; the nightly job becomes the enforcer of the TTL contract
+    (closes expired rows + history), not a separate "cleanup"
+    concept.
+
+    Default ladder (applied by ``send_alert`` at insert time):
+      * critical → NULL  (never expires — must be acked / resolved)
+      * warning  → created_at + 14 days
+      * info     → created_at + 7 days
+
+    Existing rows get NULL on backfill — they fall under the old
+    "sweep" logic until they're naturally closed.  Future fires
+    populate the column.
+
+    Stored as TEXT (ISO-8601) to match the existing date columns
+    in this table; lexicographic comparison is correct for the
+    ISO-8601 format.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE alert_acknowledgments "
+            "ADD COLUMN IF NOT EXISTS expires_at TEXT"
+        )
+        # Partial index on non-null expiries so the nightly sweep
+        # query (``WHERE expires_at < NOW()``) hits a small index
+        # rather than scanning the whole table.  Critical alerts
+        # have ``expires_at IS NULL`` and don't appear in the index.
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_alert_ack_expires_at "
+            "ON alert_acknowledgments(expires_at) "
+            "WHERE expires_at IS NOT NULL"
+        )
+        await conn.commit()
+        logger.info(
+            "Migration 063: ensured alert_acknowledgments.expires_at + index"
+        )
+    except Exception as e:
+        logger.error("Migration 063 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
+@_register("064_chronic_alert_suppressions")
+async def migrate_chronic_alert_suppressions(conn) -> None:
+    """Add ``chronic_alert_suppressions`` — pattern-level mute table.
+
+    Why a separate table from ``alert_mutes``
+    ─────────────────────────────────────────
+    ``alert_mutes`` keys mute rows to a specific ``alert_history_id`` —
+    i.e. a single fire.  Under the per-fire model (each fire creates a
+    new ``alert_history`` row with a unique ``alert_subkey``), an
+    ``alert_mutes`` row only silences that exact fire; the next fire
+    of the same chronic pattern creates a new history row that
+    bypasses the mute.
+
+    ``chronic_alert_suppressions`` keys mutes to the broader
+    ``(account, alert_type, vehicle_id)`` pattern, so a chronic
+    Mostly-Same DTC stays suppressed for the duration regardless of
+    how many new alert_history rows the per-fire model creates.
+
+    Usage flow (Fix C):
+      1. Operator notices Truck #237's ABS sensor keeps firing.
+      2. They (or an auto-rule based on occurrence count) call
+         ``mute_chronic_pattern(account, "fault", "v_237", hours=168)``.
+      3. ``send_alert`` checks ``is_chronic_pattern_muted`` before
+         creating ack rows or sending Telegram — chronic fires now
+         only update ``alert_history.occurrence_count`` (data
+         preserved for audit) without spamming the chat.
+      4. After ``muted_until`` passes, the next fire re-enables
+         normal delivery automatically.
+
+    UNIQUE constraint on (account, type, vehicle_id) means each
+    pattern has at most one active mute row.  Re-muting the same
+    pattern UPDATEs the existing row's ``muted_until`` rather than
+    inserting a duplicate (handled in the mixin's helper).
+    """
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS chronic_alert_suppressions (
+                id          SERIAL PRIMARY KEY,
+                account_id  INTEGER NOT NULL REFERENCES accounts(id),
+                alert_type  TEXT    NOT NULL,
+                vehicle_id  TEXT    NOT NULL,
+                muted_by    BIGINT,
+                muted_until TEXT    NOT NULL,
+                reason      TEXT    NOT NULL DEFAULT '',
+                created_at  TEXT    NOT NULL,
+                UNIQUE (account_id, alert_type, vehicle_id)
+            );
+        """)
+        # Hot-path index: ``is_chronic_pattern_muted`` runs on every
+        # alert fire, so it MUST be cheap.  The partial index limits
+        # itself to currently-active mutes (a few hundred rows even
+        # for a noisy fleet) instead of scanning history.
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chronic_suppress_active "
+            "ON chronic_alert_suppressions(account_id, alert_type, vehicle_id, muted_until)"
+        )
+        await conn.commit()
+        logger.info("Migration 064: chronic_alert_suppressions table + index created")
+    except Exception as e:
+        logger.error("Migration 064 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
+@_register("065_driver_inspections_signatures")
+async def migrate_driver_inspections_signatures(conn) -> None:
+    """Add e-signature columns to ``driver_inspections`` for DOT audit.
+
+    Two signatures per inspection:
+      * ``driver_signature``  + ``driver_signed_at``   — captured at
+        submit time inside the Mini App wizard.  Required to flip the
+        inspection from ``in_progress`` to ``submitted``.
+      * ``reviewer_signature`` + ``reviewer_signed_at`` — optional
+        co-signature captured on the dashboard review modal.  Useful
+        when an account's compliance workflow needs a second human in
+        the chain (insurance / FMCSA audits).
+
+    Stored as base64-encoded PNG data URLs directly on the row rather
+    than offloaded to ObjectStore: signatures are tiny (5–15 KB), only
+    one per role per inspection, and we always read them together with
+    the rest of the row.  Embedding avoids a second HTTP round-trip on
+    the dashboard detail drawer.
+    """
+    cols: list[tuple[str, str]] = [
+        ("driver_signature",    "TEXT"),
+        ("driver_signed_at",    "TEXT"),
+        ("reviewer_signature",  "TEXT"),
+        ("reviewer_signed_at",  "TEXT"),
+    ]
+    try:
+        for col_name, col_def in cols:
+            try:
+                await conn.execute(
+                    f"ALTER TABLE driver_inspections "
+                    f"ADD COLUMN IF NOT EXISTS {col_name} {col_def}"
+                )
+            except Exception as e:
+                # Same idempotence pattern as 060 — IF NOT EXISTS on
+                # ALTER TABLE wasn't supported on every Postgres
+                # version we ship to, so we swallow "already exists".
+                logger.debug(
+                    "driver_inspections.%s already present: %s", col_name, e,
+                )
+        await conn.commit()
+        logger.info(
+            "Migration 065: driver_inspections signature columns ensured",
+        )
+    except Exception as e:
+        logger.error("Migration 065 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
+@_register("066_pti_media_annotated_at")
+async def migrate_pti_media_annotated_at(conn) -> None:
+    """Add ``annotated_at`` to ``pti_inspection_media``.
+
+    Driver-side defect annotation bakes red-marker overlays directly
+    into the canonical PNG (single file for DOT audit — no separate
+    overlay layer to lose).  ``annotated_at`` records WHEN the overlay
+    was applied so the dashboard can render an "Annotated" badge and
+    so the bot's notify-to-fleet ping can mention that the driver
+    has marked the defect location.
+
+    Null = original capture, untouched by the annotator.
+    """
+    try:
+        try:
+            await conn.execute(
+                "ALTER TABLE pti_inspection_media "
+                "ADD COLUMN IF NOT EXISTS annotated_at TEXT"
+            )
+        except Exception as e:
+            logger.debug(
+                "pti_inspection_media.annotated_at already present: %s", e,
+            )
+        await conn.commit()
+        logger.info(
+            "Migration 066: pti_inspection_media.annotated_at ensured",
+        )
+    except Exception as e:
+        logger.error("Migration 066 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
+@_register("067_pti_media_ai_review")
+async def migrate_pti_media_ai_review(conn) -> None:
+    """Add per-photo AI-review columns to ``pti_inspection_media``.
+
+    When a driver captures a checklist photo, the Mini App fires an
+    automatic Gemini-vision check of that single photo against the
+    component it's for (e.g. "does this mudflap photo show damage?").
+    The verdict is stored per-media so it both:
+      * gives the driver instant feedback in the wizard, and
+      * rolls up into the final PTI report the fleet reviewer reads.
+
+    Columns:
+      * ``ai_review_status``  — 'pending' | 'completed' | 'error'
+      * ``ai_review_result``  — JSON blob: {verdict, summary,
+                                 confidence, model}.  verdict is one of
+                                 ok|possible_issue|likely_defect|unclear.
+      * ``ai_reviewed_at``    — ISO timestamp of the last check.
+
+    All null = never checked (AI disabled, or video, or pre-feature
+    rows).  The dashboard + wizard treat null as "no AI verdict".
+    """
+    cols: list[tuple[str, str]] = [
+        ("ai_review_status",  "TEXT"),
+        ("ai_review_result",  "TEXT"),
+        ("ai_reviewed_at",    "TEXT"),
+    ]
+    try:
+        for col_name, col_def in cols:
+            try:
+                await conn.execute(
+                    f"ALTER TABLE pti_inspection_media "
+                    f"ADD COLUMN IF NOT EXISTS {col_name} {col_def}"
+                )
+            except Exception as e:
+                logger.debug(
+                    "pti_inspection_media.%s already present: %s", col_name, e,
+                )
+        await conn.commit()
+        logger.info(
+            "Migration 067: pti_inspection_media AI-review columns ensured",
+        )
+    except Exception as e:
+        logger.error("Migration 067 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
 @_register("068_alert_history_acknowledged_by")
 async def migrate_alert_history_acknowledged_by(conn) -> None:
     """Record *who* acknowledged each logical alert on ``alert_history``.
@@ -2840,6 +3131,324 @@ async def migrate_alert_history_acknowledged_by(conn) -> None:
         )
     except Exception as e:
         logger.error("Migration 068 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
+@_register("069_pti_item_types_refimg_location")
+async def migrate_pti_item_types_refimg_location(conn) -> None:
+    """PTI template/inspection enrichment: item types, reference photos,
+    and inspection geolocation.
+
+    Three additions land together because they all extend the PTI
+    capture model:
+
+    1. ``item_type`` on template + inspection items — distinguishes the
+       capture widget the driver sees:
+         * ``check``    (default) — OK/Minor/Major/OOS/N/A buttons
+         * ``photo``    — a guided walk-around photo point (no status,
+                          gate = photo present)
+         * ``document`` — upload a compliance doc (annual report,
+                          registration) as a PDF or photo of paper
+       Existing rows default to ``check`` so behaviour is unchanged.
+
+    2. ``reference_image_url`` on template + inspection items — an
+       optional example image the fleet uploads so the driver knows
+       what a correct photo looks like.  Snapshotted onto the
+       inspection item at spawn so an in-flight inspection keeps the
+       reference even if the template later changes.
+
+    3. ``location_*`` on ``driver_inspections`` — WHERE the inspection
+       happened.  Primary source is the vehicle's telematics position
+       (no device-permission prompt); device GPS is a fallback.
+         * ``location_lat`` / ``location_lon`` — coordinates
+         * ``location_source`` — 'vehicle' | 'device' | 'none'
+         * ``location_at``     — ISO timestamp the fix was resolved
+    """
+    item_cols: list[tuple[str, str, str]] = [
+        ("pti_checklist_template_items", "item_type",           "TEXT DEFAULT 'check'"),
+        ("pti_checklist_template_items", "reference_image_url", "TEXT"),
+        ("pti_inspection_items",         "item_type",           "TEXT DEFAULT 'check'"),
+        ("pti_inspection_items",         "reference_image_url", "TEXT"),
+        ("driver_inspections",           "location_lat",        "REAL"),
+        ("driver_inspections",           "location_lon",        "REAL"),
+        ("driver_inspections",           "location_source",     "TEXT"),
+        ("driver_inspections",           "location_at",         "TEXT"),
+    ]
+    try:
+        for table, col_name, col_def in item_cols:
+            try:
+                await conn.execute(
+                    f"ALTER TABLE {table} "
+                    f"ADD COLUMN IF NOT EXISTS {col_name} {col_def}"
+                )
+            except Exception as e:
+                logger.debug("%s.%s already present: %s", table, col_name, e)
+        await conn.commit()
+        logger.info(
+            "Migration 069: PTI item_type + reference_image_url + "
+            "inspection location columns ensured",
+        )
+    except Exception as e:
+        logger.error("Migration 069 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
+@_register("070_hybrid_storage_foundation")
+async def migrate_hybrid_storage_foundation(conn) -> None:
+    """Foundation for the hybrid disk-primary / cloud-async storage model.
+
+    Phase 1 of the per-tenant tiered-storage rollout — see the design
+    audit in the project notes.  This migration is intentionally
+    additive and inert: existing media rows keep working unchanged
+    (``storage_state`` defaults to ``'remote'`` for legacy rows, so
+    the eventual ``HybridObjectStore.get`` reads them via the legacy
+    ``file_path`` fallback).
+
+    Adds:
+
+    1. **Media-row state extension on ``pti_inspection_media``** —
+       ``local_path`` / ``remote_path`` / ``storage_state`` /
+       ``sha256``.  The forward-only state machine is
+       ``local → syncing → remote`` with ``stuck`` as a side state
+       reached when an account's sync is blocked (e.g. expired Drive
+       token).  Legacy rows default to ``'remote'`` so they're
+       considered already-settled and ignored by the sync worker.
+
+    2. **``storage_sync_queue``** — the durable DB outbox.  Polymorphic
+       (``entity_type`` + ``entity_id``) so PTI media, work-order
+       attachments, driver docs, etc. all queue through one table
+       without further migrations.  Rows survive process restarts —
+       a worker crash leaves the file safely on disk + the queue row
+       intact, and the next poll resumes the upload.
+
+    3. **Indexes for the SKIP-LOCKED polling pattern** — every worker
+       claims due rows via ``SELECT … FOR UPDATE SKIP LOCKED`` (Phase
+       3), which scales horizontally with zero code changes.  The
+       ``(next_attempt_at)`` index makes the "what's due now" query
+       cheap forever; the ``(account_id, next_attempt_at)`` index
+       makes per-account fair scheduling (Phase 3) cheap forever.
+
+    No data backfill — every existing row's ``storage_state`` ends up
+    ``'remote'`` via the column default, which exactly matches the
+    legacy assumption that ``file_path`` is the canonical location.
+    """
+    media_cols: list[tuple[str, str]] = [
+        ("local_path",     "TEXT"),
+        ("remote_path",    "TEXT"),
+        # 'local' | 'syncing' | 'remote' | 'stuck'.  Default 'remote'
+        # so legacy rows are treated as already-settled.
+        ("storage_state",  "TEXT DEFAULT 'remote'"),
+        ("sha256",         "TEXT"),
+    ]
+    try:
+        for col_name, col_def in media_cols:
+            try:
+                await conn.execute(
+                    f"ALTER TABLE pti_inspection_media "
+                    f"ADD COLUMN IF NOT EXISTS {col_name} {col_def}"
+                )
+            except Exception as e:
+                logger.debug(
+                    "pti_inspection_media.%s already present: %s", col_name, e,
+                )
+
+        # Polymorphic outbox.  ``entity_type`` + ``entity_id`` lets the
+        # same queue route PTI media, work-order attachments, driver
+        # docs, etc. without a per-module table.  UNIQUE(entity_type,
+        # entity_id) makes enqueue idempotent — re-enqueueing the same
+        # media is a no-op rather than a duplicate row.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS storage_sync_queue (
+                id              SERIAL PRIMARY KEY,
+                account_id      INTEGER NOT NULL REFERENCES accounts(id),
+                entity_type     TEXT    NOT NULL,
+                entity_id       INTEGER NOT NULL,
+                bucket          TEXT    NOT NULL,
+                filename        TEXT    NOT NULL,
+                local_path      TEXT    NOT NULL,
+                file_size       BIGINT  NOT NULL DEFAULT 0,
+                attempts        INTEGER NOT NULL DEFAULT 0,
+                next_attempt_at TEXT    NOT NULL,
+                last_error      TEXT,
+                error_code      TEXT,
+                enqueued_at     TEXT    NOT NULL,
+                updated_at      TEXT    NOT NULL,
+                UNIQUE (entity_type, entity_id)
+            );
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_storage_sync_queue_due "
+            "ON storage_sync_queue(next_attempt_at)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_storage_sync_queue_account_due "
+            "ON storage_sync_queue(account_id, next_attempt_at)"
+        )
+        await conn.commit()
+        logger.info(
+            "Migration 070: hybrid-storage foundation ensured "
+            "(media columns + storage_sync_queue + indexes)",
+        )
+    except Exception as e:
+        logger.error("Migration 070 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
+@_register("071_maintenance_tasks_snoozed_until")
+async def migrate_maintenance_tasks_snoozed_until(conn) -> None:
+    """Add ``snoozed_until`` (ISO timestamp) to maintenance_tasks.
+
+    The overdue / mileage / engine-hours schedulers consult this column
+    and skip any task where ``snoozed_until > now`` so the operator can
+    suppress a red-flag task while parts are on order without
+    re-triggering the alert every 6h.  ``NULL`` means "not snoozed";
+    snooze expires automatically once the timestamp falls into the past.
+    No index — the column is filtered alongside ``alerted_at IS NULL``
+    inside small per-account queries, not in a full-table hot path.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(maintenance_tasks)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "snoozed_until" in cols:
+            return
+        await conn.execute(
+            "ALTER TABLE maintenance_tasks ADD COLUMN snoozed_until TEXT"
+        )
+        await conn.commit()
+        logger.info("Migration 071: added maintenance_tasks.snoozed_until")
+    except Exception as e:
+        logger.error("Migration 071 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
+@_register("072_maintenance_tasks_attachment")
+async def migrate_maintenance_tasks_attachment(conn) -> None:
+    """Add 3 attachment columns to maintenance_tasks.
+
+    Lightweight one-file attachment so drivers can attach a phone-photo
+    of a roadside DEF refill or oil-receipt without spinning up a full
+    Work Order.  Work Orders still own the multi-file invoice/photo
+    timeline for shop visits; this is for quick driver-side proof.
+
+    ``attachment_path`` — opaque key returned by ObjectStore.put.
+    ``attachment_name`` — original filename (sanitized).
+    ``attachment_content_type`` — for the download response.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(maintenance_tasks)")
+        cols = {r[1] for r in await cur.fetchall()}
+        for col in ("attachment_path", "attachment_name", "attachment_content_type"):
+            if col in cols:
+                continue
+            await conn.execute(
+                f"ALTER TABLE maintenance_tasks ADD COLUMN {col} TEXT"
+            )
+        await conn.commit()
+        logger.info("Migration 072: added maintenance_tasks.attachment_*")
+    except Exception as e:
+        logger.error("Migration 072 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
+@_register("073_maintenance_tasks_cost_vendor")
+async def migrate_maintenance_tasks_cost_vendor(conn) -> None:
+    """Add ``cost_cents`` + ``vendor_name`` to maintenance_tasks.
+
+    Captures the spend total + who did the work for tasks closed
+    outside the formal Work Order flow (driver roadside DEF refill,
+    in-house tech quickie).  The Work Orders module owns the
+    multi-line invoice for shop visits; this is a single-cell
+    fallback so cost visibility doesn't disappear when a Work Order
+    wasn't created.  ``cost_cents`` (INTEGER) avoids floating-point
+    drift on aggregate totals; ``vendor_name`` (TEXT) is free-text
+    because shops aren't first-class entities yet.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(maintenance_tasks)")
+        cols = {r[1] for r in await cur.fetchall()}
+        for col, ddl in (
+            ("cost_cents", "INTEGER"),
+            ("vendor_name", "TEXT"),
+        ):
+            if col in cols:
+                continue
+            await conn.execute(
+                f"ALTER TABLE maintenance_tasks ADD COLUMN {col} {ddl}"
+            )
+        await conn.commit()
+        logger.info("Migration 073: added maintenance_tasks.cost_cents + vendor_name")
+    except Exception as e:
+        logger.error("Migration 073 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
+@_register("074_maintenance_templates")
+async def migrate_maintenance_templates(conn) -> None:
+    """Create the ``maintenance_templates`` table.
+
+    A template is a re-usable task definition: name + default
+    task_type, description, priority, due triggers (date/miles/hours),
+    and recurrence intervals.  Applying a template to a vehicle
+    creates a regular ``maintenance_tasks`` row with the template's
+    defaults; templates themselves don't accrue completion data.
+
+    Templates are account-scoped — each tenant defines their own set.
+    No tenant-cross visibility (no global templates yet); when that
+    becomes useful, a NULL ``account_id`` can mean "system template".
+    """
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS maintenance_templates (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id    INTEGER NOT NULL,
+                name          TEXT    NOT NULL,
+                task_type     TEXT    NOT NULL DEFAULT 'custom',
+                description   TEXT    NOT NULL DEFAULT '',
+                priority      TEXT    NOT NULL DEFAULT 'medium',
+                due_in_days   INTEGER,
+                due_in_miles  REAL,
+                due_in_hours  REAL,
+                recur_interval_days         INTEGER,
+                recur_interval_miles        REAL,
+                recur_interval_engine_hours REAL,
+                created_by    INTEGER NOT NULL DEFAULT 0,
+                created_at    TEXT    NOT NULL,
+                updated_at    TEXT    NOT NULL,
+                UNIQUE(account_id, name)
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_maintenance_templates_account "
+            "ON maintenance_templates(account_id)"
+        )
+        await conn.commit()
+        logger.info("Migration 074: created maintenance_templates table")
+    except Exception as e:
+        logger.error("Migration 074 failed: %s", e, exc_info=True)
         try:
             await conn.rollback()
         except Exception:

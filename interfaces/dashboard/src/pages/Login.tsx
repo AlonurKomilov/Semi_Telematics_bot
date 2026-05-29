@@ -172,7 +172,9 @@ export default function Login() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background px-4">
       <div className="mb-8 text-center">
-        <h1 className="text-4xl font-bold mb-2">4truck</h1>
+        {/* ``text-foreground`` so the brand reads on Light theme too —
+            the inherited default was close to the page background. */}
+        <h1 className="text-4xl font-bold mb-2 text-foreground">4truck</h1>
         <p className="text-muted-foreground">{t('auth.tagline')}</p>
       </div>
 
@@ -340,7 +342,16 @@ export default function Login() {
             </div>
             <p
               className="text-xs text-muted-foreground [&_b]:text-foreground/80"
-              dangerouslySetInnerHTML={{ __html: t('login_tg.bot_link_opened', { bot: 'app_4truck_bot' }) }}
+              dangerouslySetInnerHTML={{
+                __html: t('login_tg.bot_link_opened', {
+                  // Parse the username out of the deep link the API
+                  // just returned (``https://t.me/<bot>?start=...``)
+                  // instead of hardcoding ``app_4truck_bot``.  That
+                  // hardcode showed the system bot's name even after
+                  // the backend correctly resolved the LOGIN bot.
+                  bot: botLoginLink.match(/t\.me\/([^?/]+)/)?.[1] || '',
+                }),
+              }}
             />
             {botLoginLink && (
               <a

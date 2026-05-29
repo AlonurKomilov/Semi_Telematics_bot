@@ -53,8 +53,12 @@ from interfaces.bot.costs import cmd_costmile, cmd_costmile_report
 from interfaces.bot.maintenance import (
     cmd_maintenance, cmd_maint_add, cmd_maint_type, cmd_maint_view, cmd_maint_done,
     cmd_maint_select_vehicle, cmd_maint_skip_date, cmd_maint_skip_miles, cmd_maint_skip_desc,
+    cmd_maint_skip_hours,
+    cmd_maint_priority_pick, cmd_maint_recur_pick,
     cmd_maint_detail, cmd_maint_edit, cmd_maint_delete, cmd_maint_delete_confirm,
     cmd_maint_edit_type, cmd_maint_edit_date, cmd_maint_edit_miles, cmd_maint_edit_desc,
+    cmd_maint_edit_priority, cmd_maint_set_priority,
+    cmd_maint_edit_hours,
     cmd_maint_set_type, cmd_maint_remove_field,
     cmd_maint_company_pick, cmd_maint_vehicle_page,
 )
@@ -163,6 +167,7 @@ _router.exact("maint_add", cmd_maint_add)
 _router.exact("maint_view", cmd_maint_view)
 _router.exact("maint_skip_date", cmd_maint_skip_date)
 _router.exact("maint_skip_miles", cmd_maint_skip_miles)
+_router.exact("maint_skip_hours", cmd_maint_skip_hours)
 _router.exact("maint_skip_desc", cmd_maint_skip_desc)
 _router.exact("cmd_work_hours", cmd_work_hours)
 _router.exact("whours_add", cmd_whours_add)
@@ -356,6 +361,41 @@ async def _maint_rmdesc(u, c):
     task_id = int(u.callback_query.data.replace("maint_rmdesc_", ""))
     await cmd_maint_remove_field(u, c, task_id=task_id, field="desc")
 
+async def _maint_rmhours(u, c):
+    task_id = int(u.callback_query.data.replace("maint_rmhours_", ""))
+    await cmd_maint_remove_field(u, c, task_id=task_id, field="hours")
+
+async def _maint_prio(u, c):
+    """Wizard priority pick — value is one of low/medium/high/critical."""
+    priority = u.callback_query.data.replace("maint_prio_", "")
+    await cmd_maint_priority_pick(u, c, priority=priority)
+
+async def _maint_recur(u, c):
+    """Wizard recurrence dimension — none/days/miles/hours."""
+    dimension = u.callback_query.data.replace("maint_recur_", "")
+    await cmd_maint_recur_pick(u, c, dimension=dimension)
+
+async def _maint_eprio(u, c):
+    """Edit menu → priority picker."""
+    task_id = int(u.callback_query.data.replace("maint_eprio_", ""))
+    await cmd_maint_edit_priority(u, c, task_id=task_id)
+
+async def _maint_sprio(u, c):
+    """Edit priority apply — ``maint_sprio_<task_id>_<priority>``."""
+    rest = u.callback_query.data.replace("maint_sprio_", "")
+    parts = rest.split("_", 1)
+    task_id = int(parts[0])
+    new_priority = parts[1] if len(parts) > 1 else ""
+    await cmd_maint_set_priority(u, c, task_id=task_id, new_priority=new_priority)
+
+async def _maint_ehours(u, c):
+    """Edit menu → engine-hours prompt."""
+    task_id = int(u.callback_query.data.replace("maint_ehours_", ""))
+    await cmd_maint_edit_hours(u, c, task_id=task_id)
+
+async def _maint_skip_hours(u, c):
+    await cmd_maint_skip_hours(u, c)
+
 # ── Camera tool prefix wrappers ──────────────────────────────────
 
 async def _camco(u, c):
@@ -539,10 +579,19 @@ _router.prefix("maint_etype_", _maint_etype)
 _router.prefix("maint_edate_", _maint_edate)
 _router.prefix("maint_emiles_", _maint_emiles)
 _router.prefix("maint_edesc_", _maint_edesc)
+_router.prefix("maint_eprio_", _maint_eprio)
+_router.prefix("maint_ehours_", _maint_ehours)
+# maint_sprio_ must be registered before maint_edit_/etc are matched
+# loosely.  Same pattern maint_setype_ uses.
+_router.prefix("maint_sprio_", _maint_sprio)
 _router.prefix("maint_edit_", _maint_edit)
 _router.prefix("maint_rmdate_", _maint_rmdate)
 _router.prefix("maint_rmmiles_", _maint_rmmiles)
+_router.prefix("maint_rmhours_", _maint_rmhours)
 _router.prefix("maint_rmdesc_", _maint_rmdesc)
+# Wizard pickers — exact one-step value, no task_id suffix.
+_router.prefix("maint_prio_", _maint_prio)
+_router.prefix("maint_recur_", _maint_recur)
 _router.prefix("camco_", _camco)
 _router.prefix("cam_page_", _cam_page)
 _router.prefix("whours_start_", _whours_start)   # must be before whours_*

@@ -1,9 +1,37 @@
 import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { X } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { apiJSON } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
 import type { MaintenanceTask } from '../../types';
 import { TaskTypeCell } from './badges';
+
+// Build the last-12-months service-count series for the chart.
+// Anchored on TODAY so the rightmost bar is always the current month,
+// and we backfill empty months with zero so the gap pattern is honest
+// (a sparse history shouldn't compress into a misleading dense bar).
+function buildMonthlySeries(tasks: MaintenanceTask[]): Array<{ label: string; count: number }> {
+  const buckets = new Map<string, number>();
+  const now = new Date();
+  const months: Array<{ key: string; label: string }> = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const label = d.toLocaleDateString(undefined, { month: 'short' });
+    months.push({ key, label });
+    buckets.set(key, 0);
+  }
+  for (const t of tasks) {
+    const ts = t.completed_at || t.created_at;
+    if (!ts) continue;
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) continue;
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1);
+  }
+  return months.map(m => ({ label: m.label, count: buckets.get(m.key) ?? 0 }));
+}
 
 interface ServiceHistoryResponse {
   vehicle_name: string;
@@ -31,6 +59,23 @@ export function ServiceHistoryModal({
     ),
   });
 
+  // Last-12-months bar chart series.  Memoized off the loaded tasks so
+  // expanding / collapsing the rows below doesn't recompute the chart.
+  const monthly = useMemo(
+    () => (data ? buildMonthlySeries(data.tasks) : []),
+    [data],
+  );
+  const monthlyTotal = monthly.reduce((s, m) => s + m.count, 0);
+  // Spend total across the loaded tasks.  Integer-cents sum to avoid
+  // float drift; rendered as one display string.
+  const totalCostCents = useMemo(() => {
+    if (!data) return 0;
+    return data.tasks.reduce(
+      (s, t) => s + (typeof t.cost_cents === 'number' ? t.cost_cents : 0),
+      0,
+    );
+  }, [data]);
+
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-start pt-12" onClick={onClose}>
       <div
@@ -56,7 +101,7 @@ export function ServiceHistoryModal({
 
         {data && (
           <>
-            <div className="grid grid-cols-3 gap-3 mb-5">
+            <div className="grid grid-cols-4 gap-3 mb-5">
               <div className="bg-muted rounded-lg p-3">
                 <p className="text-xs text-muted-foreground">Completed</p>
                 <p className="text-xl font-bold tabular-nums">{data.summary.total_completed}</p>
@@ -64,6 +109,14 @@ export function ServiceHistoryModal({
               <div className="bg-muted rounded-lg p-3">
                 <p className="text-xs text-muted-foreground">Cancelled</p>
                 <p className="text-xl font-bold tabular-nums">{data.summary.total_cancelled}</p>
+              </div>
+              <div className="bg-muted rounded-lg p-3">
+                <p className="text-xs text-muted-foreground">Total Spend</p>
+                <p className="text-xl font-bold tabular-nums">
+                  {totalCostCents > 0
+                    ? `$${(totalCostCents / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                    : '—'}
+                </p>
               </div>
               <div className="bg-muted rounded-lg p-3">
                 <p className="text-xs text-muted-foreground">Last Service</p>
@@ -74,6 +127,48 @@ export function ServiceHistoryModal({
                 </p>
               </div>
             </div>
+
+            {/* Service activity over the last 12 months — a flat run
+                of empty bars signals under-servicing at a glance, which
+                is exactly the DOT-audit talking point this view exists
+                for. */}
+            {monthlyTotal > 0 && (
+              <div className="mb-5 bg-muted/30 border border-border rounded-lg p-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Services in the last 12 months
+                  </p>
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    {monthlyTotal} total
+                  </p>
+                </div>
+                <div style={{ width: '100%', height: 100 }}>
+                  <ResponsiveContainer>
+                    <BarChart data={monthly} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                      <XAxis
+                        dataKey="label"
+                        stroke="currentColor"
+                        style={{ fontSize: '10px', opacity: 0.6 }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis hide />
+                      <Tooltip
+                        cursor={{ fill: 'rgba(120,120,120,0.08)' }}
+                        contentStyle={{
+                          background: 'var(--card)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 6,
+                          fontSize: 12,
+                        }}
+                        formatter={(v: unknown) => [String(v), 'services']}
+                      />
+                      <Bar dataKey="count" fill="var(--chart-1)" radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
 
             {Object.keys(data.summary.by_type).length > 0 && (
               <div className="flex flex-wrap gap-2 mb-5">
@@ -117,6 +212,9 @@ export function ServiceHistoryModal({
                         )}
                         {task.last_engine_hours != null && (
                           <> · {Number(task.last_engine_hours).toLocaleString()} hrs</>
+                        )}
+                        {typeof task.cost_cents === 'number' && task.cost_cents > 0 && (
+                          <> · ${(task.cost_cents / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}{task.vendor_name ? ` @ ${task.vendor_name}` : ''}</>
                         )}
                       </p>
                       {task.attested_at && (

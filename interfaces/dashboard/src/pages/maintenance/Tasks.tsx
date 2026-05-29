@@ -4,7 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Wrench, Plus, X, Download, History, FileText,
-  List, CalendarDays, Trash2, CheckSquare,
+  List, CalendarDays, Trash2, CheckSquare, BellOff, Bell,
+  Paperclip, Image as ImageIcon, Upload, ClipboardList,
 } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import DataTable from '../../components/DataTable';
@@ -24,6 +25,8 @@ import {
 import { VehiclePicker, MilesPicker, HoursPicker, DaysPicker, type FleetVehicle } from './pickers';
 import { CalendarMonth } from './CalendarMonth';
 import { ServiceHistoryModal } from './ServiceHistoryModal';
+import { TemplatesModal } from './TemplatesModal';
+import type { MaintenanceTemplate } from '../../types';
 
 // Status dropdown options. Labels are computed via STATUS_LABELS so
 // the on-screen text is properly capitalised ("In Progress", not
@@ -85,16 +88,56 @@ function _todayLabel(): string {
   return new Date().toLocaleDateString(undefined, DATE_FMT);
 }
 
+// Snooze Alerts is only meaningful when the task is actually nagging
+// the operator — overdue right now, or close enough to the threshold
+// that the pre-overdue warning would fire.  At create time / for
+// far-future tasks, the buttons are clutter, so we hide them.
+// Thresholds match the backend ``detect_upcoming_warnings`` defaults:
+// 7 days / 500 mi / 50 engine hours.
+function _isOverdueOrApproaching(t: MaintenanceTask): boolean {
+  if (t.status === 'overdue') return true;
+  if (t.status !== 'pending') return false;
+  if (t.due_date) {
+    const due = /^\d{4}-\d{2}-\d{2}$/.test(t.due_date)
+      ? new Date(t.due_date + 'T00:00:00')
+      : new Date(t.due_date);
+    if (!Number.isNaN(due.getTime())) {
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      const startOfDue   = new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime();
+      const days = Math.round((startOfDue - startOfToday) / 86_400_000);
+      if (days <= 7) return true;
+    }
+  }
+  if (t.due_miles != null && t.last_odometer != null
+      && t.last_odometer + 500 >= t.due_miles) {
+    return true;
+  }
+  if (t.due_engine_hours != null && t.last_engine_hours != null
+      && t.last_engine_hours + 50 >= t.due_engine_hours) {
+    return true;
+  }
+  return false;
+}
+
 // Base column set, excluding the bulk-select checkbox.  The component
 // composes the final columns array by prepending a selection column
 // whose render closes over the page-level ``selectedIds`` state.
 const baseColumns: AnyColumn[] = [
   { key: 'vehicle_name', label: 'Vehicle', sortable: true },
   // Priority badge — first column after vehicle so it carries the most
-  // visual weight.  Sortable by string value (low < medium < high <
-  // critical alphabetically — close enough; future revision can pass a
-  // sortKey if needed).
-  { key: 'priority', label: 'Priority', sortable: true, render: (v) => <PriorityBadge value={v} /> },
+  // visual weight.  ``sortKey`` ranks critical→high→medium→low so the
+  // sort matches operator expectations (alphabetical would put
+  // critical AFTER low, which is wrong).
+  { key: 'priority', label: 'Priority', sortable: true,
+    sortKey: (row) => {
+      const rank: Record<string, number> = {
+        critical: 0, high: 1, medium: 2, low: 3,
+      };
+      const r = row as MaintenanceTask;
+      return rank[(r.priority || 'medium').toLowerCase()] ?? 99;
+    },
+    render: (v) => <PriorityBadge value={v} /> },
   { key: 'task_type', label: 'Type', sortable: true, render: (v) => <TaskTypeCell type={String(v || 'custom')} /> },
   { key: 'description', label: 'Description', render: (v) => {
     const s = String(v || '');
@@ -110,7 +153,14 @@ const baseColumns: AnyColumn[] = [
   // only or date-only) show a blank cell.
   { key: 'due_engine_hours', label: 'Engine Hours', render: (_v, row) => <EngineHoursProgress row={row as MaintenanceTask} /> },
   { key: 'status', label: 'Status', sortable: true, render: (v) => <StatusBadge status={String(v)} /> },
-  { key: 'updated_at', label: 'Updated', sortable: true, render: (v) => v ? new Date(String(v)).toLocaleDateString() : '—' },
+  // Updated column shows date + time so multiple same-day edits are
+  // distinguishable.  Short locale format keeps it readable without
+  // dominating the row width.
+  { key: 'updated_at', label: 'Updated', sortable: true, render: (v) => v
+    ? new Date(String(v)).toLocaleString(undefined, {
+        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+      })
+    : '—' },
 ];
 
 // ── Main component ─────────────────────────────────────────────
@@ -145,6 +195,7 @@ export default function Tasks() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   // DOT binder filter dialog — null when closed; the dialog state
   // collects window + vehicle filter and submits to the export route.
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [binderDialogOpen, setBinderDialogOpen] = useState(false);
   const [binderDays, setBinderDays] = useState('365');
   const [binderVehicle, setBinderVehicle] = useState('');
@@ -159,13 +210,28 @@ export default function Tasks() {
   // cleared via the dedicated Clear button instead.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      // Close the topmost surface first so chained dismissals (e.g.
-      // binder dialog opened from inside an open sidebar) unwind one
-      // layer at a time.
-      if (binderDialogOpen) { setBinderDialogOpen(false); return; }
-      if (historyVehicle)   { setHistoryVehicle(null); return; }
-      if (selected)         { setSelected(null); return; }
+      if (e.key === 'Escape') {
+        // Close the topmost surface first so chained dismissals (e.g.
+        // binder dialog opened from inside an open sidebar) unwind one
+        // layer at a time.
+        if (binderDialogOpen) { setBinderDialogOpen(false); return; }
+        if (historyVehicle)   { setHistoryVehicle(null); return; }
+        if (selected)         { setSelected(null); return; }
+        return;
+      }
+      // 'n' opens the New Task form — but only when the user isn't
+      // typing into an input/textarea/contenteditable, otherwise it
+      // would eat the letter.  Skip while a modal/drawer is open so it
+      // doesn't conflict with whatever the user is doing in there.
+      if (e.key === 'n' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const tgt = document.activeElement as HTMLElement | null;
+        const tag = tgt?.tagName?.toLowerCase();
+        const isEditing = tag === 'input' || tag === 'textarea' || tag === 'select'
+          || (tgt?.isContentEditable ?? false);
+        if (isEditing) return;
+        if (selected || historyVehicle || binderDialogOpen) return;
+        setShowAdd(s => !s);
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -183,6 +249,26 @@ export default function Tasks() {
   const [fOdometer, setFOdometer] = useState<number | null>(null);
   const [fEngineHours, setFEngineHours] = useState<number | null>(null);
   const [fOdometerLoading, setFOdometerLoading] = useState(false);
+  // Multi-vehicle bulk-create mode — when on, the single VehiclePicker
+  // is replaced by a chip-list multi-select and the submit hits the
+  // bulk-create endpoint.  Useful for "onboard 10 trucks, all need
+  // the same oil schedule".
+  const [fMultiMode, setFMultiMode] = useState(false);
+  const [fMultiVehicles, setFMultiVehicles] = useState<Set<string>>(new Set());
+
+  // Single-trigger mode for the add form — new users were confused
+  // by three trigger inputs (date/miles/hours) all visible at once.
+  // We now show one at a time; the segmented control above the
+  // trigger picks which one.
+  type TriggerMode = 'date' | 'miles' | 'hours';
+  const [fTriggerMode, setFTriggerMode] = useState<TriggerMode>('date');
+  // Single "repeat after completion" checkbox — replaces three
+  // recurrence inputs.  When checked, the next auto-spawned task
+  // reuses the SAME interval the user entered for the current trigger
+  // (date period → recur_interval_days, miles period → recur_interval_miles,
+  // hours period → recur_interval_engine_hours).  Mirrors the trigger
+  // mode so the user only thinks about one number per task.
+  const [fRepeat, setFRepeat] = useState(false);
 
   // Edit form
   const [eStatus, setEStatus] = useState('');
@@ -191,6 +277,33 @@ export default function Tasks() {
   const [eDueMiles, setEDueMiles] = useState('');
   const [ePriority, setEPriority] = useState<Priority>('medium');
   const [eDueEngineHours, setEDueEngineHours] = useState('');
+  // Same single-trigger mode the add form uses.  Initial value is
+  // inferred from the loaded task (whichever trigger is set), so the
+  // user opens the drawer to the field they previously cared about.
+  const [eTriggerMode, setETriggerMode] = useState<TriggerMode>('date');
+  // Repeat checkbox for the active trigger.  Reflects whether the
+  // corresponding ``recur_interval_*`` column is set on the loaded
+  // task; toggling on save populates/clears that one column only,
+  // leaving the other dimensions' recurrence intact.
+  const [eRepeat, setERepeat] = useState(false);
+
+  // Re-seed the Repeat checkbox whenever the active edit-trigger mode
+  // changes — the loaded task's per-dimension recurrence is the source
+  // of truth, so switching from Date → Miles reveals whatever the
+  // existing miles-recurrence state was without mixing dimensions.
+  useEffect(() => {
+    if (!selected) return;
+    setERepeat(
+      eTriggerMode === 'date'  ? selected.recur_interval_days != null
+      : eTriggerMode === 'miles' ? selected.recur_interval_miles != null
+      : selected.recur_interval_engine_hours != null,
+    );
+  }, [eTriggerMode, selected]);
+
+  // Cost is held as a dollars string in the form (free-text decimal),
+  // converted to integer cents on submit.  Vendor is plain text.
+  const [eCost, setECost] = useState('');
+  const [eVendor, setEVendor] = useState('');
   // Current odometer / engine-hours snapshot for the truck this task
   // is attached to — drives the "current: 245,678 mi" hint and lets
   // the +3k/+5k preset buttons add to the real odometer instead of to
@@ -207,6 +320,44 @@ export default function Tasks() {
     enabled: showAdd,
   });
   const fleetVehicles = fleetData?.vehicles ?? [];
+
+  // Templates dropdown — fetched whenever the add form is open so
+  // applying a template doesn't need an extra round-trip.  Same cache
+  // key the TemplatesModal uses, so editing in the modal refreshes
+  // here automatically.
+  const { data: templatesData } = useQuery({
+    queryKey: ['maintenance-templates'],
+    queryFn: () => apiJSON<{ templates: MaintenanceTemplate[] }>('/maintenance/templates'),
+    enabled: showAdd,
+  });
+  const templates = templatesData?.templates ?? [];
+
+  // Apply a template's defaults into the open add-form fields.  Only
+  // touches the fields the template actually sets, so the user can
+  // tweak one field after applying without losing the others.
+  const applyTemplate = (t: MaintenanceTemplate) => {
+    setFType(t.task_type || 'inspection');
+    setFDesc(t.description || '');
+    setFPriority((t.priority || 'medium') as Priority);
+    setFDueDate(t.due_in_days ? String(t.due_in_days) : '');
+    setFDueMiles(t.due_in_miles ? String(t.due_in_miles) : '');
+    setFDueEngineHours(t.due_in_hours ? String(t.due_in_hours) : '');
+    // Pick the active trigger view from whatever the template sets
+    // (date > miles > hours preference), and turn on Repeat if the
+    // template carries a recurrence for that same dimension.
+    const primary: TriggerMode =
+      t.due_in_days  ? 'date'
+      : t.due_in_miles ? 'miles'
+      : t.due_in_hours ? 'hours'
+      : 'date';
+    setFTriggerMode(primary);
+    setFRepeat(
+      primary === 'date'  ? t.recur_interval_days != null
+      : primary === 'miles' ? t.recur_interval_miles != null
+      : t.recur_interval_engine_hours != null,
+    );
+    toast.success(`Applied "${t.name}" — pick a vehicle to finish.`);
+  };
 
   const fetchOdometer = async (name: string) => {
     if (!name.trim()) { setFOdometer(null); setFEngineHours(null); return; }
@@ -235,6 +386,30 @@ export default function Tasks() {
     setEDesc(t.description);
     setEDueDate(_dueDateToPeriodDays(t.due_date));
     setEPriority(((t.priority || 'medium') as Priority));
+    // Infer the initial trigger view from what the task actually has.
+    // Preference order: date > miles > hours.  Falls back to date so
+    // the drawer always opens with a sane view.
+    const initialMode: TriggerMode =
+      t.due_date            ? 'date'
+      : t.due_miles != null ? 'miles'
+      : t.due_engine_hours != null ? 'hours'
+      : 'date';
+    setETriggerMode(initialMode);
+    // Initial repeat-checkbox state reflects the existing recurrence
+    // for the chosen dimension.  Switching tabs after this will
+    // re-derive via the effect below.
+    setERepeat(
+      initialMode === 'date'  ? t.recur_interval_days != null
+      : initialMode === 'miles' ? t.recur_interval_miles != null
+      : t.recur_interval_engine_hours != null,
+    );
+    // Cost — display as dollars (cents / 100) with up to 2 decimals.
+    setECost(
+      t.cost_cents != null
+        ? (t.cost_cents / 100).toFixed(2).replace(/\.00$/, '')
+        : '',
+    );
+    setEVendor(t.vendor_name || '');
     // Period from the task's own engine-hours snapshot (best signal
     // without a live endpoint).  When no snapshot, fall back to
     // showing the absolute value.
@@ -330,8 +505,10 @@ export default function Tasks() {
   }, [allTasks]);
 
   // statusFilter values: '' (all), 'overdue', 'due_soon', 'pending',
-  // 'completed', 'cancelled' — these are now client-side bucket keys,
-  // not API query params.
+  // 'completed', 'cancelled' — client-side bucket keys, not API query
+  // params.  Per-vehicle narrowing is handled by the DataTable search
+  // box (it indexes vehicle_name, description, task_type) so we don't
+  // need a separate vehicle dropdown.
   const tasks = useMemo(() => {
     if (statusFilter === 'overdue')   return buckets.overdue;
     if (statusFilter === 'due_soon')  return buckets.dueSoon;
@@ -424,6 +601,25 @@ export default function Tasks() {
     }
   };
 
+  // Bulk-flip the selected tasks to 'in_progress'.  Useful for
+  // "shop visit booked next Friday — mark these 8 as in progress".
+  // Skips the attestation/recur-spawn path that 'completed' takes,
+  // since in-progress isn't a terminal state.
+  const handleBulkInProgress = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      const res = await apiJSON<{ updated: number }>(
+        '/maintenance/tasks/bulk/status',
+        { method: 'POST', body: { task_ids: Array.from(selectedIds), status: 'in_progress' } },
+      );
+      toast.success(`Marked ${res.updated} as in progress`);
+      setSelectedIds(new Set());
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Bulk update failed');
+    }
+  };
+
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
     const ok = window.confirm(
@@ -446,46 +642,92 @@ export default function Tasks() {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Client-side mirror of the API's model_validator: at least one
-    // trigger (date / miles / engine_hours) is required so the task can
-    // actually become overdue.  Fail-fast here keeps the round-trip out
-    // of the common case (user just forgot to set one).
-    if (!fDueDate && !fDueMiles && !fDueEngineHours) {
-      setError('Set a period for date, miles, or engine hours — otherwise this task will never become overdue.');
+    // Single-trigger validation: the selected dimension must have a
+    // value.  We compute only the chosen trigger's absolute value and
+    // leave the other two undefined so the API doesn't store stale
+    // values from a previous mode the user switched away from.
+    const activeValue =
+      fTriggerMode === 'date'  ? fDueDate
+      : fTriggerMode === 'miles' ? fDueMiles
+      : fDueEngineHours;
+    if (!activeValue) {
+      setError('Set a value for the chosen trigger so the task can become overdue.');
       return;
     }
-    // Convert period inputs to the absolute values the API expects.
-    // Miles & hours fall back to "period as absolute" when we don't
-    // know the current reading (vehicle without telemetry).
-    const dueDateAbs = _periodDaysToDueDate(fDueDate) || undefined;
-    const dueMilesAbs = fDueMiles
+    if (fMultiMode && fMultiVehicles.size === 0) {
+      setError('Pick at least one vehicle for the bulk-create.');
+      return;
+    }
+    // Convert ONLY the active trigger's period to an absolute value.
+    // The other two stay undefined so the API receives a clean,
+    // single-trigger task.  Miles & hours fall back to "period as
+    // absolute" when telemetry is missing (no odometer baseline).
+    const dueDateAbs = fTriggerMode === 'date'
+      ? (_periodDaysToDueDate(fDueDate) || undefined)
+      : undefined;
+    const dueMilesAbs = fTriggerMode === 'miles' && fDueMiles
       ? (fOdometer != null
           ? Math.round(fOdometer) + Number(fDueMiles)
           : Number(fDueMiles))
       : undefined;
-    // When the live engine-hours baseline is available (warehouse
-    // returned a reading), submit as ``current + period``.  Without a
-    // baseline, fall back to "period as absolute" — the same
-    // degradation the miles path uses.
-    const dueEngineHoursAbs = fDueEngineHours
+    const dueEngineHoursAbs = fTriggerMode === 'hours' && fDueEngineHours
       ? (fEngineHours != null
           ? Math.round(fEngineHours) + Number(fDueEngineHours)
           : Number(fDueEngineHours))
       : undefined;
     setSaving(true); setError('');
     try {
-      await apiJSON('/maintenance/tasks', { method: 'POST', body: {
-        vehicle_name: fVehicle,
+      // Single-checkbox recurrence: when "Repeat after completion" is
+      // on, the next instance reuses the SAME interval as the trigger
+      // the user just configured.  Only the active dimension's
+      // recurrence column is set; the other two stay undefined so the
+      // task ships with a single, coherent trigger + repeat policy.
+      const recurDays =
+        fRepeat && fTriggerMode === 'date' && fDueDate ? Number(fDueDate) : undefined;
+      const recurMiles =
+        fRepeat && fTriggerMode === 'miles' && fDueMiles ? Number(fDueMiles) : undefined;
+      const recurHours =
+        fRepeat && fTriggerMode === 'hours' && fDueEngineHours ? Number(fDueEngineHours) : undefined;
+      const shared = {
         task_type: fType,
         description: fDesc,
         priority: fPriority,
         due_date: dueDateAbs,
         due_miles: dueMilesAbs,
         due_engine_hours: dueEngineHoursAbs,
-      }});
+        recur_interval_days: recurDays,
+        recur_interval_miles: recurMiles,
+        recur_interval_engine_hours: recurHours,
+      };
+      if (fMultiMode) {
+        const res = await apiJSON<{
+          created: { id: number }[];
+          failed: { vehicle_name: string; error: string }[];
+        }>('/maintenance/tasks/bulk/create', {
+          method: 'POST',
+          body: { ...shared, vehicle_names: Array.from(fMultiVehicles) },
+        });
+        toast.success(
+          `Created ${res.created.length} task${res.created.length === 1 ? '' : 's'}`
+          + (res.failed.length ? ` · ${res.failed.length} failed` : ''),
+        );
+        if (res.failed.length) {
+          // Show the first failure verbatim so the user can fix the
+          // root cause (usually a bad vehicle name).
+          toast.error(`First failure: ${res.failed[0].vehicle_name} — ${res.failed[0].error}`);
+        }
+      } else {
+        await apiJSON('/maintenance/tasks', { method: 'POST', body: {
+          ...shared,
+          vehicle_name: fVehicle,
+        }});
+      }
       setShowAdd(false);
       setFVehicle(''); setFDesc(''); setFDueDate(''); setFDueMiles('');
       setFDueEngineHours(''); setFPriority('medium'); setFOdometer(null); setFEngineHours(null);
+      setFMultiMode(false); setFMultiVehicles(new Set());
+      setFTriggerMode('date');
+      setFRepeat(false);
       load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     finally { setSaving(false); }
@@ -511,15 +753,65 @@ export default function Tasks() {
     const body: Record<string, unknown> = {};
     if (eStatus !== selected.status) body.status = eStatus;
     if (eDesc !== selected.description) body.description = eDesc;
-    if (dueDateAbs !== (selected.due_date || '')) {
+    // Only patch the trigger field matching the current view —
+    // switching modes in the segmented control doesn't wipe a
+    // previously-set trigger of another type.  A multi-trigger task
+    // stays multi-trigger until the user explicitly opens that
+    // dimension's view and clears it.
+    if (eTriggerMode === 'date' && dueDateAbs !== (selected.due_date || '')) {
       body.due_date = dueDateAbs || null;
     }
-    if (dueMilesAbs !== (selected.due_miles ?? null)) {
+    if (eTriggerMode === 'miles' && dueMilesAbs !== (selected.due_miles ?? null)) {
       body.due_miles = dueMilesAbs;
     }
     if (ePriority !== (selected.priority || 'medium')) body.priority = ePriority;
-    if (dueEngineHoursAbs !== (selected.due_engine_hours ?? null)) {
+    if (eTriggerMode === 'hours' && dueEngineHoursAbs !== (selected.due_engine_hours ?? null)) {
       body.due_engine_hours = dueEngineHoursAbs;
+    }
+    // Recurrence: the "Repeat after completion" checkbox controls the
+    // active trigger's recurrence interval — when checked, the
+    // recur_interval_* column is set to the same period the user
+    // entered for the trigger.  When unchecked, that column is
+    // nulled.  Only the active dimension is touched so the other two
+    // recurrence columns (set via a previous edit on another tab)
+    // stay intact.
+    if (eTriggerMode === 'date') {
+      const want = eRepeat && eDueDate ? Number(eDueDate) : null;
+      if (want !== (selected.recur_interval_days ?? null)) {
+        body.recur_interval_days = want;
+      }
+    }
+    if (eTriggerMode === 'miles') {
+      const want = eRepeat && eDueMiles ? Number(eDueMiles) : null;
+      if (want !== (selected.recur_interval_miles ?? null)) {
+        body.recur_interval_miles = want;
+      }
+    }
+    if (eTriggerMode === 'hours') {
+      const want = eRepeat && eDueEngineHours ? Number(eDueEngineHours) : null;
+      if (want !== (selected.recur_interval_engine_hours ?? null)) {
+        body.recur_interval_engine_hours = want;
+      }
+    }
+    // Cost dollars → integer cents.  Empty string means "clear".
+    // Reject obviously bad input (negative, non-numeric) here so the
+    // user sees the error before the round-trip.
+    const trimmedCost = eCost.trim();
+    let costCentsAbs: number | null = null;
+    if (trimmedCost) {
+      const parsed = Number(trimmedCost);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        setError('Cost must be a positive number.');
+        return;
+      }
+      costCentsAbs = Math.round(parsed * 100);
+    }
+    if (costCentsAbs !== (selected.cost_cents ?? null)) {
+      body.cost_cents = costCentsAbs;
+    }
+    const trimmedVendor = eVendor.trim();
+    if ((trimmedVendor || null) !== (selected.vendor_name || null)) {
+      body.vendor_name = trimmedVendor || null;
     }
     if (Object.keys(body).length === 0) return;
     // Completion confirmation — flipping a task to "completed" stamps
@@ -551,22 +843,119 @@ export default function Tasks() {
     finally { setSaving(false); }
   };
 
-  const handleDelete = async (id: number) => {
-    // Delete is irreversible — every other destructive action in this
-    // file already prompts (bulk-delete at L283, mark-overdue at L307,
-    // export-csv-bulk at L373) so this button was the odd one out.
-    // A misclick on a maintenance row could wipe a service record the
-    // shop later needs for the DOT binder, so the friction is cheap.
-    const taskLabel = selected?.task_type
-      ? selected.task_type.replace(/_/g, ' ')
-      : `task #${id}`;
-    const vehicleLabel = selected?.vehicle_name ? ` for #${selected.vehicle_name}` : '';
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  // Snooze and Delete expand inline within the action area instead of
+  // shouting from above the fold.  Each starts collapsed (just a
+  // button); clicking reveals the picker (Snooze) or the destructive
+  // confirmation (Delete).  Both reset to collapsed every time the
+  // drawer reopens so a stale "are you sure?" never greets the user.
+  const [snoozeOpen, setSnoozeOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  useEffect(() => {
+    // Whenever the open task changes, collapse both panels.
+    setSnoozeOpen(false);
+    setDeleteOpen(false);
+  }, [selected?.id]);
+
+  // Upload a receipt/photo to the open task.  Backend stamps the
+  // single attachment metadata; previous file is replaced on the
+  // object store side too (folder-keyed by task id).
+  const handleAttachmentUpload = async (file: File) => {
+    if (!selected) return;
+    // Client-side mirror of the API's 10 MB cap so the user gets
+    // immediate feedback without a round-trip on huge phone photos.
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File exceeds 10 MB limit.');
+      return;
+    }
+    setUploadingAttachment(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await apiFetch(
+        '/maintenance/tasks/' + selected.id + '/attachment',
+        { method: 'POST', body: form },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        toast.error(typeof err.detail === 'string' ? err.detail : 'Upload failed');
+        return;
+      }
+      toast.success('Attachment uploaded');
+      load();
+      // Refetch the open task so the sidebar shows the new attachment
+      // without forcing the user to reopen the drawer.
+      try {
+        const refreshed = await apiJSON<MaintenanceTask>(
+          '/maintenance/tasks/' + selected.id,
+        );
+        setSelected(refreshed);
+      } catch { /* non-fatal; list refresh above will sync next open */ }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Upload failed');
+    } finally {
+      setUploadingAttachment(false);
+    }
+  };
+
+  const handleAttachmentDelete = async () => {
+    if (!selected) return;
     const ok = window.confirm(
-      `Delete the "${taskLabel}"${vehicleLabel}?\n\nThis can't be undone.`,
+      'Remove the attached file?\n\nThis can\'t be undone.',
     );
     if (!ok) return;
     try {
-      await apiJSON('/maintenance/tasks/' + id, { method: 'DELETE' });
+      await apiJSON('/maintenance/tasks/' + selected.id + '/attachment', {
+        method: 'DELETE',
+      });
+      toast.success('Attachment removed');
+      load();
+      try {
+        const refreshed = await apiJSON<MaintenanceTask>(
+          '/maintenance/tasks/' + selected.id,
+        );
+        setSelected(refreshed);
+      } catch { /* non-fatal */ }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Delete failed');
+    }
+  };
+
+  // Snooze the currently-open task for ``hours`` hours, or clear an
+  // active snooze when ``hours`` is null.  Backend stamps
+  // ``snoozed_until`` and clears ``alerted_at`` so the next alert fires
+  // fresh once the snooze expires.  We refresh the list so the row
+  // shows its updated snooze badge.
+  const handleSnooze = async (hours: number | null) => {
+    if (!selected) return;
+    const until = hours === null
+      ? null
+      : new Date(Date.now() + hours * 3600_000).toISOString();
+    try {
+      await apiJSON('/maintenance/tasks/' + selected.id + '/snooze', {
+        method: 'POST', body: { until },
+      });
+      toast.success(
+        until
+          ? `Snoozed until ${new Date(until).toLocaleString()}`
+          : 'Snooze cleared',
+      );
+      setSelected(null);
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Snooze failed');
+    }
+  };
+
+  // Inline-confirmed delete: the drawer's Delete button reveals a
+  // "Danger Zone" expansion with a final Confirm action.  No
+  // window.confirm because the in-drawer expansion already serves as
+  // the friction step — duplicating it would feel like Wizard of Oz
+  // dialogs ("are you sure you're sure?").
+  const confirmDelete = async () => {
+    if (!selected) return;
+    try {
+      await apiJSON('/maintenance/tasks/' + selected.id, { method: 'DELETE' });
       setSelected(null); load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
   };
@@ -696,6 +1085,15 @@ export default function Tasks() {
                 compliance-flavoured exports. */}
             <button
               type="button"
+              onClick={() => setTemplatesOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-xs font-medium text-foreground transition border border-border"
+              title="Manage re-usable task templates"
+            >
+              <ClipboardList size={13} />
+              Templates
+            </button>
+            <button
+              type="button"
               onClick={() => setBinderDialogOpen(true)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-xs font-medium text-foreground transition border border-border"
               title="Generate a DOT compliance binder PDF"
@@ -728,13 +1126,15 @@ export default function Tasks() {
             <button
               key={chip.key || 'all'}
               onClick={() => setStatusFilter(active ? '' : chip.key)}
+              aria-pressed={active}
+              aria-label={`${chip.label}, ${chip.count} task${chip.count === 1 ? '' : 's'}${active ? ', selected' : ''}`}
               className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition border ${
                 active
                   ? 'bg-primary text-primary-foreground border-primary'
                   : 'bg-card hover:bg-muted text-foreground border-border'
               }`}
             >
-              <span className={`w-2 h-2 rounded-full ${chip.dot}`} />
+              <span aria-hidden className={`w-2 h-2 rounded-full ${chip.dot}`} />
               {chip.label}
               <span className={`tabular-nums ${active ? 'opacity-80' : 'text-muted-foreground'}`}>
                 {chip.count}
@@ -752,20 +1152,111 @@ export default function Tasks() {
 
       {showAdd && (
         <form onSubmit={handleAdd} className="bg-card border border-border rounded-xl p-4 mb-6 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-          <label className="block">
-            <span className="block text-xs text-muted-foreground mb-1">Vehicle</span>
-            <VehiclePicker
-              value={fVehicle}
-              vehicles={fleetVehicles}
-              loading={fleetLoading}
-              onChange={(name, vehicle) => {
-                setFVehicle(name);
-                setFOdometer(null);
-                setFEngineHours(null);
-                if (vehicle) fetchOdometer(vehicle.name);
+          {/* Apply-template dropdown — only shown when at least one
+              template exists.  Selecting fills the rest of the form
+              with the template's defaults; the user picks a vehicle
+              and clicks Create. */}
+          {templates.length > 0 && (
+            <label className="col-span-full block">
+              <span className="block text-xs text-muted-foreground mb-1 inline-flex items-center gap-1">
+                <ClipboardList size={11} />
+                Apply template (optional)
+              </span>
+              <select
+                onChange={e => {
+                  const id = Number(e.target.value);
+                  const t = templates.find(x => x.id === id);
+                  if (t) applyTemplate(t);
+                  // Reset the select so re-picking the same one
+                  // re-applies it.
+                  e.target.value = '';
+                }}
+                className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+              >
+                <option value="">— pick a template —</option>
+                {templates.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {/* Multi-vehicle toggle — checkbox at the top so the user
+              sees it before they start filling fields.  Spans the
+              full row so it doesn't get lost. */}
+          <label className="col-span-full inline-flex items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={fMultiMode}
+              onChange={e => {
+                setFMultiMode(e.target.checked);
+                if (!e.target.checked) setFMultiVehicles(new Set());
               }}
+              className="accent-primary cursor-pointer"
             />
+            Apply to multiple vehicles at once
           </label>
+          {fMultiMode ? (
+            <div className="col-span-2 md:col-span-3 xl:col-span-4">
+              <span className="block text-xs text-muted-foreground mb-1">
+                Vehicles ({fMultiVehicles.size} selected)
+              </span>
+              <div className="max-h-40 overflow-y-auto bg-muted border border-border rounded p-2 flex flex-wrap gap-1">
+                {fleetLoading && (
+                  <span className="text-xs text-muted-foreground">Loading…</span>
+                )}
+                {!fleetLoading && fleetVehicles.length === 0 && (
+                  <span className="text-xs text-muted-foreground">No vehicles found.</span>
+                )}
+                {fleetVehicles.map(v => {
+                  const on = fMultiVehicles.has(v.name);
+                  return (
+                    <button
+                      key={v.name}
+                      type="button"
+                      onClick={() => {
+                        setFMultiVehicles(prev => {
+                          const next = new Set(prev);
+                          if (on) next.delete(v.name); else next.add(v.name);
+                          return next;
+                        });
+                      }}
+                      className={`px-2 py-0.5 rounded-full border text-xs font-mono transition ${
+                        on
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-card border-border hover:bg-muted'
+                      }`}
+                    >
+                      {on ? '✓ ' : ''}#{v.name}
+                    </button>
+                  );
+                })}
+              </div>
+              {fMultiVehicles.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setFMultiVehicles(new Set())}
+                  className="mt-1 text-[11px] text-muted-foreground hover:text-foreground"
+                >
+                  Clear selection
+                </button>
+              )}
+            </div>
+          ) : (
+            <label className="block">
+              <span className="block text-xs text-muted-foreground mb-1">Vehicle</span>
+              <VehiclePicker
+                value={fVehicle}
+                vehicles={fleetVehicles}
+                loading={fleetLoading}
+                onChange={(name, vehicle) => {
+                  setFVehicle(name);
+                  setFOdometer(null);
+                  setFEngineHours(null);
+                  if (vehicle) fetchOdometer(vehicle.name);
+                }}
+              />
+            </label>
+          )}
           <label className="block">
             <span className="block text-xs text-muted-foreground mb-1">Type</span>
             <select value={fType} onChange={e => setFType(e.target.value)} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring">
@@ -800,66 +1291,125 @@ export default function Tasks() {
               ))}
             </select>
           </label>
-          <label className="block">
-            <span className="block text-xs text-muted-foreground mb-1">Due Date</span>
-            <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
-              <span title="Today's date — the period below is added to this">Today: {_todayLabel()}</span>
-              <span className="text-primary">
-                Due: {fDueDate ? _formatDate(_periodDaysToDueDate(fDueDate)) : '—'}
-              </span>
+          {/* Single-trigger picker — segmented control + the
+              corresponding period input.  Plain text labels (no
+              emoji) for a cleaner look. */}
+          <div className="col-span-full">
+            <span className="block text-xs text-muted-foreground mb-1">
+              Due by
+            </span>
+            <div className="inline-flex items-center gap-0.5 p-0.5 bg-muted/50 border border-border rounded-md mb-2" role="group" aria-label="Due by">
+              {([
+                { k: 'date',  label: 'Date'  },
+                { k: 'miles', label: 'Miles' },
+                { k: 'hours', label: 'Hours' },
+              ] as const).map(opt => {
+                const active = fTriggerMode === opt.k;
+                return (
+                  <button
+                    key={opt.k}
+                    type="button"
+                    onClick={() => setFTriggerMode(opt.k)}
+                    aria-pressed={active}
+                    className={`px-2.5 py-1 rounded text-xs font-medium transition ${
+                      active
+                        ? 'bg-card text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
             </div>
-            <DaysPicker value={fDueDate} onChange={setFDueDate} />
-          </label>
-          <label className="block">
-            <span className="block text-xs text-muted-foreground mb-1">Due Miles</span>
-            <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
-              <span>
-                Current:{' '}
-                {fOdometerLoading
-                  ? 'fetching…'
-                  : fOdometer != null
-                    ? `${Math.round(fOdometer).toLocaleString()} mi`
-                    : '—'}
-              </span>
-              <span className="text-primary">
-                Due:{' '}
-                {fDueMiles
-                  ? `${(fOdometer != null ? Math.round(fOdometer) + Number(fDueMiles) : Number(fDueMiles)).toLocaleString()} mi`
-                  : '—'}
-              </span>
-            </div>
-            <MilesPicker
-              value={fDueMiles}
-              onChange={setFDueMiles}
-              mode={fOdometer != null ? 'period' : 'absolute'}
-            />
-          </label>
-          <label className="block">
-            <span className="block text-xs text-muted-foreground mb-1">Due Engine Hours</span>
-            {fEngineHours != null ? (
-              <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
-                <span>Current: {Math.round(fEngineHours).toLocaleString()} h</span>
-                <span className="text-primary">
-                  Due:{' '}
-                  {fDueEngineHours
-                    ? `${(Math.round(fEngineHours) + Number(fDueEngineHours)).toLocaleString()} h`
-                    : '—'}
-                </span>
-              </div>
-            ) : (
-              <p className="text-[11px] text-muted-foreground mb-1">
-                {fOdometerLoading
-                  ? 'fetching telemetry…'
-                  : fVehicle
-                    ? null  /* picker now renders its own no-telemetry hint */
-                    : 'Pick a vehicle to see its current engine hours.'}
-              </p>
+            {fTriggerMode === 'date' && (
+              <label className="block">
+                <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
+                  <span title="Today's date — the period below is added to this">Today: {_todayLabel()}</span>
+                  <span className="text-primary">
+                    Due: {fDueDate ? _formatDate(_periodDaysToDueDate(fDueDate)) : '—'}
+                  </span>
+                </div>
+                <DaysPicker value={fDueDate} onChange={setFDueDate} />
+              </label>
             )}
-            <HoursPicker
-              value={fDueEngineHours}
-              onChange={setFDueEngineHours}
-              mode={fEngineHours != null ? 'period' : 'absolute'}
+            {fTriggerMode === 'miles' && (
+              <label className="block">
+                <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
+                  <span>
+                    Current:{' '}
+                    {fOdometerLoading
+                      ? 'fetching…'
+                      : fOdometer != null
+                        ? `${Math.round(fOdometer).toLocaleString()} mi`
+                        : '—'}
+                  </span>
+                  <span className="text-primary">
+                    Due:{' '}
+                    {fDueMiles
+                      ? `${(fOdometer != null ? Math.round(fOdometer) + Number(fDueMiles) : Number(fDueMiles)).toLocaleString()} mi`
+                      : '—'}
+                  </span>
+                </div>
+                <MilesPicker
+                  value={fDueMiles}
+                  onChange={setFDueMiles}
+                  mode={fOdometer != null ? 'period' : 'absolute'}
+                />
+              </label>
+            )}
+            {fTriggerMode === 'hours' && (
+              <label className="block">
+                {fEngineHours != null ? (
+                  <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
+                    <span>Current: {Math.round(fEngineHours).toLocaleString()} h</span>
+                    <span className="text-primary">
+                      Due:{' '}
+                      {fDueEngineHours
+                        ? `${(Math.round(fEngineHours) + Number(fDueEngineHours)).toLocaleString()} h`
+                        : '—'}
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground mb-1">
+                    {fOdometerLoading
+                      ? 'fetching telemetry…'
+                      : fVehicle
+                        ? null  /* picker now renders its own no-telemetry hint */
+                        : 'Pick a vehicle to see its current engine hours.'}
+                  </p>
+                )}
+                <HoursPicker
+                  value={fDueEngineHours}
+                  onChange={setFDueEngineHours}
+                  mode={fEngineHours != null ? 'period' : 'absolute'}
+                />
+              </label>
+            )}
+          </div>
+          {/* Single recurrence checkbox — one line, mirrors active
+              trigger.  Phrasing varies depending on whether a value
+              has been entered yet ("Repeat every 90 days after
+              completion" vs the plain "Repeat after completion"). */}
+          <label className="col-span-full inline-flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={fRepeat}
+              onChange={e => setFRepeat(e.target.checked)}
+              className="accent-primary cursor-pointer"
             />
+            <span className="text-foreground">
+              {(() => {
+                const active =
+                  fTriggerMode === 'date'  ? fDueDate
+                  : fTriggerMode === 'miles' ? fDueMiles
+                  : fDueEngineHours;
+                const unit = fTriggerMode === 'date' ? 'days' : fTriggerMode === 'miles' ? 'mi' : 'h';
+                return active
+                  ? <>Repeat every {Number(active).toLocaleString()} {unit} after completion</>
+                  : <>Repeat after completion</>;
+              })()}
+            </span>
           </label>
           <div className="flex items-end">
             <button type="submit" disabled={saving} className="w-full px-4 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition">
@@ -896,7 +1446,8 @@ export default function Tasks() {
           <DataTable
             columns={columns}
             data={tasks as unknown as Record<string, unknown>[]}
-            searchKey="vehicle_name"
+            searchKey={['vehicle_name', 'description', 'task_type']}
+            searchPlaceholder="Search vehicle, type, or description..."
             onRowClick={(row) => openTaskForEdit(row as unknown as MaintenanceTask)}
           />
           {/* Result count footer.  Always shows the filtered count
@@ -932,6 +1483,13 @@ export default function Tasks() {
           >
             <CheckSquare size={13} />
             Mark complete
+          </button>
+          <button
+            type="button"
+            onClick={handleBulkInProgress}
+            className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-xs font-medium transition"
+          >
+            In progress
           </button>
           <button
             type="button"
@@ -1007,6 +1565,27 @@ export default function Tasks() {
                 Closed by Work Order #{selected.work_order_id}
               </a>
             )}
+            {/* Active-snooze banner — when the task has a future
+                ``snoozed_until``, surface it prominently so the user
+                doesn't think the system is broken when overdue tasks
+                stop generating alerts.  One-click Resume clears it. */}
+            {selected.snoozed_until
+              && new Date(selected.snoozed_until).getTime() > Date.now() && (
+              <div className="mb-4 px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded text-xs text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                <BellOff size={13} className="shrink-0" />
+                <span className="flex-1">
+                  Snoozed until {new Date(selected.snoozed_until).toLocaleString()}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleSnooze(null)}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-500/20 hover:bg-amber-500/30 rounded text-amber-800 dark:text-amber-300"
+                >
+                  <Bell size={11} />
+                  Resume
+                </button>
+              </div>
+            )}
             {/* Immutable facts only — editable fields (status,
                 description, due triggers, priority) live in the form
                 below so the same value never appears twice. */}
@@ -1018,7 +1597,23 @@ export default function Tasks() {
                   <dd>{_formatDate(selected.completed_at)}</dd>
                 </div>
               )}
-              {selected.recur_interval_days && <div className="flex justify-between"><dt className="text-muted-foreground">Recurrence</dt><dd>Every {selected.recur_interval_days} days</dd></div>}
+              {(selected.recur_interval_days
+                || selected.recur_interval_miles
+                || selected.recur_interval_engine_hours) && (
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Recurrence</dt>
+                  <dd className="text-right">
+                    {[
+                      selected.recur_interval_days
+                        ? `every ${selected.recur_interval_days} days` : null,
+                      selected.recur_interval_miles
+                        ? `every ${Number(selected.recur_interval_miles).toLocaleString()} mi` : null,
+                      selected.recur_interval_engine_hours
+                        ? `every ${Number(selected.recur_interval_engine_hours).toLocaleString()} h` : null,
+                    ].filter(Boolean).join(' · ')}
+                  </dd>
+                </div>
+              )}
               {/* Attestation: surfaces the audit trail.  Renders inside
                   the dl block so it's visually grouped with the other
                   task metadata.  Multi-line because the name+date can
@@ -1066,58 +1661,228 @@ export default function Tasks() {
                   className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
                 />
               </label>
-              <label className="block">
-                <span className="block text-xs text-muted-foreground mb-1">Due Date</span>
-                <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
-                  <span title="Today's date — the period below is added to this">Today: {_todayLabel()}</span>
-                  <span className="text-primary">
-                    Due: {eDueDate ? _formatDate(_periodDaysToDueDate(eDueDate)) : '—'}
-                  </span>
+              {/* Single-trigger picker — segmented control + the
+                  corresponding picker.  Initial mode is inferred from
+                  the loaded task in ``openTaskForEdit`` so the drawer
+                  opens to the field the user previously cared about.
+                  Switching modes here doesn't wipe the other
+                  dimension's value in the DB — only the currently-shown
+                  trigger is patched on save (see ``handleUpdate``). */}
+              <div>
+                <span className="block text-xs text-muted-foreground mb-1">
+                  Due by
+                </span>
+                <div className="inline-flex items-center gap-0.5 p-0.5 bg-muted/50 border border-border rounded-md mb-2" role="group" aria-label="Due by">
+                  {([
+                    { k: 'date',  label: 'Date'  },
+                    { k: 'miles', label: 'Miles' },
+                    { k: 'hours', label: 'Hours' },
+                  ] as const).map(opt => {
+                    const active = eTriggerMode === opt.k;
+                    return (
+                      <button
+                        key={opt.k}
+                        type="button"
+                        onClick={() => setETriggerMode(opt.k)}
+                        aria-pressed={active}
+                        className={`px-2.5 py-1 rounded text-xs font-medium transition ${
+                          active
+                            ? 'bg-card text-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
                 </div>
-                <DaysPicker value={eDueDate} onChange={setEDueDate} />
+                {eTriggerMode === 'date' && (
+                  <label className="block">
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
+                      <span title="Today's date — the period below is added to this">Today: {_todayLabel()}</span>
+                      <span className="text-primary">
+                        Due: {eDueDate ? _formatDate(_periodDaysToDueDate(eDueDate)) : '—'}
+                      </span>
+                    </div>
+                    <DaysPicker value={eDueDate} onChange={setEDueDate} />
+                  </label>
+                )}
+                {eTriggerMode === 'miles' && (
+                  <label className="block">
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
+                      <span>
+                        Current: {eOdometer != null ? `${Math.round(eOdometer).toLocaleString()} mi` : '—'}
+                      </span>
+                      <span className="text-primary">
+                        Due:{' '}
+                        {eDueMiles
+                          ? `${(eOdometer != null ? Math.round(eOdometer) + Number(eDueMiles) : Number(eDueMiles)).toLocaleString()} mi`
+                          : '—'}
+                      </span>
+                    </div>
+                    <MilesPicker
+                      value={eDueMiles}
+                      onChange={setEDueMiles}
+                      mode={eOdometer != null ? 'period' : 'absolute'}
+                    />
+                  </label>
+                )}
+                {eTriggerMode === 'hours' && (
+                  <label className="block">
+                    {eEngineHours != null ? (
+                      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
+                        <span>Current: {Math.round(eEngineHours).toLocaleString()} h</span>
+                        <span className="text-primary">
+                          Due:{' '}
+                          {eDueEngineHours
+                            ? `${(Math.round(eEngineHours) + Number(eDueEngineHours)).toLocaleString()} h`
+                            : '—'}
+                        </span>
+                      </div>
+                    ) : null  /* picker now renders its own no-telemetry hint */}
+                    <HoursPicker
+                      value={eDueEngineHours}
+                      onChange={setEDueEngineHours}
+                      mode={eEngineHours != null ? 'period' : 'absolute'}
+                    />
+                  </label>
+                )}
+              </div>
+              {/* Single recurrence checkbox — only the active
+                  trigger's recurrence is touched on save.  Other
+                  dimensions' recurrence (if any) stays intact and
+                  surfaces when the user switches tabs. */}
+              <label className="inline-flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={eRepeat}
+                  onChange={e => setERepeat(e.target.checked)}
+                  className="accent-primary cursor-pointer"
+                />
+                <span className="text-foreground">
+                  {(() => {
+                    const active =
+                      eTriggerMode === 'date'  ? eDueDate
+                      : eTriggerMode === 'miles' ? eDueMiles
+                      : eDueEngineHours;
+                    const unit = eTriggerMode === 'date' ? 'days' : eTriggerMode === 'miles' ? 'mi' : 'h';
+                    return active
+                      ? <>Repeat every {Number(active).toLocaleString()} {unit} after completion</>
+                      : <>Repeat after completion</>;
+                  })()}
+                </span>
               </label>
-              <label className="block">
-                <span className="block text-xs text-muted-foreground mb-1">Due Miles</span>
-                <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
-                  <span>
-                    Current: {eOdometer != null ? `${Math.round(eOdometer).toLocaleString()} mi` : '—'}
+
+              {/* Completion-time evidence (receipt / photo / cost /
+                  vendor) sits AFTER the trigger/repeat block since it
+                  only matters once the task is being closed out.
+                  Hidden for Pending / In Progress / Cancelled.
+
+                  Visually separated from the config fields above with
+                  a hairline divider — receipt + cost + vendor read as
+                  one logical "completion evidence" group, not as more
+                  form fields. */}
+              {(selected.status === 'completed' || eStatus === 'completed') && (<>
+                <div className="border-t border-border/40 pt-3 -mx-0" aria-hidden />
+                <div className="block">
+                  <span className="block text-xs text-muted-foreground mb-1 inline-flex items-center gap-1">
+                    <Paperclip size={11} />
+                    Receipt / Photo
                   </span>
-                  <span className="text-primary">
-                    Due:{' '}
-                    {eDueMiles
-                      ? `${(eOdometer != null ? Math.round(eOdometer) + Number(eDueMiles) : Number(eDueMiles)).toLocaleString()} mi`
-                      : '—'}
-                  </span>
+                  {selected.attachment_name ? (
+                    <div className="flex items-center gap-2 p-2 bg-muted/40 border border-border rounded text-xs">
+                      {(selected.attachment_content_type || '').startsWith('image/')
+                        ? <ImageIcon size={14} className="text-muted-foreground shrink-0" />
+                        : <FileText size={14} className="text-muted-foreground shrink-0" />}
+                      <a
+                        href={'/api/maintenance/tasks/' + selected.id + '/attachment'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 truncate hover:underline"
+                        title={selected.attachment_name}
+                      >
+                        {selected.attachment_name}
+                      </a>
+                      <label className="cursor-pointer text-muted-foreground hover:text-foreground" title="Replace">
+                        <Upload size={13} />
+                        <input
+                          type="file"
+                          accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif"
+                          className="hidden"
+                          disabled={uploadingAttachment}
+                          onChange={e => {
+                            const f = e.target.files?.[0];
+                            if (f) handleAttachmentUpload(f);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleAttachmentDelete}
+                        className="text-muted-foreground hover:text-destructive"
+                        aria-label="Remove attachment"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="flex items-center justify-center gap-1.5 p-2 bg-muted/40 hover:bg-muted border border-dashed border-border rounded text-xs cursor-pointer text-muted-foreground hover:text-foreground">
+                      <Upload size={13} />
+                      {uploadingAttachment ? 'Uploading…' : 'Attach a receipt or photo (max 10 MB)'}
+                      <input
+                        type="file"
+                        accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif"
+                        className="hidden"
+                        disabled={uploadingAttachment}
+                        onChange={e => {
+                          const f = e.target.files?.[0];
+                          if (f) handleAttachmentUpload(f);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                  )}
                 </div>
-                <MilesPicker
-                  value={eDueMiles}
-                  onChange={setEDueMiles}
-                  mode={eOdometer != null ? 'period' : 'absolute'}
-                />
-              </label>
-              <label className="block">
-                <span className="block text-xs text-muted-foreground mb-1">Due Engine Hours</span>
-                {eEngineHours != null ? (
-                  <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
-                    <span>Current: {Math.round(eEngineHours).toLocaleString()} h</span>
-                    <span className="text-primary">
-                      Due:{' '}
-                      {eDueEngineHours
-                        ? `${(Math.round(eEngineHours) + Number(eDueEngineHours)).toLocaleString()} h`
-                        : '—'}
-                    </span>
-                  </div>
-                ) : null  /* picker now renders its own no-telemetry hint */}
-                <HoursPicker
-                  value={eDueEngineHours}
-                  onChange={setEDueEngineHours}
-                  mode={eEngineHours != null ? 'period' : 'absolute'}
-                />
-              </label>
-              {/* Primary actions: Cancel + Update side-by-side so the
-                  back-out option is obvious even with Esc/click-outside
-                  available. */}
-              <div className="flex items-center gap-2 pt-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="block text-xs text-muted-foreground mb-1">Cost (USD)</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={eCost}
+                      onChange={e => setECost(e.target.value)}
+                      placeholder="e.g. 285.50"
+                      className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block text-xs text-muted-foreground mb-1">Vendor</span>
+                    <input
+                      type="text"
+                      maxLength={120}
+                      value={eVendor}
+                      onChange={e => setEVendor(e.target.value)}
+                      placeholder="e.g. Joe's Truck Shop"
+                      className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+                    />
+                  </label>
+                </div>
+              </>)}
+
+              {/* Hairline divider between editable fields and the
+                  action area — actions are categorically different
+                  from form inputs and benefit from a clear visual
+                  break. */}
+              <div className="border-t border-border/40 mt-1" aria-hidden />
+
+              {/* Action area — Cancel / Update on the primary row;
+                  Snooze + Delete as collapsed pills below.  Snooze
+                  expands inline with the 48h/7d/30d picker.  Delete
+                  expands inline with a Danger-Zone confirm step
+                  (no extra browser-level confirm dialog — the inline
+                  expansion IS the confirmation). */}
+              <div className="flex items-center gap-2 pt-3">
                 <button
                   type="button"
                   onClick={() => setSelected(null)}
@@ -1129,26 +1894,101 @@ export default function Tasks() {
                 <button
                   onClick={handleUpdate}
                   disabled={saving}
-                  className="flex-1 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition"
+                  className="flex-1 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition"
                 >
                   {saving ? 'Saving...' : 'Update Task'}
                 </button>
               </div>
-              {/* Danger zone — visually separated so a misclick on the
-                  red button is harder.  The confirm() in handleDelete
-                  is the real guard, this is the second line of defence. */}
-              <div className="mt-4 pt-3 border-t border-border/60">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">
-                  Danger zone
-                </p>
+
+              {/* Snooze pill — only shows when a snooze would actually
+                  do something (task is overdue or close to threshold).
+                  Collapsed: subtle button.  Expanded: inline 48h/7d/30d
+                  picker with a close-X. */}
+              {_isOverdueOrApproaching(selected) && (
+                snoozeOpen ? (
+                  <div className="flex items-center gap-1.5 pt-2">
+                    <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1 mr-1">
+                      <BellOff size={11} />
+                      Snooze for:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleSnooze(48)}
+                      className="flex-1 py-1.5 bg-muted hover:bg-muted/80 border border-border rounded text-xs font-medium"
+                    >
+                      48h
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSnooze(24 * 7)}
+                      className="flex-1 py-1.5 bg-muted hover:bg-muted/80 border border-border rounded text-xs font-medium"
+                    >
+                      7 days
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSnooze(24 * 30)}
+                      className="flex-1 py-1.5 bg-muted hover:bg-muted/80 border border-border rounded text-xs font-medium"
+                    >
+                      30 days
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSnoozeOpen(false)}
+                      aria-label="Cancel snooze"
+                      className="text-muted-foreground hover:text-foreground p-1"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setSnoozeOpen(true)}
+                    className="mt-2 w-full py-1.5 bg-muted/60 hover:bg-muted border border-border rounded text-xs font-medium text-foreground transition inline-flex items-center justify-center gap-1.5"
+                  >
+                    <BellOff size={12} />
+                    Snooze
+                  </button>
+                )
+              )}
+
+              {/* Delete pill — same collapsed/expanded pattern.  The
+                  expanded state IS the Danger-Zone confirmation; no
+                  browser-level confirm dialog is fired. */}
+              {deleteOpen ? (
+                <div className="mt-2 p-2 bg-destructive/10 border border-destructive/30 rounded">
+                  <p className="text-[11px] uppercase tracking-wide text-destructive mb-1.5">
+                    Danger zone — this can&apos;t be undone
+                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setDeleteOpen(false)}
+                      className="px-3 py-1.5 bg-muted hover:bg-muted/80 border border-border rounded text-xs font-medium"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={confirmDelete}
+                      className="flex-1 py-1.5 bg-destructive hover:bg-destructive/90 rounded text-xs font-medium inline-flex items-center justify-center gap-1.5"
+                    >
+                      <Trash2 size={12} />
+                      Yes, delete this task
+                    </button>
+                  </div>
+                </div>
+              ) : (
                 <button
-                  onClick={() => handleDelete(selected.id)}
-                  className="w-full py-2 bg-destructive/80 hover:bg-destructive rounded text-sm font-medium transition inline-flex items-center justify-center gap-1.5"
+                  type="button"
+                  onClick={() => setDeleteOpen(true)}
+                  className="mt-2 w-full py-1.5 bg-muted/60 hover:bg-destructive/10 border border-border hover:border-destructive/30 rounded text-xs font-medium text-muted-foreground hover:text-destructive transition inline-flex items-center justify-center gap-1.5"
                 >
-                  <Trash2 size={13} />
-                  Delete Task
+                  <Trash2 size={12} />
+                  Delete
                 </button>
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -1158,6 +1998,16 @@ export default function Tasks() {
         <ServiceHistoryModal
           vehicleName={historyVehicle}
           onClose={() => setHistoryVehicle(null)}
+        />
+      )}
+
+      {templatesOpen && (
+        <TemplatesModal
+          onClose={() => setTemplatesOpen(false)}
+          // No explicit onChange — the modal invalidates the
+          // ['maintenance-templates'] query key directly, which the
+          // dropdown above subscribes to.  Keeps the modal decoupled
+          // from this page's state.
         />
       )}
 

@@ -99,19 +99,26 @@ class MaintenanceMixin:
         """Bulk-update task status — replaces N × per-task UPDATEs in
         the scheduled overdue-marker jobs. One IN-clause UPDATE per
         chunk of 500 ids, single commit.
+
+        Mirrors the single-task ``update_maintenance_status`` behavior:
+        stamps ``completed_at`` for either ``"done"`` (bot) or
+        ``"completed"`` (API/dashboard), and always refreshes
+        ``updated_at`` so the dashboard's "Updated" column doesn't go
+        stale after a bulk operation.
         """
         if not task_ids:
             return 0
-        completed_at = self._now() if status == "done" else None
+        now = self._now()
+        completed_at = now if status in ("done", "completed") else None
         touched = 0
         for i in range(0, len(task_ids), 500):
             chunk = task_ids[i:i + 500]
             placeholders = ",".join("?" * len(chunk))
             cur = await self._db.execute(
                 f"UPDATE maintenance_tasks "
-                f"SET status = ?, completed_at = ? "
+                f"SET status = ?, completed_at = ?, updated_at = ? "
                 f"WHERE account_id = ? AND id IN ({placeholders})",
-                (status, completed_at, account_id, *chunk),
+                (status, completed_at, now, account_id, *chunk),
             )
             touched += cur.rowcount or 0
         await self._db.commit()
@@ -152,14 +159,19 @@ class MaintenanceMixin:
         ``alerted_at`` column is set by ``mark_tasks_alerted_bulk`` after the
         notification fires; auto-spawned recurring follow-up tasks start
         with ``alerted_at = NULL`` so they alert fresh on their own crossing.
+
+        Snooze: rows with ``snoozed_until > now`` are also excluded; the
+        comparison is lexicographic on ISO 8601 strings which is
+        equivalent to chronological for the formats we write.
         """
         now = self._now()
         cur = await self._db.execute(
             "SELECT * FROM maintenance_tasks"
             " WHERE account_id = ? AND status = 'pending'"
             " AND due_date IS NOT NULL AND due_date < ?"
-            " AND alerted_at IS NULL",
-            (account_id, now),
+            " AND alerted_at IS NULL"
+            " AND (snoozed_until IS NULL OR snoozed_until < ?)",
+            (account_id, now, now),
         )
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
@@ -192,7 +204,8 @@ class MaintenanceMixin:
                    # accidentally PUT'ing a status or account_id field
                    # still gets dropped silently.
                    "priority", "due_engine_hours", "last_engine_hours",
-                   "recur_interval_engine_hours", "work_order_id"}
+                   "recur_interval_engine_hours", "work_order_id",
+                   "cost_cents", "vendor_name"}
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
             return False
@@ -268,11 +281,13 @@ class MaintenanceMixin:
         every account's tasks every 6h.  The existing
         ``(account_id, status, priority)`` index covers this query.
         """
+        now = self._now()
         cur = await self._db.execute(
             "SELECT * FROM maintenance_tasks"
             " WHERE account_id = ? AND status = 'pending'"
-            " AND due_miles IS NOT NULL AND alerted_at IS NULL",
-            (account_id,),
+            " AND due_miles IS NOT NULL AND alerted_at IS NULL"
+            " AND (snoozed_until IS NULL OR snoozed_until < ?)",
+            (account_id, now),
         )
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
@@ -286,11 +301,13 @@ class MaintenanceMixin:
         warehouse ``vehicle_state.engine_hours`` reading.  Alerted-throttle
         filter applied here for the same reason as the mileage path.
         """
+        now = self._now()
         cur = await self._db.execute(
             "SELECT * FROM maintenance_tasks"
             " WHERE account_id = ? AND status = 'pending'"
-            " AND due_engine_hours IS NOT NULL AND alerted_at IS NULL",
-            (account_id,),
+            " AND due_engine_hours IS NOT NULL AND alerted_at IS NULL"
+            " AND (snoozed_until IS NULL OR snoozed_until < ?)",
+            (account_id, now),
         )
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
@@ -323,11 +340,13 @@ class MaintenanceMixin:
         cutoff_date = (
             datetime.now(timezone.utc) + timedelta(days=int(days_ahead))
         ).isoformat()
+        now = self._now()
         cur = await self._db.execute(
             "SELECT * FROM maintenance_tasks"
             " WHERE account_id = ? AND status = 'pending'"
             "   AND alerted_at IS NULL"
             "   AND warning_sent_at IS NULL"
+            "   AND (snoozed_until IS NULL OR snoozed_until < ?)"
             "   AND ("
             "       (due_date IS NOT NULL AND due_date <= ?)"
             "    OR (due_miles IS NOT NULL AND last_odometer IS NOT NULL"
@@ -335,7 +354,7 @@ class MaintenanceMixin:
             "    OR (due_engine_hours IS NOT NULL AND last_engine_hours IS NOT NULL"
             "        AND last_engine_hours + ? >= due_engine_hours)"
             "   )",
-            (account_id, cutoff_date, float(miles_ahead), float(engine_hours_ahead)),
+            (account_id, now, cutoff_date, float(miles_ahead), float(engine_hours_ahead)),
         )
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
@@ -385,6 +404,56 @@ class MaintenanceMixin:
         )
         await self._db.commit()
         return len(params)
+
+    async def set_task_attachment(
+        self, task_id: int, account_id: int,
+        attachment_path: Optional[str],
+        attachment_name: Optional[str],
+        attachment_content_type: Optional[str],
+    ) -> bool:
+        """Set the attachment fields on a task, or clear them all.
+
+        Pass all three values to attach, or all three as ``None`` to
+        clear.  Account-scoped: never touches another tenant's row.
+        Caller is responsible for actually deleting the bytes from the
+        object store on clear; this method only updates the metadata
+        row so the UI stops linking to a missing file.
+        """
+        cur = await self._db.execute(
+            "UPDATE maintenance_tasks "
+            "SET attachment_path = ?, attachment_name = ?, "
+            "    attachment_content_type = ?, updated_at = ? "
+            "WHERE id = ? AND account_id = ?",
+            (
+                attachment_path, attachment_name, attachment_content_type,
+                self._now(), task_id, account_id,
+            ),
+        )
+        await self._db.commit()
+        return cur.rowcount > 0
+
+    async def snooze_task(
+        self, task_id: int, account_id: int, until_iso: Optional[str],
+    ) -> bool:
+        """Set ``snoozed_until`` on a task (or clear it when ``until_iso`` is None).
+
+        The schedulers consult this column and skip the row while it
+        points to the future; once the timestamp falls into the past the
+        task re-enters the normal overdue path.  Also clears
+        ``alerted_at`` so the next alert fires fresh once the snooze
+        expires — otherwise the throttle would suppress the post-snooze
+        notification too.
+
+        Account-scoped: never touches another tenant's row.
+        """
+        cur = await self._db.execute(
+            "UPDATE maintenance_tasks "
+            "SET snoozed_until = ?, alerted_at = NULL, updated_at = ? "
+            "WHERE id = ? AND account_id = ?",
+            (until_iso, self._now(), task_id, account_id),
+        )
+        await self._db.commit()
+        return cur.rowcount > 0
 
     async def record_task_attestation(
         self, task_id: int, account_id: int, attested_by: int,
@@ -518,6 +587,94 @@ class MaintenanceMixin:
             # the "↻ Auto-renewed from #N" breadcrumb on the child.
             spawned_from_id=int(parent_task_id),
         )
+
+    # ── Maintenance templates ──────────────────────────────
+
+    async def list_maintenance_templates(self, account_id: int) -> list[dict]:
+        """All templates for one account, alphabetically by name."""
+        cur = await self._db.execute(
+            "SELECT * FROM maintenance_templates "
+            "WHERE account_id = ? ORDER BY name ASC",
+            (account_id,),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def get_maintenance_template(
+        self, template_id: int, account_id: int,
+    ) -> Optional[dict]:
+        cur = await self._db.execute(
+            "SELECT * FROM maintenance_templates "
+            "WHERE id = ? AND account_id = ?",
+            (template_id, account_id),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def add_maintenance_template(
+        self, *, account_id: int, name: str,
+        task_type: str = "custom",
+        description: str = "",
+        priority: str = "medium",
+        due_in_days: Optional[int] = None,
+        due_in_miles: Optional[float] = None,
+        due_in_hours: Optional[float] = None,
+        recur_interval_days: Optional[int] = None,
+        recur_interval_miles: Optional[float] = None,
+        recur_interval_engine_hours: Optional[float] = None,
+        created_by: int = 0,
+    ) -> int:
+        now = self._now()
+        cur = await self._db.execute(
+            """INSERT INTO maintenance_templates
+               (account_id, name, task_type, description, priority,
+                due_in_days, due_in_miles, due_in_hours,
+                recur_interval_days, recur_interval_miles, recur_interval_engine_hours,
+                created_by, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (account_id, name, task_type, description, priority,
+             due_in_days, due_in_miles, due_in_hours,
+             recur_interval_days, recur_interval_miles, recur_interval_engine_hours,
+             created_by, now, now),
+        )
+        await self._db.commit()
+        return cur.lastrowid
+
+    async def update_maintenance_template(
+        self, template_id: int, account_id: int, **kwargs,
+    ) -> bool:
+        """Update fields on a template.  Allowed columns mirror the
+        ``add`` signature; anything else is silently dropped so a
+        malformed PUT can't blank the ``account_id`` column."""
+        allowed = {
+            "name", "task_type", "description", "priority",
+            "due_in_days", "due_in_miles", "due_in_hours",
+            "recur_interval_days", "recur_interval_miles",
+            "recur_interval_engine_hours",
+        }
+        updates = {k: v for k, v in kwargs.items() if k in allowed}
+        if not updates:
+            return False
+        updates["updated_at"] = self._now()
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [template_id, account_id]
+        cur = await self._db.execute(
+            f"UPDATE maintenance_templates SET {set_clause} "
+            f"WHERE id = ? AND account_id = ?",
+            values,
+        )
+        await self._db.commit()
+        return cur.rowcount > 0
+
+    async def delete_maintenance_template(
+        self, template_id: int, account_id: int,
+    ) -> bool:
+        cur = await self._db.execute(
+            "DELETE FROM maintenance_templates "
+            "WHERE id = ? AND account_id = ?",
+            (template_id, account_id),
+        )
+        await self._db.commit()
+        return cur.rowcount > 0
 
     async def is_vehicle_in_maintenance(
         self, account_id: int, vehicle_name: str,

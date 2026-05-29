@@ -1,12 +1,55 @@
 """Maintenance API endpoints — CRUD for maintenance tasks."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, model_validator
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 
 from interfaces.api.deps import get_current_user, require_permission, get_tenant_db, get_platform_db, get_user_vehicle_nums, paginate
 from capabilities.iam.permissions import can
 from capabilities.maintenance.service import has_maintenance_access, spawn_recurring_if_completed
+
+# Attachment constraints — match the Work Orders limits exactly so the
+# user can't sneak past one upload cap by using the other route.  Same
+# allow-list for content types (PDF + common image MIMEs).
+_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+_ALLOWED_ATTACHMENT_TYPES = {
+    "application/pdf",
+    "image/jpeg", "image/jpg", "image/png", "image/webp",
+    "image/heic", "image/heif",
+}
+
+
+def _coerce_due_date(v: Optional[str]) -> Optional[str]:
+    """Validate that ``due_date`` is YYYY-MM-DD or an ISO 8601 datetime.
+
+    Returns the original string unchanged so existing callers (bot,
+    dashboard) keep their wire format.  An empty string is normalised
+    to ``None`` because Pydantic treats ``""`` as set; storing it
+    would corrupt the scheduler's ``due_date < ?`` comparison.
+
+    Rejecting garbage strings here keeps the scheduler honest — a
+    bogus ``"banana"`` previously stored fine and silently never fired
+    overdue alerts.
+    """
+    if v is None:
+        return None
+    s = str(v).strip()
+    if not s:
+        return None
+    try:
+        if len(s) == 10:
+            datetime.strptime(s, "%Y-%m-%d")
+        else:
+            # Accept both "...Z" (Telegram/bot output) and "+00:00"
+            # forms; fromisoformat handles the second natively.
+            datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        raise ValueError(
+            "due_date must be YYYY-MM-DD or ISO 8601 datetime"
+        )
+    return s
 
 
 async def _build_user_name_map(account_id: int, platform_db) -> dict[int, str]:
@@ -81,6 +124,10 @@ class TaskCreate(BaseModel):
     # marked completed via the Work Orders module.
     work_order_id: Optional[int] = None
 
+    _validate_due_date = field_validator("due_date")(
+        lambda cls, v: _coerce_due_date(v),
+    )
+
     @model_validator(mode="after")
     def _require_trigger(self):
         if (not self.due_date
@@ -106,6 +153,16 @@ class TaskUpdate(BaseModel):
     recur_interval_engine_hours: Optional[float] = Field(None, ge=1)
     priority: Optional[str] = Field(None, pattern=r"^(low|medium|high|critical)$")
     work_order_id: Optional[int] = None
+    # Cost is stored as integer cents to avoid floating-point drift on
+    # aggregate totals; the UI submits dollars and converts on the way
+    # in.  ``vendor_name`` is free-text — shops aren't first-class
+    # entities yet.
+    cost_cents: Optional[int] = Field(None, ge=0)
+    vendor_name: Optional[str] = Field(None, max_length=120)
+
+    _validate_due_date = field_validator("due_date")(
+        lambda cls, v: _coerce_due_date(v),
+    )
 
 
 @router.get("/tasks")
@@ -132,9 +189,14 @@ async def list_tasks(
     # inner ``in`` loop collapses to one scan per task — was O(tasks ×
     # needles); now O(tasks).  Substring semantics preserved so
     # "Truck-107A" still matches needle "107".
+    #
+    # Safe-deny: a user with can_maintenance_own but NO assigned trucks
+    # gets an empty list, never the unfiltered account dataset.
     if not can(user["role"], "can_maintenance_all"):
         trucks = await get_user_vehicle_nums(user)
-        if trucks:
+        if not trucks:
+            tasks = []
+        else:
             import re
             pattern = re.compile("|".join(re.escape(t.lower()) for t in trucks if t))
             tasks = [
@@ -211,13 +273,15 @@ async def get_task(
     task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    # Check truck ownership for _own permission
+    # Check truck ownership for _own permission.  Safe-deny: a user with
+    # can_maintenance_own but no assigned trucks must NOT see anything.
     if not can(user["role"], "can_maintenance_all"):
         trucks = await get_user_vehicle_nums(user)
-        if trucks:
-            needles = {t.lower() for t in trucks}
-            if not any(n in (task.get("vehicle_name") or "").lower() for n in needles):
-                raise HTTPException(status_code=404, detail="Task not found")
+        if not trucks:
+            raise HTTPException(status_code=404, detail="Task not found")
+        needles = {t.lower() for t in trucks}
+        if not any(n in (task.get("vehicle_name") or "").lower() for n in needles):
+            raise HTTPException(status_code=404, detail="Task not found")
     name_map = await _build_user_name_map(user["account_id"], platform_db)
     enriched = _enrich_task(task, name_map)
 
@@ -293,6 +357,100 @@ async def create_task(
     return {"id": task_id, "status": "created"}
 
 
+class BulkTaskCreate(BaseModel):
+    """Create the same task template across N vehicles.
+
+    Each vehicle gets its own ``maintenance_tasks`` row + audit log
+    entry, so post-creation edits / completions / spawn trees stay
+    fully independent.  Reuses ``TaskCreate``'s validation rules for
+    the shared template; the only difference is ``vehicle_names`` (a
+    list) replaces ``vehicle_name`` (a string).
+    """
+    vehicle_names: list[str] = Field(..., min_length=1, max_length=100)
+    company_code: str = ""
+    task_type: str = Field(..., min_length=1)
+    description: str = Field(..., min_length=3, max_length=500)
+    due_date: Optional[str] = None
+    due_miles: Optional[float] = Field(None, ge=0)
+    due_engine_hours: Optional[float] = Field(None, ge=0)
+    recur_interval_days: Optional[int] = Field(None, ge=1)
+    recur_interval_miles: Optional[float] = Field(None, ge=1)
+    recur_interval_engine_hours: Optional[float] = Field(None, ge=1)
+    priority: str = Field("medium", pattern=r"^(low|medium|high|critical)$")
+
+    _validate_due_date = field_validator("due_date")(
+        lambda cls, v: _coerce_due_date(v),
+    )
+
+    @model_validator(mode="after")
+    def _require_trigger(self):
+        if (not self.due_date
+                and self.due_miles is None
+                and self.due_engine_hours is None):
+            raise ValueError(
+                "Set a due date, due miles, or due engine hours — "
+                "otherwise the task will never become overdue."
+            )
+        return self
+
+
+@router.post("/tasks/bulk/create")
+async def bulk_create_tasks(
+    body: BulkTaskCreate,
+    user: dict = Depends(require_permission("can_maintenance_all")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Create the same task template across N vehicles in one request.
+
+    Designed for the "onboarded 10 trucks, all need the same oil
+    schedule" workflow.  Each fan-out gets its own warehouse-telemetry
+    backfill, audit log entry, and recurrence chain — failures on one
+    vehicle don't roll back the others (best-effort per-row).
+    """
+    from capabilities.maintenance.service import (
+        fetch_current_telemetry_for_vehicle,
+    )
+    created: list[dict] = []
+    failed: list[dict] = []
+    for vname in body.vehicle_names:
+        vname = (vname or "").strip()
+        if not vname:
+            continue
+        try:
+            last_odo, last_hrs = await fetch_current_telemetry_for_vehicle(
+                tenant_db, user["account_id"], vname,
+            )
+            task_id = await tenant_db.add_maintenance_task(
+                account_id=user["account_id"],
+                company_code=body.company_code,
+                vehicle_name=vname,
+                task_type=body.task_type,
+                description=body.description,
+                due_date=body.due_date,
+                due_miles=body.due_miles,
+                due_engine_hours=body.due_engine_hours,
+                priority=body.priority,
+                recur_interval_days=body.recur_interval_days,
+                recur_interval_miles=body.recur_interval_miles,
+                recur_interval_engine_hours=body.recur_interval_engine_hours,
+                last_odometer=last_odo,
+                last_engine_hours=last_hrs,
+            )
+            created.append({"id": task_id, "vehicle_name": vname})
+        except Exception as e:
+            failed.append({"vehicle_name": vname, "error": str(e)})
+
+    if created:
+        await tenant_db.add_audit_log(
+            user["account_id"], int(user["sub"]),
+            "maintenance_bulk_create",
+            target_type="maintenance",
+            target_id=",".join(str(c["id"]) for c in created[:10]),
+            details=f"{body.task_type}: {len(created)} vehicles",
+        )
+    return {"created": created, "failed": failed}
+
+
 @router.put("/tasks/{task_id}")
 async def update_task(
     task_id: int,
@@ -305,7 +463,22 @@ async def update_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    kwargs = {k: v for k, v in body.model_dump().items() if v is not None}
+    # Clearable fields can be set to ``null`` explicitly to wipe the
+    # column.  Everything else only flows through when a real value is
+    # provided, so accidentally PUT'ing ``priority: null`` doesn't
+    # blank a valid enum column.
+    _CLEARABLE = {
+        "due_date", "due_miles", "due_engine_hours",
+        "recur_interval_days", "recur_interval_miles",
+        "recur_interval_engine_hours",
+        "work_order_id",
+        "cost_cents", "vendor_name",
+    }
+    dump = body.model_dump(exclude_unset=True)
+    kwargs = {
+        k: v for k, v in dump.items()
+        if v is not None or k in _CLEARABLE
+    }
     if not kwargs:
         raise HTTPException(status_code=422, detail="No fields to update")
 
@@ -352,6 +525,228 @@ async def update_task(
                 )
 
     return {"ok": ok, "spawned_id": spawned_id}
+
+
+class SnoozePayload(BaseModel):
+    """Snooze a task until an ISO timestamp, or clear the snooze.
+
+    ``until`` accepts ISO 8601 datetime (``2026-06-01T12:00:00Z``) or
+    ``null`` to clear an active snooze.  We don't accept a relative
+    "for 48 hours" form here — the dashboard does the arithmetic
+    client-side so the server interprets one canonical format.
+    """
+    until: Optional[str] = None
+
+    _validate_until = field_validator("until")(
+        lambda cls, v: _coerce_due_date(v),
+    )
+
+
+@router.post("/tasks/{task_id}/snooze")
+async def snooze_task(
+    task_id: int,
+    body: SnoozePayload,
+    user: dict = Depends(require_permission("can_maintenance_all")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Snooze an overdue/pending task until ``body.until`` (or clear).
+
+    The schedulers (date / mileage / engine-hours) consult
+    ``snoozed_until`` and skip the row while it points to the future.
+    ``alerted_at`` is cleared in the same write so the next alert fires
+    fresh once the snooze expires.
+    """
+    task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    ok = await tenant_db.snooze_task(
+        task_id, account_id=user["account_id"], until_iso=body.until,
+    )
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "maintenance_snooze",
+        target_type="maintenance", target_id=str(task_id),
+        details=f"until={body.until or 'cleared'}",
+    )
+    return {"ok": ok, "snoozed_until": body.until}
+
+
+@router.post("/tasks/{task_id}/attachment")
+async def upload_task_attachment(
+    task_id: int,
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Attach a single receipt or photo to a maintenance task.
+
+    Differs from the Work Orders attachment route in that maintenance
+    tasks hold ONE attachment (the latest upload replaces the previous
+    one) — heavyweight multi-file timelines belong on the Work Order.
+    This route is for the quick "snap a photo of the roadside DEF
+    receipt" workflow.
+
+    Permission: ``can_maintenance_all`` OR ``can_maintenance_own`` on
+    a task whose vehicle the driver is assigned to.  Drivers must NOT
+    be able to attach evidence to other trucks' tasks.
+    """
+    from adapters.storage.object_store import get_object_store_for_account
+    from capabilities.work_orders.storage import (
+        resolve_company_folder, safe_attachment_name,
+    )
+    if not has_maintenance_access(user["role"]):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    # Drivers locked to their assigned trucks.  Safe-deny on empty
+    # assignment list, matching the list/get routes.
+    if not can(user["role"], "can_maintenance_all"):
+        trucks = await get_user_vehicle_nums(user)
+        if not trucks:
+            raise HTTPException(status_code=404, detail="Task not found")
+        needles = {t.lower() for t in trucks}
+        if not any(n in (task.get("vehicle_name") or "").lower() for n in needles):
+            raise HTTPException(status_code=404, detail="Task not found")
+
+    content_type = (file.content_type or "").lower()
+    if content_type not in _ALLOWED_ATTACHMENT_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported file type: {content_type or 'unknown'}",
+        )
+
+    raw = await file.read()
+    if len(raw) > _MAX_ATTACHMENT_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds {_MAX_ATTACHMENT_BYTES // (1024 * 1024)} MB limit.",
+        )
+
+    safe_name = safe_attachment_name(file.filename or "attachment")
+    company_folder = await resolve_company_folder(
+        tenant_db, user["account_id"], task.get("company_code", ""),
+    )
+    # Folder layout mirrors work-order convention: account / company /
+    # maintenance / task-id.  Keeps maintenance evidence siblings of
+    # the work-order tree so admins know where to look.
+    folder = f"{company_folder}/maintenance/{task_id}"
+    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    file_path = store.put(folder, safe_name, raw)
+
+    await tenant_db.set_task_attachment(
+        task_id, account_id=user["account_id"],
+        attachment_path=file_path,
+        attachment_name=safe_name,
+        attachment_content_type=content_type,
+    )
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "maintenance_attachment_upload",
+        target_type="maintenance", target_id=str(task_id),
+        details=f"{safe_name} ({len(raw)} bytes)",
+    )
+    return {
+        "ok": True,
+        "file_name": safe_name,
+        "size": len(raw),
+        "content_type": content_type,
+    }
+
+
+@router.get("/tasks/{task_id}/attachment")
+async def download_task_attachment(
+    task_id: int,
+    user: dict = Depends(get_current_user),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Stream the task's attached file back to the client.
+
+    Read-through ``ObjectStore.get`` so the route works for any
+    backend.  ``inline`` Content-Disposition so images preview in the
+    browser; PDFs render too.
+    """
+    from adapters.storage.object_store import get_object_store_for_account
+    from capabilities.work_orders.storage import resolve_company_folder
+    from fastapi.responses import StreamingResponse
+    if not has_maintenance_access(user["role"]):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if not can(user["role"], "can_maintenance_all"):
+        trucks = await get_user_vehicle_nums(user)
+        if not trucks:
+            raise HTTPException(status_code=404, detail="Task not found")
+        needles = {t.lower() for t in trucks}
+        if not any(n in (task.get("vehicle_name") or "").lower() for n in needles):
+            raise HTTPException(status_code=404, detail="Task not found")
+
+    name = task.get("attachment_name")
+    ctype = task.get("attachment_content_type") or "application/octet-stream"
+    if not name:
+        raise HTTPException(status_code=404, detail="No attachment")
+
+    company_folder = await resolve_company_folder(
+        tenant_db, user["account_id"], task.get("company_code", ""),
+    )
+    folder = f"{company_folder}/maintenance/{task_id}"
+    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    data = store.get(folder, name)
+    if data is None:
+        raise HTTPException(status_code=404, detail="File not found in storage")
+
+    return StreamingResponse(
+        iter([data]),
+        media_type=ctype,
+        headers={"Content-Disposition": f'inline; filename="{name}"'},
+    )
+
+
+@router.delete("/tasks/{task_id}/attachment")
+async def delete_task_attachment(
+    task_id: int,
+    user: dict = Depends(require_permission("can_maintenance_all")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Remove the task's attached file (managers only).
+
+    Object-store delete is best-effort; the metadata clear always wins
+    so the UI stops linking to a possibly-orphaned file.  Drivers can
+    re-upload but can't delete — once an attestation artifact is
+    captured, only a manager removes it (audit-trail intent).
+    """
+    from adapters.storage.object_store import get_object_store_for_account
+    from capabilities.work_orders.storage import resolve_company_folder
+    task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    name = task.get("attachment_name")
+    if name:
+        try:
+            company_folder = await resolve_company_folder(
+                tenant_db, user["account_id"], task.get("company_code", ""),
+            )
+            folder = f"{company_folder}/maintenance/{task_id}"
+            store = await get_object_store_for_account(user["account_id"], tenant_db)
+            try:
+                store.delete(folder, name)
+            except Exception:
+                # Best-effort — the metadata wipe below makes the UI
+                # consistent even if the bytes leak.
+                pass
+        except Exception:
+            pass
+    await tenant_db.set_task_attachment(
+        task_id, account_id=user["account_id"],
+        attachment_path=None, attachment_name=None, attachment_content_type=None,
+    )
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "maintenance_attachment_delete",
+        target_type="maintenance", target_id=str(task_id),
+    )
+    return {"ok": True}
 
 
 @router.delete("/tasks/{task_id}")
@@ -404,16 +799,33 @@ async def bulk_update_status(
     triggered per task when transitioning to 'completed' so the DOT
     audit trail is preserved at the row level — not lost because the
     user used the bulk path.
+
+    Idempotency: attestation + recurring spawn only fire for tasks that
+    were NOT already in the target status.  Otherwise a second bulk
+    click on the same selection would re-attest and spawn duplicate
+    follow-up tasks for every recurring item.
     """
+    # Snapshot pre-update status so we can tell which rows are actually
+    # transitioning vs. already in the target state.  One query per
+    # task is fine — body.task_ids is capped at 200.
+    newly_transitioned: list[int] = []
+    if body.status == "completed":
+        for tid in body.task_ids:
+            prev = await tenant_db.get_maintenance_task(
+                tid, account_id=user["account_id"],
+            )
+            if prev and prev.get("status") != "completed":
+                newly_transitioned.append(tid)
+
     touched = await tenant_db.update_maintenance_status_bulk(
         user["account_id"], body.task_ids, body.status,
     )
     spawned: list[int] = []
     if body.status == "completed":
-        # Per-task attestation + spawn.  The bulk-status helper handles
-        # the UPDATEs in chunks; here we walk the ids in Python so each
-        # one gets a proper attestation row + recurring follow-up.
-        for tid in body.task_ids:
+        # Per-task attestation + spawn — only for ids that genuinely
+        # transitioned this request.  Re-clicking the same selection is
+        # a no-op for the audit trail and the recurring follow-up chain.
+        for tid in newly_transitioned:
             try:
                 await tenant_db.record_task_attestation(
                     tid, account_id=user["account_id"],
@@ -548,12 +960,15 @@ async def get_service_history(
     if not has_maintenance_access(user["role"]):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     # Drivers see only their own truck — matches the list-route policy.
+    # Safe-deny: an unassigned driver gets a 404, never another truck's
+    # history just because their assignment list is empty.
     if not can(user["role"], "can_maintenance_all"):
         trucks = await get_user_vehicle_nums(user)
-        if trucks:
-            needles = {t.lower() for t in trucks}
-            if not any(n in vehicle_name.lower() for n in needles):
-                raise HTTPException(status_code=404, detail="Vehicle not found")
+        if not trucks:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+        needles = {t.lower() for t in trucks}
+        if not any(n in vehicle_name.lower() for n in needles):
+            raise HTTPException(status_code=404, detail="Vehicle not found")
 
     # Pull every task for this vehicle (the adapter returns all rows
     # ordered by status then created_at; we re-sort here for the timeline).
@@ -591,12 +1006,132 @@ async def get_service_history(
     }
 
 
+# ── Templates ───────────────────────────────────────────────────────────────
+
+
+class TemplateBody(BaseModel):
+    """Re-usable task template.
+
+    Stores defaults that the dashboard can one-click apply to any
+    vehicle.  ``due_in_*`` are relative offsets — when the template is
+    applied, the dashboard converts to absolute targets the same way
+    the manual add form does.  No ``vehicle_name`` field — templates
+    are vehicle-agnostic.
+    """
+    name: str = Field(..., min_length=1, max_length=120)
+    task_type: str = Field("custom", min_length=1)
+    description: str = Field("", max_length=500)
+    priority: str = Field("medium", pattern=r"^(low|medium|high|critical)$")
+    due_in_days: Optional[int] = Field(None, ge=1)
+    due_in_miles: Optional[float] = Field(None, ge=1)
+    due_in_hours: Optional[float] = Field(None, ge=1)
+    recur_interval_days: Optional[int] = Field(None, ge=1)
+    recur_interval_miles: Optional[float] = Field(None, ge=1)
+    recur_interval_engine_hours: Optional[float] = Field(None, ge=1)
+
+
+@router.get("/templates")
+async def list_templates(
+    user: dict = Depends(get_current_user),
+    tenant_db=Depends(get_tenant_db),
+):
+    """List all templates for the operator's account.
+
+    Read permission matches the rest of the maintenance module —
+    anyone with ``can_maintenance_own`` can SEE the templates; only
+    ``can_maintenance_all`` can mutate them (write routes below).
+    """
+    if not has_maintenance_access(user["role"]):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    items = await tenant_db.list_maintenance_templates(user["account_id"])
+    return {"templates": items}
+
+
+@router.post("/templates")
+async def create_template(
+    body: TemplateBody,
+    user: dict = Depends(require_permission("can_maintenance_all")),
+    tenant_db=Depends(get_tenant_db),
+):
+    try:
+        tid = await tenant_db.add_maintenance_template(
+            account_id=user["account_id"],
+            name=body.name,
+            task_type=body.task_type,
+            description=body.description,
+            priority=body.priority,
+            due_in_days=body.due_in_days,
+            due_in_miles=body.due_in_miles,
+            due_in_hours=body.due_in_hours,
+            recur_interval_days=body.recur_interval_days,
+            recur_interval_miles=body.recur_interval_miles,
+            recur_interval_engine_hours=body.recur_interval_engine_hours,
+            created_by=int(user["sub"]),
+        )
+    except Exception as e:
+        # The UNIQUE(account_id, name) constraint surfaces here when
+        # a user tries to re-use an existing template name.
+        if "UNIQUE" in str(e):
+            raise HTTPException(
+                status_code=409,
+                detail="A template with that name already exists.",
+            )
+        raise
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "maintenance_template_create",
+        target_type="maintenance_template", target_id=str(tid),
+        details=body.name,
+    )
+    return {"id": tid, "status": "created"}
+
+
+@router.put("/templates/{template_id}")
+async def update_template(
+    template_id: int,
+    body: TemplateBody,
+    user: dict = Depends(require_permission("can_maintenance_all")),
+    tenant_db=Depends(get_tenant_db),
+):
+    existing = await tenant_db.get_maintenance_template(template_id, user["account_id"])
+    if not existing:
+        raise HTTPException(status_code=404, detail="Template not found")
+    ok = await tenant_db.update_maintenance_template(
+        template_id, account_id=user["account_id"],
+        **body.model_dump(),
+    )
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "maintenance_template_update",
+        target_type="maintenance_template", target_id=str(template_id),
+    )
+    return {"ok": ok}
+
+
+@router.delete("/templates/{template_id}")
+async def delete_template(
+    template_id: int,
+    user: dict = Depends(require_permission("can_maintenance_all")),
+    tenant_db=Depends(get_tenant_db),
+):
+    ok = await tenant_db.delete_maintenance_template(template_id, user["account_id"])
+    if not ok:
+        raise HTTPException(status_code=404, detail="Template not found")
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "maintenance_template_delete",
+        target_type="maintenance_template", target_id=str(template_id),
+    )
+    return {"ok": True}
+
+
 @router.get("/tasks.csv")
 async def export_tasks_csv(
     status: Optional[str] = Query(None),
     vehicle: Optional[str] = Query(None),
     user: dict = Depends(get_current_user),
     tenant_db=Depends(get_tenant_db),
+    platform_db=Depends(get_platform_db),
 ):
     """CSV export of maintenance tasks for the operator's DOT audit
     binder, fleet review, or spreadsheet analysis.
@@ -604,6 +1139,11 @@ async def export_tasks_csv(
     Columns mirror the dashboard table so a tech who's been looking at
     the UI gets the same shape on disk.  Respects the same permission
     scoping as the list route (drivers see only their truck).
+
+    Audit columns (``attested_by_name``, ``attested_at``, ``recur_*``,
+    ``spawned_from_id``, ``work_order_id``) are included so the file is
+    a self-contained DOT artifact — an auditor reading the CSV can see
+    who signed off on each task without needing the dashboard open.
     """
     import csv
     import io
@@ -615,12 +1155,20 @@ async def export_tasks_csv(
     tasks = await tenant_db.get_maintenance_tasks(
         user["account_id"], status=status, vehicle_name=vehicle,
     )
+    # Safe-deny: an unassigned driver gets an empty CSV, never the
+    # account-wide list.
     if not can(user["role"], "can_maintenance_all"):
         trucks = await get_user_vehicle_nums(user)
-        if trucks:
+        if not trucks:
+            tasks = []
+        else:
             needles = {t.lower() for t in trucks}
             tasks = [t for t in tasks
                      if any(n in (t.get("vehicle_name") or "").lower() for n in needles)]
+
+    # Resolve telegram_id → display name once so the CSV shows readable
+    # attester names instead of raw user IDs.
+    name_map = await _build_user_name_map(user["account_id"], platform_db)
 
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -629,8 +1177,17 @@ async def export_tasks_csv(
         "description", "due_date", "due_miles", "due_engine_hours",
         "last_odometer", "last_engine_hours",
         "created_at", "completed_at", "company_code",
+        "attested_by", "attested_by_name", "attested_at",
+        "recur_interval_days", "recur_interval_miles",
+        "recur_interval_engine_hours",
+        "spawned_from_id", "work_order_id",
+        "cost_dollars", "vendor_name",
     ])
     for t in tasks:
+        attested_by = t.get("attested_by") or ""
+        attested_name = (
+            name_map.get(int(attested_by)) if attested_by else ""
+        ) or ""
         writer.writerow([
             t.get("id", ""), t.get("vehicle_name", ""),
             t.get("task_type", ""), t.get("priority", ""),
@@ -641,6 +1198,18 @@ async def export_tasks_csv(
             t.get("last_engine_hours", "") or "",
             t.get("created_at", ""), t.get("completed_at", "") or "",
             t.get("company_code", ""),
+            attested_by, attested_name,
+            t.get("attested_at", "") or "",
+            t.get("recur_interval_days", "") or "",
+            t.get("recur_interval_miles", "") or "",
+            t.get("recur_interval_engine_hours", "") or "",
+            t.get("spawned_from_id", "") or "",
+            t.get("work_order_id", "") or "",
+            (
+                f"{t.get('cost_cents', 0) / 100:.2f}"
+                if isinstance(t.get("cost_cents"), int) else ""
+            ),
+            t.get("vendor_name", "") or "",
         ])
     buf.seek(0)
     # Filename includes the date so saved files don't overwrite each

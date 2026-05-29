@@ -124,7 +124,12 @@ export function TaskTypeCell({ type }: { type: string }) {
 // due-date urgency chip. Buckets mirror the bot's overdue-alert scheduler.
 export function DueDateChip({ value }: { value: unknown }) {
   if (!value) return <span className="text-muted-foreground">—</span>;
-  const due = new Date(String(value));
+  // Pin bare YYYY-MM-DD to local midnight; otherwise Date() treats it
+  // as UTC midnight, which renders one day early in negative timezones
+  // (US, etc). Same pattern Tasks.tsx uses in _formatDate.
+  const raw = String(value);
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw + 'T00:00:00' : raw;
+  const due = new Date(iso);
   if (Number.isNaN(due.getTime())) {
     return <span className="text-muted-foreground">—</span>;
   }
