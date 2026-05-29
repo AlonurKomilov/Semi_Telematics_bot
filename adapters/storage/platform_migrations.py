@@ -37,6 +37,30 @@ async def run_all(conn) -> None:
     await migrate_create_driver_document_notifications(conn)
     await migrate_create_driver_future_tables(conn)
     await migrate_add_account_timezone(conn)
+    await migrate_processed_stripe_events_table(conn)
+    await migrate_billing_invoices_table(conn)
+    await migrate_subscription_comp_columns(conn)
+    await migrate_comp_account_history_table(conn)
+    await migrate_subscription_provider_item_ids(conn)
+    await migrate_billing_usage_snapshot_active_columns(conn)
+    await migrate_add_users_last_seen(conn)
+    await migrate_create_user_sessions(conn)
+    await migrate_create_account_persona_groups(conn)
+    await migrate_add_accounts_alert_routing_mode(conn)
+    # These two MUST be the last entries — they touch every table that
+    # has an account_id column, so they need every CREATE TABLE
+    # already applied.  Migration 076 renumbers IDs; migration 077
+    # then prefixes stored file paths with the new account-{id}/
+    # segment.  Order: 076 → 077.
+    await migrate_account_id_base_renumber(conn)
+    await migrate_account_prefixed_file_paths(conn)
+    # Repair pass: if an earlier deploy ran the path-prefix step BEFORE
+    # the renumber (the migrations were briefly out of order in source),
+    # stored paths carry the OLD account ID (e.g. ``account-1/``) while
+    # ``accounts.id`` is the renumbered value (e.g. ``10000001``).  This
+    # migration bumps any low-ID prefix to its renumbered equivalent.
+    # Safe to run unconditionally — fast no-op when no stale paths exist.
+    await migrate_repair_stale_account_path_ids(conn)
 
 
 async def migrate_ai_chat_history(conn) -> None:
@@ -525,6 +549,73 @@ async def migrate_add_coaching_enabled_flag(conn) -> None:
             logger.info("Migration: added accounts.coaching_enabled column")
     except Exception as e:
         logger.error("coaching_enabled flag migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_create_user_sessions(conn) -> None:
+    """Create ``user_sessions`` — one row per JWT minted via a login flow.
+
+    Powers the dashboard's "Active sessions" panel and the operator
+    console's per-user sessions expander.  Each row carries the JWT's
+    ``jti`` (so a future revoke pass can deny-list a single device
+    without invalidating the user's other tokens), a parsed device
+    label, IP, expiry, and a throttled ``last_seen`` heartbeat written
+    by the auth dependency on every authed request.
+    """
+    try:
+        cur = await conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='user_sessions'"
+        )
+        if await cur.fetchone():
+            return
+        await conn.execute(
+            """CREATE TABLE user_sessions (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id       INTEGER NOT NULL,
+                jti           TEXT    NOT NULL UNIQUE,
+                device_label  TEXT    NOT NULL DEFAULT '',
+                user_agent    TEXT    NOT NULL DEFAULT '',
+                ip            TEXT    NOT NULL DEFAULT '',
+                created_at    TEXT    NOT NULL,
+                last_seen     TEXT    NOT NULL,
+                expires_at    TEXT    NOT NULL,
+                revoked_at    TEXT
+            )"""
+        )
+        await conn.execute(
+            "CREATE INDEX idx_user_sessions_user ON user_sessions(user_id, last_seen DESC)"
+        )
+        await conn.execute(
+            "CREATE INDEX idx_user_sessions_jti ON user_sessions(jti)"
+        )
+        await conn.commit()
+        logger.info("Created user_sessions table")
+    except Exception as e:
+        logger.error("user_sessions migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_add_users_last_seen(conn) -> None:
+    """Add ``users.last_seen`` — last time the user authenticated against the
+    API.  Stamped (throttled, ~once/min) by the auth dependency so the
+    system console can show 'last seen X ago' without any client-side
+    heartbeat.  Nullable: pre-existing rows are NULL until the user
+    logs in again."""
+    try:
+        cur = await conn.execute("PRAGMA table_info(users)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "last_seen" not in cols:
+            await conn.execute("ALTER TABLE users ADD COLUMN last_seen TEXT")
+            await conn.commit()
+            logger.info("Migration: added users.last_seen column")
+    except Exception as e:
+        logger.error("last_seen migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:
@@ -1038,3 +1129,680 @@ async def migrate_add_account_timezone(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+async def migrate_processed_stripe_events_table(conn) -> None:
+    """Create ``processed_stripe_events`` for webhook idempotency.
+
+    Stripe retries any non-2xx response (and some 2xx if it doesn't
+    receive the ack in time), so the same ``event.id`` can arrive
+    several times.  ``handle_webhook`` INSERT-OR-IGNOREs into this
+    table before processing; duplicates short-circuit with a fast 200
+    and never re-mutate state.
+    """
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS processed_stripe_events (
+                event_id      TEXT    PRIMARY KEY,
+                event_type    TEXT    NOT NULL,
+                processed_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+                account_id    INTEGER
+            );
+            CREATE INDEX IF NOT EXISTS idx_processed_stripe_events_processed_at
+                ON processed_stripe_events(processed_at);
+        """)
+        await conn.commit()
+        logger.info("processed_stripe_events table created/verified")
+    except Exception as e:
+        logger.debug("processed_stripe_events migration skipped: %s", e)
+
+
+async def migrate_billing_invoices_table(conn) -> None:
+    """Create ``billing_invoices`` — mirror of Stripe invoice records.
+
+    Stripe is authoritative for the numbers; we mirror locally so the
+    dashboard can list invoices without an API round-trip and so a
+    payment-retry / failure can be correlated with the snapshot it
+    belongs to.  ``provider_invoice_id`` is UNIQUE: the webhook handler
+    INSERT-OR-IGNOREs so retries are no-ops.
+    """
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS billing_invoices (
+                id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id                INTEGER NOT NULL REFERENCES accounts(id),
+                provider                  TEXT    NOT NULL DEFAULT 'stripe',
+                provider_invoice_id       TEXT    NOT NULL UNIQUE,
+                provider_subscription_id  TEXT    NOT NULL DEFAULT '',
+                provider_customer_id      TEXT    NOT NULL DEFAULT '',
+                amount_due_cents          INTEGER NOT NULL DEFAULT 0,
+                amount_paid_cents         INTEGER NOT NULL DEFAULT 0,
+                currency                  TEXT    NOT NULL DEFAULT 'usd',
+                status                    TEXT    NOT NULL DEFAULT '',
+                period_start              TEXT,
+                period_end                TEXT,
+                hosted_invoice_url        TEXT    NOT NULL DEFAULT '',
+                invoice_pdf_url           TEXT    NOT NULL DEFAULT '',
+                paid_at                   TEXT,
+                created_at                TEXT    NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_billing_invoices_account
+                ON billing_invoices(account_id, created_at DESC);
+        """)
+        await conn.commit()
+        logger.info("billing_invoices table created/verified")
+    except Exception as e:
+        logger.debug("billing_invoices migration skipped: %s", e)
+
+
+async def migrate_subscription_comp_columns(conn) -> None:
+    """Add comp + grace tracking columns to ``subscriptions``.
+
+    Adds: ``past_due_since`` (when did we enter past_due), ``is_comped``,
+    ``comp_expires_at`` (REQUIRED when comped), ``comp_reason``,
+    ``comp_granted_by``, ``comp_granted_at``.  Each column is added
+    independently and skipped if already present so this migration is
+    safe to run repeatedly.
+    """
+    spec = [
+        ("past_due_since",  "TEXT"),
+        ("is_comped",       "INTEGER NOT NULL DEFAULT 0"),
+        ("comp_expires_at", "TEXT"),
+        ("comp_reason",     "TEXT NOT NULL DEFAULT ''"),
+        ("comp_granted_by", "INTEGER"),
+        ("comp_granted_at", "TEXT"),
+    ]
+    try:
+        cur = await conn.execute("PRAGMA table_info(subscriptions)")
+        existing = {r[1] for r in await cur.fetchall()}
+        for col, decl in spec:
+            if col in existing:
+                continue
+            await conn.execute(f"ALTER TABLE subscriptions ADD COLUMN {col} {decl}")
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_subscriptions_comp_expires "
+            "ON subscriptions(is_comped, comp_expires_at)"
+        )
+        await conn.commit()
+        logger.info("subscriptions comp columns added/verified")
+    except Exception as e:
+        logger.debug("subscriptions comp migration skipped: %s", e)
+
+
+async def migrate_billing_usage_snapshot_active_columns(conn) -> None:
+    """Add ``active_vehicles`` / ``inactive_vehicles`` to usage snapshots.
+
+    The monthly snapshot job now records the active-vehicle count
+    (vehicles signaling within the last 3 days) — the figure that
+    actually drives the invoice.  ``vehicle_count`` (raw Samsara fleet)
+    stays around for legacy dashboards.  Both new columns default to
+    zero so historical rows project cleanly into the new schema.
+    """
+    spec = [
+        ("active_vehicles",   "INTEGER NOT NULL DEFAULT 0"),
+        ("inactive_vehicles", "INTEGER NOT NULL DEFAULT 0"),
+    ]
+    try:
+        cur = await conn.execute("PRAGMA table_info(billing_usage_snapshots)")
+        existing = {r[1] for r in await cur.fetchall()}
+        for col, decl in spec:
+            if col in existing:
+                continue
+            await conn.execute(
+                f"ALTER TABLE billing_usage_snapshots ADD COLUMN {col} {decl}"
+            )
+        await conn.commit()
+        logger.info("billing_usage_snapshots active/inactive columns added/verified")
+    except Exception as e:
+        logger.debug("billing_usage_snapshots active-columns migration skipped: %s", e)
+
+
+async def migrate_subscription_provider_item_ids(conn) -> None:
+    """Add ``provider_base_item_id`` + ``provider_extra_item_id`` columns.
+
+    Stripe's two-line subscription pattern needs the individual item ids
+    so ``sync_billing_quantity`` can PATCH only the extras quantity
+    without touching the base.  Existing deploys carry empty strings
+    until the next checkout completes.
+    """
+    spec = [
+        ("provider_base_item_id",  "TEXT NOT NULL DEFAULT ''"),
+        ("provider_extra_item_id", "TEXT NOT NULL DEFAULT ''"),
+    ]
+    try:
+        cur = await conn.execute("PRAGMA table_info(subscriptions)")
+        existing = {r[1] for r in await cur.fetchall()}
+        for col, decl in spec:
+            if col in existing:
+                continue
+            await conn.execute(f"ALTER TABLE subscriptions ADD COLUMN {col} {decl}")
+        await conn.commit()
+        logger.info("subscriptions provider_*_item_id columns added/verified")
+    except Exception as e:
+        logger.debug("subscriptions provider-item-id migration skipped: %s", e)
+
+
+async def migrate_comp_account_history_table(conn) -> None:
+    """Create the comp audit log table."""
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS comp_account_history (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id    INTEGER NOT NULL REFERENCES accounts(id),
+                action        TEXT    NOT NULL,
+                expires_at    TEXT,
+                reason        TEXT    NOT NULL DEFAULT '',
+                actor_user_id INTEGER,
+                created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_comp_history_account
+                ON comp_account_history(account_id, created_at DESC);
+        """)
+        await conn.commit()
+        logger.info("comp_account_history table created/verified")
+    except Exception as e:
+        logger.debug("comp_account_history migration skipped: %s", e)
+
+
+# ── 076: Re-base account IDs to the 10M+ range ──────────────────────
+
+ACCOUNT_ID_OFFSET = 10_000_000
+ACCOUNT_ID_FLOOR = ACCOUNT_ID_OFFSET + 1  # 10_000_001 — minimum legitimate ID
+
+
+async def migrate_account_id_base_renumber(conn) -> None:
+    """Re-base every account_id from 1..N to 10_000_001..N+10M.
+
+    Production-grade ID format: every tenant folder lines up as
+    ``account-100000XX/`` (8 digits, fixed-width).  Avoids leaking the
+    tenant count to customers and reserves the low range (1..9999999)
+    for internal/system accounts forever.
+
+    **Atomicity:** the migration acquires a raw asyncpg connection
+    directly from the pool, starts a real transaction, and performs all
+    UPDATEs inside it.  Done this way because the migration runner's
+    ``conn`` is a pool-PROXY where each ``execute()`` acquires a fresh
+    connection from the pool — ``SET LOCAL`` directives, constraint
+    deferral, and BEGIN/COMMIT would otherwise apply to different
+    sessions.  Failure rolls back the whole pass; success leaves the
+    DB in a fully-renumbered state with no half-states observable.
+
+    **FK enforcement:** every FK constraint referencing accounts(id)
+    is altered to DEFERRABLE INITIALLY IMMEDIATE inside the transaction,
+    then ``SET CONSTRAINTS ALL DEFERRED`` defers the checks until
+    COMMIT.  This works without superuser perms (any owner of the
+    constraint can ALTER it).  Constraints remain DEFERRABLE after
+    the migration — they default to IMMEDIATE so normal enforcement
+    is unchanged, but future ops needing to bulk-renumber can defer.
+
+    **RLS:** ``SET LOCAL row_security = off`` bypasses any tenant
+    isolation policies for the duration of this transaction.  Works
+    if the connecting role owns the tables (which it does in
+    practice — same role created them).
+
+    **Idempotent:** the ``WHERE id < FLOOR`` filter makes re-runs
+    no-ops once every account has been bumped.
+
+    **Concurrency:** ``LOCK TABLE accounts IN ACCESS EXCLUSIVE MODE``
+    serialises with any other writer; the rest of the system sees a
+    consistent view throughout.  Run this in a maintenance window —
+    concurrent INSERTs into accounts during the lock will block until
+    the migration commits.
+    """
+    # The proxy carries a reference to the asyncpg pool underneath.
+    pool = getattr(getattr(conn, "_pool", None), "_pool", None)
+    if pool is None:
+        # ``Database.initialize()`` always wires up the asyncpg pool
+        # before running migrations, so reaching here means the
+        # configuration is broken in a way that would silently leave
+        # account IDs at 1..N and the next migration (077) would stamp
+        # paths with the wrong IDs.  Fail loud rather than silently
+        # skip — caller stack trace tells ops exactly where to look.
+        raise RuntimeError(
+            "Migration 076: asyncpg pool reference unavailable; this "
+            "migration must run on Postgres with the pool initialised."
+        )
+
+    async with pool.acquire() as raw:
+        # Check we actually need to do anything before locking.
+        max_id_row = await raw.fetchrow(
+            "SELECT COALESCE(MAX(id), 0) AS max_id FROM accounts"
+        )
+        max_id = int(max_id_row["max_id"]) if max_id_row else 0
+        if max_id >= ACCOUNT_ID_FLOOR:
+            logger.debug(
+                "Migration 076: max(accounts.id)=%d already >= %d — skipping",
+                max_id, ACCOUNT_ID_FLOOR,
+            )
+            return
+
+        # RLS guard: under ENABLE_RLS=1 (migration 057), tenant tables
+        # carry FORCE ROW LEVEL SECURITY which a non-BYPASSRLS role
+        # cannot bypass with ``SET LOCAL row_security = off``.  If any
+        # of the tables we're about to UPDATE has FORCE RLS active AND
+        # the connecting role isn't BYPASSRLS, the bulk UPDATEs would
+        # silently match zero rows and leave the DB in a tenancy-broken
+        # state.  Refuse to proceed.
+        rls_blockers = await raw.fetch("""
+            SELECT n.nspname || '.' || c.relname AS qualified
+              FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              JOIN information_schema.columns col
+                ON col.table_schema = n.nspname
+               AND col.table_name   = c.relname
+             WHERE col.column_name = 'account_id'
+               AND n.nspname = 'public'
+               AND c.relrowsecurity = true
+               AND c.relforcerowsecurity = true
+        """)
+        if rls_blockers:
+            bypass = await raw.fetchval(
+                "SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user"
+            )
+            if not bypass:
+                tables = ", ".join(r["qualified"] for r in rls_blockers)
+                raise RuntimeError(
+                    f"Migration 076: cannot renumber under FORCE ROW LEVEL "
+                    f"SECURITY without BYPASSRLS role.  Affected tables: "
+                    f"{tables}.  Connect as a BYPASSRLS role (e.g. "
+                    f"4truck_admin) or run this migration before flipping "
+                    f"ENABLE_RLS=1."
+                )
+
+        async with raw.transaction():
+            # Disable RLS for this tx — owner privilege suffices when
+            # FORCE RLS isn't set; the guard above caught the FORCE case.
+            try:
+                await raw.execute("SET LOCAL row_security = off")
+            except Exception as e:
+                logger.warning(
+                    "Migration 076: could not SET LOCAL row_security (%s); "
+                    "continuing — RLS may filter UPDATEs if enabled", e,
+                )
+
+            # Lock accounts so no concurrent INSERT picks a number
+            # below the new floor mid-migration.
+            await raw.execute(
+                "LOCK TABLE accounts IN ACCESS EXCLUSIVE MODE"
+            )
+
+            # Defer every FK constraint that points at accounts(id).
+            # ALTERing each to DEFERRABLE lets SET CONSTRAINTS DEFERRED
+            # apply.  The ALTER is a metadata-only operation; rows are
+            # untouched.
+            fk_rows = await raw.fetch("""
+                SELECT n.nspname  AS schema_name,
+                       c.relname  AS table_name,
+                       con.conname AS constraint_name
+                  FROM pg_constraint con
+                  JOIN pg_class      c ON c.oid = con.conrelid
+                  JOIN pg_namespace  n ON n.oid = c.relnamespace
+                 WHERE con.contype = 'f'
+                   AND con.confrelid = 'public.accounts'::regclass
+            """)
+            for fk in fk_rows:
+                try:
+                    await raw.execute(
+                        f'ALTER TABLE "{fk["schema_name"]}"."{fk["table_name"]}" '
+                        f'ALTER CONSTRAINT "{fk["constraint_name"]}" '
+                        f'DEFERRABLE INITIALLY IMMEDIATE'
+                    )
+                except Exception as e:
+                    # Some constraints (e.g. partition parent) may not
+                    # be ALTER-able; log + continue.  If FK still fires
+                    # the renumber UPDATE will raise, rolling back.
+                    logger.warning(
+                        "Migration 076: could not make %s deferrable (%s)",
+                        fk["constraint_name"], e,
+                    )
+
+            await raw.execute("SET CONSTRAINTS ALL DEFERRED")
+
+            # 1. Bump the accounts PK.
+            await raw.execute(
+                f"UPDATE accounts SET id = id + {ACCOUNT_ID_OFFSET} "
+                f"WHERE id < {ACCOUNT_ID_FLOOR}"
+            )
+
+            # 2. Bump every account_id column in the public schema.
+            #    information_schema sees every table that exists at
+            #    this point in startup — and we run AFTER both
+            #    schema.create_tables + platform_schema.create_tables
+            #    + platform_migrations table-creators, so coverage is
+            #    exhaustive.
+            await raw.execute(f"""
+                DO $$
+                DECLARE
+                    r RECORD;
+                BEGIN
+                    FOR r IN
+                        SELECT table_schema, table_name
+                          FROM information_schema.columns
+                         WHERE column_name = 'account_id'
+                           AND table_schema = 'public'
+                           AND table_name <> 'accounts'
+                    LOOP
+                        EXECUTE format(
+                            'UPDATE %I.%I SET account_id = account_id + {ACCOUNT_ID_OFFSET} '
+                            'WHERE account_id IS NOT NULL '
+                            'AND account_id < {ACCOUNT_ID_FLOOR}',
+                            r.table_schema, r.table_name
+                        );
+                    END LOOP;
+                END
+                $$;
+            """)
+
+        # 3. Reset the sequence.  Runs OUTSIDE the renumber transaction
+        # so a setval failure (perms / sequence renamed in weird ways)
+        # doesn't roll back the renumber itself.  ``pg_get_serial_sequence``
+        # returns the properly-quoted sequence name, and we pass it as
+        # a regclass-cast bind param so it's safe against any quoting
+        # edge case.
+        try:
+            seq_name = await raw.fetchval(
+                "SELECT pg_get_serial_sequence('accounts', 'id')"
+            ) or "public.accounts_id_seq"
+            await raw.execute(
+                "SELECT setval($1::regclass, "
+                "GREATEST((SELECT COALESCE(MAX(id), 0) FROM accounts), $2))",
+                seq_name, ACCOUNT_ID_OFFSET,
+            )
+        except Exception as e:
+            logger.error(
+                "Migration 076: could not reset accounts sequence (%s); "
+                "next INSERT may receive a low ID — run manually: "
+                "SELECT setval(pg_get_serial_sequence('accounts','id'), "
+                "GREATEST((SELECT MAX(id) FROM accounts), %d))",
+                e, ACCOUNT_ID_OFFSET,
+            )
+
+        logger.info(
+            "Migration 076: re-based account IDs to %d+ range",
+            ACCOUNT_ID_FLOOR,
+        )
+
+
+# ── 077: Prefix stored file paths with account-{id}/ ─────────────────
+
+
+async def migrate_account_prefixed_file_paths(conn) -> None:
+    """Insert ``account-{id}/`` after ``data/userdata/`` in stored paths.
+
+    Runs AFTER migration 076 (now in this same file, immediately above)
+    so the inserted segment uses the new 10M+ ID range.
+
+    Each column needs the row's account_id.  Some tables carry it
+    directly (camera_checks, parking_events, maintenance_tasks,
+    storage_sync_queue); others reach it via a join
+    (pti_inspection_media → driver_inspections,
+    work_order_attachments → work_orders).
+
+    Idempotent: the ``NOT LIKE 'data/userdata/account-%'`` filter makes
+    re-runs no-ops for rows that already carry the prefix.  Drive-backed
+    file_path values (opaque Drive IDs without slashes) are untouched
+    because they don't match ``LIKE 'data/userdata/%'``.
+
+    Wrapped in a real asyncpg transaction so a per-table failure rolls
+    back the whole pass — partial migrations are observable to ops via
+    a clean ``logger.error``, never via silently half-written rows.
+    """
+    pool = getattr(getattr(conn, "_pool", None), "_pool", None)
+    if pool is None:
+        # Same reasoning as migration 076: silently skipping leaves
+        # stored paths without the account prefix, which the rest of
+        # the system assumes is present.  Fail loud.
+        raise RuntimeError(
+            "Migration 077: asyncpg pool reference unavailable; this "
+            "migration must run on Postgres with the pool initialised."
+        )
+
+    direct = [
+        ("camera_checks",      "image_path"),
+        ("parking_events",     "map_image_path"),
+        ("maintenance_tasks",  "attachment_path"),
+        ("storage_sync_queue", "local_path"),
+    ]
+    via_join = [
+        # (table, column, join_table, on_self, on_parent, parent_account_col)
+        ("pti_inspection_media",   "file_path",
+         "driver_inspections", "inspection_id", "id", "account_id"),
+        ("pti_inspection_media",   "local_path",
+         "driver_inspections", "inspection_id", "id", "account_id"),
+        ("work_order_attachments", "file_path",
+         "work_orders",        "work_order_id", "id", "account_id"),
+    ]
+
+    async with pool.acquire() as raw:
+        async with raw.transaction():
+            # Bypass RLS for the duration of this migration so all
+            # tenant rows are visible to the UPDATEs.
+            try:
+                await raw.execute("SET LOCAL row_security = off")
+            except Exception as e:
+                logger.debug(
+                    "Migration 077: SET LOCAL row_security failed (%s)", e,
+                )
+
+            total = 0
+
+            # Fail-fast on the first per-table error: once asyncpg
+            # records an error inside a transaction, every subsequent
+            # ``raw.execute`` raises ``InFailedSQLTransactionError``
+            # with a generic "current transaction is aborted" message,
+            # which would mask the real root cause and pad the log
+            # with noise.  Break on the first failure so the
+            # RuntimeError carries the actionable message.
+            for table, col in direct:
+                try:
+                    result = await raw.execute(f"""
+                        UPDATE {table}
+                           SET {col} = 'data/userdata/account-' || account_id || '/'
+                                    || substr({col}, length('data/userdata/') + 1)
+                         WHERE {col} LIKE 'data/userdata/%'
+                           AND {col} NOT LIKE 'data/userdata/account-%'
+                           AND length({col}) > length('data/userdata/')
+                    """)
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Migration 077: failed on {table}.{col} ({e})"
+                    ) from e
+                # asyncpg execute() returns command status like
+                # 'UPDATE 5'; parse it for the rowcount.
+                parts = (result or "").split()
+                rowcount = int(parts[-1]) if parts and parts[-1].isdigit() else 0
+                total += rowcount
+                logger.info(
+                    "Migration 077: %s.%s prefixed %d row(s)",
+                    table, col, rowcount,
+                )
+
+            for table, col, jt, on_self, on_parent, parent_col in via_join:
+                try:
+                    result = await raw.execute(f"""
+                        UPDATE {table} AS t
+                           SET {col} = 'data/userdata/account-' || p.{parent_col} || '/'
+                                    || substr(t.{col}, length('data/userdata/') + 1)
+                          FROM {jt} AS p
+                         WHERE t.{on_self} = p.{on_parent}
+                           AND t.{col} LIKE 'data/userdata/%'
+                           AND t.{col} NOT LIKE 'data/userdata/account-%'
+                           AND length(t.{col}) > length('data/userdata/')
+                    """)
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Migration 077: failed on {table}.{col} via {jt} ({e})"
+                    ) from e
+                parts = (result or "").split()
+                rowcount = int(parts[-1]) if parts and parts[-1].isdigit() else 0
+                total += rowcount
+                logger.info(
+                    "Migration 077: %s.%s (via %s) prefixed %d row(s)",
+                    table, col, jt, rowcount,
+                )
+
+            logger.info("Migration 077: account-prefixed %d path(s)", total)
+
+
+async def migrate_create_account_persona_groups(conn) -> None:
+    """Create ``account_persona_groups`` — per-persona Telegram group
+    chat for an account when ``accounts.alert_routing_mode`` is
+    ``per_persona_groups``.
+
+    One row per (account, persona) pair.  Unlike the legacy
+    ``forum_groups``/``alert_routing`` pair (one forum chat + many topic
+    threads), this table stores a *flat* group chat per persona —
+    Dispatchers, Safety, Fleet, HR each get their own group.  Owner /
+    Admin share the aggregate group.
+
+    ``chat_id`` is the Telegram chat ID (negative for groups/supergroups).
+    ``chat_title`` is purely advisory for the admin UI (group rename in
+    Telegram won't auto-sync back).
+    """
+    try:
+        cur = await conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='account_persona_groups'"
+        )
+        if await cur.fetchone():
+            return
+        await conn.execute(
+            """CREATE TABLE account_persona_groups (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id  INTEGER NOT NULL,
+                persona     TEXT    NOT NULL,
+                chat_id     BIGINT  NOT NULL,
+                chat_title  TEXT    NOT NULL DEFAULT '',
+                is_active   INTEGER NOT NULL DEFAULT 1,
+                created_at  TEXT    NOT NULL,
+                updated_at  TEXT    NOT NULL,
+                UNIQUE(account_id, persona)
+            )"""
+        )
+        await conn.execute(
+            "CREATE INDEX idx_account_persona_groups_account "
+            "ON account_persona_groups(account_id)"
+        )
+        await conn.commit()
+        logger.info("Created account_persona_groups table")
+    except Exception as e:
+        logger.error("account_persona_groups migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_add_accounts_alert_routing_mode(conn) -> None:
+    """Add ``accounts.alert_routing_mode`` — opt-in switch between the
+    legacy single-forum-with-topics routing (``single_group``, the
+    default) and the per-persona flat-groups routing
+    (``per_persona_groups``).
+
+    Default ``single_group`` preserves existing-account behavior —
+    nothing changes for any account until an operator flips the column
+    and registers the persona groups in ``account_persona_groups``.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(accounts)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "alert_routing_mode" not in cols:
+            await conn.execute(
+                "ALTER TABLE accounts ADD COLUMN alert_routing_mode "
+                "TEXT NOT NULL DEFAULT 'single_group'"
+            )
+            await conn.commit()
+            logger.info("Migration: added accounts.alert_routing_mode column")
+    except Exception as e:
+        logger.error("alert_routing_mode migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+# ── 078: Repair stale account-N/ path prefix after out-of-order deploy ──
+
+
+async def migrate_repair_stale_account_path_ids(conn) -> None:
+    """Bump ``account-N/`` to ``account-{N+10M}/`` in stored file paths.
+
+    Idempotent repair pass that exists because an earlier deploy briefly
+    ran the path-prefix migration (077) BEFORE the account renumber (076)
+    — the path-prefix step therefore stamped paths with the OLD
+    account_id (e.g. ``data/userdata/account-1/...``), then the renumber
+    bumped ``accounts.id`` to ``10000001`` without revisiting the stored
+    paths.  Result: paths point at a folder that doesn't exist on disk
+    because the filesystem reshuffle moved files into ``account-10000001/``.
+
+    The fix is mechanical: for any path containing ``account-N/`` where
+    ``N < 10_000_001``, rewrite to ``account-{N+10_000_000}/``.  Same
+    offset migration 076 used, so the result lines up with the renumbered
+    ``accounts.id`` and the moved-on-disk folders.
+
+    Safe to run unconditionally: fast no-op when no stale paths exist
+    (the regex test ``~ 'account-([1-9][0-9]{0,6})/'`` matches only
+    1..9_999_999, never the 10M+ range).
+    """
+    pool = getattr(getattr(conn, "_pool", None), "_pool", None)
+    if pool is None:
+        raise RuntimeError(
+            "Migration 078: asyncpg pool reference unavailable."
+        )
+
+    OFFSET = 10_000_000
+    columns = [
+        ("camera_checks",          "image_path"),
+        ("parking_events",         "map_image_path"),
+        ("maintenance_tasks",      "attachment_path"),
+        ("storage_sync_queue",     "local_path"),
+        ("pti_inspection_media",   "file_path"),
+        ("pti_inspection_media",   "local_path"),
+        ("work_order_attachments", "file_path"),
+    ]
+
+    async with pool.acquire() as raw:
+        async with raw.transaction():
+            try:
+                await raw.execute("SET LOCAL row_security = off")
+            except Exception:
+                pass
+
+            total = 0
+            for table, col in columns:
+                try:
+                    # Extract the OLD numeric id from the path, add the
+                    # offset, and swap the segment.  The WHERE clause
+                    # restricts to paths whose embedded id is below the
+                    # 10M floor — already-correct paths are skipped.
+                    result = await raw.execute(f"""
+                        UPDATE {table}
+                           SET {col} = replace(
+                               {col},
+                               'data/userdata/account-'
+                                   || substring({col} from 'account-([0-9]+)/')
+                                   || '/',
+                               'data/userdata/account-'
+                                   || (substring({col} from 'account-([0-9]+)/')::bigint
+                                       + {OFFSET})::text
+                                   || '/'
+                           )
+                         WHERE {col} ~ 'data/userdata/account-[0-9]+/'
+                           AND substring({col} from 'account-([0-9]+)/')::bigint < {OFFSET + 1}
+                    """)
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Migration 078: failed on {table}.{col} ({e})"
+                    ) from e
+                parts = (result or "").split()
+                rowcount = int(parts[-1]) if parts and parts[-1].isdigit() else 0
+                total += rowcount
+                if rowcount:
+                    logger.info(
+                        "Migration 078: %s.%s repaired %d row(s)",
+                        table, col, rowcount,
+                    )
+
+            logger.info(
+                "Migration 078: repaired %d stale account-prefixed path(s)",
+                total,
+            )

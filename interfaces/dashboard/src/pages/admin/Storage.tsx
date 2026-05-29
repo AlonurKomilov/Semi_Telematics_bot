@@ -2,19 +2,18 @@ import { Cloud } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '../../components/shell';
 import StorageBackendCard from './StorageBackendCard';
+import StorageHealthCard from './StorageHealthCard';
+import StorageFileTable from './StorageFileTable';
 
 /**
- * Dedicated admin page for attachment storage configuration.
+ * Admin page for storage configuration + health.
  *
- * Was previously embedded as a single card inside the personal Settings
- * page; moved here so account-level storage configuration (which
- * affects where every user's bytes land) gets its own sidebar entry
- * and isn't hidden under "your profile" menu.
+ * Top-down reading order matches the operator's mental flow:
+ *   1. Status      — what backend is active, are we healthy?
+ *   2. Files       — what needs my attention right now?
+ *   3. Settings    — connect/disconnect Drive, switch backend.
  *
- * The actual functionality lives in ``StorageBackendCard`` — this page
- * is just the chrome (header + permission guard inherited from the
- * router) around it.  If/when a third storage-related panel ships
- * (e.g. retention rules, archive policy), they slot in below this card.
+ * Permission-guarded by the router (``can_manage_account``).
  */
 export default function Storage() {
   const { t } = useTranslation();
@@ -25,7 +24,11 @@ export default function Storage() {
         title={t('storage.page_title')}
         description={t('storage.page_desc')}
       />
-      <StorageBackendCard />
+      <div className="space-y-4">
+        <StorageHealthCard />
+        <StorageFileTable />
+        <StorageBackendCard />
+      </div>
     </div>
   );
 }

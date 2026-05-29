@@ -80,6 +80,10 @@ class GDriveObjectStore:
         self._service = service
         self._root_folder_id = root_folder_id
         self._account_id = account_id
+        # Last failure reason from a put/get/delete — lets the API layer
+        # surface an actionable message (e.g. "reconnect Google Drive")
+        # instead of a generic 500 when the OAuth token is expired.
+        self.last_error: str | None = None
         # bucket-path → Drive folder ID.  Keyed by the structured path
         # the work-orders module passes in (``account-7/work-orders/
         # 2026/04-april/WO-00128_...``).  Populated lazily as folders
@@ -126,6 +130,13 @@ class GDriveObjectStore:
         look up by ID, so a manual rename in Drive doesn't break the
         link.
         """
+        # Defensive sanitation mirrors DiskObjectStore: strip any
+        # path separators a caller might have left in ``key`` so the
+        # filename can't smuggle subdirectory structure into Drive.
+        # Every current caller pre-sanitises, but mirroring the disk
+        # behaviour keeps the two backends produce identical names
+        # for the same input.
+        key = key.replace("/", "_").replace("\\", "_")
         try:
             folder_id = self._resolve_folder_chain(bucket)
             # ``create_missing=True`` (default) means the chain is
@@ -157,8 +168,10 @@ class GDriveObjectStore:
             file = self._service.files().create(
                 body=meta, media_body=media, fields="id",
             ).execute()
+            self.last_error = None
             return file["id"]
         except Exception as e:
+            self.last_error = str(e)
             logger.error("GDrive put failed for %s/%s: %s", bucket, key, e)
             return ""
 

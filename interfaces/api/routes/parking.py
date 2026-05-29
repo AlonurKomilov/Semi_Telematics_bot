@@ -145,9 +145,14 @@ async def parking_map_image(
     img_path = event.get("map_image_path", "")
     if not img_path:
         raise HTTPException(status_code=404, detail="No map image available")
-    full_path = os.path.realpath(os.path.join(_PROJECT_ROOT, img_path))
-    if not full_path.startswith(os.path.realpath(_PROJECT_ROOT)):
-        raise HTTPException(status_code=403, detail="Access denied")
-    if not os.path.isfile(full_path):
+    from adapters.storage.object_store import resolve_disk_path
+    full_path = resolve_disk_path(img_path, project_root=_PROJECT_ROOT)
+    if not full_path:
         raise HTTPException(status_code=404, detail="Map image file not found")
-    return FileResponse(full_path, media_type="image/png")
+    # Defence-in-depth: still verify the resolved path is under the
+    # project root (resolve_disk_path only joins, never normalises away
+    # path-traversal segments in the DB value).
+    real = os.path.realpath(full_path)
+    if not real.startswith(os.path.realpath(_PROJECT_ROOT)):
+        raise HTTPException(status_code=403, detail="Access denied")
+    return FileResponse(real, media_type="image/png")

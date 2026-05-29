@@ -3454,3 +3454,70 @@ async def migrate_maintenance_templates(conn) -> None:
         except Exception:
             pass
         raise
+
+
+@_register("075_userdata_path_prefix")
+async def migrate_userdata_path_prefix(conn) -> None:
+    """Rewrite stored file paths from ``data/X`` to ``data/userdata/X``.
+
+    The on-disk layout split (``data/system/`` for platform files,
+    ``data/userdata/`` for tenant blobs) requires every column that
+    stores a disk-relative file path to gain the ``userdata/`` segment.
+    Drive-backed rows (where the column holds an opaque Drive file ID,
+    not a path) are untouched — the ``LIKE 'data/%'`` filter skips them
+    naturally.
+
+    Columns rewritten:
+      * ``pti_inspection_media.file_path``
+      * ``pti_inspection_media.local_path``
+      * ``work_order_attachments.file_path``
+      * ``maintenance_tasks.attachment_path``
+      * ``camera_checks.image_path``
+      * ``parking_events.map_image_path``
+      * ``storage_sync_queue.local_path``
+
+    Idempotent: rerunning is a no-op because rows that already start
+    with ``data/userdata/`` are excluded.  Reversible: a single UPDATE
+    can strip the ``userdata/`` segment if you ever need to roll back.
+    """
+    columns = [
+        ("pti_inspection_media",   "file_path"),
+        ("pti_inspection_media",   "local_path"),
+        ("work_order_attachments", "file_path"),
+        ("maintenance_tasks",      "attachment_path"),
+        ("camera_checks",          "image_path"),
+        ("parking_events",         "map_image_path"),
+        ("storage_sync_queue",     "local_path"),
+    ]
+    try:
+        total = 0
+        for table, col in columns:
+            try:
+                cur = await conn.execute(
+                    f"UPDATE {table} "
+                    f"SET {col} = 'data/userdata/' || substr({col}, 6) "
+                    f"WHERE {col} LIKE 'data/%' "
+                    f"AND {col} NOT LIKE 'data/userdata/%'"
+                )
+                rowcount = getattr(cur, "rowcount", 0) or 0
+                total += rowcount
+                logger.info(
+                    "Migration 075: %s.%s rewrote %d row(s)", table, col, rowcount,
+                )
+            except Exception as e:
+                # ``maintenance_tasks.attachment_path`` was added by migration
+                # 072 and may be missing on installations that never ran 072
+                # (e.g. fresh tests).  Log and continue — the absence of the
+                # column is benign for this UPDATE.
+                logger.warning(
+                    "Migration 075: skipping %s.%s (%s)", table, col, e,
+                )
+        await conn.commit()
+        logger.info("Migration 075: rewrote %d path(s) under userdata/", total)
+    except Exception as e:
+        logger.error("Migration 075 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise

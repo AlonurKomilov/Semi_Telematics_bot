@@ -26,11 +26,18 @@ import os
 # environment whose warehouse hasn't been backfilled yet.
 WAREHOUSE_READS_ENABLED = os.getenv("WAREHOUSE_READS_ENABLED", "1") not in ("0", "false", "False", "")
 
-# Phase 5 — object storage backend.  "disk" (default) writes blobs
-# under data/<bucket>/<key>.  "gdrive" routes uploads through the
-# existing Google Drive adapter.  Future: "s3", "gcs".
+# Object storage backend.  "disk" (default) writes blobs under
+# data/userdata/<bucket>/<key>.  "gdrive" routes uploads through the
+# existing Google Drive adapter.  "hybrid" → disk-primary with async
+# Drive sync.  Future: "s3", "gcs".
+#
+# OBJECT_STORE_ROOT lives under data/userdata/ so the per-tenant blob
+# tree is visually separated from system/runtime files (which live in
+# data/system/).  Legacy installations that still write under bare
+# data/ can keep working by setting OBJECT_STORE_ROOT=data — the read
+# path also tries both prefixes for backwards compat.
 OBJECT_STORE_BACKEND = os.getenv("OBJECT_STORE_BACKEND", "disk")
-OBJECT_STORE_ROOT = os.getenv("OBJECT_STORE_ROOT", "data")
+OBJECT_STORE_ROOT = os.getenv("OBJECT_STORE_ROOT", "data/userdata")
 
 # ── Samsara ──────────────────────────────────────────────────────
 
@@ -137,8 +144,54 @@ GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
 VERTEX_AI_MODEL = os.getenv("VERTEX_AI_MODEL", "gemini-2.5-flash")
 
 # ── Telegram / Web ───────────────────────────────────────────────
+#
+# Two distinct bot tokens, two distinct responsibilities.  Mixing them
+# means the bot customers chat with is also the bot operators get
+# ops alerts on, and rotating either for security logs out the wrong
+# audience.  See docs/runbooks/system-dashboard-rollout.md for the
+# operator-side picture.
+#
+#   TELEGRAM_BOT_TOKEN        — system / operator bot.  Used by
+#                               infra.error_reporter for ops alerts,
+#                               by the avatar fetcher in /admin/users,
+#                               and as the Login Widget for
+#                               system.4truck.us (operators only).
+#                               No long-running daemon needed for this
+#                               token — it's just a Telegram API client.
+#
+#   TELEGRAM_LOGIN_BOT_TOKEN  — customer-facing front-door bot.  Runs
+#                               the long-running PTB daemon
+#                               (interfaces/bot/app.py) that handles
+#                               /start / /register / /join etc., and
+#                               serves as the Login Widget fallback for
+#                               customers whose account has no
+#                               per-account bot configured.
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+# Primary env name is TELEGRAM_SYSTEM_BOT_TOKEN.  The legacy
+# TELEGRAM_BOT_TOKEN name is still honored as a fallback so a .env
+# that hasn't been renamed yet keeps booting; we log a one-time
+# deprecation warning to nudge the rename.  Once every .env is updated
+# the fallback (and this comment) can be deleted.
+TELEGRAM_SYSTEM_BOT_TOKEN = (
+    os.getenv("TELEGRAM_SYSTEM_BOT_TOKEN")
+    or os.getenv("TELEGRAM_BOT_TOKEN", "")
+)
+if not os.getenv("TELEGRAM_SYSTEM_BOT_TOKEN") and os.getenv("TELEGRAM_BOT_TOKEN"):
+    import logging as _logging
+    _logging.getLogger(__name__).warning(
+        "TELEGRAM_BOT_TOKEN is deprecated — rename it to "
+        "TELEGRAM_SYSTEM_BOT_TOKEN in .env.  The old name still works "
+        "for now but will be removed in a future cleanup."
+    )
+
+TELEGRAM_LOGIN_BOT_TOKEN  = os.getenv("TELEGRAM_LOGIN_BOT_TOKEN", "")
+
+# Legacy alias — kept so existing importers that still reference
+# ``TELEGRAM_TOKEN`` don't break.  Always points at the SYSTEM bot
+# token (the safer default for the error reporter, avatar fetcher, and
+# system-side login).  Net-new code should import the explicit name.
+TELEGRAM_TOKEN = TELEGRAM_SYSTEM_BOT_TOKEN
+
 WEBAPP_URL = os.getenv("WEBAPP_URL", "")
 
 # ── Redis ────────────────────────────────────────────────────────
@@ -157,6 +210,13 @@ STRIPE_SECRET_KEY     = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_PRICE_STARTER  = os.getenv("STRIPE_PRICE_STARTER", "")
 STRIPE_PRICE_PRO      = os.getenv("STRIPE_PRICE_PRO", "")
+# Per-extra-vehicle price ID, shared by both tiers (Stripe Dashboard:
+# $2.99/mo recurring, "Quantity is variable" enabled).  When set, the
+# checkout session attaches a second line item with quantity=0 and the
+# ingest-driven sync nudges that quantity up/down as active vehicles
+# change.  When unset (legacy installs) we fall back to single-line
+# subscriptions and the dashboard hides the "extras" math.
+STRIPE_PRICE_EXTRA_VEHICLE = os.getenv("STRIPE_PRICE_EXTRA_VEHICLE", "")
 
 # Public-facing base URL used to build checkout success/cancel URLs
 APP_BASE_URL = os.getenv("APP_BASE_URL", "https://4truck.us")
@@ -164,6 +224,14 @@ APP_BASE_URL = os.getenv("APP_BASE_URL", "https://4truck.us")
 # Hard-cap enforcement: set to '1' to start rejecting requests over quota.
 # Default is soft-cap (log warning only) to avoid disrupting existing customers.
 ENFORCE_HARD_CAP = os.getenv("ENFORCE_HARD_CAP", "0") == "1"
+
+# Billing enforcement: when '1' the API returns HTTP 402 once a
+# subscription is canceled/unpaid, or once past_due has been in effect
+# longer than the grace period.  Defaults OFF so existing customers
+# don't get cut off the moment this code ships; flip to '1' after the
+# dashboard's past-due banner is live.
+BILLING_ENFORCEMENT_ENABLED = os.getenv("BILLING_ENFORCEMENT_ENABLED", "0") == "1"
+BILLING_GRACE_PERIOD_DAYS = int(os.getenv("BILLING_GRACE_PERIOD_DAYS", "7"))
 
 # ── Error reporting ───────────────────────────────────────────────
 # Telegram chat ID that receives built-in error reports.

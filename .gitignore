@@ -31,6 +31,17 @@ node_modules/
 !package-lock.json
 !tsconfig.json
 !locales/*.json
+# Nested locale folders (dashboard + miniapp i18n) — same intent as
+# top-level locales/, just at the actual location the apps use.
+!interfaces/dashboard/src/locales/*.json
+!interfaces/miniapp/src/locales/*.json
+!interfaces/system_dashboard/src/locales/*.json
+# shadcn-ui config (no secrets, just component path mappings)
+!interfaces/dashboard/components.json
+!interfaces/system_dashboard/components.json
+# Grafana dashboards — infrastructure-as-code, must travel with the repo
+!docs/grafana/*.json
+!observability/grafana/dashboards/*.json
 !pytest.ini
 
 # Old backup files from refactoring

@@ -180,6 +180,220 @@ async def get_storage_config(
     }
 
 
+class BackendSwitchRequest(BaseModel):
+    backend: str = Field(..., description="One of: disk, gdrive, hybrid")
+
+
+@router.post("/backend")
+async def switch_storage_backend(
+    body: BackendSwitchRequest,
+    user: dict = Depends(require_permission("can_manage_account")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Switch the account's storage backend.
+
+    ``disk``    — files stay on the platform server.
+    ``gdrive``  — every upload streams directly to the user's Drive.
+    ``hybrid``  — uploads land on disk first, a background worker pushes
+                  them to Drive within ~60 s.  Requires Drive connection.
+
+    ``gdrive`` and ``hybrid`` require an active Drive OAuth grant — the
+    endpoint 409s otherwise so the UI can prompt the user to connect.
+    """
+    backend = (body.backend or "").strip().lower()
+    if backend not in ("disk", "gdrive", "hybrid"):
+        raise HTTPException(
+            status_code=422,
+            detail="backend must be disk, gdrive, or hybrid",
+        )
+    account_id = int(user["account_id"])
+
+    if backend in ("gdrive", "hybrid"):
+        has_token = bool(await tenant_db.get_account_setting(
+            account_id, STORAGE_GDRIVE_REFRESH_TOKEN, "",
+        ))
+        if not has_token:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Connect Google Drive before switching to this backend.",
+                    "error_code": "drive_not_connected",
+                },
+            )
+
+    await tenant_db.set_account_storage_backend(account_id, backend)
+    await tenant_db.add_audit_log(
+        account_id, int(user["sub"]),
+        "storage_backend_switch",
+        target_type="account", target_id=str(account_id),
+        details=f"backend={backend}",
+    )
+    return {"backend": backend}
+
+
+@router.get("/health")
+async def get_storage_health(
+    user: dict = Depends(get_current_user),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Storage-sync health for the account.
+
+    Drives the dashboard's storage widget AND is scrape-friendly for
+    Prometheus once we add an exporter (Phase 6 / ops).  Reads cheap
+    aggregates from the existing storage_sync_queue + media tables —
+    no Google API call here, so safe to hit frequently.
+
+    Response shape (stable for the dashboard contract):
+
+    .. code-block:: json
+
+       {
+         "backend": "disk" | "gdrive" | "hybrid",
+         "drive": { "connected": bool, "email": "..." | null },
+         "quota": {
+           "used_bytes":  int,   // pending-sync footprint on local disk
+           "quota_bytes": int,
+           "percent":     float
+         },
+         "queue": { "pending": int, "stuck": int },
+         "media": { "local": int, "syncing": int,
+                    "remote": int, "stuck": int }
+       }
+    """
+    account_id = int(user["account_id"])
+    backend = (await tenant_db.get_account_setting(
+        account_id, STORAGE_BACKEND_KEY, "disk",
+    )) or "disk"
+    has_token = bool(await tenant_db.get_account_setting(
+        account_id, STORAGE_GDRIVE_REFRESH_TOKEN, "",
+    ))
+    user_email = await tenant_db.get_account_setting(
+        account_id, STORAGE_GDRIVE_USER_EMAIL, "",
+    )
+
+    used = await tenant_db.get_account_local_bytes(account_id)
+    quota = await tenant_db.get_account_disk_quota(account_id)
+    total_q, stuck_q = await tenant_db.count_pending_sync(account_id)
+    pending_q = max(0, total_q - stuck_q)
+
+    media_counts = await tenant_db.count_media_by_state(account_id)
+
+    return {
+        "backend": backend,
+        "drive": {
+            "connected": has_token,
+            "email": user_email if has_token else None,
+        },
+        "quota": {
+            "used_bytes":  int(used),
+            "quota_bytes": int(quota),
+            "percent":     round(100.0 * used / quota, 1) if quota else 0.0,
+        },
+        "queue": {
+            "pending": int(pending_q),
+            "stuck":   int(stuck_q),
+        },
+        "media": {
+            "local":   int(media_counts.get("local", 0)),
+            "syncing": int(media_counts.get("syncing", 0)),
+            "remote":  int(media_counts.get("remote", 0)),
+            "stuck":   int(media_counts.get("stuck", 0)),
+        },
+    }
+
+
+@router.get("/files")
+async def list_storage_files(
+    only: str = "all",
+    limit: int = 200,
+    user: dict = Depends(require_permission("can_manage_account")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """List storage-sync queue rows for the account — file-manager grid.
+
+    ``only`` filter: ``all`` / ``pending`` / ``stuck``.
+
+    Returns enriched rows the dashboard table renders directly:
+    queue + the joined inspection/vehicle context + the derived
+    ``is_stuck`` boolean so the client doesn't reproduce the
+    error_code → permanent-error mapping.
+    """
+    if only not in ("all", "pending", "stuck"):
+        raise HTTPException(status_code=422, detail="only must be all|pending|stuck")
+    limit = max(1, min(int(limit), 500))
+
+    rows = await tenant_db.list_storage_queue(
+        int(user["account_id"]), only=only, limit=limit,
+    )
+    # Project the rows into a stable client contract.  The dashboard
+    # treats this as a thin model so a future schema change here is a
+    # one-touch update.
+    permanent = {"token_expired", "quota_exceeded", "forbidden"}
+    out: list[dict] = []
+    for r in rows:
+        ec = (r.get("error_code") or "").lower() or None
+        out.append({
+            "queue_id":         int(r["id"]),
+            "entity_type":      r.get("entity_type"),
+            "entity_id":        int(r["entity_id"]) if r.get("entity_id") is not None else None,
+            "filename":         r.get("filename"),
+            "file_size":        int(r.get("file_size") or 0),
+            "media_type":       r.get("media_type") or "unknown",
+            "content_type":     r.get("content_type") or "",
+            # Source context (PTI media): which inspection + vehicle.
+            "inspection_id":    int(r["inspection_id"]) if r.get("inspection_id") is not None else None,
+            "vehicle_name":     r.get("vehicle_name"),
+            # Sync state
+            "attempts":         int(r.get("attempts") or 0),
+            "next_attempt_at":  r.get("next_attempt_at"),
+            "last_error":       r.get("last_error"),
+            "error_code":       ec,
+            "is_stuck":         ec in permanent,
+            "enqueued_at":      r.get("enqueued_at"),
+            "updated_at":       r.get("updated_at"),
+        })
+    return {"items": out, "count": len(out)}
+
+
+@router.post("/files/{queue_id}/retry")
+async def retry_storage_file(
+    queue_id: int,
+    user: dict = Depends(require_permission("can_manage_account")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Operator action: push a single queue row's ``next_attempt_at``
+    to now so the worker picks it up on the next pass.  Used from the
+    per-row "Retry now" button in the storage dashboard."""
+    # Verify the row belongs to this account before letting them
+    # touch it — defence-in-depth, the helper itself is account-blind.
+    cur = await tenant_db._db.execute(
+        "SELECT account_id FROM storage_sync_queue WHERE id = ?",
+        (queue_id,),
+    )
+    row = await cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Queue row not found")
+    if int(row["account_id"]) != int(user["account_id"]):
+        raise HTTPException(status_code=404, detail="Queue row not found")
+
+    ok = await tenant_db.retry_stuck_sync(queue_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Queue row not found")
+    return {"retried": True}
+
+
+@router.post("/files/retry-stuck")
+async def retry_all_stuck_files(
+    user: dict = Depends(require_permission("can_manage_account")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Bulk re-enqueue every stuck row for the account.  The natural
+    follow-up to reconnecting Drive — without this the operator would
+    have to click "Retry" on 18 rows individually."""
+    count = await tenant_db.retry_all_stuck_sync(int(user["account_id"]))
+    return {"retried": int(count)}
+
+
 def _fetch_drive_quota_sync(refresh_token: str) -> Optional[dict]:
     """Pull the user's whole-Drive quota from Google's ``about`` endpoint.
 

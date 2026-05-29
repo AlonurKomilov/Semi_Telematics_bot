@@ -1292,9 +1292,11 @@ async def camera_check_image(
     img_path = check.get("image_path", "")
     if not img_path:
         raise HTTPException(status_code=404, detail="No image available")
-    full_path = os.path.realpath(os.path.join(_PROJECT_ROOT, img_path))
-    if not full_path.startswith(os.path.realpath(_PROJECT_ROOT)):
-        raise HTTPException(status_code=403, detail="Access denied")
-    if not os.path.isfile(full_path):
+    from adapters.storage.object_store import resolve_disk_path
+    full_path = resolve_disk_path(img_path, project_root=_PROJECT_ROOT)
+    if not full_path:
         raise HTTPException(status_code=404, detail="Image file not found")
-    return FileResponse(full_path, media_type="image/jpeg")
+    real = os.path.realpath(full_path)
+    if not real.startswith(os.path.realpath(_PROJECT_ROOT)):
+        raise HTTPException(status_code=403, detail="Access denied")
+    return FileResponse(real, media_type="image/jpeg")
