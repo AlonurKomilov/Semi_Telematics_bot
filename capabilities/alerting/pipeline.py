@@ -656,7 +656,19 @@ async def send_alert(
     # alert_subkey; the UNIQUE(account, alert_type, vehicle_id,
     # alert_subkey) constraint then never matches a prior row.
     _now_str = datetime.now(timezone.utc).isoformat()
-    if not alert_subkey:
+    # ``health`` is the one alert family that's signal-based instead
+    # of event-based — the same condition can flap on/off many times
+    # in an hour from sensor noise.  For those, we DON'T thread the
+    # timestamp into the subkey, so re-fires of the same signal
+    # collapse onto the same ``alert_history`` row (occurrence_count
+    # increments).  Operators see one "Low battery (×13)" instead of
+    # thirteen separate IDs.  All other alert types keep the
+    # per-fire-unique behavior described above.
+    if alert_type == "health":
+        if not alert_subkey:
+            alert_subkey = alert_key_detail
+        # else: caller-supplied subkey wins — kept as-is.
+    elif not alert_subkey:
         alert_subkey = f"{_now_str}:{alert_key_detail}"
     else:
         # Caller already passed something (e.g. event_type for events).

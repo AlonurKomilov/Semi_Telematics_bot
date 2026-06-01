@@ -1043,62 +1043,48 @@ class SamsaraClient:
                 except (ValueError, TypeError):
                     return None
 
-            def _timestamps_close(ts1: str, ts2: str, max_gap_seconds: int = 180) -> bool:
-                """Return True if two timestamps are within max_gap_seconds of each other.
-
-                This prevents false alerts when the engine-on signal (RPM)
-                and a health reading (oil/battery/coolant) are from different
-                engine states — e.g. RPM is fresh (engine just started) but
-                oil pressure is from minutes ago (post-shutdown, naturally low).
-                """
-                dt1, dt2 = _parse_ts(ts1), _parse_ts(ts2)
-                if dt1 is None or dt2 is None:
-                    return False
-                return abs((dt1 - dt2).total_seconds()) <= max_gap_seconds
-
             loc_speed = v.get("location", {}).get("speed")  # km/h from GPS
             load_val_raw = health.get("load_pct")
-            engine_on_time = None  # timestamp of the signal that determined engine_on
+            # ``engine_on_time`` and the local ``_timestamps_close``
+            # helper that used to live here became dead code when the
+            # raw-telemetry oil/coolant/battery alert blocks moved to
+            # the fault-code path (capabilities/alerting/faults.py).
+            # The ECU's own debouncing made the timestamp-closeness
+            # guard unnecessary.  Trimmed to keep the engine-on
+            # detection lean.
             if rpm_val is not None and _is_fresh(rpm_time):
                 engine_on = rpm_val > 0
-                engine_on_time = rpm_time
             elif load_val_raw is not None and _is_fresh(load_time):
                 engine_on = load_val_raw > 0
-                engine_on_time = load_time
             elif batt_val is not None and batt_val > 13200 and _is_fresh(batt_time):
                 # >13.2V means alternator is charging = engine running
                 engine_on = True
-                engine_on_time = batt_time
             elif loc_speed is not None:
                 engine_on = loc_speed > 3  # >3 km/h ≈ moving = engine on
-                engine_on_time = None  # GPS doesn't give a comparable timestamp
             else:
                 engine_on = None  # unknown
             health["engine_on"] = engine_on
 
-            # Count alerts — only flag pressure/voltage/temp when engine is
-            # confirmed running AND the reading is fresh AND the reading
-            # timestamp is close to the engine-on signal.
-            #
-            # The timestamp-closeness check (_timestamps_close) is critical:
+            # Count alerts — engine_on is still kept on the health
+            # dict for downstream consumers (e.g. parking detection).
             # Samsara CAN bus sensors report at different frequencies. RPM
             # may update every few seconds while oil pressure updates every
             # 2-5 minutes. Without this check, a stale low oil pressure
             # reading from post-shutdown (normal) can trigger a false alert
             # when RPM reports the engine just restarted.
             alerts = []
-            if health.get("battery_v") is not None and health["battery_v"] < 12.2:
-                if engine_on and _is_fresh(health.get("battery_time", "")) \
-                        and _timestamps_close(health.get("battery_time", ""), engine_on_time or ""):
-                    alerts.append("low_battery")
-            if health.get("oil_psi") is not None and health["oil_psi"] < 10:
-                if engine_on and _is_fresh(health.get("oil_time", "")) \
-                        and _timestamps_close(health.get("oil_time", ""), engine_on_time or ""):
-                    alerts.append("low_oil_pressure")
-            if health.get("coolant_c") is not None and health["coolant_c"] > 105:
-                if engine_on and _is_fresh(health.get("coolant_time", "")) \
-                        and _timestamps_close(health.get("coolant_time", ""), engine_on_time or ""):
-                    alerts.append("high_coolant_temp")
+            # Oil pressure (SPN 100), engine coolant temp/level
+            # (SPN 110 / 111), and battery voltage (SPN 168) are NOT
+            # emitted from raw-telemetry thresholds anymore.  The
+            # engine ECU has manufacturer-tuned thresholds and built-in
+            # debouncing that we can't reproduce from a 60-second poll
+            # of a single sensor value — second-guessing it produced a
+            # re-fire storm (one critical "Low oil pressure" → resolve
+            # → re-fire cycle, every few minutes, from sensor noise).
+            # These conditions now flow through the fault-code path
+            # (capabilities/alerting/faults.py) where the truck's own
+            # DTC + warning-lamp logic decides whether something is
+            # really wrong.
             if health.get("def_pct") is not None and health["def_pct"] < 10:
                 alerts.append("low_def")
             if health.get("seatbelt") == "Unbuckled":

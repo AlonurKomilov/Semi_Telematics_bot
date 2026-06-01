@@ -37,9 +37,17 @@ logger = logging.getLogger("bot")
 _known_health: LRUCache = LRUCache(maxsize=10_000)
 _health_last_sent: LRUCache = LRUCache(maxsize=10_000)
 
-# Health-alert severity classification
-_CRITICAL_HEALTH = {"low_oil_pressure", "high_coolant_temp"}
-_WARNING_HEALTH = {"low_battery", "low_def", "coolant_dtc"}
+# Health-alert severity classification.  Oil pressure (SPN 100),
+# engine coolant temp/level (SPN 110/111), and battery voltage
+# (SPN 168) moved to the fault-code path
+# (capabilities/alerting/faults.py) — the engine ECU's own thresholds
+# and debouncing are more reliable than re-implementing them here from
+# a 60-second telemetry poll.  ``_CRITICAL_HEALTH`` is intentionally
+# empty now; if a real critical-from-telemetry condition shows up in
+# the future (something the ECU genuinely doesn't observe), add it
+# here.
+_CRITICAL_HEALTH: set[str] = set()
+_WARNING_HEALTH = {"low_def", "coolant_dtc"}
 
 
 # ── Health-alert dedup helpers ───────────────────────────────────
@@ -149,8 +157,7 @@ async def _check_health_account(
             vid = f"{account_id}:{co}:{v['id']}"
             health_alerts = [
                 a for a in v.get("_health_alerts", [])
-                if a in ("low_battery", "low_oil_pressure",
-                         "high_coolant_temp", "low_def")
+                if a in ("low_def",)
             ]
             if health_alerts:
                 await _set_known_health(account_id, vid, set(health_alerts))
@@ -179,8 +186,7 @@ async def _check_health_account(
             alerts = v.get("_health_alerts", [])
             push_alerts = [
                 a for a in alerts
-                if a in ("low_battery", "low_oil_pressure",
-                         "high_coolant_temp", "low_def")
+                if a in ("low_def",)
             ]
 
             fv = faulted_by_id.get(v["id"])
