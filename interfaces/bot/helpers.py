@@ -190,3 +190,55 @@ async def _render_audit_log(account_id: int) -> str:
         if e.get("details"):
             lines.append(f"    {e['details'][:60]}")
     return "\n".join(lines)
+
+
+# ── Deprecation / dashboard-redirect plumbing ────────────────────
+
+
+def dashboard_link_kb(label: str, path: str) -> InlineKeyboardMarkup:
+    """Build a one-button inline keyboard linking to a dashboard page.
+
+    Used by bot commands that have been retired in favour of the
+    dashboard — the bot keeps the command alive just long enough to
+    point the user at the right place instead of going silent.
+
+    ``path`` is the dashboard route (e.g. ``/admin/users``); the host
+    comes from ``APP_BASE_URL`` so dev/staging environments redirect to
+    the right deployment.
+    """
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup as _Kb
+    from infra.config import APP_BASE_URL
+    url = f"{APP_BASE_URL.rstrip('/')}/dashboard{path}"
+    return _Kb([[InlineKeyboardButton(label, url=url)]])
+
+
+async def reply_dashboard_redirect(
+    update: Update,
+    *,
+    title: str,
+    body: str,
+    path: str,
+    label: str = "Open on dashboard",
+) -> None:
+    """Send a redirect message from a retired bot command.
+
+    Pattern for Tier-1 bot deprecations: the command itself stays
+    registered so a user typing the old name (or hitting a stale
+    menu button) gets a one-tap link to the dashboard equivalent
+    instead of "Command not recognised."  ``title`` and ``body``
+    explain *why* the command moved; ``path`` is the dashboard
+    destination.
+    """
+    text = (
+        f"<b>{escape_html(title)}</b>\n\n"
+        f"{escape_html(body)}\n\n"
+        f"This view now lives on the dashboard for a better experience."
+    )
+    target = update.effective_message
+    if target is None:
+        return
+    await target.reply_text(
+        text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=dashboard_link_kb(label, path),
+    )

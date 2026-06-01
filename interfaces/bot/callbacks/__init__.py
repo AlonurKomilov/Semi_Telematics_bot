@@ -11,7 +11,6 @@ from telegram.ext import ContextTypes
 from adapters.samsara.client import populate_company_display
 from infra.context import get_company_display
 from capabilities.formatting import (
-    format_help,
     format_welcome_unregistered,
     format_unregistered_member,
     format_system_owner_welcome,
@@ -20,61 +19,52 @@ from capabilities.formatting import (
 from interfaces.bot.config import SUPPORT_CONTACT
 from interfaces.bot.state import get_platform_db, get_tenant_db
 from interfaces.bot.keyboards import (
-    main_menu_kb, back_kb, system_owner_kb, unregistered_kb,
+    back_kb, system_owner_kb, unregistered_kb,
     co_menu_kb, vehicle_company_picker_kb,
 )
-from interfaces.bot.helpers import _show, _render_audit_log, _safe_error
+from interfaces.bot.helpers import _show, _render_audit_log
 from interfaces.bot.auth import _get_user, _group_chat_guard
 from capabilities.localization.i18n import t
 from interfaces.bot.callback_router import CallbackRouter
 
 # ── Import command functions for simple route delegation ─────────
 
-from interfaces.bot.registration import cmd_start
 from interfaces.bot.fleet import (
-    cmd_faults, cmd_faults_pdf, cmd_faults_csv,
+    cmd_faults,
     cmd_vehicle, cmd_critical,
-    cmd_fuel, cmd_fuel_pdf, cmd_fuel_csv,
+    cmd_fuel,
     cmd_alerts, cmd_alert_toggle, cmd_ai_alert_toggle, cmd_alert_disable_all,
     cmd_alert_history, cmd_pending_alerts,
     cmd_vehicle_report,
-    cmd_health, cmd_health_pdf, cmd_health_csv,
-    cmd_efficiency, cmd_efficiency_pdf, cmd_efficiency_csv,
+    cmd_health,
+    cmd_efficiency,
     cmd_weather, cmd_api_status,
     cmd_camera_check, cmd_camera_check_vehicle,
-    cmd_camera_history, cmd_camera_check_pdf, cmd_camera_check_csv,
-    cmd_cam_tool, cmd_cam_company_pick, cmd_cam_page,
+    cmd_cam_tool,
 )
 from interfaces.bot.management import cmd_account, cmd_users
 from interfaces.bot.admin import cmd_admin, cmd_accounts, cmd_sys_ai_stats, cmd_sys_server
-from interfaces.bot.scorecards import cmd_scorecards, cmd_scorecards_pdf, cmd_scorecards_csv
+from interfaces.bot.scorecards import cmd_scorecards
 from interfaces.bot.fuel_costs import cmd_fuelcost, cmd_fuelcost_add, cmd_fuelcost_summary
-from interfaces.bot.costs import cmd_costmile, cmd_costmile_report
-from interfaces.bot.maintenance import (
-    cmd_maintenance, cmd_maint_add, cmd_maint_type, cmd_maint_view, cmd_maint_done,
-    cmd_maint_select_vehicle, cmd_maint_skip_date, cmd_maint_skip_miles, cmd_maint_skip_desc,
-    cmd_maint_skip_hours,
-    cmd_maint_priority_pick, cmd_maint_recur_pick,
-    cmd_maint_detail, cmd_maint_edit, cmd_maint_delete, cmd_maint_delete_confirm,
-    cmd_maint_edit_type, cmd_maint_edit_date, cmd_maint_edit_miles, cmd_maint_edit_desc,
-    cmd_maint_edit_priority, cmd_maint_set_priority,
-    cmd_maint_edit_hours,
-    cmd_maint_set_type, cmd_maint_remove_field,
-    cmd_maint_company_pick, cmd_maint_vehicle_page,
-)
+from interfaces.bot.costs import cmd_costmile
+# Maintenance: CRUD wizard retired; the dashboard at
+# /maintenance/tasks owns task management.  Only two bot entry
+# points remain — ``cmd_maintenance`` deep-links to the dashboard,
+# and ``cmd_maint_done`` handles the inline "✓ Done" tap on
+# scheduler-posted overdue alerts so a recipient can clear a task
+# without opening a browser.
+from interfaces.bot.maintenance import cmd_maintenance, cmd_maint_done
+# Deprecated dashboard-redirect stubs — kept so saved menu buttons
+# still dead-end into a "moved to dashboard" message instead of
+# silently failing.  See interfaces/bot/{maps,routes,work_hours}.py.
 from interfaces.bot.maps import cmd_livemap
-from interfaces.bot.routes import cmd_route, cmd_route_go
+from interfaces.bot.routes import cmd_route
+from interfaces.bot.work_hours import cmd_work_hours
 from interfaces.bot.geofences import cmd_geofences, cmd_add_zone, cmd_list_zones, cmd_delete_zone
 from interfaces.bot.geofences import handle_delete_zone_callback, handle_add_zone_roles_callback
 from interfaces.bot.events import cmd_events, cmd_events_text, cmd_events_csv
-from interfaces.bot.work_hours import (
-    cmd_work_hours, cmd_whours_add, cmd_whours_view,
-    cmd_whours_rename, cmd_whours_hours, cmd_whours_start_hour,
-    cmd_whours_end_hour, cmd_whours_changerole, cmd_whours_role,
-    cmd_whours_delete,
-)
 from interfaces.bot.ai import (
-    cmd_ai, cmd_ai_ask_prompt, cmd_ai_answer, cmd_ai_summary,
+    cmd_ai, cmd_ai_ask_prompt, cmd_ai_summary,
     cmd_ai_diagnose, cmd_ai_suggest, cmd_ai_newchat,
     cmd_ai_models, cmd_ai_set_model, cmd_ai_set_vision_model, cmd_ai_alerts,
     handle_ai_usage,
@@ -86,15 +76,22 @@ from interfaces.bot.auto_reports import (
 )
 from interfaces.bot.knowledge import (
     cmd_tips, cmd_kb_category, cmd_kb_pinned, cmd_kb_article,
-    cmd_kb_search, handle_kb_search_input,
+    cmd_kb_search,
 )
 from capabilities.alerting import handle_alert_ack
 from interfaces.bot.vehicles import show_vehicle_list
 
 # ── Import domain handler submodules ─────────────────────────────
 
-from interfaces.bot.callbacks import navigation, settings, company, users, groups, parking
-from interfaces.bot.callbacks.text_handlers import handle_text  # re-exported
+# Per-user role/dept grid (callbacks/users.py) and per-company action
+# grid (callbacks/company.py) were retired when /users and /accounts
+# moved to the dashboard.  The modules + their register() calls were
+# removed below; cached buttons fall through to the unknown-action
+# fallback.
+from interfaces.bot.callbacks import navigation, settings, groups, parking
+# Explicit-alias re-export so handler_setup.py can keep importing
+# ``handle_text`` from this package (and ruff's F401 doesn't flag it).
+from interfaces.bot.callbacks.text_handlers import handle_text as handle_text  # noqa: PLC0414
 
 # ── Build the router ─────────────────────────────────────────────
 
@@ -103,8 +100,6 @@ _router = CallbackRouter()
 # Register domain handlers
 navigation.register(_router)
 settings.register(_router)
-company.register(_router)
-users.register(_router)
 groups.register(_router)
 parking.register(_router)
 
@@ -121,36 +116,29 @@ def _co(fn):
     return _handler
 
 
-# Exact-match fleet routes
+# Exact-match fleet routes.
+#
+# Report PDF/CSV exports (faults_pdf, faults_csv, fuel_pdf, fuel_csv,
+# health_pdf, health_csv, eff_pdf, eff_csv, scorecard_pdf,
+# scorecard_csv, cam_check_pdf, cam_check_csv, cam_check_history)
+# were retired in Tier 3 — they all moved to the dashboard.  Cached
+# buttons fall through to the "unknown action" handler.
 _router.exact("cmd_faults", cmd_faults)
-_router.exact("faults_pdf", cmd_faults_pdf)
-_router.exact("faults_csv", cmd_faults_csv)
 _router.exact("cmd_critical", cmd_critical)
 _router.exact("cmd_fuel", cmd_fuel)
-_router.exact("fuel_pdf", cmd_fuel_pdf)
-_router.exact("fuel_csv", cmd_fuel_csv)
 _router.exact("cmd_alerts", cmd_alerts)
 _router.exact("alert_disable_all", cmd_alert_disable_all)
 _router.exact("cmd_myvehicle", cmd_vehicle)
 _router.exact("cmd_health", cmd_health)
-_router.exact("health_pdf", cmd_health_pdf)
-_router.exact("health_csv", cmd_health_csv)
 _router.exact("cmd_efficiency", cmd_efficiency)
-_router.exact("eff_pdf", cmd_efficiency_pdf)
-_router.exact("eff_csv", cmd_efficiency_csv)
 _router.exact("cmd_weather", cmd_weather)
 _router.exact("cmd_api_status", cmd_api_status)
 _router.exact("cmd_camera_check", cmd_camera_check)
 _router.exact("cmd_camera_report", cmd_camera_check)   # alias from reports menu
-_router.exact("cmd_cam_tool", cmd_cam_tool)             # camera tool entry (per-truck flow)
-_router.exact("cam_check_pdf", cmd_camera_check_pdf)
-_router.exact("cam_check_csv", cmd_camera_check_csv)
-_router.exact("cam_check_history", cmd_camera_history)
+_router.exact("cmd_cam_tool", cmd_cam_tool)             # now a dashboard redirect
 _router.exact("cmd_account", cmd_account)
 _router.exact("cmd_users", cmd_users)
 _router.exact("cmd_scorecards", cmd_scorecards)
-_router.exact("scorecard_pdf", cmd_scorecards_pdf)
-_router.exact("scorecard_csv", cmd_scorecards_csv)
 _router.exact("cmd_livemap", cmd_livemap)
 _router.exact("cmd_route", cmd_route)
 _router.exact("cmd_geofences", cmd_geofences)
@@ -163,17 +151,15 @@ _router.exact("fuelcost_add", cmd_fuelcost_add)
 _router.exact("fuelcost_summary", cmd_fuelcost_summary)
 _router.exact("cmd_costmile", cmd_costmile)
 _router.exact("cmd_maintenance", cmd_maintenance)
-_router.exact("maint_add", cmd_maint_add)
-_router.exact("maint_view", cmd_maint_view)
-_router.exact("maint_skip_date", cmd_maint_skip_date)
-_router.exact("maint_skip_miles", cmd_maint_skip_miles)
-_router.exact("maint_skip_hours", cmd_maint_skip_hours)
-_router.exact("maint_skip_desc", cmd_maint_skip_desc)
+# Maintenance wizard sub-routes (maint_add / maint_view / maint_skip_*)
+# moved to the dashboard.  Cached buttons fall through to the
+# "unknown action" handler; the inline ``maint_done_`` prefix is
+# the only maintenance interaction kept on the bot — see the
+# prefix registration block further below.
 _router.exact("cmd_work_hours", cmd_work_hours)
-_router.exact("whours_add", cmd_whours_add)
-# Backward-compat aliases for cached Telegram buttons
-_router.exact("cmd_work_hours", cmd_work_hours)
-_router.exact("wsched_add", cmd_whours_add)
+# The wizard sub-routes (whours_add / wsched_add / per-schedule
+# edit prefixes) were removed when /work_hours moved to the
+# dashboard; cached buttons fall through to "unknown action".
 _router.exact("cmd_auto_reports", cmd_auto_reports)
 _router.exact("ar_unsub", cmd_auto_reports_unsubscribe)
 _router.exact("cmd_alert_history", cmd_alert_history)
@@ -201,26 +187,14 @@ _router.exact("ai_chat", _ai_ask)
 
 
 # ── Prefix fleet routes ─────────────────────────────────────────
-
-async def _faults_pdf_co(u, c):
-    co = u.callback_query.data.replace("faults_pdf_", "")
-    await cmd_faults_pdf(u, c, company=co)
-
-async def _faults_csv_co(u, c):
-    co = u.callback_query.data.replace("faults_csv_", "")
-    await cmd_faults_csv(u, c, company=co)
+#
+# Tier 3 retired every ``*_pdf_<company>`` / ``*_csv_<company>``
+# prefix wrapper — those PDF/CSV exports moved to the dashboard
+# where sortable tables + proper export beat a Telegram attachment.
 
 async def _cmd_critical_co(u, c):
     co = u.callback_query.data.replace("cmd_critical_", "")
     await cmd_critical(u, c, company=co)
-
-async def _fuel_pdf_co(u, c):
-    co = u.callback_query.data.replace("fuel_pdf_", "")
-    await cmd_fuel_pdf(u, c, company=co)
-
-async def _fuel_csv_co(u, c):
-    co = u.callback_query.data.replace("fuel_csv_", "")
-    await cmd_fuel_csv(u, c, company=co)
 
 async def _alert_toggle(u, c):
     alert_type = u.callback_query.data.replace("alert_toggle_", "")
@@ -230,37 +204,13 @@ async def _ai_toggle(u, c):
     ai_type = u.callback_query.data.replace("ai_toggle_", "")
     await cmd_ai_alert_toggle(u, c, ai_type=ai_type)
 
-async def _health_pdf_co(u, c):
-    co = u.callback_query.data.replace("health_pdf_", "")
-    await cmd_health_pdf(u, c, company=co)
-
-async def _health_csv_co(u, c):
-    co = u.callback_query.data.replace("health_csv_", "")
-    await cmd_health_csv(u, c, company=co)
-
-async def _eff_pdf_co(u, c):
-    co = u.callback_query.data.replace("eff_pdf_", "")
-    await cmd_efficiency_pdf(u, c, company=co)
-
-async def _eff_csv_co(u, c):
-    co = u.callback_query.data.replace("eff_csv_", "")
-    await cmd_efficiency_csv(u, c, company=co)
-
 async def _cam_truck(u, c):
+    """Per-truck camera-check callback from the vehicle detail view
+    (``cam_vehicle_<truck>``).  Still wired because the per-truck
+    flow stays on the bot — only the picker / PDF / CSV surfaces
+    were retired."""
     truck = u.callback_query.data.replace("cam_vehicle_", "")
     await cmd_camera_check_vehicle(u, c, vehicle_name=truck)
-
-async def _scorecard_pdf_co(u, c):
-    co = u.callback_query.data.replace("scorecard_pdf_", "")
-    await cmd_scorecards_pdf(u, c, company=co)
-
-async def _scorecard_csv_co(u, c):
-    co = u.callback_query.data.replace("scorecard_csv_", "")
-    await cmd_scorecards_csv(u, c, company=co)
-
-async def _livemap_co(u, c):
-    co = u.callback_query.data.replace("cmd_livemap_", "")
-    await cmd_livemap(u, c, company=co)
 
 async def _events_text(u, c):
     days = int(u.callback_query.data.replace("events_text_", ""))
@@ -270,223 +220,29 @@ async def _events_csv(u, c):
     days = int(u.callback_query.data.replace("events_csv_", ""))
     await cmd_events_csv(u, c, days=days)
 
-async def _costmile_pdf_co(u, c):
-    co = u.callback_query.data.replace("costmile_pdf_", "")
-    await cmd_costmile_report(u, c, company=co, fmt="text")
-
-async def _costmile_csv_co(u, c):
-    co = u.callback_query.data.replace("costmile_csv_", "")
-    await cmd_costmile_report(u, c, company=co, fmt="csv")
-
-async def _maint_type(u, c):
-    task_type = u.callback_query.data.replace("maint_type_", "")
-    await cmd_maint_type(u, c, task_type=task_type)
+# ── Maintenance: inline "✓ Done" from scheduler-posted alerts ─────
+#
+# Every other ``cmd_maint_*`` handler was retired when the CRUD
+# surface moved to the dashboard.  ``_maint_done`` is the only one
+# still wired because the dashboard's "schedule completed" workflow
+# can't replicate the on-the-go moment when a dispatcher (or driver
+# whose vehicle the alert names) wants to clear an overdue ping
+# without opening a browser.
 
 async def _maint_done(u, c):
     task_id = int(u.callback_query.data.replace("maint_done_", ""))
     await cmd_maint_done(u, c, task_id=task_id)
 
-# ── Additional maintenance prefix wrappers ───────────────────────
-
-async def _maint_co(u, c):
-    co = u.callback_query.data.replace("maint_co_", "")
-    await cmd_maint_company_pick(u, c, company=co)
-
-async def _maint_truck(u, c):
-    rest = u.callback_query.data.replace("maint_vehicle_", "")
-    parts = rest.split("_", 1)
-    co = parts[0] if len(parts) >= 1 else ""
-    truck = parts[1] if len(parts) >= 2 else ""
-    await cmd_maint_select_vehicle(u, c, company=co, vehicle_name=truck)
-
-async def _maint_pg(u, c):
-    rest = u.callback_query.data.replace("maint_pg_", "")
-    parts = rest.rsplit("_", 1)
-    co = parts[0] if len(parts) >= 1 else "ALL"
-    page = int(parts[1]) if len(parts) >= 2 else 0
-    await cmd_maint_vehicle_page(u, c, company=co, page=page)
-
-async def _maint_lpage(u, c):
-    page = int(u.callback_query.data.replace("maint_lpage_", ""))
-    await cmd_maint_view(u, c, page=page)
-
-async def _maint_detail(u, c):
-    task_id = int(u.callback_query.data.replace("maint_detail_", ""))
-    await cmd_maint_detail(u, c, task_id=task_id)
-
-async def _maint_edit(u, c):
-    task_id = int(u.callback_query.data.replace("maint_edit_", ""))
-    await cmd_maint_edit(u, c, task_id=task_id)
-
-async def _maint_del(u, c):
-    task_id = int(u.callback_query.data.replace("maint_del_", ""))
-    await cmd_maint_delete(u, c, task_id=task_id)
-
-async def _maint_delok(u, c):
-    task_id = int(u.callback_query.data.replace("maint_delok_", ""))
-    await cmd_maint_delete_confirm(u, c, task_id=task_id)
-
-async def _maint_etype(u, c):
-    task_id = int(u.callback_query.data.replace("maint_etype_", ""))
-    await cmd_maint_edit_type(u, c, task_id=task_id)
-
-async def _maint_edate(u, c):
-    task_id = int(u.callback_query.data.replace("maint_edate_", ""))
-    await cmd_maint_edit_date(u, c, task_id=task_id)
-
-async def _maint_emiles(u, c):
-    task_id = int(u.callback_query.data.replace("maint_emiles_", ""))
-    await cmd_maint_edit_miles(u, c, task_id=task_id)
-
-async def _maint_edesc(u, c):
-    task_id = int(u.callback_query.data.replace("maint_edesc_", ""))
-    await cmd_maint_edit_desc(u, c, task_id=task_id)
-
-async def _maint_setype(u, c):
-    rest = u.callback_query.data.replace("maint_setype_", "")
-    parts = rest.split("_", 1)
-    task_id = int(parts[0])
-    new_type = parts[1] if len(parts) > 1 else ""
-    await cmd_maint_set_type(u, c, task_id=task_id, new_type=new_type)
-
-async def _maint_rmdate(u, c):
-    task_id = int(u.callback_query.data.replace("maint_rmdate_", ""))
-    await cmd_maint_remove_field(u, c, task_id=task_id, field="date")
-
-async def _maint_rmmiles(u, c):
-    task_id = int(u.callback_query.data.replace("maint_rmmiles_", ""))
-    await cmd_maint_remove_field(u, c, task_id=task_id, field="miles")
-
-async def _maint_rmdesc(u, c):
-    task_id = int(u.callback_query.data.replace("maint_rmdesc_", ""))
-    await cmd_maint_remove_field(u, c, task_id=task_id, field="desc")
-
-async def _maint_rmhours(u, c):
-    task_id = int(u.callback_query.data.replace("maint_rmhours_", ""))
-    await cmd_maint_remove_field(u, c, task_id=task_id, field="hours")
-
-async def _maint_prio(u, c):
-    """Wizard priority pick — value is one of low/medium/high/critical."""
-    priority = u.callback_query.data.replace("maint_prio_", "")
-    await cmd_maint_priority_pick(u, c, priority=priority)
-
-async def _maint_recur(u, c):
-    """Wizard recurrence dimension — none/days/miles/hours."""
-    dimension = u.callback_query.data.replace("maint_recur_", "")
-    await cmd_maint_recur_pick(u, c, dimension=dimension)
-
-async def _maint_eprio(u, c):
-    """Edit menu → priority picker."""
-    task_id = int(u.callback_query.data.replace("maint_eprio_", ""))
-    await cmd_maint_edit_priority(u, c, task_id=task_id)
-
-async def _maint_sprio(u, c):
-    """Edit priority apply — ``maint_sprio_<task_id>_<priority>``."""
-    rest = u.callback_query.data.replace("maint_sprio_", "")
-    parts = rest.split("_", 1)
-    task_id = int(parts[0])
-    new_priority = parts[1] if len(parts) > 1 else ""
-    await cmd_maint_set_priority(u, c, task_id=task_id, new_priority=new_priority)
-
-async def _maint_ehours(u, c):
-    """Edit menu → engine-hours prompt."""
-    task_id = int(u.callback_query.data.replace("maint_ehours_", ""))
-    await cmd_maint_edit_hours(u, c, task_id=task_id)
-
-async def _maint_skip_hours(u, c):
-    await cmd_maint_skip_hours(u, c)
-
 # ── Camera tool prefix wrappers ──────────────────────────────────
+#
+# The paginated camera picker (``camco_<company>`` / ``cam_page_<co>_<page>``)
+# moved to the dashboard.  Only the per-truck ``cam_vehicle_<truck>``
+# prefix survives — see ``_cam_truck`` above.
 
-async def _camco(u, c):
-    co = u.callback_query.data.replace("camco_", "")
-    await cmd_cam_company_pick(u, c, company=co)
-
-async def _cam_page(u, c):
-    rest = u.callback_query.data.replace("cam_page_", "")
-    parts = rest.rsplit("_", 1)
-    co = parts[0] if len(parts) >= 1 else "ALL"
-    page = int(parts[1]) if len(parts) >= 2 else 0
-    await cmd_cam_page(u, c, company=co, page=page)
-
-# ── Work hours prefix wrappers ────────────────────────────────
-
-async def _whours_view(u, c):
-    sid = int(u.callback_query.data.replace("whours_view_", ""))
-    await cmd_whours_view(u, c, schedule_id=sid)
-
-async def _whours_rename(u, c):
-    sid = int(u.callback_query.data.replace("whours_rename_", ""))
-    await cmd_whours_rename(u, c, schedule_id=sid)
-
-async def _whours_hours(u, c):
-    sid = int(u.callback_query.data.replace("whours_hours_", ""))
-    await cmd_whours_hours(u, c, schedule_id=sid)
-
-async def _whours_start(u, c):
-    rest = u.callback_query.data.replace("whours_start_", "")
-    parts = rest.rsplit("_", 1)
-    sid = int(parts[0]) if len(parts) >= 1 else 0
-    hour = int(parts[1]) if len(parts) >= 2 else 0
-    await cmd_whours_start_hour(u, c, schedule_id=sid, hour=hour)
-
-async def _whours_end(u, c):
-    rest = u.callback_query.data.replace("whours_end_", "")
-    parts = rest.rsplit("_", 1)
-    sid = int(parts[0]) if len(parts) >= 1 else 0
-    hour = int(parts[1]) if len(parts) >= 2 else 0
-    await cmd_whours_end_hour(u, c, schedule_id=sid, hour=hour)
-
-async def _whours_changerole(u, c):
-    sid = int(u.callback_query.data.replace("whours_changerole_", ""))
-    await cmd_whours_changerole(u, c, schedule_id=sid)
-
-async def _whours_role(u, c):
-    role = u.callback_query.data.replace("whours_role_", "")
-    await cmd_whours_role(u, c, role=role)
-
-async def _whours_del(u, c):
-    sid = int(u.callback_query.data.replace("whours_del_", ""))
-    await cmd_whours_delete(u, c, schedule_id=sid)
-
-# Backward-compat: old wsched_ buttons cached in Telegram chats still route correctly
-async def _wsched_view(u, c):
-    sid = int(u.callback_query.data.replace("wsched_view_", ""))
-    await cmd_whours_view(u, c, schedule_id=sid)
-
-async def _wsched_rename(u, c):
-    sid = int(u.callback_query.data.replace("wsched_rename_", ""))
-    await cmd_whours_rename(u, c, schedule_id=sid)
-
-async def _wsched_hours(u, c):
-    sid = int(u.callback_query.data.replace("wsched_hours_", ""))
-    await cmd_whours_hours(u, c, schedule_id=sid)
-
-async def _wsched_start(u, c):
-    rest = u.callback_query.data.replace("wsched_start_", "")
-    parts = rest.rsplit("_", 1)
-    sid = int(parts[0]) if len(parts) >= 1 else 0
-    hour = int(parts[1]) if len(parts) >= 2 else 0
-    await cmd_whours_start_hour(u, c, schedule_id=sid, hour=hour)
-
-async def _wsched_end(u, c):
-    rest = u.callback_query.data.replace("wsched_end_", "")
-    parts = rest.rsplit("_", 1)
-    sid = int(parts[0]) if len(parts) >= 1 else 0
-    hour = int(parts[1]) if len(parts) >= 2 else 0
-    await cmd_whours_end_hour(u, c, schedule_id=sid, hour=hour)
-
-async def _wsched_changerole(u, c):
-    sid = int(u.callback_query.data.replace("wsched_changerole_", ""))
-    await cmd_whours_changerole(u, c, schedule_id=sid)
-
-async def _wsched_role(u, c):
-    role = u.callback_query.data.replace("wsched_role_", "")
-    await cmd_whours_role(u, c, role=role)
-
-async def _wsched_del(u, c):
-    sid = int(u.callback_query.data.replace("wsched_del_", ""))
-    await cmd_whours_delete(u, c, schedule_id=sid)
+# NOTE: the entire ``_whours_*`` / ``_wsched_*`` callback grid was
+# removed when Working Hours moved to the dashboard.  Old buttons
+# cached in Telegram chats fall through to the "unknown action"
+# fallback; new entries land on the dashboard via cmd_work_hours.
 
 async def _ar_freq(u, c):
     freq = u.callback_query.data.replace("ar_freq_", "")
@@ -539,78 +295,28 @@ async def _ai_diag(u, c):
     elif len(parts) == 2:
         await cmd_ai_diagnose(u, c, vehicle_name=parts[1], company=parts[0])
 
-async def _costmile_text(u, c):
-    await cmd_costmile_report(u, c, fmt="text")
-
-async def _costmile_csv(u, c):
-    await cmd_costmile_report(u, c, fmt="csv")
+# costmile_pdf / costmile_csv exact-match handlers were retired with
+# cmd_costmile_report — the dashboard owns CSV/PDF generation now.
 
 # Register prefix routes (order matters: longer/more specific first)
-_router.prefix("faults_pdf_", _faults_pdf_co)
-_router.prefix("faults_csv_", _faults_csv_co)
 _router.prefix("cmd_critical_", _cmd_critical_co)
-_router.prefix("fuel_pdf_", _fuel_pdf_co)
-_router.prefix("fuel_csv_", _fuel_csv_co)
 _router.prefix("alert_toggle_", _alert_toggle)
 _router.prefix("ai_toggle_", _ai_toggle)
-_router.prefix("health_pdf_", _health_pdf_co)
-_router.prefix("health_csv_", _health_csv_co)
-_router.prefix("eff_pdf_", _eff_pdf_co)
-_router.prefix("eff_csv_", _eff_csv_co)
 _router.prefix("cam_vehicle_", _cam_truck)
-_router.prefix("scorecard_pdf_", _scorecard_pdf_co)
-_router.prefix("scorecard_csv_", _scorecard_csv_co)
-_router.prefix("cmd_livemap_", _livemap_co)
 _router.prefix("events_text_", _events_text)
 _router.prefix("events_csv_", _events_csv)
-_router.prefix("costmile_pdf_", _costmile_pdf_co)
-_router.prefix("costmile_csv_", _costmile_csv_co)
-_router.prefix("maint_type_", _maint_type)
+# Retired in Tier 3 (moved to dashboard):
+# faults_pdf_, faults_csv_, fuel_pdf_, fuel_csv_, health_pdf_,
+# health_csv_, eff_pdf_, eff_csv_, scorecard_pdf_, scorecard_csv_,
+# costmile_pdf_, costmile_csv_
+# Only the inline "✓ Done" prefix survives — every other
+# ``maint_*`` callback path moved to the dashboard.  Cached buttons
+# in old chats fall through to the global "unknown action" handler.
 _router.prefix("maint_done_", _maint_done)
-_router.prefix("maint_setype_", _maint_setype)   # must be before maint_*
-_router.prefix("maint_co_", _maint_co)
-_router.prefix("maint_vehicle_", _maint_truck)
-_router.prefix("maint_pg_", _maint_pg)
-_router.prefix("maint_lpage_", _maint_lpage)
-_router.prefix("maint_detail_", _maint_detail)
-_router.prefix("maint_delok_", _maint_delok)      # must be before maint_del_
-_router.prefix("maint_del_", _maint_del)
-_router.prefix("maint_etype_", _maint_etype)
-_router.prefix("maint_edate_", _maint_edate)
-_router.prefix("maint_emiles_", _maint_emiles)
-_router.prefix("maint_edesc_", _maint_edesc)
-_router.prefix("maint_eprio_", _maint_eprio)
-_router.prefix("maint_ehours_", _maint_ehours)
-# maint_sprio_ must be registered before maint_edit_/etc are matched
-# loosely.  Same pattern maint_setype_ uses.
-_router.prefix("maint_sprio_", _maint_sprio)
-_router.prefix("maint_edit_", _maint_edit)
-_router.prefix("maint_rmdate_", _maint_rmdate)
-_router.prefix("maint_rmmiles_", _maint_rmmiles)
-_router.prefix("maint_rmhours_", _maint_rmhours)
-_router.prefix("maint_rmdesc_", _maint_rmdesc)
-# Wizard pickers — exact one-step value, no task_id suffix.
-_router.prefix("maint_prio_", _maint_prio)
-_router.prefix("maint_recur_", _maint_recur)
-_router.prefix("camco_", _camco)
-_router.prefix("cam_page_", _cam_page)
-_router.prefix("whours_start_", _whours_start)   # must be before whours_*
-_router.prefix("whours_end_", _whours_end)         # must be before whours_*
-_router.prefix("whours_view_", _whours_view)
-_router.prefix("whours_rename_", _whours_rename)
-_router.prefix("whours_hours_", _whours_hours)
-_router.prefix("whours_changerole_", _whours_changerole)
-_router.prefix("whours_role_", _whours_role)
-_router.prefix("whours_del_", _whours_del)
-# Backward-compat aliases for old wsched_ buttons cached in Telegram chats
-_router.prefix("wsched_start_", _wsched_start)     # must be before wsched_*
-_router.prefix("wsched_end_", _wsched_end)         # must be before wsched_*
-_router.prefix("wsched_view_", _wsched_view)
-_router.prefix("wsched_rename_", _wsched_rename)
-_router.prefix("wsched_hours_", _wsched_hours)
-_router.prefix("wsched_changerole_", _wsched_changerole)
-_router.prefix("wsched_role_", _wsched_role)
-_router.prefix("wsched_del_", _wsched_del)
+# Camera paginated picker (``camco_``, ``cam_page_``) moved to the
+# dashboard along with the cmd_cam_tool entry point.
+# Working-hours wizard prefixes (whours_* / wsched_*) were removed
+# when /work_hours moved to the dashboard.
 _router.prefix("ar_freq_", _ar_freq)
 _router.prefix("ar_type_", _ar_type)
 _router.prefix("ar_hour_", _ar_hour)
@@ -621,10 +327,6 @@ _router.prefix("ai_sug_", _ai_sug)
 _router.prefix("ai_diag_", _ai_diag)
 _router.prefix("kb_cat:", cmd_kb_category)
 _router.prefix("kb_art:", cmd_kb_article)
-
-_router.exact("costmile_pdf", _costmile_text)
-_router.exact("costmile_csv", _costmile_csv)
-
 
 # ── Per-truck fault report ───────────────────────────────────────
 
@@ -731,13 +433,9 @@ async def _cohealth(u, c):
     co = u.callback_query.data.replace("cohealth_", "")
     await cmd_health(u, c, company=co)
 
-async def _coeff_pdf(u, c):
-    co = u.callback_query.data.replace("coeff_pdf_", "")
-    await cmd_efficiency_pdf(u, c, company=co)
-
-async def _coeff_csv(u, c):
-    co = u.callback_query.data.replace("coeff_csv_", "")
-    await cmd_efficiency_csv(u, c, company=co)
+# coeff_pdf_ / coeff_csv_ wrappers were retired with the rest of the
+# efficiency PDF/CSV export flow.  The plain ``coeff_<co>`` button
+# still works — it just routes to the dashboard redirect now.
 
 async def _coeff(u, c):
     co = u.callback_query.data.replace("coeff_", "")
@@ -750,8 +448,6 @@ async def _coweather(u, c):
 _router.prefix("cofaults_", _cofaults)
 _router.prefix("cofuel_", _cofuel)
 _router.prefix("cohealth_", _cohealth)
-_router.prefix("coeff_pdf_", _coeff_pdf)
-_router.prefix("coeff_csv_", _coeff_csv)
 _router.prefix("coeff_", _coeff)
 _router.prefix("coweather_", _coweather)
 
@@ -773,22 +469,6 @@ async def _zone_roles(u, c):
 _router.prefix("gf_detail_", _gf_detail)
 _router.prefix("del_zone:", _del_zone)
 _router.prefix("zone_roles:", _zone_roles)
-
-
-# ── Route replay ────────────────────────────────────────────────
-
-async def _route_go(u, c):
-    data = u.callback_query.data
-    parts = data[len("route_go_"):].rsplit("_", 1)
-    if len(parts) == 2:
-        co_vehicle = parts[0]
-        days_ago = int(parts[1])
-        cv_parts = co_vehicle.split("_", 1)
-        co = cv_parts[0] if len(cv_parts) >= 1 else ""
-        vname = cv_parts[1] if len(cv_parts) >= 2 else ""
-        await cmd_route_go(u, c, company=co, vehicle_name=vname, days_ago=days_ago)
-
-_router.prefix("route_go_", _route_go)
 
 
 # ── Alert acknowledgment ────────────────────────────────────────

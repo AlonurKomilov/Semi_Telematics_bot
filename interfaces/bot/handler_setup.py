@@ -1,16 +1,31 @@
 """Telegram handler registration for per-account bot Applications.
 
-This module is the single place that wires all command, callback, and text
-handlers to a ``telegram.ext.Application`` instance.  It is imported by
-``interfaces/bot/`` (the bot delivery surface) and injected into
-``core.bot_registry`` at startup so that the registry never needs to import
-from the interface layer.
+This module wires command, callback, and text handlers to a
+``telegram.ext.Application`` instance.  Two separate registration
+functions because the customer-facing bots and the operator-only
+system bot expose different surfaces:
 
-Usage (in run.py or startup code)::
+  - ``register_handlers`` (the default, used by ``bot_registry``)
+    binds all the CUSTOMER-facing commands (/start, /faults, /vehicle,
+    etc.).  Per-account bots and the global LOGIN bot both get this
+    set.  Does NOT include /admin or any other system-owner command —
+    those belong on the system bot daemon.
 
+  - ``register_system_handlers`` binds ONLY the operator-only commands
+    (/admin, /accounts, /sysaccount, /broadcast, /sysdisable).  Used
+    by ``interfaces/bot/system_app.py`` to build the system-bot
+    daemon at startup.  Never called on a per-account or login bot.
+
+Usage::
+
+    # Customer / per-account bots (delegated through bot_registry)
     import infra.bot_registry as _registry
     from interfaces.bot.handler_setup import register_handlers
     _registry.set_handler_setup(register_handlers)
+
+    # System bot daemon (run.py builds it directly)
+    from interfaces.bot.system_app import build_system_app
+    sys_app = build_system_app()  # already calls register_system_handlers
 """
 
 from telegram.ext import (
@@ -23,22 +38,23 @@ from telegram.ext import (
 
 
 def register_handlers(app: Application) -> None:
-    """Attach all command/callback/text handlers to a bot Application."""
+    """Attach customer-facing command/callback/text handlers to a bot.
+
+    Used for the global LOGIN bot and every per-account bot.  No
+    operator-only commands here — those go through
+    ``register_system_handlers`` on the system bot daemon.
+    """
     from interfaces.bot.app import cmd_chatid, cmd_settings, cmd_audit
     from interfaces.bot.registration import cmd_start, cmd_register, cmd_join, cmd_help
     from interfaces.bot.fleet import (
         cmd_faults, cmd_vehicle, cmd_fuel, cmd_alerts,
-        cmd_health, cmd_efficiency,
+        cmd_health, cmd_efficiency, cmd_cam,
     )
     from interfaces.bot.management import (
         cmd_account, cmd_invite, cmd_users, cmd_setrole,
         cmd_remove, cmd_addcompany, cmd_removecompany,
         cmd_addgroup, cmd_removegroup, cmd_groups,
         handle_chat_shared,
-    )
-    from interfaces.bot.admin import (
-        cmd_admin, cmd_accounts, cmd_sysaccount,
-        cmd_broadcast, cmd_sys_disable_account,
     )
     from interfaces.bot.callbacks import handle_callback, handle_text
     from interfaces.bot.events import cmd_events
@@ -58,6 +74,10 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("alerts", cmd_alerts))
     app.add_handler(CommandHandler("health", cmd_health))
     app.add_handler(CommandHandler("efficiency", cmd_efficiency))
+    # /cam <truck> — ad-hoc AI dashcam check for a single truck.
+    # Fleet-wide camera analysis lives on the dashboard; this
+    # command is for one-message-in one-message-out from a phone.
+    app.add_handler(CommandHandler("cam", cmd_cam))
 
     # Events
     app.add_handler(CommandHandler("events", cmd_events))
@@ -70,6 +90,13 @@ def register_handlers(app: Application) -> None:
     # Pay-for-Performance — driver self-service paystub
     from interfaces.bot.payroll import cmd_my_pay
     app.add_handler(CommandHandler("my_pay", cmd_my_pay))
+
+    # PTI — driver self-service deep-link to the Mini App + fleet
+    # link to the dashboard review queue.  Notification helpers in
+    # the same module are called by the cron jobs (capabilities/pti
+    # /jobs.py) via lazy imports.
+    from interfaces.bot.pti import cmd_pti
+    app.add_handler(CommandHandler("pti", cmd_pti))
 
     # Auto Coaching — driver self-service assignments + ack callback
     from interfaces.bot.coaching import (
@@ -126,12 +153,11 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("settings", cmd_settings))
     app.add_handler(CommandHandler("audit", cmd_audit))
 
-    # System owner admin
-    app.add_handler(CommandHandler("admin", cmd_admin))
-    app.add_handler(CommandHandler("accounts", cmd_accounts))
-    app.add_handler(CommandHandler("sysaccount", cmd_sysaccount))
-    app.add_handler(CommandHandler("broadcast", cmd_broadcast))
-    app.add_handler(CommandHandler("sysdisable", cmd_sys_disable_account))
+    # NOTE: operator-only commands (/admin, /accounts, /sysaccount,
+    # /broadcast, /sysdisable) are NOT registered here — they're bound
+    # to the system bot daemon via ``register_system_handlers`` so
+    # customers chatting with the login bot or a per-account bot can't
+    # accidentally trigger them.
 
     # Work orders — /invoice command + file-receive handler for the
     # photo/PDF upload step.  Registered BEFORE the generic text
@@ -180,3 +206,123 @@ def _maybe_invoice_or_text(invoice_handler, text_handler):
             return
         await text_handler(update, context)
     return _dispatch
+
+
+# ── Front-door login bot handler set ─────────────────────────────
+
+
+def register_login_handlers(app: Application) -> None:
+    """Attach the minimal signup / registration command set.
+
+    Used by the GLOBAL login bot only (``TELEGRAM_LOGIN_BOT_TOKEN``).
+    The login bot is a front door — its job is to walk a new visitor
+    through registration, then point them at their account's
+    per-account bot for day-to-day commands.  It does NOT carry
+    tenant traffic (``/faults``, ``/vehicle``, ``/fuel``, etc.) — at
+    1000+ customers, funnelling tenant commands through a single PTB
+    Application would be a serious bottleneck.  Tenant commands live
+    exclusively on the per-account bots managed by
+    ``infra.bot_registry`` (which calls ``register_handlers`` above).
+
+    Commands exposed here:
+
+      /start      welcome + signup
+      /register   manual registration
+      /join       invite-code join
+      /help       what this bot is for
+      /chatid     show the user's Telegram chat id (for support)
+
+    The generic callback + text handlers are also registered so the
+    registration wizard's inline buttons + free-text prompts work.
+    They dispatch based on per-user state; an unregistered visitor
+    has no tenant state, so tenant-side callbacks won't fire even
+    if a stray callback_data slips through.
+    """
+    from interfaces.bot.registration import (
+        cmd_start, cmd_register, cmd_join, cmd_help,
+    )
+    from interfaces.bot.app import cmd_chatid
+    from interfaces.bot.callbacks import handle_callback, handle_text
+
+    app.add_handler(CommandHandler("start",    cmd_start))
+    app.add_handler(CommandHandler("register", cmd_register))
+    app.add_handler(CommandHandler("join",     cmd_join))
+    app.add_handler(CommandHandler("help",     cmd_help))
+    app.add_handler(CommandHandler("chatid",   cmd_chatid))
+
+    # Callback + text routers — needed for the registration wizard
+    # state machine.  Same dispatchers per-account bots use; unsafe
+    # branches would self-gate on "no user / no account_id" anyway.
+    app.add_handler(CallbackQueryHandler(handle_callback))
+    app.add_handler(MessageHandler(
+        filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
+        handle_text,
+    ))
+
+
+# ── System / operator bot handler set ────────────────────────────
+
+
+def register_system_handlers(app: Application) -> None:
+    """Attach operator-only commands to the system bot Application.
+
+    Called by ``interfaces/bot/system_app.build_system_app`` for the
+    daemon that runs on ``TELEGRAM_SYSTEM_BOT_TOKEN``.  This bot has
+    no customer commands at all — anyone who chats with it gets a
+    "for operators only" reply unless they're on SYSTEM_OWNER_IDS.
+    """
+    from interfaces.bot.admin import (
+        cmd_admin, cmd_accounts, cmd_sysaccount,
+        cmd_broadcast, cmd_sys_disable_account,
+    )
+    from interfaces.bot.callbacks import handle_callback
+
+    # /start gives the operator a quick reference of what's available
+    # here; non-operators get a short pointer to the customer surface.
+    app.add_handler(CommandHandler("start", _cmd_system_start))
+
+    # Operator-only commands.  The ``_require_system_owner`` decorator
+    # on each command body already gates by SYSTEM_OWNER_IDS, so a
+    # stranger who somehow lands on this bot can type /admin and still
+    # gets refused.
+    app.add_handler(CommandHandler("admin",      cmd_admin))
+    app.add_handler(CommandHandler("accounts",   cmd_accounts))
+    app.add_handler(CommandHandler("sysaccount", cmd_sysaccount))
+    app.add_handler(CommandHandler("broadcast",  cmd_broadcast))
+    app.add_handler(CommandHandler("sysdisable", cmd_sys_disable_account))
+
+    # Callback router — handles the inline-button callbacks from
+    # ``system_owner_kb`` (sys_dashboard, sys_accounts, etc.).
+    app.add_handler(CallbackQueryHandler(handle_callback))
+
+
+async def _cmd_system_start(update, _context):
+    """``/start`` greeting for the system bot.
+
+    Operators see the menu of available commands; everyone else gets
+    a short "this isn't for you" pointing at the customer surface.
+    Kept terse so the bot isn't a discovery vector for the operator
+    surface — anyone who reaches it should already know why they're
+    here.
+    """
+    from capabilities.iam.permissions import is_system_owner
+    tid = update.effective_user.id if update.effective_user else 0
+    if is_system_owner(tid):
+        await update.message.reply_text(
+            "⚙️ <b>4truck operator console</b>\n\n"
+            "Commands on this bot:\n"
+            "  /admin       — system dashboard\n"
+            "  /accounts    — list all accounts\n"
+            "  /sysaccount &lt;id&gt; — account detail\n"
+            "  /broadcast &lt;msg&gt; — message all owners\n"
+            "  /sysdisable &lt;id&gt; — disable an account\n\n"
+            "Full operator UI: <code>system.4truck.us</code>",
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+    else:
+        await update.message.reply_text(
+            "This bot is for 4truck platform operators only.  "
+            "Customer access: https://4truck.us",
+            disable_web_page_preview=True,
+        )

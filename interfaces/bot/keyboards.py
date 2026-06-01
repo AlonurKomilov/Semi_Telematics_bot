@@ -155,14 +155,13 @@ def submenu_tools_kb(role: Role) -> InlineKeyboardMarkup:
     row1 = []
     if perms.can_scorecard_all or perms.can_scorecard_own:
         row1.append(InlineKeyboardButton(t("reports_menu.scorecards"), callback_data="cmd_scorecards"))
-    if perms.can_location_map or perms.can_location_own:
-        row1.append(InlineKeyboardButton(t("reports_menu.live_map"), callback_data="cmd_livemap"))
+    # Live Map + Routes buttons removed — those flows now live on the
+    # dashboard (interactive map > static PNG).  Typing /livemap or
+    # /route still works and replies with a dashboard deep-link.
     if row1:
         rows.append(row1)
 
     row2 = []
-    if perms.can_route_all or perms.can_route_own:
-        row2.append(InlineKeyboardButton("🛣 Routes", callback_data="cmd_route"))
     if perms.can_geofence_all or perms.can_geofence_own:
         row2.append(InlineKeyboardButton("📍 Geofences", callback_data="cmd_geofences"))
     if row2:
@@ -209,8 +208,8 @@ def submenu_mgmt_kb(role: Role, has_api: bool = False) -> InlineKeyboardMarkup:
     top_row = []
     if perms.can_manage_account:
         top_row.append(InlineKeyboardButton(t("mgmt_menu.account_info"), callback_data="cmd_account"))
-    if perms.can_manage_users:
-        top_row.append(InlineKeyboardButton(t("mgmt_menu.team"), callback_data="cmd_users"))
+    # Team / Users grid removed — manage roles + departments on the
+    # dashboard (sortable columns, bulk actions, confirmation dialogs).
     if top_row:
         rows.append(top_row)
 
@@ -218,21 +217,16 @@ def submenu_mgmt_kb(role: Role, has_api: bool = False) -> InlineKeyboardMarkup:
     if perms.can_manage_users:
         rows.append([InlineKeyboardButton("📜 Audit Log", callback_data="cmd_audit")])
 
-    # ── Working Hours (admin/owner) ─────────────────────────
-    if role in (Role.OWNER, Role.ADMIN):
-        rows.append([InlineKeyboardButton("🕐 Working Hours", callback_data="cmd_work_hours")])
+    # Working Hours config moved to the dashboard.  Typing
+    # /work_hours still works and replies with a dashboard deep-link.
 
     rows.append([InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
 
 
-def faults_menu_kb(company: str | None = None) -> InlineKeyboardMarkup:
-    """Shown after the faults PDF — drill into Critical or go back."""
-    suffix = f"_{company}" if company else ""
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🚨 Critical Only (PDF)", callback_data=f"cmd_critical{suffix}")],
-        [InlineKeyboardButton("◀️ Back", callback_data="submenu_reports")],
-    ])
+# faults_menu_kb was the post-PDF action keyboard for cmd_faults
+# (Critical drill-down + Back).  Retired with the rest of the
+# fleet PDF reports; cmd_faults now redirects to the dashboard.
 
 
 def co_menu_kb(company: str) -> InlineKeyboardMarkup:
@@ -451,50 +445,10 @@ def invite_kb(invite_link: str | None = None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def cam_company_picker_kb(company_codes: list[str]) -> InlineKeyboardMarkup:
-    """Company picker for the Cameras tool."""
-    rows = []
-    for code in company_codes:
-        display = get_company_display().get(code, code)
-        rows.append([InlineKeyboardButton(
-            f"📷 {display} ({code})", callback_data=f"camco_{code}",
-        )])
-    rows.append([InlineKeyboardButton("◀️ Back", callback_data="submenu_tools")])
-    return InlineKeyboardMarkup(rows)
-
-
-def cam_vehicle_list_kb(
-    vehicles: list[dict],
-    page: int = 0,
-    page_size: int = 8,
-    company_filter: str | None = None,
-) -> InlineKeyboardMarkup:
-    """Paginated truck list for Cameras — tap a truck to check its camera."""
-    start = page * page_size
-    page_vehicles = vehicles[start:start + page_size]
-    total_pages = max(1, (len(vehicles) + page_size - 1) // page_size)
-
-    rows = []
-    for v in page_vehicles:
-        name = v["name"]
-        co = v.get("_org", "")
-        label = f"#{name}"
-        if co:
-            label += f" — {co}"
-        rows.append([InlineKeyboardButton(label, callback_data=f"cam_vehicle_{name}")])
-
-    # Pagination
-    nav = []
-    prefix = f"cam_page_{company_filter or 'ALL'}"
-    if page > 0:
-        nav.append(InlineKeyboardButton("◀️ Prev", callback_data=f"{prefix}_{page - 1}"))
-    nav.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="noop"))
-    if page < total_pages - 1:
-        nav.append(InlineKeyboardButton("Next ▶️", callback_data=f"{prefix}_{page + 1}"))
-    rows.append(nav)
-
-    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_cam_tool")])
-    return InlineKeyboardMarkup(rows)
+# cam_company_picker_kb + cam_vehicle_list_kb (the paginated Cameras
+# truck picker) were retired with cmd_cam_tool / cmd_cam_company_pick /
+# cmd_cam_page.  Per-truck checks now use /cam <truck> directly or
+# the cam_vehicle_<truck> button on the vehicle detail page.
 
 
 def vehicle_company_picker_kb(company_codes: list[str]) -> InlineKeyboardMarkup:
@@ -549,15 +503,9 @@ def vehicle_list_kb(
 
 # ── New feature keyboards ─────────────────────────────────────────
 
-def scorecard_format_kb(company: str | None = None) -> InlineKeyboardMarkup:
-    suffix = f"_{company}" if company else ""
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("📄 PDF Report", callback_data=f"scorecard_pdf{suffix}"),
-            InlineKeyboardButton("📊 CSV Export", callback_data=f"scorecard_csv{suffix}"),
-        ],
-        [InlineKeyboardButton("◀️ Back", callback_data="submenu_tools")],
-    ])
+# scorecard_format_kb / costmile_format_kb were the "PDF or CSV?"
+# pickers shown after the bot-side commands.  Both report flows
+# moved to the dashboard along with the file generators.
 
 
 def fuelcost_menu_kb() -> InlineKeyboardMarkup:
@@ -568,256 +516,14 @@ def fuelcost_menu_kb() -> InlineKeyboardMarkup:
     ])
 
 
-def costmile_format_kb(company: str | None = None) -> InlineKeyboardMarkup:
-    suffix = f"_{company}" if company else ""
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("📄 PDF Report", callback_data=f"costmile_pdf{suffix}"),
-            InlineKeyboardButton("📊 CSV Export", callback_data=f"costmile_csv{suffix}"),
-        ],
-        [InlineKeyboardButton("◀️ Back", callback_data="submenu_costs")],
-    ])
-
-
-def maintenance_menu_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("➕ Add Task", callback_data="maint_add")],
-        [InlineKeyboardButton("📋 View Tasks", callback_data="maint_view")],
-        [InlineKeyboardButton("◀️ Back", callback_data="submenu_tools")],
-    ])
-
-
-def maint_company_picker_kb(company_codes: list[str]) -> InlineKeyboardMarkup:
-    """Company picker for maintenance — add task flow."""
-    rows = []
-    for code in company_codes:
-        display = get_company_display().get(code, code)
-        rows.append([InlineKeyboardButton(
-            f"🚛 {display} ({code})", callback_data=f"maint_co_{code}",
-        )])
-    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_maintenance")])
-    return InlineKeyboardMarkup(rows)
-
-
-def maint_vehicle_list_kb(
-    vehicles: list[dict],
-    page: int = 0,
-    page_size: int = 8,
-    company_filter: str | None = None,
-) -> InlineKeyboardMarkup:
-    """Paginated truck picker for maintenance task creation."""
-    start = page * page_size
-    page_vehicles = vehicles[start:start + page_size]
-    total_pages = max(1, (len(vehicles) + page_size - 1) // page_size)
-
-    rows = []
-    for v in page_vehicles:
-        name = v["name"]
-        co = v.get("_org", "")
-        label = f"#{name}"
-        if co:
-            label += f" — {co}"
-        rows.append([InlineKeyboardButton(label, callback_data=f"maint_vehicle_{co}_{name}")])
-
-    # Pagination
-    nav = []
-    prefix = f"maint_pg_{company_filter or 'ALL'}"
-    if page > 0:
-        nav.append(InlineKeyboardButton("◀️ Prev", callback_data=f"{prefix}_{page - 1}"))
-    nav.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="noop"))
-    if page < total_pages - 1:
-        nav.append(InlineKeyboardButton("Next ▶️", callback_data=f"{prefix}_{page + 1}"))
-    rows.append(nav)
-
-    rows.append([InlineKeyboardButton("◀️ Back", callback_data="maint_add")])
-    return InlineKeyboardMarkup(rows)
-
-
-def maint_type_kb() -> InlineKeyboardMarkup:
-    """Task type picker with extended types."""
-    types = [
-        ("oil", "🛢 Oil Change"),
-        ("tires", "🛞 Tire Service"),
-        ("brakes", "🔴 Brake Inspection"),
-        ("inspection", "📋 General Inspection"),
-        ("transmission", "⚙️ Transmission"),
-        ("electrical", "⚡ Electrical"),
-        ("dot_inspection", "🏛 DOT Inspection"),
-        ("dpf_regen", "♨️ DPF Regen"),
-        ("def_refill", "💧 DEF Refill"),
-        ("custom", "✏️ Custom"),
-    ]
-    rows = []
-    for i in range(0, len(types), 2):
-        row = []
-        for key, label in types[i:i + 2]:
-            row.append(InlineKeyboardButton(label, callback_data=f"maint_type_{key}"))
-        rows.append(row)
-    rows.append([InlineKeyboardButton("◀️ Cancel", callback_data="cmd_maintenance")])
-    return InlineKeyboardMarkup(rows)
-
-
-def maint_due_kb() -> InlineKeyboardMarkup:
-    """Due date step — skip button instead of typing 'skip'."""
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⏭ No Due Date", callback_data="maint_skip_date")],
-        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_maintenance")],
-    ])
-
-
-def maint_miles_kb() -> InlineKeyboardMarkup:
-    """Due mileage step — skip or enter miles."""
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⏭ No Mileage Limit", callback_data="maint_skip_miles")],
-        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_maintenance")],
-    ])
-
-
-def maint_hours_kb() -> InlineKeyboardMarkup:
-    """Engine-hours step — skip or enter hours.
-
-    Parallel to ``maint_miles_kb``; engine-hours are independent of
-    odometer (heavy-idle PTO trucks accumulate hours without miles).
-    """
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⏭ No Hours Limit", callback_data="maint_skip_hours")],
-        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_maintenance")],
-    ])
-
-
-def maint_priority_kb() -> InlineKeyboardMarkup:
-    """Priority quick-pick — 4 buttons matching the dashboard enum."""
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("🟢 Low", callback_data="maint_prio_low"),
-            InlineKeyboardButton("🔵 Medium", callback_data="maint_prio_medium"),
-        ],
-        [
-            InlineKeyboardButton("🟠 High", callback_data="maint_prio_high"),
-            InlineKeyboardButton("🔴 Critical", callback_data="maint_prio_critical"),
-        ],
-        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_maintenance")],
-    ])
-
-
-def maint_recur_kb() -> InlineKeyboardMarkup:
-    """Recurrence picker — 4 buttons for none / by-days / by-miles / by-hours.
-
-    When the user taps a dimension other than 'none', the wizard prompts
-    for the interval value via free-text input (handled in
-    ``handle_maintenance_text``).
-    """
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("⏭ No Recurrence", callback_data="maint_recur_none"),
-        ],
-        [
-            InlineKeyboardButton("📅 Every N Days", callback_data="maint_recur_days"),
-            InlineKeyboardButton("🛣 Every N Miles", callback_data="maint_recur_miles"),
-        ],
-        [
-            InlineKeyboardButton("⏱ Every N Hours", callback_data="maint_recur_hours"),
-        ],
-        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_maintenance")],
-    ])
-
-
-def maint_desc_kb() -> InlineKeyboardMarkup:
-    """Description step — skip button."""
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⏭ Skip Description", callback_data="maint_skip_desc")],
-        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_maintenance")],
-    ])
-
-
-def maint_task_detail_kb(task_id: int, status: str) -> InlineKeyboardMarkup:
-    """Detail view for a single task — edit/done/delete actions."""
-    rows = []
-    if status in ("pending", "overdue"):
-        rows.append([
-            InlineKeyboardButton("✅ Mark Done", callback_data=f"maint_done_{task_id}"),
-            InlineKeyboardButton("✏️ Edit", callback_data=f"maint_edit_{task_id}"),
-        ])
-    rows.append([
-        InlineKeyboardButton("🗑 Delete", callback_data=f"maint_del_{task_id}"),
-    ])
-    rows.append([InlineKeyboardButton("◀️ Back to Tasks", callback_data="maint_view")])
-    return InlineKeyboardMarkup(rows)
-
-
-def maint_edit_kb(task_id: int) -> InlineKeyboardMarkup:
-    """Edit menu — pick which field to change.
-
-    Priority + engine-hours rows added for parity with the dashboard's
-    edit drawer (Tier-A maintenance audit, 2026-05-28).  Without them
-    a driver couldn't fix a wrong-priority or stale hours-threshold
-    without calling dispatch.
-    """
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("📋 Type", callback_data=f"maint_etype_{task_id}"),
-            InlineKeyboardButton("⚡ Priority", callback_data=f"maint_eprio_{task_id}"),
-        ],
-        [
-            InlineKeyboardButton("📅 Due Date", callback_data=f"maint_edate_{task_id}"),
-            InlineKeyboardButton("🛣 Due Miles", callback_data=f"maint_emiles_{task_id}"),
-        ],
-        [
-            InlineKeyboardButton("⏱ Due Hours", callback_data=f"maint_ehours_{task_id}"),
-            InlineKeyboardButton("📝 Description", callback_data=f"maint_edesc_{task_id}"),
-        ],
-        [InlineKeyboardButton("◀️ Back", callback_data=f"maint_detail_{task_id}")],
-    ])
-
-
-def maint_delete_confirm_kb(task_id: int) -> InlineKeyboardMarkup:
-    """Confirm deletion."""
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("⚠️ Yes, Delete", callback_data=f"maint_delok_{task_id}"),
-            InlineKeyboardButton("◀️ No, Cancel", callback_data=f"maint_detail_{task_id}"),
-        ],
-    ])
-
-
-def maint_task_list_kb(
-    tasks: list[dict],
-    page: int = 0,
-    page_size: int = 8,
-) -> InlineKeyboardMarkup:
-    """Paginated task list — tap a task to see details."""
-    start = page * page_size
-    page_tasks = tasks[start:start + page_size]
-    total_pages = max(1, (len(tasks) + page_size - 1) // page_size)
-
-    status_emoji = {"overdue": "🔴", "pending": "🟡", "done": "✅"}
-    rows = []
-    for task in page_tasks:
-        emoji = status_emoji.get(task["status"], "⚪")
-        label = f"{emoji} #{task['vehicle_name']} — {task['task_type']}"
-        rows.append([InlineKeyboardButton(label, callback_data=f"maint_detail_{task['id']}")])
-
-    # Pagination
-    if total_pages > 1:
-        nav = []
-        if page > 0:
-            nav.append(InlineKeyboardButton("◀️ Prev", callback_data=f"maint_lpage_{page - 1}"))
-        nav.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="noop"))
-        if page < total_pages - 1:
-            nav.append(InlineKeyboardButton("Next ▶️", callback_data=f"maint_lpage_{page + 1}"))
-        rows.append(nav)
-
-    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_maintenance")])
-    return InlineKeyboardMarkup(rows)
-
-
-def maintenance_task_kb(task_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✅ Mark Done", callback_data=f"maint_done_{task_id}"),
-        ],
-        [InlineKeyboardButton("◀️ Back", callback_data="maint_view")],
-    ])
+# Maintenance CRUD keyboards (maintenance_menu_kb, maint_company_picker_kb,
+# maint_vehicle_list_kb, maint_type_kb, maint_due_kb, maint_miles_kb,
+# maint_hours_kb, maint_desc_kb, maint_priority_kb, maint_recur_kb,
+# maint_task_detail_kb, maint_edit_kb, maint_delete_confirm_kb,
+# maint_task_list_kb, maintenance_task_kb) were removed when the bot
+# CRUD surface moved to the dashboard.  The inline "✓ Mark Done"
+# button on scheduler-posted alerts is built directly in
+# interfaces/bot/maintenance.py via _done_kb().
 
 
 def auto_reports_menu_kb(current_sub: dict | None = None) -> InlineKeyboardMarkup:

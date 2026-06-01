@@ -1,24 +1,46 @@
-"""Maintenance Scheduler — task CRUD, truck picker, odometer checks."""
+"""Maintenance — notification cron jobs + "Done" inline ack.
 
-from datetime import datetime as _dt
-from capabilities.localization.i18n import t
+The bot's maintenance surface used to be a full multi-step CRUD wizard
+(company picker → vehicle picker → type → date → mileage → engine
+hours → priority → recurrence → description, plus per-task edit /
+delete / detail flows — 25+ ``cmd_maint_*`` handlers).  That whole
+surface was retired in favour of ``dash.4truck.us/maintenance``,
+which gives sortable columns, calendar view, templates, and bulk
+actions instead of one-message-at-a-time text wizards.
+
+What's still here:
+
+* ``cmd_maintenance``     — single deep-link redirect to the
+                            dashboard; nudges the user when they
+                            type the old command or tap a stale
+                            menu button.
+* ``cmd_maint_done``      — the inline "✓ Mark done" handler.  When
+                            a scheduler-posted overdue alert lands in
+                            chat, the recipient can clear the task
+                            with one tap without opening a browser.
+                            This is the on-the-go moment the bot is
+                            actually good at; everything else (add,
+                            edit, delete, schedule) lives on the
+                            dashboard.
+* ``check_overdue_*`` /   — APScheduler hooks that the bot still
+  ``check_upcoming_*``      owns because the *delivery surface* (per
+                            -account bot, forum-topic routing,
+                            admin DM fanout, email fallback) is
+                            bot-shaped.  Pure system→human alert
+                            dispatch; no user-facing UI.
+"""
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, Application
 from telegram.constants import ParseMode
 
 from adapters.storage import Role
-from capabilities.iam.permissions import can
-from adapters.samsara.client import populate_company_display
-from infra.context import get_company_display
 from infra.bot_registry import get_app_for_account
 
 from interfaces.bot.config import logger
 from interfaces.bot.state import get_platform_db, get_tenant_db
 from infra.isolation import run_account_job
 from infra.services import get_tenant_db as _get_tenant_db_rls
-from capabilities.telemetry.service import get_vehicle_odometer
-from capabilities.vehicles.service import get_fleet_overview as _svc_fleet_overview
 from capabilities.maintenance.service import (
     mark_overdue_tasks_by_date,
     mark_overdue_tasks_by_mileage,
@@ -26,511 +48,71 @@ from capabilities.maintenance.service import (
     detect_upcoming_warnings,
     spawn_recurring_if_completed,
     TASK_TYPES,
-    has_maintenance_access,
 )
-from interfaces.bot.keyboards import (
-    back_kb, maintenance_menu_kb,
-    maint_company_picker_kb, maint_vehicle_list_kb,
-    maint_type_kb, maint_due_kb, maint_miles_kb, maint_desc_kb,
-    maint_hours_kb, maint_priority_kb, maint_recur_kb,
-    maint_task_detail_kb, maint_edit_kb,
-    maint_delete_confirm_kb, maint_task_list_kb,
-)
-from interfaces.bot.helpers import _show, _show_loading, _safe_error
+from interfaces.bot.helpers import _show, reply_dashboard_redirect
 from interfaces.bot.auth import _require_registered
 
 
 def _task_label(task_type: str) -> str:
+    """Pretty-print a task_type code (used by every alert formatter)."""
     return TASK_TYPES.get(task_type, task_type)
 
 
-# Wizard step layout — single source of truth for the "Step X/Y" header.
-# Each path's ordered step list lives here so the counter, the labels,
-# and the navigation stay in sync.  The DRIVER path skips company+truck
-# because a driver with an assigned truck doesn't need to pick one.
-_WIZ_DRIVER_PATH = ["type", "date", "miles", "hours", "priority", "recur", "desc"]
-_WIZ_MANAGER_PATH = ["company", "truck", "type", "date", "miles", "hours", "priority", "recur", "desc"]
+def _done_kb(task_id: int) -> InlineKeyboardMarkup:
+    """One-button inline keyboard attached to scheduler-posted alerts.
 
-
-def _wiz_path(wiz: dict) -> list[str]:
-    """Return the step list for the current wizard run.
-
-    ``wiz["_path"]`` is stamped at wizard start (driver vs manager); we
-    read it here so each step text and counter agrees.  Falls back to
-    the manager path for safety if the flag is missing.
+    Lets the recipient (admin DM, group topic, or maintenance forum
+    channel) clear the task with a single tap.  The callback routes
+    to ``cmd_maint_done`` via the ``maint_done_`` prefix.
     """
-    return _WIZ_DRIVER_PATH if wiz.get("_path") == "driver" else _WIZ_MANAGER_PATH
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Mark Done", callback_data=f"maint_done_{task_id}"),
+    ]])
 
 
-def _wiz_step_label(wiz: dict, step_name: str) -> str:
-    """Format a Step X/Y header for the named step in the current path.
+# ══════════════════════════════════════════════════════════════════
+# COMMAND ENTRY — dashboard redirect
+# ══════════════════════════════════════════════════════════════════
 
-    Example: ``_wiz_step_label(wiz, "hours")`` → ``"Step 4/7"`` on the
-    driver path or ``"Step 6/9"`` on the manager path.  Returns the
-    bare ``"Step N/M"`` string so callers can drop it into their HTML.
-    """
-    path = _wiz_path(wiz)
-    try:
-        idx = path.index(step_name) + 1
-    except ValueError:
-        idx = 1
-    return f"Step {idx}/{len(path)}"
-
-
-def _check_perm(user) -> bool:
-    return has_maintenance_access(user.role)
-
-
-# ── Main menu ─────────────────────────────────────────────────────
 
 @_require_registered
-async def cmd_maintenance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show maintenance menu."""
-    user = context.user_data["_db_user"]
-    if not _check_perm(user):
-        if update.callback_query:
-            await update.callback_query.answer(t("access.no_access"), show_alert=True)
-        return
-
-    # Clear any wizard state
-    context.user_data.pop("_pending", None)
-    context.user_data.pop("_maint", None)
-
-    text = (
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"  🔧  <b>{t('maintenance.title')}</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"\n  {t('maintenance.description')}\n"
+async def cmd_maintenance(update: Update, context: ContextTypes.DEFAULT_TYPE):  # noqa: ARG001
+    """Redirect to the dashboard Maintenance page."""
+    await reply_dashboard_redirect(
+        update,
+        title="🔧 Maintenance moved",
+        body=(
+            "Create, edit, and review maintenance tasks on the "
+            "dashboard — sortable list, calendar view, templates, "
+            "and bulk actions.  The bot still pings you when "
+            "something is due."
+        ),
+        path="/maintenance/tasks",
+        label="Open Maintenance",
     )
-    await _show(update, context, [text], keyboard=maintenance_menu_kb())
 
 
 # ══════════════════════════════════════════════════════════════════
-# ADD TASK — Wizard Flow
+# INLINE "✓ MARK DONE" — only interaction kept on the bot side
 # ══════════════════════════════════════════════════════════════════
-
-@_require_registered
-async def cmd_maint_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Start add-task wizard — step 1: pick truck from Samsara fleet."""
-    user = context.user_data["_db_user"]
-    if not _check_perm(user):
-        if update.callback_query:
-            await update.callback_query.answer(t("access.no_access"), show_alert=True)
-        return
-
-    context.user_data["_maint"] = {}
-    context.user_data.pop("_pending", None)
-
-    # Driver with assigned truck — auto-fill and skip to type selection
-    if user.role == Role.DRIVER and user.truck_num:
-        wiz = context.user_data["_maint"]
-        wiz["_path"] = "driver"
-        wiz["vehicle"] = user.truck_num
-        wiz["vehicle_id"] = ""
-        wiz["company"] = ""
-        await _show(update, context, [
-            f"🚛 Truck: <b>#{user.truck_num}</b>\n\n"
-            f"<b>{_wiz_step_label(wiz, 'type')}</b> — Select task type:"
-        ], keyboard=maint_type_kb())
-        return
-
-    # Manager / multi-truck path — stamp the path flag so every
-    # subsequent step counts against the correct total.
-    context.user_data["_maint"]["_path"] = "manager"
-
-    # Get companies
-    tenant = await get_tenant_db(user.account_id)
-    companies = await tenant.get_account_companies(user.account_id)
-    codes = [o.code for o in companies]
-    populate_company_display(companies)
-
-    if len(codes) == 1:
-        # Single company — go straight to truck list
-        await _show_maint_vehicle_list(update, context, user, codes[0])
-    else:
-        await _show(update, context, [
-            f"{t('maintenance.add_title')}\n\n"
-            f"<b>{_wiz_step_label(context.user_data['_maint'], 'company')}</b> — Select company:"
-        ], keyboard=maint_company_picker_kb(codes))
-
-
-async def _show_maint_vehicle_list(update, context, user, company_filter, page=0):
-    """Show paginated truck list for maintenance task creation."""
-    await _show_loading(update, context, "⏳ Loading trucks…")
-
-    try:
-        fleet = await _svc_fleet_overview(user.account_id, company=company_filter)
-    except Exception as e:
-        logger.warning(f"Fleet fetch failed for maint truck list: {e}")
-        await _show(update, context, ["❌ Could not load fleet data."],
-                     keyboard=maintenance_menu_kb())
-        return
-
-    if not fleet:
-        await _show(update, context, ["ℹ️ No active vehicles found."],
-                     keyboard=maintenance_menu_kb())
-        return
-
-    wiz = context.user_data.setdefault("_maint", {})
-    await _show(update, context, [
-        f"{t('maintenance.add_title')}\n\n"
-        f"<b>{_wiz_step_label(wiz, 'truck')}</b> — Select truck ({len(fleet)} vehicles):"
-    ], keyboard=maint_vehicle_list_kb(fleet, page=page, company_filter=company_filter))
-
-
-@_require_registered
-async def cmd_maint_select_vehicle(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                  company: str = "", vehicle_name: str = ""):
-    """Truck selected — store and show type picker."""
-    wiz = context.user_data.setdefault("_maint", {})
-    wiz["vehicle"] = vehicle_name
-    wiz["company"] = company
-    wiz["vehicle_id"] = ""  # will try to find it
-
-    # Try to get vehicle_id from fleet
-    if company:
-        try:
-            user = context.user_data["_db_user"]
-            fleet = await _svc_fleet_overview(user.account_id, company=company)
-            for v in fleet:
-                if v["name"] == vehicle_name:
-                    wiz["vehicle_id"] = v.get("id", "")
-                    break
-        except Exception as e:
-            logger.debug(f"Vehicle ID lookup failed: {e}")
-
-    await _show(update, context, [
-        f"🚛 Truck: <b>#{vehicle_name}</b>"
-        + (f" — {get_company_display().get(company, company)}" if company else "")
-        + f"\n\n<b>{_wiz_step_label(wiz, 'type')}</b> — Select task type:"
-    ], keyboard=maint_type_kb())
-
-
-@_require_registered
-async def cmd_maint_type(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                         task_type: str = ""):
-    """Wizard step 2: task type selected → show due date input."""
-    wiz = context.user_data.get("_maint", {})
-    wiz["type"] = task_type
-    wiz["type_label"] = _task_label(task_type)
-
-    # Show current odometer + engine hours if we can. Both come from
-    # the same warehouse read, so we cache them on the wizard for the
-    # later miles + hours steps to display "current → due".
-    odo_text = ""
-    truck = wiz.get("vehicle", "")
-    if truck:
-        try:
-            user = context.user_data["_db_user"]
-            tenant = await get_tenant_db(user.account_id)
-            from capabilities.maintenance.service import (
-                fetch_current_telemetry_for_vehicle,
-            )
-            odo, hrs = await fetch_current_telemetry_for_vehicle(
-                tenant, user.account_id, truck,
-            )
-            if odo is not None:
-                wiz["current_odo"] = odo
-                odo_text = f"\n📏 Current odometer: <b>{odo:,.0f} mi</b>\n"
-            if hrs is not None:
-                wiz["current_hours"] = hrs
-        except Exception as e:
-             logger.debug("Odometer unavailable — non-fatal: %s", e)
-
-    context.user_data["_pending"] = "maint_due"
-    await _show(update, context, [
-        f"🚛 #{wiz.get('vehicle', '?')} — {wiz['type_label']}\n"
-        f"{odo_text}\n"
-        f"<b>{_wiz_step_label(wiz, 'date')}</b> — Due date\n"
-        f"Enter date (<code>YYYY-MM-DD</code>) or tap Skip:"
-    ], keyboard=maint_due_kb())
-
-
-@_require_registered
-async def cmd_maint_skip_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Skip due date → show due mileage input."""
-    wiz = context.user_data.get("_maint", {})
-    wiz["due_date"] = None
-    context.user_data["_pending"] = "maint_miles"
-    await _show_miles_step(update, context, wiz)
-
-
-@_require_registered
-async def cmd_maint_skip_miles(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Skip due mileage → advance to engine-hours."""
-    wiz = context.user_data.get("_maint", {})
-    wiz["due_miles"] = None
-    context.user_data["_pending"] = "maint_hours"
-    await _show_hours_step(update, context, wiz)
-
-
-@_require_registered
-async def cmd_maint_skip_hours(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Skip engine-hours → advance to priority picker."""
-    wiz = context.user_data.get("_maint", {})
-    wiz["due_engine_hours"] = None
-    context.user_data.pop("_pending", None)
-    await _show_priority_step(update, context, wiz)
-
-
-@_require_registered
-async def cmd_maint_skip_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Skip description → create task."""
-    wiz = context.user_data.get("_maint", {})
-    wiz["description"] = ""
-    await _finalize_task(update, context)
-
-
-async def _show_miles_step(update, context, wiz):
-    """Show the due-mileage input step."""
-    odo_text = ""
-    if wiz.get("current_odo"):
-        odo_text = f"\n📏 Current odometer: <b>{wiz['current_odo']:,.0f} mi</b>\n"
-    await _show(update, context, [
-        f"🚛 #{wiz.get('vehicle', '?')} — {wiz.get('type_label', '?')}\n"
-        f"{odo_text}\n"
-        f"<b>{_wiz_step_label(wiz, 'miles')}</b> — Due mileage\n"
-        f"Enter odometer reading (e.g. <code>250000</code>) or tap Skip:"
-    ], keyboard=maint_miles_kb())
-
-
-async def _show_hours_step(update, context, wiz):
-    """Show the engine-hours input step.
-
-    Mirrors ``_show_miles_step`` — engine hours and odometer are
-    independent triggers, and a PTO-heavy truck (reefer, generator)
-    can hit the hours target months before the miles one.
-    """
-    hrs_text = ""
-    if wiz.get("current_hours"):
-        hrs_text = f"\n⏱ Current engine hours: <b>{wiz['current_hours']:,.0f} h</b>\n"
-    await _show(update, context, [
-        f"🚛 #{wiz.get('vehicle', '?')} — {wiz.get('type_label', '?')}\n"
-        f"{hrs_text}\n"
-        f"<b>{_wiz_step_label(wiz, 'hours')}</b> — Due engine hours\n"
-        f"Enter hours threshold (e.g. <code>5000</code>) or tap Skip:"
-    ], keyboard=maint_hours_kb())
-
-
-async def _show_priority_step(update, context, wiz):
-    """Priority quick-pick — keyboard-only, no text input.
-
-    Default to 'medium' if the user dismisses by hitting Cancel; the
-    finalize path also falls back to 'medium' when ``priority`` is
-    absent, so any state is safe.
-    """
-    await _show(update, context, [
-        f"🚛 #{wiz.get('vehicle', '?')} — {wiz.get('type_label', '?')}\n\n"
-        f"<b>{_wiz_step_label(wiz, 'priority')}</b> — Priority\n"
-        f"How urgent is this task?"
-    ], keyboard=maint_priority_kb())
-
-
-async def _show_recur_step(update, context, wiz):
-    """Recurrence picker — keyboard-only.
-
-    Picking a dimension (days/miles/hours) flips the pending state to
-    ``maint_recur_value`` and prompts for the interval number.  Picking
-    "No Recurrence" goes straight to the description step.
-    """
-    await _show(update, context, [
-        f"🚛 #{wiz.get('vehicle', '?')} — {wiz.get('type_label', '?')}\n\n"
-        f"<b>{_wiz_step_label(wiz, 'recur')}</b> — Recurrence\n"
-        f"After completion, when should the next instance be auto-created?"
-    ], keyboard=maint_recur_kb())
-
-
-async def _show_desc_step(update, context, wiz):
-    """Show the description input step."""
-    await _show(update, context, [
-        f"🚛 #{wiz.get('vehicle', '?')} — {wiz.get('type_label', '?')}\n\n"
-        f"<b>{_wiz_step_label(wiz, 'desc')}</b> — Description (optional)\n"
-        f"Enter notes or tap Skip:"
-    ], keyboard=maint_desc_kb())
-
-
-async def _finalize_task(update, context):
-    """Save the task to DB and show success."""
-    user = context.user_data["_db_user"]
-    wiz = context.user_data.get("_maint", {})
-
-    try:
-        tenant = await get_tenant_db(user.account_id)
-        # Backfill last_odometer + last_engine_hours from the warehouse so
-        # the dashboard's progress bar shows up immediately after creation
-        # (otherwise it would show "no telemetry" until the next 6-h
-        # mileage-scheduler tick).
-        from capabilities.maintenance.service import (
-            fetch_current_telemetry_for_vehicle,
-        )
-        last_odo, last_hrs = await fetch_current_telemetry_for_vehicle(
-            tenant, user.account_id, wiz.get("vehicle", ""),
-        )
-        await tenant.add_maintenance_task(
-            account_id=user.account_id,
-            company_code=wiz.get("company", ""),
-            vehicle_id=wiz.get("vehicle_id", ""),
-            vehicle_name=wiz.get("vehicle", "Unknown"),
-            task_type=wiz.get("type", "custom"),
-            description=wiz.get("description", ""),
-            due_date=wiz.get("due_date"),
-            due_miles=wiz.get("due_miles"),
-            due_engine_hours=wiz.get("due_engine_hours"),
-            priority=wiz.get("priority") or "medium",
-            recur_interval_days=wiz.get("recur_interval_days"),
-            recur_interval_miles=wiz.get("recur_interval_miles"),
-            recur_interval_engine_hours=wiz.get("recur_interval_engine_hours"),
-            created_by=user.telegram_id,
-            last_odometer=last_odo,
-            last_engine_hours=last_hrs,
-        )
-        context.user_data.pop("_pending", None)
-        context.user_data.pop("_maint", None)
-
-        type_label = _task_label(wiz.get("type", ""))
-        due_date = wiz.get("due_date") or "—"
-        due_miles = wiz.get("due_miles")
-        due_mi_str = f"{due_miles:,.0f} mi" if due_miles else "—"
-        due_hrs = wiz.get("due_engine_hours")
-        due_hrs_str = f"{due_hrs:,.0f} h" if due_hrs else "—"
-        prio = (wiz.get("priority") or "medium").capitalize()
-        desc = wiz.get("description", "")
-        # Recurrence summary — show only the dimension(s) the user set.
-        recur_bits = []
-        if wiz.get("recur_interval_days"):
-            recur_bits.append(f"every {wiz['recur_interval_days']} days")
-        if wiz.get("recur_interval_miles"):
-            recur_bits.append(f"every {wiz['recur_interval_miles']:,.0f} mi")
-        if wiz.get("recur_interval_engine_hours"):
-            recur_bits.append(f"every {wiz['recur_interval_engine_hours']:,.0f} h")
-        recur_line = f"  🔁 Recurs: {' · '.join(recur_bits)}\n" if recur_bits else ""
-
-        await _show(update, context, [
-            f"✅ <b>Task Created!</b>\n\n"
-            f"  🚛 #{wiz.get('vehicle', '?')}\n"
-            f"  📋 {type_label}\n"
-            f"  ⚡ Priority: {prio}\n"
-            f"  📅 Due: {due_date}\n"
-            f"  🛣 Due miles: {due_mi_str}\n"
-            f"  ⏱ Due hours: {due_hrs_str}\n"
-            + recur_line
-            + (f"  📝 {desc}\n" if desc else "")
-        ], keyboard=maintenance_menu_kb())
-    except Exception as e:
-        logger.error(f"Maintenance task save error: {e}")
-        await _show(update, context, [_safe_error(e)], keyboard=back_kb())
-
-
-# ══════════════════════════════════════════════════════════════════
-# VIEW TASKS — Paginated List
-# ══════════════════════════════════════════════════════════════════
-
-@_require_registered
-async def cmd_maint_view(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                         page: int = 0):
-    """View maintenance tasks with pagination."""
-    user = context.user_data["_db_user"]
-    if not _check_perm(user):
-        if update.callback_query:
-            await update.callback_query.answer(t("access.no_access"), show_alert=True)
-        return
-
-    await _show_loading(update, context, t("maintenance.loading_tasks"))
-
-    vehicle_filter = None
-    if user.role == Role.DRIVER and not can(user.role, "can_maintenance_all"):
-        vehicle_filter = user.truck_num
-
-    tenant = await get_tenant_db(user.account_id)
-    tasks = await tenant.get_maintenance_tasks(user.account_id, vehicle_name=vehicle_filter)
-
-    if not tasks:
-        await _show(update, context, [
-            f"{t('maintenance.view_empty')}\n\n"
-            f"{t('maintenance.view_empty_hint')}"
-        ], keyboard=maintenance_menu_kb())
-        return
-
-    # Summary counts
-    overdue = sum(1 for t_ in tasks if t_["status"] == "overdue")
-    pending = sum(1 for t_ in tasks if t_["status"] == "pending")
-    done = sum(1 for t_ in tasks if t_["status"] == "done")
-
-    header = (
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"  🔧  <b>{t('maintenance.view_tasks_title')}</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"\n  📊 {len(tasks)} total"
-    )
-    if overdue:
-        header += f" · 🔴 {overdue} overdue"
-    if pending:
-        header += f" · 🟡 {pending} pending"
-    if done:
-        header += f" · ✅ {done} done"
-    header += "\n\n  Tap a task to view details:"
-
-    await _show(update, context, [header],
-                keyboard=maint_task_list_kb(tasks, page=page))
-
-
-# ══════════════════════════════════════════════════════════════════
-# TASK DETAIL — View / Done / Edit / Delete
-# ══════════════════════════════════════════════════════════════════
-
-@_require_registered
-async def cmd_maint_detail(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                            task_id: int = 0):
-    """Show detailed view of a single task."""
-    user = context.user_data["_db_user"]
-    tenant = await get_tenant_db(user.account_id)
-    task = await tenant.get_maintenance_task(task_id)
-    if not task or task["account_id"] != user.account_id:
-        if update.callback_query:
-            await update.callback_query.answer("⛔ Task not found", show_alert=True)
-        return
-
-    status_emoji = {"overdue": "🔴", "pending": "🟡", "done": "✅"}
-    emoji = status_emoji.get(task["status"], "⚪")
-    type_label = _task_label(task["task_type"])
-
-    due_date = task.get("due_date") or "—"
-    due_miles = task.get("due_miles")
-    due_mi_str = f"{due_miles:,.0f} mi" if due_miles else "—"
-    company = task.get("company_code", "")
-    company_display = get_company_display().get(company, company) if company else ""
-
-    lines = [
-        "━━━━━━━━━━━━━━━━━━━",
-        f"  {emoji}  <b>Task #{task['id']}</b>",
-        "━━━━━━━━━━━━━━━━━━━\n",
-        f"  🚛 Truck: <b>#{task['vehicle_name']}</b>",
-    ]
-    if company_display:
-        lines.append(f"  🏢 Company: {company_display}")
-    lines.extend([
-        f"  📋 Type: {type_label}",
-        f"  📅 Due date: {due_date}",
-        f"  🛣 Due miles: {due_mi_str}",
-        f"  📊 Status: <b>{task['status'].upper()}</b>",
-    ])
-    if task.get("description"):
-        lines.append(f"  📝 {task['description']}")
-    if task.get("created_at"):
-        lines.append(f"\n  🕐 Created: {task['created_at'][:10]}")
-    if task.get("completed_at"):
-        lines.append(f"  ✅ Completed: {task['completed_at'][:10]}")
-    if task.get("completion_notes"):
-        lines.append(f"  📝 Notes: {task['completion_notes']}")
-
-    await _show(update, context, ["\n".join(lines)],
-                keyboard=maint_task_detail_kb(task["id"], task["status"]))
 
 
 @_require_registered
 async def cmd_maint_done(update: Update, context: ContextTypes.DEFAULT_TYPE,
                          task_id: int = 0):
-    """Mark a task as done."""
+    """Mark a maintenance task done from an inline button on a
+    scheduler-posted alert.
+
+    Driver attestation: stamps ``attested_by`` + ``attested_at`` on
+    the row so the DOT binder can show "Driver Jane confirmed oil
+    change on 2026-04-12 at 11:42".  Recurring tasks auto-spawn the
+    next occurrence via ``spawn_recurring_if_completed``.
+
+    No keyboard is rendered afterward — the original alert message
+    already has the "✓ Done" button replaced by a confirmation; the
+    user follows the link in the message body if they want to see
+    the task list.
+    """
     user = context.user_data["_db_user"]
     tenant = await get_tenant_db(user.account_id)
     task = await tenant.get_maintenance_task(task_id)
@@ -541,12 +123,8 @@ async def cmd_maint_done(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
     await tenant.update_maintenance_status(task_id, "done", account_id=user.account_id)
 
-    # Driver attestation: stamp who confirmed completion and when.
-    # The user pressing the "mark done" button in the bot IS the
-    # attestation; we capture their telegram_id + the timestamp into
-    # the audit columns so the DOT binder can show "Driver John Doe
-    # confirmed oil change on 2026-04-12 at 11:42".  Best-effort: if
-    # the user doesn't have a telegram_id (system action), skip.
+    # Attestation — capture who pressed the button so the audit trail
+    # records the human who confirmed completion (not the system).
     if getattr(user, "telegram_id", None):
         try:
             await tenant.record_task_attestation(
@@ -556,13 +134,9 @@ async def cmd_maint_done(update: Update, context: ContextTypes.DEFAULT_TYPE,
         except Exception as e:
             logger.debug("attestation stamp failed for task %d: %s", task_id, e)
 
-    # Delegate recurring-task spawn to the service layer (SSOT — same
-    # function powers the API route's completion path).  The previous
-    # inline implementation here used strptime on ``due_date`` and only
-    # spawned a child when *both* parent fields were present; the service
-    # version computes the new due_date from "now + interval_days" so it
-    # works for tasks created with only a date OR only miles.  Also
-    # auto-renews compliance tasks (DOT inspection → 365-day default).
+    # SSOT recurring-task spawn — same function powers the API
+    # completion path so bot + dashboard "mark done" produce
+    # identical follow-up rows.
     next_info = ""
     spawned_id = await spawn_recurring_if_completed(
         task_id, user.account_id, "done", tenant,
@@ -575,492 +149,13 @@ async def cmd_maint_done(update: Update, context: ContextTypes.DEFAULT_TYPE,
         f"✅ <b>Task Completed!</b>\n\n"
         f"  🚛 #{task['vehicle_name']} — {type_label}"
         f"{next_info}"
-    ], keyboard=maintenance_menu_kb())
-
-
-# ── Delete ────────────────────────────────────────────────────────
-
-@_require_registered
-async def cmd_maint_delete(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                            task_id: int = 0):
-    """Show delete confirmation."""
-    user = context.user_data["_db_user"]
-    tenant = await get_tenant_db(user.account_id)
-    task = await tenant.get_maintenance_task(task_id)
-    if not task or task["account_id"] != user.account_id:
-        if update.callback_query:
-            await update.callback_query.answer("⛔ Task not found", show_alert=True)
-        return
-
-    type_label = _task_label(task["task_type"])
-    await _show(update, context, [
-        f"⚠️ <b>Delete Task?</b>\n\n"
-        f"  🚛 #{task['vehicle_name']} — {type_label}\n\n"
-        f"This action cannot be undone."
-    ], keyboard=maint_delete_confirm_kb(task_id))
-
-
-@_require_registered
-async def cmd_maint_delete_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                    task_id: int = 0):
-    """Actually delete the task."""
-    user = context.user_data["_db_user"]
-    tenant = await get_tenant_db(user.account_id)
-    task = await tenant.get_maintenance_task(task_id)
-    if not task or task["account_id"] != user.account_id:
-        if update.callback_query:
-            await update.callback_query.answer("⛔ Task not found", show_alert=True)
-        return
-
-    await tenant.delete_maintenance_task(task_id)
-    await _show(update, context, [
-        "🗑 <b>Task deleted.</b>"
-    ], keyboard=maintenance_menu_kb())
+    ], keyboard=None)
 
 
 # ══════════════════════════════════════════════════════════════════
-# EDIT TASK
+# ALERT FORMATTER — shared by every check_* job below
 # ══════════════════════════════════════════════════════════════════
 
-@_require_registered
-async def cmd_maint_edit(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                          task_id: int = 0):
-    """Show edit menu for a task."""
-    user = context.user_data["_db_user"]
-    tenant = await get_tenant_db(user.account_id)
-    task = await tenant.get_maintenance_task(task_id)
-    if not task or task["account_id"] != user.account_id:
-        if update.callback_query:
-            await update.callback_query.answer("⛔ Task not found", show_alert=True)
-        return
-
-    type_label = _task_label(task["task_type"])
-    due_mi = task.get("due_miles")
-    await _show(update, context, [
-        f"✏️ <b>Edit Task #{task['id']}</b>\n\n"
-        f"  🚛 #{task['vehicle_name']} — {type_label}\n"
-        f"  📅 Due date: {task.get('due_date') or '—'}\n"
-        f"  🛣 Due miles: {f'{due_mi:,.0f} mi' if due_mi else '—'}\n"
-        f"  📝 {task.get('description') or '—'}\n\n"
-        f"Select field to edit:"
-    ], keyboard=maint_edit_kb(task_id))
-
-
-@_require_registered
-async def cmd_maint_edit_type(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                               task_id: int = 0):
-    """Start editing task type — show type picker."""
-    context.user_data["_pending"] = "maint_edit_type"
-    context.user_data["_maint_edit_id"] = task_id
-
-    # Reuse the type keyboard but with edit callback prefix
-    types = list(TASK_TYPES.items())
-    rows = []
-    for i in range(0, len(types), 2):
-        row = []
-        for key, label in types[i:i + 2]:
-            row.append(InlineKeyboardButton(label, callback_data=f"maint_setype_{task_id}_{key}"))
-        rows.append(row)
-    rows.append([InlineKeyboardButton("◀️ Cancel", callback_data=f"maint_edit_{task_id}")])
-
-    await _show(update, context, [
-        "📋 Select new task type:"
-    ], keyboard=InlineKeyboardMarkup(rows))
-
-
-@_require_registered
-async def cmd_maint_set_type(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                              task_id: int = 0, new_type: str = ""):
-    """Apply type change."""
-    user = context.user_data["_db_user"]
-    tenant = await get_tenant_db(user.account_id)
-    task = await tenant.get_maintenance_task(task_id)
-    if not task or task["account_id"] != user.account_id:
-        return
-    await tenant.update_maintenance_task(
-        task_id, account_id=user.account_id, task_type=new_type,
-    )
-    context.user_data.pop("_pending", None)
-    context.user_data.pop("_maint_edit_id", None)
-    await cmd_maint_detail(update, context, task_id=task_id)
-
-
-@_require_registered
-async def cmd_maint_edit_date(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                               task_id: int = 0):
-    """Prompt for new due date."""
-    context.user_data["_pending"] = "maint_edit_date"
-    context.user_data["_maint_edit_id"] = task_id
-    await _show(update, context, [
-        "📅 Enter new due date (<code>YYYY-MM-DD</code>):"
-    ], keyboard=InlineKeyboardMarkup([
-        [InlineKeyboardButton("🗑 Remove Date", callback_data=f"maint_rmdate_{task_id}")],
-        [InlineKeyboardButton("◀️ Cancel", callback_data=f"maint_edit_{task_id}")],
-    ]))
-
-
-@_require_registered
-async def cmd_maint_edit_miles(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                task_id: int = 0):
-    """Prompt for new due mileage."""
-    context.user_data["_pending"] = "maint_edit_miles"
-    context.user_data["_maint_edit_id"] = task_id
-    await _show(update, context, [
-        "🛣 Enter new due mileage (e.g. <code>250000</code>):"
-    ], keyboard=InlineKeyboardMarkup([
-        [InlineKeyboardButton("🗑 Remove Mileage", callback_data=f"maint_rmmiles_{task_id}")],
-        [InlineKeyboardButton("◀️ Cancel", callback_data=f"maint_edit_{task_id}")],
-    ]))
-
-
-@_require_registered
-async def cmd_maint_edit_desc(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                               task_id: int = 0):
-    """Prompt for new description."""
-    context.user_data["_pending"] = "maint_edit_desc"
-    context.user_data["_maint_edit_id"] = task_id
-    await _show(update, context, [
-        "📝 Enter new description:"
-    ], keyboard=InlineKeyboardMarkup([
-        [InlineKeyboardButton("🗑 Remove Description", callback_data=f"maint_rmdesc_{task_id}")],
-        [InlineKeyboardButton("◀️ Cancel", callback_data=f"maint_edit_{task_id}")],
-    ]))
-
-
-# ── Wizard: priority + recurrence picks ──────────────────────────
-
-@_require_registered
-async def cmd_maint_priority_pick(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                   priority: str = ""):
-    """Wizard step: priority chosen → advance to recurrence picker."""
-    wiz = context.user_data.get("_maint", {})
-    wiz["priority"] = priority or "medium"
-    await _show_recur_step(update, context, wiz)
-
-
-@_require_registered
-async def cmd_maint_recur_pick(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                dimension: str = ""):
-    """Wizard step: recurrence dimension chosen.
-
-    ``dimension`` is one of ``none`` / ``days`` / ``miles`` / ``hours``.
-    For ``none`` we jump straight to the description step.  For the
-    other three we flip pending state to ``maint_recur_value_<dim>``
-    and prompt for the numeric interval.
-    """
-    wiz = context.user_data.get("_maint", {})
-    if dimension == "none":
-        context.user_data["_pending"] = "maint_desc"
-        await _show_desc_step(update, context, wiz)
-        return
-    if dimension not in ("days", "miles", "hours"):
-        return
-    context.user_data["_pending"] = f"maint_recur_value_{dimension}"
-    units = {"days": "days", "miles": "miles", "hours": "engine hours"}[dimension]
-    examples = {"days": "30", "miles": "5000", "hours": "500"}[dimension]
-    await _show(update, context, [
-        f"🚛 #{wiz.get('vehicle', '?')} — {wiz.get('type_label', '?')}\n\n"
-        f"🔁 Recurrence — enter the interval in <b>{units}</b>\n"
-        f"e.g. <code>{examples}</code>"
-    ], keyboard=InlineKeyboardMarkup([
-        [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_maintenance")],
-    ]))
-
-
-# ── Edit: priority + engine-hours ─────────────────────────────────
-
-@_require_registered
-async def cmd_maint_edit_priority(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                   task_id: int = 0):
-    """Show priority picker for an existing task."""
-    rows = [[
-        InlineKeyboardButton("🟢 Low", callback_data=f"maint_sprio_{task_id}_low"),
-        InlineKeyboardButton("🔵 Medium", callback_data=f"maint_sprio_{task_id}_medium"),
-    ], [
-        InlineKeyboardButton("🟠 High", callback_data=f"maint_sprio_{task_id}_high"),
-        InlineKeyboardButton("🔴 Critical", callback_data=f"maint_sprio_{task_id}_critical"),
-    ], [
-        InlineKeyboardButton("◀️ Cancel", callback_data=f"maint_edit_{task_id}"),
-    ]]
-    await _show(update, context, [
-        "⚡ Select new priority:"
-    ], keyboard=InlineKeyboardMarkup(rows))
-
-
-@_require_registered
-async def cmd_maint_set_priority(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                  task_id: int = 0, new_priority: str = ""):
-    """Apply priority change to an existing task."""
-    user = context.user_data["_db_user"]
-    tenant = await get_tenant_db(user.account_id)
-    task = await tenant.get_maintenance_task(task_id)
-    if not task or task["account_id"] != user.account_id:
-        return
-    if new_priority not in ("low", "medium", "high", "critical"):
-        return
-    await tenant.update_maintenance_task(
-        task_id, account_id=user.account_id, priority=new_priority,
-    )
-    await cmd_maint_detail(update, context, task_id=task_id)
-
-
-@_require_registered
-async def cmd_maint_edit_hours(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                task_id: int = 0):
-    """Prompt for new due engine-hours threshold."""
-    context.user_data["_pending"] = "maint_edit_hours"
-    context.user_data["_maint_edit_id"] = task_id
-    await _show(update, context, [
-        "⏱ Enter new due engine hours (e.g. <code>5000</code>):"
-    ], keyboard=InlineKeyboardMarkup([
-        [InlineKeyboardButton("🗑 Remove Hours", callback_data=f"maint_rmhours_{task_id}")],
-        [InlineKeyboardButton("◀️ Cancel", callback_data=f"maint_edit_{task_id}")],
-    ]))
-
-
-@_require_registered
-async def cmd_maint_remove_field(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                  task_id: int = 0, field: str = ""):
-    """Remove a field value (date, miles, or desc)."""
-    user = context.user_data["_db_user"]
-    tenant = await get_tenant_db(user.account_id)
-    task = await tenant.get_maintenance_task(task_id)
-    if not task or task["account_id"] != user.account_id:
-        return
-    field_map = {
-        "date": "due_date",
-        "miles": "due_miles",
-        "hours": "due_engine_hours",
-        "desc": "description",
-    }
-    db_field = field_map.get(field)
-    if db_field:
-        await tenant.update_maintenance_task(
-            task_id, account_id=user.account_id,
-            **{db_field: None if db_field != "description" else ""},
-        )
-    context.user_data.pop("_pending", None)
-    context.user_data.pop("_maint_edit_id", None)
-    await cmd_maint_detail(update, context, task_id=task_id)
-
-
-# ── Public wrappers for callback router ──────────────────────────
-
-@_require_registered
-async def cmd_maint_company_pick(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                  company: str = ""):
-    """Company picked in add-task flow — show truck list."""
-    user = context.user_data["_db_user"]
-    if not _check_perm(user):
-        return
-    await _show_maint_vehicle_list(update, context, user, company)
-
-
-@_require_registered
-async def cmd_maint_vehicle_page(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                company: str = "", page: int = 0):
-    """Paginate the truck list in add-task flow."""
-    user = context.user_data["_db_user"]
-    if not _check_perm(user):
-        return
-    await _show_maint_vehicle_list(update, context, user, company, page=page)
-
-
-# ══════════════════════════════════════════════════════════════════
-# TEXT INPUT HANDLER
-# ══════════════════════════════════════════════════════════════════
-
-async def handle_maintenance_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle multi-step maintenance wizard text inputs."""
-    user = context.user_data.get("_db_user")
-    if not user:
-        return False
-
-    pending = context.user_data.get("_pending", "")
-    wiz = context.user_data.get("_maint", {})
-    text = update.message.text.strip()
-
-    # ── Add-task wizard steps ──────────────────────────────
-
-    if pending == "maint_due":
-        try:
-            _dt.strptime(text, "%Y-%m-%d")
-            wiz["due_date"] = text
-        except ValueError:
-            await _show(update, context, [
-                "❌ Invalid date format. Use <code>YYYY-MM-DD</code>\n"
-                "Or tap ⏭ to skip:"
-            ], keyboard=maint_due_kb())
-            return True
-
-        context.user_data["_pending"] = "maint_miles"
-        await _show_miles_step(update, context, wiz)
-        return True
-
-    elif pending == "maint_miles":
-        try:
-            miles = float(text.replace(",", ""))
-            if miles <= 0:
-                raise ValueError
-            wiz["due_miles"] = miles
-        except ValueError:
-            await _show(update, context, [
-                "❌ Invalid mileage. Enter a positive number (e.g. <code>250000</code>)\n"
-                "Or tap ⏭ to skip:"
-            ], keyboard=maint_miles_kb())
-            return True
-
-        context.user_data["_pending"] = "maint_hours"
-        await _show_hours_step(update, context, wiz)
-        return True
-
-    elif pending == "maint_hours":
-        try:
-            hrs = float(text.replace(",", ""))
-            if hrs <= 0:
-                raise ValueError
-            wiz["due_engine_hours"] = hrs
-        except ValueError:
-            await _show(update, context, [
-                "❌ Invalid hours. Enter a positive number (e.g. <code>5000</code>)\n"
-                "Or tap ⏭ to skip:"
-            ], keyboard=maint_hours_kb())
-            return True
-
-        context.user_data.pop("_pending", None)
-        await _show_priority_step(update, context, wiz)
-        return True
-
-    elif pending in ("maint_recur_value_days", "maint_recur_value_miles", "maint_recur_value_hours"):
-        try:
-            n = float(text.replace(",", ""))
-            if n <= 0:
-                raise ValueError
-        except ValueError:
-            await _show(update, context, [
-                "❌ Invalid interval. Enter a positive number."
-            ], keyboard=InlineKeyboardMarkup([
-                [InlineKeyboardButton("◀️ Cancel", callback_data="cmd_maintenance")],
-            ]))
-            return True
-        if pending.endswith("_days"):
-            wiz["recur_interval_days"] = int(n)
-        elif pending.endswith("_miles"):
-            wiz["recur_interval_miles"] = n
-        elif pending.endswith("_hours"):
-            wiz["recur_interval_engine_hours"] = n
-        context.user_data["_pending"] = "maint_desc"
-        await _show_desc_step(update, context, wiz)
-        return True
-
-    elif pending == "maint_desc":
-        # Same min-length rule as the API (interfaces/api/routes/maintenance.py
-        # TaskCreate.description: Field(..., min_length=3)).  Empty + short
-        # descriptions historically slipped through the bot path and showed
-        # up in the dashboard as single-char gibberish ("f", "x", etc.).
-        # Tap Skip to omit; otherwise needs 3+ chars.
-        text_stripped = (text or "").strip()
-        if len(text_stripped) > 0 and len(text_stripped) < 3:
-            await _show(update, context, [
-                "❌ Description is too short. Use at least 3 characters "
-                "or tap ⏭ to skip:"
-            ], keyboard=maint_desc_kb())
-            return True
-        wiz["description"] = text_stripped
-        await _finalize_task(update, context)
-        return True
-
-    # ── Edit steps ─────────────────────────────────────────
-
-    elif pending == "maint_edit_date":
-        task_id = context.user_data.get("_maint_edit_id", 0)
-        try:
-            _dt.strptime(text, "%Y-%m-%d")
-        except ValueError:
-            await _show(update, context, [
-                "❌ Invalid date. Use <code>YYYY-MM-DD</code>"
-            ], keyboard=InlineKeyboardMarkup([
-                [InlineKeyboardButton("◀️ Cancel", callback_data=f"maint_edit_{task_id}")],
-            ]))
-            return True
-        tenant = await get_tenant_db(user.account_id)
-        await tenant.update_maintenance_task(
-            task_id, account_id=user.account_id, due_date=text,
-        )
-        context.user_data.pop("_pending", None)
-        context.user_data.pop("_maint_edit_id", None)
-        await cmd_maint_detail(update, context, task_id=task_id)
-        return True
-
-    elif pending == "maint_edit_miles":
-        task_id = context.user_data.get("_maint_edit_id", 0)
-        try:
-            miles = float(text.replace(",", ""))
-            if miles <= 0:
-                raise ValueError
-        except ValueError:
-            await _show(update, context, [
-                "❌ Invalid mileage. Enter a positive number."
-            ], keyboard=InlineKeyboardMarkup([
-                [InlineKeyboardButton("◀️ Cancel", callback_data=f"maint_edit_{task_id}")],
-            ]))
-            return True
-        tenant = await get_tenant_db(user.account_id)
-        await tenant.update_maintenance_task(
-            task_id, account_id=user.account_id, due_miles=miles,
-        )
-        context.user_data.pop("_pending", None)
-        context.user_data.pop("_maint_edit_id", None)
-        await cmd_maint_detail(update, context, task_id=task_id)
-        return True
-
-    elif pending == "maint_edit_desc":
-        task_id = context.user_data.get("_maint_edit_id", 0)
-        tenant = await get_tenant_db(user.account_id)
-        await tenant.update_maintenance_task(
-            task_id, account_id=user.account_id, description=text,
-        )
-        context.user_data.pop("_pending", None)
-        context.user_data.pop("_maint_edit_id", None)
-        await cmd_maint_detail(update, context, task_id=task_id)
-        return True
-
-    elif pending == "maint_edit_hours":
-        task_id = context.user_data.get("_maint_edit_id", 0)
-        try:
-            hrs = float(text.replace(",", ""))
-            if hrs <= 0:
-                raise ValueError
-        except ValueError:
-            await _show(update, context, [
-                "❌ Invalid hours. Enter a positive number."
-            ], keyboard=InlineKeyboardMarkup([
-                [InlineKeyboardButton("◀️ Cancel", callback_data=f"maint_edit_{task_id}")],
-            ]))
-            return True
-        tenant = await get_tenant_db(user.account_id)
-        await tenant.update_maintenance_task(
-            task_id, account_id=user.account_id, due_engine_hours=hrs,
-        )
-        context.user_data.pop("_pending", None)
-        context.user_data.pop("_maint_edit_id", None)
-        await cmd_maint_detail(update, context, task_id=task_id)
-        return True
-
-    return False
-
-
-# ══════════════════════════════════════════════════════════════════
-# ODOMETER HELPERS
-# ══════════════════════════════════════════════════════════════════
-
-# _get_current_odometer is the canonical get_vehicle_odometer in capabilities/telemetry/service.py
-_get_current_odometer = get_vehicle_odometer
-
-
-# ══════════════════════════════════════════════════════════════════
-# MAINTENANCE-ALERT FORMATTER (Option A grammar)
-# ══════════════════════════════════════════════════════════════════
 
 def _format_maintenance_alert(
     *,
@@ -1099,6 +194,7 @@ def _format_maintenance_alert(
 # ══════════════════════════════════════════════════════════════════
 # SCHEDULED JOBS
 # ══════════════════════════════════════════════════════════════════
+
 
 async def check_overdue_maintenance(app: Application):
     """Scheduled job: check for overdue maintenance tasks (by date).
@@ -1139,9 +235,12 @@ async def check_overdue_maintenance(app: Application):
                     # succeeds we skip the per-user DM fanout that
                     # follows — group members see the alert there.
                     from capabilities.alerting.pipeline import post_alert_to_topic
+                    done_kb = _done_kb(task["id"])
                     posted = await post_alert_to_topic(
                         bot_app, account_id=acct.id,
                         alert_type="maintenance", text=notify_text,
+                        severity="warning",
+                        reply_markup=done_kb,
                     )
                     if posted:
                         continue
@@ -1150,9 +249,11 @@ async def check_overdue_maintenance(app: Application):
                             chat_id=task["created_by"],
                             text=notify_text,
                             parse_mode=ParseMode.HTML,
+                            reply_markup=done_kb,
                         )
                     await _notify_account_admins(bot_app, acct.id, notify_text,
-                                                 exclude=task["created_by"])
+                                                 exclude=task["created_by"],
+                                                 reply_markup=done_kb)
                 except Exception as e:
                     logger.debug(f"Overdue notification failed: {e}")
 
@@ -1206,9 +307,12 @@ async def check_overdue_by_mileage(app: Application):
                         action="Schedule shop · update task once complete",
                     )
                     from capabilities.alerting.pipeline import post_alert_to_topic
+                    done_kb = _done_kb(task["id"])
                     posted = await post_alert_to_topic(
                         bot_app, account_id=acct.id,
                         alert_type="maintenance", text=notify_text,
+                        severity="warning",
+                        reply_markup=done_kb,
                     )
                     if posted:
                         continue
@@ -1217,10 +321,12 @@ async def check_overdue_by_mileage(app: Application):
                             chat_id=task["created_by"],
                             text=notify_text,
                             parse_mode=ParseMode.HTML,
+                            reply_markup=done_kb,
                         )
                     await _notify_account_admins(
                         bot_app, acct.id, notify_text,
                         exclude=task["created_by"],
+                        reply_markup=done_kb,
                     )
                 except Exception as e:
                     logger.debug(f"Mileage overdue notification failed: {e}")
@@ -1276,9 +382,12 @@ async def check_overdue_by_engine_hours(app: Application):
                         action="Schedule shop · update task once complete",
                     )
                     from capabilities.alerting.pipeline import post_alert_to_topic
+                    done_kb = _done_kb(task["id"])
                     posted = await post_alert_to_topic(
                         bot_app, account_id=acct.id,
                         alert_type="maintenance", text=notify_text,
+                        severity="warning",
+                        reply_markup=done_kb,
                     )
                     if posted:
                         continue
@@ -1287,10 +396,12 @@ async def check_overdue_by_engine_hours(app: Application):
                             chat_id=task["created_by"],
                             text=notify_text,
                             parse_mode=ParseMode.HTML,
+                            reply_markup=done_kb,
                         )
                     await _notify_account_admins(
                         bot_app, acct.id, notify_text,
                         exclude=task["created_by"],
+                        reply_markup=done_kb,
                     )
                 except Exception as e:
                     logger.debug(f"Engine-hours overdue notification failed: {e}")
@@ -1354,9 +465,12 @@ async def check_upcoming_maintenance_warnings(app: Application):
                         action="Plan shop visit · no immediate action needed",
                     )
                     from capabilities.alerting.pipeline import post_alert_to_topic
+                    done_kb = _done_kb(task["id"])
                     posted = await post_alert_to_topic(
                         bot_app, account_id=acct.id,
                         alert_type="maintenance", text=notify_text,
+                        severity="info",
+                        reply_markup=done_kb,
                     )
                     if not posted:
                         if task["created_by"]:
@@ -1364,10 +478,12 @@ async def check_upcoming_maintenance_warnings(app: Application):
                                 chat_id=task["created_by"],
                                 text=notify_text,
                                 parse_mode=ParseMode.HTML,
+                                reply_markup=done_kb,
                             )
                         await _notify_account_admins(
                             bot_app, acct.id, notify_text,
                             exclude=task["created_by"],
+                            reply_markup=done_kb,
                         )
                     warned_ids.append(int(task["id"]))
                 except Exception as e:
@@ -1386,8 +502,13 @@ async def check_upcoming_maintenance_warnings(app: Application):
 
 
 async def _notify_account_admins(app: Application, account_id: int, text: str,
-                                  exclude: int = 0):
+                                  exclude: int = 0,
+                                  reply_markup: InlineKeyboardMarkup | None = None):
     """Send a notification to all admins/owners of an account (except exclude).
+
+    ``reply_markup`` attaches the inline "✓ Mark Done" button to every
+    admin DM so any owner/admin can clear the task without opening a
+    browser.
 
     Email fallback: when the Telegram send fails AND the user has an
     ``email`` on file AND SMTP is configured, the maintenance alert is
@@ -1411,6 +532,7 @@ async def _notify_account_admins(app: Application, account_id: int, text: str,
                     chat_id=u.telegram_id,
                     text=text,
                     parse_mode=ParseMode.HTML,
+                    reply_markup=reply_markup,
                 )
                 tg_ok = True
             except Exception as e:

@@ -1,18 +1,27 @@
 """Fleet commands — re-export facade.
 
-Actual implementations live in:
-  bot.reports  — fault, fuel, efficiency, health, weather, API status
-  bot.alerts   — alert settings, toggle, disable, history, pending
-  bot.vehicles — truck lookup, truck detail, truck report, critical
-  bot.cameras  — camera checks, history, PDF/CSV exports
+Thin facade kept for backwards compatibility with existing import
+paths.  Actual implementations live in:
+
+  bot.reports  — fault / fuel / efficiency / health / weather are
+                 now dashboard redirects (see ``reports.py``).
+                 ``cmd_api_status`` is the only bot-side command
+                 still doing real work.
+  bot.alerts   — alert settings, toggle, disable, history, pending.
+  bot.vehicles — truck lookup, truck detail, truck report, critical.
+  bot.cameras  — single-truck AI dashcam check + dashboard redirects
+                 for the fleet-wide / history / export flows.
+
+The PDF/CSV report commands (``cmd_*_pdf``, ``cmd_*_csv``) and the
+camera browser commands (``cmd_cam_tool``, ``cmd_cam_company_pick``,
+``cmd_cam_page``, ``cmd_camera_check_pdf`` /
+``cmd_camera_check_csv``) were retired — they no longer exist on the
+source modules, so we don't re-export them here either.
 """
 
-# Re-export reports
+# Re-export reports (post-Tier-3: redirects + api_status only)
 from interfaces.bot.reports import (  # noqa: F401
-    cmd_faults, cmd_faults_pdf, cmd_faults_csv,
-    cmd_fuel, cmd_fuel_pdf, cmd_fuel_csv,
-    cmd_efficiency, cmd_efficiency_pdf, cmd_efficiency_csv,
-    cmd_health, cmd_health_pdf, cmd_health_csv,
+    cmd_faults, cmd_fuel, cmd_efficiency, cmd_health,
     cmd_weather, cmd_api_status,
 )
 
@@ -27,9 +36,8 @@ from interfaces.bot.vehicles import (  # noqa: F401
     cmd_vehicle, cmd_vehicle_report, cmd_critical,
 )
 
-# Re-export cameras
+# Re-export cameras (post-Tier-3: single-truck check + redirects)
 from interfaces.bot.cameras import (  # noqa: F401
     cmd_camera_check, cmd_camera_check_vehicle,
-    cmd_camera_history, cmd_camera_check_pdf, cmd_camera_check_csv,
-    cmd_cam_tool, cmd_cam_company_pick, cmd_cam_page,
+    cmd_cam, cmd_cam_tool, cmd_camera_history,
 )

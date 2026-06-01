@@ -5,19 +5,19 @@ from telegram.ext import ContextTypes
 from capabilities.localization.i18n import t
 
 from adapters.storage import Role
-from capabilities.iam.permissions import can, role_display, role_emoji, validate_invite_role, validate_role_change
-from adapters.samsara.client import SamsaraClient, populate_company_display
+from capabilities.iam.permissions import can, role_display, validate_invite_role
 from capabilities.formatting import (
     format_account_info,
     format_invite_created,
-    format_users_list,
-    format_org_added,
 )
 
-from interfaces.bot.config import logger, SAMSARA_BASE_URL
-from interfaces.bot.state import invalidate_client, get_platform_db, get_tenant_db
+from interfaces.bot.config import logger
+from interfaces.bot.state import get_platform_db, get_tenant_db
 from interfaces.bot.keyboards import back_kb, invite_kb
-from interfaces.bot.helpers import _show, _show_loading, _user_menu_kb, _safe_error, make_invite_link
+from interfaces.bot.helpers import (
+    _show, _safe_error,
+    make_invite_link, reply_dashboard_redirect,
+)
 from interfaces.bot.auth import _require_registered
 
 
@@ -128,263 +128,107 @@ async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @_require_registered
-async def cmd_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """List team members — with interactive buttons for management."""
-    user = context.user_data["_db_user"]
-    if not can(user.role, "can_manage_users"):
-        await _show(update, context,
-                    [t('access.admin_only')],
-                    keyboard=back_kb())
-        return
+async def cmd_users(update: Update, context: ContextTypes.DEFAULT_TYPE):  # noqa: ARG001
+    """Redirect to the dashboard Users page.
 
-    platform = get_platform_db()
-    account = await platform.get_account(user.account_id)
-    users = await platform.list_account_users(user.account_id)
-    text = format_users_list(users, account.name)
-
-    # Build interactive user buttons for management
-    rows = []
-    for u in users:
-        label = f"{role_emoji(u.role)} {u.label}"
-        if u.department:
-            label += f" — {u.department}"
-        rows.append([InlineKeyboardButton(label, callback_data=f"usrmenu_{u.telegram_id}")])
-    # Team actions — Invite and Groups
-    actions = []
-    if can(user.role, "can_invite"):
-        actions.append(InlineKeyboardButton("✉️ Invite", callback_data="cmd_invite_pick"))
-    if can(user.role, "can_manage_users"):
-        actions.append(InlineKeyboardButton("💬 Groups", callback_data="cmd_groups"))
-    if actions:
-        rows.append(actions)
-    rows.append([InlineKeyboardButton("◀️ Back", callback_data="submenu_mgmt")])
-
-    await _show(update, context, [text], keyboard=InlineKeyboardMarkup(rows))
+    The bot's interactive per-user role/department/remove grid (one
+    user at a time, navigated through inline buttons) was retired in
+    favour of ``/admin/users`` on the dashboard, which gives sortable
+    columns + bulk actions.
+    """
+    await reply_dashboard_redirect(
+        update,
+        title="👥 Users moved",
+        body=(
+            "Browse, search, and manage team members — including role "
+            "and department changes — on the dashboard."
+        ),
+        path="/admin/users",
+        label="Open Users",
+    )
 
 
 @_require_registered
-async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Change a user's role: /setrole <telegram_id> <new_role>"""
-    user = context.user_data["_db_user"]
-    if not can(user.role, "can_manage_users"):
-        await _show(update, context,
-                    [t('access.admin_only')],
-                    keyboard=back_kb())
-        return
+async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE):  # noqa: ARG001
+    """Redirect to the dashboard Users page.
 
-    if len(context.args or []) < 2:
-        await _show(update, context, [
-            f"{t('user_mgmt.setrole_usage')}\n"
-            "  /setrole <b>telegram_id</b> <b>role</b>\n\n"
-            "  Example:\n"
-            "  /setrole 123456789 fleet"
-        ], keyboard=back_kb())
-        return
-
-    try:
-        target_tid = int(context.args[0])
-        new_role = Role.from_str(context.args[1])
-    except (ValueError, IndexError):
-        await _show(update, context,
-                    [t('user_mgmt.role_invalid')],
-                    keyboard=back_kb())
-        return
-
-    target_user = await get_platform_db().get_user_by_telegram_id(target_tid)
-    if not target_user or target_user.account_id != user.account_id:
-        await _show(update, context,
-                    [t('user_mgmt.user_not_found')],
-                    keyboard=back_kb())
-        return
-
-    # Validate rank-based permission (fixes OWNER-only check)
-    ok, reason = validate_role_change(user.role, target_user.role, new_role)
-    if not ok:
-        if reason == "cant_promote_above_self":
-            await _show(update, context,
-                        [t('access.cant_promote_owner')],
-                        keyboard=back_kb())
-        else:
-            await _show(update, context,
-                        [t('access.admin_only')],
-                        keyboard=back_kb())
-        return
-
-    await get_platform_db().update_user(target_user.id, role=new_role)
-    await _show(update, context, [
-        t('user_mgmt.role_updated').replace('{user}', target_user.label).replace('{role}', role_display(new_role))
-    ], keyboard=back_kb())
+    The bot's ``/setrole <telegram_id> <role>`` shortcut was an
+    operator power-tool that bypassed the user list.  Role changes
+    now happen on ``/admin/users`` where the actor sees who they're
+    editing and the rank-based guardrails are visualised.
+    """
+    await reply_dashboard_redirect(
+        update,
+        title="🔧 Role changes moved",
+        body=(
+            "Find the team member on the Users page and change "
+            "their role from there."
+        ),
+        path="/admin/users",
+        label="Open Users",
+    )
 
 
 @_require_registered
-async def cmd_remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Remove a user: /remove <telegram_id>"""
-    user = context.user_data["_db_user"]
-    if not can(user.role, "can_manage_users"):
-        await _show(update, context,
-                    [t('access.admin_remove')],
-                    keyboard=back_kb())
-        return
+async def cmd_remove(update: Update, context: ContextTypes.DEFAULT_TYPE):  # noqa: ARG001
+    """Redirect to the dashboard Users page.
 
-    if not context.args:
-        await _show(update, context, [
-            t('user_mgmt.remove_usage')
-        ], keyboard=back_kb())
-        return
-
-    try:
-        target_tid = int(context.args[0])
-    except ValueError:
-        await _show(update, context,
-                    [t('user_mgmt.invalid_id')],
-                    keyboard=back_kb())
-        return
-
-    if target_tid == user.telegram_id:
-        await _show(update, context,
-                    [t('access.cant_self_remove')],
-                    keyboard=back_kb())
-        return
-
-    target_user = await get_platform_db().get_user_by_telegram_id(target_tid)
-    if not target_user or target_user.account_id != user.account_id:
-        await _show(update, context,
-                    [t('user_mgmt.user_not_found')],
-                    keyboard=back_kb())
-        return
-
-    await get_platform_db().remove_user(target_user.id)
-    await _show(update, context, [
-        t('user_mgmt.user_removed').replace('{user}', target_user.label)
-    ], keyboard=back_kb())
+    Removing a user via Telegram by typing their numeric id was both
+    error-prone (wrong id → wrong removal) and a security smell (no
+    confirmation step).  The dashboard's user list has a per-row
+    Remove with a confirmation dialog.
+    """
+    await reply_dashboard_redirect(
+        update,
+        title="🗑 Remove user moved",
+        body=(
+            "Open the Users page, find the team member, and use the "
+            "Remove action there.  A confirmation step prevents "
+            "accidental removals."
+        ),
+        path="/admin/users",
+        label="Open Users",
+    )
 
 
 @_require_registered
-async def cmd_addcompany(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Connect a company: /addcompany CODE:api_key [Display Name]"""
-    user = context.user_data["_db_user"]
-    if not can(user.role, "can_manage_companies"):
-        await _show(update, context,
-                    [t('access.owner_only')],
-                    keyboard=back_kb())
-        return
+async def cmd_addcompany(update: Update, context: ContextTypes.DEFAULT_TYPE):  # noqa: ARG001
+    """Redirect to the dashboard Companies page.
 
-    if not context.args:
-        await _show(update, context, [
-            f"{t('company.add_prompt')}\n\n"
-            "  /addcompany <b>CODE:samsara_api_key</b>\n\n"
-            "  Example:\n"
-            "  /addcompany PTG:samsara_api_Cuuvx5LCti...\n\n"
-            "  Optional display name:\n"
-            "  /addcompany PTG:api_key Premier Trucking\n"
-        ], keyboard=back_kb())
-        return
-
-    # Parse CODE:KEY
-    first_arg = context.args[0]
-    if ":" not in first_arg:
-        await _show(update, context,
-                    [t('company.format_error')],
-                    keyboard=back_kb())
-        return
-
-    code, api_key = first_arg.split(":", 1)
-    code = code.strip().upper()
-    display_name = " ".join(context.args[1:]) if len(context.args) > 1 else code
-
-    # Check if code already exists
-    tenant = await get_tenant_db(user.account_id)
-    existing = await tenant.get_company_by_code(user.account_id, code)
-    if existing:
-        await _show(update, context,
-                    [t('company.already_exists').replace('{name}', code)],
-                    keyboard=back_kb())
-        return
-
-    try:
-        # Test the API key — fetch total vehicles, then active (30-day filter)
-        test_client = SamsaraClient(api_key, SAMSARA_BASE_URL, active_days=0)
-        await _show_loading(update, context, t('company.testing').replace('{code}', code))
-        total_trucks = None
-        active_trucks = None
-        try:
-            all_vehicles = await test_client.get_vehicles()
-            total_trucks = len(all_vehicles)
-        except Exception as e:
-            logger.debug("Could not fetch vehicles for API key test: %s", e)
-        finally:
-            await test_client.close()
-
-        # Count active trucks (last 30 days GPS)
-        if total_trucks is not None:
-            active_client = SamsaraClient(api_key, SAMSARA_BASE_URL, active_days=30)
-            try:
-                active_list = await active_client.get_fleet_overview()
-                active_trucks = len(active_list)
-            except Exception as e:
-                logger.debug("Could not fetch active trucks for API key test: %s", e)
-            finally:
-                await active_client.close()
-
-        new_company = await tenant.add_company(
-            account_id=user.account_id,
-            code=code,
-            samsara_api_key=api_key,
-            display_name=display_name,
-        )
-
-        # Invalidate client cache
-        await invalidate_client(user.account_id)
-
-        # Refresh COMPANY_DISPLAY
-        companies = await tenant.get_account_companies(user.account_id)
-        populate_company_display(companies)
-
-        text = format_org_added(code, display_name, total_trucks, active_trucks)
-        kb = await _user_menu_kb(user)
-        await _show(update, context, [text], keyboard=kb)
-
-        logger.info(f"Org {code} added to account {user.account_id}")
-
-    except Exception as e:
-        logger.error(f"Add company error: {e}", exc_info=True)
-        await _show(update, context, [_safe_error(e)], keyboard=back_kb())
+    Connecting a company used to mean typing
+    ``/addorg CODE:samsara_api_key`` directly into Telegram chat —
+    which both lands a secret in the user's chat history and leaks
+    it into Telegram's server logs.  The dashboard form sends the
+    key over TLS to the API and stores it encrypted; it never
+    appears in any chat surface.
+    """
+    await reply_dashboard_redirect(
+        update,
+        title="🏢 Add Company moved",
+        body=(
+            "Connect a Samsara company on the dashboard — the API "
+            "key is sent securely instead of being typed into chat "
+            "(which would leave it in your Telegram history)."
+        ),
+        path="/admin/companies",
+        label="Open Companies",
+    )
 
 
 @_require_registered
-async def cmd_removecompany(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Remove a company: /removecompany CODE"""
-    user = context.user_data["_db_user"]
-    if not can(user.role, "can_manage_companies"):
-        await _show(update, context,
-                    [t('access.owner_only')],
-                    keyboard=back_kb())
-        return
-
-    if not context.args:
-        await _show(update, context,
-                    ["ℹ️  Usage:  /removecompany <b>CODE</b>"],
-                    keyboard=back_kb())
-        return
-
-    code = context.args[0].strip().upper()
-    tenant = await get_tenant_db(user.account_id)
-    company = await tenant.get_company_by_code(user.account_id, code)
-    if not company:
-        await _show(update, context,
-                    [t('company.not_found_code').replace('{code}', code)],
-                    keyboard=back_kb())
-        return
-
-    await tenant.remove_company(company.id)
-    await invalidate_client(user.account_id)
-
-    companies = await tenant.get_account_companies(user.account_id)
-    populate_company_display(companies)
-
-    await _show(update, context,
-                [t('company.removed').replace('{name}', code)],
-                keyboard=back_kb())
+async def cmd_removecompany(update: Update, context: ContextTypes.DEFAULT_TYPE):  # noqa: ARG001
+    """Redirect to the dashboard Companies page."""
+    await reply_dashboard_redirect(
+        update,
+        title="🏢 Remove Company moved",
+        body=(
+            "Find the company on the dashboard's Companies page and "
+            "remove it from there.  A confirmation step prevents "
+            "accidental detach."
+        ),
+        path="/admin/companies",
+        label="Open Companies",
+    )
 
 
 # ══════════════════════════════════════════════════════════════════

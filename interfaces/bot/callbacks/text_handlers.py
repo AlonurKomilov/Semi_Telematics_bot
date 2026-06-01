@@ -1,24 +1,24 @@
 """Text-input handler for pending interactive prompts."""
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from adapters.storage import Role
 from capabilities.iam.permissions import role_display
-from adapters.samsara.client import populate_company_display
 from capabilities.formatting import format_invite_created
 
-from interfaces.bot.config import logger
-from interfaces.bot.state import get_platform_db, get_tenant_db, invalidate_client
+from interfaces.bot.state import get_platform_db
 from interfaces.bot.keyboards import back_kb, invite_kb
 from interfaces.bot.helpers import _show, _safe_error, make_invite_link
 from capabilities.localization.i18n import t
 from interfaces.bot.auth import _get_user, _group_chat_guard
 from interfaces.bot.registration import cmd_start, cmd_register, cmd_join
-from interfaces.bot.management import cmd_addcompany, cmd_groups
+from interfaces.bot.management import cmd_groups
 from interfaces.bot.fleet import cmd_vehicle
 from interfaces.bot.fuel_costs import handle_fuelcost_text
-from interfaces.bot.maintenance import handle_maintenance_text
-from interfaces.bot.routes import handle_route_text
+# The maintenance CRUD wizard moved to the dashboard, so the
+# bot-side ``handle_maintenance_text`` (date/miles/hours/desc text
+# input router) is no longer reachable.  Import removed; the
+# ``maint_*`` ``_pending`` dispatch branch below was deleted in
+# the same commit.
 from interfaces.bot.ai import cmd_ai_answer
 from interfaces.bot.geofences import handle_add_zone_text
 
@@ -92,235 +92,16 @@ async def handle_text(update, context):
         context.args = text.split()
         await cmd_vehicle(update, context)
 
-    # ── Add Company wizard step 1: company code ─────────────────────────
-    elif pending == "addcompany_code":
-        code = text.strip().upper()
-        if not code or len(code) > 10 or " " in code:
-            await _show(update, context, [
-                t('company.add_code_invalid') + "\n"
-                + t('company.add_code_example')
-            ], keyboard=back_kb())
-            return
-        context.user_data["_addcompany"] = {"code": code}
-        context.user_data["_pending"] = "addcompany_key"
-        await _show(update, context, [
-            t('company.add_wizard_title', code=code) + "\n\n"
-            + t('company.add_step2') + "\n\n"
-            + t('company.add_step2_prompt') + "\n"
-            + t('company.add_step2_hint')
-        ], keyboard=back_kb())
-
-    # ── Add Company wizard step 2: api key ──────────────────────────
-    elif pending == "addcompany_key":
-        api_key = text.strip()
-        # Security: delete the message containing the API key from chat
-        try:
-            await update.message.delete()
-        except Exception as e:
-            logger.debug("Could not delete API key message: %s", e)
-        if not api_key or len(api_key) < 10:
-            await _show(update, context, [
-                t('company.chkey_invalid')
-            ], keyboard=back_kb())
-            return
-        from interfaces.bot.keyboards import skip_name_kb
-        wiz = context.user_data.get("_addcompany", {})
-        wiz["api_key"] = api_key
-        context.user_data["_addcompany"] = wiz
-        context.user_data["_pending"] = "addcompany_name"
-        await _show(update, context, [
-            t('company.add_wizard_title', code=wiz.get('code', '?')) + "\n\n"
-            + t('company.add_step3') + "\n\n"
-            + t('company.add_step3_prompt') + "\n\n"
-            + t('company.add_step3_example')
-        ], keyboard=skip_name_kb())
-
-    # ── Add Company wizard step 3: display name → create ────────────
-    elif pending == "addcompany_name":
-        wiz = context.user_data.pop("_addcompany", {})
-        code = wiz.get("code", "")
-        api_key = wiz.get("api_key", "")
-        display_name = code if text.lower().strip() == "skip" else text.strip()
-        if not code or not api_key:
-            await _show(update, context, [t('company.wizard_lost')], keyboard=back_kb())
-            return
-        # Delegate to cmd_addcompany with synthesized args
-        context.args = [f"{code}:{api_key}"] + (display_name.split() if display_name != code else [])
-        await cmd_addcompany(update, context)
-
-    # ── Change department for a user ──────────────────────────────
-    elif pending == "change_dept":
-        user = context.user_data.get("_db_user")
-        if not user:
-            user, _, _ = await _get_user(update)
-        if not user:
-            await cmd_start(update, context)
-            return
-        target_tid = context.user_data.pop("_dept_tid", None)
-        if not target_tid:
-            await _show(update, context, [t('common.session_expired')], keyboard=back_kb())
-            return
-
-        new_dept = text.strip()
-        if not new_dept or len(new_dept) > 50:
-            await _show(update, context, [
-                t('user_mgmt.dept_invalid')
-            ], keyboard=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t('common.back'), callback_data=f"usrmenu_{target_tid}")],
-            ]))
-            return
-
-        target_user = await get_platform_db().get_user_by_telegram_id(target_tid)
-        if not target_user or target_user.account_id != user.account_id:
-            await _show(update, context, [t('user_mgmt.user_not_found')], keyboard=back_kb())
-            return
-
-        await get_platform_db().update_user(target_user.id, department=new_dept)
-        await _show(update, context, [
-            t('user_mgmt.dept_updated', user=target_user.label, dept=new_dept)
-        ], keyboard=InlineKeyboardMarkup([
-            [InlineKeyboardButton(t('common.back'), callback_data=f"usrmenu_{target_tid}")],
-        ]))
-
-    # ── Confirm remove company (type code to confirm) ───────────
-    elif pending == "confirm_remove_company":
-        user = context.user_data.get("_db_user")
-        if not user:
-            user, _, _ = await _get_user(update)
-        if not user:
-            await cmd_start(update, context)
-            return
-        code = context.user_data.pop("_rmco_code", None)
-        if not code:
-            await _show(update, context, [t('common.session_expired')], keyboard=back_kb())
-            return
-
-        typed = text.strip().upper()
-        if typed != code:
-            await _show(update, context, [
-                t('company.remove_mismatch', typed=typed, expected=code)
-            ], keyboard=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t('common.back'), callback_data=f"comenu_{code}")],
-            ]))
-            return
-
-        tenant = await get_tenant_db(user.account_id)
-        company = await tenant.get_company_by_code(user.account_id, code)
-        if company:
-            await tenant.remove_company(company.id, account_id=user.account_id)
-            await invalidate_client(user.account_id)
-            companies = await tenant.get_account_companies(user.account_id)
-            populate_company_display(companies)
-            # Audit log
-            await tenant.add_audit_log(
-                account_id=user.account_id,
-                user_id=user.id,
-                action="company_removed",
-                target_type="company",
-                target_id=str(company.id),
-                details=f"{user.label} removed company {code} ({company.display_name})",
-            )
-            await _show(update, context, [
-                t('company.remove_confirmed', code=code)
-            ], keyboard=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t('company.back_companies'), callback_data="cmd_account")],
-            ]))
-        else:
-            await _show(update, context, [
-                t('company.not_found_code', code=code)
-            ], keyboard=back_kb())
-
-    # ── Change API key for a company ──────────────────────────────
-    elif pending == "change_api_key":
-        user = context.user_data.get("_db_user")
-        if not user:
-            user, _, _ = await _get_user(update)
-        if not user:
-            await cmd_start(update, context)
-            return
-        code = context.user_data.pop("_chkey_code", None)
-        if not code:
-            await _show(update, context, [t('common.session_expired')], keyboard=back_kb())
-            return
-
-        api_key = text.strip()
-        # Security: delete the message containing the API key from chat
-        try:
-            await update.message.delete()
-        except Exception as e:
-            logger.debug("Could not delete API key message: %s", e)
-        if not api_key or len(api_key) < 10:
-            await _show(update, context, [
-                t('company.chkey_invalid')
-            ], keyboard=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t('common.back'), callback_data=f"comenu_{code}")],
-            ]))
-            return
-
-        tenant = await get_tenant_db(user.account_id)
-        company = await tenant.get_company_by_code(user.account_id, code)
-        if not company:
-            await _show(update, context, [t('company.not_found')], keyboard=back_kb())
-            return
-
-        await tenant.update_company(company.id, account_id=user.account_id, samsara_api_key=api_key)
-        await invalidate_client(user.account_id)
-        await tenant.add_audit_log(
-            account_id=user.account_id, user_id=user.id,
-            action="api_key_changed", target_type="company",
-            target_id=str(company.id),
-            details=f"{user.label} changed API key for {code}",
-        )
-        await _show(update, context, [
-            t('company.chkey_updated', code=code)
-        ], keyboard=InlineKeyboardMarkup([
-            [InlineKeyboardButton(t('common.back'), callback_data=f"comenu_{code}")],
-        ]))
-
-    # ── Rename company display name ─────────────────────────────
-    elif pending == "rename_company":
-        user = context.user_data.get("_db_user")
-        if not user:
-            user, _, _ = await _get_user(update)
-        if not user:
-            await cmd_start(update, context)
-            return
-        code = context.user_data.pop("_rename_code", None)
-        if not code:
-            await _show(update, context, [t('common.session_expired')], keyboard=back_kb())
-            return
-
-        new_name = text.strip()
-        if not new_name or len(new_name) > 100:
-            await _show(update, context, [
-                t('company.rename_invalid')
-            ], keyboard=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t('common.back'), callback_data=f"comenu_{code}")],
-            ]))
-            return
-
-        tenant = await get_tenant_db(user.account_id)
-        company = await tenant.get_company_by_code(user.account_id, code)
-        if not company:
-            await _show(update, context, [t('company.not_found')], keyboard=back_kb())
-            return
-
-        old_name = company.display_name
-        await tenant.update_company(company.id, display_name=new_name)
-        # Refresh display cache
-        companies = await tenant.get_account_companies(user.account_id)
-        populate_company_display(companies)
-        await tenant.add_audit_log(
-            account_id=user.account_id, user_id=user.id,
-            action="company_renamed", target_type="company",
-            target_id=str(company.id),
-            details=f"{user.label} renamed {code}: {old_name} → {new_name}",
-        )
-        await _show(update, context, [
-            t('company.renamed', code=code, name=new_name)
-        ], keyboard=InlineKeyboardMarkup([
-            [InlineKeyboardButton(t('common.back'), callback_data=f"comenu_{code}")],
-        ]))
+    # NOTE: per-user and per-company text-wizard branches (addcompany_*,
+    # change_dept, confirm_remove_company, change_api_key,
+    # rename_company) were removed when the corresponding bot grids
+    # moved to the dashboard.  Stale ``_pending`` values from cached
+    # menus fall through to the AI fallback, which is benign.
+    #
+    # ``change_api_key`` is intentionally not restored: pasting an
+    # API key into a Telegram chat leaves it in chat history +
+    # Telegram server logs.  The dashboard sends the key over TLS
+    # straight to the API and stores it encrypted.
 
     # ── Invite driver (vehicle number — required) ───────────────
     elif pending == "invite_driver":
@@ -381,21 +162,11 @@ async def handle_text(update, context):
         context.user_data["_pending"] = pending  # restore for handler
         await handle_fuelcost_text(update, context)
 
-    # ── Maintenance wizard ──────────────────────────────────────
-    elif pending.startswith("maint_"):
-        context.user_data["_pending"] = pending  # restore for handler
-        await handle_maintenance_text(update, context)
-
-    # ── Work schedule wizard ────────────────────────────────────
-    elif pending.startswith("whours_"):
-        context.user_data["_pending"] = pending  # restore for handler
-        from interfaces.bot.work_hours import handle_whours_text
-        await handle_whours_text(update, context)
-
-    # ── Route replay truck input ────────────────────────────────
-    elif pending == "route_vehicle":
-        context.user_data["_pending"] = pending  # restore for handler
-        await handle_route_text(update, context)
+    # NOTE: ``maint_*`` (maintenance task wizard), ``whours_*`` (working
+    # hours wizard) and ``route_vehicle`` (route replay truck picker)
+    # text-input branches were removed when those flows moved to the
+    # dashboard.  Stale ``_pending`` values from cached chats fall
+    # through to the AI fallback below.
 
     # ── AI question input ───────────────────────────────────────
     elif pending == "ai_question":
