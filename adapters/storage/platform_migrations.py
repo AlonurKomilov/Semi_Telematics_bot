@@ -47,26 +47,37 @@ async def run_all(conn) -> None:
     await migrate_create_user_sessions(conn)
     await migrate_create_account_persona_groups(conn)
     await migrate_add_accounts_alert_routing_mode(conn)
-    # These two MUST be the last entries — they touch every table that
-    # has an account_id column, so they need every CREATE TABLE
-    # already applied.  Migration 076 renumbers IDs; migration 077
-    # then prefixes stored file paths with the new account-{id}/
-    # segment.  Order: 076 → 077.
+    # The next steps MUST be the last entries — each touches every
+    # table that has an ``account_id`` column, so they need every
+    # CREATE TABLE already applied.  Run order matters:
+    #
+    #   1. Renumber account IDs to the 10_000_001+ range.
+    #   2. Insert the ``account-{id}/`` segment into stored file
+    #      paths so each tenant's blobs live under its own subtree.
     await migrate_account_id_base_renumber(conn)
     await migrate_account_prefixed_file_paths(conn)
-    # Repair pass: if an earlier deploy ran the path-prefix step BEFORE
-    # the renumber (the migrations were briefly out of order in source),
-    # stored paths carry the OLD account ID (e.g. ``account-1/``) while
-    # ``accounts.id`` is the renumbered value (e.g. ``10000001``).  This
-    # migration bumps any low-ID prefix to its renumbered equivalent.
-    # Safe to run unconditionally — fast no-op when no stale paths exist.
+    # If an earlier deploy applied the path-prefix step before the
+    # renumber, stored paths now carry the OLD account ID (e.g.
+    # ``account-1/``) while ``accounts.id`` has been bumped (e.g.
+    # ``10000001``).  Bump any low-ID prefix to its renumbered
+    # equivalent.  Safe to run unconditionally — fast no-op when no
+    # stale paths exist.
     await migrate_repair_stale_account_path_ids(conn)
-    # KB hardening: drop duplicate (account_id, category) index that
-    # accumulated from two migrations creating the same index under
-    # different names, then add a Postgres tsvector GIN index for
-    # full-text search on title/description/tags.  Both no-op on
-    # re-run.
+    # Knowledge-base hygiene: drop the duplicate
+    # ``(account_id, category)`` index that accumulated from two
+    # migrations creating the same shape under different names, then
+    # add a Postgres tsvector GIN index for fast title/description/
+    # tags search.  Both steps no-op on re-run.
     await migrate_knowledge_base_indexes_and_fts(conn)
+    # Several older tables store ``created_by`` / ``uploaded_by`` as
+    # the user's Telegram ID (BIGINT).  That value can change — a user
+    # who registered by email later links their Telegram, or a future
+    # auth provider rotates the identifier — and when it does, the
+    # original owner loses access to the rows they created.  Rewrite
+    # every such column to the immutable ``users.id`` primary key.
+    # Idempotent: fast no-op once every row already references a
+    # users.id (re-runs touch zero rows).
+    await migrate_backfill_user_id_ownership(conn)
 
 
 async def migrate_ai_chat_history(conn) -> None:
@@ -1310,7 +1321,7 @@ async def migrate_comp_account_history_table(conn) -> None:
         logger.debug("comp_account_history migration skipped: %s", e)
 
 
-# ── 076: Re-base account IDs to the 10M+ range ──────────────────────
+# ── Re-base account IDs to the 10_000_001+ range ────────────────────
 
 ACCOUNT_ID_OFFSET = 10_000_000
 ACCOUNT_ID_FLOOR = ACCOUNT_ID_OFFSET + 1  # 10_000_001 — minimum legitimate ID
@@ -1529,14 +1540,15 @@ async def migrate_account_id_base_renumber(conn) -> None:
         )
 
 
-# ── 077: Prefix stored file paths with account-{id}/ ─────────────────
+# ── Prefix stored file paths with account-{id}/ ─────────────────────
 
 
 async def migrate_account_prefixed_file_paths(conn) -> None:
     """Insert ``account-{id}/`` after ``data/userdata/`` in stored paths.
 
-    Runs AFTER migration 076 (now in this same file, immediately above)
-    so the inserted segment uses the new 10M+ ID range.
+    Must be called AFTER ``migrate_account_id_base_renumber`` so the
+    inserted ID matches the renumbered ``accounts.id`` value (see the
+    explicit call order in ``run_all``).
 
     Each column needs the row's account_id.  Some tables carry it
     directly (camera_checks, parking_events, maintenance_tasks,
@@ -1555,7 +1567,7 @@ async def migrate_account_prefixed_file_paths(conn) -> None:
     """
     pool = getattr(getattr(conn, "_pool", None), "_pool", None)
     if pool is None:
-        # Same reasoning as migration 076: silently skipping leaves
+        # Same reasoning as the renumber step: silently skipping leaves
         # stored paths without the account prefix, which the rest of
         # the system assumes is present.  Fail loud.
         raise RuntimeError(
@@ -1726,7 +1738,7 @@ async def migrate_add_accounts_alert_routing_mode(conn) -> None:
             pass
 
 
-# ── 078: Repair stale account-N/ path prefix after out-of-order deploy ──
+# ── Repair stale account-N/ path prefix after out-of-order deploys ──
 
 
 async def migrate_repair_stale_account_path_ids(conn) -> None:
@@ -1742,8 +1754,8 @@ async def migrate_repair_stale_account_path_ids(conn) -> None:
 
     The fix is mechanical: for any path containing ``account-N/`` where
     ``N < 10_000_001``, rewrite to ``account-{N+10_000_000}/``.  Same
-    offset migration 076 used, so the result lines up with the renumbered
-    ``accounts.id`` and the moved-on-disk folders.
+    offset the renumber step uses, so the result lines up with the
+    renumbered ``accounts.id`` and the moved-on-disk folders.
 
     Safe to run unconditionally: fast no-op when no stale paths exist
     (the regex test ``~ 'account-([1-9][0-9]{0,6})/'`` matches only
@@ -1814,7 +1826,7 @@ async def migrate_repair_stale_account_path_ids(conn) -> None:
             )
 
 
-# ── 079: Knowledge-base hygiene — drop dup index, add FTS ──────────
+# ── Knowledge-base index hygiene + full-text search ─────────────────
 
 
 async def migrate_knowledge_base_indexes_and_fts(conn) -> None:
@@ -1865,3 +1877,125 @@ async def migrate_knowledge_base_indexes_and_fts(conn) -> None:
         # install (rare race — platform_schema creates it first, then
         # platform_migrations runs).  Either way, harmless.
         logger.debug("Migration 079: FTS index skipped (%s)", e)
+
+
+# ── Backfill: rewrite ownership columns from telegram_id to users.id ──
+
+
+async def migrate_backfill_user_id_ownership(conn) -> None:
+    """Rewrite ownership columns from telegram_id to ``users.id``.
+
+    Background
+    ----------
+    Tables like ``knowledge_base.created_by``,
+    ``pti_inspection_media.uploaded_by``, and
+    ``work_order_attachments.uploaded_by`` historically stored a
+    user's Telegram ID (BIGINT) as the row's owner.  That value can
+    change at runtime — a user who registered by email later links
+    their Telegram, or a future auth provider rotates the identifier
+    — and when it does the original owner loses access to the rows
+    they created.
+
+    What this migration does
+    ------------------------
+    For each column in the list below, look up the row's current
+    ``created_by`` / ``uploaded_by`` value as a ``users.telegram_id``
+    and rewrite it to that user's ``users.id``.  Rows that don't
+    resolve (deleted users, orphan IDs) become ``0`` so they remain
+    visible but visibly unowned — easy to spot in an ops audit.
+
+    Idempotent
+    ----------
+    Each UPDATE skips rows whose value already matches a ``users.id``
+    (``NOT EXISTS (SELECT 1 FROM users WHERE id = t.col)``).  Running
+    the migration twice touches zero rows on the second pass.
+
+    Reversibility
+    -------------
+    The original telegram_id is lost on rewrite.  Before running this
+    against a non-trivial production dataset, snapshot the affected
+    columns first::
+
+        CREATE TABLE _ownership_backfill_snapshot AS
+            SELECT 'knowledge_base.created_by' AS source, id, created_by
+              FROM knowledge_base
+             UNION ALL ...
+    """
+    pool = getattr(getattr(conn, "_pool", None), "_pool", None)
+    if pool is None:
+        raise RuntimeError(
+            "Migration 080: asyncpg pool reference unavailable."
+        )
+
+    # (table, column) pairs.  Each column currently stores a raw
+    # telegram_id and is used to record row ownership.  Verified by
+    # querying information_schema for BIGINT created_by / uploaded_by
+    # columns in the public schema — anything else either uses a proper
+    # INTEGER FK already (modern style) or stores audit-trail data
+    # (e.g. ``audit_log.user_id``) which we intentionally leave alone.
+    columns = [
+        ("knowledge_base",         "created_by"),
+        ("work_orders",            "created_by"),
+        ("work_order_attachments", "uploaded_by"),
+        ("pti_inspection_media",   "uploaded_by"),
+        ("maintenance_tasks",      "created_by"),
+        ("fuel_entries",           "created_by"),
+        ("platform_geofences",     "created_by"),
+        ("work_hours",             "created_by"),
+        ("custom_poi_layers",      "created_by"),
+    ]
+
+    async with pool.acquire() as raw:
+        async with raw.transaction():
+            try:
+                await raw.execute("SET LOCAL row_security = off")
+            except Exception:
+                pass
+
+            total = 0
+            for table, col in columns:
+                try:
+                    # Three classes of rows in each table:
+                    #   1. col already equals a users.id (already migrated)
+                    #   2. col equals a users.telegram_id → rewrite to that user's id
+                    #   3. col matches neither → set to 0 (unknown owner)
+                    #
+                    # We detect class 1 with a NOT EXISTS guard so the
+                    # UPDATE only touches rows that aren't already on
+                    # the right side.
+                    result = await raw.execute(f"""
+                        UPDATE {table} AS t
+                           SET {col} = COALESCE(
+                                   (SELECT u.id FROM users u
+                                     WHERE u.telegram_id = t.{col}
+                                     LIMIT 1),
+                                   0)
+                         WHERE {col} IS NOT NULL
+                           AND {col} <> 0
+                           AND NOT EXISTS (
+                               SELECT 1 FROM users u
+                                WHERE u.id = t.{col}
+                           )
+                    """)
+                    parts = (result or "").split()
+                    rowcount = int(parts[-1]) if parts and parts[-1].isdigit() else 0
+                    total += rowcount
+                    if rowcount:
+                        logger.info(
+                            "Migration 080: %s.%s rewrote %d row(s)",
+                            table, col, rowcount,
+                        )
+                except Exception as e:
+                    # Table doesn't exist (some are tenant-only) — log
+                    # and continue.  The outer try/except for the
+                    # whole transaction would roll everything back on
+                    # failure, but a missing tenant table is benign
+                    # since it has no rows to migrate.
+                    logger.debug(
+                        "Migration 080: skipping %s.%s (%s)", table, col, e,
+                    )
+
+            logger.info(
+                "Migration 080: backfilled %d ownership row(s) across %d table(s)",
+                total, len(columns),
+            )

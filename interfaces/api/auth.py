@@ -11,16 +11,30 @@ from typing import Literal
 from urllib.parse import parse_qs, unquote
 
 import bcrypt
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Cookie, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from jose import jwt
+from jose.exceptions import JWTError
 from interfaces.api.rate_limit import limiter
 
 import adapters.storage as database
 import logging
 
-from infra.config import TELEGRAM_TOKEN  # noqa: F401  (kept for other auth helpers below)
+from infra.config import (
+    # Customer-facing fallback bot token — used when an account has no
+    # per-account bot for HMAC validation of the Login Widget / Mini
+    # App initData.  See infra/config.py for the full split rationale.
+    TELEGRAM_LOGIN_BOT_TOKEN,
+    # System / operator bot token — never used for customer auth.  The
+    # /api/auth/system-* endpoints below validate against this.
+    TELEGRAM_SYSTEM_BOT_TOKEN,
+)
+# Legacy alias — preserved for any old call site that imports
+# ``TELEGRAM_TOKEN`` from this module instead of from infra.config.
+# Points at the system bot (matches what infra.config did before the
+# split).  Net-new code should use the explicit names above.
+TELEGRAM_TOKEN = TELEGRAM_SYSTEM_BOT_TOKEN
 
 # JWT settings — JWT_SECRET is REQUIRED.  Previously this code fell back
 # to TELEGRAM_TOKEN, but that meant any bot-token rotation silently
@@ -135,15 +149,29 @@ def create_jwt(
     role: str,
     *,
     remember_me: bool = False,
+    jti: str | None = None,
+    user_id: int | None = None,
 ) -> str:
     """Create a JWT token for an authenticated user.
 
     ``remember_me=True``  → 30-day TTL (long session).
     ``remember_me=False`` → 8-hour TTL (short session, default).
 
-    The ``remember`` claim is embedded in the payload so the refresh
-    endpoint can keep issuing tokens of the same flavour without the
-    client having to re-supply the flag.
+    Every token carries a ``jti`` (JWT id) claim so the issuing flow can
+    record a row in ``user_sessions`` and the future revoke path can
+    deny-list one device without affecting the user's other sessions.
+    Callers that want to record the session pass in the jti they
+    intend to insert; callers that just need a token (tests, legacy
+    paths) can omit it and let one be generated.
+
+    ``user_id`` is the stable internal ``users.id`` primary key.  When
+    present it lands in the JWT as the ``uid`` claim — used downstream
+    for ownership checks on records like KB articles, work orders, and
+    PTI media, where comparing against the volatile ``telegram_id``
+    breaks when a user later links/unlinks their Telegram account.
+    Legacy callers that don't pass it still mint a working token;
+    those tokens just need the telegram-id fallback path in
+    ``resolve_user_id`` until they expire.
     """
     ttl = JWT_EXPIRY_LONG_SECONDS if remember_me else JWT_EXPIRY_SHORT_SECONDS
     now = int(time.time())
@@ -154,13 +182,201 @@ def create_jwt(
         "remember": bool(remember_me),
         "exp": now + ttl,
         "iat": now,
+        "jti": jti or secrets.token_urlsafe(16),
     }
+    if user_id and user_id > 0:
+        payload["uid"] = int(user_id)
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+# ── Session recording (Active Sessions panel) ─────────────────────────
+#
+# Each login that produces a JWT also writes a ``user_sessions`` row so
+# the dashboard "My Profile / Active sessions" panel and the operator
+# console can show where a user is logged in.  Captures: parsed device
+# label, raw User-Agent, client IP (from X-Forwarded-For), the JWT's
+# ``jti`` (so a future revoke can target a specific device), and the
+# JWT's expiry.  Failures are warning-logged but never break auth.
+
+def _parse_user_agent(ua: str) -> str:
+    """Return a short, human-readable device label from a User-Agent.
+
+    Best-effort regex-free parsing — good enough for an in-app display
+    without pulling in a full UA-parser library.  Telegram's own apps
+    set a UA string that contains ``Telegram`` so we surface those
+    first; otherwise we fall back to a ``Browser on OS`` shape.
+    """
+    if not ua:
+        return "Unknown device"
+    ua_l = ua.lower()
+    if "telegram" in ua_l:
+        if "android" in ua_l:
+            return "Telegram on Android"
+        if "iphone" in ua_l or "ipad" in ua_l or " ios" in ua_l:
+            return "Telegram on iOS"
+        if "tdesktop" in ua_l or "telegramdesktop" in ua_l:
+            return "Telegram Desktop"
+        return "Telegram WebApp"
+    if "iphone" in ua_l or "ipad" in ua_l:
+        os_name = "iOS"
+    elif "android" in ua_l:
+        os_name = "Android"
+    elif "windows" in ua_l:
+        os_name = "Windows"
+    elif "macintosh" in ua_l or "mac os" in ua_l:
+        os_name = "macOS"
+    elif "linux" in ua_l:
+        os_name = "Linux"
+    else:
+        os_name = "Unknown OS"
+    # Edge identifies as Chrome too, so check Edge first.
+    if "edg/" in ua_l:
+        browser = "Edge"
+    elif "opr/" in ua_l or "opera" in ua_l:
+        browser = "Opera"
+    elif "chrome/" in ua_l:
+        browser = "Chrome"
+    elif "firefox/" in ua_l:
+        browser = "Firefox"
+    elif "safari/" in ua_l:
+        browser = "Safari"
+    else:
+        browser = "Browser"
+    return f"{browser} on {os_name}"
+
+
+def _client_ip(request: Request) -> str:
+    """Return the leftmost IP from X-Forwarded-For (nginx-set), falling
+    back to ``request.client.host`` for direct connections."""
+    xff = request.headers.get("x-forwarded-for", "").strip()
+    if xff:
+        return xff.split(",")[0].strip()[:64]
+    return (request.client.host if request.client else "")[:64]
+
+
+async def mint_session_token(
+    db,
+    request: Request,
+    *,
+    user_id: int,
+    telegram_id: int,
+    account_id: int,
+    role: str,
+    remember_me: bool,
+) -> str:
+    """Mint a JWT *and* record the session row in one shot.
+
+    Use this from every login flow in this module.  ``user_id`` is the
+    integer PK from ``users``, NOT the Telegram id — needed so the
+    sessions panel can list one user's devices without an extra
+    telegram_id → users.id lookup per row.  When ``user_id <= 0``
+    (legacy paths that don't have a backing DB user — e.g. the
+    SSO-only owner fallback) we still mint the token but skip the
+    session insert.
+    """
+    from datetime import datetime, timezone
+    jti = secrets.token_urlsafe(16)
+    token = create_jwt(
+        telegram_id, account_id, role,
+        remember_me=remember_me, jti=jti,
+        user_id=user_id if (user_id and user_id > 0) else None,
+    )
+    if user_id and user_id > 0:
+        try:
+            now_dt = datetime.now(timezone.utc)
+            exp_ttl = JWT_EXPIRY_LONG_SECONDS if remember_me else JWT_EXPIRY_SHORT_SECONDS
+            ua = (request.headers.get("user-agent") or "")[:500]
+            await db.create_user_session(
+                user_id=user_id,
+                jti=jti,
+                device_label=_parse_user_agent(ua),
+                user_agent=ua,
+                ip=_client_ip(request),
+                created_at=now_dt.isoformat(),
+                last_seen=now_dt.isoformat(),
+                expires_at=datetime.fromtimestamp(
+                    int(now_dt.timestamp()) + exp_ttl, tz=timezone.utc
+                ).isoformat(),
+            )
+        except Exception as e:
+            # Session bookkeeping is non-critical — never break login.
+            logging.getLogger("api.auth").warning(
+                "session record failed for user_id=%s: %s", user_id, e
+            )
+    return token
 
 
 def decode_jwt(token: str) -> dict:
     """Decode and validate a JWT token. Raises JWTError on failure."""
     return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+
+
+# ── JTI denylist (revoked sessions) ─────────────────────────────────
+#
+# When a session is revoked, two things happen in order:
+#   1. ``user_sessions.revoked_at`` gets a timestamp (DB is source of
+#      truth — the operator console + the user's own /profile reflect
+#      the change immediately).
+#   2. The jti is pushed onto a short-lived Redis flag with TTL equal
+#      to the JWT's remaining lifetime.  ``get_current_user`` consults
+#      the flag on every authenticated request and 401s if it hits.
+#
+# Redis is a fast-path cache, not the source of truth.  When Redis is
+# unavailable both ``setex_flag`` and ``exists`` no-op (see infra.cache),
+# which means revocation silently soft-degrades to "kicks in at JWT
+# expiry".  That trade-off is acceptable for a fleet console — the row
+# is still marked revoked in the DB and the operator can see it.
+
+_DENYLIST_KEY_PREFIX = "revoked_jti:"
+
+
+def _denylist_key(jti: str) -> str:
+    return f"{_DENYLIST_KEY_PREFIX}{jti}"
+
+
+async def mark_jti_revoked(jti: str, expires_at_iso: str | None = None) -> None:
+    """Push a jti onto the Redis denylist for the remainder of its
+    JWT lifetime.
+
+    ``expires_at_iso`` is the original JWT expiry as stored in the
+    ``user_sessions`` row.  We compute remaining-seconds-until-expiry
+    and use that as the Redis TTL so the denylist entry naturally
+    sloughs off once the JWT can't be used anyway.  When the column is
+    missing or unparseable we fall back to the long JWT lifetime —
+    over-deny is safer than under-deny.
+    """
+    if not jti:
+        return
+    from datetime import datetime, timezone
+    from infra.cache import setex_flag
+    ttl = JWT_EXPIRY_LONG_SECONDS
+    if expires_at_iso:
+        try:
+            exp_dt = datetime.fromisoformat(expires_at_iso)
+            if exp_dt.tzinfo is None:
+                exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+            remaining = int((exp_dt - datetime.now(timezone.utc)).total_seconds())
+            if remaining > 0:
+                ttl = remaining
+            else:
+                return  # already expired — no point flagging it
+        except (ValueError, TypeError):
+            pass
+    await setex_flag(_denylist_key(jti), ttl=ttl)
+
+
+async def is_jti_revoked(jti: str) -> bool:
+    """Return True when the jti is on the Redis denylist."""
+    if not jti:
+        return False
+    from infra.cache import exists as _cache_exists
+    try:
+        return await _cache_exists(_denylist_key(jti))
+    except Exception:
+        # Soft-degrade: any unexpected error here is treated as "not
+        # revoked" so a Redis hiccup can't lock everyone out of the
+        # dashboard.  The DB row is still correct for audit / display.
+        return False
 
 
 # ── Cookie-based session for cross-subdomain SSO ──────────────────────────────
@@ -272,10 +488,44 @@ async def refresh_token(request: Request, response: Response, authorization: str
     # (the legacy 30-day behaviour) so refreshing them doesn't
     # accidentally shorten an active session.
     remember = bool(payload.get("remember", True))
+    # Preserve the original session's jti so the same user_sessions row
+    # is extended in place — refresh is "same browser, fresh token",
+    # not a new session.  Legacy tokens (minted before user_sessions
+    # existed) won't have a jti; we generate one and backfill a row.
+    old_jti = str(payload.get("jti") or "").strip()
+    new_jti = old_jti or secrets.token_urlsafe(16)
     new_token = create_jwt(
         user.telegram_id, user.account_id, user.role.value,
-        remember_me=remember,
+        remember_me=remember, jti=new_jti,
+        user_id=user.id,
     )
+    try:
+        from datetime import datetime, timezone
+        now_dt = datetime.now(timezone.utc)
+        exp_ttl = JWT_EXPIRY_LONG_SECONDS if remember else JWT_EXPIRY_SHORT_SECONDS
+        new_expires_iso = datetime.fromtimestamp(
+            int(now_dt.timestamp()) + exp_ttl, tz=timezone.utc
+        ).isoformat()
+        if old_jti:
+            await db.update_user_session_on_refresh(
+                old_jti, new_expires_iso, now_dt.isoformat(),
+            )
+        else:
+            # Legacy token without jti — backfill a session row so the
+            # user shows up in the Active sessions panel from now on.
+            ua = (request.headers.get("user-agent") or "")[:500]
+            await db.create_user_session(
+                user_id=user.id, jti=new_jti,
+                device_label=_parse_user_agent(ua), user_agent=ua,
+                ip=_client_ip(request),
+                created_at=now_dt.isoformat(), last_seen=now_dt.isoformat(),
+                expires_at=new_expires_iso,
+            )
+    except Exception as e:
+        logging.getLogger("api.auth").warning(
+            "session refresh bookkeeping failed for user=%s: %s",
+            user.telegram_id, e,
+        )
     _set_auth_cookie(response, new_token, remember_me=remember)
     return AuthResponse(
         access_token=new_token,
@@ -316,9 +566,13 @@ async def auth_telegram(request: Request, response: Response, body: AuthRequest)
     if not telegram_id:
         raise HTTPException(status_code=401, detail="Invalid user data")
 
-    # Determine which bot token to validate against
+    # Determine which bot token to validate against.  Per-account bot
+    # wins when set (a tenant with their own branded bot signs their
+    # Mini App initData with that token).  Otherwise the fallback is
+    # the LOGIN bot, not the system one — Mini App callers are always
+    # customers.
     user = await db.get_user_by_telegram_id(telegram_id)
-    bot_token = TELEGRAM_TOKEN or ""
+    bot_token = TELEGRAM_LOGIN_BOT_TOKEN or ""
 
     if user:
         account = await db.get_account(user.account_id)
@@ -336,8 +590,10 @@ async def auth_telegram(request: Request, response: Response, body: AuthRequest)
             detail="User not registered. Use the Telegram bot to register first.",
         )
 
-    token = create_jwt(
-        user.telegram_id, user.account_id, user.role.value,
+    token = await mint_session_token(
+        db, request,
+        user_id=user.id, telegram_id=user.telegram_id,
+        account_id=user.account_id, role=user.role.value,
         remember_me=body.remember_me,
     )
     _set_auth_cookie(response, token, remember_me=body.remember_me)
@@ -412,8 +668,12 @@ async def auth_telegram_login(request: Request, response: Response, body: LoginW
 
     user = await db.get_user_by_telegram_id(body.id)
 
-    # Determine which bot token to validate against
-    bot_token = TELEGRAM_TOKEN or ""
+    # Per-account bot wins (tenants with their own branded bot signed
+    # the widget callback with it); otherwise we fall back to the
+    # customer-facing LOGIN bot, never the system bot — this endpoint
+    # is for customer dashboards only.  The operator console at
+    # system.4truck.us hits ``/auth/system-telegram-login`` instead.
+    bot_token = TELEGRAM_LOGIN_BOT_TOKEN or ""
     if user:
         account = await db.get_account(user.account_id)
         if account and account.bot_token_encrypted:
@@ -440,8 +700,10 @@ async def auth_telegram_login(request: Request, response: Response, body: LoginW
             detail="User not registered. Use the Telegram bot to register first.",
         )
 
-    token = create_jwt(
-        user.telegram_id, user.account_id, user.role.value,
+    token = await mint_session_token(
+        db, request,
+        user_id=user.id, telegram_id=user.telegram_id,
+        account_id=user.account_id, role=user.role.value,
         remember_me=body.remember_me,
     )
     _set_auth_cookie(response, token, remember_me=body.remember_me)
@@ -512,10 +774,254 @@ async def auth_config(request: Request):
                 return {"bot_username": acct.bot_username, "bot_id": acct_bot_id}
     except Exception as e:
         logging.getLogger("api.auth").debug("Could not look up fallback account bot: %s", e)
+    # Last-resort fallback for the customer-side Login Widget — show
+    # the LOGIN bot so an unregistered visitor lands on the right
+    # front-door bot.  Never returns the SYSTEM bot here.  We resolve
+    # the username via getMe on TELEGRAM_LOGIN_BOT_TOKEN (cached) rather
+    # than reading the shared ``bot.config.bot_username`` global —
+    # that global collapses to the system bot when LOGIN_BOT_TOKEN is
+    # unset, which used to silently bypass this "never return SYSTEM"
+    # promise.
     _bot_id = ""
-    if TELEGRAM_TOKEN and ":" in TELEGRAM_TOKEN:
-        _bot_id = TELEGRAM_TOKEN.split(":", 1)[0]
-    return {"bot_username": global_bot_username or "4truckBot", "bot_id": _bot_id}
+    if TELEGRAM_LOGIN_BOT_TOKEN and ":" in TELEGRAM_LOGIN_BOT_TOKEN:
+        _bot_id = TELEGRAM_LOGIN_BOT_TOKEN.split(":", 1)[0]
+    login_username = await _login_bot_username()
+    return {
+        "bot_username": login_username or global_bot_username or "4truckBot",
+        "bot_id": _bot_id,
+    }
+
+
+# ── System-operator auth (system.4truck.us) ──────────────────
+#
+# The operator console at system.4truck.us uses these two endpoints
+# instead of the customer-side /auth/config + /auth/telegram-login
+# pair.  Both validate against TELEGRAM_SYSTEM_BOT_TOKEN — never the
+# login bot, never a per-account bot — and the login endpoint
+# additionally gates by SYSTEM_OWNER_IDS so a stranger who somehow
+# gets a valid Telegram login on the system bot still can't get a
+# JWT.
+
+_SYSTEM_BOT_USERNAME_CACHE: dict[str, str] = {}
+
+
+async def _system_bot_username() -> str:
+    """Resolve the system bot's @username via Telegram getMe, cached.
+
+    The customer-side bot daemon caches its own username on post_init,
+    but the system bot doesn't run as a daemon — it's just a Telegram
+    API client.  So we call getMe lazily here and cache the result for
+    the lifetime of the process.  Returns ``""`` on any failure so the
+    UI can render a generic "Telegram operator login" message instead
+    of crashing.
+    """
+    if "username" in _SYSTEM_BOT_USERNAME_CACHE:
+        return _SYSTEM_BOT_USERNAME_CACHE["username"]
+    if not TELEGRAM_SYSTEM_BOT_TOKEN:
+        return ""
+    try:
+        import telegram as _telegram
+        bot = _telegram.Bot(token=TELEGRAM_SYSTEM_BOT_TOKEN)
+        me = await bot.get_me()
+        username = me.username or ""
+    except Exception:
+        logging.getLogger("api.auth").exception("system bot getMe failed")
+        username = ""
+    _SYSTEM_BOT_USERNAME_CACHE["username"] = username
+    return username
+
+
+_LOGIN_BOT_USERNAME_CACHE: dict[str, str] = {}
+
+
+async def _login_bot_username() -> str:
+    """Resolve the customer LOGIN bot's @username via Telegram getMe, cached.
+
+    Source-of-truth for the customer apex ``/login`` page and the
+    bot-login deep-link generator.  Does NOT read
+    ``interfaces.bot.config.bot_username`` — that global is whatever the
+    daemon's ``post_init`` happened to set last, which collapses to the
+    system bot when ``TELEGRAM_LOGIN_BOT_TOKEN`` is unset (the daemon
+    falls back to the system token).  That fallback was masking the bug
+    where the customer apex login deep-linked into the operator bot.
+
+    Returns ``""`` on any failure so the caller can render a generic
+    fallback rather than crashing.
+    """
+    if "username" in _LOGIN_BOT_USERNAME_CACHE:
+        return _LOGIN_BOT_USERNAME_CACHE["username"]
+    if not TELEGRAM_LOGIN_BOT_TOKEN:
+        return ""
+    try:
+        import telegram as _telegram
+        bot = _telegram.Bot(token=TELEGRAM_LOGIN_BOT_TOKEN)
+        me = await bot.get_me()
+        username = me.username or ""
+    except Exception:
+        logging.getLogger("api.auth").exception("login bot getMe failed")
+        username = ""
+    _LOGIN_BOT_USERNAME_CACHE["username"] = username
+    return username
+
+
+@router.get("/system-config")
+async def auth_system_config():
+    """Public config the system.4truck.us login page needs to render its widget.
+
+    Returns the SYSTEM bot's username + numeric id (not the login bot,
+    not any per-account bot).  Safe to call unauthenticated — the
+    bot's @username is already public anyway.
+    """
+    username = await _system_bot_username()
+    bot_id = ""
+    if TELEGRAM_SYSTEM_BOT_TOKEN and ":" in TELEGRAM_SYSTEM_BOT_TOKEN:
+        bot_id = TELEGRAM_SYSTEM_BOT_TOKEN.split(":", 1)[0]
+    return {"bot_username": username or "", "bot_id": bot_id}
+
+
+@router.post("/system-telegram-login", response_model=AuthResponse)
+@limiter.limit("30/minute")
+async def auth_system_telegram_login(
+    request: Request, response: Response, body: LoginWidgetRequest,
+):
+    """Operator-only Telegram login for system.4truck.us.
+
+    Two differences from ``/auth/telegram-login``:
+      1. HMAC is validated against ``TELEGRAM_SYSTEM_BOT_TOKEN`` only —
+         no per-account fallback (operators don't belong to a tenant
+         account).
+      2. After signature verification, we additionally check that the
+         telegram_id is in ``SYSTEM_OWNER_IDS``.  A valid Telegram login
+         from a stranger still 403s here.
+
+    No cookie is set — the operator console uses Bearer header + an
+    origin-isolated localStorage entry, not the apex SSO cookie.
+    """
+    if not TELEGRAM_SYSTEM_BOT_TOKEN:
+        raise HTTPException(
+            status_code=503,
+            detail="System bot not configured — TELEGRAM_BOT_TOKEN is empty.",
+        )
+    try:
+        raw = {
+            k: v for k, v in body.model_dump().items()
+            if v != "" and k != "remember_me"
+        }
+        validate_telegram_login_widget(raw, TELEGRAM_SYSTEM_BOT_TOKEN)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    from capabilities.iam.permissions import is_system_owner
+    if not is_system_owner(body.id):
+        raise HTTPException(
+            status_code=403,
+            detail="Restricted to platform operators (SYSTEM_OWNER_IDS).",
+        )
+
+    # Operator user may or may not have a row in our ``users`` table.
+    # If they do, mirror their role + account_id in the JWT for
+    # consistency; if they don't, mint a JWT with a placeholder
+    # account_id=0 and role='owner' (the SYSTEM_OWNER_IDS check is
+    # what actually gates /system/*).
+    from infra.platform import get_platform_db
+    db = get_platform_db()
+    user = await db.get_user_by_telegram_id(body.id)
+    if user:
+        token = await mint_session_token(
+            db, request,
+            user_id=user.id, telegram_id=user.telegram_id,
+            account_id=user.account_id, role=user.role.value,
+            remember_me=body.remember_me,
+        )
+        user_payload = {
+            "telegram_id": user.telegram_id,
+            "name": body.first_name,
+            "role": user.role.value,
+            "account_id": user.account_id,
+        }
+    else:
+        # Operator without a backing users row — no session bookkeeping
+        # (nothing to attach it to).  Still mint the token; the
+        # SYSTEM_OWNER_IDS gate is what actually authorises /system/*.
+        token = create_jwt(
+            body.id, 0, "owner",
+            remember_me=body.remember_me,
+        )
+        user_payload = {
+            "telegram_id": body.id,
+            "name": body.first_name,
+            "role": "owner",
+            "account_id": 0,
+        }
+    return AuthResponse(access_token=token, user=user_payload)
+
+
+@router.post("/system-telegram-init", response_model=AuthResponse)
+@limiter.limit("30/minute")
+async def auth_system_telegram_init(request: Request, body: AuthRequest):
+    """Operator login via Telegram **Mini App** initData (system.4truck.us).
+
+    This is the preferred operator-login path: when system.4truck.us is
+    opened from the system bot's Menu Button inside Telegram, the
+    WebApp SDK provides ``initData`` signed by the bot token.  We
+    validate it against ``TELEGRAM_SYSTEM_BOT_TOKEN`` and check
+    ``SYSTEM_OWNER_IDS`` — no Login Widget, no BotFather ``/setdomain``,
+    so it sidesteps the widget-domain propagation entirely.
+
+    No cookie is set — the operator console uses Bearer + an
+    origin-isolated localStorage entry.
+    """
+    if not TELEGRAM_SYSTEM_BOT_TOKEN:
+        raise HTTPException(
+            status_code=503,
+            detail="System bot not configured — TELEGRAM_SYSTEM_BOT_TOKEN is empty.",
+        )
+    try:
+        tg_user = validate_telegram_init_data(body.init_data, TELEGRAM_SYSTEM_BOT_TOKEN)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    tg_id = tg_user.get("id")
+    if not tg_id:
+        raise HTTPException(status_code=401, detail="Invalid user data")
+
+    from capabilities.iam.permissions import is_system_owner
+    if not is_system_owner(int(tg_id)):
+        raise HTTPException(
+            status_code=403,
+            detail="Restricted to platform operators (SYSTEM_OWNER_IDS).",
+        )
+
+    # Mirror the operator's real role/account if they have a row;
+    # otherwise mint an owner token with account_id=0 (the
+    # SYSTEM_OWNER_IDS check is the real gate for /system/*).
+    from infra.platform import get_platform_db
+    db = get_platform_db()
+    user = await db.get_user_by_telegram_id(int(tg_id))
+    if user:
+        token = await mint_session_token(
+            db, request,
+            user_id=user.id, telegram_id=user.telegram_id,
+            account_id=user.account_id, role=user.role.value,
+            remember_me=True,
+        )
+        user_payload = {
+            "telegram_id": user.telegram_id,
+            "name": tg_user.get("first_name", ""),
+            "role": user.role.value,
+            "account_id": user.account_id,
+        }
+    else:
+        # Same rationale as system-telegram-login: no users row → no
+        # session row.  Token still valid; SYSTEM_OWNER_IDS gates access.
+        token = create_jwt(int(tg_id), 0, "owner", remember_me=True)
+        user_payload = {
+            "telegram_id": int(tg_id),
+            "name": tg_user.get("first_name", ""),
+            "role": "owner",
+            "account_id": 0,
+        }
+    return AuthResponse(access_token=token, user=user_payload)
 
 
 # ── Bot-login: one-time deep-link auth via system bot ─────────
@@ -527,13 +1033,23 @@ BOT_LOGIN_PREFIX = "bot_login:"
 @router.post("/bot-login/init")
 @limiter.limit("10/minute")
 async def bot_login_init(request: Request):
-    """Generate a one-time login token and return a deep link to the system bot.
+    """Generate a one-time login token and return a deep link to the **login** bot.
 
-    The user clicks the link, which opens @app_4truck_bot with /start login_TOKEN.
-    The bot verifies the user and writes approval into Redis.
-    The frontend polls /bot-login/check/{token} until approved or expired.
+    The user clicks the link, which opens the customer login bot
+    (``TELEGRAM_LOGIN_BOT_TOKEN`` → e.g. ``@login_4truck_bot``) with
+    /start login_TOKEN.  The bot's ``register_login_handlers`` /start
+    handler verifies the user and writes approval into Redis; the
+    frontend polls /bot-login/check/{token} until approved or expired.
+
+    Must resolve the LOGIN bot specifically — NOT the system bot.  The
+    earlier implementation read ``interfaces.bot.config.bot_username``
+    which silently collapsed to the system bot whenever
+    ``TELEGRAM_LOGIN_BOT_TOKEN`` was unset (the bot.config TOKEN falls
+    back to the system token, the daemon runs that, and its post_init
+    writes the system bot's username into the shared global).  When
+    that happened, customer logins deep-linked into the operator bot
+    and were greeted with "this bot is for platform operators only".
     """
-    from interfaces.bot.config import bot_username as sys_bot_username
     from infra.cache import cache_set as redis_set
 
     token = secrets.token_urlsafe(32)
@@ -543,7 +1059,20 @@ async def bot_login_init(request: Request):
         ttl=BOT_LOGIN_TTL,
     )
 
-    username = sys_bot_username or "app_4truck_bot"
+    username = await _login_bot_username()
+    if not username:
+        # No LOGIN bot configured.  We deliberately do NOT fall back to
+        # the system bot — that's the bug we just fixed.  Tell the
+        # caller the flow is unavailable so the dashboard can show a
+        # clean error instead of routing the user to a dead end.
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Bot-login is unavailable: TELEGRAM_LOGIN_BOT_TOKEN is "
+                "not configured on the API.  Use email + password or the "
+                "Telegram Login Widget instead."
+            ),
+        )
     deep_link = f"https://t.me/{username}?start=login_{token}"
     return {"token": token, "deep_link": deep_link, "ttl": BOT_LOGIN_TTL}
 
@@ -641,8 +1170,10 @@ async def auth_email_login(request: Request, response: Response, body: EmailLogi
     if not _verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    token = create_jwt(
-        user.telegram_id, user.account_id, user.role.value,
+    token = await mint_session_token(
+        db, request,
+        user_id=user.id, telegram_id=user.telegram_id,
+        account_id=user.account_id, role=user.role.value,
         remember_me=body.remember_me,
     )
     _set_auth_cookie(response, token, remember_me=body.remember_me)
@@ -718,8 +1249,10 @@ async def auth_email_register(request: Request, response: Response, body: EmailR
             "Ask your company admin for an invite link.",
         )
 
-    token = create_jwt(
-        user.telegram_id, user.account_id, user.role.value,
+    token = await mint_session_token(
+        db, request,
+        user_id=user.id, telegram_id=user.telegram_id,
+        account_id=user.account_id, role=user.role.value,
         remember_me=body.remember_me,
     )
     _set_auth_cookie(response, token, remember_me=body.remember_me)
@@ -735,16 +1268,73 @@ async def auth_email_register(request: Request, response: Response, body: EmailR
 
 
 @router.post("/logout")
-async def auth_logout(response: Response):
-    """Clear the cross-subdomain auth cookie.
+async def auth_logout(
+    request: Request,
+    response: Response,
+    authorization: str | None = Header(default=None),
+    auth_token: str | None = Cookie(default=None, alias=AUTH_COOKIE_NAME),
+):
+    """Clear the cross-subdomain auth cookie AND denylist the session jti.
 
-    Idempotent — safe to call without an active session.  The Mini App and
-    other Bearer-header clients should also drop their stored token; this
-    endpoint only invalidates the cookie side of the session.  The JWT
-    itself remains valid until ``exp``; we don't maintain a server-side
-    revocation list (no use case has justified that complexity yet).
+    Idempotent — safe to call without an active session.  The Mini App
+    and other Bearer-header clients should also drop their stored token.
+
+    Two things happen so revocation is bullet-proof:
+      1. The ``.4truck.us`` cookie is cleared via Set-Cookie Max-Age=0.
+      2. If we can recover a jti from the request's Bearer header OR
+         cookie, push it onto the Redis denylist + mark the
+         ``user_sessions`` row revoked.  This closes the failure mode
+         where the cookie clear didn't actually take effect (browser
+         quirk, network race) — the JWT itself becomes unusable, so a
+         subdomain that still sees the stale cookie still gets 401 from
+         every authed endpoint and bounces the user cleanly to login
+         instead of looping forever between apex and the persona host.
+
+    Failures in step 2 are silently logged — the cookie clear in
+    step 1 is the primary mechanism; the denylist is belt-and-braces.
     """
     _clear_auth_cookie(response)
+
+    # Pull whichever token the caller presented.  Try Bearer first
+    # (matches get_current_user's preference) then the cookie.  An old
+    # localStorage token that no longer matches the cookie still gets
+    # denylisted — that's the right call; the user wants OUT.
+    token: str | None = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+    if not token and auth_token:
+        token = auth_token
+
+    if token:
+        try:
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            jti = str(payload.get("jti") or "")
+            if jti:
+                # Mark the user_sessions row revoked (so the session
+                # disappears from the user's "Active sessions" panel)
+                # and push the jti onto the Redis denylist so future
+                # requests with this JWT 401 immediately.
+                try:
+                    from infra.platform import get_platform_db
+                    db = get_platform_db()
+                    revoked = await db.revoke_user_session_by_jti(jti) \
+                        if hasattr(db, "revoke_user_session_by_jti") else None
+                    expires_at = (revoked or {}).get("expires_at") if revoked else None
+                except Exception as e:
+                    logging.getLogger("api.auth").debug(
+                        "logout: session row revoke failed for jti=%s: %s", jti, e
+                    )
+                    expires_at = None
+                await mark_jti_revoked(jti, expires_at)
+        except JWTError as e:
+            logging.getLogger("api.auth").debug(
+                "logout: token decode failed (already invalid?): %s", e
+            )
+        except Exception as e:
+            logging.getLogger("api.auth").warning(
+                "logout: unexpected denylist failure: %s", e
+            )
+
     return {"ok": True}
 
 
@@ -811,8 +1401,10 @@ async def auth_register_account(request: Request, response: Response, body: Regi
             display_name=body.display_name or body.email.split("@")[0],
         )
 
-        token = create_jwt(
-            user.telegram_id, user.account_id, user.role.value,
+        token = await mint_session_token(
+            db, request,
+            user_id=user.id, telegram_id=user.telegram_id,
+            account_id=user.account_id, role=user.role.value,
             remember_me=True,  # account owners always get the long session
         )
         _set_auth_cookie(response, token, remember_me=True)

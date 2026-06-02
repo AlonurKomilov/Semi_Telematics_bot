@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 
 from interfaces.api.deps import (
     get_current_user, get_platform_db, get_tenant_db,
-    get_user_vehicle_nums, require_permission,
+    get_user_vehicle_nums, require_permission, resolve_user_id,
 )
 from capabilities.iam.permissions import can
 from capabilities.maintenance.service import has_maintenance_access
@@ -186,8 +186,9 @@ async def create_work_order(
 ):
     """Create a new work order.  Manager-only — drivers use the bot
     /invoice flow (which creates a draft on their behalf)."""
+    internal_uid = await resolve_user_id(user)
     wo_id = await tenant_db.add_work_order(
-        account_id=user["account_id"], created_by=int(user["sub"]),
+        account_id=user["account_id"], created_by=internal_uid,
         **body.model_dump(),
     )
     await tenant_db.add_audit_log(
@@ -401,7 +402,7 @@ async def upload_attachment(
         work_order_id,
         file_path=file_path, file_name=safe_name,
         file_size=len(raw), content_type=content_type, kind=kind,
-        uploaded_by=int(user["sub"]),
+        uploaded_by=await resolve_user_id(user),
     )
     await tenant_db.add_audit_log(
         user["account_id"], int(user["sub"]),

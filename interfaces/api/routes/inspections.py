@@ -48,6 +48,7 @@ from interfaces.api.deps import (
     get_tenant_db,
     require_permission,
     require_permission_any,
+    resolve_user_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -582,7 +583,7 @@ async def upload_media(
         file_name=safe_name,
         file_size=len(raw),
         content_type=content_type,
-        uploaded_by=int(user["sub"]),
+        uploaded_by=await resolve_user_id(user),
     )
 
     # On a hybrid backend, register the file for async cloud sync.

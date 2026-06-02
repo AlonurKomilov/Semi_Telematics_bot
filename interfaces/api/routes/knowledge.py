@@ -28,7 +28,7 @@ from capabilities.iam.permissions import (
     is_kb_approver_role, is_kb_author_role,
 )
 from capabilities.knowledge.service import can_view_article as _can_view_article
-from interfaces.api.deps import get_current_user, get_platform_db
+from interfaces.api.deps import get_current_user, get_platform_db, resolve_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -284,8 +284,14 @@ async def create_article(
             status_code=403,
             detail="Only owners, admins, fleet, and safety can create articles",
         )
-    user_id = int(user["sub"])
-    await _check_create_rate(user_id)
+    # Rate-limit by the volatile telegram_id (one bucket per device) but
+    # store ownership by the stable internal user.id so re-linking the
+    # account doesn't orphan the creator's articles.
+    telegram_id = int(user["sub"])
+    await _check_create_rate(telegram_id)
+    internal_uid = await resolve_user_id(user)
+    if not internal_uid:
+        raise HTTPException(status_code=401, detail="User not found")
 
     if body.media_url:
         try:
@@ -295,7 +301,7 @@ async def create_article(
 
     body.tags = normalize_tags(body.tags)
 
-    db_user = await platform_db.get_user_by_telegram_id(user_id)
+    db_user = await platform_db.get_user_by_id(internal_uid)
     creator_name = db_user.display_name if db_user else ""
 
     article_id = await platform_db.add_kb_article(
@@ -309,7 +315,7 @@ async def create_article(
         visibility=body.visibility,
         target_role=body.target_role,
         pinned=body.pinned,
-        created_by=user_id,
+        created_by=internal_uid,
         creator_name=creator_name,
     )
     return {
@@ -332,12 +338,15 @@ async def update_article(
     platform_db=Depends(get_platform_db),
 ):
     """Update a knowledge base article. Only the creator can update."""
-    user_id = int(user["sub"])
-    await _check_create_rate(user_id)
+    telegram_id = int(user["sub"])
+    await _check_create_rate(telegram_id)
+    internal_uid = await resolve_user_id(user)
+    if not internal_uid:
+        raise HTTPException(status_code=401, detail="User not found")
     article = await platform_db.get_kb_article(article_id)
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
-    if article.get("created_by") != user_id:
+    if int(article.get("created_by") or 0) != internal_uid:
         raise HTTPException(status_code=403, detail="Only the article creator can edit")
 
     kwargs = {k: v for k, v in body.model_dump().items() if v is not None}
@@ -350,7 +359,7 @@ async def update_article(
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
 
-    ok = await platform_db.update_kb_article(article_id, user_id=user_id, **kwargs)
+    ok = await platform_db.update_kb_article(article_id, user_id=internal_uid, **kwargs)
     return {"ok": ok}
 
 
@@ -361,14 +370,16 @@ async def delete_article(
     platform_db=Depends(get_platform_db),
 ):
     """Delete a knowledge base article. Only the creator can delete."""
-    user_id = int(user["sub"])
+    internal_uid = await resolve_user_id(user)
+    if not internal_uid:
+        raise HTTPException(status_code=401, detail="User not found")
     article = await platform_db.get_kb_article(article_id)
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
-    if article.get("created_by") != user_id:
+    if int(article.get("created_by") or 0) != internal_uid:
         raise HTTPException(status_code=403, detail="Only the article creator can delete")
 
-    ok = await platform_db.delete_kb_article(article_id, user_id=user_id)
+    ok = await platform_db.delete_kb_article(article_id, user_id=internal_uid)
     return {"ok": ok}
 
 

@@ -57,10 +57,12 @@ const PAGE_SIZE = 50;
 export default function KnowledgeBase() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  // ``user.telegram_id`` could be returned as string or number depending on
-  // the auth provider — coerce to Number so the equality check against the
-  // DB BIGINT ``created_by`` is type-safe.
-  const myTelegramId = Number(user?.telegram_id || 0);
+  // ``created_by`` on KB articles stores the stable ``users.id`` —
+  // comparing against ``user.id`` lets ownership survive a Telegram
+  // re-link (changing telegram_id wouldn't change user.id).  Coerce
+  // both sides to Number so a string/number drift from the auth
+  // context can't hide the user's own articles.
+  const myUserId = Number(user?.id || 0);
 
   const qc = useQueryClient();
   const [error, setError] = useState('');
@@ -540,7 +542,7 @@ export default function KnowledgeBase() {
               articles={pinnedArticles}
               expanded={expanded}
               setExpanded={setExpanded}
-              myTelegramId={myTelegramId}
+              myUserId={myUserId}
               canApprove={canApprove}
               getCatLabel={getCatLabel}
               mediaLinkLabel={mediaLinkLabel}
@@ -559,7 +561,7 @@ export default function KnowledgeBase() {
               articles={otherArticles}
               expanded={expanded}
               setExpanded={setExpanded}
-              myTelegramId={myTelegramId}
+              myUserId={myUserId}
               canApprove={canApprove}
               getCatLabel={getCatLabel}
               mediaLinkLabel={mediaLinkLabel}
@@ -618,7 +620,7 @@ interface SectionProps {
   articles: KBArticle[];
   expanded: number | null;
   setExpanded: (id: number | null) => void;
-  myTelegramId: number;
+  myUserId: number;
   canApprove: boolean;
   getCatLabel: (k: string) => string;
   mediaLinkLabel: (t: string) => string;
@@ -631,7 +633,7 @@ interface SectionProps {
 }
 
 function ArticleSection({
-  title, articles, expanded, setExpanded, myTelegramId, canApprove,
+  title, articles, expanded, setExpanded, myUserId, canApprove,
   getCatLabel, mediaLinkLabel, MediaIcon, onEdit, onDelete, onApprove,
   onReject, t,
 }: SectionProps) {
@@ -652,7 +654,7 @@ function ArticleSection({
             article={a}
             expanded={expanded === a.id}
             onToggle={() => setExpanded(expanded === a.id ? null : a.id)}
-            isOwner={Number(a.created_by) === myTelegramId}
+            isOwner={Number(a.created_by) === myUserId}
             canApprove={canApprove}
             getCatLabel={getCatLabel}
             mediaLinkLabel={mediaLinkLabel}

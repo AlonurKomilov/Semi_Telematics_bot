@@ -42,6 +42,10 @@ export interface Permissions {
 }
 
 export interface User {
+  /** Stable internal user.id PK — use this for ownership comparisons
+   *  (KB articles, work orders, PTI media).  Survives Telegram
+   *  re-linking; ``telegram_id`` doesn't. */
+  id?: number;
   telegram_id: number;
   display_name: string;
   role: string;
@@ -295,6 +299,11 @@ export interface MapVehicleProperties {
   status?: 'moving' | 'idle' | 'stopped' | string;
   fuel_percent?: number;
   def_percent?: number;
+  /** Count of active diagnostic trouble codes (DTCs) on this truck.
+   *  Populated by /maps/vehicles from Samsara's activeFaultCodes.
+   *  Used by the Fleet persona's FaultMarkersLayer overlay to ring
+   *  trucks with active mechanical faults. */
+  fault_count?: number;
   company?: string;
   heading?: number | null;
   updated_at?: string;

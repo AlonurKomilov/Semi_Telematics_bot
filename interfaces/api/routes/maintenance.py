@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 
-from interfaces.api.deps import get_current_user, require_permission, get_tenant_db, get_platform_db, get_user_vehicle_nums, paginate
+from interfaces.api.deps import get_current_user, require_permission, get_tenant_db, get_platform_db, get_user_vehicle_nums, paginate, resolve_user_id
 from capabilities.iam.permissions import can
 from capabilities.maintenance.service import has_maintenance_access, spawn_recurring_if_completed
 
@@ -1066,7 +1066,7 @@ async def create_template(
             recur_interval_days=body.recur_interval_days,
             recur_interval_miles=body.recur_interval_miles,
             recur_interval_engine_hours=body.recur_interval_engine_hours,
-            created_by=int(user["sub"]),
+            created_by=await resolve_user_id(user),
         )
     except Exception as e:
         # The UNIQUE(account_id, name) constraint surfaces here when
@@ -1301,3 +1301,87 @@ async def export_dot_binder(
             "Cache-Control": "no-store",
         },
     )
+
+
+@router.get("/due-locations")
+async def maintenance_due_locations(
+    user: dict = Depends(get_current_user),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Per-vehicle aggregate of pending / overdue maintenance tasks for
+    the Fleet persona's Live Map overlay (``MaintenanceMarkersLayer``).
+
+    Returns one row per vehicle that has at least one pending or
+    overdue task — empty array when the fleet is fully caught up.  The
+    frontend joins this against the current vehicle positions
+    (already loaded for the base map) to drop wrench icons on trucks
+    that need shop time, so the overlay doesn't need lat/lon plumbed
+    server-side.
+
+    ``can_maintenance_own`` callers (drivers / per-truck scoping) see
+    only their assigned vehicles' tasks.
+    """
+    if not has_maintenance_access(user["role"]):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+    # Pull pending + overdue separately so the response can show the
+    # counts side by side (UI may render "2 overdue · 1 pending" in
+    # a tooltip).  Both lists are tenant-scoped; no cross-account leak.
+    pending_tasks = await tenant_db.get_maintenance_tasks(
+        user["account_id"], status="pending",
+    )
+    overdue_tasks = await tenant_db.get_overdue_tasks(user["account_id"])
+
+    if not can(user["role"], "can_maintenance_all"):
+        # _own scope: filter to assigned trucks.  Same substring rule
+        # the /tasks endpoint uses for consistency.
+        trucks = await get_user_vehicle_nums(user)
+        if not trucks:
+            pending_tasks = []
+            overdue_tasks = []
+        else:
+            needles = [t.lower() for t in trucks if t]
+            def _matches(t: dict) -> bool:
+                vn = (t.get("vehicle_name") or "").lower()
+                return any(n in vn for n in needles)
+            pending_tasks = [t for t in pending_tasks if _matches(t)]
+            overdue_tasks = [t for t in overdue_tasks if _matches(t)]
+
+    # Aggregate per (vehicle_id or vehicle_name).  Vehicle_id is the
+    # canonical join key (matches the base map's marker id) but some
+    # legacy tasks carry only vehicle_name — fall back so we never
+    # drop a real task from the overlay.
+    agg: dict[str, dict] = {}
+    def _bump(t: dict, key: str) -> None:
+        vid = t.get("vehicle_id") or ""
+        vname = t.get("vehicle_name") or ""
+        if not vid and not vname:
+            return
+        # Prefer vehicle_id as the key when present (stable across renames).
+        bucket = vid or vname
+        row = agg.setdefault(bucket, {
+            "vehicle_id":   vid,
+            "vehicle_name": vname,
+            "pending_count":  0,
+            "overdue_count":  0,
+        })
+        row[key] = row[key] + 1
+        # Backfill the OTHER identity field if we learned it on a later row.
+        if vid and not row["vehicle_id"]:
+            row["vehicle_id"] = vid
+        if vname and not row["vehicle_name"]:
+            row["vehicle_name"] = vname
+
+    for t in pending_tasks:
+        _bump(t, "pending_count")
+    for t in overdue_tasks:
+        _bump(t, "overdue_count")
+
+    items = list(agg.values())
+    # Sort overdue-first so the busiest trucks come first when the UI
+    # iterates the list for marker placement.
+    items.sort(
+        key=lambda r: (r["overdue_count"], r["pending_count"]),
+        reverse=True,
+    )
+    return {"items": items, "count": len(items)}

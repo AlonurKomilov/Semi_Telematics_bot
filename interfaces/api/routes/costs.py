@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from interfaces.api.deps import require_permission, get_tenant_db, get_user_company_codes, validate_company_access, filter_by_assigned_trucks
+from interfaces.api.deps import require_permission, get_tenant_db, get_user_company_codes, validate_company_access, filter_by_assigned_trucks, resolve_user_id
 from capabilities.costs.service import compute_fleet_cpm, summarize_fuel_entries
 
 router = APIRouter(prefix="/costs", tags=["costs"])
@@ -54,7 +54,7 @@ async def add_fuel_entry(
         price_per_gallon=body.price_per_gallon,
         odometer_miles=body.odometer_miles,
         date=body.date,
-        created_by=int(user["sub"]),
+        created_by=await resolve_user_id(user),
     )
     return {"id": row_id, "status": "created"}
 

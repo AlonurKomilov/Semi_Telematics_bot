@@ -72,6 +72,11 @@ async def user_me(
     )
 
     return {
+        # Stable internal primary key — survives Telegram re-linking and
+        # is the value used by ownership checks on KB articles, work
+        # orders, PTI media, etc.  Frontend prefers this over
+        # ``telegram_id`` for "is this row mine?" comparisons.
+        "id": db_user.id,
         "telegram_id": db_user.telegram_id,
         "display_name": db_user.display_name,
         "role": user["role"],

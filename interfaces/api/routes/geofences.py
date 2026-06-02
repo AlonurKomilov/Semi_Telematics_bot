@@ -18,6 +18,7 @@ from interfaces.api.deps import (
     get_user_company_codes,
     validate_company_access,
     filter_by_allowed_companies,
+    resolve_user_id,
 )
 from capabilities.geofencing.geometry import geofence_shape_type as _geofence_shape_type
 from interfaces.bot.state import get_tenant_db
@@ -174,7 +175,7 @@ async def create_geofence(
             longitude=body.longitude,
             radius_meters=radius_meters,
             zone_role=zone_role,
-            created_by=int(user["sub"]),
+            created_by=await resolve_user_id(user),
         )
     except Exception as e:
         if "UNIQUE" in str(e):

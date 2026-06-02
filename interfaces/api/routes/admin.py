@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 
-from interfaces.api.deps import require_permission, get_tenant_db, get_platform_db, paginate
+from interfaces.api.deps import require_permission, get_tenant_db, get_platform_db, paginate, resolve_user_id
 from adapters.storage.models import Role
 from capabilities.iam.permissions import validate_role_change, role_rank
 from capabilities.scoring.rules import get_default_rules as _get_default_rules
@@ -125,9 +125,12 @@ async def get_user_avatar(
     if cached and (time.time() - os.path.getmtime(cached)) < AVATAR_MAX_AGE:
         return FileResponse(cached, media_type="image/jpeg")
 
-    # Fetch from Telegram
+    # Fetch from Telegram via the SYSTEM bot — any bot can call
+    # ``get_user_profile_photos`` for any user, but we anchor to the
+    # operator-stable token so this works even when the login bot is
+    # being rotated.
     try:
-        from infra.config import TELEGRAM_TOKEN as _token
+        from infra.config import TELEGRAM_SYSTEM_BOT_TOKEN as _token
         import telegram
         bot = telegram.Bot(token=_token)
         photos = await bot.get_user_profile_photos(user_id=target.telegram_id, limit=1)
@@ -852,7 +855,7 @@ async def create_schedule(
         label=body.label,
         start_hour=body.start_hour,
         end_hour=body.end_hour,
-        created_by=int(user["sub"]),
+        created_by=await resolve_user_id(user),
         target_role=body.target_role,
     )
     await tenant_db.add_audit_log(
@@ -1739,3 +1742,77 @@ async def disconnect_forum_routing(
         details=f"chat_id={group.chat_id}",
     )
     return {"ok": True, "was_connected": True, "chat_id": group.chat_id}
+
+
+# ── Escalations summary ──────────────────────────────────────
+
+
+@router.get("/escalations")
+async def escalation_summary(
+    user: dict = Depends(require_permission("can_alerts_all")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Owner/admin oversight: how many active alerts are past their
+    re-escalation window or have hit the max-attempts cap.
+
+    Computed from ``alert_history`` (one row per logical alert) and
+    the env-tuned re-escalation knobs.  ``past_due`` means the alert
+    is older than ``REESCALATE_AFTER_MINUTES`` and unacked (the
+    pipeline is currently re-pinging it).  ``breached`` means it hit
+    ``REESCALATE_MAX_ATTEMPTS`` and the pipeline stopped paging — the
+    alert is still in the dashboard queue but no longer interrupting
+    operators.  Both counts are CRITICAL/WARNING only.
+
+    The ``by_persona`` map groups past_due counts by the persona that
+    owns each alert_type (per ``capabilities.alerting.persona_mapping``)
+    so the EscalationStatusCard can drill the owner directly into
+    "Dispatch has 5 alerts past due" without scanning the queue.
+    """
+    from datetime import datetime, timezone, timedelta
+    from infra.config import (
+        REESCALATE_AFTER_MINUTES, REESCALATE_MAX_ATTEMPTS,
+    )
+    from capabilities.alerting import persona_mapping
+
+    account_id = user["account_id"]
+    rows = await tenant_db.get_active_alert_history_for_account(account_id)
+
+    now = datetime.now(timezone.utc)
+    cutoff_minutes = max(REESCALATE_AFTER_MINUTES, 0)
+    cutoff = now - timedelta(minutes=cutoff_minutes)
+
+    past_due = 0
+    breached = 0
+    by_persona: dict[str, int] = {}
+    for r in rows:
+        sev = (r.get("severity") or "").lower()
+        if sev not in ("critical", "warning"):
+            continue
+        # `last_seen` is the latest re-fire timestamp — use it as the
+        # age anchor so a chronic alert that fired again 5 minutes ago
+        # isn't flagged "past_due" just because its first_seen is old.
+        last_seen = r.get("last_seen") or r.get("first_seen") or ""
+        try:
+            ts = datetime.fromisoformat(last_seen.replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+        except Exception:
+            continue
+        reesc = int(r.get("reescalate_count") or 0)
+        is_past_due = cutoff_minutes > 0 and ts < cutoff
+        if is_past_due:
+            past_due += 1
+            persona = persona_mapping.persona_for_alert(r.get("alert_type") or "")
+            by_persona[persona] = by_persona.get(persona, 0) + 1
+        if reesc >= REESCALATE_MAX_ATTEMPTS:
+            breached += 1
+
+    return {
+        "past_due_count":   past_due,
+        "breached_count":   breached,
+        "by_persona":       by_persona,
+        # Knobs returned so the UI can render a "older than 60m" label
+        # without reading env from the browser.
+        "reescalate_after_minutes": REESCALATE_AFTER_MINUTES,
+        "reescalate_max_attempts":  REESCALATE_MAX_ATTEMPTS,
+    }
