@@ -89,21 +89,34 @@ class UsersMixin:
         role: Role = Role.FLEET, department: str = "general",
         display_name: str = "",
     ) -> User:
-        """Create a new user with email+password (no Telegram ID yet)."""
+        """Create a user that signed up via email + password.
+
+        ``telegram_id`` is left NULL on the row — the user can later
+        link a Telegram account through ``link_telegram_to_user`` and
+        the column gets filled in then.  Postgres permits multiple
+        NULL values in a UNIQUE constraint, so the existing
+        ``UNIQUE(telegram_id)`` doesn't need any change.
+
+        Historical note: this method used to synthesise a negative
+        SHA-256-derived placeholder so the NOT NULL constraint stayed
+        satisfied.  That placeholder leaked across the auth surface in
+        confusing ways (JWT ``sub`` was negative, ownership comparisons
+        broke on Telegram link, etc.).  Dropping the placeholder means
+        every consumer that reads ``telegram_id`` must tolerate None —
+        ``User.label`` and ``users.py`` lookup paths already handle it.
+        """
         now = self._now()
-        import hashlib
-        placeholder_tid = -abs(int(hashlib.sha256(email.encode()).hexdigest()[:15], 16))
         cur = await self._db.execute(
             """INSERT INTO users
                (telegram_id, account_id, role, department, display_name,
                 email, password_hash, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (placeholder_tid, account_id, role.value, department,
+            (None, account_id, role.value, department,
              display_name, email.lower().strip(), password_hash, now),
         )
         await self._db.commit()
         return User(
-            id=cur.lastrowid, telegram_id=placeholder_tid,
+            id=cur.lastrowid, telegram_id=None,
             account_id=account_id, role=role,
             department=department, truck_num=None,
             display_name=display_name, email=email.lower().strip(),

@@ -21,6 +21,13 @@ class Role(str, Enum):
     FLEET       = "fleet"
     SAFETY      = "safety"
     DISPATCHER  = "dispatcher"
+    # HR + ACCOUNTING are dedicated personas for the
+    # people-management and money-management halves of the business.
+    # They have their own subdomains (hr.4truck.us / accounting.4truck.us),
+    # their own sidebar nav (interfaces/dashboard/src/shells/nav/),
+    # and their own permission defaults (see capabilities/iam/permissions.py).
+    HR          = "hr"
+    ACCOUNTING  = "accounting"
     DRIVER      = "driver"
 
     @classmethod
@@ -50,6 +57,7 @@ class Account:
     payroll_enabled: bool = False
     coaching_enabled: bool = False
     timezone: str = "America/New_York"
+    alert_routing_mode: str = "single_group"
 
 @dataclass
 class Company:
@@ -65,7 +73,11 @@ class Company:
 @dataclass
 class User:
     id: int
-    telegram_id: int
+    # ``telegram_id`` is nullable for users who registered by email and
+    # haven't linked Telegram yet.  Use ``id`` (the internal PK) for
+    # anything that needs a guaranteed-present identifier; this field
+    # is only set when the user has a real Telegram connection.
+    telegram_id: Optional[int]
     account_id: int
     role: Role
     department: str
@@ -146,8 +158,21 @@ class User:
 
     @property
     def label(self) -> str:
-        """Human-readable name for UI display, falls back to telegram_id."""
-        return self.display_name or str(self.telegram_id)
+        """Human-readable name for UI display.
+
+        Order of preference:
+          1. ``display_name`` (always set if known)
+          2. ``email`` for email-only users without a Telegram link
+          3. ``str(telegram_id)`` for Telegram users
+          4. ``str(id)`` as the last-resort fallback
+        """
+        if self.display_name:
+            return self.display_name
+        if self.email:
+            return self.email
+        if self.telegram_id:
+            return str(self.telegram_id)
+        return str(self.id)
 
     @property
     def linked_label(self) -> str:
@@ -226,6 +251,33 @@ class AlertRoute:
     topic_name_snapshot: str   # name at provisioning time (drift detection)
     icon_emoji: str            # default icon used when created
     is_active: bool            # soft-disable without delete
+    created_at: str
+    updated_at: str
+
+
+@dataclass
+class PersonaGroup:
+    """A flat Telegram group chat dedicated to one persona for one
+    account, used when ``accounts.alert_routing_mode = 'per_persona_groups'``.
+
+    Replaces the legacy single-forum-with-topics model: instead of one
+    forum and a topic per alert_type, the account creates a separate
+    group per persona (Dispatchers, Safety, Fleet, HR) and the owner/
+    admin aggregate group.  ``alert_type → persona`` happens in
+    ``capabilities.alerting.persona_mapping``.
+
+    Composite key: (account_id, persona).  ``persona`` matches the
+    persona slugs used by the dashboard shell (owner, admin, fleet,
+    dispatcher, safety, hr, accounting, driver) — but in practice
+    routing only writes to the aggregate-and-operational set:
+    owner_admin, dispatcher, safety, fleet, hr.
+    """
+    id: int
+    account_id: int
+    persona: str
+    chat_id: int              # Telegram chat_id (negative for groups)
+    chat_title: str
+    is_active: bool
     created_at: str
     updated_at: str
 

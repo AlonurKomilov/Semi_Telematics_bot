@@ -175,8 +175,17 @@ def create_jwt(
     """
     ttl = JWT_EXPIRY_LONG_SECONDS if remember_me else JWT_EXPIRY_SHORT_SECONDS
     now = int(time.time())
+    # ``sub`` historically held the user's Telegram ID, which is also
+    # the dictionary key the bot path uses.  For email-only users
+    # whose Telegram isn't linked yet, ``telegram_id`` can be None /
+    # 0; we fall back to ``user_id`` so the claim is always set to
+    # SOMETHING usable (and the API's ``resolve_user_id`` helper
+    # always prefers the explicit ``uid`` claim anyway).
+    sub_value = str(telegram_id) if telegram_id else (
+        str(user_id) if (user_id and user_id > 0) else "0"
+    )
     payload = {
-        "sub": str(telegram_id),
+        "sub": sub_value,
         "account_id": account_id,
         "role": role,
         "remember": bool(remember_me),
