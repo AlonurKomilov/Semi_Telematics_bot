@@ -261,11 +261,16 @@ class TestLowFuelFormatter:
         assert "Cincinnati, OH" in result
 
     def test_includes_detection_time(self):
+        # The 🕐 line carries the absolute event time only — no
+        # "X min ago" suffix, since Telegram doesn't refresh sent
+        # messages and the relative phrase would freeze + lie once
+        # the message ages.  We just assert the line is present.
         from datetime import datetime, timezone, timedelta
         recent = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
         vehicle = {"name": "607", "_org": "CO1"}
         result = format_low_fuel_alert(vehicle, 7.0, detected_at=recent)
-        assert "min ago" in result
+        assert "🕐" in result
+        assert "ago" not in result.lower()
 
 
 class TestHealthAlertExtras:
@@ -288,6 +293,7 @@ class TestHealthAlertExtras:
         assert "Dayton, OH" in result
 
     def test_includes_detection_time(self):
+        # Absolute 🕐 time only (see TestLowFuelFormatter for rationale).
         from datetime import datetime, timezone, timedelta
         recent = (datetime.now(timezone.utc) - timedelta(minutes=3)).isoformat()
         vehicle = {"name": "H3", "_org": "CO1"}
@@ -295,7 +301,8 @@ class TestHealthAlertExtras:
             vehicle, ["low_battery"], {"battery_v": 11.5},
             detected_at=recent,
         )
-        assert "min ago" in result
+        assert "🕐" in result
+        assert "ago" not in result.lower()
 
 
 class TestFaultAlertExtras:
@@ -313,6 +320,7 @@ class TestFaultAlertExtras:
         assert "Tap" not in result
 
     def test_includes_detection_time(self):
+        # Absolute 🕐 time only (see TestLowFuelFormatter for rationale).
         from datetime import datetime, timezone, timedelta
         recent = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
         vehicle = {"name": "F2", "location": {}, "_org": "CO1"}
@@ -324,7 +332,8 @@ class TestFaultAlertExtras:
         result = format_fault_alert(
             vehicle, dtcs, severity="warning", detected_at=recent,
         )
-        assert "min ago" in result
+        assert "🕐" in result
+        assert "ago" not in result.lower()
 
 
 # ══════════════════════════════════════════════════════════════════

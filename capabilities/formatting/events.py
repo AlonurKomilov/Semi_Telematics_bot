@@ -6,7 +6,7 @@ from collections import Counter
 from constants import TZ_ET as _TZ_ET
 from infra.context import get_company_display
 from capabilities.formatting.helpers import (
-    _t, _relative_ago, _when_chip, _split_message,
+    _t, _when_chip, _split_message,
 )
 
 
@@ -149,22 +149,23 @@ def format_event_alert(event: dict) -> str:
 
     vname = _esc(event.get("vehicle_name", "?"))
     dname = _esc(event.get("driver_name", "Unassigned"))
-    lat = event.get("latitude")
-    lng = event.get("longitude")
 
     raw_time = event.get("time", "")
     when = _when_chip(raw_time)
 
+    # Prefer a human-readable address; fall back to the nested
+    # ``reverseGeo.formattedLocation`` Samsara sometimes nests when
+    # the flat alias is missing.  We no longer fall back to raw
+    # ``lat,lng`` — the 🗺 View on map button below the message
+    # carries the precise coordinates, so a "33.1622, -95.1786"
+    # line in the body was redundant noise that hurt mobile
+    # readability.  When no address is available the location row
+    # is simply omitted; dispatch still has the map button.
     addr = (event.get("address") or "").strip()
     if not addr:
         loc = event.get("location") or {}
         addr = ((loc.get("reverseGeo") or {}).get("formattedLocation") or "").strip()
-    if addr:
-        loc_str = _esc(addr)
-    elif lat is not None and lng is not None:
-        loc_str = f"{lat:.4f}, {lng:.4f}"
-    else:
-        loc_str = ""
+    loc_str = _esc(addr) if addr else ""
 
     lines: list[str] = [f"<b>{badge(sev)}</b> — {title}", ""]
 
@@ -290,17 +291,13 @@ def format_alert_history_footer(occurrence_count: int,
         parts.append(f"  {head}")
 
     if occurrence_count > 1:
+        # Absolute timestamps only — the "(2 d ago)" suffix that used
+        # to follow these freezes at send time on Telegram and turns
+        # into a lie once the message ages, so it was dropped.
         first_display = _fmt_short_et(first_seen)
         last_display = _fmt_short_et(last_seen)
-        first_ago = _relative_ago(first_seen)
-        last_ago = _relative_ago(last_seen)
-
         first_line = _t('alert_format.history_since').replace('{date}', first_display)
-        if first_ago:
-            first_line = f"{first_line} {first_ago}"
         last_line = _t('alert_format.history_latest').replace('{date}', last_display)
-        if last_ago:
-            last_line = f"{last_line} {last_ago}"
         parts.extend([f"  {first_line}", f"  {last_line}"])
 
     if not parts:

@@ -266,25 +266,27 @@ class TestEventFormatters:
         result = format_event_alert(event)
         assert "Dayton, OH" in result
 
-    def test_format_event_alert_includes_relative_ago_for_recent(self):
-        # Event a few minutes old → "(N min ago)" suffix on the Time
-        # line so dispatchers can see at a glance how stale the alert
-        # is vs. the bot delivery timestamp.
+    def test_format_event_alert_omits_relative_ago_for_recent(self):
+        # Alert formatters now show absolute event time only — the
+        # "(N min ago)" suffix was retired because Telegram messages
+        # don't refresh after send, so the relative phrase froze at
+        # send time and turned into a lie once the user read the
+        # message hours later.
         from datetime import datetime, timezone, timedelta
         recent = (datetime.now(timezone.utc) - timedelta(minutes=4)).isoformat()
         event = _sample_event(time=recent)
         result = format_event_alert(event)
-        assert "ago" in result
-        # Acceptable: "4 min ago" or "3 min ago" depending on rounding.
-        assert "min ago" in result
+        assert "ago" not in result.lower()
+        # The absolute 🕐 line is still rendered.
+        assert "🕐" in result
 
-    def test_format_event_alert_relative_ago_hours(self):
+    def test_format_event_alert_omits_relative_ago_for_hours_old(self):
         from datetime import datetime, timezone, timedelta
         old = (datetime.now(timezone.utc) - timedelta(hours=2, minutes=30)).isoformat()
         event = _sample_event(time=old)
         result = format_event_alert(event)
-        assert "hr ago" in result
-        assert "2 hr ago" in result
+        assert "ago" not in result.lower()
+        assert "🕐" in result
 
     def test_format_event_alert_no_ago_for_unparseable_time(self):
         # Garbage timestamp → no relative suffix, no crash.

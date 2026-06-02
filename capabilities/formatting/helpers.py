@@ -65,56 +65,27 @@ def _fmt_time(iso_str: str, tz_name: str | None = None) -> str:
         return iso_str
 
 
-def _relative_ago(iso_str: str) -> str:
-    """Return a parenthesised relative-time suffix like "(4 min ago)".
-
-    Used on alert "Time" lines so dispatchers can see at a glance
-    whether the underlying *event* was minutes or hours old when the
-    Telegram message arrived (the bot timestamp = send time, not
-    detection time, which can confuse on-call staff).
-
-    Returns "" when the timestamp is missing, unparseable, or in the
-    future (clock skew); the caller decides how to lay it out next to
-    the absolute time.
-    """
-    if not iso_str:
-        return ""
-    try:
-        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
-    except Exception:
-        return ""
-    now = datetime.now(timezone.utc)
-    delta = now - dt
-    secs = int(delta.total_seconds())
-    if secs < 0:
-        # Future-dated (clock skew); skip the suffix rather than
-        # rendering a misleading "in the future".
-        return ""
-    if secs < 60:
-        return f"({_t('alert_format.ago_just_now')})"
-    if secs < 3600:
-        mins = secs // 60
-        return f"({_t('alert_format.ago_minutes').replace('{n}', str(mins))})"
-    if secs < 86400:
-        hrs = secs // 3600
-        return f"({_t('alert_format.ago_hours').replace('{n}', str(hrs))})"
-    days = secs // 86400
-    return f"({_t('alert_format.ago_days').replace('{n}', str(days))})"
-
-
 def _when_chip(iso_str: str, tz_name: str | None = None) -> str:
-    """Mobile-friendly "absolute time · relative-ago" pair.
+    """Mobile-friendly absolute time stamp for an alert "🕐" line.
 
     Examples
     --------
-    Today (<24h old):  ``"11:57 PM · 10 min ago"``
-    Older same year:   ``"May 21, 11:57 PM · 2 d ago"``
-    Older than 1 year: ``"May 21, 2025  11:57 PM · 365 d ago"``
+    Today (<24h old):  ``"11:57 PM"``
+    Older same year:   ``"May 21, 11:57 PM"``
+    Older than 1 year: ``"May 21, 2025  11:57 PM"``
 
     Drops the year for recent events so the line stays short on a
-    phone — the relative-ago suffix already carries the "how long
-    back" signal.  Returns ``""`` when ``iso_str`` is empty or
-    unparseable so callers can simply skip the row.
+    phone.  Returns ``""`` when ``iso_str`` is empty or unparseable
+    so callers can simply skip the row.
+
+    Why no "X min ago" suffix
+    -------------------------
+    Telegram messages don't auto-refresh — a "just now" rendered at
+    send time keeps saying "just now" hours later when the user
+    finally reads the alert.  The relative phrasing was actively
+    misleading; the absolute time alone never goes stale.  Telegram
+    already shows the *send* timestamp on the message itself, so
+    the "🕐" line carries only the underlying-event time.
     """
     if not iso_str:
         return ""
@@ -139,14 +110,10 @@ def _when_chip(iso_str: str, tz_name: str | None = None) -> str:
     # Same-day → clock only.  Older but same year → short date + clock.
     # Older than ~1 year → full date with year for unambiguous archival.
     if delta_secs < 86400:
-        abs_str = local.strftime("%I:%M %p")
-    elif delta_secs < 86400 * 365:
-        abs_str = local.strftime("%b %d, %I:%M %p")
-    else:
-        abs_str = local.strftime("%b %d, %Y  %I:%M %p")
-
-    ago = _relative_ago(iso_str).strip("()")
-    return f"{abs_str} · {ago}" if ago else abs_str
+        return local.strftime("%I:%M %p")
+    if delta_secs < 86400 * 365:
+        return local.strftime("%b %d, %I:%M %p")
+    return local.strftime("%b %d, %Y  %I:%M %p")
 
 
 def _light_badges(lights: dict) -> str:
