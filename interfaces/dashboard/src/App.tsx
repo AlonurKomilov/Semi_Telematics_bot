@@ -1,8 +1,12 @@
 import { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { isSafeReturnTo, APEX_DOMAIN } from './lib/safeReturnTo';
 import AppRouter from './router';
 import Login from './pages/Login';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+import VerifyEmail from './pages/VerifyEmail';
 
 /**
  * Apex (``4truck.us``) is the single canonical login host — every
@@ -31,6 +35,8 @@ const ROLE_TO_HOST: Record<string, string> = {
   fleet: `fleet.${APEX_DOMAIN}`,
   dispatcher: `dispatch.${APEX_DOMAIN}`,
   safety: `safety.${APEX_DOMAIN}`,
+  hr: `hr.${APEX_DOMAIN}`,
+  accounting: `accounting.${APEX_DOMAIN}`,
   driver: `dash.${APEX_DOMAIN}`,
 };
 
@@ -48,12 +54,73 @@ function shouldBounceToApex(): boolean {
   return host.endsWith(`.${APEX_DOMAIN}`);
 }
 
+// ── Loop guard ────────────────────────────────────────────────────
+//
+// Each bounce (subdomain→apex or apex→subdomain) stamps a counter in
+// sessionStorage.  If we see more than LOOP_THRESHOLD bounces inside
+// LOOP_WINDOW_MS, something is genuinely desynced — both sides
+// disagree about whether the user is logged in — and silently
+// retrying forever wedges the browser.  We break out by hard-clearing
+// localStorage, calling /auth/logout to invalidate the server cookie,
+// and showing the apex login form.
+const LOOP_KEY = 'auth_bounce_counter';
+const LOOP_TS_KEY = 'auth_bounce_first_ts';
+const LOOP_WINDOW_MS = 5_000;
+const LOOP_THRESHOLD = 3;
+
+function recordBounceAndCheckLoop(): boolean {
+  try {
+    const now = Date.now();
+    const first = Number(sessionStorage.getItem(LOOP_TS_KEY) || '0');
+    const count = Number(sessionStorage.getItem(LOOP_KEY) || '0');
+    if (!first || now - first > LOOP_WINDOW_MS) {
+      sessionStorage.setItem(LOOP_TS_KEY, String(now));
+      sessionStorage.setItem(LOOP_KEY, '1');
+      return false;
+    }
+    const next = count + 1;
+    sessionStorage.setItem(LOOP_KEY, String(next));
+    return next >= LOOP_THRESHOLD;
+  } catch {
+    return false;
+  }
+}
+
+function clearBounceCounter(): void {
+  try {
+    sessionStorage.removeItem(LOOP_KEY);
+    sessionStorage.removeItem(LOOP_TS_KEY);
+  } catch { /* ignore */ }
+}
+
+async function hardLogoutOnLoop(): Promise<void> {
+  // Loop detected — break it.  Drop any localStorage token, force the
+  // server to clear the cookie one more time, then land on apex/login
+  // WITHOUT a return_to so the apex side can't re-forward us right
+  // back to where we came from.
+  try {
+    localStorage.removeItem('access_token');
+    sessionStorage.removeItem('access_token');
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+  } catch { /* best-effort */ }
+  clearBounceCounter();
+  window.location.replace(`https://${APEX_DOMAIN}/login`);
+}
+
 function bounceToApexLogin(): void {
+  if (recordBounceAndCheckLoop()) {
+    void hardLogoutOnLoop();
+    return;
+  }
   const returnTo = encodeURIComponent(window.location.href);
   window.location.replace(`https://${APEX_DOMAIN}/login?return_to=${returnTo}`);
 }
 
 function forwardAuthenticatedFromApex(role: string | undefined): void {
+  if (recordBounceAndCheckLoop()) {
+    void hardLogoutOnLoop();
+    return;
+  }
   // Honor return_to first — set by the unauth bounce, this is where
   // the user actually wanted to go.  ``isSafeReturnTo`` is the shared
   // origin guard in ``lib/safeReturnTo`` so this site stays in lock-
@@ -70,8 +137,18 @@ function forwardAuthenticatedFromApex(role: string | undefined): void {
   window.location.replace(`https://${target ?? `dash.${APEX_DOMAIN}`}/`);
 }
 
+// Routes reachable WITHOUT an authenticated session.  Rendered before
+// the auth guard so a user clicking a "reset your password" link from
+// their inbox can land here even though they're not signed in.
+const PUBLIC_AUTH_ROUTES: Record<string, React.ComponentType> = {
+  '/forgot-password': ForgotPassword,
+  '/reset-password': ResetPassword,
+  '/verify-email': VerifyEmail,
+};
+
 export default function App() {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   useEffect(() => {
     if (loading) return;
@@ -81,7 +158,11 @@ export default function App() {
     }
     if (user && isOnApex()) {
       forwardAuthenticatedFromApex(user.role);
+      return;
     }
+    // Clean landing — no bounce required.  Clear the loop counter so
+    // subsequent legitimate navigations start fresh.
+    clearBounceCounter();
   }, [loading, user]);
 
   if (loading) {
@@ -110,6 +191,15 @@ export default function App() {
       </div>
     );
   }
+
+  // Public auth routes (reset-password, verify-email, forgot-password)
+  // are reachable without a session.  They live OUTSIDE the AppRouter
+  // so the shell + permission-guarded routes don't load on what's
+  // essentially a public page.  Match the leading path component
+  // exactly so ``/reset-password?token=...`` query strings still
+  // route correctly.
+  const PublicPage = PUBLIC_AUTH_ROUTES[location.pathname];
+  if (PublicPage) return <PublicPage />;
 
   if (!user) return <Login />;
 

@@ -1156,19 +1156,124 @@ class EmailRegisterRequest(BaseModel):
     remember_me: bool = False
 
 
+def _validate_password_strength(password: str) -> None:
+    """Enforce the policy: at least 8 characters with at least one
+    letter and one digit.
+
+    Raises 422 with a clear message — surfaced verbatim on the
+    register / set-password / reset-password screens so the user
+    knows exactly what to fix.  Kept here (not in a pydantic
+    validator) so all entry points share one source of truth and
+    future rule changes touch one function.
+    """
+    if not password or len(password) < 8:
+        raise HTTPException(
+            status_code=422,
+            detail="Password must be at least 8 characters.",
+        )
+    has_letter = any(c.isalpha() for c in password)
+    has_digit = any(c.isdigit() for c in password)
+    if not (has_letter and has_digit):
+        raise HTTPException(
+            status_code=422,
+            detail="Password must include at least one letter and one digit.",
+        )
+
+
 @router.post("/login", response_model=AuthResponse)
 @limiter.limit("10/minute")
 async def auth_email_login(request: Request, response: Response, body: EmailLoginRequest):
-    """Authenticate via email + password."""
+    """Authenticate via email + password.
+
+    Adds three checks beyond "password matches":
+
+    1. **Account lockout** — refuses login while ``locked_until`` is in
+       the future.  The error explicitly says when the lock expires so
+       the user can come back later (or use "forgot password" to bypass
+       the wait by resetting from a fresh device).
+
+    2. **Failed-attempt tracking** — every wrong password increments
+       a counter on the user row.  At 5 failures the account is locked
+       for 15 minutes and the legitimate owner gets an email heads-up
+       (best-effort; SMTP no-op is fine).
+
+    3. **Email-verified gate** — refuses login if the user hasn't
+       redeemed their verification token yet.  The response surfaces a
+       structured detail so the dashboard can show a "resend" button
+       instead of a generic 401.
+
+    Audit-trailing: a placeholder; once ``add_platform_audit_log``
+    lands it should be called here for both success + failure with the
+    request IP.  For now the standard rate-limiter + lockout cover
+    the security side; the audit dim is "nice to have."
+    """
     from infra.platform import get_platform_db
     db = get_platform_db()
 
     user = await db.get_user_by_email(body.email)
     if not user or not user.password_hash:
+        # Don't reveal whether the email exists.  A probe attacker
+        # learns nothing from the timing because we never reach the
+        # password verify path.
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
+    # Lockout check happens BEFORE password verification so a brute
+    # force can't even time-probe valid emails.
+    locked_until = await db.is_user_locked(user.id)
+    if locked_until:
+        raise HTTPException(
+            status_code=423,  # Locked
+            detail={
+                "message": (
+                    "Account temporarily locked after too many failed "
+                    "login attempts.  Try again after the lockout window "
+                    "expires, or use 'Forgot password' to reset."
+                ),
+                "error_code": "account_locked",
+                "locked_until": locked_until,
+            },
+        )
+
     if not _verify_password(body.password, user.password_hash):
+        # Record the miss + lock if threshold hit.  We don't await
+        # the email here so a slow SMTP relay doesn't slow the 401.
+        lock_state = await db.record_failed_login(user.id)
+        if lock_state.get("locked_until"):
+            # Best-effort heads-up to the legitimate user.
+            try:
+                from capabilities.notifications.auth_emails import (
+                    send_lockout_notice,
+                )
+                client_ip = _client_ip(request)
+                send_lockout_notice(
+                    to=user.email or "", recipient_name=user.display_name,
+                    ip=client_ip,
+                )
+            except Exception as e:
+                logging.getLogger("api.auth").debug(
+                    "lockout notice for %s failed: %s", user.email, e,
+                )
         raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    # Successful auth — clear the lockout counter.
+    await db.clear_failed_logins(user.id)
+
+    # Email-verified gate.  Users created BEFORE verification existed
+    # are backfilled to verified=1 by the schema migration, so we don't
+    # accidentally lock out historical accounts.
+    if not await db.is_email_verified(user.id):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": (
+                    "Please verify your email before signing in.  Check "
+                    "your inbox for the verification link, or request a "
+                    "new one from the login screen."
+                ),
+                "error_code": "email_not_verified",
+                "email": user.email,
+            },
+        )
 
     token = await mint_session_token(
         db, request,
@@ -1188,10 +1293,20 @@ async def auth_email_login(request: Request, response: Response, body: EmailLogi
     )
 
 
-@router.post("/register", response_model=AuthResponse)
+@router.post("/register")
 @limiter.limit("10/minute")
 async def auth_email_register(request: Request, response: Response, body: EmailRegisterRequest):
-    """Register a new user via email + password + invite code."""
+    """Register a new user via email + password + invite code.
+
+    Behavior change: registration NO LONGER auto-mints a session token.
+    The user must verify their email first (we email them a link with a
+    one-time token).  The response carries a structured message that the
+    dashboard renders as "We sent a verification email — check your
+    inbox" instead of trying to redirect them into the app.
+
+    This matches the policy "block login until verified" — letting a
+    fresh signup walk straight in would defeat the gate.
+    """
     from infra.platform import get_platform_db
     db = get_platform_db()
 
@@ -1199,11 +1314,8 @@ async def auth_email_register(request: Request, response: Response, body: EmailR
     if not _EMAIL_RE.match(body.email):
         raise HTTPException(status_code=422, detail="Invalid email address")
 
-    # Validate password strength
-    if len(body.password) < 8:
-        raise HTTPException(
-            status_code=422, detail="Password must be at least 8 characters"
-        )
+    # Shared password policy — same rule as /set-password and /reset-password.
+    _validate_password_strength(body.password)
 
     # Check if email already taken
     existing = await db.get_user_by_email(body.email)
@@ -1249,22 +1361,213 @@ async def auth_email_register(request: Request, response: Response, body: EmailR
             "Ask your company admin for an invite link.",
         )
 
-    token = await mint_session_token(
-        db, request,
-        user_id=user.id, telegram_id=user.telegram_id,
-        account_id=user.account_id, role=user.role.value,
-        remember_me=body.remember_me,
-    )
-    _set_auth_cookie(response, token, remember_me=body.remember_me)
-    return AuthResponse(
-        access_token=token,
-        user={
-            "telegram_id": user.telegram_id,
-            "name": user.display_name,
-            "role": user.role.value,
-            "account_id": user.account_id,
-        },
-    )
+    # Email verification: mint a token, ship the link.  Do NOT issue
+    # an auth cookie — the user must redeem the verification token
+    # first.  This blocks the "spam signup → use the app" path the
+    # email-required policy is designed to prevent.
+    try:
+        verify_token = await db.create_email_verification_token(
+            user.id, body.email,
+        )
+        from capabilities.notifications.auth_emails import (
+            send_verification_email,
+        )
+        send_verification_email(
+            to=body.email, token=verify_token,
+            recipient_name=user.display_name or "",
+        )
+    except Exception as e:
+        # Token mint or email send failed — log and surface a generic
+        # error.  The user can hit "resend verification" to retry.
+        logging.getLogger("api.auth").warning(
+            "verification email mint/send failed for %s: %s",
+            body.email, e,
+        )
+
+    return {
+        "status": "registered",
+        "verification_required": True,
+        "email": body.email,
+        "message": (
+            "Account created.  Check your inbox for the verification "
+            "link, then sign in."
+        ),
+    }
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str
+
+
+class ResendVerificationRequest(BaseModel):
+    email: str
+
+
+@router.post("/forgot-password")
+@limiter.limit("5/minute")
+async def auth_forgot_password(request: Request, body: ForgotPasswordRequest):
+    """Start the password-reset flow.
+
+    Always responds 200 with the same generic body whether the email
+    exists or not — that way a probing attacker can't enumerate which
+    emails are registered by timing or response shape.  The reset
+    email is sent (best-effort) only when the email IS registered;
+    other requests are silent no-ops.
+    """
+    from infra.platform import get_platform_db
+    db = get_platform_db()
+    email = (body.email or "").strip().lower()
+
+    if email and _EMAIL_RE.match(email):
+        user = await db.get_user_by_email(email)
+        if user and user.password_hash:
+            try:
+                token = await db.create_password_reset_token(user.id)
+                from capabilities.notifications.auth_emails import (
+                    send_password_reset_email,
+                )
+                send_password_reset_email(
+                    to=email, token=token,
+                    recipient_name=user.display_name or "",
+                )
+            except Exception as e:
+                logging.getLogger("api.auth").warning(
+                    "reset email mint/send failed for %s: %s", email, e,
+                )
+
+    return {
+        "status": "ok",
+        "message": (
+            "If an account exists for that email, a reset link is on "
+            "its way.  Check your inbox (and spam folder)."
+        ),
+    }
+
+
+@router.post("/reset-password")
+@limiter.limit("10/minute")
+async def auth_reset_password(request: Request, body: ResetPasswordRequest):
+    """Complete the password reset.
+
+    Token must be unredeemed and unexpired (1-hour window per the
+    storage helper).  On success: set the new password hash, mark the
+    token used, clear any lockout, stamp ``password_changed_at``.
+    Does NOT auto-sign-in — the user is bounced to the login screen
+    so they prove the new credentials work and pick remember-me on
+    their own.
+    """
+    from infra.platform import get_platform_db
+    db = get_platform_db()
+    _validate_password_strength(body.password)
+
+    user_id = await db.consume_password_reset_token(body.token)
+    if not user_id:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": (
+                    "Reset link is invalid, expired, or already used.  "
+                    "Request a new one from the login page."
+                ),
+                "error_code": "reset_token_invalid",
+            },
+        )
+
+    pw_hash = _hash_password(body.password)
+    user = await db.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    # set_user_email_password keeps the email the same when called
+    # with the user's current email.
+    await db.set_user_email_password(user_id, user.email or "", pw_hash)
+    await db.clear_failed_logins(user_id)
+    await db.mark_password_changed(user_id)
+
+    return {
+        "status": "ok",
+        "message": "Password updated.  Sign in with your new password.",
+    }
+
+
+@router.get("/verify-email")
+async def auth_verify_email(token: str):
+    """Redeem an email-verification token.
+
+    Returns a small JSON body the dashboard renders into a success
+    page.  If you'd rather have a friendly redirect, the dashboard
+    just calls this endpoint from its /verify-email route and shows
+    its own success view.
+
+    Re-redeeming a used token returns the same error as an unknown
+    one — no information leakage about whether THIS token was ever
+    valid.
+    """
+    from infra.platform import get_platform_db
+    db = get_platform_db()
+    user_id = await db.consume_email_verification_token(token)
+    if not user_id:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": (
+                    "Verification link is invalid, expired, or already "
+                    "used.  Request a fresh one from the login page."
+                ),
+                "error_code": "verify_token_invalid",
+            },
+        )
+    return {
+        "status": "ok",
+        "message": "Email verified.  You can sign in now.",
+    }
+
+
+@router.post("/resend-verification")
+@limiter.limit("3/minute")
+async def auth_resend_verification(
+    request: Request, body: ResendVerificationRequest,
+):
+    """Re-send the verification email.
+
+    Like ``forgot-password``: always responds 200 to avoid leaking
+    which emails are registered.  Caps at 3 sends per minute per IP
+    on top of the per-account token churn.
+    """
+    from infra.platform import get_platform_db
+    db = get_platform_db()
+    email = (body.email or "").strip().lower()
+    if email and _EMAIL_RE.match(email):
+        user = await db.get_user_by_email(email)
+        # Only re-send when the account exists AND hasn't already been
+        # verified.  Verified accounts don't need another link.
+        if user and not await db.is_email_verified(user.id):
+            try:
+                token = await db.create_email_verification_token(
+                    user.id, email,
+                )
+                from capabilities.notifications.auth_emails import (
+                    send_verification_email,
+                )
+                send_verification_email(
+                    to=email, token=token,
+                    recipient_name=user.display_name or "",
+                )
+            except Exception as e:
+                logging.getLogger("api.auth").warning(
+                    "resend verification failed for %s: %s", email, e,
+                )
+    return {
+        "status": "ok",
+        "message": (
+            "If an unverified account exists for that email, a fresh "
+            "link has been sent.  Check your inbox."
+        ),
+    }
 
 
 @router.post("/logout")

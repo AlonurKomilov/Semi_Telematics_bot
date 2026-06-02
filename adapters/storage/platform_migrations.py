@@ -47,6 +47,11 @@ async def run_all(conn) -> None:
     await migrate_create_user_sessions(conn)
     await migrate_create_account_persona_groups(conn)
     await migrate_add_accounts_alert_routing_mode(conn)
+    # Self-service password reset + email verification + per-user
+    # lockout after failed login attempts.  Adds three columns to
+    # ``users`` and creates two short-lived token tables.  Safe to
+    # re-run: every step is gated by IF NOT EXISTS / column lookup.
+    await migrate_account_security_features(conn)
     # The next steps MUST be the last entries — each touches every
     # table that has an ``account_id`` column, so they need every
     # CREATE TABLE already applied.  Run order matters:
@@ -1999,3 +2004,122 @@ async def migrate_backfill_user_id_ownership(conn) -> None:
                 "Migration 080: backfilled %d ownership row(s) across %d table(s)",
                 total, len(columns),
             )
+
+
+# ── Account-security columns + reset/verify token tables ───────────
+
+
+async def migrate_account_security_features(conn) -> None:
+    """Wire up the schema needed for password-reset + email-verify + lockout.
+
+    Three changes, all guarded so re-runs are no-ops:
+
+    1. ``users.email_verified`` (INTEGER, default 0)
+       — flipped to 1 the first time the verification token is
+       redeemed.  Login refuses unverified users until this is True.
+
+    2. ``users.failed_login_attempts`` + ``users.locked_until``
+       — incremented on failed password check; cleared on a successful
+       login.  Once attempts hit the threshold, ``locked_until`` is
+       stamped to ``now + 15 min`` and the user's next login attempts
+       are refused until that time passes.
+
+    3. ``password_reset_tokens`` and ``email_verification_tokens``
+       — short-lived single-use token tables.  ``token`` is the
+       opaque URL-safe string that lands in the email link;
+       ``used_at`` is stamped on consumption so a token can never be
+       used twice.  ``expires_at`` is checked at consumption time,
+       and an index on it makes the periodic cleanup sweep cheap.
+
+    Idempotent
+    ----------
+    - Column additions use ALTER TABLE ... ADD COLUMN inside a try/
+      except that swallows "already exists" errors.
+    - Table creates use IF NOT EXISTS.
+    - Indexes use IF NOT EXISTS.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(users)")
+        existing = {r[1] for r in await cur.fetchall()}
+    except Exception:
+        existing = set()
+
+    # ── users column additions ──
+    new_columns = [
+        ("email_verified",        "INTEGER NOT NULL DEFAULT 0"),
+        ("failed_login_attempts", "INTEGER NOT NULL DEFAULT 0"),
+        ("locked_until",          "TEXT"),
+        ("password_changed_at",   "TEXT"),
+    ]
+    for col_name, col_decl in new_columns:
+        if col_name in existing:
+            continue
+        try:
+            await conn.execute(
+                f"ALTER TABLE users ADD COLUMN {col_name} {col_decl}"
+            )
+            logger.info("Added users.%s column", col_name)
+        except Exception as e:
+            logger.debug("users.%s ADD skipped (%s)", col_name, e)
+
+    # ── password_reset_tokens table ──
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                token       TEXT    NOT NULL UNIQUE,
+                user_id     INTEGER NOT NULL REFERENCES users(id),
+                created_at  TEXT    NOT NULL,
+                expires_at  TEXT    NOT NULL,
+                used_at     TEXT
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pwd_reset_expires "
+            "ON password_reset_tokens(expires_at)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pwd_reset_user "
+            "ON password_reset_tokens(user_id, used_at)"
+        )
+    except Exception as e:
+        logger.debug("password_reset_tokens setup skipped (%s)", e)
+
+    # ── email_verification_tokens table ──
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS email_verification_tokens (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                token       TEXT    NOT NULL UNIQUE,
+                user_id     INTEGER NOT NULL REFERENCES users(id),
+                email       TEXT    NOT NULL,
+                created_at  TEXT    NOT NULL,
+                expires_at  TEXT    NOT NULL,
+                used_at     TEXT
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_email_verify_expires "
+            "ON email_verification_tokens(expires_at)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_email_verify_user "
+            "ON email_verification_tokens(user_id, used_at)"
+        )
+    except Exception as e:
+        logger.debug("email_verification_tokens setup skipped (%s)", e)
+
+    # Mark every existing email-bearing user as verified so the new
+    # gate doesn't lock out accounts that registered before this
+    # migration ran.  Newly-registered users start at 0.
+    try:
+        await conn.execute(
+            "UPDATE users SET email_verified = 1 "
+            "WHERE email IS NOT NULL AND email <> '' "
+            "AND email_verified = 0"
+        )
+    except Exception as e:
+        logger.debug("email_verified backfill skipped (%s)", e)
+
+    await conn.commit()
+    logger.info("Migration: account-security schema in place")

@@ -143,6 +143,260 @@ class UsersMixin:
         row = await cur.fetchone()
         return row[0] if row else 0
 
+    async def list_all_users_cross_account(
+        self,
+        search: str = "",
+        limit: int = 200,
+    ) -> list[dict]:
+        """Operator-side cross-account user search (system console).
+
+        Joined with ``accounts.name`` so the operator sees "Jane —
+        PREMIER TRUCKING (owner)" without a per-row lookup.  ``search``
+        matches display_name (case-insensitive substring), email, or an
+        exact telegram_id.  Newest first.  This is the only place we
+        intentionally read users across tenant boundaries — gated by
+        ``require_system_owner`` at the route.
+        """
+        where = ["u.account_id = a.id"]
+        params: list = []
+        needle = (search or "").strip()
+        if needle:
+            clause = "(LOWER(u.display_name) LIKE ? OR LOWER(COALESCE(u.email,'')) LIKE ?"
+            params.append(f"%{needle.lower()}%")
+            params.append(f"%{needle.lower()}%")
+            if needle.isdigit():
+                clause += " OR u.telegram_id = ?"
+                params.append(int(needle))
+            clause += ")"
+            where.append(clause)
+        params.append(limit)
+        cur = await self._db.execute(
+            f"""
+            SELECT u.id, u.telegram_id, u.account_id, a.name AS account_name,
+                   u.role, u.display_name, u.email, u.is_active,
+                   u.created_at, u.last_seen
+            FROM users u, accounts a
+            WHERE {" AND ".join(where)}
+            ORDER BY u.created_at DESC, u.id DESC
+            LIMIT ?
+            """,
+            params,
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def create_user_session(
+        self,
+        *,
+        user_id: int,
+        jti: str,
+        device_label: str,
+        user_agent: str,
+        ip: str,
+        created_at: str,
+        last_seen: str,
+        expires_at: str,
+    ) -> int | None:
+        """Record a freshly-minted JWT as an active session.
+
+        Called from each login flow in ``interfaces/api/auth.py`` after
+        ``create_jwt``.  Returns the new row id, or ``None`` if the row
+        couldn't be inserted (e.g. jti collision — astronomically
+        unlikely with ``secrets.token_urlsafe(16)``).
+        """
+        try:
+            cur = await self._db.execute(
+                """INSERT INTO user_sessions
+                   (user_id, jti, device_label, user_agent, ip,
+                    created_at, last_seen, expires_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (user_id, jti, device_label, user_agent, ip,
+                 created_at, last_seen, expires_at),
+            )
+            await self._db.commit()
+            return cur.lastrowid
+        except Exception:
+            return None
+
+    async def update_user_session_on_refresh(
+        self, jti: str, new_expires_at: str, now_iso: str,
+    ) -> None:
+        """Extend an existing session row's expiry on JWT refresh.
+
+        Refresh re-issues a token with a fresh ``exp`` but the **same**
+        jti — the underlying browser session is unchanged, so we update
+        in place rather than insert a duplicate row.  Silent no-op when
+        the jti isn't found (e.g. session was revoked or never recorded).
+        """
+        await self._db.execute(
+            "UPDATE user_sessions SET expires_at = ?, last_seen = ? WHERE jti = ?",
+            (new_expires_at, now_iso, jti),
+        )
+        await self._db.commit()
+
+    async def touch_user_session_last_seen(self, jti: str, now_iso: str) -> None:
+        """Stamp the heartbeat on one session row.  Silent no-op if the
+        jti isn't found (legacy tokens minted before user_sessions
+        existed, or session row was deleted)."""
+        await self._db.execute(
+            "UPDATE user_sessions SET last_seen = ? WHERE jti = ?",
+            (now_iso, jti),
+        )
+        await self._db.commit()
+
+    async def revoke_user_session(
+        self, session_id: int, *, owning_user_id: int | None = None,
+    ) -> dict | None:
+        """Mark a single session as revoked.
+
+        When ``owning_user_id`` is provided, the session is only revoked
+        if it belongs to that user (the customer "revoke my device"
+        path).  When omitted, no ownership check is applied — operator-
+        only path, gated at the route by ``require_system_owner``.
+
+        Returns the revoked row's jti + expires_at so the caller can
+        push the jti onto the Redis denylist with the correct TTL.
+        ``None`` when the row didn't exist, was already revoked, or
+        failed the ownership check.
+        """
+        # SELECT-then-UPDATE so we can return jti + expires_at without
+        # asking Postgres for RETURNING (keeps the SQLite-style adapter
+        # path working).  Race-free: a duplicate revoke from a second
+        # tab still ends up with the same revoked row, no harm done.
+        where = ["id = ?", "revoked_at IS NULL"]
+        params: list = [session_id]
+        if owning_user_id is not None:
+            where.append("user_id = ?")
+            params.append(owning_user_id)
+        cur = await self._db.execute(
+            f"""SELECT id, jti, expires_at, user_id
+                FROM user_sessions
+                WHERE {" AND ".join(where)}
+                LIMIT 1""",
+            params,
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        await self._db.execute(
+            "UPDATE user_sessions SET revoked_at = ? WHERE id = ?",
+            (now_iso, row["id"]),
+        )
+        await self._db.commit()
+        return {
+            "id": row["id"],
+            "jti": row["jti"],
+            "expires_at": row["expires_at"],
+            "user_id": row["user_id"],
+        }
+
+    async def revoke_user_session_by_jti(self, jti: str) -> dict | None:
+        """Mark a session as revoked by its jti.
+
+        Used by the ``/auth/logout`` endpoint — that path doesn't know
+        the row id, only the jti carried in the JWT.  Returns the row's
+        ``{jti, expires_at, user_id}`` so the caller can push the jti
+        onto the Redis denylist with the right TTL.  ``None`` when no
+        row exists or it was already revoked.
+        """
+        cur = await self._db.execute(
+            """SELECT id, jti, expires_at, user_id FROM user_sessions
+               WHERE jti = ? AND revoked_at IS NULL LIMIT 1""",
+            (jti,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        await self._db.execute(
+            "UPDATE user_sessions SET revoked_at = ? WHERE id = ?",
+            (now_iso, row["id"]),
+        )
+        await self._db.commit()
+        return {
+            "id": row["id"],
+            "jti": row["jti"],
+            "expires_at": row["expires_at"],
+            "user_id": row["user_id"],
+        }
+
+    async def revoke_other_user_sessions(
+        self, user_id: int, current_jti: str,
+    ) -> list[dict]:
+        """Revoke every active session for ``user_id`` except ``current_jti``.
+
+        Returns the list of revoked rows ({jti, expires_at}) so the
+        caller can fan them out to the Redis denylist.  When the user
+        has no other sessions, returns an empty list.
+        """
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        cur = await self._db.execute(
+            """SELECT id, jti, expires_at FROM user_sessions
+               WHERE user_id = ? AND revoked_at IS NULL AND jti <> ?""",
+            (user_id, current_jti),
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+        if not rows:
+            return []
+        await self._db.execute(
+            """UPDATE user_sessions SET revoked_at = ?
+               WHERE user_id = ? AND revoked_at IS NULL AND jti <> ?""",
+            (now_iso, user_id, current_jti),
+        )
+        await self._db.commit()
+        return rows
+
+    async def list_user_sessions(
+        self,
+        user_id: int,
+        *,
+        include_revoked: bool = False,
+        limit: int = 50,
+    ) -> list[dict]:
+        """Return one user's sessions, newest-active first.
+
+        Pass 1 surfaces only the active ones (``revoked_at IS NULL`` and
+        not yet past ``expires_at``).  Pass 2 will use
+        ``include_revoked=True`` for a revoked-history view.
+        """
+        where = ["user_id = ?"]
+        params: list = [user_id]
+        if not include_revoked:
+            where.append("revoked_at IS NULL")
+            # Expires are stored as ISO UTC; SQLite compares strings
+            # lexicographically which is correct for that fixed format.
+            where.append("expires_at > ?")
+            from datetime import datetime, timezone
+            params.append(datetime.now(timezone.utc).isoformat())
+        params.append(limit)
+        cur = await self._db.execute(
+            f"""SELECT id, user_id, jti, device_label, user_agent, ip,
+                       created_at, last_seen, expires_at, revoked_at
+                FROM user_sessions
+                WHERE {" AND ".join(where)}
+                ORDER BY last_seen DESC, id DESC
+                LIMIT ?""",
+            params,
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def touch_user_last_seen(self, telegram_id: int, now_iso: str) -> None:
+        """Stamp ``users.last_seen`` for one user.
+
+        Called (throttled) by ``get_current_user`` on every authenticated
+        API request so the operator console can show 'last seen X ago'.
+        Throttling lives in the auth dependency — this method just writes.
+        Silent no-op if telegram_id doesn't match a row.
+        """
+        await self._db.execute(
+            "UPDATE users SET last_seen = ? WHERE telegram_id = ?",
+            (now_iso, telegram_id),
+        )
+        await self._db.commit()
+
     async def get_account_admins(self, account_id: int) -> list[User]:
         """Return owners and admins for an account (for error notifications)."""
         cur = await self._db.execute(
@@ -335,12 +589,16 @@ class UsersMixin:
         )
         stats["roles"] = {r[0]: r[1] for r in await cur.fetchall()}
 
-        # AI usage per account (last 30 days)
+        # AI usage per account (last 30 days).  ``created_at`` is TEXT
+        # in our schema (ISO-8601 strings); Postgres can't directly
+        # compare TEXT > timestamptz, so we cast the column.  The
+        # pg_adapter translates ``datetime('now', '-30 days')`` to
+        # ``NOW() - INTERVAL '30 days'`` (timestamptz on the right).
         cur = await self._db.execute(
             "SELECT a.name, u.model, COUNT(*) as calls, "
             "COALESCE(SUM(u.total_tokens),0) as tokens "
             "FROM ai_usage u JOIN accounts a ON a.id = u.account_id "
-            "WHERE u.created_at > datetime('now', '-30 days') "
+            "WHERE u.created_at::timestamptz > datetime('now', '-30 days') "
             "GROUP BY a.name, u.model ORDER BY tokens DESC"
         )
         stats["ai_usage"] = [
@@ -356,13 +614,13 @@ class UsersMixin:
         stats["ai_total_calls"] = row[0]
         stats["ai_total_tokens"] = row[1]
 
-        # Alert stats (last 7 days)
+        # Alert stats (last 7 days) — same TEXT vs timestamptz fix as above.
         cur = await self._db.execute(
             "SELECT alert_type, COUNT(*) as total, "
             "SUM(CASE WHEN acknowledged_at IS NOT NULL THEN 1 ELSE 0 END), "
             "SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END) "
             "FROM alert_acknowledgments "
-            "WHERE created_at > datetime('now', '-7 days') "
+            "WHERE created_at::timestamptz > datetime('now', '-7 days') "
             "GROUP BY alert_type ORDER BY total DESC"
         )
         stats["alerts_7d"] = [
@@ -399,15 +657,19 @@ class UsersMixin:
         cur = await self._db.execute("SELECT COUNT(*) FROM audit_log")
         stats["audit_entries"] = (await cur.fetchone())[0]
 
-        # DB file size
-        import os
-        db_path = getattr(self, 'path', "data/bot.db")
-        db_size = 0
-        for suffix in ("", "-wal", "-shm"):
-            path = f"{db_path}{suffix}"
-            if os.path.exists(path):
-                db_size += os.path.getsize(path)
-        stats["db_size_mb"] = round(db_size / 1024 / 1024, 1)
+        # Database size — ``pg_database_size`` is the Postgres equivalent
+        # of the old SQLite ``stat(data/bot.db) + -wal + -shm``.  Returns
+        # bytes for the current database; converted to MB to match the
+        # field's historical units.
+        try:
+            cur = await self._db.execute(
+                "SELECT pg_database_size(current_database())"
+            )
+            db_bytes = (await cur.fetchone())[0] or 0
+            stats["db_size_mb"] = round(db_bytes / 1024 / 1024, 1)
+        except Exception:
+            # Permission error / unusual deployment — skip gracefully.
+            stats["db_size_mb"] = 0.0
 
         return stats
 
@@ -418,3 +680,234 @@ class UsersMixin:
         )
         await self._db.commit()
         return True
+
+    # ── Email verification ──────────────────────────────────────────
+
+    async def create_email_verification_token(
+        self, user_id: int, email: str, ttl_hours: int = 24,
+    ) -> str:
+        """Mint a one-time verification token bound to ``user_id``.
+
+        Returns the URL-safe token string.  The caller emails the
+        full URL (``<dashboard>/verify-email/<token>``) — the token
+        itself never appears in logs or query params we save.
+        Expires in ``ttl_hours`` (24h by default — long enough that a
+        user can wait until they next check their inbox).
+        """
+        import secrets
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        expires = now + timedelta(hours=ttl_hours)
+        token = secrets.token_urlsafe(32)
+        await self._db.execute(
+            """INSERT INTO email_verification_tokens
+               (token, user_id, email, created_at, expires_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (token, user_id, email.lower().strip(),
+             now.isoformat(), expires.isoformat()),
+        )
+        await self._db.commit()
+        return token
+
+    async def consume_email_verification_token(
+        self, token: str,
+    ) -> Optional[int]:
+        """Verify and mark a token used.  Returns user_id on success.
+
+        Returns None when the token is unknown, expired, or already
+        used.  On success: flip ``users.email_verified=1`` and stamp
+        ``used_at`` so the same token can't be redeemed twice.
+        """
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        cur = await self._db.execute(
+            "SELECT user_id, expires_at, used_at "
+            "FROM email_verification_tokens WHERE token = ?",
+            (token,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        row = dict(row)
+        if row.get("used_at"):
+            return None
+        if (row.get("expires_at") or "") < now:
+            return None
+        user_id = int(row["user_id"])
+        await self._db.execute(
+            "UPDATE email_verification_tokens SET used_at = ? "
+            "WHERE token = ?", (now, token),
+        )
+        await self._db.execute(
+            "UPDATE users SET email_verified = 1 WHERE id = ?",
+            (user_id,),
+        )
+        await self._db.commit()
+        return user_id
+
+    async def is_email_verified(self, user_id: int) -> bool:
+        """True when the user has redeemed their verification link.
+
+        Users created before email verification existed are backfilled
+        to 1 by the migration so the gate doesn't lock them out.
+        """
+        cur = await self._db.execute(
+            "SELECT email_verified FROM users WHERE id = ?", (user_id,),
+        )
+        row = await cur.fetchone()
+        return bool(row and dict(row).get("email_verified"))
+
+    # ── Failed-login lockout ────────────────────────────────────────
+
+    async def record_failed_login(
+        self, user_id: int, max_attempts: int = 5,
+        lock_minutes: int = 15,
+    ) -> dict:
+        """Increment failed-login counter.  Locks when threshold hit.
+
+        Returns ``{attempts, locked_until}`` so the caller can decide
+        what to surface in the response (you locked the account / N
+        attempts left).  The lock window slides — every NEW failure
+        after the threshold extends ``locked_until``, which means a
+        determined attacker can't poll while the lock is active.
+        """
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        cur = await self._db.execute(
+            "SELECT failed_login_attempts FROM users WHERE id = ?",
+            (user_id,),
+        )
+        row = await cur.fetchone()
+        prev = int(dict(row).get("failed_login_attempts", 0)) if row else 0
+        attempts = prev + 1
+        locked_until: Optional[str] = None
+        if attempts >= max_attempts:
+            locked_until = (now + timedelta(minutes=lock_minutes)).isoformat()
+            await self._db.execute(
+                "UPDATE users SET failed_login_attempts = ?, "
+                "locked_until = ? WHERE id = ?",
+                (attempts, locked_until, user_id),
+            )
+        else:
+            await self._db.execute(
+                "UPDATE users SET failed_login_attempts = ? WHERE id = ?",
+                (attempts, user_id),
+            )
+        await self._db.commit()
+        return {"attempts": attempts, "locked_until": locked_until}
+
+    async def clear_failed_logins(self, user_id: int) -> None:
+        """Reset counter + lock on a successful login.
+
+        Called by the login endpoint right after password verification
+        succeeds.  Keeps the door open if the user's next attempt is
+        legitimately their own typo.
+        """
+        await self._db.execute(
+            "UPDATE users SET failed_login_attempts = 0, "
+            "locked_until = NULL WHERE id = ?", (user_id,),
+        )
+        await self._db.commit()
+
+    async def is_user_locked(self, user_id: int) -> Optional[str]:
+        """Return ``locked_until`` ISO timestamp if currently locked,
+        ``None`` otherwise.
+
+        Auto-clears the lock when the timestamp has passed, so the
+        caller doesn't have to remember to.  This makes the login
+        endpoint a single SELECT to know "can this user even try".
+        """
+        from datetime import datetime, timezone
+        cur = await self._db.execute(
+            "SELECT locked_until FROM users WHERE id = ?", (user_id,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        locked_until = dict(row).get("locked_until")
+        if not locked_until:
+            return None
+        now = datetime.now(timezone.utc).isoformat()
+        if locked_until <= now:
+            # Lock window expired — clear it so future SELECTs are clean.
+            await self._db.execute(
+                "UPDATE users SET failed_login_attempts = 0, "
+                "locked_until = NULL WHERE id = ?", (user_id,),
+            )
+            await self._db.commit()
+            return None
+        return locked_until
+
+    # ── Password reset ──────────────────────────────────────────────
+
+    async def create_password_reset_token(
+        self, user_id: int, ttl_hours: int = 1,
+    ) -> str:
+        """Mint a one-time password-reset token.
+
+        Default TTL is 1 hour — short enough that a stolen email
+        attachment doesn't grant persistent access, long enough for a
+        user to act on the email when they read it.  Caller emails
+        the URL; the raw token never logs.
+        """
+        import secrets
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        expires = now + timedelta(hours=ttl_hours)
+        token = secrets.token_urlsafe(32)
+        await self._db.execute(
+            """INSERT INTO password_reset_tokens
+               (token, user_id, created_at, expires_at)
+               VALUES (?, ?, ?, ?)""",
+            (token, user_id, now.isoformat(), expires.isoformat()),
+        )
+        await self._db.commit()
+        return token
+
+    async def consume_password_reset_token(
+        self, token: str,
+    ) -> Optional[int]:
+        """Validate a reset token + mark it used.  Returns user_id.
+
+        Returns None when the token is unknown, expired, or already
+        used.  Does NOT change the password — caller is expected to
+        call ``set_user_email_password`` with the new hash next.  The
+        two operations are separate so a transport failure between
+        them leaves the token used (preventing re-use) but the old
+        password still working (user can request a new reset).
+        """
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        cur = await self._db.execute(
+            "SELECT user_id, expires_at, used_at "
+            "FROM password_reset_tokens WHERE token = ?", (token,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        row = dict(row)
+        if row.get("used_at"):
+            return None
+        if (row.get("expires_at") or "") < now:
+            return None
+        user_id = int(row["user_id"])
+        await self._db.execute(
+            "UPDATE password_reset_tokens SET used_at = ? "
+            "WHERE token = ?", (now, token),
+        )
+        await self._db.commit()
+        return user_id
+
+    async def mark_password_changed(self, user_id: int) -> None:
+        """Stamp ``users.password_changed_at`` to now.
+
+        Useful for the future "your password was changed at X" panel
+        and for forcing other sessions to re-authenticate after a
+        password change.
+        """
+        from datetime import datetime, timezone
+        await self._db.execute(
+            "UPDATE users SET password_changed_at = ? WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), user_id),
+        )
+        await self._db.commit()

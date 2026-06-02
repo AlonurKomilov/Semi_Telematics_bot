@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { setToken } from '../api/client';
+import { apiJSON } from '../api/client';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import type { TelegramLoginData } from '../types';
@@ -20,6 +21,14 @@ export default function Login() {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // The login API returns a structured 403 when the account isn't
+  // email-verified yet.  Flipping this flag swaps the generic
+  // ``error`` block for a "verify your inbox" notice with a "resend"
+  // button — better UX than a flat error toast.
+  const [needsVerification, setNeedsVerification] = useState(false);
+  // After a successful registration the API tells us to check the
+  // inbox; we render a green callout instead of redirecting.
+  const [registeredEmail, setRegisteredEmail] = useState('');
   const [botUsername, setBotUsername] = useState('4truckBot');
   const [botId, setBotId] = useState('');
   const [widgetKey, setWidgetKey] = useState(0);
@@ -155,15 +164,54 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setNeedsVerification(false);
+    setRegisteredEmail('');
     setLoading(true);
     try {
       if (mode === 'login') {
         await loginWithEmail(email, password, rememberMe);
       } else {
-        await registerWithEmail(email, password, displayName, inviteCode);
+        // Registration no longer auto-signs-in — the API returns the
+        // verification-required envelope and we render the "check
+        // your inbox" notice instead of redirecting.
+        const result = await apiJSON<{
+          status: string;
+          verification_required?: boolean;
+          email?: string;
+          message?: string;
+        }>('/auth/register', {
+          method: 'POST',
+          body: {
+            email,
+            password,
+            display_name: displayName,
+            invite_code: inviteCode,
+          },
+        });
+        if (result?.verification_required) {
+          setRegisteredEmail(result.email || email);
+          // Drop into login mode so the user knows what to do next.
+          setMode('login');
+          // Fall through — don't throw.  The notice block on the
+          // form will render via registeredEmail.
+        } else {
+          // Legacy / unexpected response shape — fall back to the
+          // old auto-login path so existing callers keep working.
+          await registerWithEmail(email, password, displayName, inviteCode);
+        }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Authentication failed');
+      // The login API responds with two structured detail shapes we
+      // can render as more-actionable UI than a flat error string.
+      const raw = err instanceof Error ? err.message : '';
+      // ``apiJSON`` surfaces server detail messages directly — match
+      // on the error_code substring rather than parsing JSON ourselves.
+      if (raw.includes('email_not_verified')) {
+        setNeedsVerification(true);
+        setError(t('auth.error_email_not_verified'));
+      } else {
+        setError(raw || 'Authentication failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -239,19 +287,46 @@ export default function Login() {
           />
 
           {mode === 'login' && (
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="w-4 h-4 rounded border-border accent-primary cursor-pointer"
-              />
-              <span className="text-sm text-muted-foreground">{t('auth.remember_me')}</span>
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 rounded border-border accent-primary cursor-pointer"
+                />
+                <span className="text-sm text-muted-foreground">{t('auth.remember_me')}</span>
+              </label>
+              <a
+                href="/forgot-password"
+                className="text-xs text-primary hover:underline"
+              >
+                {t('auth.forgot_password')}
+              </a>
+            </div>
           )}
 
           {error && (
             <p className="text-destructive text-xs">{error}</p>
+          )}
+
+          {/* Surface the "verify your email" flow when the API tells us
+              the account is unverified.  The user can click to send a
+              fresh verification link without re-entering credentials. */}
+          {needsVerification && (
+            <UnverifiedEmailNotice
+              email={email}
+              onResent={() => setError(t('auth.verification_resent'))}
+            />
+          )}
+
+          {/* Welcome message after successful registration — the API
+              tells us the user must verify their email before signing
+              in, so we replace the form-error with an actionable note. */}
+          {registeredEmail && mode === 'register' && (
+            <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-md text-xs text-green-700 dark:text-green-400">
+              {t('auth.register_check_inbox', { email: registeredEmail })}
+            </div>
           )}
 
           <Button
@@ -402,6 +477,62 @@ export default function Login() {
             : 'Sign in with your email or Telegram account.'}
         </p>
       </div>
+    </div>
+  );
+}
+
+
+/**
+ * Inline notice rendered when the login API tells us the user hasn't
+ * redeemed their verification link yet.  Carries a "resend" button
+ * that calls /auth/resend-verification.  The endpoint always returns
+ * 200 regardless of whether the email is registered, so this is safe
+ * to expose without leaking account existence to a probing attacker.
+ */
+function UnverifiedEmailNotice({
+  email, onResent,
+}: {
+  email: string;
+  onResent: () => void;
+}) {
+  const { t } = useTranslation();
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const handleResend = async () => {
+    if (sending || sent) return;
+    setSending(true);
+    try {
+      await apiJSON('/auth/resend-verification', {
+        method: 'POST',
+        body: { email },
+      });
+      setSent(true);
+      onResent();
+    } catch {
+      // Endpoint is intentionally always 200, but if a network
+      // failure trips us mid-flight, fall back silently — the user
+      // can click again.
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-md text-xs text-amber-700 dark:text-amber-400 space-y-2">
+      <p>{t('auth.error_email_not_verified')}</p>
+      <button
+        type="button"
+        onClick={handleResend}
+        disabled={sending || sent}
+        className="text-amber-700 dark:text-amber-300 underline hover:no-underline disabled:opacity-50"
+      >
+        {sent
+          ? t('auth.verification_resent')
+          : sending
+            ? t('auth.verification_resending')
+            : t('auth.verification_resend_button')}
+      </button>
     </div>
   );
 }
