@@ -29,15 +29,13 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
 
     if has_api:
         # ── Grouped sub-menus (only when API is connected) ──────
-        has_reports = (perms.can_faults or perms.can_fuel
-                       or perms.can_vehicle_all or perms.can_vehicle_own
+        # Predicates match exactly what each submenu now renders
+        # post-dashboard-migration — hiding the parent button when
+        # the submenu would otherwise be empty for that role.
+        has_reports = (perms.can_vehicle_all
                        or perms.can_events_all or perms.can_events_own)
-        has_tools = (perms.can_scorecard_all or perms.can_scorecard_own
-                     or perms.can_location_map or perms.can_location_own
-                     or perms.can_route_all or perms.can_route_own
-                     or perms.can_geofence_all or perms.can_geofence_own)
-        has_costs = (perms.can_fuel_cost or perms.can_cost_per_mile
-                     or perms.can_maintenance_all or perms.can_maintenance_own)
+        has_tools = perms.can_geofence_all or perms.can_geofence_own
+        has_costs = perms.can_fuel_cost
 
         row1 = []
         if has_reports:
@@ -105,95 +103,60 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
     return InlineKeyboardMarkup(rows)
 
 
-def submenu_reports_kb(role: Role, company_codes: list[str] | None = None) -> InlineKeyboardMarkup:
-    """Fleet Reports sub-menu — faults, fuel, health, efficiency, weather, truck."""
+def submenu_reports_kb(role: Role, company_codes: list[str] | None = None) -> InlineKeyboardMarkup:  # noqa: ARG001
+    """Reports sub-menu — quick bot lookups only.
+
+    Fleet-wide report buttons (Faults / Fuel / Health / Efficiency /
+    Weather / Cameras report / Scheduled digest) were retired —
+    those flows live on the dashboard now.  Typing the matching
+    slash command still works and redirects.  What's kept here is
+    the moment-shaped stuff: a single-event browse and a single-
+    truck lookup.
+    """
     perms = get_permissions(role)
     rows = []
-
-    row1 = []
-    if perms.can_faults:
-        row1.append(InlineKeyboardButton(t("reports_menu.faults"), callback_data="cmd_faults"))
-    if row1:
-        rows.append(row1)
-
-    row2 = []
-    if perms.can_fuel:
-        row2.append(InlineKeyboardButton(t("reports_menu.fuel_def"), callback_data="cmd_fuel"))
-    if perms.can_faults:
-        row2.append(InlineKeyboardButton("🌡 Weather", callback_data="cmd_weather"))
-    if row2:
-        rows.append(row2)
-
-    if perms.can_faults:
-        rows.append([
-            InlineKeyboardButton(t("reports_menu.vehicle_health"), callback_data="cmd_health"),
-            InlineKeyboardButton(t("reports_menu.efficiency"), callback_data="cmd_efficiency"),
-        ])
 
     if perms.can_events_all or perms.can_events_own:
         rows.append([InlineKeyboardButton(t("tools_menu.events"), callback_data="cmd_events")])
 
-    # Camera report (visible to anyone who can view faults)
-    if perms.can_faults:
-        rows.append([InlineKeyboardButton("📷 Cameras", callback_data="cmd_camera_report")])
-
     if perms.can_vehicle_all:
         rows.append([InlineKeyboardButton(t("reports_menu.search_truck"), callback_data="cmd_vehicle_prompt")])
-
-    if perms.can_digest:
-        rows.append([InlineKeyboardButton(t("menu.digest"), callback_data="cmd_auto_reports")])
 
     rows.append([InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
 
 
 def submenu_tools_kb(role: Role) -> InlineKeyboardMarkup:
-    """Tools sub-menu — scorecards, map, routes, geofences."""
+    """Tools sub-menu — only the bot-shaped action lookups.
+
+    Scorecards / Live Map / Routes / Geofences / Maintenance / the
+    paginated Cameras picker all moved to the dashboard.  What
+    stays here is the per-driver / per-event view that the bot is
+    actually useful for.
+    """
     perms = get_permissions(role)
     rows = []
 
-    row1 = []
-    if perms.can_scorecard_all or perms.can_scorecard_own:
-        row1.append(InlineKeyboardButton(t("reports_menu.scorecards"), callback_data="cmd_scorecards"))
-    # Live Map + Routes buttons removed — those flows now live on the
-    # dashboard (interactive map > static PNG).  Typing /livemap or
-    # /route still works and replies with a dashboard deep-link.
-    if row1:
-        rows.append(row1)
-
-    row2 = []
-    if perms.can_geofence_all or perms.can_geofence_own:
-        row2.append(InlineKeyboardButton("📍 Geofences", callback_data="cmd_geofences"))
-    if row2:
-        rows.append(row2)
-
-    # Camera check — single-truck check (pick company → truck → result)
-    if perms.can_faults:
-        rows.append([InlineKeyboardButton("📷 Cameras", callback_data="cmd_cam_tool")])
-
-    # Parking — uses geofence permission
+    # Parking — driver-scoped event view (uses geofence permission)
     if perms.can_geofence_all or perms.can_geofence_own:
         rows.append([InlineKeyboardButton("🅿️ Parking", callback_data="cmd_parking_events")])
-
-    if perms.can_maintenance_all or perms.can_maintenance_own:
-        rows.append([InlineKeyboardButton(t("costs_menu.maintenance"), callback_data="cmd_maintenance")])
 
     rows.append([InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)
 
 
 def submenu_costs_kb(role: Role) -> InlineKeyboardMarkup:
-    """Cost & Maintenance sub-menu."""
+    """Costs sub-menu — driver fill-up logging only.
+
+    Cost-per-mile reports moved to the dashboard.  ``/fuelcost`` is
+    kept because the *Add fill-up* step is a driver-at-the-pump
+    moment (pump receipt in hand, quick entry, done).
+    """
     perms = get_permissions(role)
     rows = []
 
-    row1 = []
     if perms.can_fuel_cost:
-        row1.append(InlineKeyboardButton(t("costs_menu.fuel_costs"), callback_data="cmd_fuelcost"))
-    if perms.can_cost_per_mile:
-        row1.append(InlineKeyboardButton("📊 Cost per Mile", callback_data="cmd_costmile"))
-    if row1:
-        rows.append(row1)
+        rows.append([InlineKeyboardButton(t("costs_menu.fuel_costs"), callback_data="cmd_fuelcost")])
 
     rows.append([InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")])
     return InlineKeyboardMarkup(rows)

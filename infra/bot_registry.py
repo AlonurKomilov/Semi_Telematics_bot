@@ -79,25 +79,34 @@ async def _build_bot_app(
     me = await app.bot.get_me()
     app.bot_data["bot_username"] = me.username or ""
 
-    # Set bot commands
+    # Set the Telegram slash-popup command list — only commands the
+    # bot actually executes locally appear here.  CRUD/management/
+    # PDF surfaces moved to the dashboard; typing those commands
+    # still works (you get a "moved → open on dashboard" reply) but
+    # listing them in the popup would imply they still do their old
+    # job, which is misleading.
     await app.bot.set_my_commands([
-        BotCommand("start", "🏠 Main menu"),
-        BotCommand("join", "🔑 Join with invite code"),
-        BotCommand("faults", "🔧 Fault report (PDF)"),
-        BotCommand("vehicle", "🚛 Vehicle detail"),
-        BotCommand("fuel", "⛽ Low fuel"),
-        BotCommand("alerts", "🔔 Auto-alerts"),
-        BotCommand("invite", "✉️ Invite team member"),
-        BotCommand("account", "🏢 Account info"),
-        BotCommand("users", "👥 Manage users"),
-        BotCommand("addorg", "📡 Connect company"),
-        BotCommand("groups", "💬 Manage group access"),
-        BotCommand("chatid", "🆔 Show chat ID"),
-        BotCommand("health", "🏥 Vehicle health"),
-        BotCommand("efficiency", "📊 Efficiency report"),
-        BotCommand("settings", "🔧 Notification settings"),
-        BotCommand("audit", "📋 View audit log"),
-        BotCommand("help", "ℹ️ Help"),
+        BotCommand("start",       "🏠 Main menu"),
+        BotCommand("join",        "🔑 Join with invite code"),
+        # ── Driver-on-truck workflows ──────────────────────────
+        BotCommand("pti",         "📋 Pre-trip inspection"),
+        BotCommand("invoice",     "🧾 Submit a shop invoice"),
+        BotCommand("fuelcost",    "⛽ Log a fill-up"),
+        BotCommand("my_pay",      "💵 My paystub"),
+        BotCommand("my_coaching", "🎓 My coaching tasks"),
+        # ── Quick lookups + diagnostics ────────────────────────
+        BotCommand("vehicle",     "🚛 Vehicle quick lookup"),
+        BotCommand("cam",         "📷 Camera check (one truck)"),
+        BotCommand("tips",        "📚 Knowledge base"),
+        BotCommand("ai",          "🤖 AI assistant"),
+        BotCommand("events",      "🚦 Safety events"),
+        BotCommand("alerts",      "🔔 Alert settings + pending"),
+        # ── Settings / housekeeping ────────────────────────────
+        BotCommand("settings",    "⚙️ Notification settings"),
+        BotCommand("invite",      "✉️ Invite team member"),
+        BotCommand("audit",       "📋 Audit log"),
+        BotCommand("chatid",      "🆔 Show chat ID"),
+        BotCommand("help",        "ℹ️ Help"),
     ])
 
     # Start updater

@@ -102,8 +102,20 @@ def format_unregistered_member(
     )
 
 
-def format_welcome_unregistered(support_contact: str = "", name: str = "") -> str:
-    """Shown to users who haven't registered or joined yet."""
+def format_welcome_unregistered(support_contact: str = "", name: str = "") -> str:  # noqa: ARG001
+    """Shown to users who haven't registered or joined yet.
+
+    The feature list is intentionally narrowed to what the *bot*
+    actually does day to day — the dashboard owns management,
+    reports, and configuration.  Two reasons this matters:
+
+      * Promising bot-side scorecards / maps / cost reports here
+        and then redirecting on every tap reads as a bait-and-
+        switch.
+      * New customers should learn the split (bot for moments,
+        dashboard for browsing) on first contact instead of
+        discovering it the hard way.
+    """
     return (
         "━━━━━━━━━━━━━━━━━━━━━\n"
         f"  {_t('welcome_unreg.title')}\n"
@@ -111,30 +123,31 @@ def format_welcome_unregistered(support_contact: str = "", name: str = "") -> st
         "\n"
         f"{_t('welcome_unreg.subtitle')}\n"
         "\n"
-        f"{_t('welcome_unreg.reports_title')}\n"
-        "  · Fault codes &amp; diagnostics\n"
-        "  · Fuel levels &amp; consumption\n"
-        "  · Vehicle health monitoring\n"
+        "🔔 <b>Real-time alerts</b>\n"
+        "  · Critical faults &amp; health\n"
+        "  · Low-fuel &amp; DEF warnings\n"
+        "  · Maintenance due reminders\n"
+        "  · Geofence enter / exit\n"
+        "  · Tap inline to acknowledge\n"
         "\n"
-        f"{_t('welcome_unreg.tools_title')}\n"
-        "  · Driver safety scorecards\n"
-        "  · Live GPS location &amp; maps\n"
-        "  · Route history &amp; geofences\n"
+        "🚛 <b>Driver self-service</b>\n"
+        "  · Pre-trip inspections — /pti\n"
+        "  · Paystub lookup — /my_pay\n"
+        "  · Coaching tasks — /my_coaching\n"
+        "  · Log a fill-up — /fuelcost\n"
+        "  · Submit a shop invoice — /invoice\n"
         "\n"
-        f"{_t('welcome_unreg.costs_title')}\n"
-        "  · Fuel cost tracking\n"
-        "  · Cost-per-mile analysis\n"
-        "  · Maintenance records\n"
+        "🔍 <b>Quick lookups</b>\n"
+        "  · Vehicle status — /vehicle &lt;name&gt;\n"
+        "  · One-truck camera check — /cam &lt;name&gt;\n"
+        "  · Knowledge base — /tips\n"
+        "  · Ask the AI assistant — /ai\n"
         "\n"
-        f"{_t('welcome_unreg.ai_title')}\n"
-        "  · Ask anything about your fleet\n"
-        "  · Instant insights &amp; summaries\n"
-        "  · Smart follow-up suggestions\n"
-        "\n"
-        f"{_t('welcome_unreg.alerts_title')}\n"
-        "  · Real-time fault alerts\n"
-        "  · Scheduled PDF report delivery\n"
-        "  · Geofence notifications\n"
+        "🌐 <b>The dashboard handles the rest</b>\n"
+        "  · Live map, scorecards, reports\n"
+        "  · Fleet maintenance &amp; cost tracking\n"
+        "  · Team / role / API key management\n"
+        "  · Open at <a href=\"https://dash.4truck.us\">dash.4truck.us</a>\n"
         "\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         f"  {_t('welcome_unreg.contact_admin')}\n"
