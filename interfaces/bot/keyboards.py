@@ -192,20 +192,19 @@ def submenu_mgmt_kb(role: Role, has_api: bool = False) -> InlineKeyboardMarkup:
 # fleet PDF reports; cmd_faults now redirects to the dashboard.
 
 
-def co_menu_kb(company: str) -> InlineKeyboardMarkup:
-    """Sub-menu for a specific company."""
+def co_menu_kb(company: str) -> InlineKeyboardMarkup:  # noqa: ARG001
+    """Per-company sub-menu — only the back button after cleanup.
+
+    All five per-company report shortcuts (Faults, Fuel, Efficiency,
+    Vehicle Health, Weather) led to commands that now redirect to
+    the dashboard.  Keeping the buttons here only meant 2 taps
+    (company picker → per-company button) to reach the same
+    redirect message — worse UX than a single tap from the main
+    menu.  The submenu still exists so the ``co_<CODE>`` callback
+    has a landing card; the dashboard handles per-company filters
+    natively via its company picker.
+    """
     return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(f"🔧 {company} Faults", callback_data=f"cofaults_{company}"),
-        ],
-        [
-            InlineKeyboardButton(f"⛽ {company} Fuel", callback_data=f"cofuel_{company}"),
-            InlineKeyboardButton(f"📊 {company} Efficiency", callback_data=f"coeff_{company}"),
-        ],
-        [
-            InlineKeyboardButton(f"🏥 {company} Vehicle Health", callback_data=f"cohealth_{company}"),
-            InlineKeyboardButton(f"🌡 {company} Weather", callback_data=f"coweather_{company}"),
-        ],
         [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
     ])
 
@@ -850,70 +849,12 @@ def quiet_hours_picker_kb(schedules: list[dict] | None = None) -> InlineKeyboard
     return InlineKeyboardMarkup(rows)
 
 
-def work_hours_kb(schedules: list[dict]) -> InlineKeyboardMarkup:
-    """Admin view: list existing schedules + add button."""
-    rows = []
-    for s in schedules:
-        start, end = s["start_hour"], s["end_hour"]
-        label = s.get("label") or f"{start:02d}:00–{end:02d}:00"
-        role_tag = ""
-        target = s.get("target_role", "all")
-        if target and target != "all":
-            role_tag = f" [{target}]"
-        rows.append([
-            InlineKeyboardButton(
-                f"🕐 {label} ({start}:00–{end}:00){role_tag}",
-                callback_data=f"whours_view_{s['id']}",
-            ),
-        ])
-    if len(schedules) < 10:
-        rows.append([InlineKeyboardButton(t("work_hours.add"), callback_data="whours_add")])
-    else:
-        rows.append([InlineKeyboardButton(t("work_hours.max_reached"), callback_data="noop")])
-    rows.append([InlineKeyboardButton("◀️ Back", callback_data="submenu_mgmt")])
-    return InlineKeyboardMarkup(rows)
-
-
-def work_hour_detail_kb(schedule_id: int) -> InlineKeyboardMarkup:
-    """Admin view: edit or delete a single schedule."""
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(t("work_hours.edit_label"), callback_data=f"whours_rename_{schedule_id}"),
-            InlineKeyboardButton(t("work_hours.edit_hours"), callback_data=f"whours_hours_{schedule_id}"),
-        ],
-        [InlineKeyboardButton("👥 Change Role", callback_data=f"whours_changerole_{schedule_id}")],
-        [InlineKeyboardButton(t("work_hours.delete"), callback_data=f"whours_del_{schedule_id}")],
-        [InlineKeyboardButton("◀️ Back", callback_data="cmd_work_hours")],
-    ])
-
-
-def work_hour_picker_kb(prefix: str) -> InlineKeyboardMarkup:
-    """Hour picker for work hour start or end. prefix = 'whours_start_X' or 'whours_end_X'."""
-    rows = []
-    for row_start in range(0, 24, 4):
-        row = []
-        for h in range(row_start, min(row_start + 4, 24)):
-            label = f"{h:02d}:00"
-            row.append(InlineKeyboardButton(label, callback_data=f"{prefix}_{h}"))
-        rows.append(row)
-    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_work_hours")])
-    return InlineKeyboardMarkup(rows)
-
-
-def work_hour_role_picker_kb() -> InlineKeyboardMarkup:
-    """Role picker for assigning a schedule to a role."""
-    role_labels = [
-        ("All Roles", "all"),
-        ("👑 Owner", "owner"),
-        ("🔧 Admin", "admin"),
-        ("🚛 Fleet", "fleet"),
-        ("�️ Safety", "safety"),
-        ("�📋 Dispatcher", "dispatcher"),
-        ("🚗 Driver", "driver"),
-    ]
-    rows = [[InlineKeyboardButton(label, callback_data=f"whours_role_{val}")] for label, val in role_labels]
-    rows.append([InlineKeyboardButton("◀️ Back", callback_data="cmd_work_hours")])
-    return InlineKeyboardMarkup(rows)
+# work_hours_kb / work_hour_detail_kb / work_hour_picker_kb /
+# work_hour_role_picker_kb were the schedule-editor keyboards driven
+# by cmd_whours_* — all retired with the /work_hours dashboard
+# redirect.  The i18n keys they referenced (work_hours.add /
+# edit_label / edit_hours / delete / max_reached) are dropped in
+# the same pass.
 
 
 def settings_tz_kb() -> InlineKeyboardMarkup:

@@ -187,14 +187,14 @@
   },
   "welcome": {
     "title": "🚛  <b>4truck</b>",
-    "subtitle": "በ Samsara የተጎላበተ የቀጥታ ስብስብ ክትትል",
+    "subtitle": "ለሁሉም ሚና ሎጂስቲክስ — አሽከርካሪዎች፣ ላኪዎች፣ ደህንነት፣ መርከበኞች፣ ባለቤቶች",
     "api_connected": "📡 Samsara API ተገናኝቷል ✅",
     "api_not_connected": "📡 Samsara API አልተገናኘም",
     "tap_begin": "▸ <b>ለመጀመር ከታች ያለውን አዝራር ይንኩ</b> ▾"
   },
   "welcome_unreg": {
     "title": "🚛  <b>4truck Bot</b>",
-    "subtitle": "ለአሽከርካሪዎች፣ ላኪዎች፣ ደህንነት እና መርከበኞች የሎጂስቲክስ ሥራዎች — በቴሌግራም ውስጥ።",
+    "subtitle": "ለሁሉም ሚና ሎጂስቲክስ — አሽከርካሪዎች፣ ላኪዎች፣ ደህንነት፣ መርከበኞች እና ባለቤቶች። በTelegram ማስታወቂያዎች፣ በዳሽቦርድ ሙሉ ሥራዎች።",
     "reports_title": "<b>📊 የስብስብ ሪፖርቶች</b>",
     "tools_title": "<b>🛠 መሳሪያዎች &amp; ክትትል</b>",
     "costs_title": "<b>💰 የወጪ አስተዳደር</b>",
@@ -647,21 +647,6 @@
     "weather_freezing": "❄️ <b>{count}</b> ከቀዝቃዛ በታች",
     "weather_hot": "🔥 <b>{count}</b> ከፍተኛ ሙቀት"
   },
-  "scorecards": {
-    "title": "የአሽከርካሪ የውጤት ካርዶች",
-    "my_title": "የእኔ የውጤት ካርድ",
-    "no_data": "ℹ️ ለአሽከርካሪ ምንም ውሂብ የለም ለ <b>{company}</b>።",
-    "driver_count": "{count} አሽከርካሪ(ዎች)",
-    "choose_format": "የመላክ ፎርማት ይምረጡ:",
-    "loading": "⏳ የውጤት ካርዶችን በመጫን ላይ ({company})…",
-    "loading_csv": "⏳ CSV በማመንጨት ላይ ({company})…",
-    "csv_caption": "🏆 የአሽከርካሪ የውጤት ካርዶች — {company}",
-    "csv_exported": "✅ CSV ተልኳል።",
-    "miles_mpg": "🛣  {miles} ማይል  ·  ⛽ {mpg} MPG",
-    "drive_idle": "🚗 ማሽከርከር {drive_h}ሰ ({drive_pct}%)  ·  💤 ማቆም {idle_h}ሰ ({idle_pct}%)",
-    "eco_overspeed": "🌿 ለማዳን: {green_pct}%  ·  🏎 ፍጥነት በላይ: {overspeed_min}ደ",
-    "brakes_antic": "🛞 ፍሬን: {antic_pct}% መጠበቅ"
-  },
   "maintenance": {
     "header": "🔧  <b>ጥገና</b>",
     "description": "የተሽከርካሪ ጥገና ስራዎችን ይመድቡ እና ይከታተሉ።",
@@ -707,34 +692,6 @@
     "view_btn": "📋 ስራዎችን ይመልከቱ",
     "back": "◀️ ወደኋላ"
   },
-  "live_map": {
-    "btn_refresh": "🔄 አድስ",
-    "back_main": "◀️ ዋና ምናሌ",
-    "loading": "⏳ ካርታ በማመንጨት ላይ ({company})…",
-    "no_vehicles": "ℹ️ ለ <b>{company}</b> ምንም ተሽከርካሪዎች አልተገኙም።",
-    "no_gps_data": "ℹ️ ለካርታ ስራ ምንም GPS ውሂብ የለም።",
-    "caption_title": "🗺 የስብስብ ካርታ — {company}",
-    "caption_stats": "🚛 {total} የጭነት መኪናዎች  ·  🟢 {moving} ይንቀሳቀሳሉ",
-    "caption_date": "📅 {date}",
-    "install_required": "❌ የካርታ ትዕይንት አይገኝም።\nጫን: <code>pip install staticmap</code>"
-  },
-  "route": {
-    "title": "🛣 <b>መንገዶች</b>",
-    "select_date": "ቀን ይምረጡ:",
-    "type_vehicle": "የጭነት መኪና ቁጥር/ስም ይተይቡ:",
-    "loading": "⏳ መንገድ በማግኘት ላይ ለ {vehicle} ({date})…",
-    "no_client": "❌ ምንም Samsara ደንበኛ አይገኝም።",
-    "no_gps_data": "ℹ️ ምንም GPS መረጃ የለም ለ <b>{vehicle}</b> በ {date}።",
-    "not_enough_points": "ℹ️ መንገድ ለማሳየት በቂ GPS ነጥቦች የሉም።",
-    "caption_title": "🛣 መንገድ — {vehicle}",
-    "caption_date": "📅 {date}  ·  📏 {miles} ማይል",
-    "caption_markers": "🟢 መጀመሪያ → 🔴 መጨረሻ",
-    "map_unavailable": "❌ የካርታ ትዕይንት አይገኝም።\nጫን: <code>pip install staticmap</code>",
-    "today": "📅 ዛሬ",
-    "yesterday": "📅 ትላንትና",
-    "last_7": "📅 ያለፉት 7 ቀናት",
-    "custom": "📅 ብጁ ክልል"
-  },
   "geofence": {
     "loading": "⏳ ጂኦፌንስ በመጫን ላይ…",
     "empty": "ℹ️ ምንም ጂኦፌንስ አልተገለጸም።\n\nእዚህ ለማየት በ Samsara ዳሽቦርድ ውስጥ ጂኦፌንሶችን ይፍጠሩ።",
@@ -752,16 +709,6 @@
     "group_label": "💬 ቡድን",
     "channel_label": "📢 ቻናል",
     "personal_label": "👤 የግል"
-  },
-  "cost_per_mile": {
-    "header": "📊  <b>ወጪ በ ማይል</b>",
-    "choose_format": "የመላክ ፎርማት ይምረጡ:",
-    "loading": "⏳ ወጪ/ማይል በማስላት ላይ ({company})…",
-    "no_fuel_data": "ℹ️ ምንም የነዳጅ ግቤቶች የሉም።\n\nለመከታተል 💰 የወጪዎች → ➕ የነዳጅ መሙያ ምዝግብ ማስታወሻን ይጠቀሙ።",
-    "csv_caption": "📊 ወጪ በ ማይል — {company}",
-    "csv_exported": "✅ CSV ተልኳል።",
-    "fleet_avg": "<b>የስብስብ አማካይ: {avg}/ማይል</b>",
-    "total_summary": "ጠቅላላ: {cost} / {miles} ማይል"
   },
   "fuel_costs": {
     "header": "💰  <b>የነዳጅ ወጪዎች</b>",
@@ -879,20 +826,6 @@
     "back_reports": "◀️ ሪፖርቶች",
     "error_content": "📋 <b>የሪፖርት ደንበኝነት</b>\n\n⚠️ ሪፖርቱን ማዘጋጀት አልተቻለም።",
     "sending": "📋 የታቀደው <b>{rtype}</b> ሪፖርትዎ እየተዘጋጀ ነው..."
-  },
-  "risk_report": {
-    "title": "የድርሻ ባለቤቶች የአደጋ ማጠቃለያ",
-    "usage": "አጠቃቀም፡ /risk_report <መኪና> [insurance|owner|broker|auditor|payroll]",
-    "not_assigned": "ለእርስዎ ለተመደቡ መኪኖች ብቻ የአደጋ ማጠቃለያ መጠየቅ ይችላሉ።",
-    "loading": "ለ{vehicle} የአደጋ ማጠቃለያ እየተዘጋጀ ነው…",
-    "caption": "<b>የአደጋ ማጠቃለያ</b>\nመኪና: {vehicle}\nተቀባይ: {audience}\nውጤት: {score}",
-    "audience": {
-      "insurance": "ኢንሹራንስ",
-      "owner": "ባለቤት",
-      "broker": "ደላላ",
-      "auditor": "ኦዲተር",
-      "payroll": "ደመወዝ"
-    }
   },
   "payroll": {
     "title": "በአፈጻጸም ላይ የተመሰረተ ክፍያ",

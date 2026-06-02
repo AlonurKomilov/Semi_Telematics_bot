@@ -187,14 +187,14 @@
   },
   "welcome": {
     "title": "🚛  <b>4truck</b>",
-    "subtitle": "Samsara ਦੁਆਰਾ ਸੰਚਾਲਿਤ ਰੀਅਲ-ਟਾਈਮ ਫਲੀਟ ਨਿਗਰਾਨੀ",
+    "subtitle": "ਹਰ ਭੂਮਿਕਾ ਲਈ ਲੌਜਿਸਟਿਕਸ — ਡਰਾਈਵਰ, ਡਿਸਪੈਚਰ, ਸੁਰੱਖਿਆ, ਫਲੀਟ, ਮਾਲਕ",
     "api_connected": "📡 Samsara API ਕਨੈਕਟ ਕੀਤਾ ਗਿਆ ✅",
     "api_not_connected": "📡 Samsara API ਕਨੈਕਟ ਨਹੀਂ ਹੈ",
     "tap_begin": "▸ <b>ਸ਼ੁਰੂ ਕਰਨ ਲਈ ਹੇਠਾਂ ਦਿੱਤੇ ਬਟਨ 'ਤੇ ਟੈਪ ਕਰੋ</b> ▾"
   },
   "welcome_unreg": {
     "title": "🚛  <b>4truck ਬੋਟ</b>",
-    "subtitle": "ਡਰਾਈਵਰਾਂ, ਡਿਸਪੈਚਰਾਂ, ਸੁਰੱਖਿਆ ਅਤੇ ਫਲੀਟ ਲਈ ਲੌਜਿਸਟਿਕਸ ਓਪਰੇਸ਼ਨ — ਸਿੱਧਾ Telegram ਵਿੱਚ।",
+    "subtitle": "ਹਰ ਭੂਮਿਕਾ ਲਈ ਲੌਜਿਸਟਿਕਸ — ਡਰਾਈਵਰ, ਡਿਸਪੈਚਰ, ਸੁਰੱਖਿਆ, ਫਲੀਟ ਅਤੇ ਮਾਲਕ। Telegram ਵਿੱਚ ਅਲਰਟ, ਡੈਸ਼ਬੋਰਡ 'ਤੇ ਪੂਰੇ ਓਪਰੇਸ਼ਨ।",
     "reports_title": "<b>📊 ਫਲੀਟ ਰਿਪੋਰਟਾਂ</b>",
     "tools_title": "<b>🛠 ਟੂਲ ਅਤੇ ਟਰੈਕਿੰਗ</b>",
     "costs_title": "<b>💰 ਲਾਗਤ ਪ੍ਰਬੰਧਨ</b>",
@@ -647,21 +647,6 @@
     "weather_freezing": "❄️ <b>{count}</b> ਠੰਢਕ ਤੋਂ ਹੇਠਾਂ",
     "weather_hot": "🔥 <b>{count}</b> ਬਹੁਤ ਜ਼ਿਆਦਾ ਗਰਮੀ"
   },
-  "scorecards": {
-    "title": "ਡਰਾਈਵਰ ਸਕੋਰਕਾਰਡ",
-    "my_title": "ਮੇਰਾ ਸਕੋਰਕਾਰਡ",
-    "no_data": "ℹ️ <b>{company}</b> ਲਈ ਕੋਈ ਡਰਾਈਵਰ ਡੇਟਾ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।",
-    "driver_count": "{count} ਡਰਾਈਵਰ",
-    "choose_format": "ਐਕਸਪੋਰਟ ਫਾਰਮੈਟ ਚੁਣੋ:",
-    "loading": "⏳ ਸਕੋਰਕਾਰਡ ਲੋਡ ਹੋ ਰਹੇ ਹਨ ({company})…",
-    "loading_csv": "⏳ CSV ਤਿਆਰ ਹੋ ਰਹੀ ਹੈ ({company})…",
-    "csv_caption": "🏆 ਡਰਾਈਵਰ ਸਕੋਰਕਾਰਡ — {company}",
-    "csv_exported": "✅ CSV ਐਕਸਪੋਰਟ ਕੀਤੀ ਗਈ।",
-    "miles_mpg": "🛣  {miles} ਮੀਲ  ·  ⛽ {mpg} MPG",
-    "drive_idle": "🚗 ਡਰਾਈਵ {drive_h} ਘੰਟੇ ({drive_pct}%)  ·  💤 ਖਾਲੀ (Idle) {idle_h} ਘੰਟੇ ({idle_pct}%)",
-    "eco_overspeed": "🌿 ਈਕੋ (Eco): {green_pct}%  ·  🏎 ਓਵਰਸਪੀਡ: {overspeed_min} ਮਿੰਟ",
-    "brakes_antic": "🛞 ਬ੍ਰੇਕਸ: {antic_pct}% ਉਮੀਦ (anticipation)"
-  },
   "maintenance": {
     "header": "🔧  <b>ਰੱਖ-ਰਖਾਅ</b>",
     "description": "ਵਾਹਨ ਦੇ ਰੱਖ-ਰਖਾਅ ਦੇ ਕੰਮ ਨੂੰ ਤਹਿ ਕਰੋ ਅਤੇ ਟਰੈਕ ਕਰੋ।",
@@ -707,34 +692,6 @@
     "view_btn": "📋 ਕਾਰਜ ਵੇਖੋ",
     "back": "◀️ ਪਿੱਛੇ"
   },
-  "live_map": {
-    "btn_refresh": "🔄 ਤਾਜ਼ਾ ਕਰੋ",
-    "back_main": "◀️ ਮੁੱਖ ਮੀਨੂ",
-    "loading": "⏳ ਨਕਸ਼ਾ ਤਿਆਰ ਹੋ ਰਿਹਾ ਹੈ ({company})…",
-    "no_vehicles": "ℹ️ <b>{company}</b> ਲਈ ਕੋਈ ਵਾਹਨ ਨਹੀਂ ਮਿਲਿਆ।",
-    "no_gps_data": "ℹ️ ਨਕਸ਼ੇ ਲਈ ਕੋਈ GPS ਡੇਟਾ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।",
-    "caption_title": "🗺 ਫਲੀਟ ਦਾ ਨਕਸ਼ਾ — {company}",
-    "caption_stats": "🚛 {total} ਟਰੱਕ  ·  🟢 {moving} ਚੱਲ ਰਹੇ ਹਨ",
-    "caption_date": "📅 {date}",
-    "install_required": "❌ ਨਕਸ਼ਾ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।\nਇਹ ਇੰਸਟਾਲ ਕਰੋ: <code>pip install staticmap</code>"
-  },
-  "route": {
-    "title": "🛣 <b>ਰੂਟਾਂ</b>",
-    "select_date": "ਮਿਤੀ ਚੁਣੋ:",
-    "type_vehicle": "ਟਰੱਕ ਨੰਬਰ/ਨਾਮ ਟਾਈਪ ਕਰੋ:",
-    "loading": "⏳ {vehicle} ਲਈ ਰੂਟ ਪ੍ਰਾਪਤ ਕਰ ਰਿਹਾ ਹੈ ({date})…",
-    "no_client": "❌ ਕੋਈ Samsara ਕਲਾਇੰਟ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।",
-    "no_gps_data": "ℹ️ <b>{vehicle}</b> ਲਈ {date} ਦਾ ਕੋਈ GPS ਡੇਟਾ ਨਹੀਂ ਹੈ।",
-    "not_enough_points": "ℹ️ ਰੂਟ ਦਿਖਾਉਣ ਲਈ ਕਾਫ਼ੀ GPS ਪੁਆਇੰਟ ਨਹੀਂ ਹਨ।",
-    "caption_title": "🛣 ਰੂਟ — {vehicle}",
-    "caption_date": "📅 {date}  ·  📏 {miles} ਮੀਲ",
-    "caption_markers": "🟢 ਸ਼ੁਰੂਆਤ → 🔴 ਅੰਤ",
-    "map_unavailable": "❌ ਨਕਸ਼ਾ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।\nਇਹ ਇੰਸਟਾਲ ਕਰੋ: <code>pip install staticmap</code>",
-    "today": "📅 ਅੱਜ",
-    "yesterday": "📅 ਕੱਲ੍ਹ",
-    "last_7": "📅 ਪਿਛਲੇ 7 ਦਿਨ",
-    "custom": "📅 ਕਸਟਮ ਮਿਤੀ (Custom Range)"
-  },
   "geofence": {
     "loading": "⏳ ਜੀਓਫੈਂਸ ਲੋਡ ਹੋ ਰਹੇ ਹਨ…",
     "empty": "ℹ️ ਕੋਈ ਜੀਓਫੈਂਸ ਪਰਿਭਾਸ਼ਤ ਨਹੀਂ ਹਨ।\n\nਆਪਣੇ Samsara ਡੈਸ਼ਬੋਰਡ ਵਿੱਚ ਜੀਓਫੈਂਸ ਬਣਾਓ\nਤਾਂ ਜੋ ਉਹਨਾਂ ਨੂੰ ਇੱਥੇ ਵੇਖ ਸਕੋ।",
@@ -752,16 +709,6 @@
     "group_label": "💬 ਗਰੁੱਪ",
     "channel_label": "📢 ਚੈਨਲ",
     "personal_label": "👤 ਨਿੱਜੀ"
-  },
-  "cost_per_mile": {
-    "header": "📊  <b>ਲਾਗਤ ਪ੍ਰਤੀ ਮੀਲ</b>",
-    "choose_format": "ਐਕਸਪੋਰਟ ਫਾਰਮੈਟ ਚੁਣੋ:",
-    "loading": "⏳ ਲਾਗਤ/ਮੀਲ ਦੀ ਗਣਨਾ ਕਰ ਰਿਹਾ ਹੈ ({company})…",
-    "no_fuel_data": "ℹ️ ਅਜੇ ਕੋਈ ਈਂਧਨ ਐਂਟਰੀ ਨਹੀਂ ਹੈ।\n\nਟਰੈਕਿੰਗ ਸ਼ੁਰੂ ਕਰਨ ਲਈ 💰 ਈਂਧਨ ਦੀ ਲਾਗਤ → ➕ Fill-Up ਸ਼ਾਮਲ ਕਰੋ ਦੀ ਵਰਤੋਂ ਕਰੋ।",
-    "csv_caption": "📊 ਲਾਗਤ ਪ੍ਰਤੀ ਮੀਲ — {company}",
-    "csv_exported": "✅ CSV ਐਕਸਪੋਰਟ ਕੀਤੀ ਗਈ।",
-    "fleet_avg": "<b>ਫਲੀਟ ਦੀ ਔਸਤ: {avg}/ਮੀਲ</b>",
-    "total_summary": "ਕੁੱਲ: {cost} / {miles} ਮੀਲ"
   },
   "fuel_costs": {
     "header": "💰  <b>ਈਂਧਨ ਦੀ ਲਾਗਤ</b>",
@@ -879,20 +826,6 @@
     "back_reports": "◀️ ਰਿਪੋਰਟਾਂ",
     "error_content": "📋 <b>ਰਿਪੋਰਟ ਸਬਸਕ੍ਰਿਪਸ਼ਨ</b>\n\n⚠️ ਰਿਪੋਰਟ ਤਿਆਰ ਨਹੀਂ ਹੋ ਸਕੀ।",
     "sending": "📋 ਤੁਹਾਡੀ ਸ਼ਡਿਊਲਡ <b>{rtype}</b> ਰਿਪੋਰਟ ਤਿਆਰ ਹੋ ਰਹੀ ਹੈ..."
-  },
-  "risk_report": {
-    "title": "ਹਿੱਸੇਦਾਰਾਂ ਲਈ ਜੋਖਮ ਸੰਖੇਪ",
-    "usage": "ਵਰਤੋਂ: /risk_report <ਟਰੱਕ> [insurance|owner|broker|auditor|payroll]",
-    "not_assigned": "ਤੁਸੀਂ ਸਿਰਫ ਆਪਣੇ ਨੂੰ ਅਸਾਈਨ ਕੀਤੇ ਟਰੱਕਾਂ ਲਈ ਜੋਖਮ ਸੰਖੇਪ ਮੰਗ ਸਕਦੇ ਹੋ।",
-    "loading": "{vehicle} ਲਈ ਜੋਖਮ ਸੰਖੇਪ ਤਿਆਰ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ…",
-    "caption": "<b>ਜੋਖਮ ਸੰਖੇਪ</b>\nਟਰੱਕ: {vehicle}\nਆਡੀਅੰਸ: {audience}\nਸਕੋਰ: {score}",
-    "audience": {
-      "insurance": "ਬੀਮਾ",
-      "owner": "ਮਾਲਕ",
-      "broker": "ਬ੍ਰੋਕਰ",
-      "auditor": "ਆਡੀਟਰ",
-      "payroll": "ਪੇਅਰੋਲ"
-    }
   },
   "payroll": {
     "title": "ਪ੍ਰਦਰਸ਼ਨ ਅਨੁਸਾਰ ਤਨਖਾਹ",

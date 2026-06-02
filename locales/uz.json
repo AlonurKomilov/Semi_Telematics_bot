@@ -187,14 +187,14 @@
   },
   "welcome": {
     "title": "🚛  <b>4truck</b>",
-    "subtitle": "Samsara orqali avtoparkni real vaqtda monitoring qilish",
+    "subtitle": "Har bir rol uchun logistika — haydovchilar, dispetcherlar, xavfsizlik, avtopark, egalar",
     "api_connected": "📡 Samsara API ulangan ✅",
     "api_not_connected": "📡 Samsara API ulanmagan",
     "tap_begin": "▸ <b>Boshlash uchun pastdagi tugmani bosing</b> ▾"
   },
   "welcome_unreg": {
     "title": "🚛  <b>4truck Bot</b>",
-    "subtitle": "Haydovchilar, dispetcherlar, xavfsizlik va avtopark uchun logistika operatsiyalari — to'g'ridan-to'g'ri Telegramda.",
+    "subtitle": "Har bir rol uchun logistika — haydovchilar, dispetcherlar, xavfsizlik, avtopark va egalar. Telegramda ogohlantirishlar, dashboardda to'liq operatsiyalar.",
     "reports_title": "<b>📊 Avtopark Hisobotlari</b>",
     "tools_title": "<b>🛠 Asboblar va Kuzatuv</b>",
     "costs_title": "<b>💰 Xarajatlarni Boshqarish</b>",
@@ -647,21 +647,6 @@
     "weather_freezing": "❄️ <b>{count}</b> tasi sovuqda",
     "weather_hot": "🔥 <b>{count}</b> tasi issiqda"
   },
-  "scorecards": {
-    "title": "HAYDOVCHILAR REYTINGI",
-    "my_title": "MENING REYTINGIM",
-    "no_data": "ℹ️ <b>{company}</b> uchun haydovchi ma'lumoti topilmadi.",
-    "driver_count": "{count} ta haydovchi",
-    "choose_format": "Qaysi formatda jo'natish:",
-    "loading": "⏳ Ballar kelmoqda ({company})…",
-    "loading_csv": "⏳ CSV fayl yaratilmoqda ({company})…",
-    "csv_caption": "🏆 Haydovchi Reytinglari — {company}",
-    "csv_exported": "✅ CSV yuklandi.",
-    "miles_mpg": "🛣  {miles} mil  ·  ⛽ {mpg} MPG",
-    "drive_idle": "🚗 Haydash {drive_h}h ({drive_pct}%)  ·  💤 Kutish {idle_h}h ({idle_pct}%)",
-    "eco_overspeed": "🌿 Eko: {green_pct}%  ·  🏎 Tezlikni oshirish: {overspeed_min}m",
-    "brakes_antic": "🛞 Tormozlar: {antic_pct}% aniqligi"
-  },
   "maintenance": {
     "header": "🔧  <b>XIZMAT KO'RSATISH</b>",
     "description": "Transportingiz xizmatlarini rejalashtiring.",
@@ -707,34 +692,6 @@
     "view_btn": "📋 Vazifalarni Ko'rish",
     "back": "◀️ Orqaga"
   },
-  "live_map": {
-    "btn_refresh": "🔄 Yangilash",
-    "back_main": "◀️ Asosiy Menyu",
-    "loading": "⏳ Xarita yaratilmoqda ({company})…",
-    "no_vehicles": "ℹ️ <b>{company}</b> uchun ma'lumot yo'q.",
-    "no_gps_data": "ℹ️ Xarita uchun GPS manzillar topilmadi.",
-    "caption_title": "🗺 Avtopark Xaritasi — {company}",
-    "caption_stats": "🚛 {total} mashina  ·  🟢 {moving} xarakatda",
-    "caption_date": "📅 {date}",
-    "install_required": "❌ Xaritani chizish imkoni yo'q.\nO'rnatish kerak: <code>pip install staticmap</code>"
-  },
-  "route": {
-    "title": "🛣 <b>Marshrutlar</b>",
-    "select_date": "Sanani tanlang:",
-    "type_vehicle": "Yuk mashinasini ismini/raqamini yozing:",
-    "loading": "⏳ {vehicle} uchun tarix topilyapti ({date})…",
-    "no_client": "❌ Samsara clienti mavjud emas.",
-    "no_gps_data": "ℹ️ <b>{vehicle}</b> shu kun uchun ({date}) GPS manzillar topilmadi.",
-    "not_enough_points": "ℹ️ Yo'l marshruti yetarli emas.",
-    "caption_title": "🛣 Marshrut — {vehicle}",
-    "caption_date": "📅 {date}  ·  📏 {miles} mi",
-    "caption_markers": "🟢 Boshlang'ich → 🔴 Oxirgi",
-    "map_unavailable": "❌ Xaritalash imkoni yo'q.\nO'rnatish kerak: <code>pip install staticmap</code>",
-    "today": "📅 Bugun",
-    "yesterday": "📅 Kecha",
-    "last_7": "📅 Oxirgi 7 kun",
-    "custom": "📅 Kiritish Orqali"
-  },
   "geofence": {
     "loading": "⏳ Geofencelar yuklanmoqda…",
     "empty": "ℹ️ Geofence hali yaratilmagan.\n\nSamsara orqali uni qo'shing.",
@@ -752,16 +709,6 @@
     "group_label": "💬 Guruh",
     "channel_label": "📢 Kanal",
     "personal_label": "👤 Shaxsiy"
-  },
-  "cost_per_mile": {
-    "header": "📊  <b>MILE BOYICHA XARAJATLAR</b>",
-    "choose_format": "Eksport formatni tanlang:",
-    "loading": "⏳ Hisoblanmoqda ({company})…",
-    "no_fuel_data": "ℹ️ Yoqilg'i to'g'risida ma'lumot yo'q.\n\nBirinchini kiritish uchun: 💰 Yoqilg'i xarajatlari → ➕ To'ldirishni joriy eting.",
-    "csv_caption": "📊 Mil bo'yicha xarajat — {company}",
-    "csv_exported": "✅ CSV eksport qilindi.",
-    "fleet_avg": "<b>Avtopark Orqacha: {avg}/mi</b>",
-    "total_summary": "Jami: {cost} / {miles} mil"
   },
   "fuel_costs": {
     "header": "💰  <b>YOQILG'I XARAJATLARI</b>",
@@ -879,20 +826,6 @@
     "back_reports": "◀️ Hisobotlar",
     "error_content": "📋 <b>Hisobot Obunasi</b>\n\n⚠️ Hisobotni yaratib bolmadi.",
     "sending": "📋 Rejalashtirilgan <b>{rtype}</b> hisobotingiz yaratilmoqda..."
-  },
-  "risk_report": {
-    "title": "Manfaatdor tomonlar uchun xavf hisoboti",
-    "usage": "Foydalanish: /risk_report <yuk mashinasi> [insurance|owner|broker|auditor|payroll]",
-    "not_assigned": "Faqat sizga biriktirilgan yuk mashinalari uchun xavf hisobotini so‘rashingiz mumkin.",
-    "loading": "{vehicle} uchun xavf hisoboti tayyorlanmoqda…",
-    "caption": "<b>Xavf hisoboti</b>\nMashina: {vehicle}\nAuditoriya: {audience}\nBall: {score}",
-    "audience": {
-      "insurance": "Sug‘urta",
-      "owner": "Egasi",
-      "broker": "Broker",
-      "auditor": "Auditor",
-      "payroll": "Ish haqi"
-    }
   },
   "payroll": {
     "title": "Natija uchun to'lov",

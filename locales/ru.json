@@ -187,14 +187,14 @@
   },
   "welcome": {
     "title": "🚛  <b>4truck</b>",
-    "subtitle": "Мониторинг автопарка в реальном времени на базе Samsara",
+    "subtitle": "Логистика для каждой роли — водители, диспетчеры, безопасность, автопарк, владельцы",
     "api_connected": "📡 Samsara API подключён ✅",
     "api_not_connected": "📡 Samsara API не подключён",
     "tap_begin": "▸ <b>Нажмите кнопку ниже, чтобы начать</b> ▾"
   },
   "welcome_unreg": {
     "title": "🚛  <b>4truck Bot</b>",
-    "subtitle": "Логистические операции для водителей, диспетчеров, безопасности и автопарка — прямо в Telegram.",
+    "subtitle": "Логистика для каждой роли — водители, диспетчеры, безопасность, автопарк и владельцы. Уведомления в Telegram, полные операции — в дашборде.",
     "reports_title": "<b>📊 Отчёты автопарка</b>",
     "tools_title": "<b>🛠 Инструменты и отслеживание</b>",
     "costs_title": "<b>💰 Управление расходами</b>",
@@ -647,21 +647,6 @@
     "weather_freezing": "❄️ <b>{count}</b> ниже точки замерзания",
     "weather_hot": "🔥 <b>{count}</b> экстремальная жара"
   },
-  "scorecards": {
-    "title": "ОЦЕНКИ ВОДИТЕЛЕЙ",
-    "my_title": "МОЯ ОЦЕНКА",
-    "no_data": "ℹ️ Нет данных по водителям для <b>{company}</b>.",
-    "driver_count": "{count} водитель(ей)",
-    "choose_format": "Выберите формат экспорта:",
-    "loading": "⏳ Загрузка оценок ({company})…",
-    "loading_csv": "⏳ Формирование CSV ({company})…",
-    "csv_caption": "🏆 Оценки водителей — {company}",
-    "csv_exported": "✅ CSV экспортирован.",
-    "miles_mpg": "🛣  {miles} миль  ·  ⛽ {mpg} MPG",
-    "drive_idle": "🚗 Движение {drive_h}ч ({drive_pct}%)  ·  💤 Простой {idle_h}ч ({idle_pct}%)",
-    "eco_overspeed": "🌿 Эко: {green_pct}%  ·  🏎 Превышение скорости: {overspeed_min}м",
-    "brakes_antic": "🛞 Тормоза: {antic_pct}% предупреждение"
-  },
   "maintenance": {
     "header": "🔧  <b>ТЕХОБСЛУЖИВАНИЕ</b>",
     "description": "Планирование и отслеживание задач по техобслуживанию транспорта.",
@@ -707,34 +692,6 @@
     "view_btn": "📋 Просмотр задач",
     "back": "◀️ Назад"
   },
-  "live_map": {
-    "btn_refresh": "🔄 Обновить",
-    "back_main": "◀️ Главное меню",
-    "loading": "⏳ Формирование карты ({company})…",
-    "no_vehicles": "ℹ️ Транспортные средства для <b>{company}</b> не найдены.",
-    "no_gps_data": "ℹ️ Нет GPS-данных для отображения на карте.",
-    "caption_title": "🗺 Карта автопарка — {company}",
-    "caption_stats": "🚛 {total} грузовиков  ·  🟢 {moving} в движении",
-    "caption_date": "📅 {date}",
-    "install_required": "❌ Отображение карты недоступно.\nУстановите: <code>pip install staticmap</code>"
-  },
-  "route": {
-    "title": "🛣 <b>Маршруты</b>",
-    "select_date": "Выберите дату:",
-    "type_vehicle": "Введите номер/название грузовика:",
-    "loading": "⏳ Загрузка маршрута для {vehicle} ({date})…",
-    "no_client": "❌ Клиент Samsara недоступен.",
-    "no_gps_data": "ℹ️ Нет GPS-данных для <b>{vehicle}</b> за {date}.",
-    "not_enough_points": "ℹ️ Недостаточно GPS-точек для построения маршрута.",
-    "caption_title": "🛣 Маршрут — {vehicle}",
-    "caption_date": "📅 {date}  ·  📏 {miles} миль",
-    "caption_markers": "🟢 Начало → 🔴 Конец",
-    "map_unavailable": "❌ Отображение карты недоступно.\nУстановите: <code>pip install staticmap</code>",
-    "today": "📅 Сегодня",
-    "yesterday": "📅 Вчера",
-    "last_7": "📅 Последние 7 дней",
-    "custom": "📅 Произвольный период"
-  },
   "geofence": {
     "loading": "⏳ Загрузка геозон…",
     "empty": "ℹ️ Геозоны не определены.\n\nСоздайте геозоны в панели управления Samsara,\nчтобы они отобразились здесь.",
@@ -752,16 +709,6 @@
     "group_label": "💬 Группа",
     "channel_label": "📢 Канал",
     "personal_label": "👤 Личный"
-  },
-  "cost_per_mile": {
-    "header": "📊  <b>СТОИМОСТЬ ЗА МИЛЮ</b>",
-    "choose_format": "Выберите формат экспорта:",
-    "loading": "⏳ Расчёт стоимости за милю ({company})…",
-    "no_fuel_data": "ℹ️ Записей о топливе пока нет.\n\nИспользуйте 💰 Расходы на топливо → ➕ Записать заправку для начала учёта.",
-    "csv_caption": "📊 Стоимость за милю — {company}",
-    "csv_exported": "✅ CSV экспортирован.",
-    "fleet_avg": "<b>Среднее по автопарку: {avg}/миля</b>",
-    "total_summary": "Итого: {cost} / {miles} миль"
   },
   "fuel_costs": {
     "header": "💰  <b>РАСХОДЫ НА ТОПЛИВО</b>",
@@ -879,20 +826,6 @@
     "back_reports": "◀️ Отчёты",
     "error_content": "📋 <b>Подписка на Отчёт</b>\n\n⚠️ Не удалось сформировать отчёт.",
     "sending": "📋 Формируем ваш запланированный отчёт <b>{rtype}</b>..."
-  },
-  "risk_report": {
-    "title": "Сводка рисков для заинтересованных сторон",
-    "usage": "Использование: /risk_report <грузовик> [insurance|owner|broker|auditor|payroll]",
-    "not_assigned": "Вы можете запрашивать сводку рисков только для закреплённых за вами грузовиков.",
-    "loading": "Готовлю сводку рисков для {vehicle}…",
-    "caption": "<b>Сводка рисков</b>\nГрузовик: {vehicle}\nАудитория: {audience}\nОценка: {score}",
-    "audience": {
-      "insurance": "Страховая",
-      "owner": "Владелец",
-      "broker": "Брокер",
-      "auditor": "Аудитор",
-      "payroll": "Расчёт зарплат"
-    }
   },
   "payroll": {
     "title": "Оплата за результат",

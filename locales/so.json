@@ -187,14 +187,14 @@
   },
   "welcome": {
     "title": "🚛  <b>4truck</b>",
-    "subtitle": "Kormeerka rac tooska ah ee ay awood siiso Samsara",
+    "subtitle": "Saadka doorka kasta — darawalada, dispatchers, badbaadada, raca, milkiilayaasha",
     "api_connected": "📡 Samsara API way ku xidhan tahay ✅",
     "api_not_connected": "📡 Samsara API kuma xidhna",
     "tap_begin": "▸ <b>Taabo badhan hoose si aad u bilowdo</b> ▾"
   },
   "welcome_unreg": {
     "title": "🚛  <b>Bot-ka 4truck</b>",
-    "subtitle": "Hawlgallada saadka loogu talagalay darawalada, dispatchers-ka, badbaadada iyo raca — gudaha Telegram.",
+    "subtitle": "Saadka doorka kasta — darawalada, dispatchers, badbaadada, raca iyo milkiilayaasha. Ogeysiisyo Telegram, hawlgallada buuxa dashboard-ka.",
     "reports_title": "<b>📊 Warbixinnada Rac</b>",
     "tools_title": "<b>🛠 Qalabka & Raadinta</b>",
     "costs_title": "<b>💰 Maamulka Kharashka</b>",
@@ -647,21 +647,6 @@
     "weather_freezing": "❄️ <b>{count}</b> ka hooseeya qabowga",
     "weather_hot": "🔥 <b>{count}</b> kuleyl xad dhaaf ah"
   },
-  "scorecards": {
-    "title": "DHIBAACAHA DARAWALKA",
-    "my_title": "DHIBAACAYDA",
-    "no_data": "ℹ️ Ma jirto xog darawal oo la heli karo ee <b>{company}</b>.",
-    "driver_count": "{count} darawal(s)",
-    "choose_format": "Dooro qaabka isdhaafsiga:",
-    "loading": "⏳ Soo dejinta dhibcaha ({company})…",
-    "loading_csv": "⏳ Diyaarinta CSV ({company})…",
-    "csv_caption": "🏆 Dhibcaha Darawalka — {company}",
-    "csv_exported": "✅ CSV waa la dhoofiyay.",
-    "miles_mpg": "🛣  {miles} mayl  ·  ⛽ {mpg} MPG",
-    "drive_idle": "🚗 Wadis {drive_h}saacadood ({drive_pct}%)  ·  💤 Shaqo la'aan {idle_h}saacadood ({idle_pct}%)",
-    "eco_overspeed": "🌿 Eco: {green_pct}%  ·  🏎 Xawaaraha dheeraad ah: {overspeed_min}daqiqo",
-    "brakes_antic": "🛞 Fariin garaaca: {antic_pct}% saadaalinta"
-  },
   "maintenance": {
     "header": "🔧  <b>DAYACTIRKA</b>",
     "description": "Jadwalay oo raadraac hawlaha dayactirka gaariga.",
@@ -707,34 +692,6 @@
     "view_btn": "📋 Eeg Hawlaha",
     "back": "◀️ Dib"
   },
-  "live_map": {
-    "btn_refresh": "🔄 Cusbooneysii",
-    "back_main": "◀️ Liiska Weyn",
-    "loading": "⏳ Diyaarinta khariidadda ({company})…",
-    "no_vehicles": "ℹ️ Lama helin gaadiid loogu talagalay <b>{company}</b>.",
-    "no_gps_data": "ℹ️ Ma jirto xogta GPS oo la heli karo si loo bixiyo khariidadda.",
-    "caption_title": "🗺 Khariidadda Rac — {company}",
-    "caption_stats": "🚛 {total} gawaari  ·  🟢 {moving} kuwa socda",
-    "caption_date": "📅 {date}",
-    "install_required": "❌ Khariidadda dhirow ma la heli karo.\nKu shub: <code>pip install staticmap</code>"
-  },
-  "route": {
-    "title": "🛣 <b>Jidadka</b>",
-    "select_date": "Dooro taariikh:",
-    "type_vehicle": "Qor lambarka gaariga/magaca:",
-    "loading": "⏳ Soo qaadidda jidka ee {vehicle} ({date})…",
-    "no_client": "❌ Ma jiro macmiilka Samsara oo la heli karo.",
-    "no_gps_data": "ℹ️ Ma jirto xogta GPS ee <b>{vehicle}</b> marka la joogo {date}.",
-    "not_enough_points": "ℹ️ Dhibco GP kuma filna si loo bixiyo jid.",
-    "caption_title": "🛣 Jidka — {vehicle}",
-    "caption_date": "📅 {date}  ·  📏 {miles} mayl",
-    "caption_markers": "🟢 Bilow → 🔴 Dhammaad",
-    "map_unavailable": "❌ Khariidadda dhirow ma la heli karo.\nKu shub: <code>pip install staticmap</code>",
-    "today": "📅 Maanta",
-    "yesterday": "📅 Shalay",
-    "last_7": "📅 7dii Maalmood ee la soo dhaafay",
-    "custom": "📅 Kala duwanaansho Gaar ah"
-  },
   "geofence": {
     "loading": "⏳ Soo dejinta geofence-ka…",
     "empty": "ℹ️ Ma jiraan geofence-yo la qeexay.\n\nKa dhis geofence-yaal dashboard-ka Samsara\nsi aad halkan uga aragtid.",
@@ -752,16 +709,6 @@
     "group_label": "💬 Koox",
     "channel_label": "📢 Kanaal",
     "personal_label": "👤 Qofeed"
-  },
-  "cost_per_mile": {
-    "header": "📊  <b>KHARASHKA HALKII MAYL</b>",
-    "choose_format": "Dooro qaabka isdhaafsiga:",
-    "loading": "⏳ Xisaabinta kharashka/maylka ({company})…",
-    "no_fuel_data": "ℹ️ Ma jiraan galitaanka shidaalka wali.\n\nIsticmaal 💰 Kharashka Shidaalka → ➕ Diiwaangeli Shidaal Buuxinta si aad u bilowdid raadraaca.",
-    "csv_caption": "📊 Kharashka Halkii Mayl — {company}",
-    "csv_exported": "✅ CSV waa la dhoofiyay.",
-    "fleet_avg": "<b>Celceliska Rac: {avg}/mayl</b>",
-    "total_summary": "Wadar: {cost} / {miles} mayl"
   },
   "fuel_costs": {
     "header": "💰  <b>KHARASHKA SHIDAALKA</b>",
@@ -879,20 +826,6 @@
     "back_reports": "◀️ Warbixinaha",
     "error_content": "📋 <b>Rukunka Warbixinta</b>\n\n⚠️ Warbixinta lama samayn karin.",
     "sending": "📋 Warbixintaada <b>{rtype}</b> ee la qorsheeyay waa la sameynayaa..."
-  },
-  "risk_report": {
-    "title": "Soo-koobida Khatarta ee Daneeyayaasha",
-    "usage": "Isticmaalka: /risk_report <gaari> [insurance|owner|broker|auditor|payroll]",
-    "not_assigned": "Waxaad codsan kartaa soo-koobida khatarta gaadiidka adiga kuu xilsaaran kaliya.",
-    "loading": "Soo-koobida khatarta {vehicle} waa la diyaarinayaa…",
-    "caption": "<b>Soo-koobida Khatarta</b>\nGaariga: {vehicle}\nDhagaystaha: {audience}\nDhibcaha: {score}",
-    "audience": {
-      "insurance": "Caymis",
-      "owner": "Mulkiilaha",
-      "broker": "Dilaaliga",
-      "auditor": "Hubinta",
-      "payroll": "Mushahar"
-    }
   },
   "payroll": {
     "title": "Mushahar lagu Bixiyo Waxqabad",

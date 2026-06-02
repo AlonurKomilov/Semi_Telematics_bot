@@ -420,38 +420,10 @@ async def _co_submenu(update, context):
     await _show(update, context, [text], keyboard=co_menu_kb(co))
 
 
-# Per-company commands — more specific prefixes first
-async def _cofaults(u, c):
-    co = u.callback_query.data.replace("cofaults_", "")
-    await cmd_faults(u, c, company=co)
-
-async def _cofuel(u, c):
-    co = u.callback_query.data.replace("cofuel_", "")
-    await cmd_fuel(u, c, company=co)
-
-async def _cohealth(u, c):
-    co = u.callback_query.data.replace("cohealth_", "")
-    await cmd_health(u, c, company=co)
-
-# coeff_pdf_ / coeff_csv_ wrappers were retired with the rest of the
-# efficiency PDF/CSV export flow.  The plain ``coeff_<co>`` button
-# still works — it just routes to the dashboard redirect now.
-
-async def _coeff(u, c):
-    co = u.callback_query.data.replace("coeff_", "")
-    await cmd_efficiency(u, c, company=co)
-
-async def _coweather(u, c):
-    co = u.callback_query.data.replace("coweather_", "")
-    await cmd_weather(u, c, company=co)
-
-_router.prefix("cofaults_", _cofaults)
-_router.prefix("cofuel_", _cofuel)
-_router.prefix("cohealth_", _cohealth)
-_router.prefix("coeff_", _coeff)
-_router.prefix("coweather_", _coweather)
-
-# Generic co_ submenu — MUST be after all specific co* prefixes
+# Per-company report shortcuts (cofaults_ / cofuel_ / cohealth_ /
+# coeff_ / coweather_) were retired with their underlying commands.
+# The dashboard's company picker covers the same scope natively.
+# Only the generic ``co_<CODE>`` submenu landing card remains.
 _router.prefix("co_", _co_submenu)
 
 

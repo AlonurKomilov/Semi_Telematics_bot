@@ -188,28 +188,6 @@
     "no_schedules_employee": "ℹ️ No working hour schedules have been set up yet.\n\nAsk your admin to create schedules.",
     "no_schedules_admin": "ℹ️ No schedules yet.\n\nCreate working hour presets for your team."
   },
-  "work_hours": {
-    "header": "🕐  <b>MANAGE WORK SCHEDULES</b>",
-    "description": "Create working hour presets for your team.\nEmployees will choose from schedules matching their role.",
-    "add": "➕ Add Schedule",
-    "edit": "✏️ Edit",
-    "delete": "🗑 Delete",
-    "confirm_delete": "⚠️ Delete schedule <b>{label}</b>?",
-    "deleted": "✅ Schedule deleted.",
-    "label_prompt": "📝 Enter a label for this schedule\n(e.g. <b>Day Shift</b>, <b>Night Shift</b>, <b>Office Hours</b>):",
-    "start_prompt": "🕐 Select <b>START</b> hour for <b>{label}</b>:",
-    "end_prompt": "🕐 Select <b>END</b> hour for <b>{label}</b>:",
-    "role_prompt": "👥 Select target role for <b>{label}</b>\n({start}:00 – {end}:00):",
-    "created": "✅ Schedule created: <b>{label}</b>\n({start}:00 – {end}:00)",
-    "updated": "✅ Schedule updated: <b>{label}</b>\n({start}:00 – {end}:00)",
-    "edit_prompt": "✏️ What would you like to change for <b>{label}</b>?",
-    "edit_label": "📝 Rename",
-    "edit_hours": "🕐 Change Hours",
-    "rename_prompt": "📝 Enter new label for <b>{label}</b>:",
-    "renamed": "✅ Renamed to <b>{label}</b>",
-    "max_reached": "⚠️ Maximum of 10 schedules per account.",
-    "back": "◀️ Back"
-  },
   "auto_reports": {
     "header": "📋  <b>REPORT SUBSCRIPTIONS</b>",
     "description": "Schedule automated fleet reports delivered to your Telegram chat.",
@@ -238,14 +216,14 @@
   },
   "welcome": {
     "title": "🚛  <b>4truck</b>",
-    "subtitle": "Real-time fleet monitoring powered by Samsara",
+    "subtitle": "Role-based logistics for drivers, dispatchers, safety, fleet, and owners",
     "api_connected": "📡 Samsara API connected ✅",
     "api_not_connected": "📡 Samsara API not connected",
     "tap_begin": "▸ <b>Tap a button below to begin</b> ▾"
   },
   "welcome_unreg": {
     "title": "🚛  <b>4truck Bot</b>",
-    "subtitle": "Logistics operations for drivers, dispatchers, safety, and fleet — right inside Telegram.",
+    "subtitle": "Logistics for every role — drivers, dispatchers, safety, fleet, and owners. Real-time alerts in Telegram, full operations on the dashboard.",
     "reports_title": "<b>📊 Fleet Reports</b>",
     "tools_title": "<b>🛠 Tools &amp; Tracking</b>",
     "costs_title": "<b>💰 Cost Management</b>",
@@ -701,21 +679,6 @@
     "weather_freezing": "❄️ <b>{count}</b> below freezing",
     "weather_hot": "🔥 <b>{count}</b> extreme heat"
   },
-  "scorecards": {
-    "title": "DRIVER SCORECARDS",
-    "my_title": "MY SCORECARD",
-    "no_data": "ℹ️ No driver data available for <b>{company}</b>.",
-    "driver_count": "{count} driver(s)",
-    "choose_format": "Choose export format:",
-    "loading": "⏳ Loading scorecards ({company})…",
-    "loading_csv": "⏳ Generating CSV ({company})…",
-    "csv_caption": "🏆 Driver Scorecards — {company}",
-    "csv_exported": "✅ CSV exported.",
-    "miles_mpg": "🛣  {miles} mi  ·  ⛽ {mpg} MPG",
-    "drive_idle": "🚗 Drive {drive_h}h ({drive_pct}%)  ·  💤 Idle {idle_h}h ({idle_pct}%)",
-    "eco_overspeed": "🌿 Eco: {green_pct}%  ·  🏎 Overspeed: {overspeed_min}m",
-    "brakes_antic": "🛞 Brakes: {antic_pct}% anticipation"
-  },
   "maintenance": {
     "header": "🔧  <b>MAINTENANCE</b>",
     "description": "Schedule and track vehicle maintenance tasks.",
@@ -766,34 +729,6 @@
     "view_btn": "📋 View Tasks",
     "back": "◀️ Back"
   },
-  "live_map": {
-    "btn_refresh": "🔄 Refresh",
-    "back_main": "◀️ Main Menu",
-    "loading": "⏳ Generating map ({company})…",
-    "no_vehicles": "ℹ️ No vehicles found for <b>{company}</b>.",
-    "no_gps_data": "ℹ️ No GPS data available for map rendering.",
-    "caption_title": "🗺 Fleet Map — {company}",
-    "caption_stats": "🚛 {total} trucks  ·  🟢 {moving} moving",
-    "caption_date": "📅 {date}",
-    "install_required": "❌ Map rendering unavailable.\nInstall: <code>pip install staticmap</code>"
-  },
-  "route": {
-    "title": "🛣 <b>Routes</b>",
-    "select_date": "Select a date:",
-    "type_vehicle": "Type the truck number/name:",
-    "loading": "⏳ Fetching route for {vehicle} ({date})…",
-    "no_client": "❌ No Samsara client available.",
-    "no_gps_data": "ℹ️ No GPS data for <b>{vehicle}</b> on {date}.",
-    "not_enough_points": "ℹ️ Not enough GPS points to render a route.",
-    "caption_title": "🛣 Route — {vehicle}",
-    "caption_date": "📅 {date}  ·  📏 {miles} mi",
-    "caption_markers": "🟢 Start → 🔴 End",
-    "map_unavailable": "❌ Map rendering unavailable.\nInstall: <code>pip install staticmap</code>",
-    "today": "📅 Today",
-    "yesterday": "📅 Yesterday",
-    "last_7": "📅 Last 7 Days",
-    "custom": "📅 Custom Range"
-  },
   "geofence": {
     "loading": "⏳ Loading geofences…",
     "empty": "ℹ️ No geofences defined.\n\nCreate geofences in the Samsara dashboard\nto see them here.",
@@ -811,16 +746,6 @@
     "group_label": "💬 Group",
     "channel_label": "📢 Channel",
     "personal_label": "👤 Personal"
-  },
-  "cost_per_mile": {
-    "header": "📊  <b>COST PER MILE</b>",
-    "choose_format": "Choose export format:",
-    "loading": "⏳ Calculating cost/mile ({company})…",
-    "no_fuel_data": "ℹ️ No fuel entries yet.\n\nUse 💰 Fuel Costs → ➕ Log Fill-Up to start tracking.",
-    "csv_caption": "📊 Cost per Mile — {company}",
-    "csv_exported": "✅ CSV exported.",
-    "fleet_avg": "<b>Fleet Avg: {avg}/mi</b>",
-    "total_summary": "Total: {cost} / {miles} mi"
   },
   "fuel_costs": {
     "header": "💰  <b>FUEL COSTS</b>",
@@ -927,20 +852,6 @@
     "alert_critical": "🚨  <b>UNSAFE PARKING — CRITICAL</b>",
     "refresh": "🔄 Refresh",
     "back": "◀️ Back"
-  },
-  "risk_report": {
-    "title": "Stakeholder Risk Summary",
-    "usage": "Usage: /risk_report <vehicle> [insurance|owner|broker|auditor|payroll]",
-    "not_assigned": "You can only request risk summaries for trucks assigned to you.",
-    "loading": "Building risk summary for {vehicle}…",
-    "caption": "<b>Risk Summary</b>\nVehicle: {vehicle}\nAudience: {audience}\nScore: {score}",
-    "audience": {
-      "insurance": "Insurance",
-      "owner": "Owner",
-      "broker": "Broker",
-      "auditor": "Auditor",
-      "payroll": "Payroll"
-    }
   },
   "payroll": {
     "title": "Pay-for-Performance",

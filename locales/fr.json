@@ -187,14 +187,14 @@
   },
   "welcome": {
     "title": "🚛  <b>4truck</b>",
-    "subtitle": "Surveillance de flotte en temps réel propulsée par Samsara",
+    "subtitle": "Logistique pour chaque rôle — chauffeurs, répartiteurs, sécurité, parc, propriétaires",
     "api_connected": "📡 API Samsara connectée ✅",
     "api_not_connected": "📡 API Samsara non connectée",
     "tap_begin": "▸ <b>Appuyez sur un bouton ci-dessous pour commencer</b> ▾"
   },
   "welcome_unreg": {
     "title": "🚛  <b>4truck Bot</b>",
-    "subtitle": "Opérations logistiques pour les chauffeurs, les répartiteurs, la sécurité et le parc — directement dans Telegram.",
+    "subtitle": "Logistique pour chaque rôle — chauffeurs, répartiteurs, sécurité, parc et propriétaires. Alertes dans Telegram, opérations complètes sur le tableau de bord.",
     "reports_title": "<b>📊 Rapports de flotte</b>",
     "tools_title": "<b>🛠 Outils &amp; Suivi</b>",
     "costs_title": "<b>💰 Gestion des coûts</b>",
@@ -647,21 +647,6 @@
     "weather_freezing": "❄️ <b>{count}</b> sous le point de congélation",
     "weather_hot": "🔥 <b>{count}</b> chaleur extrême"
   },
-  "scorecards": {
-    "title": "FICHES D'ÉVALUATION DES CHAUFFEURS",
-    "my_title": "MA FICHE D'ÉVALUATION",
-    "no_data": "ℹ️ Aucune donnée de chauffeur disponible pour <b>{company}</b>.",
-    "driver_count": "{count} chauffeur(s)",
-    "choose_format": "Choisissez le format d'exportation :",
-    "loading": "⏳ Chargement des fiches d'évaluation ({company})…",
-    "loading_csv": "⏳ Génération du CSV ({company})…",
-    "csv_caption": "🏆 Fiches d'évaluation des chauffeurs — {company}",
-    "csv_exported": "✅ CSV exporté.",
-    "miles_mpg": "🛣  {miles} mi  ·  ⛽ {mpg} MPG",
-    "drive_idle": "🚗 Conduite {drive_h}h ({drive_pct}%)  ·  💤 Ralenti {idle_h}h ({idle_pct}%)",
-    "eco_overspeed": "🌿 Éco : {green_pct}%  ·  🏎 Excès de vitesse : {overspeed_min}m",
-    "brakes_antic": "🛞 Freins : {antic_pct}% anticipation"
-  },
   "maintenance": {
     "header": "🔧  <b>ENTRETIEN</b>",
     "description": "Planifiez et suivez les tâches d'entretien des véhicules.",
@@ -707,34 +692,6 @@
     "view_btn": "📋 Voir les tâches",
     "back": "◀️ Retour"
   },
-  "live_map": {
-    "btn_refresh": "🔄 Actualiser",
-    "back_main": "◀️ Menu principal",
-    "loading": "⏳ Génération de la carte ({company})…",
-    "no_vehicles": "ℹ️ Aucun véhicule trouvé pour <b>{company}</b>.",
-    "no_gps_data": "ℹ️ Aucune donnée GPS disponible pour le rendu de la carte.",
-    "caption_title": "🗺 Carte de la flotte — {company}",
-    "caption_stats": "🚛 {total} camions  ·  🟢 {moving} en mouvement",
-    "caption_date": "📅 {date}",
-    "install_required": "❌ Rendu de carte non disponible.\nInstallez : <code>pip install staticmap</code>"
-  },
-  "route": {
-    "title": "🛣 <b>Itinéraires</b>",
-    "select_date": "Sélectionnez une date :",
-    "type_vehicle": "Entrez le numéro/nom du camion :",
-    "loading": "⏳ Récupération du trajet pour {vehicle} ({date})…",
-    "no_client": "❌ Aucun client Samsara disponible.",
-    "no_gps_data": "ℹ️ Aucune donnée GPS pour <b>{vehicle}</b> le {date}.",
-    "not_enough_points": "ℹ️ Pas assez de points GPS pour afficher un trajet.",
-    "caption_title": "🛣 Trajet — {vehicle}",
-    "caption_date": "📅 {date}  ·  📏 {miles} mi",
-    "caption_markers": "🟢 Début → 🔴 Fin",
-    "map_unavailable": "❌ Rendu de carte non disponible.\nInstallez : <code>pip install staticmap</code>",
-    "today": "📅 Aujourd'hui",
-    "yesterday": "📅 Hier",
-    "last_7": "📅 7 derniers jours",
-    "custom": "📅 Plage personnalisée"
-  },
   "geofence": {
     "loading": "⏳ Chargement des géoclôtures…",
     "empty": "ℹ️ Aucune géoclôture définie.\n\nCréez des géoclôtures dans le tableau de bord Samsara\npour les voir ici.",
@@ -752,16 +709,6 @@
     "group_label": "💬 Groupe",
     "channel_label": "📢 Canal",
     "personal_label": "👤 Personnel"
-  },
-  "cost_per_mile": {
-    "header": "📊  <b>COÛT PAR MILLE</b>",
-    "choose_format": "Choisissez le format d'exportation :",
-    "loading": "⏳ Calcul du coût/mille ({company})…",
-    "no_fuel_data": "ℹ️ Aucune entrée de carburant pour le moment.\n\nUtilisez 💰 Coûts de carburant → ➕ Enregistrer un plein pour commencer le suivi.",
-    "csv_caption": "📊 Coût par mille — {company}",
-    "csv_exported": "✅ CSV exporté.",
-    "fleet_avg": "<b>Moy. flotte : {avg}/mi</b>",
-    "total_summary": "Total : {cost} / {miles} mi"
   },
   "fuel_costs": {
     "header": "💰  <b>COÛTS DE CARBURANT</b>",
@@ -879,20 +826,6 @@
     "back_reports": "◀️ Rapports",
     "error_content": "📋 <b>Abonnement au Rapport</b>\n\n⚠️ Impossible de générer le rapport.",
     "sending": "📋 Génération de votre rapport planifié <b>{rtype}</b>..."
-  },
-  "risk_report": {
-    "title": "Résumé des risques pour les parties prenantes",
-    "usage": "Utilisation : /risk_report <véhicule> [insurance|owner|broker|auditor|payroll]",
-    "not_assigned": "Vous ne pouvez demander des résumés de risque que pour les véhicules qui vous sont assignés.",
-    "loading": "Génération du résumé de risque pour {vehicle}…",
-    "caption": "<b>Résumé des risques</b>\nVéhicule : {vehicle}\nAudience : {audience}\nScore : {score}",
-    "audience": {
-      "insurance": "Assurance",
-      "owner": "Propriétaire",
-      "broker": "Courtier",
-      "auditor": "Auditeur",
-      "payroll": "Paie"
-    }
   },
   "payroll": {
     "title": "Paie à la performance",
