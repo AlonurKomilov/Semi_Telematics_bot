@@ -116,6 +116,12 @@ class FeatureSet:
     # miniapp (read-only in MVP; re-upload requests go to admin).
     can_manage_driver_docs: bool = False   # create / update / upload / delete for any driver
     can_driver_docs_own: bool = False      # read own profile + documents
+    # PTI (Pre-Trip Inspection) module — weekly photo-evidence
+    # walkaround.  ``can_inspections_all`` lets fleet/safety review
+    # submissions across the whole account; ``can_inspections_own``
+    # lets a driver complete + submit their own assigned vehicle.
+    can_inspections_all: bool = False
+    can_inspections_own: bool = False
 
 
 # ─── Role → Permission Map ───────────────────────────────────────
@@ -144,6 +150,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_payroll_admin=True, can_payroll_view_own=True,
         can_coaching_admin=True, can_coaching_view_own=True,
         can_manage_driver_docs=True, can_driver_docs_own=True,
+        can_inspections_all=True, can_inspections_own=True,
     ),
     Role.ADMIN: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=True,
@@ -168,6 +175,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_payroll_admin=True, can_payroll_view_own=True,
         can_coaching_admin=True, can_coaching_view_own=True,
         can_manage_driver_docs=True, can_driver_docs_own=True,
+        can_inspections_all=True, can_inspections_own=True,
     ),
     Role.FLEET: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=True,
@@ -193,6 +201,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # Fleet managers handle driver records day-to-day (assignments,
         # CDL renewals) so they get the admin permission too.
         can_manage_driver_docs=True, can_driver_docs_own=False,
+        can_inspections_all=True, can_inspections_own=False,
     ),
     Role.SAFETY: FeatureSet(
         can_faults=True, can_critical=True, can_fuel=False,
@@ -219,6 +228,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # is fine for MVP; a future ``can_view_driver_docs`` could
         # split read from write if needed.
         can_manage_driver_docs=True, can_driver_docs_own=False,
+        can_inspections_all=True, can_inspections_own=False,
     ),
     Role.DISPATCHER: FeatureSet(
         can_faults=False, can_critical=False, can_fuel=True,
@@ -243,6 +253,51 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_risk_report_all=False, can_risk_report_own=False,
         can_payroll_admin=False, can_payroll_view_own=False,
         can_coaching_admin=False, can_coaching_view_own=False,
+        can_inspections_all=True, can_inspections_own=False,
+    ),
+    Role.HR: FeatureSet(
+        # HR persona — people management.  Focus: driver compliance,
+        # coaching, onboarding, audit trail.  No vehicle-ops or
+        # financial perms.
+        can_invite=True,                       # Onboarding new users
+        can_manage_users=True,                 # User admin
+        can_coaching_admin=True,               # Training / coaching workflows
+        can_manage_driver_docs=True,           # CDL / medical / docs
+        can_inspections_all=True,              # PTI review for compliance audit
+        # Read-only context — HR needs to see WHO is doing WHAT,
+        # not edit fleet ops:
+        can_vehicle_all=True,                  # Which vehicle a driver is on
+        can_location_map=True,                 # Where drivers are right now
+        can_alerts_all=True,                   # Driver-related alerts
+        can_events_all=True,                   # Safety events drive coaching
+        can_scorecard_all=True,                # Driver behaviour insight
+        can_risk_report_all=True,              # Personnel risk reporting
+        can_geofence_all=True,                 # See geofence context for incidents
+        # Subscriptions / digest:
+        can_digest=True,
+    ),
+    Role.ACCOUNTING: FeatureSet(
+        # Accounting persona — money management.  Focus: billing,
+        # cost analytics, payroll, financial reports.  No driver
+        # admin or vehicle-ops controls.
+        can_manage_billing=True,               # Billing & subscriptions
+        can_fuel=True,                         # Fuel report
+        can_fuel_cost=True,                    # Fuel cost tracker
+        can_cost_per_mile=True,                # CPM dashboard
+        can_payroll_admin=True,                # Payroll runs + history
+        can_efficiency=True,                   # Efficiency report for cost analysis
+        # ``can_maintenance_all`` is the gate that ALSO controls Cost
+        # Reports (cost rollups by truck).  Accounting needs the cost
+        # rollups, so they get this perm even though they don't action
+        # maintenance scheduling — the cost-reports view is the
+        # primary use.  A future ``can_cost_reports`` split would
+        # tighten this; the nav already only surfaces Cost Reports.
+        can_maintenance_all=True,
+        # Read-only context — accounting needs to see WHICH assets
+        # generate WHICH costs:
+        can_vehicle_all=True,                  # Vehicle list for asset accounting
+        # Subscriptions / digest:
+        can_digest=True,
     ),
     Role.DRIVER: FeatureSet(
         can_faults=False, can_critical=False, can_fuel=False,
@@ -267,6 +322,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # Drivers see their own profile + documents (read-only); they
         # never see other drivers' records.
         can_manage_driver_docs=False, can_driver_docs_own=True,
+        can_inspections_all=False, can_inspections_own=True,
     ),
 }
 
@@ -486,6 +542,8 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_digest": "auto reports",
     "can_maintenance_all": "maintenance (all trucks)",
     "can_maintenance_own": "maintenance (own truck)",
+    "can_inspections_all": "inspections (review all)",
+    "can_inspections_own": "inspections (submit own)",
     "can_scorecard_all": "driver scorecards (all)",
     "can_scorecard_own": "driver scorecards (own)",
     "can_location_map": "live location map (all)",
@@ -656,6 +714,28 @@ def is_management_role(role: Role | str) -> bool:
     """True for owner or admin — roles that manage the account."""
     key = role.value if isinstance(role, Role) else role
     return key in ("owner", "admin")
+
+
+def is_kb_author_role(role: Role | str) -> bool:
+    """True for roles allowed to create/edit knowledge base articles.
+
+    Authors are operational staff who routinely produce SOPs, fault-code
+    notes, safety reminders, etc. — owner, admin, fleet, safety.
+    Drivers and dispatchers can read but not author.
+    """
+    key = role.value if isinstance(role, Role) else role
+    return key in ("owner", "admin", "fleet", "safety")
+
+
+def is_kb_approver_role(role: Role | str) -> bool:
+    """True for roles allowed to approve/reject public KB submissions.
+
+    Approval crosses the tenant boundary (public articles become visible
+    to every account), so we keep this strictly to account leadership —
+    owner + admin only.  Fleet/safety can submit; only owner/admin can
+    bless cross-tenant publication.
+    """
+    return is_management_role(role)
 
 
 # ─── AI Tool Permission Mappings ──────────────────────────────────

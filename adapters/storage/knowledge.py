@@ -11,7 +11,8 @@ Ownership:
   Only the creator (created_by) can edit or delete an article.
 
 Security:
-  media_url must be https:// — javascript:, data:, file: schemes are blocked.
+  media_url must be https:// with a host on the allowlist — javascript:,
+  data:, file:, http://, and arbitrary hosts are blocked.
   Public articles require approval before cross-account visibility.
 """
 
@@ -40,19 +41,100 @@ KB_MEDIA_TYPES = {"video", "pdf", "image", "link", "none"}
 KB_VISIBILITY = {"private", "public"}
 KB_TARGET_ROLES = {"all", "owner", "admin", "fleet", "safety", "dispatcher", "driver"}
 
+# DB-side length limits.  Pydantic enforces the same on input so the API
+# never lets a 50 MB description through to disk.  Numbers picked to be
+# generous for real content (Markdown SOPs can easily hit 5 KB) but
+# tight enough to prevent abuse.
+KB_TITLE_MAX_LEN = 200
+KB_DESCRIPTION_MAX_LEN = 20_000
+KB_TAGS_MAX_LEN = 500
+KB_MEDIA_URL_MAX_LEN = 2_048
+
 # Allowed URL schemes — only HTTPS
 _SAFE_URL_RE = re.compile(r"^https://", re.IGNORECASE)
+
+# Hosts allowed for ``media_url``.  Restricting to known media providers
+# blocks SSRF if anywhere downstream the URL gets fetched server-side
+# (preview-card rendering, future OG-image extraction, etc.) and stops
+# an attacker from listing internal services as "links" in articles.
+# Subdomains of these hosts are accepted via suffix-match.
+KB_ALLOWED_MEDIA_HOSTS = frozenset({
+    # Video
+    "youtube.com", "youtu.be", "vimeo.com",
+    # Document / file hosting
+    "docs.google.com", "drive.google.com", "dropbox.com", "onedrive.live.com",
+    "sharepoint.com", "icloud.com",
+    # Image hosting
+    "imgur.com", "i.imgur.com",
+    # Cloud object storage (signed-URL pattern; treated as safe-enough)
+    "amazonaws.com", "blob.core.windows.net", "storage.googleapis.com",
+    # Internal — content served by us is always fine.
+    "4truck.us", "app.4truck.us", "dash.4truck.us",
+})
+
+
+def normalize_tags(raw: str) -> str:
+    """Trim, lowercase, dedupe, and re-serialise a tag string.
+
+    Accepts ``,``, ``;`` or whitespace as separators on input; emits a
+    single comma-separated lowercase form for storage.  Caps at the DB
+    length limit.  Empty input → empty string.
+    """
+    if not raw:
+        return ""
+    # Split on any of comma, semicolon, or whitespace runs.
+    tokens = re.split(r"[,;\s]+", raw.strip())
+    seen: list[str] = []
+    seen_set: set[str] = set()
+    for t in tokens:
+        clean = t.strip().lower().strip("#-_")
+        if not clean or clean in seen_set:
+            continue
+        # Drop obvious junk (single chars, very long tokens).
+        if len(clean) < 2 or len(clean) > 40:
+            continue
+        seen.append(clean)
+        seen_set.add(clean)
+    result = ", ".join(seen)
+    return result[:KB_TAGS_MAX_LEN]
+
+
+def _host_matches_allowlist(hostname: str) -> bool:
+    """Return True if ``hostname`` is on the media-host allowlist.
+
+    Subdomain-aware: ``mail-attachment.googleusercontent.com`` matches
+    ``googleusercontent.com``.  Strict hostname comparison otherwise.
+    """
+    hostname = hostname.lower().strip()
+    if hostname in KB_ALLOWED_MEDIA_HOSTS:
+        return True
+    for allowed in KB_ALLOWED_MEDIA_HOSTS:
+        if hostname.endswith("." + allowed):
+            return True
+    return False
 
 
 def validate_media_url(url: str) -> str:
     """Validate and sanitise a media URL.
 
-    Returns the cleaned URL or raises ValueError.
-    Empty string is allowed (no media).
+    Returns the cleaned URL or raises ValueError.  Empty string is
+    allowed (no media).
+
+    Rules (in order):
+    1. Must start with ``https://`` — no other scheme accepted.
+    2. Must parse with a hostname.
+    3. Hostname is not localhost / 127.0.0.1 / private-network literal.
+    4. Hostname is on the media-host allowlist (suffix-match for
+       subdomains).
+    5. URL fits the column length cap.
     """
     if not url or not url.strip():
         return ""
     url = url.strip()
+    if len(url) > KB_MEDIA_URL_MAX_LEN:
+        raise ValueError(
+            f"URL exceeds {KB_MEDIA_URL_MAX_LEN}-character limit"
+        )
     if not _SAFE_URL_RE.match(url):
         raise ValueError(
             "Only https:// URLs are allowed. "
@@ -61,10 +143,15 @@ def validate_media_url(url: str) -> str:
     parsed = urlparse(url)
     if not parsed.hostname:
         raise ValueError("Invalid URL — missing hostname")
-    # Block localhost / private IPs
     host = parsed.hostname.lower()
     if host in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):
         raise ValueError("URLs pointing to localhost are not allowed")
+    if not _host_matches_allowlist(host):
+        raise ValueError(
+            f"Host '{host}' is not on the allowed media-host list. "
+            "Use YouTube, Vimeo, Google Drive/Docs, Dropbox, OneDrive, "
+            "Imgur, or our own 4truck.us domain."
+        )
     return url
 
 
@@ -94,12 +181,24 @@ class KnowledgeBaseMixin:
                 media_type, tags, visibility, target_role, pinned,
                 created_by, creator_name, approved, updated_at, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (account_id, title, description, category, media_url,
-             media_type, tags, visibility, target_role, int(pinned),
+            (account_id, title[:KB_TITLE_MAX_LEN],
+             description[:KB_DESCRIPTION_MAX_LEN],
+             category, media_url[:KB_MEDIA_URL_MAX_LEN],
+             media_type, normalize_tags(tags),
+             visibility, target_role, int(pinned),
              created_by, creator_name, approved, now, now),
         )
         await self._db.commit()
         return cur.lastrowid
+
+    # Columns the dashboard list-view needs.  Skips ``description`` so
+    # we don't ship a 20 KB body for every row in a 100-article list;
+    # the detail endpoint loads description on demand.
+    _LIST_COLUMNS = (
+        "id, account_id, title, category, media_url, media_type, tags, "
+        "visibility, target_role, pinned, created_by, creator_name, "
+        "approved, updated_at, created_at"
+    )
 
     async def get_kb_articles(
         self,
@@ -110,6 +209,9 @@ class KnowledgeBaseMixin:
         search: Optional[str] = None,
         pinned_only: bool = False,
         include_pending: bool = False,
+        limit: int = 200,
+        offset: int = 0,
+        light: bool = False,
     ) -> list[dict]:
         """Return articles visible to this user.
 
@@ -119,8 +221,16 @@ class KnowledgeBaseMixin:
           • any article created by this user (always visible to creator)
           • if include_pending: also show unapproved public articles from
             the user's own account (for admin review)
+
+        ``light=True`` skips ``description`` (the heaviest column) — used
+        by the dashboard list view, which loads the description on click.
+
+        ``limit`` and ``offset`` are clamped server-side; pass them
+        unchanged from the API layer.  ``search`` matches case-
+        insensitively against title/description/tags (ILIKE).
         """
-        q = """SELECT * FROM knowledge_base WHERE (
+        cols = self._LIST_COLUMNS if light else "*"
+        q = f"""SELECT {cols} FROM knowledge_base WHERE (
                   (visibility = 'private' AND account_id = ?)
                OR (visibility = 'public' AND approved = 1
                    AND (target_role = 'all' OR target_role = ?))
@@ -136,13 +246,58 @@ class KnowledgeBaseMixin:
         if pinned_only:
             q += " AND pinned = 1"
         if search:
-            q += " AND (title LIKE ? OR description LIKE ? OR tags LIKE ?)"
+            # ILIKE → case-insensitive substring match.  Both columns are
+            # indexed via the FTS GIN (migration), but for short queries
+            # ILIKE still hits a sequential scan on small tables — it's
+            # fine here and matches what users expect from a search box.
+            q += " AND (title ILIKE ? OR description ILIKE ? OR tags ILIKE ?)"
             term = f"%{search}%"
             params.extend([term, term, term])
-        q += " ORDER BY pinned DESC, created_at DESC"
+        q += " ORDER BY pinned DESC, created_at DESC LIMIT ? OFFSET ?"
+        params.extend([max(1, min(int(limit), 500)), max(0, int(offset))])
         cur = await self._db.execute(q, params)
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
+
+    async def count_kb_articles(
+        self,
+        account_id: int,
+        user_role: str = "all",
+        user_id: int = 0,
+        category: Optional[str] = None,
+        search: Optional[str] = None,
+        pinned_only: bool = False,
+        include_pending: bool = False,
+    ) -> int:
+        """Total count matching the same filters as ``get_kb_articles``.
+
+        Used by the dashboard to render the pagination footer
+        ("page 2 of 7") without re-fetching the full list.
+        """
+        q = """SELECT COUNT(*) AS n FROM knowledge_base WHERE (
+                  (visibility = 'private' AND account_id = ?)
+               OR (visibility = 'public' AND approved = 1
+                   AND (target_role = 'all' OR target_role = ?))
+               OR created_by = ?"""
+        params: list = [account_id, user_role, user_id]
+        if include_pending:
+            q += " OR (visibility = 'public' AND approved = 0 AND account_id = ?)"
+            params.append(account_id)
+        q += ")"
+        if category:
+            q += " AND category = ?"
+            params.append(category)
+        if pinned_only:
+            q += " AND pinned = 1"
+        if search:
+            q += " AND (title ILIKE ? OR description ILIKE ? OR tags ILIKE ?)"
+            term = f"%{search}%"
+            params.extend([term, term, term])
+        cur = await self._db.execute(q, params)
+        row = await cur.fetchone()
+        if row is None:
+            return 0
+        return int(dict(row).get("n", 0))
 
     async def get_kb_pending_articles(self, account_id: int = 0) -> list[dict]:
         """Return public articles awaiting approval.
@@ -204,6 +359,16 @@ class KnowledgeBaseMixin:
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
             return False
+        # Truncate strings to column limits so the update can't smuggle
+        # an oversized payload past the API check.
+        if "title" in updates:
+            updates["title"] = (updates["title"] or "")[:KB_TITLE_MAX_LEN]
+        if "description" in updates:
+            updates["description"] = (updates["description"] or "")[:KB_DESCRIPTION_MAX_LEN]
+        if "media_url" in updates:
+            updates["media_url"] = (updates["media_url"] or "")[:KB_MEDIA_URL_MAX_LEN]
+        if "tags" in updates:
+            updates["tags"] = normalize_tags(updates["tags"])
         # If switching to public, require re-approval
         if updates.get("visibility") == "public":
             updates["approved"] = 0
