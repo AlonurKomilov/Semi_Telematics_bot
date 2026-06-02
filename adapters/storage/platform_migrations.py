@@ -52,6 +52,16 @@ async def run_all(conn) -> None:
     # ``users`` and creates two short-lived token tables.  Safe to
     # re-run: every step is gated by IF NOT EXISTS / column lookup.
     await migrate_account_security_features(conn)
+    # Encrypt driver-PII columns at rest.  Reads plaintext rows,
+    # encrypts each PII field through ``infra.crypto.encrypt``, writes
+    # the result back.  No-op when ENCRYPTION_KEY isn't set (encrypt
+    # is a pass-through) or when every row already starts with the
+    # ``enc::`` marker (idempotent).
+    await migrate_encrypt_driver_pii(conn)
+    # Track every login attempt (success + failure) in its own append-
+    # only table.  Used for security audits, compliance review, and
+    # the per-user activity log on the profile page.
+    await migrate_create_login_attempts(conn)
     # The next steps MUST be the last entries — each touches every
     # table that has an ``account_id`` column, so they need every
     # CREATE TABLE already applied.  Run order matters:
@@ -2123,3 +2133,131 @@ async def migrate_account_security_features(conn) -> None:
 
     await conn.commit()
     logger.info("Migration: account-security schema in place")
+
+
+# ── Encrypt driver-PII columns at rest ──────────────────────────────
+
+
+async def migrate_encrypt_driver_pii(conn) -> None:
+    """One-shot backfill: encrypt plaintext PII columns on users rows.
+
+    Touches five columns: ``cdl_number``, ``dob``, ``phone``,
+    ``home_address``, ``driver_notes``.  Each value is encrypted via
+    ``infra.crypto.encrypt`` which prepends an ``enc::`` marker — rows
+    already carrying the marker are skipped, so re-runs are no-ops.
+
+    Safe modes
+    ----------
+    - ``ENCRYPTION_KEY`` unset → ``encrypt`` is a pass-through, the
+      migration logs that it ran and skipped (no plaintext is touched).
+      Production deploys MUST set the key for at-rest protection.
+    - ``ENCRYPTION_KEY`` set but rotated since previous runs → only the
+      still-plaintext rows get encrypted with the new key; previously-
+      encrypted rows pass through (their decrypt will fail at read
+      time with a clear error if the key really did rotate).
+    """
+    from infra.crypto import encrypt as _encrypt, is_enabled
+
+    if not is_enabled():
+        logger.info(
+            "Driver-PII encryption skipped: ENCRYPTION_KEY is not set. "
+            "Plaintext PII rows will be encrypted next time the migration "
+            "runs with a key configured."
+        )
+        return
+
+    pii_cols = ("cdl_number", "dob", "phone", "home_address", "driver_notes")
+    total_encrypted = 0
+    for col in pii_cols:
+        try:
+            # Fetch rows that still have plaintext values for this
+            # column.  ``NOT LIKE 'enc::%'`` filters out anything
+            # already encrypted, making this loop idempotent.
+            cur = await conn.execute(
+                f"SELECT id, {col} FROM users "
+                f"WHERE {col} IS NOT NULL AND {col} <> '' "
+                f"AND {col} NOT LIKE 'enc::%'"
+            )
+            rows = await cur.fetchall()
+        except Exception as e:
+            logger.debug("PII encrypt skipped %s (%s)", col, e)
+            continue
+        if not rows:
+            continue
+        for row in rows:
+            row_d = dict(row) if hasattr(row, "keys") else {0: row[0], 1: row[1]}
+            user_id = row_d.get("id") if "id" in row_d else row_d[0]
+            plaintext = row_d.get(col) if col in row_d else row_d[1]
+            try:
+                ciphertext = _encrypt(plaintext)
+                await conn.execute(
+                    f"UPDATE users SET {col} = ? WHERE id = ?",
+                    (ciphertext, user_id),
+                )
+                total_encrypted += 1
+            except Exception as e:
+                logger.warning(
+                    "Failed to encrypt users.%s for user_id=%s: %s",
+                    col, user_id, e,
+                )
+    await conn.commit()
+    if total_encrypted:
+        logger.info(
+            "Migration: encrypted %d plaintext PII value(s) on users",
+            total_encrypted,
+        )
+
+
+# ── login_attempts table for audit + activity log ──────────────────
+
+
+async def migrate_create_login_attempts(conn) -> None:
+    """Create the append-only login-attempts log.
+
+    One row per attempted login (success or failure) with timestamp,
+    the email tried, the result, the IP, and the user-agent.  Used
+    for:
+
+    1. Security audits — "show me everyone who tried to log into the
+       owner account in the last 24 hours"
+    2. Per-user activity panel on the profile page — "your last 10
+       sign-ins from these devices"
+    3. Compliance review — DOT / SOC2 / GDPR all want this trail
+
+    Indexes:
+    - ``(email, attempted_at DESC)`` for "show me failures for X"
+    - ``(user_id, attempted_at DESC)`` for the profile-page list
+    - ``(attempted_at DESC)`` for the global "what's happening right
+      now" admin view
+
+    Idempotent: CREATE TABLE IF NOT EXISTS, indexes use IF NOT EXISTS.
+    """
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS login_attempts (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id       INTEGER,
+                email         TEXT,
+                success       INTEGER NOT NULL DEFAULT 0,
+                failure_reason TEXT,
+                ip_address    TEXT,
+                user_agent    TEXT,
+                attempted_at  TEXT NOT NULL
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_login_attempts_email "
+            "ON login_attempts(email, attempted_at DESC)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_login_attempts_user "
+            "ON login_attempts(user_id, attempted_at DESC)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_login_attempts_recent "
+            "ON login_attempts(attempted_at DESC)"
+        )
+        await conn.commit()
+        logger.info("login_attempts table created/verified")
+    except Exception as e:
+        logger.debug("login_attempts setup skipped (%s)", e)

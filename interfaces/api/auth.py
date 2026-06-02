@@ -1210,17 +1210,34 @@ async def auth_email_login(request: Request, response: Response, body: EmailLogi
     from infra.platform import get_platform_db
     db = get_platform_db()
 
+    # Collect request metadata up front — used by every audit-log
+    # branch below so the same IP / user-agent labels appear whether
+    # we're recording a success, a wrong password, a lockout, or an
+    # unverified-email refusal.
+    _ip = _client_ip(request)
+    _ua = (request.headers.get("user-agent") or "")[:500]
+
     user = await db.get_user_by_email(body.email)
     if not user or not user.password_hash:
         # Don't reveal whether the email exists.  A probe attacker
         # learns nothing from the timing because we never reach the
         # password verify path.
+        await db.record_login_attempt(
+            user_id=None, email=body.email, success=False,
+            failure_reason="no_such_email",
+            ip_address=_ip, user_agent=_ua,
+        )
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     # Lockout check happens BEFORE password verification so a brute
     # force can't even time-probe valid emails.
     locked_until = await db.is_user_locked(user.id)
     if locked_until:
+        await db.record_login_attempt(
+            user_id=user.id, email=body.email, success=False,
+            failure_reason="account_locked",
+            ip_address=_ip, user_agent=_ua,
+        )
         raise HTTPException(
             status_code=423,  # Locked
             detail={
@@ -1238,6 +1255,14 @@ async def auth_email_login(request: Request, response: Response, body: EmailLogi
         # Record the miss + lock if threshold hit.  We don't await
         # the email here so a slow SMTP relay doesn't slow the 401.
         lock_state = await db.record_failed_login(user.id)
+        await db.record_login_attempt(
+            user_id=user.id, email=body.email, success=False,
+            failure_reason=(
+                "lockout_triggered" if lock_state.get("locked_until")
+                else "bad_password"
+            ),
+            ip_address=_ip, user_agent=_ua,
+        )
         if lock_state.get("locked_until"):
             # Best-effort heads-up to the legitimate user.
             try:
@@ -1262,6 +1287,11 @@ async def auth_email_login(request: Request, response: Response, body: EmailLogi
     # are backfilled to verified=1 by the schema migration, so we don't
     # accidentally lock out historical accounts.
     if not await db.is_email_verified(user.id):
+        await db.record_login_attempt(
+            user_id=user.id, email=body.email, success=False,
+            failure_reason="email_not_verified",
+            ip_address=_ip, user_agent=_ua,
+        )
         raise HTTPException(
             status_code=403,
             detail={
@@ -1274,6 +1304,11 @@ async def auth_email_login(request: Request, response: Response, body: EmailLogi
                 "email": user.email,
             },
         )
+
+    await db.record_login_attempt(
+        user_id=user.id, email=body.email, success=True,
+        ip_address=_ip, user_agent=_ua,
+    )
 
     token = await mint_session_token(
         db, request,

@@ -25,6 +25,64 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Optional
 
+
+# Driver-profile columns containing personally-identifiable information.
+# Stored encrypted at rest via ``infra.crypto`` (Fernet AES-GCM under the
+# ENCRYPTION_KEY env var) and transparently decrypted on read.  Legacy
+# rows that pre-date this rollout flow through ``decrypt`` unchanged —
+# the function passes plaintext through when it doesn't see the ``enc::``
+# prefix, so the mixed-state period during the backfill works correctly.
+#
+# Non-PII columns (cdl_state, cdl_class, *_expires, *_date, samsara_id)
+# stay plaintext so DOT compliance reports and expiry-alert schedulers
+# don't have to thread decryption through every aggregate query.
+_PII_COLUMNS = frozenset({
+    "cdl_number", "dob", "phone", "home_address", "driver_notes",
+})
+
+
+def _maybe_decrypt(value: Optional[str]) -> Optional[str]:
+    """Decrypt a stored PII value, tolerating None + legacy plaintext.
+
+    Returns the input unchanged when it's None / empty / lacks the
+    ``enc::`` marker — keeps the call sites short (no per-field None
+    checks needed in ``_row_to_profile``).
+
+    ``infra.crypto`` is imported lazily to dodge an import cycle:
+    ``adapters/storage/__init__.py`` pulls every mixin including this
+    one, and a top-level ``from infra...`` would trigger
+    ``infra/__init__.py`` which in turn imports ``Database`` from
+    ``adapters.storage`` — a partial-init crash.
+    """
+    if not value:
+        return value
+    # Lazy import — see docstring.
+    from infra.crypto import decrypt as _crypto_decrypt
+    try:
+        return _crypto_decrypt(value)
+    except ValueError as e:
+        # Wrong key, corrupt ciphertext, etc.  We log and return a
+        # placeholder so admin pages keep working even when one row
+        # has gone bad.
+        logger.warning("PII decrypt failed: %s", e)
+        return "[encrypted]"
+
+
+def _maybe_encrypt(value: Optional[str]) -> Optional[str]:
+    """Encrypt a PII value before write, tolerating None.
+
+    When ``ENCRYPTION_KEY`` is unset (dev fallback), ``encrypt`` is a
+    pass-through and rows land in plaintext.  That keeps test fixtures
+    that ship without a key working — the production deploy MUST set
+    the key for actual at-rest protection.
+
+    Lazy import same as ``_maybe_decrypt`` for the same reason.
+    """
+    if not value:
+        return value
+    from infra.crypto import encrypt as _crypto_encrypt
+    return _crypto_encrypt(value)
+
 if TYPE_CHECKING:
     class _MixinBase:
         """Typing stub — attributes provided by the concrete DB class at runtime."""
@@ -66,6 +124,15 @@ class DriverProfile:
     phone: Optional[str]
     home_address: Optional[str]
     driver_notes: Optional[str]
+    # Primary vehicle assignment (denormalised cache from
+    # ``driver_vehicle_assignments`` — see ``assign_vehicle_to_driver``).
+    # Defaults to None so legacy callers that ignore the column still
+    # construct cleanly.  The underlying SQL column is still
+    # ``users.truck_num`` (kept for backwards compat with the
+    # bot/alerts/routes code that reads ``User.truck_num`` directly);
+    # this dataclass field uses the project-standard ``vehicle_name``
+    # so new code reads naturally.
+    vehicle_name: Optional[str] = None
 
 
 @dataclass
@@ -152,17 +219,20 @@ class DriverProfileMixin(_MixinBase):
             display_name=row[2] or "",
             telegram_id=row[3],
             samsara_driver_id=row[4],
-            cdl_number=row[5],
+            # Encrypted-at-rest fields are decrypted on the way out so
+            # every consumer (API, bot, exporter) sees plaintext without
+            # caring about the storage representation.
+            cdl_number=_maybe_decrypt(row[5]),
             cdl_state=row[6],
             cdl_class=row[7],
             cdl_expires=row[8],
             med_card_expires=row[9],
             hire_date=row[10],
             termination_date=row[11],
-            dob=row[12],
-            phone=row[13],
-            home_address=row[14],
-            driver_notes=row[15],
+            dob=_maybe_decrypt(row[12]),
+            phone=_maybe_decrypt(row[13]),
+            home_address=_maybe_decrypt(row[14]),
+            driver_notes=_maybe_decrypt(row[15]),
         )
 
     async def update_driver_profile(
@@ -170,10 +240,19 @@ class DriverProfileMixin(_MixinBase):
     ) -> bool:
         """Update one or more profile fields.  Silently drops keys that
         aren't in the allow-list (defensive against API callers
-        passing through arbitrary kwargs)."""
+        passing through arbitrary kwargs).
+
+        PII columns are encrypted before they hit the DB.  When the
+        ``ENCRYPTION_KEY`` env var is unset, ``encrypt`` is a no-op so
+        local dev / test fixtures keep working with plaintext rows.
+        """
         clean = {k: v for k, v in fields.items() if k in _DRIVER_PROFILE_COLUMNS}
         if not clean:
             return False
+        # Encrypt PII before storage; other fields pass through.
+        for col in list(clean.keys()):
+            if col in _PII_COLUMNS:
+                clean[col] = _maybe_encrypt(clean[col])
         cols = ", ".join(f"{k} = ?" for k in clean)
         params = tuple(clean.values()) + (user_id,)
         async with self.transaction():
@@ -196,7 +275,7 @@ class DriverProfileMixin(_MixinBase):
                 f"       samsara_driver_id, cdl_number, cdl_state, cdl_class, "
                 f"       cdl_expires, med_card_expires, hire_date, "
                 f"       termination_date, dob, phone, home_address, "
-                f"       driver_notes "
+                f"       driver_notes, truck_num AS vehicle_name "
                 f"FROM users {where} "
                 f"ORDER BY LOWER(display_name)",
                 (account_id,),
@@ -206,9 +285,15 @@ class DriverProfileMixin(_MixinBase):
             DriverProfile(
                 user_id=r[0], account_id=r[1], display_name=r[2] or "",
                 telegram_id=r[3], samsara_driver_id=r[4],
-                cdl_number=r[5], cdl_state=r[6], cdl_class=r[7], cdl_expires=r[8],
+                # PII fields decrypted on the way out.  See ``_PII_COLUMNS``.
+                cdl_number=_maybe_decrypt(r[5]),
+                cdl_state=r[6], cdl_class=r[7], cdl_expires=r[8],
                 med_card_expires=r[9], hire_date=r[10], termination_date=r[11],
-                dob=r[12], phone=r[13], home_address=r[14], driver_notes=r[15],
+                dob=_maybe_decrypt(r[12]),
+                phone=_maybe_decrypt(r[13]),
+                home_address=_maybe_decrypt(r[14]),
+                driver_notes=_maybe_decrypt(r[15]),
+                vehicle_name=r[16],
             )
             for r in rows
         ]

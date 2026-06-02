@@ -267,3 +267,190 @@ async def update_preferences(
 
     await platform_db.update_user(db_user.id, **updates)
     return {"ok": True, "updated": list(updates.keys())}
+
+
+# ── Activity log + GDPR export ──────────────────────────────────────
+
+
+@router.get("/me/activity")
+async def my_activity(
+    limit: int = 20,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Recent login attempts for the requesting user.
+
+    Drives the "Recent activity" panel on the profile page so a user
+    can spot logins they don't recognise.  Bounded by an index on
+    ``(user_id, attempted_at DESC)``.
+    """
+    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    rows = await platform_db.list_my_login_attempts(db_user.id, limit=limit)
+    return {"items": rows, "count": len(rows)}
+
+
+@router.get("/me/export")
+async def my_data_export(
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Return everything we know about the requesting user as JSON.
+
+    GDPR Article 15 ("right of access") + Article 20 ("right to data
+    portability").  Output is a single JSON document with one section
+    per logical record type:
+
+      * ``profile``   — the row from ``users``, including driver
+                        fields (decrypted on the way out).
+      * ``sessions``  — every active session row from ``user_sessions``.
+      * ``activity``  — last 200 login attempts.
+      * ``companies`` — company-code memberships from ``user_companies``.
+      * ``vehicles``  — assigned trucks from ``driver_trucks`` /
+                        ``driver_vehicle_assignments``.
+
+    No telemetry / Samsara-sourced data lives here yet (that's per-
+    fleet, not per-user).  Adding it later is additive — the structure
+    is a list of named sections so consumers can ignore unknown ones.
+    """
+    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Profile — full users row.  ``_row_to_user`` doesn't carry driver-
+    # PII columns, so we re-select them here and decrypt through the
+    # driver mixin's helper.  Best-effort: missing columns just absent
+    # from the export, never a 500.
+    try:
+        profile = await platform_db.get_driver_profile(db_user.id)
+        profile_dict = profile.__dict__ if profile else {}
+    except Exception:
+        profile_dict = {}
+
+    # Sessions + activity + memberships.  Each lookup tolerates the
+    # underlying table not existing (fresh dev DBs) so the export
+    # endpoint always returns SOMETHING.
+    try:
+        sessions = await platform_db.list_user_sessions(db_user.id)
+    except Exception:
+        sessions = []
+    try:
+        activity = await platform_db.list_my_login_attempts(db_user.id, limit=200)
+    except Exception:
+        activity = []
+    try:
+        companies = await platform_db.get_user_company_codes(db_user.id)
+    except Exception:
+        companies = []
+    try:
+        vehicles = await platform_db.get_user_vehicle_nums(db_user.id)
+    except Exception:
+        vehicles = []
+
+    return {
+        "exported_at": _iso_now(),
+        "profile": profile_dict,
+        "user_row": {
+            "id": db_user.id,
+            "telegram_id": db_user.telegram_id,
+            "account_id": db_user.account_id,
+            "display_name": db_user.display_name,
+            "role": db_user.role.value if hasattr(db_user.role, "value") else str(db_user.role),
+            "department": db_user.department,
+            "truck_num": db_user.truck_num,
+            "email": db_user.email,
+            "language": getattr(db_user, "language", None),
+            "timezone": getattr(db_user, "timezone", None),
+            "is_active": db_user.is_active,
+            "created_at": db_user.created_at,
+        },
+        "sessions": sessions,
+        "activity": activity,
+        "companies": companies,
+        "vehicles": vehicles,
+    }
+
+
+def _iso_now() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+@router.get("/sessions")
+async def list_my_sessions(
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Return the current user's active dashboard / Mini App sessions.
+
+    Powers the "Active sessions" panel on /profile.  ``current_jti`` is
+    echoed back so the frontend can pin the requesting browser at the
+    top of the list and disable the revoke button on its own row.
+    """
+    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    sessions = await platform_db.list_user_sessions(db_user.id)
+    return {
+        "items": sessions,
+        "current_jti": str(user.get("jti") or ""),
+    }
+
+
+@router.delete("/sessions/{session_id}")
+async def revoke_my_session(
+    session_id: int,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Revoke one of the current user's own sessions.
+
+    The session must belong to the requesting user — we scope by
+    ``owning_user_id`` so a JWT for user A can't revoke user B's
+    sessions even with a guessed session_id.  After the DB update, the
+    jti is pushed onto the Redis denylist so ``get_current_user``
+    rejects any further requests with that jti.
+    """
+    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    revoked = await platform_db.revoke_user_session(
+        session_id, owning_user_id=db_user.id,
+    )
+    if not revoked:
+        raise HTTPException(
+            status_code=404,
+            detail="Session not found or already revoked.",
+        )
+    from interfaces.api.auth import mark_jti_revoked
+    await mark_jti_revoked(revoked["jti"], revoked.get("expires_at"))
+    return {"ok": True, "revoked": {"id": revoked["id"], "jti": revoked["jti"]}}
+
+
+@router.post("/sessions/terminate-others")
+async def terminate_other_sessions(
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Revoke every active session for the current user except this one.
+
+    The requesting browser stays signed in (its jti is excluded from
+    the revoke), every other device is kicked out at the next request.
+    Tokens minted before the jti-claim rollout don't have a jti in the
+    JWT, so we treat ``current_jti`` as empty-string in that case and
+    revoke EVERYTHING — including the current browser — which forces a
+    fresh login that backfills a session row.  Safer than leaking a
+    legacy session past a "terminate all" click.
+    """
+    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    current_jti = str(user.get("jti") or "")
+    revoked = await platform_db.revoke_other_user_sessions(
+        db_user.id, current_jti,
+    )
+    from interfaces.api.auth import mark_jti_revoked
+    for row in revoked:
+        await mark_jti_revoked(row["jti"], row.get("expires_at"))
+    return {"ok": True, "revoked_count": len(revoked)}

@@ -911,3 +911,66 @@ class UsersMixin:
             (datetime.now(timezone.utc).isoformat(), user_id),
         )
         await self._db.commit()
+
+    # ── Login attempt log ───────────────────────────────────────────
+
+    async def record_login_attempt(
+        self,
+        *,
+        user_id: Optional[int],
+        email: Optional[str],
+        success: bool,
+        failure_reason: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> None:
+        """Append one row to the login_attempts log.
+
+        Called from every login path: on success (user_id known,
+        success=True), on a wrong-password (user_id known if email
+        matched, failure_reason='bad_password'), and on the no-such-
+        email branch (user_id=None, failure_reason='no_such_email').
+
+        Best-effort: a failure here is logged but never propagates —
+        an audit-write failure must never block a legitimate sign-in
+        or mask a legitimate 401.
+        """
+        from datetime import datetime, timezone
+        try:
+            await self._db.execute(
+                """INSERT INTO login_attempts
+                   (user_id, email, success, failure_reason,
+                    ip_address, user_agent, attempted_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    user_id, (email or "")[:200], 1 if success else 0,
+                    (failure_reason or None),
+                    (ip_address or "")[:64],
+                    (user_agent or "")[:500],
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+            await self._db.commit()
+        except Exception as e:
+            # Audit-trail bookkeeping should never break auth itself.
+            import logging
+            logging.getLogger("storage.users").debug(
+                "record_login_attempt failed: %s", e,
+            )
+
+    async def list_my_login_attempts(
+        self, user_id: int, limit: int = 20,
+    ) -> list[dict]:
+        """Return recent login attempts for the profile-page activity feed.
+
+        Bounded by the ``idx_login_attempts_user`` index — page loads
+        are O(log N) even on huge tables.
+        """
+        cur = await self._db.execute(
+            "SELECT id, email, success, failure_reason, ip_address, "
+            "user_agent, attempted_at FROM login_attempts "
+            "WHERE user_id = ? ORDER BY attempted_at DESC LIMIT ?",
+            (user_id, max(1, min(int(limit), 100))),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
