@@ -189,25 +189,55 @@ MODEL_REGISTRY: dict[str, dict] = {
         "max_output_tokens": 16384,
     },
     # ── Claude (Anthropic rawPredict on Vertex AI) ───────────
+    # Requires per-base-model quota on the GCP project.  When quota
+    # is 0, the live probe filter hides these from the picker so a
+    # user can't tap a model that everyone gets 429 from.  Request
+    # quota via https://console.cloud.google.com/vertex-ai/quotas
     "claude-sonnet-4.6": {
         "display": "Claude Sonnet 4.6",
-        "description": "Anthropic Claude Sonnet 4.6 — top-tier reasoning",
+        "description": "Anthropic Claude Sonnet 4.6 — balanced reasoning",
         "category": "anthropic",
         "api_type": "anthropic",
         "anthropic_model_id": "claude-sonnet-4-6",
         "locations": ["global"],
         "max_output_tokens": 8192,
     },
-    # ── Codestral (Mistral rawPredict on Vertex AI) ──────────
-    "codestral-2": {
-        "display": "Codestral 2",
-        "description": "Mistral Codestral 2 — code-focused model",
-        "category": "mistral",
-        "api_type": "mistral_raw",
-        "mistral_model_id": "codestral-2",
-        "mistral_publisher": "mistralai",
-        "locations": ["europe-west4", "us-central1"],
-        "max_output_tokens": 4096,
+    # ── Gemini 3.5 Flash (newer than 2.5, drop-in upgrade) ────
+    "gemini-3.5-flash": {
+        "display": "Gemini 3.5 Flash",
+        "description": "Latest Gemini Flash — faster & smarter than 2.5",
+        "category": "gemini",
+        "api_type": "gemini",
+        "locations": ["global"],
+        "max_output_tokens": 16384,
+    },
+    # ── Reasoning MaaS additions (verified working in this project) ──
+    "qwen3-next-thinking": {
+        "display": "Qwen3-Next Thinking",
+        "description": "Qwen 80B reasoning model — step-by-step thinking",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "qwen/qwen3-next-80b-a3b-thinking-maas",
+        "locations": ["global"],
+        "max_output_tokens": 16384,
+    },
+    "kimi-k2-thinking": {
+        "display": "Kimi K2 Thinking",
+        "description": "Moonshot Kimi K2 reasoning model — long-context agent",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "moonshotai/kimi-k2-thinking-maas",
+        "locations": ["global"],
+        "max_output_tokens": 16384,
+    },
+    "grok-4.20-reasoning": {
+        "display": "Grok 4.20 Reasoning",
+        "description": "xAI Grok 4.20 — low hallucination, 2M context, agent-grade",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "xai/grok-4.20-reasoning",
+        "locations": ["global"],
+        "max_output_tokens": 16384,
     },
 }
 
@@ -224,11 +254,15 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
     "gemini-2.5-pro":              {"input": 1.25, "output": 10.00, "thinking": 3.75},
     "gemini-3.1-flash-lite-preview": {"input": 0.10, "output": 0.40, "thinking": 0.40},
     "gemini-3.1-pro-preview":      {"input": 1.25, "output": 10.00, "thinking": 3.75},
+    "gemini-3.5-flash":            {"input": 0.15, "output": 0.60, "thinking": 0.70},
     # MaaS reasoning models (thinking included in completion_tokens)
     "deepseek-r1":                 {"input": 0.80, "output": 2.17, "thinking": 2.17},
     "deepseek-v3.2":               {"input": 0.30, "output": 0.88, "thinking": 0.88},
     "deepseek-v3.1":               {"input": 0.30, "output": 0.88, "thinking": 0.88},
     "kimi-k2":                     {"input": 0.60, "output": 2.40, "thinking": 2.40},
+    "kimi-k2-thinking":            {"input": 0.60, "output": 2.40, "thinking": 2.40},
+    "qwen3-next-thinking":         {"input": 0.14, "output": 0.55, "thinking": 0.55},
+    "grok-4.20-reasoning":         {"input": 3.00, "output": 15.00, "thinking": 15.00},
     # MaaS non-reasoning models
     "deepseek-ocr":                {"input": 0.30, "output": 0.88},
     "qwen3-next":                  {"input": 0.14, "output": 0.27},
@@ -242,7 +276,6 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
     "llama-3.3":                   {"input": 0.20, "output": 0.20},
     # Partner models
     "claude-sonnet-4.6":           {"input": 3.00, "output": 15.00, "thinking": 15.00},
-    "codestral-2":                 {"input": 0.30, "output": 0.90},
 }
 
 _COST_MARGIN = 0.30    # 30 % business margin
@@ -358,10 +391,49 @@ def get_locations_for_model(model_name: str) -> list[str]:
     return [DEFAULT_LOCATION]
 
 
-def get_available_models() -> list[dict]:
-    """Return all registered models with display info, sorted by category."""
-    result = []
+def _probe_filtered_registry() -> dict[str, dict]:
+    """Return MODEL_REGISTRY entries, filtered by the live probe cache.
+
+    Why filter
+    ──────────
+    The registry is a *static* catalog of every model the bot knows
+    how to talk to.  The *live* set — which the project actually has
+    quota for, has enabled, has billing for — is a subset.  Before
+    this filter, the model picker showed every entry in the registry,
+    so a user could tap (say) Claude Opus 4.7, see "this model is
+    available", select it, and then hit a 429 because the project's
+    Anthropic quota was never provisioned.
+
+    Behaviour:
+      * Probe cache populated → include only models with ≥1 working
+        region, and narrow each entry's ``locations`` to the working
+        subset (so a region-specific outage doesn't leak through).
+      * Probe cache empty (first call, cache TTL just expired) →
+        return the full registry as a safe default.  The first call
+        also schedules a background probe; subsequent calls within
+        the TTL (1h) hit the populated cache and get filtered.
+    """
+    # Lazy import: probing imports registry, so importing it at module
+    # load time would create a cycle.
+    from capabilities.ai.probing import probe_model_availability
+    available = probe_model_availability(force=False)
+    if not available:
+        # No cache yet — be permissive while the background probe runs.
+        return dict(MODEL_REGISTRY)
+    filtered: dict[str, dict] = {}
     for name, info in MODEL_REGISTRY.items():
+        working_regions = available.get(name)
+        if not working_regions:
+            continue
+        filtered[name] = {**info, "locations": working_regions}
+    return filtered
+
+
+def get_available_models() -> list[dict]:
+    """Return registered models the project actually has access to,
+    with display info, sorted by category."""
+    result = []
+    for name, info in _probe_filtered_registry().items():
         result.append({
             "name": name,
             "display": info["display"],
@@ -376,9 +448,9 @@ def get_available_models() -> list[dict]:
 
 
 def get_vision_models() -> list[dict]:
-    """Return only vision-capable models with display info."""
+    """Return only vision-capable models the project has access to."""
     result = []
-    for name, info in MODEL_REGISTRY.items():
+    for name, info in _probe_filtered_registry().items():
         if info.get("api_type") != "gemini":
             continue
         result.append({
@@ -465,12 +537,19 @@ _CLOUD_MODEL_MAP: dict[str, str] = {
     "gemini-2.5-pro-001": "gemini-2.5-pro",
     "gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite-preview",
     "gemini-3.1-pro-preview": "gemini-3.1-pro-preview",
+    "gemini-3.5-flash": "gemini-3.5-flash",
     "deepseek-r1-0528-maas": "deepseek-r1",
     "deepseek-v3.2-maas": "deepseek-v3.2",
     "deepseek-v3.1-maas": "deepseek-v3.1",
     "deepseek-ocr-maas": "deepseek-ocr",
-    "kimi-k2-thinking-maas": "kimi-k2",
+    # Two distinct base/thinking modes — they share the cloud token
+    # bucket but our registry keys them separately so cost reports
+    # can distinguish chat-mode vs reasoning-mode usage.
+    "kimi-k2-maas": "kimi-k2",
+    "kimi-k2-thinking-maas": "kimi-k2-thinking",
     "qwen3-next-80b-a3b-instruct-maas": "qwen3-next",
+    "qwen3-next-80b-a3b-thinking-maas": "qwen3-next-thinking",
+    "grok-4.20-reasoning": "grok-4.20-reasoning",
     "minimax-m2-maas": "minimax-m2",
     "glm-5-maas": "glm-5",
     "glm-4.7-maas": "glm-4.7",
@@ -480,7 +559,6 @@ _CLOUD_MODEL_MAP: dict[str, str] = {
     "llama-4-maverick-17b-128e-instruct-maas": "llama-4-maverick",
     "llama-3.3-70b-instruct-maas": "llama-3.3",
     "claude-sonnet-4-6": "claude-sonnet-4.6",
-    "codestral-2": "codestral-2",
 }
 
 

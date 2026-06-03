@@ -22,6 +22,32 @@ _AVAILABILITY_TTL = 3600
 _probe_scheduled = False
 
 
+# Markers that distinguish a *permanent quota=0* 429 from a *transient
+# throttle* 429.  When the project has 0 quota for a base model (e.g.
+# Anthropic models not yet enabled / quota-increase request not yet
+# approved), Vertex returns 429 with this exact wording — the model
+# would never work for any user until the quota is provisioned.  We
+# treat those as UNAVAILABLE so the model picker doesn't show models
+# that everyone who taps them gets a 429 from.
+#
+# Transient 429s (true rate limits under load) come without these
+# markers; we treat those as available so we don't flap a real model
+# out of the picker just because a smoke test got throttled.
+_PERMANENT_QUOTA_MARKERS = (
+    "per_base_model",                           # global_online_prediction_requests_per_base_model
+    "submit a quota increase",                  # standard quota=0 nudge
+    "RESOURCE_EXHAUSTED",                       # explicit gRPC status
+    "Quota exceeded",                           # generic precursor (paired with one of the above)
+)
+
+
+def _looks_like_permanent_quota_zero(body_text: str) -> bool:
+    """True when a 429 body looks like a permanent quota=0, not a transient throttle."""
+    if not body_text:
+        return False
+    return any(m in body_text for m in _PERMANENT_QUOTA_MARKERS)
+
+
 def _probe_single(model: str, region: str, token: str, project: str) -> bool:
     """Send a tiny generateContent request; return True if reachable."""
     import requests
@@ -48,7 +74,11 @@ def _probe_single(model: str, region: str, token: str, project: str) -> bool:
             json=body,
             timeout=10,
         )
-        return r.status_code in (200, 429)
+        if r.status_code == 200:
+            return True
+        if r.status_code == 429 and not _looks_like_permanent_quota_zero(r.text):
+            return True
+        return False
     except Exception:
         return False
 
@@ -73,7 +103,11 @@ def _probe_openai_compat(model_id: str, region: str, token: str,
             json=body,
             timeout=15,
         )
-        return r.status_code in (200, 429)
+        if r.status_code == 200:
+            return True
+        if r.status_code == 429 and not _looks_like_permanent_quota_zero(r.text):
+            return True
+        return False
     except Exception:
         return False
 
@@ -98,7 +132,11 @@ def _probe_anthropic(model_id: str, region: str, token: str,
             json=body,
             timeout=15,
         )
-        return r.status_code in (200, 429)
+        if r.status_code == 200:
+            return True
+        if r.status_code == 429 and not _looks_like_permanent_quota_zero(r.text):
+            return True
+        return False
     except Exception:
         return False
 
@@ -123,7 +161,11 @@ def _probe_mistral(model_id: str, publisher: str, region: str,
             json=body,
             timeout=15,
         )
-        return r.status_code in (200, 429)
+        if r.status_code == 200:
+            return True
+        if r.status_code == 429 and not _looks_like_permanent_quota_zero(r.text):
+            return True
+        return False
     except Exception:
         return False
 
