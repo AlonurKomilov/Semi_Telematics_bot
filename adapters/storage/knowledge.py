@@ -23,18 +23,23 @@ from typing import Optional
 from urllib.parse import urlparse
 
 
-# Valid categories for knowledge base articles
+# Valid categories for knowledge base articles.  Labels stay text-only
+# here — the dashboard renders lucide-react icons next to each label
+# from a frontend-side ``CATEGORY_ICONS`` map.  Mixing emojis into the
+# label was unreliable across browsers (the user's screenshot rendered
+# ⚪ / 🟥 / ⭕ as missing-glyph placeholders) and prevented translation
+# of the human-readable label.
 KB_CATEGORIES = {
-    "maintenance":  "🔧 Maintenance & Repair",
-    "fault_codes":  "⚠️ Fault Codes",
-    "pre_trip":     "📋 Pre-Trip / Post-Trip",
-    "compliance":   "📜 Compliance & Regulations",
-    "safety":       "🛡 Driving & Safety",
-    "fuel":         "⛽ Fuel Efficiency",
-    "procedures":   "🏢 Company Procedures",
-    "training":     "📱 Platform Training",
-    "reefer":       "🧊 Reefer Operations",
-    "general":      "📚 General",
+    "maintenance":  "Maintenance & Repair",
+    "fault_codes":  "Fault Codes",
+    "pre_trip":     "Pre-Trip / Post-Trip",
+    "compliance":   "Compliance & Regulations",
+    "safety":       "Driving & Safety",
+    "fuel":         "Fuel Efficiency",
+    "procedures":   "Company Procedures",
+    "training":     "Platform Training",
+    "reefer":       "Reefer Operations",
+    "general":      "General",
 }
 
 KB_MEDIA_TYPES = {"video", "pdf", "image", "link", "none"}

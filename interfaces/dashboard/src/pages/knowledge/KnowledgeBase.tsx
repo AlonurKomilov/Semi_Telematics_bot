@@ -7,7 +7,32 @@ import {
   Check, AlertTriangle, Pin, FileText, FileVideo, FileImage,
   Link as LinkIcon, ChevronDown, ChevronUp,
   ThumbsUp, ThumbsDown, Eye,
+  // Category icons
+  Wrench, ClipboardCheck, ScrollText, ShieldCheck, Fuel,
+  Building2, GraduationCap, Snowflake,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+
+// Lucide icon per category key.  Falls back to BookOpen when the
+// backend ships a category the frontend hasn't seen yet (forward-
+// compatibility with future additions).
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  maintenance: Wrench,
+  fault_codes: AlertTriangle,
+  pre_trip:    ClipboardCheck,
+  compliance:  ScrollText,
+  safety:      ShieldCheck,
+  fuel:        Fuel,
+  procedures:  Building2,
+  training:    GraduationCap,
+  reefer:      Snowflake,
+  general:     BookOpen,
+};
+
+function CategoryIcon({ category, size = 13, className = '' }: { category: string; size?: number; className?: string }) {
+  const Icon = CATEGORY_ICONS[category] || BookOpen;
+  return <Icon size={size} className={`shrink-0 ${className}`} />;
+}
 import { apiFetch, apiJSON } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -535,21 +560,26 @@ export default function KnowledgeBase() {
               )}
             </div>
 
-            {/* B10 fix: pin checkbox lives in ONE place — below the row,
-                always visible, doesn't double-render across the
-                private/public branches. */}
-            <div>
-              <label className="inline-flex items-center gap-2 text-sm text-foreground/80 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={fPinned}
-                  onChange={(e) => setFPinned(e.target.checked)}
-                  className="rounded border-border"
-                />
-                <Pin size={13} />
-                {t('knowledge.field_pin_label')}
-              </label>
-            </div>
+            {/* Pin checkbox is an EDIT-time curation tool — pinning a
+                brand-new article you just wrote almost never reflects
+                the editor's actual intent (they're focused on getting
+                the content right).  Show it only when editing an
+                existing row, where the choice is a deliberate "I want
+                this near the top". */}
+            {editing && (
+              <div>
+                <label className="inline-flex items-center gap-2 text-sm text-foreground/80 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={fPinned}
+                    onChange={(e) => setFPinned(e.target.checked)}
+                    className="rounded border-border"
+                  />
+                  <Pin size={13} />
+                  {t('knowledge.field_pin_label')}
+                </label>
+              </div>
+            )}
 
             {fVisibility === 'public' && (
               <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-sm text-yellow-700 dark:text-yellow-400 inline-flex items-start gap-2">
@@ -789,7 +819,10 @@ function ArticleCard({
             <span className="font-medium text-foreground truncate">{a.title}</span>
           </div>
           <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
-            <span>{getCatLabel(a.category)}</span>
+            <span className="inline-flex items-center gap-1">
+              <CategoryIcon category={a.category} />
+              {getCatLabel(a.category)}
+            </span>
             {a.visibility === 'public' ? (
               a.approved ? (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-500/10 border border-green-500/30 rounded text-green-700 dark:text-green-400">
