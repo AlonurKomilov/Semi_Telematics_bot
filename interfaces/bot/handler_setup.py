@@ -48,7 +48,7 @@ def register_handlers(app: Application) -> None:
     from interfaces.bot.registration import cmd_start, cmd_register, cmd_join, cmd_help
     from interfaces.bot.fleet import (
         cmd_faults, cmd_vehicle, cmd_fuel, cmd_alerts,
-        cmd_health, cmd_efficiency, cmd_cam,
+        cmd_health, cmd_efficiency,
     )
     from interfaces.bot.management import (
         cmd_account, cmd_invite, cmd_users, cmd_setrole,
@@ -74,10 +74,13 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("alerts", cmd_alerts))
     app.add_handler(CommandHandler("health", cmd_health))
     app.add_handler(CommandHandler("efficiency", cmd_efficiency))
-    # /cam <truck> — ad-hoc AI dashcam check for a single truck.
-    # Fleet-wide camera analysis lives on the dashboard; this
-    # command is for one-message-in one-message-out from a phone.
-    app.add_handler(CommandHandler("cam", cmd_cam))
+    # /cam was retired — the whole camera surface (single-truck
+    # ad-hoc check, fleet-wide analysis, history browser) moved to
+    # the dashboard.  Typing /cam now falls through to the bot's
+    # generic unknown-command path; the dashboard Cameras page is at
+    # dash.4truck.us/cameras.  Camera *alerts* still ping via the
+    # scheduled job (capabilities/alerting/cameras.py) — only the
+    # manual interactive lookups left the bot.
 
     # Events
     app.add_handler(CommandHandler("events", cmd_events))

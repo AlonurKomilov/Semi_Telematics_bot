@@ -39,9 +39,11 @@ from interfaces.bot.fleet import (
     cmd_health,
     cmd_efficiency,
     cmd_weather, cmd_api_status,
-    cmd_camera_check, cmd_camera_check_vehicle,
-    cmd_cam_tool,
 )
+# Camera interactive surface (cmd_camera_check / cmd_camera_check_vehicle
+# / cmd_cam_tool / cmd_camera_history / cmd_cam) is fully retired from
+# the bot.  Old callbacks fall through to the unknown-action handler.
+# Camera *alerts* still ping via capabilities/alerting/cameras.py.
 from interfaces.bot.management import cmd_account, cmd_users
 from interfaces.bot.admin import cmd_admin, cmd_accounts, cmd_sys_ai_stats, cmd_sys_server
 from interfaces.bot.scorecards import cmd_scorecards
@@ -60,8 +62,13 @@ from interfaces.bot.maintenance import cmd_maintenance, cmd_maint_done
 from interfaces.bot.maps import cmd_livemap
 from interfaces.bot.routes import cmd_route
 from interfaces.bot.work_hours import cmd_work_hours
-from interfaces.bot.geofences import cmd_geofences, cmd_add_zone, cmd_list_zones, cmd_delete_zone
-from interfaces.bot.geofences import handle_delete_zone_callback, handle_add_zone_roles_callback
+from interfaces.bot.geofences import cmd_geofences
+# Geofence CRUD wizard (cmd_add_zone / cmd_list_zones / cmd_delete_zone +
+# the handle_*_callback helpers) is retired from the bot — adding a zone
+# requires lat/lng + role-list selection, which is dashboard-shaped work.
+# The read-only listing (cmd_geofences) stays for quick "what zones do
+# we have?" lookups; the scheduled geofence-event poller in
+# capabilities/geofencing/* keeps firing entry/exit alerts.
 from interfaces.bot.events import cmd_events, cmd_events_text, cmd_events_csv
 from interfaces.bot.ai import (
     cmd_ai, cmd_ai_ask_prompt, cmd_ai_summary,
@@ -133,18 +140,17 @@ _router.exact("cmd_health", cmd_health)
 _router.exact("cmd_efficiency", cmd_efficiency)
 _router.exact("cmd_weather", cmd_weather)
 _router.exact("cmd_api_status", cmd_api_status)
-_router.exact("cmd_camera_check", cmd_camera_check)
-_router.exact("cmd_camera_report", cmd_camera_check)   # alias from reports menu
-_router.exact("cmd_cam_tool", cmd_cam_tool)             # now a dashboard redirect
+# cmd_camera_check / cmd_camera_report / cmd_cam_tool routes removed
+# with the camera-UI retirement; cached buttons fall through to the
+# unknown-action handler.
 _router.exact("cmd_account", cmd_account)
 _router.exact("cmd_users", cmd_users)
 _router.exact("cmd_scorecards", cmd_scorecards)
 _router.exact("cmd_livemap", cmd_livemap)
 _router.exact("cmd_route", cmd_route)
 _router.exact("cmd_geofences", cmd_geofences)
-_router.exact("cmd_add_zone", cmd_add_zone)
-_router.exact("cmd_list_zones", cmd_list_zones)
-_router.exact("cmd_delete_zone", cmd_delete_zone)
+# cmd_add_zone / cmd_list_zones / cmd_delete_zone routes removed
+# with the geofence-CRUD retirement; cached buttons fall through.
 _router.exact("cmd_events", cmd_events)
 _router.exact("cmd_fuelcost", cmd_fuelcost)
 _router.exact("fuelcost_add", cmd_fuelcost_add)
@@ -204,14 +210,6 @@ async def _ai_toggle(u, c):
     ai_type = u.callback_query.data.replace("ai_toggle_", "")
     await cmd_ai_alert_toggle(u, c, ai_type=ai_type)
 
-async def _cam_truck(u, c):
-    """Per-truck camera-check callback from the vehicle detail view
-    (``cam_vehicle_<truck>``).  Still wired because the per-truck
-    flow stays on the bot — only the picker / PDF / CSV surfaces
-    were retired."""
-    truck = u.callback_query.data.replace("cam_vehicle_", "")
-    await cmd_camera_check_vehicle(u, c, vehicle_name=truck)
-
 async def _events_text(u, c):
     days = int(u.callback_query.data.replace("events_text_", ""))
     await cmd_events_text(u, c, days=days)
@@ -235,9 +233,11 @@ async def _maint_done(u, c):
 
 # ── Camera tool prefix wrappers ──────────────────────────────────
 #
-# The paginated camera picker (``camco_<company>`` / ``cam_page_<co>_<page>``)
-# moved to the dashboard.  Only the per-truck ``cam_vehicle_<truck>``
-# prefix survives — see ``_cam_truck`` above.
+# The entire camera surface (paginated picker ``camco_<company>`` /
+# ``cam_page_<co>_<page>``, per-truck ``cam_vehicle_<truck>`` button,
+# fleet-wide and per-truck AI checks, history browser) moved to the
+# dashboard.  Cached buttons fall through to the unknown-action
+# handler.  Camera *alerts* still ping via the scheduler.
 
 # NOTE: the entire ``_whours_*`` / ``_wsched_*`` callback grid was
 # removed when Working Hours moved to the dashboard.  Old buttons
@@ -302,7 +302,6 @@ async def _ai_diag(u, c):
 _router.prefix("cmd_critical_", _cmd_critical_co)
 _router.prefix("alert_toggle_", _alert_toggle)
 _router.prefix("ai_toggle_", _ai_toggle)
-_router.prefix("cam_vehicle_", _cam_truck)
 _router.prefix("events_text_", _events_text)
 _router.prefix("events_csv_", _events_csv)
 # Retired in Tier 3 (moved to dashboard):
@@ -313,10 +312,10 @@ _router.prefix("events_csv_", _events_csv)
 # ``maint_*`` callback path moved to the dashboard.  Cached buttons
 # in old chats fall through to the global "unknown action" handler.
 _router.prefix("maint_done_", _maint_done)
-# Camera paginated picker (``camco_``, ``cam_page_``) moved to the
-# dashboard along with the cmd_cam_tool entry point.
-# Working-hours wizard prefixes (whours_* / wsched_*) were removed
-# when /work_hours moved to the dashboard.
+# Camera UI (``camco_``, ``cam_page_``, ``cam_vehicle_``) and
+# geofence-CRUD wizard prefixes (``del_zone:``, ``zone_roles:``,
+# ``gf_detail_``) all moved to the dashboard.  Working-hours
+# wizard prefixes (whours_* / wsched_*) too.
 _router.prefix("ar_freq_", _ar_freq)
 _router.prefix("ar_type_", _ar_type)
 _router.prefix("ar_hour_", _ar_hour)
@@ -427,20 +426,14 @@ async def _co_submenu(update, context):
 _router.prefix("co_", _co_submenu)
 
 
-# ── Geofence detail & zone management ───────────────────────────
-
-async def _gf_detail(u, c):
-    await u.callback_query.answer(t('geofence.detail_coming_soon'), show_alert=False)
-
-async def _del_zone(u, c):
-    await handle_delete_zone_callback(u, c)
-
-async def _zone_roles(u, c):
-    await handle_add_zone_roles_callback(u, c)
-
-_router.prefix("gf_detail_", _gf_detail)
-_router.prefix("del_zone:", _del_zone)
-_router.prefix("zone_roles:", _zone_roles)
+# ── Geofence CRUD (retired) ─────────────────────────────────────
+#
+# The add-zone wizard (gf_detail_*, del_zone:*, zone_roles:*) was
+# retired from the bot — entering lat/lng coordinates and toggling
+# role-checkboxes is dashboard-shaped work.  Cached buttons fall
+# through to the unknown-action handler.  The read-only
+# ``/geofences`` listing stays for quick "what zones do we have?"
+# lookups, and the entry/exit scheduler keeps firing alerts.
 
 
 # ── Alert acknowledgment ────────────────────────────────────────

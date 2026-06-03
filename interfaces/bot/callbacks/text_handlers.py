@@ -20,7 +20,10 @@ from interfaces.bot.fuel_costs import handle_fuelcost_text
 # ``maint_*`` ``_pending`` dispatch branch below was deleted in
 # the same commit.
 from interfaces.bot.ai import cmd_ai_answer
-from interfaces.bot.geofences import handle_add_zone_text
+# The add-zone wizard (handle_add_zone_text) was retired when
+# geofence CRUD moved to the dashboard.  Any stale ``_add_zone_step``
+# context state from a pre-deploy session is silently ignored — the
+# user just types into the AI fallback like any other message.
 
 
 async def handle_text(update, context):
@@ -52,10 +55,11 @@ async def handle_text(update, context):
 
     pending = context.user_data.pop("_pending", None)
 
-    # ── Add-zone multi-step conversation ────────────────────────
-    if context.user_data.get("_add_zone_step"):
-        await handle_add_zone_text(update, context)
-        return
+    # Any stale ``_add_zone_step`` from before geofence CRUD moved
+    # to the dashboard is silently cleared so a half-finished
+    # wizard doesn't trap the user.
+    context.user_data.pop("_add_zone_step", None)
+    context.user_data.pop("_add_zone", None)
 
     if not pending:
         # No pending prompt — route to AI if user is registered & AI configured

@@ -32,22 +32,29 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
         # Predicates match exactly what each submenu now renders
         # post-dashboard-migration — hiding the parent button when
         # the submenu would otherwise be empty for that role.
+        #
+        # Tools and Costs submenus were collapsed: each only had one
+        # surviving button (Parking and Fuel Costs respectively)
+        # after the dashboard migration, so we promote them to
+        # top-level instead of forcing the user through an empty
+        # wrapper.  The submenu_* builders below still exist as
+        # fallbacks for cached buttons.
         has_reports = (perms.can_vehicle_all
                        or perms.can_events_all or perms.can_events_own)
-        has_tools = perms.can_geofence_all or perms.can_geofence_own
-        has_costs = perms.can_fuel_cost
+        has_parking = perms.can_geofence_all or perms.can_geofence_own
+        has_fuel_cost = perms.can_fuel_cost
 
         row1 = []
         if has_reports:
             row1.append(InlineKeyboardButton(t("menu.reports"), callback_data="submenu_reports"))
-        if has_tools:
-            row1.append(InlineKeyboardButton(t("menu.tools"), callback_data="submenu_tools"))
+        if has_parking:
+            row1.append(InlineKeyboardButton("🅿️ Parking", callback_data="cmd_parking_events"))
         if row1:
             rows.append(row1)
 
         row2 = []
-        if has_costs:
-            row2.append(InlineKeyboardButton(t("menu.costs"), callback_data="submenu_costs"))
+        if has_fuel_cost:
+            row2.append(InlineKeyboardButton(t("costs_menu.fuel_costs"), callback_data="cmd_fuelcost"))
         if perms.can_alerts_all or perms.can_alerts_own:
             row2.append(InlineKeyboardButton(t("menu.alerts"), callback_data="cmd_alerts"))
         if row2:
@@ -325,9 +332,10 @@ def vehicle_kb(
             rows.append([
                 InlineKeyboardButton("🔧 AI Diagnose", callback_data=f"ai_diag_{company}_{vehicle_name}"),
             ])
-        rows.append([
-            InlineKeyboardButton("📷 Camera Check", callback_data=f"cam_vehicle_{vehicle_name}"),
-        ])
+        # Per-truck Camera Check button was removed when the whole
+        # camera surface moved to the dashboard.  Operators run
+        # camera checks on dash.4truck.us/cameras now.  Camera
+        # *alerts* still ping via the scheduled job.
     if ack_id is not None:
         rows.append([InlineKeyboardButton("↩️ Back to Alert", callback_data=f"back_alert_{ack_id}")])
     else:
@@ -407,10 +415,12 @@ def invite_kb(invite_link: str | None = None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-# cam_company_picker_kb + cam_vehicle_list_kb (the paginated Cameras
-# truck picker) were retired with cmd_cam_tool / cmd_cam_company_pick /
-# cmd_cam_page.  Per-truck checks now use /cam <truck> directly or
-# the cam_vehicle_<truck> button on the vehicle detail page.
+# The entire camera surface (cam_company_picker_kb,
+# cam_vehicle_list_kb, the per-truck Camera Check button on vehicle
+# detail, cmd_cam_tool / cmd_cam / cmd_camera_check / cmd_camera_history)
+# is retired from the bot.  Camera *alerts* still fire through the
+# scheduled job; the interactive surface lives at
+# dash.4truck.us/cameras.
 
 
 def vehicle_company_picker_kb(company_codes: list[str]) -> InlineKeyboardMarkup:
@@ -497,12 +507,10 @@ def auto_reports_menu_kb(current_sub: dict | None = None) -> InlineKeyboardMarku
         hour = current_sub.get("send_hour", 7)
         tz = current_sub.get("timezone", "UTC")
         tz_short = tz.split("/")[-1].replace("_", " ") if "/" in tz else tz
-        type_labels = {
-            "faults": "🔧 Faults",
-            "fuel": "⛽ Fuel & DEF",
-            "health": "🏥 Vehicle Health",
-            "efficiency": "📊 Efficiency",
-        }
+        # Derived from the canonical report registry — guarantees this
+        # menu never drifts from the dashboard tabs or the bot scheduler.
+        from capabilities.reporting.registry import REPORTS as _R
+        type_labels = {r.key: r.label_with_emoji for r in _R}
         label = type_labels.get(rtype, rtype.title())
         rows.append([InlineKeyboardButton(
             f"📋 Active: {label} · {freq.title()} at {hour:02d}:00 {tz_short}",
