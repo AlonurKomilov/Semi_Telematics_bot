@@ -386,6 +386,42 @@ def is_vision_capable(model_name: str) -> bool:
     return info.get("api_type") == "gemini"
 
 
+# Model-name prefix → maker display name.  Used by the dashboard model
+# picker to group models by who built them (Google, Anthropic, OpenAI…)
+# instead of the legacy ``category`` which only distinguished
+# gemini-native vs MaaS API shape.  Order matters: more-specific
+# prefixes must come before shorter ones that could match.
+_MAKER_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("gemini-",     "Google"),
+    ("claude-",     "Anthropic"),
+    ("gpt-oss",     "OpenAI"),
+    ("llama-",      "Meta"),
+    ("deepseek-",   "DeepSeek"),
+    ("qwen3-",      "Alibaba"),
+    ("qwen-",       "Alibaba"),
+    ("kimi-",       "Moonshot"),
+    ("mistral-",    "Mistral"),
+    ("codestral-",  "Mistral"),
+    ("grok-",       "xAI"),
+    ("minimax-",    "MiniMax"),
+    ("glm-",        "Zhipu"),
+)
+
+
+def get_model_maker(model_name: str) -> str:
+    """Return the upstream maker / provider name for *model_name*.
+
+    Used for UI grouping; falls back to ``"Other"`` for unrecognised
+    prefixes so a newly added model still renders somewhere instead of
+    disappearing.  Adding a new prefix here is enough — registry rows
+    don't need a separate ``maker`` field that could drift.
+    """
+    for prefix, maker in _MAKER_PREFIXES:
+        if model_name.startswith(prefix):
+            return maker
+    return "Other"
+
+
 def get_model_info(model_name: str) -> dict | None:
     """Get registry info for a model, or None if unknown."""
     return MODEL_REGISTRY.get(model_name)

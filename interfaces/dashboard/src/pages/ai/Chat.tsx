@@ -385,48 +385,63 @@ export default function Chat() {
               </button>
               {modelOpen && (
                 <div className="absolute right-0 top-full mt-1 z-50 w-72 max-h-80 overflow-y-auto rounded-lg border border-border bg-card shadow-xl">
-                  {Object.entries(
-                    models.reduce<Record<string, AIModel[]>>((acc, m) => {
-                      (acc[m.category] ??= []).push(m);
+                  {(() => {
+                    // Group by upstream maker (Google, Anthropic, OpenAI, …) and
+                    // render in a stable order: flagship/frontier first, then
+                    // the rest alphabetical with "Other" at the bottom.  This
+                    // replaces the legacy gemini/maas grouping which exposed
+                    // backend API shape rather than who built each model.
+                    const MAKER_ORDER = [
+                      'Google', 'Anthropic', 'OpenAI', 'Meta',
+                      'DeepSeek', 'Alibaba', 'Moonshot', 'Mistral',
+                      'xAI', 'MiniMax', 'Zhipu',
+                    ];
+                    const grouped = models.reduce<Record<string, AIModel[]>>((acc, m) => {
+                      (acc[m.maker || 'Other'] ??= []).push(m);
                       return acc;
-                    }, {})
-                  ).map(([category, items]) => (
-                    <div key={category}>
-                      <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground bg-muted/50 sticky top-0">
-                        {category}
+                    }, {});
+                    const orderedMakers = [
+                      ...MAKER_ORDER.filter((mk) => grouped[mk]?.length),
+                      ...Object.keys(grouped)
+                        .filter((mk) => !MAKER_ORDER.includes(mk) && mk !== 'Other')
+                        .sort(),
+                      ...(grouped['Other']?.length ? ['Other'] : []),
+                    ];
+                    return orderedMakers.map((maker) => (
+                      <div key={maker}>
+                        <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground bg-muted/50 sticky top-0">
+                          {maker}
+                        </div>
+                        {grouped[maker].map((m) => (
+                          <button
+                            key={m.name}
+                            onClick={() => switchModel(m.name)}
+                            disabled={modelSwitching || m.name === currentModel}
+                            className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                              m.name === currentModel
+                                ? 'bg-primary/15 text-primary'
+                                : 'text-foreground/80 hover:bg-muted'
+                            } disabled:opacity-50`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="truncate">{m.display}</span>
+                              <span className="flex items-center gap-1 ml-2 flex-shrink-0">
+                                {m.name === accountDefault && isAdmin && (
+                                  <span className="text-[10px] text-yellow-500">{t('chat.model_default')}</span>
+                                )}
+                                {m.name === currentModel && (
+                                  <span className="text-[10px] text-primary">{t('chat.model_active')}</span>
+                                )}
+                              </span>
+                            </div>
+                            {m.description && (
+                              <span className="text-[10px] text-muted-foreground block truncate">{m.description}</span>
+                            )}
+                          </button>
+                        ))}
                       </div>
-                      {items.map((m) => (
-                        <button
-                          key={m.name}
-                          onClick={() => switchModel(m.name)}
-                          disabled={modelSwitching || m.name === currentModel}
-                          className={`w-full text-left px-3 py-2 text-sm transition-colors ${
-                            m.name === currentModel
-                              ? 'bg-primary/15 text-primary'
-                              : 'text-foreground/80 hover:bg-muted'
-                          } disabled:opacity-50`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="truncate">{m.display}</span>
-                            <span className="flex items-center gap-1 ml-2 flex-shrink-0">
-                              {m.name === accountDefault && isAdmin && (
-                                <span className="text-[10px] text-yellow-500">{t('chat.model_default')}</span>
-                              )}
-                              {m.name === currentModel && (
-                                <span className="text-[10px] text-primary">{t('chat.model_active')}</span>
-                              )}
-                            </span>
-                          </div>
-                          {m.description && (
-                            <span className="text-[10px] text-muted-foreground block truncate">{m.description}</span>
-                          )}
-                          {isAdmin && m.cost_per_request != null && (
-                            <span className="text-[10px] text-muted-foreground">${m.cost_per_request}/req</span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  ))}
+                    ));
+                  })()}
                 </div>
               )}
             </div>

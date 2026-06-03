@@ -76,6 +76,7 @@ from capabilities.ai.registry import (                                   # noqa:
     estimate_request_cost,
     _is_openai_compat,
     is_vision_capable,
+    get_model_maker,
     get_model_info,
     get_locations_for_model,
     get_available_models,

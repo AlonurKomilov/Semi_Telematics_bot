@@ -1342,6 +1342,13 @@ export interface AIModel {
   display: string;
   description: string;
   category: string;
+  /**
+   * Upstream maker — "Google", "Anthropic", "OpenAI", "Meta",
+   * "DeepSeek", "Alibaba", "Moonshot", "Mistral", "xAI", "MiniMax",
+   * "Zhipu", or "Other".  Used by the model picker to group entries
+   * by who built them.
+   */
+  maker: string;
   vision: boolean;
   cost_per_request: number | null;
 }

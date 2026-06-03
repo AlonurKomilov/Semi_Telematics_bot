@@ -367,6 +367,7 @@ async def list_models(
             "display": info.get("display", name),
             "description": info.get("description", ""),
             "category": info.get("category", "unknown"),
+            "maker": ai.get_model_maker(name),
             "vision": ai.is_vision_capable(name),
         }
         # Only show cost to admin/owner
