@@ -233,6 +233,26 @@ def probe_model_availability(force: bool = False) -> dict[str, list[str]]:
             f"Probe {mname}: {len(result[mname])}/{total} regions OK"
         )
 
+    # Poisoning guard: if every probe failed (Vertex AI outage, DNS
+    # failure, expired credentials, network partition…) we'd end up
+    # with an empty ``result`` dict.  That would then be cached for an
+    # hour, and ``_probe_filtered_registry()`` would render the model
+    # picker empty for every user for the whole TTL — turning a
+    # transient outage into a 1-hour bot blackout.
+    #
+    # Treat a zero-model probe as a failure: keep whatever the cache
+    # had before, log the outage, and let the next scheduled probe
+    # try again.  If this is the very first probe and the cache is
+    # also empty, return the empty result anyway (caller will fall
+    # back to the unfiltered registry as a permissive default).
+    if not result and _availability_cache:
+        logger.warning(
+            "Probe returned 0 working models — Vertex AI likely down. "
+            "Keeping previous availability cache (%d models) instead of "
+            "blanking the picker.", len(_availability_cache),
+        )
+        return _availability_cache
+
     _availability_cache = result
     _availability_ts = time.time()
     logger.info(f"Availability probe complete: {len(result)} models available")

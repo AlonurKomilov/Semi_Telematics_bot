@@ -352,12 +352,14 @@ async def ask_agent(question: str, fleet_context: dict,
     import asyncio
 
     try:
-        from vertexai.generative_models import Part, Content  # noqa: F401
+        from google.genai import types as _gtypes
     except ImportError:
         text = await ask_ai(question, fleet_context, user_id=user_id,
                                account_id=account_id, language=language,
                                user_context=user_context)
         return {"text": text, "tool_results": []}
+    Part = _gtypes.Part
+    Content = _gtypes.Content
 
     cur_model_name = get_current_model_name()
     # User-level model preference → account-level → global
@@ -576,9 +578,9 @@ async def ask_agent(question: str, fleet_context: dict,
                         response = await asyncio.to_thread(
                             model.generate_content,
                             [
-                                Content(parts=[Part.from_text(full_prompt)], role="user"),
+                                Content(parts=[Part.from_text(text=full_prompt)], role="user"),
                                 candidate.content,
-                                Content(parts=[fn_response], role="function"),
+                                Content(parts=[fn_response], role="user"),
                             ],
                             tools=tools,
                         )
@@ -603,9 +605,9 @@ async def ask_agent(question: str, fleet_context: dict,
                     response = await asyncio.to_thread(
                         model.generate_content,
                         [
-                            Content(parts=[Part.from_text(full_prompt)], role="user"),
+                            Content(parts=[Part.from_text(text=full_prompt)], role="user"),
                             candidate.content,
-                            Content(parts=[fn_response], role="function"),
+                            Content(parts=[fn_response], role="user"),
                         ],
                         tools=tools,
                     )

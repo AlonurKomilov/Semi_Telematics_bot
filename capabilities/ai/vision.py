@@ -12,6 +12,29 @@ from capabilities.ai.generation import generate, _is_rate_limit_error
 
 logger = logging.getLogger("bot.ai")
 
+
+def _sniff_image_mime(data: bytes) -> str:
+    """Detect image MIME type from magic bytes.
+
+    google-genai's ``Part.from_bytes`` requires an explicit ``mime_type``
+    (unlike the legacy ``Image.from_bytes`` which auto-detected).
+    Samsara dashcam frames are JPEG in practice; everything else is a
+    safe-ish fallback to JPEG since Vertex will reject genuinely
+    malformed bytes itself.
+    """
+    if not data or len(data) < 8:
+        return "image/jpeg"
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    return "image/jpeg"
+
+
 CAMERA_CHECK_SYSTEM = (
     "You are a fleet dashcam quality inspector. Analyze the provided dashcam "
     "frame and evaluate:\n"
@@ -66,11 +89,14 @@ async def analyze_camera_image(
         if fb_name != model_name:
             attempts.append((fb_name, fb_loc))
 
-    from vertexai.generative_models import Part, Image
+    from google.genai import types as _gtypes
 
-    image_part = Part.from_image(Image.from_bytes(image_bytes))
-    prompt_part = Part.from_text(
-        CAMERA_CHECK_SYSTEM
+    image_part = _gtypes.Part.from_bytes(
+        data=image_bytes,
+        mime_type=_sniff_image_mime(image_bytes),
+    )
+    prompt_part = _gtypes.Part.from_text(
+        text=CAMERA_CHECK_SYSTEM
         + (f"\n\nVehicle: {vehicle_name}" if vehicle_name else "")
     )
 
@@ -235,11 +261,14 @@ async def generate_with_vision(
         if fb_name != model_name:
             attempts.append((fb_name, fb_loc))
 
-    from vertexai.generative_models import Part, Image
+    from google.genai import types as _gtypes
 
-    image_part = Part.from_image(Image.from_bytes(image_bytes))
+    image_part = _gtypes.Part.from_bytes(
+        data=image_bytes,
+        mime_type=_sniff_image_mime(image_bytes),
+    )
     text_content = f"{system}\n\n{prompt}" if system else prompt
-    prompt_part = Part.from_text(text_content)
+    prompt_part = _gtypes.Part.from_text(text=text_content)
 
     last_exc: Exception | None = None
 

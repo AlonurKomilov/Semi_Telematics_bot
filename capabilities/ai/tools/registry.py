@@ -67,13 +67,13 @@ def filter_tools_for_role(role_str: str | None) -> list[dict]:
 
 
 def get_cached_vertex_tools(role: str | None = None):
-    """Return cached Vertex AI Tool objects, filtered by role."""
+    """Return cached google-genai Tool objects, filtered by role."""
     if role in _cached_tools:
         return _cached_tools[role]
-    from vertexai.generative_models import Tool, FunctionDeclaration
+    from google.genai import types as _gtypes
     tool_defs = filter_tools_for_role(role)
-    func_decls = [FunctionDeclaration(**td) for td in tool_defs]
-    result = [Tool(function_declarations=func_decls)]
+    func_decls = [_gtypes.FunctionDeclaration(**td) for td in tool_defs]
+    result = [_gtypes.Tool(function_declarations=func_decls)]
     _cached_tools[role] = result
     return result
 

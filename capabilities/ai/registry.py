@@ -29,6 +29,11 @@ MODEL_REGISTRY: dict[str, dict] = {
             "northamerica-northeast1",
         ],
         "max_output_tokens": 16384,
+        # Flash variants accept thinking_budget=0; thinking adds 30-45s
+        # per call in the agentic loop (2 rounds = 60-90s) and blows
+        # the nginx/client timeouts.  ``gemini-2.5-pro`` REJECTS budget=0
+        # with a 400 — leave it unset on Pro entries.
+        "thinking_budget": 0,
     },
     "gemini-2.5-pro": {
         "display": "Gemini 2.5 Pro",
@@ -81,15 +86,16 @@ MODEL_REGISTRY: dict[str, dict] = {
         "locations": ["global"],
         "max_output_tokens": 8192,
     },
-    "kimi-k2": {
-        "display": "Kimi K2",
-        "description": "Moonshot Kimi K2 — strong reasoning & tool use",
-        "category": "maas",
-        "api_type": "openai_compat",
-        "maas_model_id": "moonshotai/kimi-k2-thinking-maas",
-        "locations": ["global"],
-        "max_output_tokens": 8192,
-    },
+    # NOTE: a legacy ``kimi-k2`` entry used to live here pointing at the
+    # *same* ``moonshotai/kimi-k2-thinking-maas`` endpoint as
+    # ``kimi-k2-thinking`` below — a registry-level duplicate that
+    # made cost telemetry, the probe, and the cloud-monitoring map
+    # all conflate the two.  Dropped: ``kimi-k2-thinking`` is the
+    # canonical entry.  Users with the legacy key saved in
+    # ``account_models`` / ``user_models`` will fall through to the
+    # account default on next resolve (registry lookup returns None,
+    # caller handles that path).  When the non-thinking Kimi K2.6
+    # base is added, it'll get its own ``kimi-k2.6`` key.
     "qwen3-next": {
         "display": "Qwen3-Next 80B",
         "description": "Alibaba Qwen3-Next instruct — efficient 80B MoE",
@@ -210,6 +216,9 @@ MODEL_REGISTRY: dict[str, dict] = {
         "api_type": "gemini",
         "locations": ["global"],
         "max_output_tokens": 16384,
+        # Same rationale as gemini-2.5-flash — Flash class disables thinking
+        # so agentic tool loops stay under the request-deadline budget.
+        "thinking_budget": 0,
     },
     # ── Reasoning MaaS additions (verified working in this project) ──
     "qwen3-next-thinking": {
@@ -259,7 +268,6 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
     "deepseek-r1":                 {"input": 0.80, "output": 2.17, "thinking": 2.17},
     "deepseek-v3.2":               {"input": 0.30, "output": 0.88, "thinking": 0.88},
     "deepseek-v3.1":               {"input": 0.30, "output": 0.88, "thinking": 0.88},
-    "kimi-k2":                     {"input": 0.60, "output": 2.40, "thinking": 2.40},
     "kimi-k2-thinking":            {"input": 0.60, "output": 2.40, "thinking": 2.40},
     "qwen3-next-thinking":         {"input": 0.14, "output": 0.55, "thinking": 0.55},
     "grok-4.20-reasoning":         {"input": 3.00, "output": 15.00, "thinking": 15.00},
@@ -542,10 +550,10 @@ _CLOUD_MODEL_MAP: dict[str, str] = {
     "deepseek-v3.2-maas": "deepseek-v3.2",
     "deepseek-v3.1-maas": "deepseek-v3.1",
     "deepseek-ocr-maas": "deepseek-ocr",
-    # Two distinct base/thinking modes — they share the cloud token
-    # bucket but our registry keys them separately so cost reports
-    # can distinguish chat-mode vs reasoning-mode usage.
-    "kimi-k2-maas": "kimi-k2",
+    # Kimi K2 only — Vertex returns ``kimi-k2-thinking-maas`` as the
+    # cloud model_user_id for both chat and reasoning calls (they
+    # share an endpoint).  Maps to our single ``kimi-k2-thinking``
+    # registry entry.
     "kimi-k2-thinking-maas": "kimi-k2-thinking",
     "qwen3-next-80b-a3b-instruct-maas": "qwen3-next",
     "qwen3-next-80b-a3b-thinking-maas": "qwen3-next-thinking",

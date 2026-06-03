@@ -1,4 +1,17 @@
-"""Model state management, init, switching, and persistence."""
+"""Model state management, init, switching, and persistence.
+
+Migrated 2026-06-03 from the deprecated ``vertexai.generative_models``
+SDK to ``google-genai`` (1.67.0).  ``vertexai.generative_models``
+reaches end-of-life on 2026-06-24 — see
+https://cloud.google.com/vertex-ai/generative-ai/docs/deprecations/genai-vertexai-sdk
+
+The legacy ``vertexai.init(project=…, location=…)`` mutated process-wide
+singletons, so the first caller's region "won" and every subsequent
+call to a different region silently used the wrong endpoint.  The new
+SDK exposes a per-client ``genai.Client(vertexai=True, project=…,
+location=…)`` — so each ``_GeminiCaller`` below owns its own client
+and the global-init race is gone.
+"""
 
 from __future__ import annotations
 
@@ -17,12 +30,73 @@ from capabilities.ai.registry import (
 
 logger = logging.getLogger("bot.ai")
 
+
+# ── google-genai wrapper ─────────────────────────────────────────
+
+
+class _GeminiCaller:
+    """Thin wrapper around ``google.genai.Client`` that preserves the
+    legacy ``model.generate_content(contents, tools=…)`` surface the
+    rest of the codebase calls.
+
+    Holds (client, model_id, base_config) per-instance — no global
+    state — so two concurrent calls to two different regions can't
+    clobber each other the way ``vertexai.init()`` allowed.
+    """
+
+    __slots__ = ("_client", "_model_id", "_base_config")
+
+    def __init__(self, client, model_id: str, base_config):
+        self._client = client
+        self._model_id = model_id
+        self._base_config = base_config
+
+    @property
+    def model_id(self) -> str:
+        return self._model_id
+
+    def generate_content(self, contents, tools=None):
+        """Sync call into google-genai; safe to wrap with asyncio.to_thread."""
+        if tools is None:
+            config = self._base_config
+        else:
+            from google.genai import types as _gtypes
+            cfg_dict = self._base_config.model_dump(exclude_unset=True)
+            cfg_dict["tools"] = tools
+            config = _gtypes.GenerateContentConfig(**cfg_dict)
+        return self._client.models.generate_content(
+            model=self._model_id,
+            contents=contents,
+            config=config,
+        )
+
+
+def _build_gen_config(info: dict):
+    """Build a ``GenerateContentConfig`` from a registry entry."""
+    from google.genai import types as _gtypes
+    max_tokens = min(info.get("max_output_tokens", 4096), 8192)
+    kwargs: dict[str, Any] = {
+        "temperature": 0.3,
+        "max_output_tokens": max_tokens,
+        "top_p": 0.8,
+    }
+    # Per-model thinking budget — replaces the old hardcoded
+    # ``startswith("gemini-2.5-flash")`` check.  Flash variants set
+    # budget=0 because thinking adds 30-45s per call (60-90s over two
+    # agentic rounds) and blows the nginx/client timeouts.
+    # ``gemini-2.5-pro`` requires thinking and rejects budget=0, so
+    # leave it unset there.
+    tb = info.get("thinking_budget")
+    if tb is not None:
+        kwargs["thinking_config"] = _gtypes.ThinkingConfig(thinking_budget=tb)
+    return _gtypes.GenerateContentConfig(**kwargs)
+
+
 # ── Mutable state ────────────────────────────────────────────────
 
-_model = None
+_model: _GeminiCaller | None = None
 _current_model_name: str = ""
 _current_location: str = ""
-_vertexai_inited: dict[str, bool] = {}
 
 _account_models: dict[int, tuple[str, str, Any]] = {}
 _account_vision_models: dict[int, tuple[str, str, Any]] = {}
@@ -100,8 +174,8 @@ def is_configured() -> bool:
 
 
 def _ensure_model(model_name: str | None = None,
-                  location: str | None = None):
-    """Lazy-init the Vertex AI Gemini model on first use."""
+                  location: str | None = None) -> _GeminiCaller:
+    """Lazy-build the Gemini caller on first use."""
     global _model, _current_model_name, _current_location
 
     if _model is not None and model_name is None and location is None:
@@ -138,92 +212,35 @@ def _ensure_model(model_name: str | None = None,
             and _current_location == target_location):
         return _model
 
-    try:
-        import vertexai
-        from vertexai.generative_models import GenerativeModel, GenerationConfig
-    except ImportError:
-        raise RuntimeError(
-            "google-cloud-aiplatform package not installed. "
-            "Run: pip install google-cloud-aiplatform"
-        )
-
-    if target_location not in _vertexai_inited:
-        vertexai.init(project=project, location=target_location)
-        _vertexai_inited[target_location] = True
-
-    max_tokens = 4096
-    if info:
-        max_tokens = min(info.get("max_output_tokens", 4096), 8192)
-
-    gen_config = GenerationConfig(
-        temperature=0.3,
-        max_output_tokens=max_tokens,
-        top_p=0.8,
-    )
-
-    if target_model.startswith("gemini-2.5-flash"):
-        try:
-            proto = gen_config._raw_generation_config
-            # Disable thinking (budget=0) — thinking adds 30-45s per call in the
-            # agentic loop (2 rounds = 60-90s), blowing the nginx/client timeouts.
-            # Only flash variants accept budget=0; gemini-2.5-pro requires
-            # thinking and rejects the request with a 400 if we set it.
-            tc = proto.ThinkingConfig(thinking_budget=0)
-            proto.thinking_config = tc
-            logger.info(f"Thinking budget set to 0 (disabled) for {target_model}")
-        except Exception as e:
-            logger.debug(f"Could not set thinking budget: {e}")
-
-    _model = GenerativeModel(
-        model_name=target_model,
-        generation_config=gen_config,
-    )
+    _model = _build_model(target_model, target_location, info)
     _current_model_name = target_model
     _current_location = target_location
     logger.info(
-        f"Vertex AI initialized: project={project}, "
+        f"google-genai initialized: project={project}, "
         f"location={target_location}, model={target_model}"
     )
     return _model
 
 
-def _build_model(model_name: str, location: str, info: dict | None = None):
-    """Create a GenerativeModel instance (does not touch globals)."""
+def _build_model(model_name: str, location: str,
+                 info: dict | None = None) -> _GeminiCaller:
+    """Create a ``_GeminiCaller`` (its own client; no global mutation)."""
     import os
 
     try:
-        import vertexai
-        from vertexai.generative_models import GenerativeModel, GenerationConfig
+        from google import genai
     except ImportError:
-        raise RuntimeError("google-cloud-aiplatform package not installed.")
+        raise RuntimeError(
+            "google-genai package not installed.  Run: pip install google-genai"
+        )
 
     project = os.getenv("GOOGLE_CLOUD_PROJECT", "")
-    if location not in _vertexai_inited:
-        vertexai.init(project=project, location=location)
-        _vertexai_inited[location] = True
-
     if info is None:
         info = MODEL_REGISTRY.get(model_name, {})
-    max_tokens = min(info.get("max_output_tokens", 4096), 8192)
 
-    gen_config = GenerationConfig(
-        temperature=0.3,
-        max_output_tokens=max_tokens,
-        top_p=0.8,
-    )
-
-    if model_name.startswith("gemini-2.5-flash"):
-        try:
-            proto = gen_config._raw_generation_config
-            tc = proto.ThinkingConfig(thinking_budget=0)
-            proto.thinking_config = tc
-        except Exception as e:
-            logger.debug("ThinkingConfig proto not supported: %s", e)
-
-    return GenerativeModel(
-        model_name=model_name,
-        generation_config=gen_config,
-    )
+    client = genai.Client(vertexai=True, project=project, location=location)
+    config = _build_gen_config(info)
+    return _GeminiCaller(client, model_name, config)
 
 
 # ── Switching ────────────────────────────────────────────────────
