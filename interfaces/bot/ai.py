@@ -28,12 +28,55 @@ from capabilities.ai.usage import build_user_ai_context, log_ai_usage as _log_ai
 def _sanitize_ai_html(text: str) -> str:
     """Sanitize AI output for Telegram HTML parse mode.
 
-    Preserves <b>, <i>, <code>, <pre> tags that AI outputs while
-    escaping everything else to prevent parse errors.
+    Telegram supports a tiny HTML subset (``<b> <i> <u> <s> <a> <code>
+    <pre>``).  The shared AI prompt asks the model to emit richer HTML
+    (``<p>`` paragraphs, ``<ul>/<li>`` lists, ``<br>`` breaks, ``<h1>``
+    headings) because the dashboard renders that natively — but in
+    Telegram those tags fall through to ``&lt;p&gt;`` literals that
+    show up as visible angle-bracket noise.
+
+    This function rewrites the structural tags into Telegram-friendly
+    equivalents BEFORE escaping the remainder, so a model response of
+    ``<p>Hello</p><ul><li>One</li><li>Two</li></ul>`` becomes
+    ``Hello\n\n• One\n• Two\n`` instead of literal markup.  The
+    Telegram-supported inline tags (``<b>`` etc.) survive the escape
+    via the re-enable pass at the end.
     """
-    # First escape all HTML
-    escaped = escape_html(text)
-    # Re-enable the safe tags that AI uses
+    import re
+
+    s = text or ""
+
+    # ── 1) Strip code-block fences the AI sometimes emits.
+    # The model occasionally wraps the whole reply in ```html ... ```.
+    # Drop the fence markers; keep the inner content.
+    s = re.sub(r"```(?:html)?\s*", "", s)
+    s = s.replace("```", "")
+
+    # ── 2) Block-level structural tags → newlines / bullet text.
+    # Order matters: do <li> before <ul>/<ol> so the bullet survives.
+    s = re.sub(r"<\s*li\s*>", "• ", s, flags=re.IGNORECASE)
+    s = re.sub(r"<\s*/\s*li\s*>", "\n", s, flags=re.IGNORECASE)
+    s = re.sub(r"<\s*/?\s*(?:ul|ol)\s*>", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"<\s*p\s*>", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"<\s*/\s*p\s*>", "\n\n", s, flags=re.IGNORECASE)
+    s = re.sub(r"<\s*br\s*/?\s*>", "\n", s, flags=re.IGNORECASE)
+    # Headings → bold + newline.  h1..h6 in one pass.
+    s = re.sub(r"<\s*h[1-6]\s*>", "<b>", s, flags=re.IGNORECASE)
+    s = re.sub(r"<\s*/\s*h[1-6]\s*>", "</b>\n", s, flags=re.IGNORECASE)
+    # <strong>/<em> are synonyms for <b>/<i>; map them so the
+    # re-enable pass below keeps the formatting.
+    s = re.sub(r"<\s*strong\s*>", "<b>", s, flags=re.IGNORECASE)
+    s = re.sub(r"<\s*/\s*strong\s*>", "</b>", s, flags=re.IGNORECASE)
+    s = re.sub(r"<\s*em\s*>", "<i>", s, flags=re.IGNORECASE)
+    s = re.sub(r"<\s*/\s*em\s*>", "</i>", s, flags=re.IGNORECASE)
+    # <div>/<span> wrappers — keep inner text, drop the tag.
+    s = re.sub(r"<\s*/?\s*(?:div|span)\s*[^>]*>", "", s, flags=re.IGNORECASE)
+    # Collapse 3+ consecutive newlines down to 2 so heavy paragraph
+    # use doesn't push the message into a wall of whitespace.
+    s = re.sub(r"\n{3,}", "\n\n", s)
+
+    # ── 3) Escape everything else, then re-enable the safe inline tags.
+    escaped = escape_html(s)
     for tag in ("b", "i", "code", "pre", "u", "s"):
         escaped = escaped.replace(f"&lt;{tag}&gt;", f"<{tag}>")
         escaped = escaped.replace(f"&lt;/{tag}&gt;", f"</{tag}>")
