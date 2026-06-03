@@ -30,38 +30,39 @@ from capabilities.ai.models import (
 logger = logging.getLogger("bot.ai")
 
 # ── Usage tracking ───────────────────────────────────────────────
+#
+# Usage now travels with the call return value, NOT through a module
+# global.  Concurrent users sharing a process used to clobber each
+# other's ``_last_usage`` — one user's token cost would land in
+# another user's audit row.  Callers receive ``(text, usage)`` tuples
+# (or a ``"usage"`` key in result dicts) and forward usage explicitly
+# to ``log_ai_usage(... usage=...)``.
 
-_last_usage: dict | None = None
 
+def _capture_usage(response) -> dict | None:
+    """Extract token usage metadata from a Vertex AI / google-genai response.
 
-def _capture_usage(response):
-    """Extract token usage metadata from a Vertex AI response."""
-    global _last_usage
+    Pure function — returns the usage dict or None; no side effects.
+    """
     try:
         meta = getattr(response, "usage_metadata", None)
-        if meta:
-            prompt = getattr(meta, "prompt_token_count", 0) or 0
-            reply = getattr(meta, "candidates_token_count", 0) or 0
-            thinking = getattr(meta, "thoughts_token_count", 0) or 0
-            total = getattr(meta, "total_token_count", 0) or 0
-            # Ensure total includes thinking if SDK didn't sum it
-            if total < prompt + reply + thinking:
-                total = prompt + reply + thinking
-            _last_usage = {
-                "prompt_tokens": prompt,
-                "reply_tokens": reply,
-                "thinking_tokens": thinking,
-                "total_tokens": total,
-            }
-        else:
-            _last_usage = None
+        if not meta:
+            return None
+        prompt = getattr(meta, "prompt_token_count", 0) or 0
+        reply = getattr(meta, "candidates_token_count", 0) or 0
+        thinking = getattr(meta, "thoughts_token_count", 0) or 0
+        total = getattr(meta, "total_token_count", 0) or 0
+        # Ensure total includes thinking if SDK didn't sum it
+        if total < prompt + reply + thinking:
+            total = prompt + reply + thinking
+        return {
+            "prompt_tokens": prompt,
+            "reply_tokens": reply,
+            "thinking_tokens": thinking,
+            "total_tokens": total,
+        }
     except Exception:
-        _last_usage = None
-
-
-def get_last_usage() -> dict | None:
-    """Return token usage from the most recent API call, or None."""
-    return _last_usage
+        return None
 
 
 # ── System Prompts ───────────────────────────────────────────────
@@ -403,16 +404,18 @@ async def _generate_with_model(
     location: str,
     system: str,
     user_content: str,
-) -> str:
-    """Run a single generation attempt with a specific model (no retries)."""
+) -> tuple[str, dict | None]:
+    """Run a single generation attempt with a specific model (no retries).
+
+    Returns ``(text, usage)`` — usage is the token-count dict or ``None``
+    if the backend didn't report it.
+    """
     import asyncio
     import re
 
     info = MODEL_REGISTRY.get(model_name)
     if not info:
         raise ValueError(f"Unknown model: {model_name}")
-
-    global _last_usage
 
     if _is_openai_compat(model_name):
         api_type = info.get("api_type", "openai_compat")
@@ -435,8 +438,6 @@ async def _generate_with_model(
                 info["maas_model_id"], loc,
                 system, user_content, max_tokens,
             )
-        if usage:
-            _last_usage = usage
     else:
         loc = location or info["locations"][0]
         model_obj = _build_model(model_name, loc, info)
@@ -454,14 +455,14 @@ async def _generate_with_model(
         except ValueError:
             parts = getattr(getattr(candidate, 'content', None), 'parts', [])
             text = ''.join(getattr(p, 'text', '') for p in parts).strip()
-        _capture_usage(response)
+        usage = _capture_usage(response)
 
     if not text:
         raise RuntimeError("Empty response from model")
 
     text = text.replace("**", "").replace("##", "").replace("# ", "")
     text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
-    return text
+    return text, usage
 
 
 # ── Main generate (with retries) ────────────────────────────────
@@ -472,12 +473,14 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                          user_id: int | None = None,
                          account_id: int | None = None,
                          language: str = "en",
-                         user_context: dict | None = None) -> str:
-    """Core generate implementation (before fallback wrapper)."""
+                         user_context: dict | None = None) -> tuple[str, dict | None]:
+    """Core generate implementation (before fallback wrapper).
+
+    Returns ``(text, usage)`` — usage may be ``None`` on cache hits or
+    when the backend didn't report token counts.
+    """
     import asyncio
     import re
-
-    global _last_usage
 
     if language and language != "en":
         from capabilities.localization.i18n import LANGUAGE_NAMES
@@ -493,14 +496,19 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
 
     has_history = bool(user_id and (user_id, account_id or 0) in _chat_histories)
     snap_h = _snapshot_hash(context_data) if not has_history else ""
-    ck = _cache_key(prompt, snap_h, cur_model_name, account_id=account_id) if not has_history else ""
+    ck = _cache_key(
+        prompt, snap_h, cur_model_name,
+        account_id=account_id or 0,
+        user_id=user_id or 0,
+        language=language,
+    ) if not has_history else ""
     if not has_history and ck:
         cached = _cache_get(ck)
         if cached is not None:
             logger.debug("Cache hit for generate()")
             if user_id is not None:
                 _store_history(user_id, prompt, cached, account_id=account_id or 0)
-            return cached
+            return cached, None
 
     user_parts = []
 
@@ -572,20 +580,18 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                         info["maas_model_id"], location,
                         system, user_content, max_tokens,
                     )
-                if usage:
-                    _last_usage = usage
                 if not text:
                     return (
                         "The AI generated an empty response. "
                         "Try rephrasing or asking a more specific question."
-                    )
+                    ), usage
                 text = text.replace("**", "").replace("##", "").replace("# ", "")
                 text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
                 if user_id is not None:
                     _store_history(user_id, prompt, text, account_id=account_id or 0)
                 if ck and not has_history:
                     _cache_put(ck, text)
-                return text
+                return text, usage
             except Exception as e:
                 last_exc = e
                 err_str = str(e).lower()
@@ -619,7 +625,7 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                 return (
                     "I couldn't generate a response for that question. "
                     "Please try rephrasing it."
-                )
+                ), None
 
             candidate = response.candidates[0]
             if candidate.finish_reason and candidate.finish_reason.name == "SAFETY":
@@ -627,7 +633,7 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                 return (
                     "I couldn't generate a response due to content filters. "
                     "Please try rephrasing your question."
-                )
+                ), None
 
             try:
                 text = response.text.strip()
@@ -640,32 +646,29 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                         text = ''.join(getattr(p, 'text', '') for p in parts).strip()
                     else:
                         logger.warning(f"Gemini response empty (finish_reason={reason_name})")
-                        _capture_usage(response)
                         return (
                             "The AI ran out of space generating the response. "
                             "Try asking a more specific question."
-                        )
+                        ), _capture_usage(response)
                 else:
                     logger.warning(f"Cannot get response text (finish_reason={reason_name})")
-                    _capture_usage(response)
                     return (
                         "I couldn't generate a response for that question. "
                         "Please try rephrasing it."
-                    )
+                    ), _capture_usage(response)
 
+            usage = _capture_usage(response)
             if not text:
-                _capture_usage(response)
                 return (
                     "The AI generated an empty response. "
                     "Try rephrasing or asking a more specific question."
-                )
+                ), usage
             text = text.replace("**", "").replace("##", "").replace("# ", "")
-            _capture_usage(response)
             if user_id is not None:
                 _store_history(user_id, prompt, text, account_id=account_id or 0)
             if ck and not has_history:
                 _cache_put(ck, text)
-            return text
+            return text, usage
         except Exception as e:
             last_exc = e
             err_str = str(e).lower()
@@ -687,8 +690,13 @@ async def generate(prompt: str, system: str = ASSISTANT_SYSTEM,
                    user_id: int | None = None,
                    account_id: int | None = None,
                    language: str = "en",
-                   user_context: dict | None = None) -> str:
-    """Generate a response with automatic fallback on 429."""
+                   user_context: dict | None = None) -> tuple[str, dict | None]:
+    """Generate a response with automatic fallback on 429.
+
+    Returns ``(text, usage)`` — usage is the token-count dict or
+    ``None`` on cache hits / when the backend doesn't report it.
+    Forward the usage to ``log_ai_usage(... usage=...)``.
+    """
 
     _saved_exc: Exception | None = None
     try:
@@ -735,13 +743,13 @@ async def generate(prompt: str, system: str = ASSISTANT_SYSTEM,
         fb_location = info["locations"][0]
         try:
             logger.info(f"Fallback: trying {fb_model} after {failed_model} quota exceeded")
-            text = await _generate_with_model(
+            text, usage = await _generate_with_model(
                 fb_model, fb_location, system, user_content,
             )
             if user_id is not None:
                 _store_history(user_id, prompt, text, account_id=account_id or 0)
             logger.info(f"Fallback succeeded with {fb_model}")
-            return text
+            return text, usage
         except Exception as fb_exc:
             last_exc = fb_exc
             if _is_rate_limit_error(fb_exc):

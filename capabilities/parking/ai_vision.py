@@ -70,7 +70,7 @@ async def _get_ai_parking_analysis(
                 "REASON: 1-2 sentences describing what you see."
             )
 
-            response = await ai.generate_with_vision(
+            response, usage = await ai.generate_with_vision(
                 prompt,
                 map_bytes,
                 system=(
@@ -93,13 +93,12 @@ async def _get_ai_parking_analysis(
                 "Reply in 2-3 sentences: classify as SAFE or UNSAFE and explain."
             )
 
-            response = await ai.generate(
+            response, usage = await ai.generate(
                 prompt,
                 system="You are a fleet safety analyst. Be concise and factual.",
             )
 
         # Track usage
-        usage = ai.get_last_usage()
         if usage:
             try:
                 await get_platform_db().log_ai_usage(

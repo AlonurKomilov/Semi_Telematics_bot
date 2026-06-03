@@ -49,7 +49,7 @@ __all__ = [
     "_generate_with_model", "_generate_openai_compat",
     "_generate_anthropic", "_generate_mistral_raw",
     "_is_rate_limit_error",
-    "_capture_usage", "get_last_usage",
+    "_capture_usage",
     "ASSISTANT_SYSTEM", "FAULT_DIAGNOSIS_SYSTEM", "SUMMARY_SYSTEM",
     # intelligence
     "diagnose_faults", "generate_summary", "ask_ai", "ask_agent",
@@ -154,7 +154,6 @@ from capabilities.ai.generation import (                                  # noqa
     _generate_mistral_raw,
     _is_rate_limit_error,
     _capture_usage,
-    get_last_usage,
     ASSISTANT_SYSTEM,
     FAULT_DIAGNOSIS_SYSTEM,
     SUMMARY_SYSTEM,
@@ -190,7 +189,4 @@ def __getattr__(name: str):
     if name == "_model":
         from capabilities.ai import models as _m
         return _m._model
-    if name == "_last_usage":
-        from capabilities.ai import generation as _g
-        return _g._last_usage
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

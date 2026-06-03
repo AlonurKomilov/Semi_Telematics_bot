@@ -78,9 +78,37 @@ def get_cached_vertex_tools(role: str | None = None):
     return result
 
 
+# Anthropic-format tool cache (different schema shape than Gemini —
+# Anthropic uses ``input_schema`` instead of ``parameters``).
+_anthropic_tools_cache: dict[str | None, list[dict]] = {}
+
+
+def get_anthropic_tools(role: str | None = None) -> list[dict]:
+    """Return Anthropic-format tool definitions filtered by role.
+
+    Anthropic's tool-use API expects ``{name, description, input_schema}``
+    where Gemini uses ``{name, description, parameters}``.  Same JSON
+    Schema body, just a different field name.
+    """
+    if role in _anthropic_tools_cache:
+        return _anthropic_tools_cache[role]
+    tool_defs = filter_tools_for_role(role)
+    converted = [
+        {
+            "name": td["name"],
+            "description": td["description"],
+            "input_schema": td.get("parameters", {"type": "object", "properties": {}}),
+        }
+        for td in tool_defs
+    ]
+    _anthropic_tools_cache[role] = converted
+    return converted
+
+
 def invalidate_tool_cache():
     """Clear cached tool objects — call after modifying tool registrations."""
     _cached_tools.clear()
+    _anthropic_tools_cache.clear()
 
 
 async def execute_tool(tool_name: str, tool_args: dict,

@@ -11,9 +11,24 @@ _CACHE_TTL = 90   # seconds
 _CACHE_MAX = 50   # max entries
 
 
-def _cache_key(question: str, snapshot_hash: str, model: str, account_id: int = 0) -> str:
-    """Build a deterministic cache key."""
-    raw = f"{account_id}:{model}:{question.strip().lower()}:{snapshot_hash}"
+def _cache_key(question: str, snapshot_hash: str, model: str,
+               account_id: int = 0, user_id: int = 0,
+               language: str = "en") -> str:
+    """Build a deterministic cache key.
+
+    ``user_id`` is in the key because ``user_context`` (role, assigned
+    vehicles) shapes the answer — a driver assigned to truck 231 and a
+    dispatcher asking the same question must NOT share a cache entry.
+
+    ``language`` is in the key because the same question/snapshot can
+    produce wildly different responses per locale, and a stale
+    English-cached reply being served to a Spanish-speaking user would
+    miss the localization.
+    """
+    raw = (
+        f"{account_id}:{user_id}:{model}:{language}:"
+        f"{question.strip().lower()}:{snapshot_hash}"
+    )
     return hashlib.sha256(raw.encode()).hexdigest()[:24]
 
 

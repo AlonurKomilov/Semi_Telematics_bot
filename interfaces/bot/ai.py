@@ -44,10 +44,16 @@ def _build_user_context(user) -> dict:
     """Delegates to the shared builder in capabilities.ai.usage."""
     return build_user_ai_context(user)
 
-async def _log_ai_usage(account_id: int, telegram_user_id: int, action: str):
-    """Delegates to the shared logger in capabilities.ai.usage."""
+async def _log_ai_usage(account_id: int, telegram_user_id: int, action: str,
+                        usage: dict | None):
+    """Delegates to the shared logger in capabilities.ai.usage.
+
+    ``usage`` comes from the AI call's return value — the old
+    ``ai.get_last_usage()`` global went away because it raced across
+    concurrent users in the bot's APScheduler-driven background jobs.
+    """
     platform_db = get_platform_db()  # synchronous — returns PlatformDB directly
-    await _log_ai_usage_fn(ai, platform_db, account_id, telegram_user_id, action)
+    await _log_ai_usage_fn(ai, platform_db, account_id, telegram_user_id, action, usage)
 
 
 async def _dtcs_from_ack(account_id: int, ack_id: int) -> list[dict]:
@@ -266,7 +272,8 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
             user_context=user_ctx,
         )
         answer = result["text"]
-        await _log_ai_usage(user.account_id, update.effective_user.id, "question")
+        await _log_ai_usage(user.account_id, update.effective_user.id, "question",
+                            result.get("usage"))
 
         # Extract suggestion lines and remove them from the answer text
         clean_answer, suggestions = _parse_suggestions(answer)
@@ -317,11 +324,11 @@ async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         snapshot = await _gather_fleet_snapshot(
             user.account_id, vehicle_num=vehicle_filter,
         )
-        summary = await ai.generate_summary(
+        summary, usage = await ai.generate_summary(
             snapshot, account_id=user.account_id,
             language=lang, user_context=user_ctx,
         )
-        await _log_ai_usage(user.account_id, update.effective_user.id, "summary")
+        await _log_ai_usage(user.account_id, update.effective_user.id, "summary", usage)
 
         clean_summary, suggestions = _parse_suggestions(summary)
 
@@ -524,7 +531,7 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
         prompt = " ".join(prompt_parts)
         lang = getattr(user, "language", "en") or "en"
         user_ctx = _build_user_context(user)
-        diagnosis = await ai.generate(
+        diagnosis, usage = await ai.generate(
             prompt,
             system=ai.FAULT_DIAGNOSIS_SYSTEM,
             context_data=context_data,
@@ -532,7 +539,7 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
             language=lang,
             user_context=user_ctx,
         )
-        await _log_ai_usage(user.account_id, update.effective_user.id, "chat")
+        await _log_ai_usage(user.account_id, update.effective_user.id, "chat", usage)
 
         header_info = "\n".join(header_lines)
         text = (

@@ -174,13 +174,12 @@ async def _get_ai_diagnosis_note(vehicle: dict, dtcs: list[dict]) -> str:
             + ". What's the likely cause and should the driver stop?"
         )
 
-        response = await ai.generate(
+        response, usage = await ai.generate(
             prompt,
             system=ai.FAULT_DIAGNOSIS_SYSTEM,
         )
 
         # Track proactive AI usage
-        usage = ai.get_last_usage()
         if usage:
             try:
                 # system-triggered usage
@@ -239,12 +238,11 @@ async def _get_ai_health_note(
             + ". What should the driver do immediately?"
         )
 
-        response = await ai.generate(
+        response, usage = await ai.generate(
             prompt,
             system=ai.FAULT_DIAGNOSIS_SYSTEM,
         )
 
-        usage = ai.get_last_usage()
         if usage:
             try:
                 await get_platform_db().log_ai_usage(

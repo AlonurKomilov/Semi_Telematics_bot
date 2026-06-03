@@ -2,6 +2,7 @@
 
 
 import json
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -16,6 +17,48 @@ from interfaces.api.deps import require_permission, require_permission_any, get_
 from interfaces.api.rate_limit import limiter
 
 router = APIRouter(prefix="/ai", tags=["ai"])
+
+
+# ── Error sanitisation ───────────────────────────────────────────
+#
+# Errors from Vertex AI / Anthropic / Mistral propagate up with raw
+# URLs, bearer tokens, project IDs, and filesystem paths embedded in
+# the message string.  Surfacing those verbatim over SSE leaks
+# infrastructure details into browser devtools and any client-side log
+# the user happens to share.  ``_safe_error_message`` returns a short
+# class-name + redacted-summary suitable for client display; the full
+# error still goes to server logs above.
+
+# Match ``Authorization: Bearer xxx`` OR bare ``Bearer xxx`` — must
+# replace the whole pair, else stripping just ``Authorization:`` leaves
+# ``Bearer ya29.SECRET`` visible.
+_TOKEN_RE = re.compile(
+    r"(?:Authorization:\s+)?Bearer\s+\S+",
+    re.IGNORECASE,
+)
+_PROJECT_RE = re.compile(r"projects/[^/\s\"']+")
+_KEYFILE_RE = re.compile(r"/[\w\-./]+\.json")
+_GCP_HOST_RE = re.compile(r"https?://[\w\-.]*googleapis\.com[^\s\"']*")
+
+
+def _scrub_error_text(msg: str, max_len: int = 200) -> str:
+    """Strip credentials / project IDs / GCP URLs / keyfile paths from *msg*."""
+    msg = _TOKEN_RE.sub("Bearer [REDACTED]", msg)
+    msg = _PROJECT_RE.sub("projects/[REDACTED]", msg)
+    msg = _KEYFILE_RE.sub("[KEYFILE]", msg)
+    msg = _GCP_HOST_RE.sub("[URL]", msg)
+    msg = msg.replace("\n", " ").strip()
+    if len(msg) > max_len:
+        msg = msg[:max_len].rstrip() + "..."
+    return msg
+
+
+def _safe_error_message(exc: Exception, max_len: int = 200) -> str:
+    """Return a short, redacted error message safe for client display."""
+    name = type(exc).__name__
+    raw = str(exc) or name
+    msg = _scrub_error_text(raw, max_len=max_len)
+    return f"{name}: {msg}" if msg != name else name
 
 
 # ── Request / Response models ────────────────────────────────────
@@ -38,11 +81,17 @@ class ModelSwitchRequest(BaseModel):
 # ── Helpers ──────────────────────────────────────────────────────
 
 
-async def _log_usage(account_id: int, user_id: int, action: str):
-    """Delegates to the shared logger in capabilities.ai.usage."""
+async def _log_usage(account_id: int, user_id: int, action: str,
+                     usage: dict | None):
+    """Delegates to the shared logger in capabilities.ai.usage.
+
+    ``usage`` is the dict returned alongside each AI call's text
+    result (the old ``ai.get_last_usage()`` global went away because
+    it raced across concurrent users).
+    """
     from infra.services import get_platform_db as _gpdb
     pdb = _gpdb()  # synchronous — returns PlatformDB directly
-    await _log_ai_usage_fn(ai, pdb, account_id, user_id, action)
+    await _log_ai_usage_fn(ai, pdb, account_id, user_id, action, usage)
 
 
 async def _get_user_info(user: dict, platform_db) -> tuple[dict | None, list[str] | None, str]:
@@ -75,11 +124,18 @@ async def _get_user_info(user: dict, platform_db) -> tuple[dict | None, list[str
 async def ai_chat(
     body: ChatRequest,
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(
+        require_permission_any("can_faults", "can_vehicle_all", "can_vehicle_own")
+    ),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Send a message to the AI fleet assistant (agent mode with tools)."""
+    """Send a message to the AI fleet assistant (agent mode with tools).
+
+    Gated on any of (can_faults, can_vehicle_all, can_vehicle_own) to
+    match the sidebar + React route — without this guard, a 403'd user
+    could still call the endpoint directly and bypass the dashboard.
+    """
     if not ai.is_configured():
         raise HTTPException(status_code=503, detail="AI not configured")
 
@@ -104,8 +160,8 @@ async def ai_chat(
             user_context=user_context,
         )
         answer = result["text"]
-        await _log_usage(user["account_id"], int(user["sub"]), "question")
-        usage = ai.get_last_usage()
+        usage = result.get("usage")
+        await _log_usage(user["account_id"], int(user["sub"]), "question", usage)
 
         clean, suggestions = _parse_suggestions(answer)
 
@@ -130,11 +186,20 @@ async def ai_chat(
 async def ai_chat_stream(
     body: ChatRequest,
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(
+        require_permission_any("can_faults", "can_vehicle_all", "can_vehicle_own")
+    ),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Send a message to the AI fleet assistant; streams SSE tool events then the reply."""
+    """Send a message to the AI fleet assistant; streams SSE tool events then the reply.
+
+    Gated identically to ``/chat`` (any of can_faults / can_vehicle_all
+    / can_vehicle_own).  The streaming and non-streaming variants must
+    stay aligned — clients fall back to ``/chat`` when SSE isn't
+    available, so a permission mismatch would make the fallback work
+    where the primary doesn't (or vice-versa).
+    """
     if not ai.is_configured():
         raise HTTPException(status_code=503, detail="AI not configured")
 
@@ -162,6 +227,16 @@ async def ai_chat_stream(
                 language=language,
                 user_context=user_context,
             ):
+                # Upstream may emit ``{"type": "error", "message": str(exc)}``
+                # with the raw exception text — scrub it before it leaves the
+                # server so credentials / project IDs / GCP URLs / service-
+                # account paths don't reach the browser devtools.
+                if event.get("type") == "error":
+                    msg = event.get("message", "")
+                    event = {
+                        **event,
+                        "message": _scrub_error_text(msg),
+                    }
                 yield f"data: {json.dumps(event)}\n\n"
                 if event.get("type") == "done":
                     # Persist the final reply to DB
@@ -170,13 +245,18 @@ async def ai_chat_stream(
                         await platform_db.save_chat_messages(account_id, uid, body.message, reply)
                     except Exception:
                         pass
-                    # Log usage
+                    # Log usage — read it off the ``done`` event (set by
+                    # ask_agent_stream from the agent's return value).
                     try:
-                        await _log_usage(account_id, uid, "question")
+                        await _log_usage(account_id, uid, "question",
+                                         event.get("usage"))
                     except Exception:
                         pass
         except Exception as exc:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
+            # Same scrub for exceptions raised *during* iteration.
+            import logging
+            logging.getLogger("api.ai").exception("SSE stream failed")
+            yield f"data: {json.dumps({'type': 'error', 'message': _safe_error_message(exc)})}\n\n"
 
     return StreamingResponse(
         _event_stream(),
@@ -195,7 +275,9 @@ async def ai_chat_stream(
 @limiter.limit("5/minute")
 async def ai_summary(
     request: Request,
-    user: dict = Depends(require_permission_any("can_faults", "can_vehicle_all")),
+    user: dict = Depends(
+        require_permission_any("can_faults", "can_vehicle_all", "can_vehicle_own")
+    ),
     platform_db=Depends(get_platform_db),
 ):
     """Generate an AI executive fleet briefing."""
@@ -210,12 +292,11 @@ async def ai_summary(
         snapshot = await ai.build_context(
             account_id, vehicle_nums=vehicle_filter,
         )
-        summary = await ai.generate_summary(
+        summary, usage = await ai.generate_summary(
             snapshot, account_id=account_id,
             language=language, user_context=user_context,
         )
-        await _log_usage(account_id, int(user["sub"]), "summary")
-        usage = ai.get_last_usage()
+        await _log_usage(account_id, int(user["sub"]), "summary", usage)
 
         clean, suggestions = _parse_suggestions(summary)
         return {"summary": clean, "suggestions": suggestions, "usage": usage}
@@ -243,7 +324,7 @@ async def ai_diagnose(
     user_context, _, language = await _get_user_info(user, platform_db)
 
     try:
-        diagnosis = await ai.diagnose_faults(
+        diagnosis, usage = await ai.diagnose_faults(
             body.vehicle_name,
             body.dtcs,
             lights=body.lights or None,
@@ -251,7 +332,7 @@ async def ai_diagnose(
             language=language,
             user_context=user_context,
         )
-        await _log_usage(account_id, int(user["sub"]), "diagnosis")
+        await _log_usage(account_id, int(user["sub"]), "diagnosis", usage)
         return {"diagnosis": diagnosis, "vehicle": body.vehicle_name}
 
     except Exception as e:

@@ -6,9 +6,7 @@ import logging
 
 from capabilities.ai.registry import DEFAULT_VISION_MODEL, DEFAULT_VISION_LOCATION
 from capabilities.ai.models import _account_vision_models, _ensure_model
-# For _last_usage (reassigned via global), import the module.
-from capabilities.ai import generation as _gen_mod
-from capabilities.ai.generation import generate, _is_rate_limit_error
+from capabilities.ai.generation import generate, _is_rate_limit_error, _capture_usage
 
 logger = logging.getLogger("bot.ai")
 
@@ -115,6 +113,7 @@ async def analyze_camera_image(
 
     last_exc: Exception | None = None
     text = ""
+    usage: dict | None = None
     for attempt_model, attempt_loc in attempts:
         # Stop trying fallbacks once we've burned the wall-clock
         # budget — keeps a single bad image from monopolising its
@@ -138,22 +137,7 @@ async def analyze_camera_image(
                 timeout=_call_timeout,
             )
             text = response.text.strip() if response.text else ""
-            try:
-                meta = response.usage_metadata
-                prompt = getattr(meta, "prompt_token_count", 0) or 0
-                reply = getattr(meta, "candidates_token_count", 0) or 0
-                thinking = getattr(meta, "thoughts_token_count", 0) or 0
-                total = getattr(meta, "total_token_count", 0) or 0
-                if total < prompt + reply + thinking:
-                    total = prompt + reply + thinking
-                _gen_mod._last_usage = {
-                    "prompt_tokens": prompt,
-                    "reply_tokens": reply,
-                    "thinking_tokens": thinking,
-                    "total_tokens": total,
-                }
-            except Exception:
-                _gen_mod._last_usage = None
+            usage = _capture_usage(response)
             if attempt_model != model_name:
                 logger.info(
                     f"Vision fallback succeeded with {attempt_model} "
@@ -189,6 +173,7 @@ async def analyze_camera_image(
             "quality": "unknown",
             "summary": f"Analysis failed (rate limited): {last_exc}",
             "raw": "",
+            "usage": None,
         }
 
     if last_exc and not text:
@@ -199,6 +184,7 @@ async def analyze_camera_image(
             "quality": "unknown",
             "summary": f"Analysis failed: {last_exc}",
             "raw": "",
+            "usage": usage,
         }
 
     result = {
@@ -208,6 +194,7 @@ async def analyze_camera_image(
         "quality": "good",
         "summary": text,
         "raw": text,
+        "usage": usage,
     }
     def _keyword(raw: str) -> str:
         """Extract just the keyword before the em-dash description separator."""
@@ -240,8 +227,13 @@ async def generate_with_vision(
     image_bytes: bytes,
     system: str = "You are a helpful assistant.",
     account_id: int | None = None,
-) -> str:
-    """Generate a text response from a prompt + image using Gemini vision."""
+) -> tuple[str, dict | None]:
+    """Generate a text response from a prompt + image using Gemini vision.
+
+    Returns ``(text, usage)`` — usage may be ``None`` if the backend
+    didn't report token counts or if all vision attempts failed and we
+    fell back to text-only ``generate()``.
+    """
     import asyncio
 
     if not image_bytes:
@@ -279,29 +271,14 @@ async def generate_with_vision(
                 model_obj.generate_content, [prompt_part, image_part],
             )
             text = response.text.strip() if response.text else ""
-            try:
-                meta = response.usage_metadata
-                prompt = getattr(meta, "prompt_token_count", 0) or 0
-                reply = getattr(meta, "candidates_token_count", 0) or 0
-                thinking = getattr(meta, "thoughts_token_count", 0) or 0
-                total = getattr(meta, "total_token_count", 0) or 0
-                if total < prompt + reply + thinking:
-                    total = prompt + reply + thinking
-                _gen_mod._last_usage = {
-                    "prompt_tokens": prompt,
-                    "reply_tokens": reply,
-                    "thinking_tokens": thinking,
-                    "total_tokens": total,
-                }
-            except Exception:
-                _gen_mod._last_usage = None
+            usage = _capture_usage(response)
             if attempt_model != model_name:
                 logger.info(
                     "Vision fallback to %s after %s failed",
                     attempt_model, model_name,
                 )
             if text:
-                return text
+                return text, usage
         except Exception as e:
             last_exc = e
             if _is_rate_limit_error(e):

@@ -99,7 +99,7 @@ async def analyze_snapshot(
                 account_id=account_id,
             )
             # Log vision AI usage
-            usage = ai.get_last_usage()
+            usage = analysis.get("usage")
             if usage:
                 try:
                     model_name = (

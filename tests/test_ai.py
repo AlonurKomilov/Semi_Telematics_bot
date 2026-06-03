@@ -69,8 +69,8 @@ class TestAIClientGenerate:
 
         ai.models._model = mock_model
 
-        result = await ai.generate("test question")
-        assert result == "Test response from AI"
+        text, usage = await ai.generate("test question")
+        assert text == "Test response from AI"
         mock_model.generate_content.assert_called_once()
 
         # Reset
@@ -94,10 +94,10 @@ class TestAIClientGenerate:
 
         ai.models._model = mock_model
 
-        result = await ai.generate(
+        text, _usage = await ai.generate(
             "test", context_data={"vehicles": 5}
         )
-        assert result == "Answer with context"
+        assert text == "Answer with context"
 
         # Check the prompt included the context
         call_args = mock_model.generate_content.call_args[0][0]
@@ -123,9 +123,9 @@ class TestAIClientGenerate:
 
         ai.models._model = mock_model
 
-        result = await ai.generate("test")
-        assert "**" not in result
-        assert "##" not in result
+        text, _usage = await ai.generate("test")
+        assert "**" not in text
+        assert "##" not in text
 
         ai.models._model = None
 
@@ -173,8 +173,8 @@ class TestAIClientGenerate:
 
         ai.models._model = mock_model
 
-        result = await ai.generate("test safety block")
-        assert "couldn't generate" in result.lower()
+        text, _usage = await ai.generate("test safety block")
+        assert "couldn't generate" in text.lower()
 
         ai.models._model = None
 
@@ -204,8 +204,8 @@ class TestAIDiagnose:
             {"spnId": 110, "fmiId": 4, "spnDescription": "Engine Coolant Temp",
              "fmiDescription": "Voltage below normal", "sourceAddressName": "ECU"},
         ]
-        result = await ai.diagnose_faults("101", dtcs, {"stopIsOn": True})
-        assert "coolant" in result.lower()
+        text, _usage = await ai.diagnose_faults("101", dtcs, {"stopIsOn": True})
+        assert "coolant" in text.lower()
 
         # Verify context included truck name and DTC details
         call_args = mock_model.generate_content.call_args[0][0]

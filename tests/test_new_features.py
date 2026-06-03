@@ -559,7 +559,14 @@ class TestAIUsageTracking:
 
 
 class TestAIClientUsageCapture:
-    """Tests for ai._capture_usage and get_last_usage."""
+    """Tests for ai._capture_usage — now a PURE function.
+
+    The old ``get_last_usage()`` module-global accessor was removed
+    because it raced across concurrent users (one task's usage could
+    land in another task's audit row).  Usage now travels with the
+    call's return value; ``_capture_usage`` extracts and returns a
+    dict (or None) with no side effects.
+    """
 
     def test_capture_usage_with_metadata(self):
         import capabilities.ai as ai
@@ -572,8 +579,7 @@ class TestAIClientUsageCapture:
         class FakeResponse:
             usage_metadata = FakeMeta()
 
-        ai._capture_usage(FakeResponse())
-        usage = ai.get_last_usage()
+        usage = ai._capture_usage(FakeResponse())
         assert usage is not None
         assert usage["prompt_tokens"] == 120
         assert usage["reply_tokens"] == 80
@@ -585,8 +591,7 @@ class TestAIClientUsageCapture:
         class FakeResponse:
             pass
 
-        ai._capture_usage(FakeResponse())
-        assert ai.get_last_usage() is None
+        assert ai._capture_usage(FakeResponse()) is None
 
     def test_capture_usage_exception_safe(self):
         import capabilities.ai as ai
@@ -596,13 +601,16 @@ class TestAIClientUsageCapture:
             def usage_metadata(self):
                 raise RuntimeError("boom")
 
-        ai._capture_usage(BadResponse())
-        assert ai.get_last_usage() is None
+        assert ai._capture_usage(BadResponse()) is None
 
-    def test_get_last_usage_cleared_after_no_meta(self):
+    def test_capture_usage_no_global_leak(self):
+        """Sanity check: ``_capture_usage`` must NOT mutate any module
+        global — back-to-back calls with different responses must each
+        return only their own usage, never a stale value from a prior
+        call.  This was the bug that motivated the refactor.
+        """
         import capabilities.ai as ai
 
-        # Set some usage first
         class FakeMeta:
             prompt_token_count = 10
             candidates_token_count = 5
@@ -611,15 +619,18 @@ class TestAIClientUsageCapture:
         class FakeResponse:
             usage_metadata = FakeMeta()
 
-        ai._capture_usage(FakeResponse())
-        assert ai.get_last_usage() is not None
+        first = ai._capture_usage(FakeResponse())
+        assert first is not None
 
-        # Now capture with no metadata — should clear
         class EmptyResponse:
             pass
 
-        ai._capture_usage(EmptyResponse())
-        assert ai.get_last_usage() is None
+        second = ai._capture_usage(EmptyResponse())
+        # The empty response must independently return None, regardless
+        # of what the previous call returned.
+        assert second is None
+        # And the global was never set, so it isn't accessible.
+        assert not hasattr(ai, "get_last_usage")
 
 
 # ══════════════════════════════════════════════════════════════════
