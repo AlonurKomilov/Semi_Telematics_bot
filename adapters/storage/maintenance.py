@@ -65,7 +65,33 @@ class MaintenanceMixin:
         if vehicle_name:
             q += " AND vehicle_name = ?"
             params.append(vehicle_name)
-        q += " ORDER BY CASE status WHEN 'overdue' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END, created_at DESC"
+        # Sort in three keys, all server-side:
+        #   1. Status bucket  — overdue → in_progress → pending → others
+        #   2. Priority       — critical → high → medium → low (within bucket)
+        #   3. created_at DESC — stable tiebreak; newer surfaces first
+        # This lets the dashboard show critical-overdue at the very top
+        # and low-priority pending at the bottom, without re-sorting on
+        # the client.  COALESCE + LOWER guard against NULL / case drift
+        # on legacy rows that pre-date the priority column.
+        q += """
+            ORDER BY
+              CASE status
+                WHEN 'overdue'     THEN 0
+                WHEN 'in_progress' THEN 1
+                WHEN 'pending'     THEN 2
+                WHEN 'cancelled'   THEN 3
+                WHEN 'completed'   THEN 4
+                ELSE 5
+              END,
+              CASE LOWER(COALESCE(priority, 'medium'))
+                WHEN 'critical' THEN 0
+                WHEN 'high'     THEN 1
+                WHEN 'medium'   THEN 2
+                WHEN 'low'      THEN 3
+                ELSE 4
+              END,
+              created_at DESC
+        """
         cur = await self._db.execute(q, params)
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
@@ -76,18 +102,27 @@ class MaintenanceMixin:
         # is stamped for either.  We don't migrate one to the other here
         # (would invalidate existing audit logs / external integrations);
         # we just make both surfaces work.
+        #
+        # Mirrors the bulk helper's overdue → critical promotion so a
+        # single-task path can't escape the rule.  The bulk path is the
+        # current hot path (scheduler), but keeping the helpers in
+        # lock-step removes one footgun for future callers.
         now = self._now()
         completed_at = now if status in ("done", "completed") else None
+        promote_to_critical = status == "overdue"
+        priority_clause = ", priority = 'critical'" if promote_to_critical else ""
         if account_id:
             cur = await self._db.execute(
-                "UPDATE maintenance_tasks SET status = ?, completed_at = ?, updated_at = ? "
-                "WHERE id = ? AND account_id = ?",
+                f"UPDATE maintenance_tasks SET status = ?, completed_at = ?, "
+                f"updated_at = ?{priority_clause} "
+                f"WHERE id = ? AND account_id = ?",
                 (status, completed_at, now, task_id, account_id),
             )
         else:
             cur = await self._db.execute(
-                "UPDATE maintenance_tasks SET status = ?, completed_at = ?, updated_at = ? "
-                "WHERE id = ?",
+                f"UPDATE maintenance_tasks SET status = ?, completed_at = ?, "
+                f"updated_at = ?{priority_clause} "
+                f"WHERE id = ?",
                 (status, completed_at, now, task_id),
             )
         await self._db.commit()
@@ -105,21 +140,45 @@ class MaintenanceMixin:
         ``"completed"`` (API/dashboard), and always refreshes
         ``updated_at`` so the dashboard's "Updated" column doesn't go
         stale after a bulk operation.
+
+        Overdue auto-promotes priority to ``critical``
+        --------------------------------------------
+        When a task crosses into ``overdue`` (by date / mileage / engine
+        hours), its priority is bumped to ``critical`` in the same
+        UPDATE.  Operators sort the list by priority and expect "this
+        truck is past due — fix it first" to bubble straight to the
+        top; without the bump, a Medium-overdue task ranks below a
+        Critical-pending task even though the overdue one is the more
+        urgent ticket in reality.  The bump is persistent — once an
+        operator closes the task the priority stays Critical in the
+        history view, which is the operator-correct read of "this
+        ticket WAS critical when we closed it" rather than rewriting
+        the past.
         """
         if not task_ids:
             return 0
         now = self._now()
         completed_at = now if status in ("done", "completed") else None
+        promote_to_critical = status == "overdue"
         touched = 0
         for i in range(0, len(task_ids), 500):
             chunk = task_ids[i:i + 500]
             placeholders = ",".join("?" * len(chunk))
-            cur = await self._db.execute(
-                f"UPDATE maintenance_tasks "
-                f"SET status = ?, completed_at = ?, updated_at = ? "
-                f"WHERE account_id = ? AND id IN ({placeholders})",
-                (status, completed_at, now, account_id, *chunk),
-            )
+            if promote_to_critical:
+                cur = await self._db.execute(
+                    f"UPDATE maintenance_tasks "
+                    f"SET status = ?, completed_at = ?, updated_at = ?, "
+                    f"    priority = 'critical' "
+                    f"WHERE account_id = ? AND id IN ({placeholders})",
+                    (status, completed_at, now, account_id, *chunk),
+                )
+            else:
+                cur = await self._db.execute(
+                    f"UPDATE maintenance_tasks "
+                    f"SET status = ?, completed_at = ?, updated_at = ? "
+                    f"WHERE account_id = ? AND id IN ({placeholders})",
+                    (status, completed_at, now, account_id, *chunk),
+                )
             touched += cur.rowcount or 0
         await self._db.commit()
         return touched

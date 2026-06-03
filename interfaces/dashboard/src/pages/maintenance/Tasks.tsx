@@ -125,6 +125,17 @@ function _isOverdueOrApproaching(t: MaintenanceTask): boolean {
 // whose render closes over the page-level ``selectedIds`` state.
 const baseColumns: AnyColumn[] = [
   { key: 'vehicle_name', label: 'Vehicle', sortable: true },
+  // Company column lets operators tell trucks apart when two
+  // companies under the same account each have a "103" or "101".
+  // Mirrors the Vehicles list column for visual parity.  Renders the
+  // raw company_code (e.g. G1 / OSY / PTG) — short, scannable.
+  { key: 'company_code', label: 'Company', sortable: true,
+    render: (v) => {
+      const s = String(v || '').trim();
+      return s
+        ? <span className="text-xs font-mono">{s}</span>
+        : <span className="text-muted-foreground text-xs">—</span>;
+    } },
   // Priority badge — first column after vehicle so it carries the most
   // visual weight.  ``sortKey`` ranks critical→high→medium→low so the
   // sort matches operator expectations (alphabetical would put
@@ -147,11 +158,33 @@ const baseColumns: AnyColumn[] = [
   // Combined "Mileage Progress" replaces the bare "Due Miles" cell so the
   // operator can see how close each truck is to the next service without
   // doing the arithmetic in their head.
-  { key: 'due_miles', label: 'Mileage', render: (_v, row) => <MileageProgress row={row as MaintenanceTask} /> },
-  // Engine-hours parallel to mileage.  Only renders something when the
-  // task has a due_engine_hours threshold; one-dimension tasks (mileage-
-  // only or date-only) show a blank cell.
-  { key: 'due_engine_hours', label: 'Engine Hours', render: (_v, row) => <EngineHoursProgress row={row as MaintenanceTask} /> },
+  //
+  // Sortable by URGENCY, not by raw due_miles.  ``due_miles -
+  // last_odometer`` is the canonical "miles to go": negative means
+  // overdue (most-negative = most-overdue), small positive means due
+  // soon, large positive means far from due.  ASC click puts the most
+  // urgent truck at the top — what the operator wants when scanning
+  // "what do I need to service this week?".  Rows with no due_miles
+  // threshold sink to the bottom via +Infinity.
+  { key: 'due_miles', label: 'Mileage', sortable: true,
+    sortKey: (row) => {
+      const r = row as MaintenanceTask;
+      if (r.due_miles == null) return Number.POSITIVE_INFINITY;
+      const last = r.last_odometer ?? 0;
+      return Number(r.due_miles) - Number(last);
+    },
+    render: (_v, row) => <MileageProgress row={row as MaintenanceTask} /> },
+  // Engine-hours parallel to mileage.  Same urgency-based sort:
+  // ``due_engine_hours - last_engine_hours`` ascending, with rows
+  // missing the threshold sinking to the bottom.
+  { key: 'due_engine_hours', label: 'Engine Hours', sortable: true,
+    sortKey: (row) => {
+      const r = row as MaintenanceTask;
+      if (r.due_engine_hours == null) return Number.POSITIVE_INFINITY;
+      const last = r.last_engine_hours ?? 0;
+      return Number(r.due_engine_hours) - Number(last);
+    },
+    render: (_v, row) => <EngineHoursProgress row={row as MaintenanceTask} /> },
   { key: 'status', label: 'Status', sortable: true, render: (v) => <StatusBadge status={String(v)} /> },
   // Updated column shows date + time so multiple same-day edits are
   // distinguishable.  Short locale format keeps it readable without
@@ -515,8 +548,22 @@ export default function Tasks() {
     if (statusFilter === 'pending')   return buckets.pending;
     if (statusFilter === 'completed') return buckets.completed;
     if (statusFilter === 'cancelled') return buckets.cancelled;
-    return allTasks;
-  }, [statusFilter, allTasks, buckets]);
+    // "All" view: stitch the buckets in urgency order so a critical
+    // overdue task can't be buried below a low-priority pending task
+    // that was just created.  Each bucket already inherits the
+    // backend's status+priority sort (see get_maintenance_tasks ORDER
+    // BY), and dueSoon is a client-side date-derived bucket that the
+    // backend can't sort — so we have to splice it here.  Completed
+    // and cancelled drop to the bottom; an operator scanning the list
+    // for "what's next" shouldn't see closed tickets above open ones.
+    return [
+      ...buckets.overdue,
+      ...buckets.dueSoon,
+      ...buckets.pending,
+      ...buckets.completed,
+      ...buckets.cancelled,
+    ];
+  }, [statusFilter, buckets]);
 
   // Clear selection whenever the visible list changes (filter switch
   // or refetch).  Stale ids would otherwise sit in state and could
@@ -1446,8 +1493,8 @@ export default function Tasks() {
           <DataTable
             columns={columns}
             data={tasks as unknown as Record<string, unknown>[]}
-            searchKey={['vehicle_name', 'description', 'task_type']}
-            searchPlaceholder="Search vehicle, type, or description..."
+            searchKey={['vehicle_name', 'company_code', 'description', 'task_type']}
+            searchPlaceholder="Search vehicle, company, type, or description..."
             onRowClick={(row) => openTaskForEdit(row as unknown as MaintenanceTask)}
           />
           {/* Result count footer.  Always shows the filtered count
@@ -1520,6 +1567,14 @@ export default function Tasks() {
               <div className="min-w-0">
                 <h2 className="text-lg font-semibold truncate">
                   {selected.vehicle_name}
+                  {selected.company_code && (
+                    <span
+                      title="Company this truck belongs to — disambiguates when two companies share a vehicle name"
+                      className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-[10px] font-mono align-middle"
+                    >
+                      {selected.company_code}
+                    </span>
+                  )}
                   <span className="text-muted-foreground font-normal">
                     {' · '}
                     <span className="capitalize">{selected.task_type.replace(/_/g, ' ')}</span>
