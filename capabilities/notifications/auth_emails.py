@@ -27,11 +27,25 @@ from capabilities.notifications.email import is_email_configured, send_email
 logger = logging.getLogger(__name__)
 
 
-# Where the dashboard lives — used to compose the link inside the
-# email body.  Defaults to the production apex; deployments override
-# via env so a staging mail doesn't ship a prod link.
-def _dashboard_base() -> str:
-    return (os.getenv("DASHBOARD_BASE_URL") or "https://dash.4truck.us").rstrip("/")
+# Where the auth pages live — used to compose the link inside the
+# email body.  Defaults to the apex (4truck.us) so the URL is the same
+# for every persona; the dashboard SPA on the apex serves /login,
+# /forgot-password, /reset-password, and /verify-email and bounces the
+# user to their persona subdomain (fleet./dispatch./safety./dash.)
+# AFTER they redeem the token.  Deployments override via env so a
+# staging mail doesn't ship a prod link.
+#
+# ``DASHBOARD_BASE_URL`` is honored as a legacy fallback for hosts that
+# still set the old name — they'll keep sending links to dash. until
+# someone updates the env, which keeps working because the dashboard
+# SPA on dash. handles the same routes.
+def _auth_base() -> str:
+    value = (
+        os.getenv("AUTH_BASE_URL")
+        or os.getenv("DASHBOARD_BASE_URL")
+        or "https://4truck.us"
+    )
+    return value.rstrip("/")
 
 
 def _company_name() -> str:
@@ -56,12 +70,12 @@ def send_password_reset_email(
         logger.info(
             "Password reset email NOT sent (SMTP not configured) — "
             "token for %s: visit %s/reset-password?token=%s",
-            to, _dashboard_base(), token,
+            to, _auth_base(), token,
         )
         return False
 
     brand = _company_name()
-    base = _dashboard_base()
+    base = _auth_base()
     reset_url = f"{base}/reset-password?token={token}"
     greeting = f"Hi {html.escape(recipient_name)}," if recipient_name else "Hi,"
 
@@ -113,12 +127,12 @@ def send_verification_email(
         logger.info(
             "Verification email NOT sent (SMTP not configured) — "
             "token for %s: visit %s/verify-email?token=%s",
-            to, _dashboard_base(), token,
+            to, _auth_base(), token,
         )
         return False
 
     brand = _company_name()
-    base = _dashboard_base()
+    base = _auth_base()
     verify_url = f"{base}/verify-email?token={token}"
     greeting = f"Welcome to {brand}, {html.escape(recipient_name)}!" if recipient_name else f"Welcome to {brand}!"
 

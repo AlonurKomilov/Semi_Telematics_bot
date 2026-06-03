@@ -22,6 +22,7 @@ export interface Permissions {
   can_cost_per_mile: boolean;
   can_maintenance_all: boolean;
   can_maintenance_own: boolean;
+  can_cost_reports: boolean;
   can_manage_users: boolean;
   can_manage_companies: boolean;
   can_manage_account: boolean;
@@ -51,6 +52,10 @@ export interface User {
   telegram_id: number | null;
   /** Set when the user has email + password sign-in enabled. */
   email?: string | null;
+  /** ``false`` when an email is attached but the user hasn't clicked
+   *  the verification link yet.  The dashboard surfaces a "verify your
+   *  email" notice on the Sign-in methods panel when this is false. */
+  email_verified?: boolean;
   display_name: string;
   role: string;
   department?: string;
@@ -1354,15 +1359,20 @@ export interface AIHistoryResponse {
   count: number;
 }
 
-// ── Report Subscriptions ────────────────────────────────────────────
+// ── Scheduled Reports ────────────────────────────────────────────
 
-export interface Subscription {
+export interface ScheduledReport {
   id?: number;
   user_id?: number;
   frequency: string;
   report_type: string;
   send_hour: number;
   timezone: string;
+  /** Comma-separated list of delivery channels — "telegram", "email",
+   *  or "telegram,email".  Legacy rows pre-2026-06 default to
+   *  "telegram".  Email channel requires a verified user email; the
+   *  API rejects updates that try to enable it without that. */
+  delivery_channels?: string;
   is_active?: number;
   created_at?: string;
 }

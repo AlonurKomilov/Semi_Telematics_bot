@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { isSafeReturnTo, APEX_DOMAIN } from './lib/safeReturnTo';
 import AppRouter from './router';
@@ -200,6 +200,15 @@ export default function App() {
   // route correctly.
   const PublicPage = PUBLIC_AUTH_ROUTES[location.pathname];
   if (PublicPage) return <PublicPage />;
+
+  // ``/login`` has no entry in AppRouter — without these two arms a
+  // signed-in user hitting /login fell through to the catch-all 404,
+  // and a signed-out user hit AppRouter's auth guard and saw nothing.
+  // Authenticated → home; unauthenticated → the Login screen (same
+  // component the apex bounce uses).
+  if (location.pathname === '/login') {
+    return user ? <Navigate to="/" replace /> : <Login />;
+  }
 
   if (!user) return <Login />;
 

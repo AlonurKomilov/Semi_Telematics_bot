@@ -328,6 +328,15 @@ function SignInMethods() {
   const [linkStatus, setLinkStatus] = useState<'idle' | 'pending' | 'rejected'>('idle');
   const [linkReason, setLinkReason] = useState('');
   const pollHandle = useRef<number | null>(null);
+  // Add-email form state — visible inline when the user has no email
+  // attached.  No "ask an admin" detour; the /user/credentials endpoint
+  // lets the user set their own.
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [savingCreds, setSavingCreds] = useState(false);
+  const [credsOk, setCredsOk] = useState('');
 
   const stopPolling = () => {
     if (pollHandle.current !== null) {
@@ -394,6 +403,59 @@ function SignInMethods() {
     }
   };
 
+  const resendVerification = async () => {
+    if (!me?.email) return;
+    setErr('');
+    setCredsOk('');
+    try {
+      await apiJSON('/auth/resend-verification', {
+        method: 'POST', body: { email: me.email },
+      });
+      setCredsOk(t(
+        'profile.signin_verification_sent',
+        'Verification email sent. Check your inbox.',
+      ));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Failed to resend');
+    }
+  };
+
+  const submitCredentials = async () => {
+    setErr('');
+    setCredsOk('');
+    if (newPassword !== confirmPassword) {
+      setErr(t('profile.signin_pw_mismatch', "Passwords don't match."));
+      return;
+    }
+    if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
+      setErr(t(
+        'profile.signin_pw_rule',
+        'Password must be at least 8 characters and include one letter and one digit.',
+      ));
+      return;
+    }
+    setSavingCreds(true);
+    try {
+      await apiJSON('/user/credentials', {
+        method: 'PUT',
+        body: { email: newEmail, password: newPassword },
+      });
+      setCredsOk(t(
+        'profile.signin_email_saved',
+        'Email + password saved.  Check your inbox for a verification link — until you confirm it, this email can\'t be used to sign in.',
+      ));
+      setShowEmailForm(false);
+      setNewEmail('');
+      setNewPassword('');
+      setConfirmPassword('');
+      load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Failed to save credentials');
+    } finally {
+      setSavingCreds(false);
+    }
+  };
+
   const unlink = async () => {
     if (!window.confirm(t('profile.confirm_unlink_telegram', 'Disconnect Telegram from this account?  You can re-link later from this same panel.'))) return;
     setUnlinking(true);
@@ -430,30 +492,152 @@ function SignInMethods() {
       </p>
 
       {err && <ErrorState message={err} />}
+      {credsOk && (
+        <p className="text-green-600 dark:text-green-400 text-sm mb-3">{credsOk}</p>
+      )}
 
       <ul className="divide-y divide-border">
         {/* Email */}
         <li className="flex items-start gap-3 py-3">
-          <div className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center bg-primary/15 text-primary">
+          <div className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${me?.email ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}>
             <Mail size={18} />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium">{t('profile.signin_email_label', 'Email + password')}</div>
+            <div className="text-sm font-medium flex items-center gap-2 flex-wrap">
+              {t('profile.signin_email_label', 'Email + password')}
+              {me?.email && me.email_verified === false && (
+                <span
+                  title={t(
+                    'profile.signin_verify_hint',
+                    "We sent a verification link.  Until you click it, this email can't be used to sign in.",
+                  )}
+                  className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 font-semibold"
+                >
+                  {t('profile.signin_unverified_chip', 'Unverified')}
+                </span>
+              )}
+            </div>
             <div className="text-xs text-muted-foreground mt-0.5 truncate">
               {me?.email
                 ? me.email
-                : t('profile.signin_email_missing', 'No email set — ask an admin to add one.')}
+                : t(
+                    'profile.signin_email_missing',
+                    'No email set — add one below to sign in without Telegram.',
+                  )}
             </div>
           </div>
-          {me?.email && (
+          {me?.email && me.email_verified === false ? (
+            <button
+              type="button"
+              onClick={resendVerification}
+              className="shrink-0 text-xs text-primary hover:bg-primary/10 px-2 py-1 rounded"
+            >
+              {t('profile.signin_resend_verification', 'Resend link')}
+            </button>
+          ) : me?.email ? (
             <a
               href="/forgot-password"
               className="shrink-0 text-xs text-primary hover:underline px-2 py-1"
             >
               {t('profile.signin_change_password', 'Change password')}
             </a>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowEmailForm((v) => !v)}
+              className="shrink-0 inline-flex items-center gap-1 text-xs text-primary hover:bg-primary/10 px-2 py-1 rounded"
+            >
+              {showEmailForm
+                ? t('profile.signin_email_cancel', 'Cancel')
+                : t('profile.signin_email_add', 'Add email')}
+            </button>
           )}
         </li>
+
+        {/* Inline "add email + password" form — only when the user has
+            no email attached and they've clicked "Add email". */}
+        {!me?.email && showEmailForm && (
+          <li className="py-3">
+            <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  'profile.signin_email_form_intro',
+                  'Pick an email + password so you can sign in to the dashboard without Telegram. You can do both later if you like.',
+                )}
+              </p>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">
+                  {t('profile.signin_email_field', 'Email address')}
+                </label>
+                <input
+                  type="email"
+                  autoComplete="email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className="w-full bg-card border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-ring"
+                  placeholder="you@example.com"
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">
+                    {t('profile.signin_password_field', 'Password')}
+                  </label>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full bg-card border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-ring"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">
+                    {t('profile.signin_password_confirm', 'Confirm password')}
+                  </label>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full bg-card border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-ring"
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                {t(
+                  'profile.signin_pw_hint',
+                  'At least 8 characters · must include a letter and a digit.',
+                )}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={submitCredentials}
+                  disabled={savingCreds || !newEmail || !newPassword}
+                  className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded bg-primary hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {savingCreds
+                    ? t('profile.signin_saving', 'Saving…')
+                    : t('profile.signin_save_credentials', 'Save email + password')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEmailForm(false);
+                    setNewEmail('');
+                    setNewPassword('');
+                    setConfirmPassword('');
+                    setErr('');
+                  }}
+                  className="text-sm px-3 py-1.5 rounded text-muted-foreground hover:bg-muted"
+                >
+                  {t('common.cancel', 'Cancel')}
+                </button>
+              </div>
+            </div>
+          </li>
+        )}
 
         {/* Telegram */}
         <li className="flex items-start gap-3 py-3">

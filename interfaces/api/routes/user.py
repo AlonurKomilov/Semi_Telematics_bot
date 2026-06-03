@@ -114,6 +114,13 @@ async def user_me(
         ],
         "email": db_user.email,
         "has_password": db_user.password_hash is not None,
+        # Surface verification state so the dashboard can render a
+        # "verify your email" banner on the Sign-in methods panel until
+        # the user clicks the verification link.
+        "email_verified": (
+            await platform_db.is_email_verified(db_user.id)
+            if db_user.email else True
+        ),
         "permissions": perm_dict,
         "payroll_enabled": bool(getattr(acct, "payroll_enabled", False)),
         "coaching_enabled": bool(getattr(acct, "coaching_enabled", False)),
@@ -131,17 +138,30 @@ async def set_credentials(
     user: dict = Depends(get_current_user),
     platform_db=Depends(get_platform_db),
 ):
-    """Set email+password for the current user.
+    """Add (or change) the email + password for the current user.
 
-    Allows Telegram-authenticated users to add email/password
-    login credentials for the dashboard.
+    Verification semantics
+    ----------------------
+    The new email is stored with ``email_verified = 0`` and a
+    verification link is dispatched.  The user can KEEP using the
+    dashboard via their existing session (Telegram or current email);
+    but sign-in via the NEW email is blocked until they click the
+    link.  Mirrors the /register flow exactly — no path adds an
+    email-login method without a verified inbox.
+
+    This closes a gap where a compromised Telegram session could
+    attach an arbitrary email + password and persist after the
+    Telegram link was revoked.
     """
+    import logging
+    from interfaces.api.auth import _validate_password_strength
+
     if not _EMAIL_RE.match(body.email):
         raise HTTPException(status_code=422, detail="Invalid email address")
-    if len(body.password) < 8:
-        raise HTTPException(
-            status_code=422, detail="Password must be at least 8 characters"
-        )
+    # Defer the password rule to the single source of truth shared with
+    # /register and /reset — otherwise a user setting credentials here
+    # could sneak in a weak password they couldn't use at signup.
+    _validate_password_strength(body.password)
 
     # Check email not already taken by another user
     existing = await platform_db.get_user_by_email(body.email)
@@ -152,30 +172,90 @@ async def set_credentials(
         raise HTTPException(status_code=409, detail="Email already in use")
 
     pw_hash = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode()
-    await platform_db.set_user_email_password(db_user.id, body.email, pw_hash)
-    return {"detail": "Credentials saved"}
+    # ``reset_verification=True`` forces email_verified back to 0 so the
+    # new address must be confirmed before it can be used for sign-in.
+    await platform_db.set_user_email_password(
+        db_user.id, body.email, pw_hash, reset_verification=True,
+    )
+
+    # Mint a verification token + send the link.  Soft-fail: storage
+    # already committed the new email, and the user can request a fresh
+    # link from the login screen if delivery hiccups.
+    verification_sent = False
+    try:
+        token = await platform_db.create_email_verification_token(
+            db_user.id, body.email,
+        )
+        from capabilities.notifications.auth_emails import (
+            send_verification_email,
+        )
+        send_verification_email(
+            to=body.email, token=token,
+            recipient_name=db_user.display_name or "",
+        )
+        verification_sent = True
+    except Exception as e:
+        logging.getLogger("api.user").warning(
+            "verification email send failed on add-credentials for %s: %s",
+            body.email, e,
+        )
+
+    return {
+        "detail":               "Credentials saved",
+        "verification_required": True,
+        "verification_sent":     verification_sent,
+        "email":                 body.email,
+        "message": (
+            "Check your inbox for a verification link.  You can keep "
+            "using the dashboard via your current session, but signing "
+            "in with this email is blocked until you confirm it."
+        ),
+    }
 
 
-# ── Subscriptions ────────────────────────────────────────────────
+# ── Scheduled Reports ──────────────────────────────────────────
+# Recurring report delivery (PDF via Telegram).  Underlying storage
+# table is still ``digest_subscriptions`` (legacy name kept to avoid a
+# migration); the API + UI surface is fully renamed to "Scheduled
+# Reports".  The /subscriptions API aliases were dropped — any client
+# still calling them has had one release to update.
 
 VALID_FREQUENCIES = {"daily", "weekly", "monthly"}
 VALID_REPORT_TYPES = {"faults", "fuel", "health", "efficiency", "camera"}
+VALID_DELIVERY_CHANNELS = {"telegram", "email"}
 
 
-class SubscriptionRequest(BaseModel):
+class ScheduledReportRequest(BaseModel):
     frequency: str = Field("daily", pattern=r"^(daily|weekly|monthly)$")
     send_hour: int = Field(7, ge=0, le=23)
     timezone: str = "America/New_York"
     report_type: str = Field("faults", pattern=r"^(faults|fuel|health|efficiency|camera)$")
+    # Delivery channels — at least one of "telegram" or "email".
+    # Defaults to ["telegram"] to preserve pre-2026-06 client behaviour
+    # for any older SPA bundle still in flight.  Validated below.
+    delivery_channels: list[str] = Field(default_factory=lambda: ["telegram"])
 
+    def validated_channels(self) -> list[str]:
+        """Return the de-duplicated, normalized channel list.
 
-# ── Scheduled Reports ──────────────────────────────────────────
-# Renamed from "/subscriptions" — the dashboard surface (sidebar +
-# page + i18n keys) was unified under "Scheduled Reports" to drop the
-# misleading "subscription" framing.  The legacy paths are kept as
-# thin aliases so any pinned client (older SPA bundle still in
-# someone's tab, integration script, bot tool) doesn't break.  Delete
-# the aliases after one release cycle.
+        Raises ``HTTPException`` if invalid (empty, unknown channel,
+        all-bogus).  Keeps the route handlers free of inline validation
+        boilerplate and ensures one consistent error shape.
+        """
+        seen: list[str] = []
+        for c in self.delivery_channels:
+            v = (c or "").strip().lower()
+            if v in VALID_DELIVERY_CHANNELS and v not in seen:
+                seen.append(v)
+        if not seen:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "delivery_channels must include at least one of "
+                    f"{sorted(VALID_DELIVERY_CHANNELS)}"
+                ),
+            )
+        return seen
 
 
 @router.get("/scheduled-reports")
@@ -195,12 +275,12 @@ async def get_scheduled_report(
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     sub = await tenant_db.get_digest_subscription(db_user.id)
-    return {"subscription": sub}
+    return {"scheduled_report": sub}
 
 
 @router.put("/scheduled-reports")
 async def upsert_scheduled_report(
-    body: SubscriptionRequest,
+    body: ScheduledReportRequest,
     user: dict = Depends(require_permission("can_digest")),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
@@ -209,15 +289,34 @@ async def upsert_scheduled_report(
     db_user = await get_current_db_user(user, platform_db)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    channels = body.validated_channels()
+    # Email delivery requires a verified address — otherwise the
+    # scheduler would silently bounce, which hurts sender reputation.
+    # We reject up-front so the dashboard can surface the gap as a
+    # clear "verify your email" prompt instead of a mute non-delivery.
+    if "email" in channels:
+        if not db_user.email:
+            raise HTTPException(
+                status_code=422,
+                detail="Email delivery requires an email address on your profile",
+            )
+        if not getattr(db_user, "email_verified", False):
+            raise HTTPException(
+                status_code=422,
+                detail="Email delivery requires a verified email address — check your inbox for the verification link",
+            )
+
     await tenant_db.subscribe_digest_ext(
         db_user.id,
         frequency=body.frequency,
         send_hour=body.send_hour,
         timezone=body.timezone,
         report_type=body.report_type,
+        delivery_channels=channels,
     )
     sub = await tenant_db.get_digest_subscription(db_user.id)
-    return {"subscription": sub}
+    return {"scheduled_report": sub}
 
 
 @router.delete("/scheduled-reports")
@@ -232,12 +331,6 @@ async def delete_scheduled_report(
         raise HTTPException(status_code=404, detail="User not found")
     await tenant_db.unsubscribe_digest(db_user.id)
     return {"ok": True}
-
-
-# Legacy aliases — delete after one release cycle.
-router.get("/subscriptions")(get_scheduled_report)
-router.put("/subscriptions")(upsert_scheduled_report)
-router.delete("/subscriptions")(delete_scheduled_report)
 
 
 # ── User Preferences ────────────────────────────────────────────

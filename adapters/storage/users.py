@@ -75,13 +75,29 @@ class UsersMixin:
         return self._row_to_user(row) if row else None
 
     async def set_user_email_password(
-        self, user_id: int, email: str, password_hash: str
+        self, user_id: int, email: str, password_hash: str,
+        *, reset_verification: bool = False,
     ) -> None:
-        """Set email and password hash for an existing user."""
-        await self._db.execute(
-            "UPDATE users SET email = ?, password_hash = ? WHERE id = ?",
-            (email.lower().strip(), password_hash, user_id),
-        )
+        """Set email and password hash for an existing user.
+
+        ``reset_verification=True`` forces ``email_verified`` back to 0
+        so the new (or changed) email must be confirmed before it can
+        be used to sign in.  Call sites that ADD or CHANGE the email
+        (e.g. the Profile "Add email" form) pass True; the password-
+        reset path leaves verification status untouched because the
+        email itself didn't change.
+        """
+        if reset_verification:
+            await self._db.execute(
+                "UPDATE users SET email = ?, password_hash = ?, "
+                "email_verified = 0 WHERE id = ?",
+                (email.lower().strip(), password_hash, user_id),
+            )
+        else:
+            await self._db.execute(
+                "UPDATE users SET email = ?, password_hash = ? WHERE id = ?",
+                (email.lower().strip(), password_hash, user_id),
+            )
         await self._db.commit()
 
     async def create_user_with_email(

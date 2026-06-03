@@ -451,7 +451,17 @@ export default function KnowledgeBase() {
                 </label>
                 <select
                   value={fMediaType}
-                  onChange={(e) => setFMediaType(e.target.value)}
+                  onChange={(e) => {
+                    // Switching media type invalidates whatever the user
+                    // already entered.  A YouTube URL doesn't make sense
+                    // as "Image", and a PDF upload from a previous pick
+                    // shouldn't carry over to "Link".  Clearing here
+                    // beats showing a stale value next to the new type.
+                    setFMediaType(e.target.value);
+                    setFMediaUrl('');
+                    setFUploadName('');
+                    setFUploadSize(0);
+                  }}
                   className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
                 >
                   <option value="video">{t('knowledge.media_video')}</option>
@@ -462,56 +472,17 @@ export default function KnowledgeBase() {
                 </select>
               </div>
               <div className="md:col-span-2">
-                <label className="block text-xs text-muted-foreground mb-1">
-                  {t('knowledge.field_media_url')}
-                </label>
-                {fUploadName ? (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-primary/5 border border-primary/30 rounded-lg text-sm">
-                    <FileText size={14} className="text-primary shrink-0" />
-                    <span className="truncate flex-1">{fUploadName}</span>
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {(fUploadSize / 1024).toFixed(0)} KB
-                    </span>
-                    <button
-                      type="button"
-                      onClick={clearUpload}
-                      className="text-muted-foreground hover:text-destructive"
-                      title={t('knowledge.upload_remove', 'Remove attached file')}
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  <input
-                    type="url"
-                    value={fMediaUrl}
-                    onChange={(e) => setFMediaUrl(e.target.value)}
-                    maxLength={2048}
-                    className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
-                    placeholder={t('knowledge.field_media_url_placeholder')}
-                  />
-                )}
-                <div className="flex items-center gap-3 mt-2 text-xs">
-                  <label className={`inline-flex items-center gap-1 cursor-pointer text-primary hover:underline ${fUploading ? 'opacity-50 pointer-events-none' : ''}`}>
-                    <input
-                      type="file"
-                      accept="application/pdf,image/png,image/jpeg,image/webp"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) handleUpload(f);
-                        e.target.value = '';
-                      }}
-                      className="hidden"
-                      disabled={fUploading}
-                    />
-                    {fUploading
-                      ? t('knowledge.upload_uploading', 'Uploading…')
-                      : t('knowledge.upload_attach', 'Attach a PDF or image instead')}
-                  </label>
-                  <span className="text-muted-foreground">
-                    {t('knowledge.upload_hint', 'PDF, PNG, JPEG, WEBP · max 25 MB')}
-                  </span>
-                </div>
+                <MediaInput
+                  mediaType={fMediaType}
+                  mediaUrl={fMediaUrl}
+                  setMediaUrl={setFMediaUrl}
+                  uploadName={fUploadName}
+                  uploadSize={fUploadSize}
+                  uploading={fUploading}
+                  onUpload={handleUpload}
+                  onClearUpload={clearUpload}
+                  t={t}
+                />
               </div>
             </div>
 
@@ -1113,5 +1084,169 @@ function ArticleEngagement({
         {counts.unhelpful}
       </button>
     </div>
+  );
+}
+
+
+// ── Type-adaptive media input ──────────────────────────────────────
+//
+// The Media Type select drives which input the user sees underneath
+// it:
+//   • pdf  → primary file picker, secondary "use URL instead" toggle
+//   • image → same as pdf, picker restricted to PNG/JPEG/WEBP
+//   • video → URL input (YouTube/Vimeo placeholder).  No uploader —
+//             the object store doesn't accept video binaries today.
+//   • link  → generic URL input.  No uploader.
+//   • none  → nothing rendered.  Article body is the entire content.
+
+function MediaInput({
+  mediaType, mediaUrl, setMediaUrl,
+  uploadName, uploadSize, uploading,
+  onUpload, onClearUpload, t,
+}: {
+  mediaType: string;
+  mediaUrl: string;
+  setMediaUrl: (v: string) => void;
+  uploadName: string;
+  uploadSize: number;
+  uploading: boolean;
+  onUpload: (f: File) => void;
+  onClearUpload: () => void;
+  t: TFunction;
+}) {
+  if (mediaType === 'none') {
+    return (
+      <div className="text-xs text-muted-foreground italic mt-5">
+        {t(
+          'knowledge.media_none_hint',
+          'No file or link will be attached — readers see only the article body.',
+        )}
+      </div>
+    );
+  }
+
+  const isFile = mediaType === 'pdf' || mediaType === 'image';
+
+  // File-type media: picker is the primary affordance, URL is the
+  // escape hatch for users who have the file hosted elsewhere (Drive,
+  // Dropbox).  Inverts the current order so the upload flow is the
+  // discoverable one.
+  if (isFile) {
+    const accept =
+      mediaType === 'pdf'
+        ? 'application/pdf'
+        : 'image/png,image/jpeg,image/webp';
+    const hint =
+      mediaType === 'pdf'
+        ? t('knowledge.upload_hint_pdf', 'PDF · max 25 MB')
+        : t('knowledge.upload_hint_image', 'PNG, JPEG, WEBP · max 25 MB');
+
+    if (uploadName) {
+      return (
+        <>
+          <label className="block text-xs text-muted-foreground mb-1">
+            {mediaType === 'pdf'
+              ? t('knowledge.field_pdf', 'PDF file')
+              : t('knowledge.field_image', 'Image file')}
+          </label>
+          <div className="flex items-center gap-2 px-3 py-2 bg-primary/5 border border-primary/30 rounded-lg text-sm">
+            <FileText size={14} className="text-primary shrink-0" />
+            <span className="truncate flex-1">{uploadName}</span>
+            {uploadSize > 0 && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {(uploadSize / 1024).toFixed(0)} KB
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={onClearUpload}
+              className="text-muted-foreground hover:text-destructive"
+              title={t('knowledge.upload_remove', 'Remove attached file')}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </>
+      );
+    }
+    // Empty: show the picker as the primary affordance + a small URL
+    // escape hatch for files hosted elsewhere.
+    return (
+      <>
+        <label className="block text-xs text-muted-foreground mb-1">
+          {mediaType === 'pdf'
+            ? t('knowledge.field_pdf', 'PDF file')
+            : t('knowledge.field_image', 'Image file')}
+        </label>
+        <label
+          className={`flex items-center justify-center gap-2 px-3 py-3 border-2 border-dashed border-border rounded-lg text-sm cursor-pointer hover:bg-muted/30 transition-colors ${
+            uploading ? 'opacity-50 pointer-events-none' : ''
+          }`}
+        >
+          <input
+            type="file"
+            accept={accept}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onUpload(f);
+              e.target.value = '';
+            }}
+            className="hidden"
+            disabled={uploading}
+          />
+          <FileText size={14} className="text-muted-foreground" />
+          <span>
+            {uploading
+              ? t('knowledge.upload_uploading', 'Uploading…')
+              : mediaType === 'pdf'
+              ? t('knowledge.upload_pick_pdf', 'Choose a PDF file')
+              : t('knowledge.upload_pick_image', 'Choose an image file')}
+          </span>
+        </label>
+        <p className="text-[11px] text-muted-foreground mt-1">{hint}</p>
+        <div className="mt-3">
+          <label className="block text-[11px] text-muted-foreground mb-1">
+            {t('knowledge.upload_or_url', 'Or paste a hosted URL')}
+          </label>
+          <input
+            type="url"
+            value={mediaUrl}
+            onChange={(e) => setMediaUrl(e.target.value)}
+            maxLength={2048}
+            className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
+            placeholder={
+              mediaType === 'pdf'
+                ? 'https://drive.google.com/…  ·  https://dropbox.com/…'
+                : 'https://imgur.com/…  ·  https://drive.google.com/…'
+            }
+          />
+        </div>
+      </>
+    );
+  }
+
+  // video / link: URL only.
+  const urlLabel =
+    mediaType === 'video'
+      ? t('knowledge.field_video_url', 'Video URL')
+      : t('knowledge.field_link_url', 'Link URL');
+  const urlPlaceholder =
+    mediaType === 'video'
+      ? 'https://youtube.com/watch?v=…  ·  https://vimeo.com/…'
+      : t('knowledge.field_media_url_placeholder');
+  return (
+    <>
+      <label className="block text-xs text-muted-foreground mb-1">
+        {urlLabel}
+      </label>
+      <input
+        type="url"
+        value={mediaUrl}
+        onChange={(e) => setMediaUrl(e.target.value)}
+        maxLength={2048}
+        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
+        placeholder={urlPlaceholder}
+      />
+    </>
   );
 }
