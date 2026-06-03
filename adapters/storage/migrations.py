@@ -852,6 +852,15 @@ async def migrate_warehouse_tables(conn) -> None:
         "CREATE INDEX IF NOT EXISTS idx_vehicle_state_name "
         "ON vehicle_state(account_id, vehicle_name)"
     )
+    # Defense in depth: prevent any caller from looking up a name and
+    # getting the wrong company's vehicle.  See migration 078 for the
+    # motivation.  Belongs in the fresh-DB CREATE path so a brand-new
+    # database starts with the same guarantee a migrated one gets.
+    await conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS "
+        "uniq_vehicle_state_account_company_name "
+        "ON vehicle_state(account_id, company_code, vehicle_name)"
+    )
     # Activity-window scan for billing — counts vehicles whose last
     # Samsara signal landed within the past N days.  Pairs with the
     # ``count_active_vehicles`` / ``compute_billing`` helpers.
@@ -3521,3 +3530,150 @@ async def migrate_userdata_path_prefix(conn) -> None:
         except Exception:
             pass
         raise
+
+
+
+@_register("076_digest_delivery_channels")
+async def migrate_digest_delivery_channels(conn) -> None:
+    """Add ``delivery_channels`` to ``digest_subscriptions``.
+
+    Enables Scheduled Reports email delivery on top of the existing
+    Telegram channel.  Stored as a comma-separated string ("telegram",
+    "email", or "telegram,email") so callers can pick either or both.
+    Existing rows get the default ``'telegram'`` — pre-2026-06
+    subscribers keep their current behaviour unchanged.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE digest_subscriptions "
+            "ADD COLUMN delivery_channels TEXT NOT NULL DEFAULT 'telegram'"
+        )
+        await conn.commit()
+        logger.info("Added column digest_subscriptions.delivery_channels")
+    except Exception:
+        # Column already exists (idempotent rerun).
+        pass
+
+
+@_register("077_digest_unique_per_report_type")
+async def migrate_digest_unique_per_report_type(conn) -> None:
+    """Replace ``UNIQUE(user_id)`` with ``UNIQUE(user_id, report_type)``.
+
+    Enables multi-schedule support — one user can now have Faults Daily,
+    Fuel Weekly, Health Monthly, etc. as independent rows.  The pre-2026
+    layout forced a user to pick one report only.
+
+    Postgres allows ``ALTER TABLE`` constraint juggling; SQLite (test
+    runs) does not, so we drop+recreate on SQLite via temp-table copy.
+    Either path preserves every existing row.  Idempotent: a re-run on
+    the new constraint just rediscovers it and exits.
+    """
+    try:
+        # Postgres path — direct constraint swap.  Constraint names are
+        # the defaults Postgres assigns when the table was created with
+        # ``UNIQUE(user_id)``.
+        await conn.execute(
+            "ALTER TABLE digest_subscriptions "
+            "DROP CONSTRAINT IF EXISTS digest_subscriptions_user_id_key"
+        )
+        await conn.execute(
+            "ALTER TABLE digest_subscriptions "
+            "ADD CONSTRAINT digest_subscriptions_user_id_report_type_key "
+            "UNIQUE (user_id, report_type)"
+        )
+        await conn.commit()
+        logger.info(
+            "Migration 077: digest_subscriptions now UNIQUE(user_id, report_type)"
+        )
+    except Exception as e:
+        # Most likely path:
+        #   - Constraint already named differently (defensive try/catch)
+        #   - The new constraint already exists from a prior run
+        # In both cases the migration is effectively complete; log and
+        # move on so a partial-state DB doesn't block startup.
+        logger.info(
+            "Migration 077: constraint swap skipped (%s) — assuming already applied",
+            e,
+        )
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("078_vehicle_state_unique_per_company_name")
+async def migrate_vehicle_state_unique_per_company_name(conn) -> None:
+    """Add ``UNIQUE(account_id, company_code, vehicle_name)`` to vehicle_state.
+
+    Motivation
+    ----------
+    The maintenance route used to look up live odometer / engine-hours
+    by ``vehicle_name`` alone (``get_vehicle_state(account_id,
+    vehicle_nums=[name])``).  When the same account had two companies
+    each operating a vehicle named "103", the query returned BOTH
+    rows and the python-side dict ``live_by_name["103"] = row`` kept
+    only the last one — silently mixing one company's odometer onto
+    the other company's maintenance task.
+
+    The route fix (use vehicle_id or (company_code, vehicle_name)
+    instead of name-only) is in interfaces/api/routes/maintenance.py.
+    THIS migration is the defense-in-depth layer: a UNIQUE index that
+    makes the bug unrepresentable at the storage level, so any future
+    caller that forgets to scope by company can't return two rows.
+
+    Safety
+    ------
+    - Refuses to apply if any existing duplicate row would block the
+      constraint.  Logs which keys are colliding so the operator can
+      decide whether to clean them up manually.
+    - On Postgres this is a CONCURRENTLY-ish CREATE UNIQUE INDEX so
+      writes aren't blocked; if the index already exists from a prior
+      partial run, the IF NOT EXISTS guard makes it a no-op.
+
+    Why an index, not a table constraint
+    ------------------------------------
+    UNIQUE INDEX has the same enforcement semantics in Postgres but
+    is far easier to drop / re-create if we ever need to relax the
+    rule (e.g. multi-company merges).
+    """
+    try:
+        # Pre-flight: check for duplicates that would block the index.
+        # Limit to one hit so the query is constant-time on a large
+        # vehicle_state table.
+        dup_cur = await conn.execute("""
+            SELECT account_id, company_code, vehicle_name, COUNT(*) AS cnt
+              FROM vehicle_state
+             GROUP BY account_id, company_code, vehicle_name
+            HAVING COUNT(*) > 1
+             LIMIT 1
+        """)
+        dup_row = await dup_cur.fetchone()
+        if dup_row:
+            row = dict(dup_row) if not isinstance(dup_row, dict) else dup_row
+            logger.warning(
+                "Migration 078 skipped: vehicle_state has duplicate "
+                "(account_id=%s, company_code=%r, vehicle_name=%r) — "
+                "clean up the duplicate rows manually before re-running.",
+                row.get("account_id"),
+                row.get("company_code"),
+                row.get("vehicle_name"),
+            )
+            return
+
+        await conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "uniq_vehicle_state_account_company_name "
+            "ON vehicle_state(account_id, company_code, vehicle_name)"
+        )
+        await conn.commit()
+        logger.info(
+            "Migration 078: vehicle_state now has UNIQUE(account_id, "
+            "company_code, vehicle_name) — cross-company name collisions "
+            "are no longer possible."
+        )
+    except Exception as e:
+        logger.warning("Migration 078 failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass

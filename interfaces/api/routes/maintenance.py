@@ -218,22 +218,48 @@ async def list_tasks(
     # or tasks where the alerted_at filter strands last_odometer at the
     # value it had when the first alert fired — see Bug B notes).
     #
-    # One bulk warehouse read per request, keyed by unique vehicle_name.
+    # Key by ``vehicle_id`` when the task has one (always unique in
+    # vehicle_state — it's the table's PRIMARY KEY).  Fall back to
+    # ``(company_code, vehicle_name)`` for legacy tasks that pre-date
+    # vehicle_id capture.  Keying by ``vehicle_name`` alone was the old
+    # bug: two companies under the same account can both have a "103",
+    # and the dict-write last-row-wins would silently merge them and
+    # show the wrong company's odometer.
+    #
     # Falls through silently on any warehouse error; the row just keeps
     # whatever last_odometer / last_engine_hours was stored.
-    unique_names = {t.get("vehicle_name") for t in items if t.get("vehicle_name")}
-    if unique_names:
+    if items:
         try:
-            state_rows = await tenant_db.get_vehicle_state(
-                user["account_id"], vehicle_nums=list(unique_names),
-            )
-            live_by_name: dict[str, dict] = {}
+            # Bulk lookup pulls every state row for the account once; the
+            # python-side index then routes each task to its OWN vehicle.
+            # One DB query, two index lookups per task.
+            state_rows = await tenant_db.get_vehicle_state(user["account_id"])
+            by_id: dict[str, dict] = {}
+            by_company_name: dict[tuple[str, str], dict] = {}
             for row in state_rows:
-                nm = row.get("vehicle_name") or ""
-                if nm:
-                    live_by_name[nm] = row
+                vid = row.get("vehicle_id") or ""
+                if vid:
+                    by_id[vid] = row
+                cc = (row.get("company_code") or "").strip()
+                nm = (row.get("vehicle_name") or "").strip()
+                if cc and nm:
+                    by_company_name[(cc, nm)] = row
+                # Legacy rows without company_code can still be reached
+                # via name-only — we accept a single-tenant collision
+                # risk here only when company_code is empty in BOTH the
+                # task and the state row.
+                elif nm:
+                    by_company_name[("", nm)] = row
             for t in items:
-                live = live_by_name.get(t.get("vehicle_name") or "")
+                live = None
+                tid = (t.get("vehicle_id") or "").strip()
+                if tid and tid in by_id:
+                    live = by_id[tid]
+                else:
+                    cc = (t.get("company_code") or "").strip()
+                    nm = (t.get("vehicle_name") or "").strip()
+                    if nm:
+                        live = by_company_name.get((cc, nm))
                 if not live:
                     continue
                 # Use the live value when the stored one is NULL, or
@@ -288,11 +314,28 @@ async def get_task(
     # Mirror the list-view live-telemetry merge so the modal and the
     # list show the same odometer / engine-hours readings.  Live wins
     # only when newer than the stored value.
-    vehicle_name = enriched.get("vehicle_name")
-    if vehicle_name:
+    #
+    # Lookup priority:
+    #   1. ``vehicle_id`` — the unique PRIMARY KEY of vehicle_state.
+    #      Always correct when the task has one.
+    #   2. ``(company_code, vehicle_name)`` — fallback for legacy tasks
+    #      that pre-date vehicle_id capture.  Scopes by company so
+    #      "truck 103" in COMPANY_A doesn't pick up live data from
+    #      "truck 103" in COMPANY_B (the old bug).
+    vehicle_id = (enriched.get("vehicle_id") or "").strip()
+    vehicle_name = (enriched.get("vehicle_name") or "").strip()
+    company_code = (enriched.get("company_code") or "").strip()
+    if vehicle_id or vehicle_name:
         try:
+            kwargs: dict = {}
+            if vehicle_id:
+                kwargs["vehicle_id"] = vehicle_id
+            else:
+                kwargs["vehicle_nums"] = [vehicle_name]
+                if company_code:
+                    kwargs["company"] = company_code
             state_rows = await tenant_db.get_vehicle_state(
-                user["account_id"], vehicle_nums=[vehicle_name],
+                user["account_id"], **kwargs,
             )
             if state_rows:
                 live = state_rows[0]
