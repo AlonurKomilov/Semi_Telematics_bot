@@ -245,10 +245,43 @@ async def resolve_user_id(user: dict) -> int:
     return int(db_user.id) if db_user else 0
 
 
+async def get_current_db_user(user: dict, platform_db=None):
+    """Resolve the requesting user to a full ``User`` row.
+
+    Prefers the ``uid`` claim (always present on tokens minted after the
+    user-id rollout) so it works for email-only accounts whose
+    ``telegram_id`` is NULL.  Falls back to the legacy ``sub`` claim
+    (telegram_id) for tokens issued before that rollout — those expire
+    naturally with the JWT TTL.
+
+    ``platform_db`` is optional so callers that already hold one don't
+    have to re-fetch; pass it in to avoid a router lookup.
+
+    Returns None if neither claim resolves to an active user — call
+    sites decide whether that's a 401, a 404, or just "skip".
+    """
+    if platform_db is None:
+        platform_db = _get_router().platform
+    uid = user.get("uid")
+    if uid:
+        try:
+            db_user = await platform_db.get_user_by_id(int(uid))
+        except (TypeError, ValueError):
+            db_user = None
+        if db_user:
+            return db_user
+    sub = user.get("sub")
+    if sub is None:
+        return None
+    try:
+        return await platform_db.get_user_by_telegram_id(int(sub))
+    except (TypeError, ValueError):
+        return None
+
+
 async def get_user_vehicle_num(user: dict) -> str | None:
     """Look up the driver's assigned truck_num from the DB."""
-    platform_db = _get_router().platform
-    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    db_user = await get_current_db_user(user)
     return db_user.truck_num if db_user else None
 
 
@@ -258,7 +291,7 @@ async def get_user_vehicle_nums(user: dict) -> list[str]:
     Falls back to users.truck_num if no junction table rows exist.
     """
     platform_db = _get_router().platform
-    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    db_user = await get_current_db_user(user, platform_db)
     if not db_user:
         return []
     trucks = await platform_db.get_user_vehicle_nums(db_user.id)
@@ -279,7 +312,7 @@ async def get_user_company_codes(user: dict) -> list[str]:
     if user.get("role") == "owner":
         return []
     platform_db = _get_router().platform
-    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    db_user = await get_current_db_user(user, platform_db)
     if not db_user:
         return []
     return await platform_db.get_user_company_codes(db_user.id)

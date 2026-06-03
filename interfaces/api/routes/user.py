@@ -7,7 +7,13 @@ import bcrypt
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from interfaces.api.deps import get_current_user, get_platform_db, get_tenant_db
+from interfaces.api.deps import (
+    get_current_db_user,
+    get_current_user,
+    get_platform_db,
+    get_tenant_db,
+    require_permission,
+)
 from capabilities.iam.permissions import get_account_permissions
 from capabilities.localization.tz import effective_tz_for_user, IANA_OPTIONS
 from adapters.storage import Role
@@ -23,7 +29,7 @@ async def user_me(
     platform_db=Depends(get_platform_db),
 ):
     """Return the current user's profile and permissions."""
-    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    db_user = await get_current_db_user(user, platform_db)
     if not db_user:
         return {"error": "User not found"}
 
@@ -139,7 +145,7 @@ async def set_credentials(
 
     # Check email not already taken by another user
     existing = await platform_db.get_user_by_email(body.email)
-    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    db_user = await get_current_db_user(user, platform_db)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     if existing and existing.id != db_user.id:
@@ -163,29 +169,44 @@ class SubscriptionRequest(BaseModel):
     report_type: str = Field("faults", pattern=r"^(faults|fuel|health|efficiency|camera)$")
 
 
-@router.get("/subscriptions")
-async def get_subscription(
-    user: dict = Depends(get_current_user),
+# ── Scheduled Reports ──────────────────────────────────────────
+# Renamed from "/subscriptions" — the dashboard surface (sidebar +
+# page + i18n keys) was unified under "Scheduled Reports" to drop the
+# misleading "subscription" framing.  The legacy paths are kept as
+# thin aliases so any pinned client (older SPA bundle still in
+# someone's tab, integration script, bot tool) doesn't break.  Delete
+# the aliases after one release cycle.
+
+
+@router.get("/scheduled-reports")
+async def get_scheduled_report(
+    user: dict = Depends(require_permission("can_digest")),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Get the current user's auto-report subscription."""
-    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    """Get the current user's scheduled report delivery, if any.
+
+    Gated on ``can_digest`` so toggling the flag OFF for a role in
+    RolePermissions actually disables the dashboard surface (not just
+    the bot delivery).  Without this guard the page kept loading and
+    accepting writes that the bot would silently never deliver.
+    """
+    db_user = await get_current_db_user(user, platform_db)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     sub = await tenant_db.get_digest_subscription(db_user.id)
     return {"subscription": sub}
 
 
-@router.put("/subscriptions")
-async def upsert_subscription(
+@router.put("/scheduled-reports")
+async def upsert_scheduled_report(
     body: SubscriptionRequest,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_digest")),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Create or update auto-report subscription."""
-    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    """Create or update the user's scheduled report delivery."""
+    db_user = await get_current_db_user(user, platform_db)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     await tenant_db.subscribe_digest_ext(
@@ -199,18 +220,24 @@ async def upsert_subscription(
     return {"subscription": sub}
 
 
-@router.delete("/subscriptions")
-async def delete_subscription(
-    user: dict = Depends(get_current_user),
+@router.delete("/scheduled-reports")
+async def delete_scheduled_report(
+    user: dict = Depends(require_permission("can_digest")),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Unsubscribe from auto-reports."""
-    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    """Stop scheduled report delivery."""
+    db_user = await get_current_db_user(user, platform_db)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     await tenant_db.unsubscribe_digest(db_user.id)
     return {"ok": True}
+
+
+# Legacy aliases — delete after one release cycle.
+router.get("/subscriptions")(get_scheduled_report)
+router.put("/subscriptions")(upsert_scheduled_report)
+router.delete("/subscriptions")(delete_scheduled_report)
 
 
 # ── User Preferences ────────────────────────────────────────────
@@ -230,7 +257,7 @@ async def update_preferences(
     platform_db=Depends(get_platform_db),
 ):
     """Update user display preferences (language, timezone, DND)."""
-    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    db_user = await get_current_db_user(user, platform_db)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -284,7 +311,7 @@ async def my_activity(
     can spot logins they don't recognise.  Bounded by an index on
     ``(user_id, attempted_at DESC)``.
     """
-    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    db_user = await get_current_db_user(user, platform_db)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     rows = await platform_db.list_my_login_attempts(db_user.id, limit=limit)
@@ -314,7 +341,7 @@ async def my_data_export(
     fleet, not per-user).  Adding it later is additive — the structure
     is a list of named sections so consumers can ignore unknown ones.
     """
-    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    db_user = await get_current_db_user(user, platform_db)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -388,7 +415,7 @@ async def list_my_sessions(
     echoed back so the frontend can pin the requesting browser at the
     top of the list and disable the revoke button on its own row.
     """
-    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    db_user = await get_current_db_user(user, platform_db)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     sessions = await platform_db.list_user_sessions(db_user.id)
@@ -412,7 +439,7 @@ async def revoke_my_session(
     jti is pushed onto the Redis denylist so ``get_current_user``
     rejects any further requests with that jti.
     """
-    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    db_user = await get_current_db_user(user, platform_db)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     revoked = await platform_db.revoke_user_session(
@@ -443,7 +470,7 @@ async def terminate_other_sessions(
     fresh login that backfills a session row.  Safer than leaking a
     legacy session past a "terminate all" click.
     """
-    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    db_user = await get_current_db_user(user, platform_db)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     current_jti = str(user.get("jti") or "")
@@ -454,3 +481,141 @@ async def terminate_other_sessions(
     for row in revoked:
         await mark_jti_revoked(row["jti"], row.get("expires_at"))
     return {"ok": True, "revoked_count": len(revoked)}
+
+
+# ── Telegram link / unlink ────────────────────────────────────────
+#
+# An email-registered user has ``telegram_id IS NULL`` until they open
+# the bot and approve the link.  Mirrors the bot-login flow:
+#
+#   1. Dashboard POST /user/telegram/link/init      → returns deep link
+#   2. User taps it, opens the bot with /start link_<token>
+#   3. Bot writes the link result back to Redis
+#   4. Dashboard polls /user/telegram/link/status/{token} until done
+#
+# Unlinking is one-shot — DELETE /user/telegram and the column is
+# cleared, but only if the user still has email + password (otherwise
+# they'd lock themselves out).
+
+from interfaces.bot.config import TELEGRAM_LINK_PREFIX, TELEGRAM_LINK_TTL  # noqa: E402
+
+
+@router.post("/telegram/link/init")
+async def telegram_link_init(
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Start a Telegram-link flow.  Returns a deep link the user opens.
+
+    The token is bound to the current user.id and expires in 5 minutes.
+    Refuses if the account already has a Telegram link — call
+    DELETE /user/telegram first to swap.
+    """
+    import secrets
+    from infra.cache import cache_set as redis_set
+    from interfaces.bot.config import bot_username as global_bot_username
+
+    db_user = await get_current_db_user(user, platform_db)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if db_user.telegram_id:
+        raise HTTPException(
+            status_code=409,
+            detail="This account is already linked to Telegram.",
+        )
+
+    # Prefer the account's own bot, fall back to the global bot_username
+    # the daemon resolved at startup.  Without either, the deep link has
+    # no host, so refuse with a clear error.
+    bot_un = ""
+    try:
+        acct = await platform_db.get_account(db_user.account_id)
+        if acct and acct.bot_username:
+            bot_un = acct.bot_username
+    except Exception:
+        pass
+    if not bot_un:
+        bot_un = global_bot_username or ""
+    if not bot_un:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Telegram bot is not configured for this account — "
+                "ask an admin to set it up in Admin → Settings."
+            ),
+        )
+
+    token = secrets.token_urlsafe(32)
+    await redis_set(
+        f"{TELEGRAM_LINK_PREFIX}{token}",
+        {"status": "pending", "user_id": db_user.id},
+        ttl=TELEGRAM_LINK_TTL,
+    )
+    return {
+        "token": token,
+        "deep_link": f"https://t.me/{bot_un}?start=link_{token}",
+        "ttl": TELEGRAM_LINK_TTL,
+    }
+
+
+@router.get("/telegram/link/status/{token}")
+async def telegram_link_status(
+    token: str,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Poll for the outcome of a Telegram-link flow.
+
+    Returned shapes:
+      - {"status": "pending"}                                — still waiting
+      - {"status": "linked",   "telegram_id": <int>}         — success
+      - {"status": "rejected", "reason": "..."}              — bot refused
+      - {"status": "expired"}                                — token gone
+    """
+    from infra.cache import get as redis_get, delete as redis_del
+
+    if not token or len(token) > 64:
+        raise HTTPException(status_code=400, detail="Invalid token")
+
+    db_user = await get_current_db_user(user, platform_db)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    data = await redis_get(f"{TELEGRAM_LINK_PREFIX}{token}")
+    if data is None:
+        return {"status": "expired"}
+    # Token is bound to the user that started it — never let someone
+    # else's link result get returned across accounts.
+    if data.get("user_id") != db_user.id:
+        return {"status": "expired"}
+
+    status = data.get("status")
+    if status in ("linked", "rejected"):
+        await redis_del(f"{TELEGRAM_LINK_PREFIX}{token}")
+    if status == "linked":
+        return {"status": "linked", "telegram_id": data.get("telegram_id")}
+    if status == "rejected":
+        return {"status": "rejected", "reason": data.get("reason", "Refused")}
+    return {"status": "pending"}
+
+
+@router.delete("/telegram")
+async def telegram_unlink(
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Detach the Telegram link from the requesting user.
+
+    Refuses (400) if the user has no email + password — removing the
+    last sign-in method would lock them out.
+    """
+    db_user = await get_current_db_user(user, platform_db)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not db_user.telegram_id:
+        return {"ok": True, "already_unlinked": True}
+    try:
+        await platform_db.unlink_telegram_from_user(db_user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True}

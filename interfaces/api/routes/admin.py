@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 
-from interfaces.api.deps import require_permission, get_tenant_db, get_platform_db, paginate, resolve_user_id
+from interfaces.api.deps import require_permission, get_current_db_user, get_tenant_db, get_platform_db, paginate, resolve_user_id
 from adapters.storage.models import Role
 from capabilities.iam.permissions import validate_role_change, role_rank
 from capabilities.scoring.rules import get_default_rules as _get_default_rules
@@ -532,7 +532,7 @@ async def create_invite(
         raise HTTPException(status_code=403, detail="Cannot create invite for role equal to or above your own")
 
     # Resolve DB user.id from telegram_id (JWT sub) — FK requires users.id
-    db_user = await platform_db.get_user_by_telegram_id(int(user["sub"]))
+    db_user = await get_current_db_user(user, platform_db)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
 

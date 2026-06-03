@@ -27,6 +27,7 @@ async def create_tables(conn) -> None:
             payroll_enabled     INTEGER NOT NULL DEFAULT 0,
             coaching_enabled    INTEGER NOT NULL DEFAULT 0,
             timezone            TEXT    NOT NULL DEFAULT 'America/New_York',
+            alert_routing_mode  TEXT    NOT NULL DEFAULT 'single_group',
             created_at          TEXT    NOT NULL
         );
 
@@ -61,6 +62,7 @@ async def create_tables(conn) -> None:
             email           TEXT,
             password_hash   TEXT,
             samsara_driver_id TEXT,
+            last_seen       TEXT,
             UNIQUE(account_id, email)
         );
 
@@ -132,12 +134,23 @@ async def create_tables(conn) -> None:
             tags            TEXT    NOT NULL DEFAULT '',
             visibility      TEXT    NOT NULL DEFAULT 'private',
             target_role     TEXT    NOT NULL DEFAULT 'all',
-            pinned          INTEGER NOT NULL DEFAULT 0,
-            created_by      BIGINT  NOT NULL DEFAULT 0,
-            creator_name    TEXT    NOT NULL DEFAULT '',
-            approved        INTEGER NOT NULL DEFAULT 1,
-            updated_at      TEXT    NOT NULL DEFAULT '',
-            created_at      TEXT    NOT NULL
+            pinned           INTEGER NOT NULL DEFAULT 0,
+            created_by       BIGINT  NOT NULL DEFAULT 0,
+            creator_name     TEXT    NOT NULL DEFAULT '',
+            approved         INTEGER NOT NULL DEFAULT 1,
+            view_count       INTEGER NOT NULL DEFAULT 0,
+            helpful_count    INTEGER NOT NULL DEFAULT 0,
+            unhelpful_count  INTEGER NOT NULL DEFAULT 0,
+            last_viewed_at   TEXT    NOT NULL DEFAULT '',
+            updated_at       TEXT    NOT NULL DEFAULT '',
+            created_at       TEXT    NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS knowledge_feedback (
+            article_id INTEGER NOT NULL,
+            user_id    INTEGER NOT NULL,
+            helpful    INTEGER NOT NULL,
+            created_at TEXT    NOT NULL,
+            PRIMARY KEY (article_id, user_id)
         );
         CREATE INDEX IF NOT EXISTS idx_kb_account_cat
             ON knowledge_base(account_id, category);
@@ -223,12 +236,31 @@ async def create_tables(conn) -> None:
             -- 'stub' | 'stripe'
             provider_customer_id  TEXT  NOT NULL DEFAULT '',
             provider_subscription_id TEXT NOT NULL DEFAULT '',
+            -- Stripe subscription_item ids for the two-line plan
+            -- (``base`` tier price + ``extras`` per-vehicle price).
+            -- ``sync_billing_quantity`` patches the extras item when
+            -- the active-vehicle count changes; the base item never
+            -- changes quantity.  Empty for stub-provider accounts.
+            provider_base_item_id  TEXT NOT NULL DEFAULT '',
+            provider_extra_item_id TEXT NOT NULL DEFAULT '',
             provider_data       TEXT    NOT NULL DEFAULT '{}',
             -- JSON blob for provider-specific fields
             trial_ends_at       TEXT,
             current_period_start TEXT,
             current_period_end   TEXT,
             canceled_at         TEXT,
+            -- Set when status flips to ``past_due``; cleared when we
+            -- recover to active.  Used by enforcement to compute
+            -- whether grace has elapsed.
+            past_due_since      TEXT,
+            -- Comp ("100% Special Discount") flag — see comp_account_history
+            -- for the audit trail.  ``comp_expires_at`` is REQUIRED whenever
+            -- ``is_comped = 1``; the API refuses to grant comp without it.
+            is_comped           INTEGER NOT NULL DEFAULT 0,
+            comp_expires_at     TEXT,
+            comp_reason         TEXT    NOT NULL DEFAULT '',
+            comp_granted_by     INTEGER,
+            comp_granted_at     TEXT,
             created_at          TEXT    NOT NULL DEFAULT (datetime('now')),
             updated_at          TEXT    NOT NULL DEFAULT (datetime('now'))
         );
@@ -236,6 +268,31 @@ async def create_tables(conn) -> None:
             ON subscriptions(account_id);
         CREATE INDEX IF NOT EXISTS idx_subscriptions_status
             ON subscriptions(status);
+        -- NOTE: ``idx_subscriptions_comp_expires`` (on the new
+        -- ``is_comped`` + ``comp_expires_at`` columns) is created by
+        -- ``migrate_subscription_comp_columns`` instead of here.
+        -- ``CREATE TABLE IF NOT EXISTS`` is a no-op on upgrade, so the
+        -- comp columns don't actually exist until the ALTER TABLE
+        -- migration runs.  Putting the index here used to crash boot
+        -- with ``UndefinedColumnError: is_comped`` on any pre-existing
+        -- deployment.
+
+        -- Comp account audit log.  Every grant / renew / revoke /
+        -- expire writes a row so we can answer "when did account X
+        -- become comped, who approved it, why, and how many times has
+        -- it been renewed?" months later.  Append-only.
+        CREATE TABLE IF NOT EXISTS comp_account_history (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id  INTEGER NOT NULL REFERENCES accounts(id),
+            action      TEXT    NOT NULL,
+            -- 'granted' | 'renewed' | 'revoked' | 'expired'
+            expires_at  TEXT,
+            reason      TEXT    NOT NULL DEFAULT '',
+            actor_user_id INTEGER,
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_comp_history_account
+            ON comp_account_history(account_id, created_at DESC);
 
         -- Monthly usage snapshots — one row per account per billing period.
         -- Scheduler writes a snapshot on the 1st of each month (or on demand).
@@ -245,7 +302,13 @@ async def create_tables(conn) -> None:
             account_id      INTEGER NOT NULL REFERENCES accounts(id),
             period_start    TEXT    NOT NULL,
             period_end      TEXT    NOT NULL,
+            -- Raw Samsara fleet count at snapshot time.  Kept for
+            -- backwards compatibility with legacy reports; the new
+            -- ``active_vehicles`` / ``inactive_vehicles`` pair is what
+            -- the bill is actually computed from.
             vehicle_count   INTEGER NOT NULL DEFAULT 0,
+            active_vehicles    INTEGER NOT NULL DEFAULT 0,
+            inactive_vehicles  INTEGER NOT NULL DEFAULT 0,
             user_count      INTEGER NOT NULL DEFAULT 0,
             ai_queries      INTEGER NOT NULL DEFAULT 0,
             extra_vehicles  INTEGER NOT NULL DEFAULT 0,
@@ -257,6 +320,52 @@ async def create_tables(conn) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_billing_snapshots_account
             ON billing_usage_snapshots(account_id, period_start);
+
+        -- Webhook idempotency.  Stripe retries any non-2xx response (and
+        -- some 2xx if it doesn't receive the ack in time), so the same
+        -- event.id can arrive several times.  We INSERT-OR-IGNORE on
+        -- this table before processing — duplicates short-circuit with
+        -- a fast 200 and never re-mutate state.  TTL pruning is fine
+        -- (Stripe doesn't retry after ~3 days), but we keep all rows
+        -- for now so the audit trail of every webhook we received is
+        -- intact — adds <1MB/year for a typical small fleet.
+        CREATE TABLE IF NOT EXISTS processed_stripe_events (
+            event_id      TEXT    PRIMARY KEY,
+            event_type    TEXT    NOT NULL,
+            processed_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+            account_id    INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_processed_stripe_events_processed_at
+            ON processed_stripe_events(processed_at);
+
+        -- Persisted invoice records.  Stripe is authoritative for the
+        -- numbers (we never compute these client-side), but mirroring
+        -- them locally lets the dashboard list invoices without an API
+        -- round-trip, and lets us correlate a payment retry / failure
+        -- with the snapshot it belongs to.  ``provider_invoice_id`` is
+        -- UNIQUE so the webhook handler can INSERT-OR-IGNORE on retry.
+        CREATE TABLE IF NOT EXISTS billing_invoices (
+            id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id                INTEGER NOT NULL REFERENCES accounts(id),
+            provider                  TEXT    NOT NULL DEFAULT 'stripe',
+            provider_invoice_id       TEXT    NOT NULL UNIQUE,
+            provider_subscription_id  TEXT    NOT NULL DEFAULT '',
+            provider_customer_id      TEXT    NOT NULL DEFAULT '',
+            amount_due_cents          INTEGER NOT NULL DEFAULT 0,
+            amount_paid_cents         INTEGER NOT NULL DEFAULT 0,
+            currency                  TEXT    NOT NULL DEFAULT 'usd',
+            status                    TEXT    NOT NULL DEFAULT '',
+            -- 'paid', 'open', 'uncollectible', 'void' — mirror of Stripe.
+            period_start              TEXT,
+            period_end                TEXT,
+            hosted_invoice_url        TEXT    NOT NULL DEFAULT '',
+            invoice_pdf_url           TEXT    NOT NULL DEFAULT '',
+            paid_at                   TEXT,
+            created_at                TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_billing_invoices_account
+            ON billing_invoices(account_id, created_at DESC);
+
         CREATE TABLE IF NOT EXISTS error_log (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             source      TEXT    NOT NULL,
@@ -271,5 +380,19 @@ async def create_tables(conn) -> None:
             ON error_log(created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_error_log_source
             ON error_log(source, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS account_persona_groups (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id  INTEGER NOT NULL,
+            persona     TEXT    NOT NULL,
+            chat_id     BIGINT  NOT NULL,
+            chat_title  TEXT    NOT NULL DEFAULT '',
+            is_active   INTEGER NOT NULL DEFAULT 1,
+            created_at  TEXT    NOT NULL,
+            updated_at  TEXT    NOT NULL,
+            UNIQUE(account_id, persona)
+        );
+        CREATE INDEX IF NOT EXISTS idx_account_persona_groups_account
+            ON account_persona_groups(account_id);
     """)
     await conn.commit()

@@ -70,3 +70,30 @@ export function formatTime(
     intl: { hour: '2-digit', minute: '2-digit', ...(opts.intl ?? {}) },
   });
 }
+
+
+/** Relative-time variant — "5m ago", "2h ago", "3d ago", "yesterday".
+ *
+ *  Falls back to the absolute date for anything older than ~30 days so
+ *  the user always sees a concrete reference for older items.  Use this
+ *  on lists where freshness matters more than the exact timestamp
+ *  (knowledge base cards, login activity, etc.).
+ */
+export function formatRelative(
+  value: string | number | Date | null | undefined,
+  opts: FormatDateOptions = {},
+): string {
+  const d = _toDate(value);
+  if (!d) return '—';
+  const sec = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (sec < 5)       return 'just now';
+  if (sec < 60)      return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60)      return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24)       return `${hr}h ago`;
+  const days = Math.floor(hr / 24);
+  if (days === 1)    return 'yesterday';
+  if (days < 30)     return `${days}d ago`;
+  return formatDay(d, opts);
+}

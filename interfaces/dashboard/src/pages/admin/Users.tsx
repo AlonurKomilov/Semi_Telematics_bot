@@ -84,6 +84,43 @@ interface FleetVehicle {
   company?: string;
 }
 
+// Identity badges: a small visual cue per row showing which sign-in
+// methods the user has attached.  Helps admins spot e.g. "this driver
+// has email but never opened the bot, that's why they're not getting
+// alerts."
+function IdentityBadges({ u }: { u: AdminUser }) {
+  const hasEmail = Boolean(u.email);
+  const hasTelegram = Boolean(u.telegram_id);
+  return (
+    <span className="inline-flex items-center gap-1 ml-1">
+      <span
+        title={hasEmail ? `Email: ${u.email ?? ''}` : 'No email — admins can add one in the detail panel'}
+        className={`inline-flex items-center justify-center w-4 h-4 rounded text-[9px] font-bold ${
+          hasEmail
+            ? 'bg-primary/15 text-primary'
+            : 'bg-muted text-muted-foreground/50 opacity-60'
+        }`}
+      >
+        @
+      </span>
+      <span
+        title={
+          hasTelegram
+            ? `Telegram linked (tg:${u.telegram_id})`
+            : 'Telegram not linked yet — send the bot deep-link to this user'
+        }
+        className={`inline-flex items-center justify-center w-4 h-4 rounded text-[9px] font-bold ${
+          hasTelegram
+            ? 'bg-primary/15 text-primary'
+            : 'bg-muted text-muted-foreground/50 opacity-60'
+        }`}
+      >
+        TG
+      </span>
+    </span>
+  );
+}
+
 const userColumns: AnyColumn[] = [
   { key: 'display_name', label: 'Name', sortable: true, render: (_v, row) => {
     const u = row as unknown as AdminUser;
@@ -96,7 +133,10 @@ const userColumns: AnyColumn[] = [
         <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold ${
           u.is_active ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
         }`}>{ini}</div>
-        <span>{u.display_name}</span>
+        <span className="flex items-center">
+          {u.display_name}
+          <IdentityBadges u={u} />
+        </span>
       </div>
     );
   }},
@@ -439,7 +479,7 @@ export default function Users() {
                     <div className="space-y-4">
                       <dl className="space-y-3 text-sm">
                         <Row label="Email" value={selected.email || '—'} />
-                        <Row label="Telegram ID" value={String(selected.telegram_id)} />
+                        <Row label="Telegram ID" value={selected.telegram_id ? String(selected.telegram_id) : 'Not linked'} />
                         <Row label="Language" value={(selected.language || '—').toUpperCase()} />
                         <Row label="Status" value={selected.is_active ? 'Active' : 'Inactive'} status={selected.is_active ? 'green' : 'red'} />
                       </dl>

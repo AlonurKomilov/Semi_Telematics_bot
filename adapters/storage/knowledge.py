@@ -197,7 +197,8 @@ class KnowledgeBaseMixin:
     _LIST_COLUMNS = (
         "id, account_id, title, category, media_url, media_type, tags, "
         "visibility, target_role, pinned, created_by, creator_name, "
-        "approved, updated_at, created_at"
+        "approved, view_count, helpful_count, unhelpful_count, "
+        "updated_at, created_at"
     )
 
     async def get_kb_articles(
@@ -390,6 +391,103 @@ class KnowledgeBaseMixin:
         )
         await self._db.commit()
         return cur.rowcount > 0
+
+    async def record_kb_view(self, article_id: int) -> None:
+        """Increment the view counter + stamp last_viewed_at.
+
+        Fire-and-forget from the route — no consistency guarantees are
+        required.  A row that's already at 9_999_999 views and gets
+        bumped during a network blip can silently miss the increment;
+        not worth a transaction.
+        """
+        try:
+            await self._db.execute(
+                "UPDATE knowledge_base SET view_count = view_count + 1, "
+                "last_viewed_at = ? WHERE id = ?",
+                (self._now(), article_id),
+            )
+            await self._db.commit()
+        except Exception:
+            pass
+
+    async def upsert_kb_feedback(
+        self, article_id: int, user_id: int, helpful: bool,
+    ) -> dict:
+        """Record (or change) a user's helpful/unhelpful vote.
+
+        Re-voting the same way is a no-op.  Flipping a vote bumps the
+        new counter AND decrements the old one — kept atomic via a
+        single transaction so the counters can't drift.
+        """
+        now = self._now()
+        # Look up the prior vote (if any) to know whether to flip.
+        cur = await self._db.execute(
+            "SELECT helpful FROM knowledge_feedback "
+            "WHERE article_id = ? AND user_id = ?",
+            (article_id, user_id),
+        )
+        prior_row = await cur.fetchone()
+        prior_vote: int | None = None
+        if prior_row is not None:
+            prior_vote = int(dict(prior_row)["helpful"])
+        new_vote = 1 if helpful else 0
+
+        if prior_vote == new_vote:
+            return {"changed": False, "vote": new_vote}
+
+        # Upsert the per-user row.
+        await self._db.execute(
+            """INSERT INTO knowledge_feedback (article_id, user_id, helpful, created_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT (article_id, user_id) DO UPDATE
+                 SET helpful    = EXCLUDED.helpful,
+                     created_at = EXCLUDED.created_at""",
+            (article_id, user_id, new_vote, now),
+        )
+        # Adjust the denormalised counters on the article row.  If this
+        # is a fresh vote (prior_vote is None) we only bump the new
+        # counter; otherwise we bump the new one and decrement the old.
+        if prior_vote is None:
+            if new_vote == 1:
+                await self._db.execute(
+                    "UPDATE knowledge_base SET helpful_count = helpful_count + 1 WHERE id = ?",
+                    (article_id,),
+                )
+            else:
+                await self._db.execute(
+                    "UPDATE knowledge_base SET unhelpful_count = unhelpful_count + 1 WHERE id = ?",
+                    (article_id,),
+                )
+        else:
+            # Flip: decrement the old bucket, increment the new one.
+            if new_vote == 1:
+                await self._db.execute(
+                    "UPDATE knowledge_base SET helpful_count = helpful_count + 1, "
+                    "unhelpful_count = GREATEST(unhelpful_count - 1, 0) WHERE id = ?",
+                    (article_id,),
+                )
+            else:
+                await self._db.execute(
+                    "UPDATE knowledge_base SET unhelpful_count = unhelpful_count + 1, "
+                    "helpful_count = GREATEST(helpful_count - 1, 0) WHERE id = ?",
+                    (article_id,),
+                )
+        await self._db.commit()
+        return {"changed": True, "vote": new_vote}
+
+    async def get_kb_user_feedback(
+        self, article_id: int, user_id: int,
+    ) -> Optional[int]:
+        """Return the user's current vote (1/0) or None if they haven't voted."""
+        cur = await self._db.execute(
+            "SELECT helpful FROM knowledge_feedback "
+            "WHERE article_id = ? AND user_id = ?",
+            (article_id, user_id),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        return int(dict(row)["helpful"])
 
     async def get_kb_categories(
         self, account_id: int, user_role: str = "all", user_id: int = 0,

@@ -27,7 +27,6 @@ export interface Permissions {
   can_manage_account: boolean;
   can_manage_billing: boolean;
   can_invite: boolean;
-  can_critical: boolean;
   can_efficiency: boolean;
   can_rolling_stopped: boolean;
   can_digest: boolean;
@@ -46,7 +45,12 @@ export interface User {
    *  (KB articles, work orders, PTI media).  Survives Telegram
    *  re-linking; ``telegram_id`` doesn't. */
   id?: number;
-  telegram_id: number;
+  /** ``null`` for users who registered via email and haven't linked
+   *  their Telegram account yet.  Anything that needs a guaranteed
+   *  identifier should use ``id`` instead. */
+  telegram_id: number | null;
+  /** Set when the user has email + password sign-in enabled. */
+  email?: string | null;
   display_name: string;
   role: string;
   department?: string;
@@ -780,7 +784,8 @@ export interface CPMResponse {
 
 export interface AdminUser {
   id: number;
-  telegram_id: number;
+  /** ``null`` until the user opens the bot and links their Telegram. */
+  telegram_id: number | null;
   display_name: string;
   role: string;
   department: string;
@@ -805,7 +810,7 @@ export interface DriverProfile {
   user_id: number;
   account_id: number;
   display_name: string;
-  telegram_id: number;
+  telegram_id: number | null;
   samsara_driver_id: string | null;
   cdl_number: string | null;
   cdl_state: string | null;

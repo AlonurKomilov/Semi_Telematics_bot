@@ -17,7 +17,8 @@ import time
 from collections import defaultdict, deque
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from adapters.storage.knowledge import (
@@ -28,7 +29,10 @@ from capabilities.iam.permissions import (
     is_kb_approver_role, is_kb_author_role,
 )
 from capabilities.knowledge.service import can_view_article as _can_view_article
-from interfaces.api.deps import get_current_user, get_platform_db, resolve_user_id
+from capabilities.work_orders.storage import safe_attachment_name
+from interfaces.api.deps import (
+    get_current_user, get_platform_db, get_tenant_db, resolve_user_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +121,72 @@ async def _notify_creator(
         )
 
 
+async def _notify_audience(
+    platform_db, account_id: int, article: dict, exclude_user_id: int,
+) -> int:
+    """Best-effort DM every user in the article's target audience.
+
+    Fired when an article becomes visible (private = auto-approved, or
+    public = approver clicked Approve).  Returns the number of users
+    successfully DM'd so the route can include it in the response —
+    callers usually ignore it, but it's useful for tests.
+
+    Skips:
+      - the article author (they know they wrote it),
+      - any user without a linked Telegram (telegram_id IS NULL),
+      - any user whose role doesn't match ``target_role`` (when not "all").
+
+    Failures per recipient are swallowed; one offline user shouldn't
+    block the rest of the fan-out.
+    """
+    try:
+        from infra.bot_registry import get_app_for_account
+        from telegram.constants import ParseMode
+    except Exception:
+        return 0
+    bot_app = get_app_for_account(account_id)
+    if bot_app is None or not getattr(bot_app, "bot", None):
+        return 0
+
+    target_role = (article.get("target_role") or "all").strip().lower()
+    try:
+        users = await platform_db.list_account_users(account_id)
+    except Exception as e:
+        logger.debug("KB notify_audience: list_account_users failed: %s", e)
+        return 0
+
+    title = (article.get("title") or "")[:100]
+    category = (article.get("category") or "general").replace("_", " ")
+    visibility = (article.get("visibility") or "private")
+    visibility_chip = "🌐 public" if visibility == "public" else "🔒 private"
+    text = (
+        f"📚 <b>New knowledge-base article</b>\n"
+        f"<b>{title}</b>\n"
+        f"<i>{category} · {visibility_chip}</i>"
+    )
+
+    sent = 0
+    for u in users:
+        try:
+            if not getattr(u, "telegram_id", None):
+                continue
+            if int(getattr(u, "id", 0) or 0) == int(exclude_user_id or 0):
+                continue
+            role_value = getattr(u.role, "value", str(u.role)).lower()
+            if target_role != "all" and role_value != target_role:
+                continue
+            await bot_app.bot.send_message(
+                chat_id=u.telegram_id, text=text, parse_mode=ParseMode.HTML,
+            )
+            sent += 1
+        except Exception as e:
+            logger.debug(
+                "KB notify_audience: send to user_id=%s failed: %s",
+                getattr(u, "id", "?"), e,
+            )
+    return sent
+
+
 # ── Pydantic models ─────────────────────────────────────────────────
 
 
@@ -202,10 +272,11 @@ async def list_articles(
     ``GET /articles/{id}`` for the full body.
     """
     role = user.get("role", "driver")
+    internal_uid = await resolve_user_id(user)
     articles = await platform_db.get_kb_articles(
         account_id=user["account_id"],
         user_role=role,
-        user_id=int(user["sub"]),
+        user_id=internal_uid,
         category=category,
         search=search,
         pinned_only=pinned,
@@ -217,7 +288,7 @@ async def list_articles(
     total = await platform_db.count_kb_articles(
         account_id=user["account_id"],
         user_role=role,
-        user_id=int(user["sub"]),
+        user_id=internal_uid,
         category=category,
         search=search,
         pinned_only=pinned,
@@ -243,14 +314,25 @@ async def get_article(
     article = await platform_db.get_kb_article(article_id)
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
-    user_id = int(user["sub"])
+    # Ownership comparison uses the stable internal user.id, not the
+    # telegram_id — without this, email-only users wouldn't be able to
+    # see their own private articles (telegram_id is NULL for them).
+    internal_uid = await resolve_user_id(user)
     if not _can_view_article(
-        user_id=user_id,
+        user_id=internal_uid,
         account_id=user["account_id"],
         role=user.get("role", "driver"),
         article=article,
     ):
         raise HTTPException(status_code=403, detail="Not authorized to view this article")
+    # Decorate the response with this user's vote so the UI can render
+    # the thumbs-up / thumbs-down chip pre-selected.
+    try:
+        my_vote = await platform_db.get_kb_user_feedback(article_id, internal_uid)
+    except Exception:
+        my_vote = None
+    if isinstance(article, dict):
+        article = {**article, "my_vote": my_vote}
     return article
 
 
@@ -263,9 +345,85 @@ async def article_stats(
     cats = await platform_db.get_kb_categories(
         account_id=user["account_id"],
         user_role=user.get("role", "driver"),
-        user_id=int(user["sub"]),
+        user_id=await resolve_user_id(user),
     )
     return {"categories": cats}
+
+
+@router.post("/articles/{article_id}/view")
+async def record_view(
+    article_id: int,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Increment the per-article view counter.
+
+    Dashboard pings this once per article-open (debounced client-side
+    so a re-expand within ~30s doesn't double-count).  No body, no
+    response payload beyond ``{"ok": true}`` — fire-and-forget.
+
+    A 404 here just means the article was deleted between the user
+    seeing it in the list and pinging — silently ignore.
+    """
+    article = await platform_db.get_kb_article(article_id)
+    if not article:
+        return {"ok": False, "reason": "not_found"}
+    internal_uid = await resolve_user_id(user)
+    if not _can_view_article(
+        user_id=internal_uid,
+        account_id=user["account_id"],
+        role=user.get("role", "driver"),
+        article=article,
+    ):
+        # Can't see it → can't bump its counter.  Match the 403 pattern
+        # used by ``get_article`` so a confused client gets the same
+        # response from either path.
+        raise HTTPException(status_code=403, detail="Not authorized")
+    await platform_db.record_kb_view(article_id)
+    return {"ok": True}
+
+
+class FeedbackRequest(BaseModel):
+    helpful: bool
+
+
+@router.post("/articles/{article_id}/feedback")
+async def record_feedback(
+    article_id: int,
+    body: FeedbackRequest,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Record (or update) the user's helpful/unhelpful vote.
+
+    Re-voting the same way is a no-op.  Flipping a vote moves the
+    counters atomically so the helpful/unhelpful totals can't drift.
+    """
+    article = await platform_db.get_kb_article(article_id)
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    internal_uid = await resolve_user_id(user)
+    if not _can_view_article(
+        user_id=internal_uid,
+        account_id=user["account_id"],
+        role=user.get("role", "driver"),
+        article=article,
+    ):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    if not internal_uid:
+        raise HTTPException(status_code=401, detail="User not found")
+    result = await platform_db.upsert_kb_feedback(
+        article_id, internal_uid, body.helpful,
+    )
+    # Surface fresh counters so the UI can update in place.
+    fresh = await platform_db.get_kb_article(article_id)
+    return {
+        "ok": True,
+        "changed": result["changed"],
+        "vote": result["vote"],
+        "helpful_count":   int((fresh or {}).get("helpful_count", 0) or 0),
+        "unhelpful_count": int((fresh or {}).get("unhelpful_count", 0) or 0),
+    }
 
 
 # ── Write endpoints ─────────────────────────────────────────────────
@@ -293,7 +451,7 @@ async def create_article(
     if not internal_uid:
         raise HTTPException(status_code=401, detail="User not found")
 
-    if body.media_url:
+    if body.media_url and not _is_internal_kb_path(body.media_url):
         try:
             body.media_url = validate_media_url(body.media_url)
         except ValueError as e:
@@ -318,10 +476,25 @@ async def create_article(
         created_by=internal_uid,
         creator_name=creator_name,
     )
+    # Private articles are auto-approved (visible immediately), so the
+    # audience-notify fires here.  Public articles wait for the approval
+    # flow — see ``approve_article`` for that path.
+    notified = 0
+    if body.visibility == "private":
+        notified = await _notify_audience(
+            platform_db,
+            account_id=user["account_id"],
+            article={
+                "title": body.title, "category": body.category,
+                "target_role": body.target_role, "visibility": body.visibility,
+            },
+            exclude_user_id=internal_uid,
+        )
     return {
         "id": article_id,
         "status": "created",
         "approved": body.visibility == "private",
+        "notified": notified,
         "message": (
             "Public article submitted for admin approval"
             if body.visibility == "public"
@@ -353,7 +526,10 @@ async def update_article(
     if not kwargs:
         raise HTTPException(status_code=422, detail="No fields to update")
 
-    if "media_url" in kwargs and kwargs["media_url"]:
+    if (
+        "media_url" in kwargs and kwargs["media_url"]
+        and not _is_internal_kb_path(kwargs["media_url"])
+    ):
         try:
             kwargs["media_url"] = validate_media_url(kwargs["media_url"])
         except ValueError as e:
@@ -381,6 +557,185 @@ async def delete_article(
 
     ok = await platform_db.delete_kb_article(article_id, user_id=internal_uid)
     return {"ok": ok}
+
+
+# ── File upload (PDF / image) ─────────────────────────────────────
+#
+# Replaces the "every article needs a host on the allowlist" workflow
+# for fleets that want to attach their own SOPs (Word-exported PDFs,
+# photographed checklists, etc.).  Uploads go through the per-account
+# object store, NOT to public URLs.
+#
+# Flow:
+#   1. Dashboard POST /knowledge/upload (multipart/form-data)
+#      → returns {file_path, file_name, file_size, content_type}.
+#   2. Dashboard then POSTs /knowledge/articles with the returned
+#      ``file_path`` as ``media_url`` and the inferred media_type.
+#   3. Readers GET /knowledge/articles/{id}/file to stream the bytes
+#      (auth-guarded by the article's normal visibility check).
+#
+# Storing the file_path in ``media_url`` works because the field is
+# already used for the "where's this article's media live" answer.
+# The validate_media_url() URL-allowlist only runs on values that look
+# like ``https://`` URLs — internal paths bypass it.
+
+_KB_UPLOAD_MAX_BYTES = 25 * 1024 * 1024  # 25 MB
+_KB_UPLOAD_CONTENT_TYPES = {
+    "application/pdf":          "pdf",
+    "image/png":                "image",
+    "image/jpeg":               "image",
+    "image/webp":               "image",
+}
+
+
+def _is_internal_kb_path(value: str) -> bool:
+    """Heuristic: did ``value`` come from our own object-store upload?
+
+    Real URLs begin with ``https://``; internal paths start with the
+    project-relative root (``data/userdata/...`` or ``account-...``).
+    Used by the article-create path to decide whether to run the
+    allowlist URL validator or treat the value as an opaque pointer
+    into our own storage.
+    """
+    if not value:
+        return False
+    if value.startswith("http://") or value.startswith("https://"):
+        return False
+    return True
+
+
+@router.post("/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Upload a PDF or image into the per-account object store.
+
+    Returns the storage path + metadata so the dashboard can attach it
+    to a knowledge-base article in a follow-up POST.  Two-step on
+    purpose: the dashboard can show the uploaded file's name + size
+    before the user commits to creating the article.
+
+    Permission: any user allowed to AUTHOR articles
+    (owner / admin / fleet / safety).  Drivers can't upload files for
+    the same reason they can't create articles in the first place.
+    """
+    from adapters.storage.object_store import get_object_store_for_account
+
+    role = user.get("role", "")
+    if not is_kb_author_role(role):
+        raise HTTPException(
+            status_code=403,
+            detail="Only owners, admins, fleet, and safety can upload files",
+        )
+
+    content_type = (file.content_type or "").lower()
+    if content_type not in _KB_UPLOAD_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail=(
+                f"Unsupported file type: {content_type or 'unknown'}. "
+                "Allowed: PDF, PNG, JPEG, WEBP."
+            ),
+        )
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=422, detail="Empty file")
+    if len(raw) > _KB_UPLOAD_MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds {_KB_UPLOAD_MAX_BYTES // (1024 * 1024)} MB limit.",
+        )
+
+    safe_name = safe_attachment_name(file.filename or "attachment")
+    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    file_path = store.put("knowledge", safe_name, raw)
+    if not file_path:
+        raise HTTPException(
+            status_code=500, detail="Storage write failed — try again.",
+        )
+
+    media_type = _KB_UPLOAD_CONTENT_TYPES[content_type]
+    return {
+        "file_path":    file_path,
+        "file_name":    safe_name,
+        "file_size":    len(raw),
+        "content_type": content_type,
+        "media_type":   media_type,
+    }
+
+
+@router.get("/articles/{article_id}/file")
+async def serve_article_file(
+    article_id: int,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Stream the article's uploaded file, auth-guarded.
+
+    The article's normal visibility rules apply — a private file can't
+    leak to another account just because someone guessed the article
+    id.  Falls back to 302-redirecting external URLs so the same
+    endpoint can render both upload-backed and link-backed articles.
+    """
+    from adapters.storage.object_store import get_object_store_for_account
+    from fastapi.responses import RedirectResponse
+
+    article = await platform_db.get_kb_article(article_id)
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    internal_uid = await resolve_user_id(user)
+    if not _can_view_article(
+        user_id=internal_uid,
+        account_id=user["account_id"],
+        role=user.get("role", "driver"),
+        article=article,
+    ):
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    media_url = (article.get("media_url") or "").strip()
+    if not media_url:
+        raise HTTPException(status_code=404, detail="Article has no file")
+    # External URLs — just redirect.  The allowlist guarantees these
+    # are safe-ish hosts; the browser fetches directly.
+    if media_url.startswith("http://") or media_url.startswith("https://"):
+        return RedirectResponse(url=media_url, status_code=302)
+
+    # Internal upload — stream from the object store of the account
+    # that OWNS this article (might differ from the requesting account
+    # for an approved cross-account public article).
+    owning_account = int(article.get("account_id") or 0)
+    store = await get_object_store_for_account(owning_account, tenant_db)
+    data: bytes | None = None
+    getter = getattr(store, "get_by_id", None)
+    if getter is not None:
+        data = getter(media_url)
+    if data is None:
+        raise HTTPException(status_code=404, detail="File not found in storage")
+
+    content_type = "application/pdf"
+    if article.get("media_type") == "image":
+        # We don't store the exact MIME — sniff a tiny prefix to pick
+        # between png / jpeg / webp.  Any image renderer accepts the
+        # first match.
+        head = data[:12]
+        if head.startswith(b"\x89PNG"):
+            content_type = "image/png"
+        elif head[:3] == b"\xff\xd8\xff":
+            content_type = "image/jpeg"
+        elif head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+            content_type = "image/webp"
+        else:
+            content_type = "application/octet-stream"
+
+    def _iter():
+        yield data
+
+    return StreamingResponse(_iter(), media_type=content_type)
 
 
 # ── Approval workflow ─────────────────────────────────────────────
@@ -415,6 +770,7 @@ async def approve_article(
     if article.get("approved"):
         return {"ok": True, "message": "Already approved"}
     ok = await platform_db.approve_kb_article(article_id)
+    notified = 0
     if ok:
         # Best-effort DM to the article creator so they know it landed.
         await _notify_creator(
@@ -422,7 +778,14 @@ async def approve_article(
             int(article.get("account_id") or 0),
             article.get("title", ""), "approved",
         )
-    return {"ok": ok, "message": "Article approved"}
+        # Fan-out to the target audience now that the article is visible.
+        notified = await _notify_audience(
+            platform_db,
+            account_id=int(article.get("account_id") or 0),
+            article=article,
+            exclude_user_id=int(article.get("created_by") or 0),
+        )
+    return {"ok": ok, "notified": notified, "message": "Article approved"}
 
 
 @router.post("/articles/{article_id}/reject")

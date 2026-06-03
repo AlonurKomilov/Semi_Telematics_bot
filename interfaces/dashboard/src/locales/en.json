@@ -181,7 +181,7 @@
     "alerts": "Alerts",
     "reports": "Reports",
     "risk_summary": "Risk Summary",
-    "subscriptions": "Subscriptions",
+    "scheduled_reports": "Scheduled Reports",
     "fuel_costs": "Fuel Costs",
     "cost_per_mile": "Cost per Mile",
     "drivers": "Drivers",
@@ -537,8 +537,8 @@
     "routes_desc": "Replay any vehicle's trip on a map. Pick a truck and date — we'll plot the route colored by speed and surface stops along the way.",
     "companies_title": "Companies",
     "companies_desc": "Sub-companies inside your account — each with its own Samsara API key. Use companies to scope reporting and alerts to a single division or region.",
-    "subscriptions_title": "Report Subscriptions",
-    "subscriptions_desc": "Schedule a recurring email with the report of your choice. Pick the frequency, hour, and time zone — you can unsubscribe any time.",
+    "scheduled_reports_title": "Scheduled Reports",
+    "scheduled_reports_desc": "Schedule a recurring report delivery (Telegram PDF). Pick the report type, frequency, hour, and time zone — you can change or stop it any time.",
     "settings_title": "Account Settings",
     "settings_desc_short": "Account-wide settings: timezone, Telegram bot, working hours, and feature flags.",
     "settings_desc_long": "Account-wide settings that affect everyone on this account. For your own display name, language, timezone override, and quiet hours, open My Profile from the user menu.",
@@ -817,7 +817,16 @@
     "toast_save_failed": "Save failed",
     "toast_delete_failed": "Delete failed",
     "toast_approve_failed": "Approve failed",
-    "toast_reject_failed": "Reject failed"
+    "toast_reject_failed": "Reject failed",
+    "edited_at": "edited",
+    "views_title": "Total times this article has been opened",
+    "helpful_title": "Mark this article helpful",
+    "unhelpful_title": "Mark this article unhelpful",
+    "upload_too_large": "File exceeds the 25 MB limit.",
+    "upload_remove": "Remove attached file",
+    "upload_uploading": "Uploading…",
+    "upload_attach": "Attach a PDF or image instead",
+    "upload_hint": "PDF, PNG, JPEG, WEBP · max 25 MB"
   },
   "storage": {
     "page_title": "Attachment Storage",
@@ -900,5 +909,38 @@
       "source_inspection": "Inspection #{{id}}",
       "source_vehicle": "Vehicle {{name}}"
     }
+  },
+  "profile": {
+    "signin_title": "Sign-in methods",
+    "signin_desc": "These are the ways you can sign in to your account. Keeping both connected means you can recover one through the other.",
+    "signin_email_label": "Email + password",
+    "signin_email_missing": "No email set — ask an admin to add one.",
+    "signin_change_password": "Change password",
+    "signin_telegram_label": "Telegram",
+    "signin_telegram_linked": "Connected",
+    "signin_telegram_waiting": "Waiting for confirmation in Telegram…",
+    "signin_telegram_refused": "Link was refused — try again.",
+    "signin_telegram_not_linked": "Not linked — connect to sign in via the bot.",
+    "signin_unlinking": "Unlinking…",
+    "signin_unlink": "Disconnect",
+    "signin_starting": "Opening…",
+    "signin_waiting": "Waiting…",
+    "signin_link_telegram": "Connect Telegram",
+    "signin_warn_no_methods": "No sign-in method is attached to this account — contact an admin to fix this before your session expires.",
+    "confirm_unlink_telegram": "Disconnect Telegram from this account?  You can re-link later from this same panel.",
+    "activity_title": "Recent sign-in activity",
+    "activity_desc": "Last 20 sign-in attempts on your account.  If you don't recognise one of these, change your password right away.",
+    "activity_empty": "No sign-in attempts recorded yet.",
+    "activity_success": "Signed in",
+    "activity_failed": "Failed attempt",
+    "export_title": "Download my data",
+    "export_desc": "Get a JSON copy of everything we store about you — profile, sessions, recent sign-ins, company memberships, and vehicle assignments.",
+    "export_preparing": "Preparing…",
+    "export_button": "Download JSON"
+  },
+  "time": {
+    "just_now": "just now",
+    "ago": "ago",
+    "yesterday": "yesterday"
   }
 }

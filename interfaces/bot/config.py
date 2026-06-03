@@ -10,7 +10,25 @@ import logging
 
 # ── Environment ──────────────────────────────────────────────────
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+# Customer-facing front-door bot — runs the long-running PTB daemon
+# (interfaces/bot/app.py) that handles /start /register /join and
+# validates Telegram Login Widget signatures for accounts without a
+# per-account bot.  Prefers TELEGRAM_LOGIN_BOT_TOKEN; falls back to the
+# system token (new name first, legacy name last) during the rollout
+# window so existing deploys don't break before the operator sets the
+# dedicated login-bot env var.
+TELEGRAM_TOKEN = (
+    os.getenv("TELEGRAM_LOGIN_BOT_TOKEN")
+    or os.getenv("TELEGRAM_SYSTEM_BOT_TOKEN")
+    or os.getenv("TELEGRAM_BOT_TOKEN", "")
+)
+if not os.getenv("TELEGRAM_LOGIN_BOT_TOKEN"):
+    import logging as _log
+    _log.getLogger(__name__).warning(
+        "TELEGRAM_LOGIN_BOT_TOKEN is unset — the customer-facing bot daemon "
+        "is falling back to the system bot token.  Set TELEGRAM_LOGIN_BOT_TOKEN "
+        "to separate the customer login bot from the system/operator bot."
+    )
 SAMSARA_BASE_URL = os.getenv("SAMSARA_BASE_URL", "https://api.samsara.com")
 # Dashboard base — derived from API URL (api.→cloud.) unless overridden
 SAMSARA_DASHBOARD_URL = os.getenv(
@@ -64,4 +82,10 @@ logger = logging.getLogger("bot")
 # read-only env-var configuration.
 
 bot_username: str = ""                         # set in post_init via getMe
+
+# Redis key prefix + TTL for the Telegram-link flow.  Lives here so both
+# the API route that creates the token and the bot handler that resolves
+# it agree on the bucket name without one importing the other.
+TELEGRAM_LINK_PREFIX = "tg_link:"
+TELEGRAM_LINK_TTL = 300  # seconds — short window: link or retry
 

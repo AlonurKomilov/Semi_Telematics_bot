@@ -277,12 +277,21 @@ function DriverDrawer({
             <div>
               <h2 className="text-lg font-semibold">{p.display_name}</h2>
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                <span
-                  title="Telegram ID — captured when this driver joined via invite link"
-                  className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground tabular-nums"
-                >
-                  tg:{p.telegram_id}
-                </span>
+                {p.telegram_id ? (
+                  <span
+                    title="Telegram ID — captured when this driver joined via invite link"
+                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground tabular-nums"
+                  >
+                    tg:{p.telegram_id}
+                  </span>
+                ) : (
+                  <span
+                    title="No Telegram linked yet — invite the driver via Telegram or share the bot deep-link"
+                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                  >
+                    Not linked
+                  </span>
+                )}
                 <SamsaraIdentityCard samsaraDriverId={p.samsara_driver_id} />
               </div>
             </div>

@@ -177,6 +177,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _handle_bot_login(update, context, context.args[0][6:], user, tid)
         return
 
+    # ── 0c. Deep-link Telegram-link: /start link_TOKEN ─────────
+    if context.args and context.args[0].startswith("link_"):
+        await _handle_telegram_link(update, context, context.args[0][5:], user, tid)
+        return
+
     # ── 1. System owner (platform admin) ──────────────────────
     if sys_owner and not user:
         await _show(update, context,
@@ -422,3 +427,103 @@ async def _handle_bot_login(
         "automatically."
     ])
     logger.info(f"Bot-login approved: TG user {tid} ({name}) for '{account_name}'")
+
+
+# ── Telegram link: connect a Telegram identity to an email account ──
+
+async def _handle_telegram_link(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    token: str,
+    user,
+    tid: int,
+):
+    """Process /start link_TOKEN — bind this Telegram chat to the email
+    account that initiated the flow from the dashboard.
+
+    Refuses if:
+      - the token is unknown / expired,
+      - the current Telegram ID is already attached to another user
+        (avoids silently moving the link across accounts).
+    """
+    from infra.cache import get as redis_get, cache_set as redis_set
+    from interfaces.bot.config import TELEGRAM_LINK_PREFIX, TELEGRAM_LINK_TTL
+
+    key = f"{TELEGRAM_LINK_PREFIX}{token}"
+    data = await redis_get(key)
+    if data is None or data.get("status") != "pending":
+        await _show(update, context, [
+            "⚠️ This link has expired or was already used.\n"
+            "Open your dashboard profile and start the link again."
+        ])
+        return
+
+    target_user_id = int(data.get("user_id") or 0)
+    platform = get_platform_db()
+    # Refuse if this Telegram ID already belongs to someone else.
+    existing = await platform.get_user_by_telegram_id(tid)
+    if existing and existing.id != target_user_id:
+        await redis_set(
+            key,
+            {
+                "status": "rejected",
+                "user_id": target_user_id,
+                "reason": "This Telegram account is already linked to a different dashboard user.",
+            },
+            ttl=60,
+        )
+        await _show(update, context, [
+            "❌ This Telegram account is already linked to a different\n"
+            "dashboard user.  Sign in with that account, or ask an\n"
+            "admin to clear the old link before retrying."
+        ])
+        logger.info(
+            f"Telegram-link rejected: tid={tid} already on user_id={existing.id}, "
+            f"requested user_id={target_user_id}"
+        )
+        return
+
+    if existing and existing.id == target_user_id:
+        # Idempotent: the link is already in place.  Mark success so
+        # the dashboard poll resolves.
+        await redis_set(
+            key,
+            {"status": "linked", "user_id": target_user_id, "telegram_id": tid},
+            ttl=TELEGRAM_LINK_TTL,
+        )
+        await _show(update, context, [
+            "✅ Already linked.\n"
+            "You're all set — close this chat and return to the dashboard."
+        ])
+        return
+
+    try:
+        await platform.link_telegram_to_user(target_user_id, tid)
+    except Exception as e:
+        logger.error(f"Telegram-link DB error: {e}", exc_info=True)
+        await redis_set(
+            key,
+            {"status": "rejected", "user_id": target_user_id, "reason": "Storage error"},
+            ttl=60,
+        )
+        await _show(update, context, [
+            "⚠️ Something went wrong while saving the link.\n"
+            "Try again from the dashboard."
+        ])
+        return
+
+    await redis_set(
+        key,
+        {"status": "linked", "user_id": target_user_id, "telegram_id": tid},
+        ttl=TELEGRAM_LINK_TTL,
+    )
+    await _show(update, context, [
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "  ✅ Telegram linked\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "\n"
+        "Your Telegram chat is now connected to your\n"
+        "dashboard account.  You can close this chat\n"
+        "and return to the dashboard."
+    ])
+    logger.info(f"Telegram-link approved: tid={tid} → user_id={target_user_id}")

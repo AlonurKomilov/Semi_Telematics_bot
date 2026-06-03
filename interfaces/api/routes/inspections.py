@@ -44,6 +44,7 @@ from capabilities.pti.templates import (
     VALID_REVIEW_STATUSES,
 )
 from interfaces.api.deps import (
+    get_current_db_user,
     get_platform_db,
     get_tenant_db,
     require_permission,
@@ -375,7 +376,7 @@ async def _resolve_internal_user_id(user: dict, tenant_db) -> int:
     cached = user.get("_internal_user_id")
     if cached is not None:
         return int(cached)
-    db_user = await tenant_db.get_user_by_telegram_id(int(user["sub"]))
+    db_user = await get_current_db_user(user, tenant_db)
     if not db_user:
         raise HTTPException(status_code=401, detail="User not found")
     user["_internal_user_id"] = int(db_user.id)

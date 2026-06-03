@@ -80,6 +80,10 @@ async def run_all(conn) -> None:
     # stay populated so adapters that haven't migrated keep working,
     # but new writes flow to the side table and reads prefer it.
     await migrate_create_driver_profiles_table(conn)
+    # Add view + helpful-vote counters to ``knowledge_base`` plus the
+    # per-user vote table.  Drivers can mark articles helpful/unhelpful;
+    # admins use the counters to see which articles are actually read.
+    await migrate_kb_engagement_columns(conn)
     # The next steps MUST be the last entries — each touches every
     # table that has an ``account_id`` column, so they need every
     # CREATE TABLE already applied.  Run order matters:
@@ -2500,3 +2504,54 @@ async def migrate_create_driver_profiles_table(conn) -> None:
         await conn.commit()
     except Exception as e:
         logger.debug("driver_profiles seed skipped (%s)", e)
+
+
+# ── Knowledge base: view + helpful-feedback tracking ──────────────
+
+
+async def migrate_kb_engagement_columns(conn) -> None:
+    """Add view + helpful-vote counters to ``knowledge_base`` and create
+    the per-user feedback table.
+
+    Columns added (all idempotent ALTERs):
+      * ``view_count``      — incremented on /view ping (debounced client-side)
+      * ``helpful_count``   — derived counter; kept on the row for cheap reads
+      * ``unhelpful_count`` — same shape, the "thumbs down" half
+      * ``last_viewed_at``  — ISO timestamp; helps "what's gone stale"
+
+    New table:
+      * ``knowledge_feedback`` — one row per (article_id, user_id) with the
+        user's most-recent vote.  UNIQUE constraint enforces one vote per
+        user (re-voting flips the count without duplicating rows).
+
+    No schema-breaking changes here — adapters that don't read the new
+    columns keep working unchanged.
+    """
+    for col, ddl in (
+        ("view_count",      "ALTER TABLE knowledge_base ADD COLUMN IF NOT EXISTS view_count INTEGER NOT NULL DEFAULT 0"),
+        ("helpful_count",   "ALTER TABLE knowledge_base ADD COLUMN IF NOT EXISTS helpful_count INTEGER NOT NULL DEFAULT 0"),
+        ("unhelpful_count", "ALTER TABLE knowledge_base ADD COLUMN IF NOT EXISTS unhelpful_count INTEGER NOT NULL DEFAULT 0"),
+        ("last_viewed_at",  "ALTER TABLE knowledge_base ADD COLUMN IF NOT EXISTS last_viewed_at TEXT NOT NULL DEFAULT ''"),
+    ):
+        try:
+            await conn.execute(ddl)
+        except Exception as e:
+            logger.debug("kb engagement column %s skipped (%s)", col, e)
+
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS knowledge_feedback (
+                article_id INTEGER NOT NULL,
+                user_id    INTEGER NOT NULL,
+                helpful    INTEGER NOT NULL,
+                created_at TEXT    NOT NULL,
+                PRIMARY KEY (article_id, user_id)
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_kb_feedback_article "
+            "ON knowledge_feedback(article_id)"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.debug("knowledge_feedback CREATE skipped (%s)", e)

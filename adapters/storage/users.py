@@ -132,6 +132,31 @@ class UsersMixin:
         )
         await self._db.commit()
 
+    async def unlink_telegram_from_user(self, user_id: int) -> None:
+        """Detach the Telegram link from a user, leaving them with email
+        sign-in only.  Refuses to unlink the last sign-in method — a
+        Telegram-only user without an email + password would otherwise
+        end up with no way to sign in at all."""
+        cur = await self._db.execute(
+            "SELECT email, password_hash FROM users WHERE id = ?",
+            (user_id,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return
+        email = dict(row).get("email")
+        pw = dict(row).get("password_hash")
+        if not email or not pw:
+            raise ValueError(
+                "Cannot unlink Telegram: no email + password is set on this "
+                "account, so removing the Telegram link would leave the user "
+                "with no way to sign in.",
+            )
+        await self._db.execute(
+            "UPDATE users SET telegram_id = NULL WHERE id = ?", (user_id,),
+        )
+        await self._db.commit()
+
     async def get_user(self, user_id: int) -> Optional[User]:
         cur = await self._db.execute(
             "SELECT * FROM users WHERE id = ?", (user_id,)

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -6,14 +6,16 @@ import {
   BookOpen, Plus, Search as SearchIcon, X, Pencil, Trash2,
   Check, AlertTriangle, Pin, FileText, FileVideo, FileImage,
   Link as LinkIcon, ChevronDown, ChevronUp,
+  ThumbsUp, ThumbsDown, Eye,
 } from 'lucide-react';
-import { apiJSON } from '../../api/client';
+import { apiFetch, apiJSON } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import {
   PageHeader,
   EmptyState,
   ErrorState,
 } from '../../components/shell';
+import { formatRelative } from '../../utils/datetime';
 
 interface KBArticle {
   id: number;
@@ -29,6 +31,11 @@ interface KBArticle {
   created_by: number;
   creator_name: string;
   approved: number;
+  view_count?: number;
+  helpful_count?: number;
+  unhelpful_count?: number;
+  /** Decoded from the detail endpoint: 1 / 0 / null. */
+  my_vote?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -84,6 +91,12 @@ export default function KnowledgeBase() {
   const [fVisibility, setFVisibility] = useState('private');
   const [fTargetRole, setFTargetRole] = useState('all');
   const [fPinned, setFPinned] = useState(false);
+  // Upload state: when set, the user attached a file (not a URL).  The
+  // backend stores the upload's path in media_url just like any other
+  // value, so the create payload doesn't need a special field.
+  const [fUploadName, setFUploadName] = useState('');
+  const [fUploadSize, setFUploadSize] = useState(0);
+  const [fUploading, setFUploading] = useState(false);
 
   // Expanded article
   const [expanded, setExpanded] = useState<number | null>(null);
@@ -133,8 +146,51 @@ export default function KnowledgeBase() {
   const resetForm = () => {
     setFTitle(''); setFDesc(''); setFCategory('general'); setFMediaUrl('');
     setFMediaType('link'); setFTags(''); setFVisibility('private'); setFTargetRole('all'); setFPinned(false);
+    setFUploadName(''); setFUploadSize(0); setFUploading(false);
     setEditing(null); setShowForm(false);
     setError('');
+  };
+
+  const handleUpload = async (file: File) => {
+    setError('');
+    if (file.size > 25 * 1024 * 1024) {
+      setError(t('knowledge.upload_too_large', 'File exceeds the 25 MB limit.'));
+      return;
+    }
+    setFUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await apiFetch('/knowledge/upload', { method: 'POST', body: fd });
+      if (!res.ok) {
+        let detail = `Upload failed (${res.status})`;
+        try {
+          const j = await res.json() as { detail?: string };
+          if (j.detail) detail = j.detail;
+        } catch { /* keep generic */ }
+        throw new Error(detail);
+      }
+      const r = await res.json() as {
+        file_path: string; file_name: string; file_size: number; media_type: string;
+      };
+      // Wire the upload result into the existing form state: media_url
+      // carries the storage path, media_type follows the inferred kind.
+      setFMediaUrl(r.file_path);
+      setFMediaType(r.media_type);
+      setFUploadName(r.file_name);
+      setFUploadSize(r.file_size);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Upload failed');
+    } finally {
+      setFUploading(false);
+    }
+  };
+
+  const clearUpload = () => {
+    setFMediaUrl('');
+    setFMediaType('link');
+    setFUploadName('');
+    setFUploadSize(0);
   };
 
   const openEdit = (a: KBArticle) => {
@@ -144,6 +200,21 @@ export default function KnowledgeBase() {
     setFCategory(a.category);
     setFMediaUrl(a.media_url);
     setFMediaType(a.media_type);
+    // Restore upload-chip state if the existing media_url is an internal
+    // upload path rather than an external URL.  Path-shape detection
+    // mirrors the backend's _is_internal_kb_path.
+    if (
+      a.media_url
+      && !a.media_url.startsWith('http://')
+      && !a.media_url.startsWith('https://')
+    ) {
+      const last = a.media_url.split('/').pop() || 'attached file';
+      setFUploadName(last);
+      setFUploadSize(0);
+    } else {
+      setFUploadName('');
+      setFUploadSize(0);
+    }
     setFTags(a.tags);
     setFVisibility(a.visibility);
     setFTargetRole(a.target_role || 'all');
@@ -394,14 +465,53 @@ export default function KnowledgeBase() {
                 <label className="block text-xs text-muted-foreground mb-1">
                   {t('knowledge.field_media_url')}
                 </label>
-                <input
-                  type="url"
-                  value={fMediaUrl}
-                  onChange={(e) => setFMediaUrl(e.target.value)}
-                  maxLength={2048}
-                  className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
-                  placeholder={t('knowledge.field_media_url_placeholder')}
-                />
+                {fUploadName ? (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-primary/5 border border-primary/30 rounded-lg text-sm">
+                    <FileText size={14} className="text-primary shrink-0" />
+                    <span className="truncate flex-1">{fUploadName}</span>
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {(fUploadSize / 1024).toFixed(0)} KB
+                    </span>
+                    <button
+                      type="button"
+                      onClick={clearUpload}
+                      className="text-muted-foreground hover:text-destructive"
+                      title={t('knowledge.upload_remove', 'Remove attached file')}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <input
+                    type="url"
+                    value={fMediaUrl}
+                    onChange={(e) => setFMediaUrl(e.target.value)}
+                    maxLength={2048}
+                    className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
+                    placeholder={t('knowledge.field_media_url_placeholder')}
+                  />
+                )}
+                <div className="flex items-center gap-3 mt-2 text-xs">
+                  <label className={`inline-flex items-center gap-1 cursor-pointer text-primary hover:underline ${fUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <input
+                      type="file"
+                      accept="application/pdf,image/png,image/jpeg,image/webp"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) handleUpload(f);
+                        e.target.value = '';
+                      }}
+                      className="hidden"
+                      disabled={fUploading}
+                    />
+                    {fUploading
+                      ? t('knowledge.upload_uploading', 'Uploading…')
+                      : t('knowledge.upload_attach', 'Attach a PDF or image instead')}
+                  </label>
+                  <span className="text-muted-foreground">
+                    {t('knowledge.upload_hint', 'PDF, PNG, JPEG, WEBP · max 25 MB')}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -724,7 +834,17 @@ function ArticleCard({
                 {t('knowledge.chip_private')}
               </span>
             )}
-            <span>{new Date(a.created_at).toLocaleDateString()}</span>
+            <span title={new Date(a.created_at).toLocaleString()}>
+              {formatRelative(a.created_at)}
+            </span>
+            {a.updated_at && a.updated_at !== a.created_at && (
+              <span
+                title={new Date(a.updated_at).toLocaleString()}
+                className="opacity-75"
+              >
+                {t('knowledge.edited_at', 'edited')} {formatRelative(a.updated_at)}
+              </span>
+            )}
             {a.creator_name && (
               <span>{t('knowledge.by_creator', { name: a.creator_name })}</span>
             )}
@@ -779,6 +899,23 @@ function ExpandedArticleBody({
     placeholderData: summary,
   });
   const a = full ?? summary;
+
+  // View ping (debounced): fire once per article-open, dedup'd in
+  // sessionStorage so collapse/re-expand doesn't double-count.  Failure
+  // is silent — view tracking is best-effort.
+  const viewPingedRef = useRef(false);
+  useEffect(() => {
+    if (viewPingedRef.current) return;
+    viewPingedRef.current = true;
+    const key = `kb-view-${articleId}`;
+    const lastSeen = sessionStorage.getItem(key);
+    const now = Date.now();
+    // 30s debounce per article per browser session.
+    if (lastSeen && now - Number(lastSeen) < 30_000) return;
+    sessionStorage.setItem(key, String(now));
+    apiJSON(`/knowledge/articles/${articleId}/view`, { method: 'POST', body: {} })
+      .catch(() => { /* best-effort */ });
+  }, [articleId]);
   return (
     <div className="border-t border-border p-4 space-y-3">
       {a.description && (
@@ -802,7 +939,11 @@ function ExpandedArticleBody({
       )}
       {a.media_url && (
         <a
-          href={a.media_url}
+          href={
+            a.media_url.startsWith('http://') || a.media_url.startsWith('https://')
+              ? a.media_url
+              : `/api/knowledge/articles/${a.id}/file`
+          }
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/15 border border-primary/30 rounded-lg text-sm text-primary hover:bg-primary/25 transition-colors"
@@ -811,6 +952,16 @@ function ExpandedArticleBody({
           {mediaLinkLabel(a.media_type)}
         </a>
       )}
+
+      <ArticleEngagement
+        articleId={a.id}
+        viewCount={a.view_count ?? 0}
+        helpfulCount={a.helpful_count ?? 0}
+        unhelpfulCount={a.unhelpful_count ?? 0}
+        myVote={a.my_vote ?? null}
+        t={t}
+      />
+
       {isOwner && (
         <div className="flex gap-2 pt-2">
           <button
@@ -851,6 +1002,116 @@ function ExpandedArticleBody({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+
+// ── Engagement bar (views + helpful / unhelpful) ────────────────
+//
+// Voting is optimistic — the chip flips on click and rolls back if the
+// API rejects the vote.  Re-clicking the same chip leaves the vote
+// unchanged (backend treats it as a no-op).
+
+interface EngagementResp {
+  ok: boolean;
+  vote: number;
+  helpful_count: number;
+  unhelpful_count: number;
+}
+
+function ArticleEngagement({
+  articleId, viewCount, helpfulCount, unhelpfulCount, myVote, t,
+}: {
+  articleId: number;
+  viewCount: number;
+  helpfulCount: number;
+  unhelpfulCount: number;
+  myVote: number | null;
+  t: TFunction;
+}) {
+  const [counts, setCounts] = useState({ helpful: helpfulCount, unhelpful: unhelpfulCount });
+  const [vote, setVote] = useState<number | null>(myVote);
+  const [busy, setBusy] = useState(false);
+
+  // Sync when the prop-derived initial values change (article refetch).
+  useEffect(() => {
+    setCounts({ helpful: helpfulCount, unhelpful: unhelpfulCount });
+    setVote(myVote);
+  }, [articleId, helpfulCount, unhelpfulCount, myVote]);
+
+  const submit = async (helpful: boolean) => {
+    if (busy) return;
+    const intended = helpful ? 1 : 0;
+    if (vote === intended) return;
+    // Optimistic: shift counters locally before the round-trip.
+    setBusy(true);
+    const prevCounts = counts;
+    const prevVote = vote;
+    setCounts((c) => {
+      const next = { ...c };
+      if (helpful) {
+        next.helpful = c.helpful + 1;
+        if (prevVote === 0) next.unhelpful = Math.max(0, c.unhelpful - 1);
+      } else {
+        next.unhelpful = c.unhelpful + 1;
+        if (prevVote === 1) next.helpful = Math.max(0, c.helpful - 1);
+      }
+      return next;
+    });
+    setVote(intended);
+    try {
+      const r = await apiJSON<EngagementResp>(
+        `/knowledge/articles/${articleId}/feedback`,
+        { method: 'POST', body: { helpful } },
+      );
+      setCounts({ helpful: r.helpful_count, unhelpful: r.unhelpful_count });
+    } catch {
+      // Rollback on failure.
+      setCounts(prevCounts);
+      setVote(prevVote);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-3 pt-2 text-xs text-muted-foreground">
+      <span
+        title={t('knowledge.views_title', 'Total times this article has been opened')}
+        className="inline-flex items-center gap-1"
+      >
+        <Eye size={12} />
+        {viewCount}
+      </span>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => submit(true)}
+        title={t('knowledge.helpful_title', 'Mark this article helpful')}
+        className={`inline-flex items-center gap-1 px-2 py-1 rounded border transition-colors disabled:opacity-50 ${
+          vote === 1
+            ? 'bg-green-500/10 border-green-500/40 text-green-700 dark:text-green-400'
+            : 'border-border hover:bg-muted'
+        }`}
+      >
+        <ThumbsUp size={12} />
+        {counts.helpful}
+      </button>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => submit(false)}
+        title={t('knowledge.unhelpful_title', 'Mark this article unhelpful')}
+        className={`inline-flex items-center gap-1 px-2 py-1 rounded border transition-colors disabled:opacity-50 ${
+          vote === 0
+            ? 'bg-destructive/10 border-destructive/40 text-destructive'
+            : 'border-border hover:bg-muted'
+        }`}
+      >
+        <ThumbsDown size={12} />
+        {counts.unhelpful}
+      </button>
     </div>
   );
 }

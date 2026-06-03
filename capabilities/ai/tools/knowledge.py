@@ -12,7 +12,15 @@ from capabilities.ai.tools.registry import register_tool
         "procedures, guides, and documents uploaded by the team. "
         "Use this when asked about company policies, procedures, how to do "
         "something, or any information that may be in uploaded documents. "
-        "Returns matching article titles, descriptions, categories, and content."
+        "\n\nHandling the result: "
+        "the ``description`` field is the article body in plain text — "
+        "quote relevant passages directly to answer the user. "
+        "When ``media_type`` is one of {pdf, video, image}, the binary "
+        "behind ``media_url`` is NOT readable by you — tell the user the "
+        "answer is in the linked document and include ``media_url`` so "
+        "they can open it. "
+        "For ``media_type`` = link, treat ``media_url`` as a complementary "
+        "external reference, not the source of truth."
     ),
     "parameters": {
         "type": "object",
@@ -63,9 +71,14 @@ async def search_knowledge_base(tool_args: dict, samsara_client,
             {
                 "title": a.get("title", ""),
                 "category": a.get("category", ""),
+                # Full body so the model can quote / paraphrase directly.
                 "description": a.get("description", ""),
                 "tags": a.get("tags", ""),
                 "pinned": bool(a.get("pinned")),
+                # For pdf / video / image the model can't read the file —
+                # it should surface ``media_url`` to the user as a link.
+                "media_type": a.get("media_type", "link"),
+                "media_url": a.get("media_url", ""),
             }
             for a in articles[:8]
         ],
