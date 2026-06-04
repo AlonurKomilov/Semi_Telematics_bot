@@ -77,7 +77,10 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
   const { has } = usePermissions();
   const canManage = has('can_manage_poi_layers');
 
-  const [collapsed, setCollapsed] = useState(false);
+  // Collapsed by default — the live-map opens cleaner; the user
+  // expands the Map Layers panel only when they want to toggle POIs
+  // or custom layers.
+  const [collapsed, setCollapsed] = useState(true);
   // Per-layer chips panel open/closed (default: closed so panel stays compact)
   const [chipsOpen, setChipsOpen] = useState<Record<string, boolean>>({});
   // Custom layer editor modal state — null = closed; { mode: 'create' } or

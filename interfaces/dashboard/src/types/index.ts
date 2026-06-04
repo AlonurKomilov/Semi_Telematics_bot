@@ -1316,6 +1316,13 @@ export interface AIChatMessage {
   text: string;
   /** Client-side timestamp — not persisted to backend */
   timestamp?: Date;
+  /**
+   * ISO timestamp from the backend (``created_at``).  Present only
+   * on messages loaded from history — the dashboard parses this into
+   * the live ``timestamp`` Date so a 3-day-old reply doesn't render
+   * with the browser's current time.
+   */
+  ts?: string;
   /** Token usage from the backend — only present on model messages */
   usage?: AIUsage;
 }

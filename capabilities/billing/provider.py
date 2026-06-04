@@ -91,3 +91,27 @@ class BillingProvider(Protocol):
             {"handled": bool, "event_type": str}
         """
         ...
+
+    async def sync_billing_quantity(self, account_id: int, db) -> dict:
+        """Reconcile per-vehicle billing quantity with current activity.
+
+        Called by the Samsara ingest job after every cycle so a fleet
+        scaling up (or parking trucks) lands on the next invoice without
+        an admin touching the dashboard.  Implementations should be
+        cheap when nothing has changed; the stub provider no-ops.
+
+        Returns a status dict for metrics (``skipped`` token, ``before``
+        / ``after`` quantities, ``account_id``).
+        """
+        ...
+
+    async def update_billing_email(self, account_id: int, db, email: str) -> dict:
+        """Persist a new billing email and push it to the payment provider.
+
+        Stripe needs the email on the Customer object so receipts /
+        recovery emails route correctly; we mirror it locally on the
+        subscription row so the dashboard's "send invoices to" field
+        can render without hitting Stripe.  The stub provider only
+        writes the local row.
+        """
+        ...

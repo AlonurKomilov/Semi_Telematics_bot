@@ -17,6 +17,11 @@ interface RouteRow extends CatalogRow {
   is_active: boolean;
   message_thread_id: number | null;
   topic_name_snapshot: string;
+  /** Per-topic "🟢 RESOLVED" auto-resolve receipt toggle.  Defaults
+   *  to true on legacy rows (migration 079).  When false, the chat
+   *  receipt is suppressed but the underlying alert_history row
+   *  still flips to resolved — dashboard monitoring stays accurate. */
+  send_resolve_receipt: boolean;
 }
 
 interface RoutingState {
@@ -77,6 +82,28 @@ export default function ForumRoutingSection() {
       });
       const row = state?.routes.find(r => r.alert_type === alert_type);
       toast.success(t('forum_routing.toast_toggled', { name: row?.name || alert_type }));
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('forum_routing.toast_error'));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  // Per-topic resolve-receipt toggle.  Uses a distinct busy key
+  // (`__rr_…`) so it doesn't collide with the row's main is_active
+  // spinner if both are mid-flight.  When the admin turns this off,
+  // we suppress only the chat "🟢 RESOLVED" receipt — the underlying
+  // alert_history row is still stamped resolved so dashboard counters
+  // stay accurate.
+  const handleToggleReceipt = async (alert_type: string, enabled: boolean) => {
+    const key = `__rr_${alert_type}__`;
+    setBusyKey(key);
+    try {
+      await apiJSON(`/admin/forum-routing/routes/${alert_type}/receipt`, {
+        method: 'PUT',
+        body: { send_resolve_receipt: enabled },
+      });
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('forum_routing.toast_error'));
@@ -275,6 +302,28 @@ export default function ForumRoutingSection() {
                               </button>
                             )}
                           </td>
+                          {/* "🟢 Receipt" admin toggle — group-side resolve
+                              receipts.  Independent from each user's
+                              personal alert_resolve_receipts DM preference
+                              (set under Avatar → My Notifications). */}
+                          <td className="px-3 py-2 align-top w-32 text-right whitespace-nowrap">
+                            {r.is_mapped && (
+                              <button
+                                disabled={busyKey === `__rr_${r.alert_type}__`}
+                                onClick={() => handleToggleReceipt(r.alert_type, !r.send_resolve_receipt)}
+                                title={r.send_resolve_receipt
+                                  ? 'Group receives a 🟢 RESOLVED message when this alert auto-clears'
+                                  : 'Group does NOT receive resolve receipts for this alert type'}
+                                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition ${
+                                  r.send_resolve_receipt
+                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/25'
+                                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                                }`}
+                              >
+                                🟢 {r.send_resolve_receipt ? 'Receipt' : 'No receipt'}
+                              </button>
+                            )}
+                          </td>
                           <td className="px-3 py-2 align-top w-28 text-right">
                             {r.is_mapped && (
                               <button
@@ -300,6 +349,7 @@ export default function ForumRoutingSection() {
                   </table>
                   <p className="text-xs text-muted-foreground px-3 py-2 border-t border-border/40 bg-muted/20">
                     🤖 = toggle AI Analysis inclusion for that topic.
+                    🟢 Receipt = send the group a confirmation message when an alert auto-resolves.
                     ✓ Disable = stop routing this alert type to the group (falls back to per-user DMs).
                   </p>
                 </div>

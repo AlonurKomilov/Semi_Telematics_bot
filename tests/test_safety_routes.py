@@ -99,12 +99,15 @@ def _h(token: str) -> dict:
 
 
 class TestScorecardsRoute:
-    async def test_no_token_returns_422(self, safety_app):
+    async def test_no_token_returns_401(self, safety_app):
         async with AsyncClient(
             transport=ASGITransport(app=safety_app["app"]), base_url="http://t"
         ) as c:
             r = await c.get("/api/safety/scorecards")
-            assert r.status_code == 422
+            # See tests/test_api_routes.py — Authorization became
+            # optional with cross-subdomain SSO; missing both header
+            # and cookie now yields 401, not 422.
+            assert r.status_code == 401
 
     async def test_bad_token_returns_401(self, safety_app):
         async with AsyncClient(

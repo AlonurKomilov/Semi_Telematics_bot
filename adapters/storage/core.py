@@ -289,6 +289,11 @@ class _DatabaseCore:
             payroll_enabled=bool(row["payroll_enabled"]) if "payroll_enabled" in row.keys() else False,
             coaching_enabled=bool(row["coaching_enabled"]) if "coaching_enabled" in row.keys() else False,
             timezone=row["timezone"] if "timezone" in row.keys() else "America/New_York",
+            alert_routing_mode=(
+                row["alert_routing_mode"]
+                if "alert_routing_mode" in row.keys() and row["alert_routing_mode"]
+                else "single_group"
+            ),
         )
 
     def _row_to_company(self, row) -> Company:
@@ -325,6 +330,11 @@ class _DatabaseCore:
             alert_parking=bool(row["alert_parking"]) if "alert_parking" in row.keys() else True,
             ai_parking=bool(row["ai_parking"]) if "ai_parking" in row.keys() else False,
             alert_camera=bool(row["alert_camera"]) if "alert_camera" in row.keys() else True,
+            # Default False: existing users don't get a flood of "🟢
+            # RESOLVED" DMs after migration 080 lands.  Each user
+            # enables their own via the "My Notifications" page.
+            alert_resolve_receipts=bool(row["alert_resolve_receipts"])
+                if "alert_resolve_receipts" in row.keys() else False,
             quiet_start=row["quiet_start"] if "quiet_start" in row.keys() else None,
             quiet_end=row["quiet_end"] if "quiet_end" in row.keys() else None,
             timezone=row["timezone"] if "timezone" in row.keys() else "America/New_York",

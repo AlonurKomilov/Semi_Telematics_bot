@@ -453,36 +453,61 @@ async def get_history(
     user: dict = Depends(get_current_user),
     platform_db=Depends(get_platform_db),
 ):
-    """Get the current conversation history."""
+    """Get the current conversation history.
+
+    Reads straight from the DB so the dashboard sees the full
+    scrollback window (``_MAX_ROWS_PER_USER`` rows), not just the
+    smaller slice the in-memory ``_chat_histories`` cache holds for
+    prompt-building.  The cache is still warmed here so the next AI
+    call has prior context when chosen — but only with the recent
+    slice, since the prompt has a token budget the UI doesn't.
+    """
+    from capabilities.ai.chat import _MAX_HISTORY
+
     uid = int(user["sub"])
     account_id = user["account_id"]
 
-    # L1: in-memory cache (already populated for active sessions)
-    history = _chat_histories.get((uid, account_id))
+    db_rows: list[dict] = []
+    try:
+        db_rows = await platform_db.get_chat_history(account_id, uid)
+    except Exception as e:
+        # Real failure — surface it.  Frontend ``.catch`` now shows a
+        # banner so the user knows their scrollback didn't load (vs.
+        # the old silent ``catch`` that looked like "empty history").
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to load history: {type(e).__name__}",
+        )
 
-    # L2: on cold start / after restart, reload from DB and warm the cache
-    if not history:
-        try:
-            db_rows = await platform_db.get_chat_history(account_id, uid)
-            if db_rows:
-                _chat_histories[(uid, account_id)] = [
-                    {"role": ("User" if r["role"] == "user" else "Assistant"), "text": r["text"]}
-                    for r in db_rows
-                ]
-                history = _chat_histories[(uid, account_id)]
-        except Exception:
-            history = []
+    # Warm the in-memory cache with the recent slice used for prompt
+    # context.  ``_store_history`` caps this at ``_MAX_HISTORY * 2``
+    # rows on next write, so seeding with that same window keeps the
+    # cache from oscillating in size.
+    if db_rows and (uid, account_id) not in _chat_histories:
+        recent = db_rows[-_MAX_HISTORY * 2:]
+        _chat_histories[(uid, account_id)] = [
+            {"role": ("User" if r["role"] == "user" else "Assistant"),
+             "text": r["text"]}
+            for r in recent
+        ]
 
-    # Normalise roles for the frontend ('user' | 'model')
     def _norm_role(r: str) -> str:
         return "user" if r.lower() in ("user",) else "model"
 
     return {
         "messages": [
-            {"role": _norm_role(h["role"]), "text": h["text"]}
-            for h in (history or [])
+            {
+                "role": _norm_role(r["role"]),
+                "text": r["text"],
+                # ISO-ish timestamp from the DB; frontend parses it
+                # into a real Date for "12:34 PM" / "Jan 5" labels
+                # instead of stamping every loaded message with the
+                # browser's current time.
+                "ts": r.get("created_at"),
+            }
+            for r in db_rows
         ],
-        "count": len(history or []),
+        "count": len(db_rows),
     }
 
 

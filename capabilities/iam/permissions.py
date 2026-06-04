@@ -65,7 +65,6 @@ class FeatureSet:
     """What a role can see/do."""
     # Fleet reports
     can_faults: bool = False         # /faults  PDF
-    can_critical: bool = False       # /critical PDF
     can_fuel: bool = False           # /fuel
     can_efficiency: bool = False     # /efficiency
     can_health: bool = False         # /health
@@ -91,6 +90,7 @@ class FeatureSet:
     can_digest: bool = False            # auto reports subscription
     can_maintenance_all: bool = False   # maintenance scheduler (all trucks)
     can_maintenance_own: bool = False   # maintenance scheduler (own truck)
+    can_cost_reports: bool = False      # /cost-reports executive rollups (split off can_maintenance_all)
     can_scorecard_all: bool = False     # scorecards for all subjects (driver or vehicle)
     can_scorecard_own: bool = False     # scorecards for own assigned truck(s) only
     can_location_map: bool = False      # live location map (all trucks)
@@ -128,7 +128,7 @@ class FeatureSet:
 
 ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
     Role.OWNER: FeatureSet(
-        can_faults=True, can_critical=True, can_fuel=True,
+        can_faults=True, can_fuel=True,
         can_efficiency=True, can_health=True,
         can_vehicle_all=True, can_vehicle_own=True,
         can_alerts_all=True, can_alerts_own=True,
@@ -138,6 +138,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_geofence_all=True, can_geofence_own=True,
         can_digest=True,
         can_maintenance_all=True, can_maintenance_own=True,
+        can_cost_reports=True,
         can_scorecard_all=True, can_scorecard_own=True,
         can_location_map=True, can_location_own=True,
         can_fuel_cost=True,
@@ -153,7 +154,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_inspections_all=True, can_inspections_own=True,
     ),
     Role.ADMIN: FeatureSet(
-        can_faults=True, can_critical=True, can_fuel=True,
+        can_faults=True, can_fuel=True,
         can_efficiency=True, can_health=True,
         can_vehicle_all=True, can_vehicle_own=True,
         can_alerts_all=True, can_alerts_own=True,
@@ -163,6 +164,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_geofence_all=True, can_geofence_own=True,
         can_digest=True,
         can_maintenance_all=True, can_maintenance_own=True,
+        can_cost_reports=True,
         can_scorecard_all=True, can_scorecard_own=True,
         can_location_map=True, can_location_own=True,
         can_fuel_cost=True,
@@ -178,7 +180,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_inspections_all=True, can_inspections_own=True,
     ),
     Role.FLEET: FeatureSet(
-        can_faults=True, can_critical=True, can_fuel=True,
+        can_faults=True, can_fuel=True,
         can_efficiency=True, can_health=True,
         can_vehicle_all=True, can_vehicle_own=True,
         can_alerts_all=True, can_alerts_own=True,
@@ -188,6 +190,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_geofence_all=True, can_geofence_own=True,
         can_digest=True,
         can_maintenance_all=True, can_maintenance_own=True,
+        can_cost_reports=True,
         can_scorecard_all=True, can_scorecard_own=True,
         can_location_map=True, can_location_own=True,
         can_fuel_cost=True,
@@ -204,7 +207,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_inspections_all=True, can_inspections_own=False,
     ),
     Role.SAFETY: FeatureSet(
-        can_faults=True, can_critical=True, can_fuel=False,
+        can_faults=True, can_fuel=False,
         can_efficiency=False, can_health=True,
         can_vehicle_all=True, can_vehicle_own=True,
         can_alerts_all=True, can_alerts_own=True,
@@ -231,7 +234,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_inspections_all=True, can_inspections_own=False,
     ),
     Role.DISPATCHER: FeatureSet(
-        can_faults=False, can_critical=False, can_fuel=True,
+        can_faults=False, can_fuel=True,
         can_efficiency=False, can_health=False,
         can_vehicle_all=True, can_vehicle_own=True,
         # Dispatchers need to see geofence/parking alerts and safety events
@@ -286,13 +289,11 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_cost_per_mile=True,                # CPM dashboard
         can_payroll_admin=True,                # Payroll runs + history
         can_efficiency=True,                   # Efficiency report for cost analysis
-        # ``can_maintenance_all`` is the gate that ALSO controls Cost
-        # Reports (cost rollups by truck).  Accounting needs the cost
-        # rollups, so they get this perm even though they don't action
-        # maintenance scheduling — the cost-reports view is the
-        # primary use.  A future ``can_cost_reports`` split would
-        # tighten this; the nav already only surfaces Cost Reports.
-        can_maintenance_all=True,
+        # Cost rollups by truck — used to be granted via the overloaded
+        # ``can_maintenance_all`` flag; split into its own gate in
+        # 2026-06 so toggling Maintenance for accounting no longer
+        # silently also affects Cost Reports access.
+        can_cost_reports=True,
         # Read-only context — accounting needs to see WHICH assets
         # generate WHICH costs:
         can_vehicle_all=True,                  # Vehicle list for asset accounting
@@ -300,7 +301,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_digest=True,
     ),
     Role.DRIVER: FeatureSet(
-        can_faults=False, can_critical=False, can_fuel=False,
+        can_faults=False, can_fuel=False,
         can_efficiency=False, can_health=False,
         can_vehicle_all=False, can_vehicle_own=True,
         can_alerts_all=False, can_alerts_own=True,
@@ -347,12 +348,27 @@ async def get_account_permissions(
     2. DB: account-wide custom permissions
     3. Fallback: hardcoded ROLE_PERMISSIONS defaults
 
-    Results are cached per (account_id, role, company_id).
+    Results are cached per (account_id, role, company_id) for
+    ``_PERMS_CACHE_TTL_S`` seconds.  The TTL is the contract for
+    multi-worker deployments: a worker that didn't receive the
+    invalidation signal still ages out its stale entry within one
+    TTL window.  Within a single worker, ``invalidate_permissions_cache``
+    drops the entry immediately so the Owner-saving worker sees fresh
+    state on the very next call.
     """
+    import time as _time
     cache_key = (account_id, role.value if hasattr(role, "value") else role, company_id)
     cached = _permissions_cache.get(cache_key)
+    now = _time.monotonic()
     if cached is not None:
-        return cached
+        expires_at, fs = cached
+        if expires_at > now:
+            return fs
+        # Stale — drop and re-resolve.  No "stale-while-revalidate"
+        # because permission staleness is a security concern: if the
+        # Owner just removed can_manage_billing from Admin, we don't
+        # want any worker serving the old True for even one request
+        # past the TTL window.
 
     try:
         from infra.platform import get_platform_db
@@ -370,20 +386,27 @@ async def get_account_permissions(
             filtered = {k: v for k, v in perm_dict.items() if k in known_fields}
             merged = {**role_defaults, **filtered}
             fs = FeatureSet(**merged)
-            _permissions_cache[cache_key] = fs
+            _permissions_cache[cache_key] = (now + _PERMS_CACHE_TTL_S, fs)
             return fs
     except Exception as e:
         logger.debug("Could not load permissions from DB (using defaults): %s", e)
 
     fs = ROLE_PERMISSIONS.get(role, FeatureSet())
-    _permissions_cache[cache_key] = fs
+    _permissions_cache[cache_key] = (now + _PERMS_CACHE_TTL_S, fs)
     return fs
 
 
 def invalidate_permissions_cache(
     account_id: Optional[int] = None,
 ) -> None:
-    """Clear cached permissions. Call after Owner edits role permissions."""
+    """Clear cached permissions. Call after Owner edits role permissions.
+
+    Single-worker case: this drops the cache entry immediately so the
+    next call re-resolves from DB.  Multi-worker case: only THIS
+    process's cache is cleared — sibling workers still hold the old
+    entry until its TTL expires (``_PERMS_CACHE_TTL_S``), which is
+    the acceptable worst-case staleness for permission changes.
+    """
     if account_id is None:
         _permissions_cache.clear()
     else:
@@ -392,8 +415,18 @@ def invalidate_permissions_cache(
             del _permissions_cache[k]
 
 
-# In-memory cache: (account_id, role_str, company_id) → FeatureSet
-_permissions_cache: dict[tuple, FeatureSet] = {}
+# TTL on cached permission entries.  Bounds the cross-worker
+# staleness window for any deployment running multiple FastAPI
+# workers — the worker that handled the Owner's PUT invalidates its
+# own cache immediately, sibling workers age out within this many
+# seconds.  60s is the operational sweet spot: short enough that an
+# Owner change reaches the whole fleet within a minute, long enough
+# that the DB isn't hit on every authed request (a busy account hits
+# ``can_*`` checks hundreds of times per second).
+_PERMS_CACHE_TTL_S: float = 60.0
+
+# In-memory cache: (account_id, role_str, company_id) → (expires_at_monotonic, FeatureSet)
+_permissions_cache: dict[tuple, tuple[float, FeatureSet]] = {}
 
 
 # ─── Active-account contextvar (for per-account `can()` lookups) ──────
@@ -448,10 +481,18 @@ def can(role: Role, feature: str) -> bool:
     """
     aid = _active_account_id.get()
     if aid is not None:
+        import time as _time
         role_str = role.value if hasattr(role, "value") else role
         cached = _permissions_cache.get((aid, role_str, None))
         if cached is not None:
-            return bool(getattr(cached, feature, False))
+            expires_at, fs = cached
+            if expires_at > _time.monotonic():
+                return bool(getattr(fs, feature, False))
+            # Stale cache entry — fall through to hardcoded defaults.
+            # The contextvar-primed sync path can't await a fresh DB
+            # read, so the next call to ``can_for_account`` (or any
+            # async-context caller through ``get_account_permissions``)
+            # will repopulate the cache from DB on its TTL refresh.
     perms = get_permissions(role)
     return getattr(perms, feature, False)
 
@@ -524,7 +565,6 @@ def role_emoji(role: Role) -> str:
 # Human-readable labels for permission flags → AI-friendly descriptions
 _FEATURE_LABELS: dict[str, str] = {
     "can_faults": "fault reports",
-    "can_critical": "critical fault alerts",
     "can_fuel": "fuel levels",
     "can_efficiency": "driver efficiency",
     "can_health": "vehicle health",
@@ -542,6 +582,7 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_digest": "auto reports",
     "can_maintenance_all": "maintenance (all trucks)",
     "can_maintenance_own": "maintenance (own truck)",
+    "can_cost_reports": "cost reports (executive rollups)",
     "can_inspections_all": "inspections (review all)",
     "can_inspections_own": "inspections (submit own)",
     "can_scorecard_all": "driver scorecards (all)",
@@ -745,7 +786,7 @@ def is_kb_approver_role(role: Role | str) -> bool:
 # If ANY listed permission is True for the user's role, the tool is allowed.
 # None means always allowed.
 TOOL_PERMISSIONS: dict[str, list[str] | None] = {
-    "get_vehicle_faults":       ["can_faults", "can_critical"],              # owner/admin/fleet/safety
+    "get_vehicle_faults":       ["can_faults"],                                # owner/admin/fleet/safety
     "get_vehicle_detail":       ["can_vehicle_all", "can_vehicle_own"],          # all roles
     "get_driver_efficiency":    ["can_efficiency"],                          # owner/admin/fleet
     "get_low_fuel_vehicles":    ["can_fuel"],                                # owner/admin/fleet/dispatcher

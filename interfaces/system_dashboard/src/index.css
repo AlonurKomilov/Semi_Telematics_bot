@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Operator dashboard styling — quiet, dense, no marketing flourishes.
+ * The customer dashboard has rounded cards / soft borders / brand
+ * colors; this tool deliberately reads as a console. */
+
+html, body { background: #020617; color: #f1f5f9; min-height: 100vh; }
+
+/* Monospace tabular numbers for the accounts table — id and dollar
+ * amounts should line up vertically regardless of width. */
+.tabular-nums { font-variant-numeric: tabular-nums; }
+
+/* Quiet focus rings.  The default Tailwind ring is too brand-y. */
+*:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 1px;
+}

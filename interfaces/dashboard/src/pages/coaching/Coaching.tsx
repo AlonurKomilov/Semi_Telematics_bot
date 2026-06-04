@@ -162,8 +162,7 @@ function AssignmentsTab() {
     if (!drvId || !topicKey) return;
     const r = await apiFetch('/coaching/assign', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ driver_id: drvId, topic_key: topicKey, severity, reason }),
+      body: { driver_id: drvId, topic_key: topicKey, severity, reason },
     });
     if (r.ok) {
       setDrvId('');
@@ -364,8 +363,7 @@ function RulesTab() {
     }
     const r = await apiFetch('/coaching/rules', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body,
     });
     if (r.ok) {
       setName('');
@@ -380,8 +378,7 @@ function RulesTab() {
   const onToggle = async (rule: CoachingRule) => {
     await apiFetch(`/coaching/rules/${rule.id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ active: !rule.active }),
+      body: { active: !rule.active },
     });
     await load();
   };

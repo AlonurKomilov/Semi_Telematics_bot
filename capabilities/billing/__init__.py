@@ -32,6 +32,18 @@ def get_provider() -> BillingProvider:
     name = os.getenv("BILLING_PROVIDER", "stub").lower()
 
     if name == "stripe":
+        # Refuse to boot in stripe mode without the webhook secret — an
+        # unsigned webhook endpoint lets anyone who can reach it forge
+        # subscription state (flip an account active, mark a paying
+        # customer past_due).  The secret key is checked lazily by
+        # _stripe() the first time it's used.
+        if not os.getenv("STRIPE_WEBHOOK_SECRET", "").strip():
+            raise RuntimeError(
+                "BILLING_PROVIDER=stripe but STRIPE_WEBHOOK_SECRET is "
+                "not set.  Get the value from Stripe Dashboard → "
+                "Developers → Webhooks → (your endpoint) → Signing "
+                "secret, then add it to .env."
+            )
         from .stripe_client import StripeBillingProvider
         _provider = StripeBillingProvider()
     else:

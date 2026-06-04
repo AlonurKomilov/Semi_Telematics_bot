@@ -244,3 +244,32 @@ class ParkingMixin:
             )
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
+
+    async def get_parking_points_for_heatmap(
+        self, account_id: int, days: int = 30,
+    ) -> list[dict]:
+        """Latitude/longitude/duration triples of every parking event
+        (active OR resolved) in the last ``days`` for the Owner /
+        Admin utilisation heatmap on Live Map.
+
+        Returns the minimum projection — ``{lat, lon, duration_hours}``
+        per row — so the response stays small (a 100-truck fleet over
+        30 days produces a few thousand points at most, comfortably
+        under 100 KB).
+
+        Skipped: zero-coordinate events (Samsara occasionally backfills
+        these on cold-start vehicles) and rows where ``duration_hours``
+        is missing/non-positive (would weight as 0 in the heatmap and
+        just inflate the payload).
+        """
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max(days, 1))).isoformat()
+        cur = await self._db.execute(
+            "SELECT latitude, longitude, duration_hours FROM parking_events "
+            "WHERE account_id = ? "
+            "AND created_at >= ? "
+            "AND latitude != 0 AND longitude != 0 "
+            "AND duration_hours > 0",
+            (account_id, cutoff),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]

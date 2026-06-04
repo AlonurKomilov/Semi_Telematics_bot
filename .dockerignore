@@ -20,6 +20,8 @@ interfaces/dashboard/node_modules/
 interfaces/dashboard/dist/
 interfaces/miniapp/node_modules/
 interfaces/miniapp/dist/
+interfaces/system_dashboard/node_modules/
+interfaces/system_dashboard/dist/
 data/
 scripts/
 mypy.ini

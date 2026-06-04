@@ -22,7 +22,7 @@ from interfaces.bot.keyboards import (
     geofence_list_kb,
     unregistered_kb,
     invite_kb,
-    auto_reports_menu_kb,
+    scheduled_reports_menu_kb,
     maint_company_picker_kb,
     maint_vehicle_list_kb,
     maint_type_kb,
@@ -297,15 +297,15 @@ class TestSpecialKeyboards:
         # No share button
         assert not _has_label_containing(kb, "Send to Team Member")
 
-    def test_auto_reports_menu_without_subscription(self):
-        kb = auto_reports_menu_kb(current_sub=None)
+    def test_scheduled_reports_menu_without_subscription(self):
+        kb = scheduled_reports_menu_kb(current_sub=None)
         callbacks = _all_callbacks(kb)
         assert "ar_freq_daily" in callbacks
         assert "ar_freq_weekly" in callbacks
         assert "ar_freq_monthly" in callbacks
 
-    def test_auto_reports_menu_with_subscription(self):
-        kb = auto_reports_menu_kb(current_sub={"frequency": "daily", "send_hour": 7, "report_type": "faults"})
+    def test_scheduled_reports_menu_with_subscription(self):
+        kb = scheduled_reports_menu_kb(current_sub={"frequency": "daily", "send_hour": 7, "report_type": "faults"})
         callbacks = _all_callbacks(kb)
         assert "ar_unsub" in callbacks
         assert "ar_freq_daily" not in callbacks

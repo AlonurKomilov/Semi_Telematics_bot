@@ -9,7 +9,9 @@ import { POI_LAYERS } from '../../config/poiLayers';
 import type { PoiFeature } from '../../hooks/usePoiLayers';
 import type { MapVehicleFeature, MapVehiclesResponse, MapVehicleProperties, LiveVehiclesResponse, LiveVehiclePosition } from '../../types';
 import type L from 'leaflet';
-import { OVERLAYS, SafetyEventOverlay } from './overlays';
+import { PageLayoutHost } from '../../features/_lib/PageLayoutHost';
+import { LIVE_MAP_SECTIONS } from '../../features/live-map/registry';
+import { LIVE_MAP_LAYOUTS } from '../../features/live-map/layouts';
 
 const REFRESH_MS      = 30_000;   // full data refresh (fuel, DEF, status)
 const LIVE_REFRESH_MS =  5_000;   // position-only fast refresh
@@ -235,9 +237,8 @@ export default function LiveMap() {
   // sees where incidents cluster; any persona can still flip it via
   // the side-panel checkbox.  The actual layer lifecycle lives in
   // SafetyEventOverlay — this page just owns the toggle state.
-  const { activeView, isSafetyView } = useShellConfig();
+  const { isSafetyView } = useShellConfig();
   const [heatOn, setHeatOn] = useState(isSafetyView);
-  const PersonaOverlay = OVERLAYS[activeView] ?? OVERLAYS.fleet;
 
   // ── Map initialization + polling ──────────────────────────────────────────
 
@@ -650,24 +651,23 @@ export default function LiveMap() {
           setShowLabels={setShowLabels}
           isReady={isReady}
         />
-        {/* Persona-specific overlay — currently a no-op for most
-            personas; future Dispatch route-lines / Fleet health rings
-            mount here without touching this page. */}
-        <PersonaOverlay
-          leafletMap={leafletMap}
-          isReady={isReady}
-          vehicles={vehicles}
-          selected={selected}
-        />
-        {/* 30-day safety-event heat layer.  Rendered for every persona
-            so the side-panel toggle works universally; defaults to ON
-            for the Safety persona, OFF otherwise. */}
-        <SafetyEventOverlay
-          leafletMap={leafletMap}
-          isReady={isReady}
-          vehicles={vehicles}
-          selected={selected}
-          active={heatOn}
+        {/* Pattern B section host — mounts the active persona's
+            overlay layout from LIVE_MAP_LAYOUTS.  Each overlay
+            receives the same sectionProps (map handle, vehicles,
+            selected, heatOn); overlays that imperatively attach
+            Leaflet layers do so via useEffect and render null.  See
+            features/live-map/registry.ts for the section list and
+            features/live-map/layouts.ts for the per-persona ordering. */}
+        <PageLayoutHost
+          registry={LIVE_MAP_SECTIONS}
+          layouts={LIVE_MAP_LAYOUTS}
+          sectionProps={{
+            leafletMap,
+            isReady,
+            vehicles,
+            selected,
+            heatOn,
+          }}
         />
       </div>
 

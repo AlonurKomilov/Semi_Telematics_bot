@@ -797,7 +797,7 @@
     "csv_caption": "📊 የክስተት ሪፖርት — {company}",
     "csv_exported": "✅ የክስተት CSV ተላከ።"
   },
-  "auto_reports": {
+  "scheduled_reports": {
     "header": "📋  <b>የሪፖርት ደንበኝነቶች</b>",
     "description": "በ Telegram ቻት ውስጥ ራስ-ሰር የመኪና ፍሊት ሪፖርቶችን ያቅዱ።",
     "subscribed": "✅ ንቁ: <b>{rtype}</b> · {freq} በ {time}",

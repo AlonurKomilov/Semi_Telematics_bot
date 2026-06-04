@@ -164,6 +164,29 @@ async def list_assignments(
         raise HTTPException(400, str(e))
 
 
+@router.get("/assignments/count")
+async def count_assignments(
+    status: Optional[str] = Query(default=None, max_length=32),
+    user: dict = Depends(require_permission("can_coaching_admin")),
+):
+    """Bare count of coaching assignments matching a status filter.
+
+    Returns ``{"count": N}`` so summary widgets (SafetySummaryStrip's
+    open-backlog chip) can avoid pulling the full list when they only
+    need the number.  Uses the same service layer as /assignments so
+    the count includes/excludes the same rows.
+    """
+    try:
+        rows = await svc.list_assignments(
+            user["account_id"], driver_id=None, status=status, limit=1000,
+        )
+    except CoachingDisabledError as e:
+        raise _disabled_to_403(e)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"count": len(rows), "status": status or "any"}
+
+
 @router.post("/assign", status_code=201)
 async def assign_manual(
     body: AssignManualIn,

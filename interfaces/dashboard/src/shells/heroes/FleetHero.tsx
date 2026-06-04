@@ -1,37 +1,42 @@
 /**
- * FleetHero — operational status strip for the Fleet persona.
+ * FleetHero — operational status chips for the Fleet persona,
+ * rendered INSIDE the topbar between the brand-left zone and the
+ * tools cluster on the right.  Owner/Admin (DefaultShell) shows
+ * nothing here; the persona shells substitute their own Hero
+ * components which all share the same inline-chip geometry so the
+ * topbar height stays constant across personas — no second row of
+ * chrome pushing the content down.
  *
- * Shows what a fleet manager needs to know at a glance:
- *   Total · Moving · Idle · Stopped · Low fuel · Faults · Maintenance due
+ * Strict persona binding: Fleet handles mechanical health (faults,
+ * maintenance) — NOT fuel (that's Dispatch's job).  The chip set is:
  *
- * Hides chips for fields the user doesn't have permission to see
- * (the API already gates ``can_faults`` / ``can_fuel`` etc., so
- * undefined → skip rendering).  The strip is persistent — it stays
- * visible as the user navigates between Fleet pages.
+ *   Total · Moving · Idle · Stopped · Faults · Maintenance due
+ *
+ * Low-fuel moved to DispatchHero with the rest of the live-ops
+ * triage signals.  Owner-as-Fleet sees this same hero (browser is
+ * on fleet.4truck.us, SafetyShell/FleetShell renders based on
+ * subdomain → activeView → shell).
  */
 import { useShellStats } from './useShellStats';
 import HeroChip from './HeroChip';
 
 export default function FleetHero() {
   const { data, isLoading, isError } = useShellStats();
-  if (isError) return null;  // silent — main pages will surface the error
+  if (isError) return <div className="flex-1 min-w-0" />;
   if (isLoading || !data) {
     return (
-      <div className="h-9 bg-muted/20 border-b border-border/60 shrink-0 flex items-center px-4 gap-1.5">
+      <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5">
         <span className="text-[11px] text-muted-foreground/60">Loading fleet status…</span>
       </div>
     );
   }
-  const { fleet, low_fuel, faults, maintenance_due } = data;
+  const { fleet, faults, maintenance_due } = data;
   return (
-    <div className="h-9 bg-muted/20 border-b border-border/60 shrink-0 flex items-center px-4 gap-1.5 overflow-x-auto scrollbar-thin">
+    <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto scrollbar-thin">
       <HeroChip label="Total" value={fleet.total} tone="info" />
       <HeroChip label="Moving" value={fleet.moving} tone="positive" />
       <HeroChip label="Idle" value={fleet.idle} tone="warning" />
       <HeroChip label="Stopped" value={fleet.stopped} tone="neutral" />
-      {low_fuel !== undefined && low_fuel > 0 && (
-        <HeroChip label="Low fuel" value={low_fuel} tone="warning" title="Vehicles below 20% fuel" />
-      )}
       {faults !== undefined && faults > 0 && (
         <HeroChip label="Faults" value={faults} tone="critical" title="Active diagnostic fault codes" />
       )}

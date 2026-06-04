@@ -1,14 +1,20 @@
 """
-Database layer — async SQLite with repository-pattern abstractions.
+Database layer — async Postgres (asyncpg) with repository-pattern abstractions.
 
-Future-proof design:
-  • All SQL lives in this package — swap SQLite → PostgreSQL by
-    replacing the engine, not the callers.
-  • Every public function uses plain dicts / dataclasses — no ORM
+Design
+  • All SQL lives in this package — callers never see asyncpg directly.
+  • Mixins write portable SQLite-style SQL (``?`` placeholders,
+    ``AUTOINCREMENT``, ``INSERT OR IGNORE``, ``datetime('now')``);
+    ``adapters/storage/pg_adapter.py::_sqlite_to_pg_sql`` rewrites them
+    to native Postgres at the asyncpg boundary.  Kept as the project's
+    portable dialect so future engine swaps stay cheap, and so existing
+    mixins didn't need a 60-file rewrite at the SQLite→Postgres cutover.
+  • Every public function returns plain dicts / dataclasses — no ORM
     leakage into bot.py or samsara_client.py.
-  • Schema is versioned via `schema_version` pragma.
-  • All writes go through explicit helper functions (easy to wrap
-    in a transaction / connection-pool later with asyncpg).
+  • Schema is versioned via the ``_schema_versions`` table; migrations
+    register with ``@_register("NNN_name")`` in ``migrations.py``.
+  • All writes go through explicit helper functions (transactions are
+    explicit via ``async with tenant.transaction()``).
 
 Tables
 ------
@@ -38,6 +44,7 @@ from .users import UsersMixin
 from .invites import InvitesMixin
 from .chats import ChatsMixin
 from .forum_routing import ForumRoutingMixin
+from .account_persona_groups import AccountPersonaGroupsMixin
 from .maintenance import MaintenanceMixin
 from .work_orders import WorkOrdersMixin
 from .fuel import FuelMixin
@@ -56,6 +63,7 @@ from .drivers import (
 )
 from .driver_future import (
     DriverInspectionsMixin,
+    PTITemplateMixin,
     DriverTrainingsMixin,
     DriverHosStatusMixin,
 )
@@ -68,6 +76,8 @@ from .scorecard import ScorecardMixin
 from .warehouse import WarehouseMixin
 from .payroll import PayrollMixin
 from .coaching import CoachingMixin
+from .storage_sync import StorageSyncMixin
+from .ai_chat import AIChatHistoryMixin
 from .platform import PlatformDB
 
 
@@ -78,6 +88,7 @@ class Database(
     InvitesMixin,
     ChatsMixin,
     ForumRoutingMixin,
+    AccountPersonaGroupsMixin,
     MaintenanceMixin,
     WorkOrdersMixin,
     FuelMixin,
@@ -93,6 +104,7 @@ class Database(
     DriverVehicleAssignmentsMixin,
     DriverDocumentsMixin,
     DriverInspectionsMixin,
+    PTITemplateMixin,
     DriverTrainingsMixin,
     DriverHosStatusMixin,
     UserCompaniesMixin,
@@ -103,13 +115,15 @@ class Database(
     WarehouseMixin,
     PayrollMixin,
     CoachingMixin,
+    StorageSyncMixin,
+    AIChatHistoryMixin,
     _DatabaseCore,
 ):
-    """Async SQLite wrapper with typed helpers.
+    """Async Postgres wrapper with typed helpers.
 
     Usage:
-        db = Database("data/bot.db")
-        await db.initialize()
+        db = Database()              # reads DATABASE_URL from env
+        await db.initialize()        # runs pending migrations
         ...
         await db.close()
     """

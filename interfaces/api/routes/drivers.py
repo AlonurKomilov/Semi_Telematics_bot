@@ -153,6 +153,11 @@ def _profile_to_dict(p) -> dict:
         "phone":             p.phone,
         "home_address":      p.home_address,
         "driver_notes":      p.driver_notes,
+        # Primary vehicle assignment (denormalised cache from
+        # ``driver_vehicle_assignments``).  PTI's "New Inspection"
+        # picker uses this to pre-fill the vehicle field when a driver
+        # is selected; consumers that don't need it can ignore.
+        "vehicle_name":      getattr(p, "vehicle_name", None),
     }
 
 

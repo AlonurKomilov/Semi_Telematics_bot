@@ -188,9 +188,9 @@
     "no_schedules_employee": "ℹ️ No working hour schedules have been set up yet.\n\nAsk your admin to create schedules.",
     "no_schedules_admin": "ℹ️ No schedules yet.\n\nCreate working hour presets for your team."
   },
-  "auto_reports": {
-    "header": "📋  <b>REPORT SUBSCRIPTIONS</b>",
-    "description": "Schedule automated fleet reports delivered to your Telegram chat.",
+  "scheduled_reports": {
+    "header": "📋  <b>SCHEDULED REPORTS</b>",
+    "description": "Recurring fleet reports delivered on a schedule to your Telegram chat (and optionally your email).",
     "subscribed": "✅ Active: <b>{rtype}</b> · {freq} at {time}",
     "timezone_label": "🕐 Timezone: {tz}",
     "choose_frequency": "Choose a delivery frequency:",
@@ -202,16 +202,16 @@
     "time_local": "(In your local timezone)",
     "delivery_at": "🕐 Delivery at <b>{time}</b>",
     "select_tz": "<b>Select your timezone:</b>",
-    "subscribed_confirm": "✅ Report Subscription scheduled!",
+    "subscribed_confirm": "✅ Schedule saved!",
     "delivery_info": "Report: <b>{rtype}</b> · {freq} at {time}",
     "timezone_info": "Timezone: {tz}",
-    "auto_summary": "You'll receive this report automatically.",
-    "unsubscribed": "🔕 Report Subscription cancelled.",
+    "auto_summary": "You'll receive this report on the schedule above.",
+    "unsubscribed": "🔕 Schedule stopped.",
     "resubscribe": "You can set up a new schedule any time.",
-    "subscribe_title": "📋 <b>{freq} Report Subscription</b>",
-    "unsubscribe": "🔕 Unsubscribe",
+    "subscribe_title": "📋 <b>{freq} Scheduled Report</b>",
+    "unsubscribe": "🔕 Stop schedule",
     "back_reports": "◀️ Reports",
-    "error_content": "📋 <b>Report Subscription</b>\n\n⚠️ Unable to generate report.",
+    "error_content": "📋 <b>Scheduled Report</b>\n\n⚠️ Unable to generate report.",
     "sending": "📋 Generating your scheduled <b>{rtype}</b> report..."
   },
   "welcome": {

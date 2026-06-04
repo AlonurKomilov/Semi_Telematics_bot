@@ -146,14 +146,14 @@ export default function ScorecardRules() {
     try {
       await apiJSON(`/admin/scorecard-rules/${encodeURIComponent(r.id)}`, {
         method: 'PUT',
-        body: JSON.stringify({
+        body: {
           points: d.points,
           cap: d.cap,
           enabled: d.enabled,
           curve_x_zero: d.curve_x_zero,
           curve_x_max:  d.curve_x_max,
           curve_y_max:  d.curve_y_max,
-        }),
+        },
       });
       setDrafts((prev) => { const { [r.id]: _, ...rest } = prev; return rest; });
       load();

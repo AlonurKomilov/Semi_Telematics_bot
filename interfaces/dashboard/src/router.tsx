@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense, type ReactNode } from 'react';
 // Shell selection: instead of a single hardcoded Layout, the router
 // resolves which shell to render based on the active persona via
@@ -70,21 +70,28 @@ const Scorecards       = lazyWithReload(() => import('./pages/driver-scorecards/
 const Events           = lazyWithReload(() => import('./pages/safety-events/Events'));
 const Cameras          = lazyWithReload(() => import('./pages/cameras/Cameras'));
 const Parking          = lazyWithReload(() => import('./pages/parking/Parking'));
+const ReportsLayout    = lazyWithReload(() => import('./pages/reports/ReportsLayout'));
 const Reports          = lazyWithReload(() => import('./pages/reports/Reports'));
-const Subscriptions    = lazyWithReload(() => import('./pages/reports/Subscriptions'));
+const ScheduledReports = lazyWithReload(() => import('./pages/reports/ScheduledReports'));
 const RiskSummary      = lazyWithReload(() => import('./pages/reports/RiskSummary'));
+const DotBinder        = lazyWithReload(() => import('./pages/reports/DotBinder'));
 const FuelCosts        = lazyWithReload(() => import('./pages/costs/FuelCosts'));
 const CostPerMile      = lazyWithReload(() => import('./pages/costs/CostPerMile'));
 const Maintenance      = lazyWithReload(() => import('./pages/maintenance/Tasks'));
 const WorkOrders       = lazyWithReload(() => import('./pages/work-orders/WorkOrders'));
 const WorkOrderForm    = lazyWithReload(() => import('./pages/work-orders/WorkOrderForm'));
-const CostReports      = lazyWithReload(() => import('./pages/work-orders/Reports'));
+const CostReports      = lazyWithReload(() => import('./pages/reports/CostReports'));
+// Inspections page hosts both the submissions list AND the template
+// editor (as tabs) — the editor is fleet's tool, not a separate admin
+// page.  Loaded as a single chunk.
+const Inspections      = lazyWithReload(() => import('./pages/inspections/Inspections'));
 const KnowledgeBase    = lazyWithReload(() => import('./pages/knowledge/KnowledgeBase'));
 const Users            = lazyWithReload(() => import('./pages/admin/Users'));
 const Companies        = lazyWithReload(() => import('./pages/admin/Companies'));
 const AuditLog         = lazyWithReload(() => import('./pages/admin/AuditLog'));
 const Settings         = lazyWithReload(() => import('./pages/admin/Settings'));
 const Profile          = lazyWithReload(() => import('./pages/Profile'));
+const MyNotifications  = lazyWithReload(() => import('./pages/MyNotifications'));
 const Storage          = lazyWithReload(() => import('./pages/admin/Storage'));
 const WorkHours        = lazyWithReload(() => import('./pages/admin/WorkHours'));
 const Invites          = lazyWithReload(() => import('./pages/admin/Invites'));
@@ -150,14 +157,40 @@ export default function AppRouter() {
         <Route path="safety-events" element={L(<P perm={['can_events_all', 'can_events_own']}><Events /></P>)} />
         <Route path="cameras" element={L(<P perm="can_faults"><Cameras /></P>)} />
 
-        {/* AI */}
-        <Route path="ai/chat" element={L(<P perm="can_faults"><AIChat /></P>)} />
-        <Route path="ai/summary" element={L(<P perm="can_faults"><AISummary /></P>)} />
+        {/* AI Assistant — gate aligned with sidebar + backend so any
+            user who sees the link can also load the page.  Any of the
+            three flags grants access: can_faults (faults-Q&A),
+            can_vehicle_all (cross-fleet), can_vehicle_own (driver
+            self-view).  Keeps the AI useful for non-fault personas
+            (HR, Dispatch, Accounting) without inheriting fault data. */}
+        <Route path="ai/chat" element={L(<P perm={['can_faults', 'can_vehicle_all', 'can_vehicle_own']}><AIChat /></P>)} />
+        <Route path="ai/summary" element={L(<P perm={['can_faults', 'can_vehicle_all', 'can_vehicle_own']}><AISummary /></P>)} />
 
-        {/* Reports */}
-        <Route path="reports" element={L(<P perm="can_faults"><Reports /></P>)} />
-        <Route path="reports/subscriptions" element={L(<Subscriptions />)} />
-        <Route path="reports/risk-summary" element={L(<P perm={['can_risk_report_all', 'can_risk_report_own']}><RiskSummary /></P>)} />
+        {/* Reports module — the four sub-pages are nested under one
+            ReportsLayout that owns the shared header + cross-page
+            sub-nav.  The parent route gates on the UNION of child
+            flags so a user with access to ANY sub-page sees the
+            module; per-tab visibility inside the layout filters the
+            sub-nav by the same flags. */}
+        <Route
+          path="reports"
+          element={L(
+            <P perm={[
+              'can_faults', 'can_risk_report_all', 'can_risk_report_own',
+              'can_cost_reports', 'can_digest', 'can_maintenance_all',
+            ]}><ReportsLayout /></P>
+          )}
+        >
+          <Route index             element={L(<P perm="can_faults"><Reports /></P>)} />
+          <Route path="risk-summary"     element={L(<P perm={['can_risk_report_all', 'can_risk_report_own']}><RiskSummary /></P>)} />
+          <Route path="cost-reports"     element={L(<P perm="can_cost_reports"><CostReports /></P>)} />
+          <Route path="dot-binder"        element={L(<P perm="can_maintenance_all"><DotBinder /></P>)} />
+          <Route path="scheduled-reports" element={L(<P perm="can_digest"><ScheduledReports /></P>)} />
+        </Route>
+        {/* Legacy paths — bookmarks/links from before the
+            URL canonicalisation land here and redirect cleanly. */}
+        <Route path="reports/subscriptions" element={<Navigate to="/reports/scheduled-reports" replace />} />
+        <Route path="cost-reports" element={<Navigate to="/reports/cost-reports" replace />} />
 
         {/* Costs */}
         <Route path="costs/fuel" element={L(<P perm="can_fuel_cost"><FuelCosts /></P>)} />
@@ -166,16 +199,21 @@ export default function AppRouter() {
         {/* Maintenance */}
         <Route path="maintenance" element={L(<P perm={['can_maintenance_all', 'can_maintenance_own']}><Maintenance /></P>)} />
 
+        {/* PTI (Pre-Trip Inspections) — fleet review surface.
+            Drivers complete inspections via the Mini App; this page
+            is the dashboard counterpart for the review queue. */}
+        <Route path="inspections" element={L(<P perm="can_inspections_all"><Inspections /></P>)} />
+
         {/* Work Orders — separate module from Maintenance.  Maintenance
             tracks "what needs doing"; Work Orders is "what was done"
             (shop visits, costs, parts, attachments). */}
         <Route path="work-orders"         element={L(<P perm={['can_maintenance_all', 'can_maintenance_own']}><WorkOrders /></P>)} />
         <Route path="work-orders/new"     element={L(<P perm="can_maintenance_all"><WorkOrderForm /></P>)} />
         <Route path="work-orders/:id"     element={L(<P perm={['can_maintenance_all', 'can_maintenance_own']}><WorkOrderForm /></P>)} />
-        {/* Cost Reports — managers only, since aggregate spend data
-            is sensitive and the click-through reveals other trucks'
-            details. */}
-        <Route path="cost-reports"        element={L(<P perm="can_maintenance_all"><CostReports /></P>)} />
+        {/* Cost Reports route lives under /reports/* (see above) since
+            it's a sub-page of the Reports module; this position kept
+            empty intentionally — the legacy /cost-reports redirect
+            handles in-flight bookmarks. */}
 
         {/* Knowledge Base */}
         <Route path="knowledge" element={L(<KnowledgeBase />)} />
@@ -190,9 +228,18 @@ export default function AppRouter() {
         {/* Personal preferences — accessible to every authenticated
             user regardless of role. */}
         <Route path="profile" element={L(<Profile />)} />
+        <Route path="notifications" element={L(<MyNotifications />)} />
         <Route path="admin/storage"  element={L(<P perm="can_manage_account"><Storage /></P>)} />
         <Route path="admin/permissions" element={L(<P perm="can_manage_account"><RolePermissions /></P>)} />
         <Route path="admin/scorecard-rules" element={L(<P perm="can_manage_account"><ScorecardRules /></P>)} />
+        {/* Legacy admin alias — the template editor moved INSIDE the
+            Inspections page (it's a fleet-ops responsibility, not an
+            account setting).  Keep the URL as a redirect so existing
+            bookmarks still work. */}
+        <Route
+          path="admin/inspection-template"
+          element={<Navigate to="/inspections?tab=template" replace />}
+        />
         <Route path="admin/billing" element={L(<P perm="can_manage_billing"><Billing /></P>)} />
         <Route path="payroll" element={L(<P perm="can_payroll_admin"><Payroll /></P>)} />
         <Route path="coaching" element={L(<P perm="can_coaching_admin"><Coaching /></P>)} />

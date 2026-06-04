@@ -7,6 +7,7 @@ import {
   Icon24StatisticsOutline,
   Icon24UserOutline,
   Icon24MessageOutline,
+  Icon24CheckCircleOutline,
 } from '@vkontakte/icons';
 import type { Page } from '../types';
 import { haptics } from '../hooks/useTelegram';
@@ -24,6 +25,8 @@ interface Props {
 const ALL_TABS: { id: Page; labelKey: string; icon: React.ReactNode; permKeys?: string[] }[] = [
   { id: 'map',       labelKey: 'tabs.map',       icon: <Icon24LocationMapOutline /> },
   { id: 'vehicles',  labelKey: 'tabs.vehicles',  icon: <Icon24TruckOutline /> },
+  // PTI tab visible to drivers (own scope) and fleet reviewers (all scope).
+  { id: 'pti',       labelKey: 'tabs.pti',       icon: <Icon24CheckCircleOutline />,  permKeys: ['can_inspections_own', 'can_inspections_all'] },
   { id: 'alerts',    labelKey: 'tabs.alerts',    icon: <Icon24NotificationOutline />, permKeys: ['can_alerts_all', 'can_alerts_own'] },
   { id: 'scorecard', labelKey: 'tabs.scorecard', icon: <Icon24StatisticsOutline />,   permKeys: ['can_scorecard_all', 'can_scorecard_own'] },
   // AI uses the same own-vehicle gate as the dashboard sidebar so drivers

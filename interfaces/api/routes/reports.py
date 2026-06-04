@@ -15,17 +15,9 @@ from capabilities.telemetry.service import (
     get_fleet_efficiency as _svc_fleet_efficiency,
 )
 
-from capabilities.reporting import (
-    generate_fault_report_pdf,
-    generate_fuel_report_pdf,
-    generate_vehicle_health_pdf,
-    generate_fleet_efficiency_pdf,
-)
-from capabilities.reporting.csv_generators import (
-    generate_fault_csv,
-    generate_fuel_csv,
-    generate_health_csv,
-    generate_efficiency_csv,
+from capabilities.reporting.registry import (
+    REPORTS_BY_KEY,
+    keys_with_api_export,
 )
 from capabilities.reporting.transformers import (
     simplify_fault as _simplify_fault,
@@ -164,38 +156,16 @@ async def report_efficiency(
 
 
 # ── Export Endpoints ──────────────────────────────────────────
-
-EXPORT_TYPES = {
-    "faults": {
-        "pdf": generate_fault_report_pdf,
-        "csv": generate_fault_csv,
-        "data_method": "get_fault_codes",
-        "perm": "can_faults",
-    },
-    "fuel": {
-        "pdf": generate_fuel_report_pdf,
-        "csv": generate_fuel_csv,
-        "data_method": "get_fuel_levels",
-        "perm": "can_fuel",
-    },
-    "health": {
-        "pdf": generate_vehicle_health_pdf,
-        "csv": generate_health_csv,
-        "data_method": "get_vehicle_health",
-        "perm": "can_health",
-    },
-    "efficiency": {
-        "pdf": generate_fleet_efficiency_pdf,
-        "csv": generate_efficiency_csv,
-        "data_method": "get_fleet_efficiency",
-        "perm": "can_efficiency",
-    },
-}
+#
+# Report metadata (pdf/csv generators, data method, permission) comes
+# from ``capabilities.reporting.registry`` — the single source of
+# truth shared with the bot scheduler and dashboard.  Add a new
+# exportable report there, not here.
 
 
 @router.get("/export")
 async def export_report(
-    report_type: str = Query(..., description="faults, fuel, health, efficiency"),
+    report_type: str = Query(..., description=f"one of: {', '.join(keys_with_api_export())}"),
     fmt: str = Query("pdf", description="pdf or csv"),
     company: str | None = Query(None),
     days: int = Query(7, ge=1, le=90),
@@ -203,46 +173,56 @@ async def export_report(
 ):
     """Download a report as PDF or CSV file."""
     from fastapi import HTTPException
-    if report_type not in EXPORT_TYPES:
+    spec = REPORTS_BY_KEY.get(report_type)
+    if spec is None or spec.data_method is None:
         raise HTTPException(400, f"Unknown report type: {report_type}")
 
-    cfg = EXPORT_TYPES[report_type]
     # Enforce per-type permission so callers can only export what they can read.
-    type_perm: str = cfg["perm"]  # type: ignore[assignment]
-    if not _can(user["role"], type_perm):
+    if not _can(user["role"], spec.permission):
         raise HTTPException(403, f"Role '{user['role']}' cannot export {report_type} reports")
 
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
 
-    client = await get_client(user["account_id"])
-
-    # Fetch data
-    method_name: str = cfg["data_method"]  # type: ignore[assignment]
-    method = getattr(client, method_name)
-    if report_type == "efficiency":
-        vehicles = await method(days=days, company=company)
-    elif company:
-        vehicles = await method(company=company)
+    # ── PDF path delegates to the shared data_fetch.build_report_pdf
+    #    so the dashboard download and the bot's scheduled delivery
+    #    use the same upstream — eliminates the data drift previously
+    #    audited.  CSV path still uses the API-direct samsara client
+    #    because the bot doesn't have a CSV channel today; folding CSV
+    #    in is a follow-up once we add streaming-CSV support to the
+    #    data_fetch module.
+    if fmt == "pdf":
+        from capabilities.reporting.data_fetch import build_report_pdf
+        buf, _caption, filename_stem = await build_report_pdf(
+            user["account_id"], report_type,
+            company=company, days=days,
+        )
+        if buf is None:
+            from fastapi import HTTPException
+            # Soft failures (e.g. camera with no snapshots) surface here
+            # — the caption slot carries the explanation.
+            raise HTTPException(404, _caption)
+        filename = f"{filename_stem or report_type}.pdf"
+        content_type = "application/pdf"
     else:
-        vehicles = await method()
-
-    vehicles = filter_by_allowed_companies(vehicles, allowed)
-    vehicles = await filter_by_assigned_trucks(vehicles, user)
-
-    # Generate file
-    gen: Any = cfg["pdf"] if fmt == "pdf" else cfg["csv"]
-    if report_type == "efficiency":
-        buf: io.BytesIO = await asyncio.to_thread(gen, vehicles, days, company)
-    else:
-        buf = await asyncio.to_thread(gen, vehicles, company)
-
-    content_type = (
-        "application/pdf" if fmt == "pdf"
-        else "text/csv; charset=utf-8"
-    )
-    ext = "pdf" if fmt == "pdf" else "csv"
-    filename = f"{report_type}_report.{ext}"
+        # CSV path — keep the old direct-samsara flow.
+        client = await get_client(user["account_id"])
+        method = getattr(client, spec.data_method)
+        if report_type == "efficiency":
+            vehicles = await method(days=days, company=company)
+        elif company:
+            vehicles = await method(company=company)
+        else:
+            vehicles = await method()
+        vehicles = filter_by_allowed_companies(vehicles, allowed)
+        vehicles = await filter_by_assigned_trucks(vehicles, user)
+        gen: Any = spec.csv_generator
+        if report_type == "efficiency":
+            buf = await asyncio.to_thread(gen, vehicles, days, company)
+        else:
+            buf = await asyncio.to_thread(gen, vehicles, company)
+        filename = f"{report_type}_report.csv"
+        content_type = "text/csv; charset=utf-8"
 
     return StreamingResponse(
         buf,
@@ -417,3 +397,48 @@ async def report_risk_summary_me(
         media_type=media,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ── Cost Reports aliases ────────────────────────────────────────
+#
+# Cost-rollup endpoints physically live in ``work_orders.py`` (they
+# query the work_orders + parts + tasks tables, which the Maintenance
+# domain owns).  The URLs are aliased here under ``/api/reports/...``
+# so the public surface matches where the Cost Reports page lives
+# conceptually — a sub-page of the Reports module — and the dashboard
+# only needs one prefix to remember.  The /api/work-orders/reports/*
+# URLs remain for a release cycle so any pinned client (older bundle,
+# integration script) doesn't break.
+
+from interfaces.api.routes.work_orders import (
+    report_per_vehicle as _wo_report_per_vehicle,
+    report_per_task_type as _wo_report_per_task_type,
+    report_per_vendor as _wo_report_per_vendor,
+    report_summary as _wo_report_summary,
+    report_monthly_trend as _wo_report_monthly_trend,
+)
+
+router.get("/cost-reports/per-vehicle")(_wo_report_per_vehicle)
+router.get("/cost-reports/per-task-type")(_wo_report_per_task_type)
+router.get("/cost-reports/per-vendor")(_wo_report_per_vendor)
+router.get("/cost-reports/summary")(_wo_report_summary)
+router.get("/cost-reports/monthly-trend")(_wo_report_monthly_trend)
+
+
+# ── DOT Binder alias ────────────────────────────────────────────
+#
+# DOT Binder is a stakeholder-facing compliance PDF — same conceptual
+# shape as Risk Summary, distinct from the operational Maintenance
+# editing surface.  Implementation physically lives in
+# ``maintenance.py`` because it queries the maintenance + work_orders
+# tables that domain owns; the URL is aliased under ``/api/reports/*``
+# so the public surface matches where the dashboard tab lives.  The
+# legacy ``/api/maintenance/dot-binder`` URL stays for a release cycle
+# so any pinned client (older bundle, integration script) doesn't
+# break.
+
+from interfaces.api.routes.maintenance import (
+    export_dot_binder as _mt_export_dot_binder,
+)
+
+router.get("/dot-binder")(_mt_export_dot_binder)

@@ -17,28 +17,7 @@ class StubBillingProvider:
     """No-op billing provider.  No Stripe account or key required."""
 
     async def get_summary(self, account_id: int, db) -> dict:
-        sub = await db.get_or_create_subscription(account_id)
-        extra, amount = BillingMixin.compute_amount_due(
-            vehicle_count=sub["vehicle_count"],
-            base_vehicles=sub["base_vehicles"],
-            monthly_base_cents=sub["monthly_base_usd"],
-            extra_vehicle_cents=sub["extra_vehicle_cents"],
-        )
-        return {
-            "tier":                 sub["tier"],
-            "status":               sub["status"],
-            "vehicle_count":        sub["vehicle_count"],
-            "base_vehicles":        sub["base_vehicles"],
-            "monthly_base_cents":   sub["monthly_base_usd"],
-            "extra_vehicle_cents":  sub["extra_vehicle_cents"],
-            "extra_vehicles":       extra,
-            "amount_due_cents":     amount,
-            "billing_email":        sub["billing_email"],
-            "provider":             "stub",
-            "current_period_start": sub.get("current_period_start"),
-            "current_period_end":   sub.get("current_period_end"),
-            "trial_ends_at":        sub.get("trial_ends_at"),
-        }
+        return await db.get_billing_summary(account_id, provider="stub")
 
     async def get_usage_history(self, account_id: int, db, limit: int = 12) -> list[dict]:
         return await db.get_usage_snapshots(account_id, limit=limit)
@@ -102,3 +81,13 @@ class StubBillingProvider:
 
     async def handle_webhook(self, payload: bytes, sig_header: str, db) -> dict:
         return {"handled": False, "event_type": "stub.noop"}
+
+    async def sync_billing_quantity(self, account_id: int, db) -> dict:
+        """No-op for the stub provider — there's no Stripe to PATCH."""
+        return {"skipped": "stub_provider", "account_id": account_id}
+
+    async def update_billing_email(self, account_id: int, db, email: str) -> dict:
+        """Persist the email locally only; no external system to sync."""
+        await db.get_or_create_subscription(account_id)
+        await db.update_subscription(account_id, billing_email=email)
+        return {"account_id": account_id, "email": email, "synced_to_provider": False}

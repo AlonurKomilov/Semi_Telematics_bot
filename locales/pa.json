@@ -797,7 +797,7 @@
     "csv_caption": "📊 ਘਟਨਾ ਰਿਪੋਰਟ — {company}",
     "csv_exported": "✅ ਘਟਨਾ CSV ਐਕਸਪੋਰਟ ਹੋਈ।"
   },
-  "auto_reports": {
+  "scheduled_reports": {
     "header": "📋  <b>ਰਿਪੋਰਟ ਸਬਸਕ੍ਰਿਪਸ਼ਨਾਂ</b>",
     "description": "ਆਪਣੇ Telegram ਚੈਟ ਵਿੱਚ ਆਟੋਮੈਟਿਕ ਫਲੀਟ ਰਿਪੋਰਟਾਂ ਦਾ ਸਮਾਂ ਨਿਰਧਾਰਤ ਕਰੋ।",
     "subscribed": "✅ ਸਰਗਰਮ: <b>{rtype}</b> · {freq} {time} ਵਜੇ",

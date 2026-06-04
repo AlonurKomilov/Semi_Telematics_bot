@@ -9,9 +9,8 @@ from infra.context import set_tenant_display
 from interfaces.bot.config import SUPPORT_CONTACT
 from interfaces.bot.state import get_platform_db, get_tenant_db
 from interfaces.bot.helpers import _show
-from interfaces.bot.keyboards import system_owner_kb, unregistered_kb, back_kb
+from interfaces.bot.keyboards import unregistered_kb, back_kb
 from capabilities.formatting import (
-    format_system_owner_welcome,
     format_welcome_unregistered,
     format_unregistered_member,
 )
@@ -74,23 +73,21 @@ async def _get_user(update: Update):
 
 def _require_registered(func):
     """Decorator: registered users only. Unregistered → welcome screen.
-    System owners are NOT customers — they get redirected to /admin.
     Also checks that the user's account is still active.
     Verifies account matches the bot instance (per-account isolation).
     Silently ignores unauthorized group chats.
+
+    System owners do NOT get special treatment here — when they chat
+    with the customer-facing login bot they're just an unregistered
+    visitor.  Operator-only commands live on the separate system bot
+    daemon (interfaces/bot/system_app.py) which has its own
+    SYSTEM_OWNER_IDS gating.
     """
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, **kwargs):
         if not await _group_chat_guard(update):
             return  # silently ignore unauthorized group
 
-        user, tid, sys_owner = await _get_user(update)
-
-        # System owner trying to use customer features → hint to /admin
-        if sys_owner and not user:
-            await _show(update, context,
-                        [format_system_owner_welcome()],
-                        keyboard=system_owner_kb())
-            return
+        user, tid, _sys_owner = await _get_user(update)
 
         if not user:
             # Per-account bot: show organization-specific message

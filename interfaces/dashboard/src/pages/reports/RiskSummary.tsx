@@ -1,9 +1,7 @@
 import { useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FileText } from 'lucide-react';
 import { apiFetch, apiJSON } from '../../api/client';
-import { PageHeader } from '../../components/shell';
 
 const AUDIENCES = [
   { value: 'insurance', label: 'Insurance Underwriter' },
@@ -165,12 +163,6 @@ export default function RiskSummary() {
 
   return (
     <div className="max-w-2xl">
-      <PageHeader
-        icon={FileText}
-        title={t('pages.risk_summary_title')}
-        description={t('pages.risk_summary_desc')}
-      />
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium">Subject type</span>

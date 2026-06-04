@@ -7,14 +7,25 @@ import { useRoleView } from '../../context/RoleViewContext';
 import { useAuth } from '../../context/AuthContext';
 import { PageHeader, CardSkeleton } from '../../components/shell';
 
-const ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'driver'] as const;
+// Order mirrors the persona-selector dropdown so the column layout
+// matches what an Owner already sees there.  HR + Accounting were
+// added to ROLE_PERMISSIONS (capabilities/iam/permissions.py) but
+// the frontend column list had drifted; without them an Owner
+// couldn't customize per-account permissions for those two personas
+// even though the backend GET /admin/permissions/roles returned
+// them all along.
+const ROLES = [
+  'owner', 'admin', 'fleet', 'dispatcher', 'safety', 'hr', 'accounting', 'driver',
+] as const;
 
 const ROLE_LABELS: Record<string, string> = {
   owner: 'Owner',
   admin: 'Admin',
   fleet: 'Fleet',
-  safety: 'Safety',
   dispatcher: 'Dispatch',
+  safety: 'Safety',
+  hr: 'HR',
+  accounting: 'Accounting',
   driver: 'Driver',
 };
 
@@ -25,12 +36,26 @@ interface ScopedFlag {
   ownKey: string;
   label: string;
   scoped: true;
+  /** Optional one-line subtitle rendered under the label.  Use when
+   *  the flag gates more than its label suggests (an "overloaded"
+   *  flag — see can_faults, can_manage_users, can_manage_account)
+   *  so an Owner toggling it sees the full blast radius before
+   *  saving. */
+  description?: string;
 }
 
 interface SimpleFlag {
   key: string;
   label: string;
   scoped?: false;
+  /** Optional one-line subtitle. */
+  description?: string;
+  /** Render as a sub-row visually attached to the row immediately
+   *  above — used to express admin/own pairs (admin can edit X /
+   *  owners can view their own X) without inventing a new dual-toggle
+   *  control.  The pair stays as two flags (they're genuinely
+   *  separate operations), but reads as one decision. */
+  indented?: boolean;
 }
 
 type PermFlag = ScopedFlag | SimpleFlag;
@@ -61,11 +86,14 @@ const SCOPE_OPTIONS: { value: ScopeValue; label: string; active: string }[] = [
 // enforcement keeps working.
 const PERM_GROUPS: PermGroup[] = [
   {
-    // Fleet Operations — the day-to-day operational features:
-    // where vehicles are, where they go, what's wrong with them.
-    // Absorbs the old Dispatch group; the old "Fleet" / "Dispatch"
-    // split tracked the role boundary, not the feature boundary.
-    title: 'Fleet Operations',
+    // Operations — day-to-day operational features (where vehicles
+    // are, where they go, what's wrong with them).  Renamed from
+    // "Fleet Operations" so the group title no longer collides with
+    // the "Fleet" role column header — the contents are cross-role
+    // (every working persona touches Live Map / Vehicles / Geofences)
+    // and the prefix was misleading admins into thinking the group
+    // gated Fleet-only access.
+    title: 'Operations',
     icon: '🚛',
     flags: [
       { allKey: 'can_location_map', ownKey: 'can_location_own', label: 'Live Map', scoped: true },
@@ -73,40 +101,69 @@ const PERM_GROUPS: PermGroup[] = [
       { allKey: 'can_route_all',    ownKey: 'can_route_own',    label: 'Routes', scoped: true },
       { allKey: 'can_geofence_all', ownKey: 'can_geofence_own', label: 'Geofences', scoped: true },
       { allKey: 'can_maintenance_all', ownKey: 'can_maintenance_own', label: 'Maintenance & Work Orders', scoped: true },
+      { allKey: 'can_inspections_all', ownKey: 'can_inspections_own', label: 'PTI Inspections', scoped: true },
       { key: 'can_manage_poi_layers', label: 'Manage POI Layers' },
-      { key: 'can_rolling_stopped', label: 'Vehicle Movement Status' },
+      {
+        key: 'can_rolling_stopped',
+        label: 'AI: Engine-state Lookup',
+        description: 'Lets the AI assistant answer "what\'s rolling, idling, or off right now?" — no dashboard page',
+      },
     ],
   },
   {
-    // Safety & Compliance — driver scoring, safety events, alerts.
-    // ``can_alerts_*`` lived under Core previously; it's a safety
-    // feature in the dashboard sidebar (/safety/alerts) so it belongs
-    // here.
-    title: 'Safety & Compliance',
+    // Monitoring & Compliance — driver scoring, safety events, alerts.
+    // Renamed from "Safety & Compliance" so the title no longer
+    // collides with the "Safety" role column header.  The group's
+    // contents are about *ongoing monitoring* (scorecards trend over
+    // time; safety events are real-time incidents; alerts are
+    // notifications about anomalies) — "Monitoring & Compliance"
+    // captures that without using a role name.
+    title: 'Monitoring & Compliance',
     icon: '🛡️',
     flags: [
       { allKey: 'can_scorecard_all', ownKey: 'can_scorecard_own', label: 'Driver Scorecards', scoped: true },
       { allKey: 'can_events_all',    ownKey: 'can_events_own',    label: 'Safety Events', scoped: true },
-      { allKey: 'can_alerts_all',    ownKey: 'can_alerts_own',    label: 'Alerts', scoped: true },
+      {
+        allKey: 'can_alerts_all', ownKey: 'can_alerts_own',
+        label: 'Alerts',
+        scoped: true,
+        description: 'Also gates the Parking page (unsafe-parking events are gated through the alerts flag)',
+      },
     ],
   },
   {
-    // Reports & Costs — anything that's "viewing aggregated data".
-    // Pulled the report flags out of Fleet (faults/health/efficiency/
-    // fuel), the cost flags out of Safety (fuel_cost, cost_per_mile),
-    // and Risk Summary from Safety — they're all reports.
-    title: 'Reports & Costs',
+    // Reports — read-only aggregations from /reports/*.  Previously
+    // bundled with Costs in a single "Reports & Costs" group, but the
+    // two have different route trees and different audiences (Owner
+    // reads reports; Accounting manages costs).
+    title: 'Reports',
     icon: '📊',
     flags: [
-      { key: 'can_faults',     label: 'Faults Report' },
-      { key: 'can_critical',   label: 'Critical Faults Report' },
+      {
+        key: 'can_faults',
+        label: 'Faults Report',
+        description: 'Also gates Cameras page + AI Chat + AI Summary',
+      },
       { key: 'can_health',     label: 'Health Report' },
       { key: 'can_efficiency', label: 'Efficiency Report' },
       { key: 'can_fuel',       label: 'Fuel Report' },
       { allKey: 'can_risk_report_all', ownKey: 'can_risk_report_own', label: 'Risk Summary Report', scoped: true },
-      { key: 'can_digest',       label: 'Auto-Report Subscriptions' },
-      { key: 'can_fuel_cost',    label: 'Fuel Costs' },
+      {
+        key: 'can_digest',
+        label: 'Scheduled Reports',
+        description: 'Lets the user schedule recurring report deliveries (Telegram PDF) at a chosen frequency + local hour',
+      },
+    ],
+  },
+  {
+    // Costs — cost-management pages.  Routed under /costs/* in the
+    // dashboard sidebar; gating belongs to Accounting/Owner audience.
+    title: 'Costs',
+    icon: '💰',
+    flags: [
+      { key: 'can_fuel_cost',     label: 'Fuel Costs' },
       { key: 'can_cost_per_mile', label: 'Cost per Mile' },
+      { key: 'can_cost_reports',  label: 'Cost Reports' },
     ],
   },
   {
@@ -118,11 +175,11 @@ const PERM_GROUPS: PermGroup[] = [
     icon: '🪪',
     flags: [
       { key: 'can_manage_driver_docs', label: 'Manage Driver Documents' },
-      { key: 'can_driver_docs_own',    label: 'View Own Driver Documents' },
+      { key: 'can_driver_docs_own',    label: 'View Own Driver Documents',         indented: true },
       { key: 'can_coaching_admin',     label: 'Manage Coaching Rules & Assignments' },
-      { key: 'can_coaching_view_own',  label: 'View & Acknowledge Own Coaching' },
+      { key: 'can_coaching_view_own',  label: 'View & Acknowledge Own Coaching',   indented: true },
       { key: 'can_payroll_admin',      label: 'Manage Bonus Rules & Payroll Runs' },
-      { key: 'can_payroll_view_own',   label: 'View Own Paystubs' },
+      { key: 'can_payroll_view_own',   label: 'View Own Paystubs',                 indented: true },
     ],
   },
   {
@@ -132,8 +189,16 @@ const PERM_GROUPS: PermGroup[] = [
     title: 'Administration',
     icon: '👥',
     flags: [
-      { key: 'can_manage_account',   label: 'Account Settings' },
-      { key: 'can_manage_users',     label: 'Manage Users' },
+      {
+        key: 'can_manage_account',
+        label: 'Account Settings',
+        description: 'Also gates Role Permissions, Storage, Working Hours, Scorecard Rules',
+      },
+      {
+        key: 'can_manage_users',
+        label: 'Manage Users',
+        description: 'Also gates the Audit Log',
+      },
       { key: 'can_manage_companies', label: 'Manage Companies' },
       { key: 'can_invite',           label: 'Send Invites' },
       { key: 'can_manage_billing',   label: 'Manage Billing & Subscription' },
@@ -509,15 +574,22 @@ export default function RolePermissions() {
                       key={flag.allKey}
                       className="flex items-center justify-between py-1 px-2 rounded hover:bg-muted/50"
                     >
-                      <span className="text-sm flex items-center gap-2">
-                        {flag.label}
-                        {selectedCompany === null && scope !== defScope && !isChanged && (
-                          <span className="text-[10px] text-yellow-500/70 uppercase tracking-wider">custom</span>
+                      <div className="flex flex-col min-w-0 pr-3">
+                        <span className="text-sm flex items-center gap-2">
+                          {flag.label}
+                          {selectedCompany === null && scope !== defScope && !isChanged && (
+                            <span className="text-[10px] text-yellow-500/70 uppercase tracking-wider">custom</span>
+                          )}
+                          {selectedCompany !== null && scope !== acctScope && !isChanged && (
+                            <span className="text-[10px] text-primary/70 uppercase tracking-wider">override</span>
+                          )}
+                        </span>
+                        {flag.description && (
+                          <span className="text-[11px] text-muted-foreground mt-0.5">
+                            {flag.description}
+                          </span>
                         )}
-                        {selectedCompany !== null && scope !== acctScope && !isChanged && (
-                          <span className="text-[10px] text-primary/70 uppercase tracking-wider">override</span>
-                        )}
-                      </span>
+                      </div>
                       <div className="flex rounded-lg overflow-hidden border border-border">
                         {SCOPE_OPTIONS.map((opt) => (
                           <button
@@ -542,17 +614,26 @@ export default function RolePermissions() {
                 return (
                   <label
                     key={flag.key}
-                    className="flex items-center justify-between py-1 px-2 rounded hover:bg-muted/50 cursor-pointer group"
+                    className={`flex items-center justify-between py-1 px-2 rounded hover:bg-muted/50 cursor-pointer group ${
+                      flag.indented ? 'ml-5 border-l-2 border-border/40 pl-3 -mt-1' : ''
+                    }`}
                   >
-                    <span className="text-sm flex items-center gap-2">
-                      {flag.label}
-                      {selectedCompany === null && enabled !== isDefault && !isChanged && (
-                        <span className="text-[10px] text-yellow-500/70 uppercase tracking-wider">custom</span>
+                    <div className="flex flex-col min-w-0 pr-3">
+                      <span className="text-sm flex items-center gap-2">
+                        {flag.label}
+                        {selectedCompany === null && enabled !== isDefault && !isChanged && (
+                          <span className="text-[10px] text-yellow-500/70 uppercase tracking-wider">custom</span>
+                        )}
+                        {selectedCompany !== null && differsFromAccountWide && !isChanged && (
+                          <span className="text-[10px] text-primary/70 uppercase tracking-wider">override</span>
+                        )}
+                      </span>
+                      {flag.description && (
+                        <span className="text-[11px] text-muted-foreground mt-0.5">
+                          {flag.description}
+                        </span>
                       )}
-                      {selectedCompany !== null && differsFromAccountWide && !isChanged && (
-                        <span className="text-[10px] text-primary/70 uppercase tracking-wider">override</span>
-                      )}
-                    </span>
+                    </div>
                     <div className="relative">
                       <input
                         type="checkbox"

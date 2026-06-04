@@ -138,9 +138,18 @@ async def create_tables(conn) -> None:
             send_hour   INTEGER NOT NULL DEFAULT 7,
             timezone    TEXT    NOT NULL DEFAULT 'UTC',
             report_type TEXT    NOT NULL DEFAULT 'faults',
+            -- Comma-separated list of delivery channels: 'telegram',
+            -- 'email', or both ('telegram,email').  Default preserves
+            -- pre-2026-06 behaviour for existing subscribers.  Email
+            -- delivery additionally requires users.email_verified=1.
+            delivery_channels TEXT NOT NULL DEFAULT 'telegram',
             is_active   INTEGER NOT NULL DEFAULT 1,
             created_at  TEXT    NOT NULL,
-            UNIQUE(user_id)
+            -- Multi-schedule: one row per (user, report_type) so a user
+            -- can stack Faults Daily + Fuel Weekly + Health Monthly
+            -- independently.  Pre-2026-06 the constraint was
+            -- UNIQUE(user_id) which capped each user at one row.
+            UNIQUE(user_id, report_type)
         );
 
         CREATE INDEX IF NOT EXISTS idx_users_telegram_id

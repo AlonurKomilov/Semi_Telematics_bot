@@ -152,6 +152,12 @@ async def create_tables(conn) -> None:
             created_at TEXT    NOT NULL,
             PRIMARY KEY (article_id, user_id)
         );
+        CREATE TABLE IF NOT EXISTS knowledge_bookmarks (
+            article_id INTEGER NOT NULL,
+            user_id    INTEGER NOT NULL,
+            created_at TEXT    NOT NULL,
+            PRIMARY KEY (article_id, user_id)
+        );
         CREATE INDEX IF NOT EXISTS idx_kb_account_cat
             ON knowledge_base(account_id, category);
         CREATE INDEX IF NOT EXISTS idx_kb_pinned

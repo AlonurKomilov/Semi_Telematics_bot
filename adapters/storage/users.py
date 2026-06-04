@@ -467,6 +467,10 @@ class UsersMixin:
                    "alert_faults", "alert_health", "alert_fuel", "alert_geofence",
                    "alert_events", "alert_parking",
                    "alert_camera",
+                   # Per-user "🟢 RESOLVED" DM-receipt toggle (migration 080).
+                   # Defaults to 0 on new users; the dashboard "My
+                   # Notifications" page is the canonical edit surface.
+                   "alert_resolve_receipts",
                    "ai_fault", "ai_health", "ai_fuel", "ai_events", "ai_parking",
                    "quiet_start", "quiet_end", "timezone", "display_name",
                    "language", "samsara_driver_id"}
@@ -528,10 +532,31 @@ class UsersMixin:
     ) -> list[User]:
         """Users subscribed to a specific alert type for an account.
 
-        alert_type: 'faults', 'health', 'fuel', 'geofence', or 'events'
+        alert_type: 'faults', 'health', 'fuel', 'geofence', 'events',
+        'parking', 'camera', or 'maintenance'.
+
+        Two-tier gate:
+          1. Personal toggle: ``users.alert_{type} = 1`` AND
+             ``alerts_on = 1`` AND ``is_active = 1``.
+          2. Role-relevance: the user's role must have permission to
+             receive this alert type at all (see
+             ``capabilities/alerting/relevance.py``).  Without the
+             role gate the bot UI would lie — a Safety user with a
+             stale ``alert_fuel = 1`` from before role-filtering would
+             keep receiving fuel alerts even though the toggle is
+             hidden from them.  This implements "option B" from the
+             alert-config design discussion.
         """
         col = f"alert_{alert_type}"
-        if col not in ("alert_faults", "alert_health", "alert_fuel", "alert_geofence", "alert_events", "alert_parking", "alert_camera"):
+        if col not in (
+            "alert_faults", "alert_health", "alert_fuel", "alert_geofence",
+            "alert_events", "alert_parking", "alert_camera",
+        ):
+            # ``maintenance`` doesn't have a dedicated personal toggle
+            # column yet — it currently broadcasts to every user with
+            # the maintenance permission.  Future extension: add
+            # ``alert_maintenance`` column + a row in the same
+            # allow-list.
             return []
         cur = await self._db.execute(
             f"SELECT * FROM users WHERE account_id = ? AND alerts_on = 1"
@@ -539,7 +564,13 @@ class UsersMixin:
             (account_id,),
         )
         rows = await cur.fetchall()
-        return [self._row_to_user(r) for r in rows]
+        users = [self._row_to_user(r) for r in rows]
+
+        # Role-relevance filter — see docstring.  Local import keeps
+        # the heavyweight ``capabilities`` package out of this storage
+        # module's import graph on cold start.
+        from capabilities.alerting.relevance import role_can_receive_alert
+        return [u for u in users if role_can_receive_alert(u.role, alert_type)]
 
     async def get_all_typed_subscribers(self, alert_type: str) -> list[User]:
         """All users subscribed to a specific alert type (across all accounts)."""

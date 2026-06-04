@@ -47,7 +47,7 @@ class TestRolePermissions:
         assert can(Role.ADMIN, "can_invite")
 
     def test_admin_has_all_fleet_features(self):
-        for feat in ("can_faults", "can_critical", "can_fuel", "can_vehicle_all"):
+        for feat in ("can_faults", "can_fuel", "can_vehicle_all"):
             assert can(Role.ADMIN, feat), f"Admin should have {feat}"
 
     # ── Fleet Manager: no management ──────────────────────────────
@@ -57,7 +57,7 @@ class TestRolePermissions:
             assert not can(Role.FLEET, feat), f"Fleet should NOT have {feat}"
 
     def test_fleet_has_fleet_features(self):
-        for feat in ("can_faults", "can_critical", "can_fuel", "can_vehicle_all",
+        for feat in ("can_faults", "can_fuel", "can_vehicle_all",
                       "can_maintenance_all", "can_scorecard_all"):
             assert can(Role.FLEET, feat), f"Fleet should have {feat}"
 
@@ -65,7 +65,6 @@ class TestRolePermissions:
 
     def test_dispatcher_no_faults(self):
         assert not can(Role.DISPATCHER, "can_faults")
-        assert not can(Role.DISPATCHER, "can_critical")
 
     def test_dispatcher_has_fuel_and_location(self):
         assert can(Role.DISPATCHER, "can_fuel")
@@ -91,7 +90,7 @@ class TestRolePermissions:
         assert not can(Role.DRIVER, "can_alerts_all")
 
     def test_driver_no_fleet_reports(self):
-        for feat in ("can_faults", "can_critical", "can_fuel"):
+        for feat in ("can_faults", "can_fuel"):
             assert not can(Role.DRIVER, feat)
 
     def test_driver_no_management(self):

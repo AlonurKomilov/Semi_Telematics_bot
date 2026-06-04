@@ -1,0 +1,144 @@
+{
+  "annotations": {"list": []},
+  "title": "4truck — Operational Overview",
+  "uid": "4truck-overview",
+  "version": 1,
+  "schemaVersion": 39,
+  "description": "Phase 6 — single-pane view of API, cache, Samsara, and ARQ. Import via Grafana → Dashboards → Import → upload JSON. Datasource UID must match your Prometheus datasource (default: `prometheus`).",
+  "tags": ["4truck", "phase6"],
+  "refresh": "30s",
+  "time": {"from": "now-1h", "to": "now"},
+  "timepicker": {"refresh_intervals": ["10s", "30s", "1m", "5m", "15m"]},
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {"text": "Prometheus", "value": "prometheus"}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "API — request rate (RPS) by route",
+      "id": 1, "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "sum by (handler) (rate(http_requests_total{handler!~\"/metrics|/api/health\"}[1m]))",
+          "legendFormat": "{{handler}}"
+        }
+      ]
+    },
+    {
+      "title": "API — p50 / p95 / p99 latency",
+      "id": 2, "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {"expr": "histogram_quantile(0.5, sum by (le) (rate(http_request_duration_seconds_bucket[1m])))", "legendFormat": "p50"},
+        {"expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[1m])))", "legendFormat": "p95"},
+        {"expr": "histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[1m])))", "legendFormat": "p99"}
+      ]
+    },
+    {
+      "title": "API — error rate (5xx %)",
+      "id": 3, "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "100 * sum(rate(http_requests_total{status=~\"5..\", handler!~\"/metrics|/api/health\"}[5m])) / sum(rate(http_requests_total{handler!~\"/metrics|/api/health\"}[5m]))",
+          "legendFormat": "5xx %"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "percent", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}}
+    },
+    {
+      "title": "Samsara — request rate by endpoint",
+      "id": 4, "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "targets": [
+        {
+          "expr": "sum by (endpoint) (rate(samsara_requests_total[1m]))",
+          "legendFormat": "{{endpoint}}"
+        }
+      ]
+    },
+    {
+      "title": "Samsara — p95 latency by endpoint",
+      "id": 5, "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, endpoint) (rate(samsara_request_seconds_bucket[5m])))",
+          "legendFormat": "{{endpoint}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}}
+    },
+    {
+      "title": "Cache — fresh / stale / miss / computed",
+      "id": 6, "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(cache_get_or_compute_total[1m]))",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "title": "Cache — single-flight collapses (1m)",
+      "id": 7, "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 20},
+      "targets": [
+        {"expr": "sum(rate(cache_single_flight_collapsed_total[1m]))", "legendFormat": "collapsed/sec"}
+      ]
+    },
+    {
+      "title": "ARQ — queue depth",
+      "id": 8, "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 20},
+      "targets": [
+        {"expr": "arq_queue_depth", "legendFormat": "{{queue}}"}
+      ]
+    },
+    {
+      "title": "Scoring — stage breakdown (p95)",
+      "id": 9, "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate(scorecard_stage_seconds_bucket[5m])))",
+          "legendFormat": "{{stage}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}}
+    },
+    {
+      "title": "ARQ — job duration p95 + failure rate",
+      "id": 10, "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, function) (rate(arq_job_seconds_bucket[5m])))",
+          "legendFormat": "{{function}} p95"
+        },
+        {
+          "expr": "100 * sum by (function) (rate(arq_job_seconds_count{status=\"failed\"}[5m])) / sum by (function) (rate(arq_job_seconds_count[5m]))",
+          "legendFormat": "{{function}} failure %"
+        }
+      ]
+    }
+  ]
+}

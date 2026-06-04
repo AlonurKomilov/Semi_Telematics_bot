@@ -12,12 +12,23 @@ const SHORT_REFRESH_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
 /** Refresh window for long (~30-day) tokens. */
 const LONG_REFRESH_THRESHOLD_MS  = 7 * 24 * 60 * 60 * 1000; // 7 days
 
-function decodeJwtPayload(token: string): { exp?: number; remember?: boolean } | null {
+function decodeJwtPayload(token: string): { exp?: number; remember?: boolean; jti?: string } | null {
   try {
     return JSON.parse(atob(token.split('.')[1]));
   } catch {
     return null;
   }
+}
+
+/** A token minted before the ``jti`` rollout has no ``jti`` claim and
+ *  therefore no row in ``user_sessions``.  Treat it as "needs refresh"
+ *  on the next page load so the API can backfill a session row via
+ *  ``refresh_token`` — without this hop, an existing logged-in user
+ *  sees an empty "Active sessions" panel until their long token
+ *  naturally enters the refresh window (up to 23 days). */
+function tokenLacksJti(token: string): boolean {
+  const payload = decodeJwtPayload(token);
+  return !!payload && !payload.jti;
 }
 
 function getTokenExpiry(token: string): number | null {
@@ -67,6 +78,8 @@ const ROLE_TO_HOST: Record<string, string> = {
   fleet: `fleet.${APEX_DOMAIN}`,
   dispatcher: `dispatch.${APEX_DOMAIN}`,
   safety: `safety.${APEX_DOMAIN}`,
+  hr: `hr.${APEX_DOMAIN}`,
+  accounting: `accounting.${APEX_DOMAIN}`,
   driver: `dash.${APEX_DOMAIN}`,
 };
 
@@ -118,7 +131,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const exp = getTokenExpiry(token);
     if (!exp) return;
     const remaining = exp - Date.now();
-    if (remaining > refreshThresholdFor(token)) return;
+    // Two reasons to refresh:
+    //   1. Token is close to expiring (normal proactive refresh).
+    //   2. Token predates the ``jti`` rollout — one-time hop so the
+    //      API can backfill a ``user_sessions`` row.  After this
+    //      refresh the new token has a jti and this branch never
+    //      fires for it again.
+    const closeToExpiry = remaining <= refreshThresholdFor(token);
+    const needsJtiBackfill = tokenLacksJti(token);
+    if (!closeToExpiry && !needsJtiBackfill) return;
     try {
       const res = await apiJSON<AuthResponse>('/auth/refresh', { method: 'POST' });
       // Preserve the same storage (persistent vs session-only)

@@ -99,6 +99,13 @@ class User:
     alert_camera: bool = True   # Camera alerts
     alert_parking: bool = True  # Unsafe parking alerts
     ai_parking: bool = False    # Proactive AI on parking alerts
+    # Per-user "🟢 RESOLVED" DM-receipt toggle.  Default off (opt-in)
+    # — existing users don't get hit by a flood of receipts after the
+    # migration lands; each user enables their own via the dashboard
+    # "My Notifications" page (avatar menu).  Group-topic receipts are
+    # governed by a parallel ``alert_routing.send_resolve_receipt``
+    # column controlled by admins on the Account Settings page.
+    alert_resolve_receipts: bool = False
     quiet_start: Optional[int] = None   # DND start hour (0-23)
     quiet_end: Optional[int] = None     # DND end hour (0-23)
     timezone: str = "America/New_York"
@@ -251,8 +258,14 @@ class AlertRoute:
     topic_name_snapshot: str   # name at provisioning time (drift detection)
     icon_emoji: str            # default icon used when created
     is_active: bool            # soft-disable without delete
-    created_at: str
-    updated_at: str
+    # Per-topic "🟢 RESOLVED" auto-resolve receipt toggle.  When False
+    # the auto-resolve pipeline still flips the underlying alert_history
+    # row to resolved (dashboard monitoring view stays accurate) but
+    # skips posting the receipt to this topic.  Defaults to True on
+    # legacy rows via migration 079; admin flips via ForumRoutingSection.
+    send_resolve_receipt: bool = True
+    created_at: str = ""
+    updated_at: str = ""
 
 
 @dataclass

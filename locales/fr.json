@@ -797,7 +797,7 @@
     "csv_caption": "📊 Rapport d'événements — {company}",
     "csv_exported": "✅ CSV des événements exporté."
   },
-  "auto_reports": {
+  "scheduled_reports": {
     "header": "📋  <b>ABONNEMENTS AUX RAPPORTS</b>",
     "description": "Planifiez des rapports de flotte automatiques livrés sur Telegram.",
     "subscribed": "✅ Actif : <b>{rtype}</b> · {freq} à {time}",

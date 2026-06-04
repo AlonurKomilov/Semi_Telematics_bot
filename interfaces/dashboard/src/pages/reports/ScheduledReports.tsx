@@ -1,23 +1,22 @@
-import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Mail } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Mail, MessageSquare, Plus, Trash2, Pencil, X } from 'lucide-react';
 import { apiJSON } from '../../api/client';
-import { PageHeader, CardSkeleton, ErrorState } from '../../components/shell';
-import type { Subscription } from '../../types';
+import { CardSkeleton, ErrorState } from '../../components/shell';
+import type { ScheduledReport } from '../../types';
 import { TIMEZONE_OPTIONS, timezoneLabelWithTime } from '../../utils/timezones';
 import { useNow } from '../../hooks/useNow';
+import { useAuth } from '../../context/AuthContext';
+import { REPORTS, type ReportKey } from '../../data/reports';
 
-const REPORT_TYPES: Record<string, string> = {
-  faults: '🔧 Faults',
-  fuel: '⛽ Fuel & DEF',
-  health: '🏥 Vehicle Health',
-  efficiency: '📊 Efficiency',
-  camera: '📷 Cameras',
-};
+const REPORT_LABEL: Record<string, string> = Object.fromEntries(
+  REPORTS.map((r) => [r.key, `${r.emoji} ${r.labelFull}`]),
+);
 
 const FREQUENCIES = ['daily', 'weekly', 'monthly'] as const;
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
+
+type Channel = 'telegram' | 'email';
 
 function fmtHour(h: number) {
   if (h === 0) return '12:00 AM';
@@ -25,35 +24,308 @@ function fmtHour(h: number) {
   return h < 12 ? `${h}:00 AM` : `${h - 12}:00 PM`;
 }
 
+function parseChannels(raw: string | undefined): Channel[] {
+  if (!raw) return ['telegram'];
+  const out: Channel[] = [];
+  for (const c of raw.split(',')) {
+    const v = c.trim().toLowerCase();
+    if ((v === 'telegram' || v === 'email') && !out.includes(v)) {
+      out.push(v);
+    }
+  }
+  return out.length ? out : ['telegram'];
+}
 
-export default function Subscriptions() {
-  const { t } = useTranslation();
+function channelLabel(raw: string | undefined) {
+  return parseChannels(raw).map((c) => (c === 'telegram' ? '📱 Telegram' : '📧 Email')).join(' + ');
+}
+
+
+// ── List view: per-schedule row ──────────────────────────────────
+
+function ScheduleRow({
+  row, onEdit, onDelete,
+}: {
+  row: ScheduledReport;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between bg-muted rounded-lg p-3 border border-border">
+      <div className="min-w-0">
+        <div className="text-sm font-medium text-foreground">
+          {REPORT_LABEL[row.report_type] || row.report_type}
+        </div>
+        <div className="text-xs text-muted-foreground mt-0.5">
+          {row.frequency} at {fmtHour(row.send_hour)} ({row.timezone})
+        </div>
+        <div className="text-xs text-muted-foreground mt-0.5">
+          {channelLabel(row.delivery_channels)}
+        </div>
+      </div>
+      <div className="flex gap-2 ml-3">
+        <button
+          onClick={onEdit}
+          className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded"
+          title="Edit"
+        >
+          <Pencil size={16} />
+        </button>
+        <button
+          onClick={onDelete}
+          className="p-2 text-destructive hover:text-destructive/80 transition-colors rounded"
+          title="Stop"
+        >
+          <Trash2 size={16} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+// ── Editor: shared by Add + Edit flows ──────────────────────────
+
+interface EditorState {
+  reportType: string;
+  frequency: string;
+  sendHour: number;
+  timezone: string;
+  channels: Channel[];
+  // Locks reportType when editing an existing row — schedule rows are
+  // keyed on (user_id, report_type) so changing report_type would
+  // collide with another row.  Add mode lets the user pick freely.
+  reportTypeLocked: boolean;
+}
+
+function ScheduleEditor({
+  initial, existingTypes, telegramEligible, emailEligible,
+  emailHint, telegramHint, now, onCancel, onSave, saving,
+}: {
+  initial: EditorState;
+  existingTypes: Set<string>;
+  telegramEligible: boolean;
+  emailEligible: boolean;
+  emailHint: string;
+  telegramHint: string;
+  now: Date;
+  onCancel: () => void;
+  onSave: (s: EditorState) => void;
+  saving: boolean;
+}) {
+  const [reportType, setReportType] = useState(initial.reportType);
+  const [frequency, setFrequency] = useState(initial.frequency);
+  const [sendHour, setSendHour] = useState(initial.sendHour);
+  const [timezone, setTimezone] = useState(initial.timezone);
+  const [channels, setChannels] = useState<Channel[]>(initial.channels);
+
+  function toggleChannel(c: Channel) {
+    setChannels((prev) => {
+      if (prev.includes(c)) {
+        if (prev.length === 1) return prev;
+        return prev.filter((x) => x !== c);
+      }
+      return [...prev, c];
+    });
+  }
+
+  // In Add mode, hide report types that already have a schedule —
+  // saving a duplicate would silently overwrite the existing one (the
+  // backend ON CONFLICT clause).  Edit mode keeps the current type
+  // visible (it's the user's current row).
+  const availableTypes = REPORTS.filter((r) => {
+    if (initial.reportTypeLocked) return r.key === reportType;
+    return !existingTypes.has(r.key) || r.key === reportType;
+  });
+
+  const submitDisabled = saving
+    || (channels.includes('email') && !emailEligible)
+    || (channels.includes('telegram') && !telegramEligible)
+    || availableTypes.length === 0;
+
+  return (
+    <div className="space-y-4 bg-card border border-border rounded-lg p-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-foreground">
+          {initial.reportTypeLocked ? 'Edit schedule' : 'New schedule'}
+        </h3>
+        <button onClick={onCancel} className="text-muted-foreground hover:text-foreground">
+          <X size={18} />
+        </button>
+      </div>
+
+      <div>
+        <label className="block text-sm text-muted-foreground mb-1">Report Type</label>
+        <div className="grid grid-cols-2 gap-2">
+          {availableTypes.map((r) => (
+            <button
+              key={r.key}
+              type="button"
+              onClick={() => setReportType(r.key as ReportKey)}
+              disabled={initial.reportTypeLocked}
+              className={`px-3 py-2 rounded-lg text-sm text-left transition-colors border ${
+                reportType === r.key
+                  ? 'bg-primary/15 border-primary text-primary'
+                  : 'bg-muted border-border text-muted-foreground hover:text-foreground'
+              } ${initial.reportTypeLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
+            >
+              {r.emoji} {r.labelFull}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm text-muted-foreground mb-1">Frequency</label>
+        <div className="flex gap-2">
+          {FREQUENCIES.map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setFrequency(f)}
+              className={`px-4 py-2 rounded-lg text-sm capitalize transition-colors border ${
+                frequency === f
+                  ? 'bg-primary/15 border-primary text-primary'
+                  : 'bg-muted border-border text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex gap-4">
+        <div className="flex-1">
+          <label className="block text-sm text-muted-foreground mb-1">Delivery Hour</label>
+          <select
+            value={sendHour} onChange={(e) => setSendHour(+e.target.value)}
+            className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border"
+          >
+            {HOURS.map((h) => <option key={h} value={h}>{fmtHour(h)}</option>)}
+          </select>
+        </div>
+        <div className="flex-1">
+          <label className="block text-sm text-muted-foreground mb-1">Timezone</label>
+          <select
+            value={timezone} onChange={(e) => setTimezone(e.target.value)}
+            className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border"
+          >
+            {TIMEZONE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {timezoneLabelWithTime(o.value, now)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm text-muted-foreground mb-1">Deliver via</label>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => telegramEligible && toggleChannel('telegram')}
+            disabled={!telegramEligible}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
+              channels.includes('telegram')
+                ? 'bg-primary/15 border-primary text-primary'
+                : 'bg-muted border-border text-muted-foreground hover:text-foreground'
+            } ${!telegramEligible ? 'opacity-40 cursor-not-allowed' : ''}`}
+          >
+            <MessageSquare size={16} />
+            Telegram
+          </button>
+          <button
+            type="button"
+            onClick={() => emailEligible && toggleChannel('email')}
+            disabled={!emailEligible}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
+              channels.includes('email')
+                ? 'bg-primary/15 border-primary text-primary'
+                : 'bg-muted border-border text-muted-foreground hover:text-foreground'
+            } ${!emailEligible ? 'opacity-40 cursor-not-allowed' : ''}`}
+          >
+            <Mail size={16} />
+            Email
+          </button>
+        </div>
+        {(telegramHint || emailHint) && (
+          <p className="text-xs text-muted-foreground mt-1.5">
+            {telegramHint && <span className="block">📱 {telegramHint}</span>}
+            {emailHint && <span className="block">📧 {emailHint}</span>}
+          </p>
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          onClick={onCancel}
+          className="flex-1 py-2 rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground text-sm transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => onSave({ reportType, frequency, sendHour, timezone, channels, reportTypeLocked: initial.reportTypeLocked })}
+          disabled={submitDisabled}
+          className="flex-1 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-sm transition-colors disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : initial.reportTypeLocked ? 'Update Schedule' : 'Save Schedule'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+// ── Page ─────────────────────────────────────────────────────────
+
+export default function ScheduledReports() {
+  const { user } = useAuth();
   // Ticks every minute so the "current time in zone X" suffix in the
   // timezone picker stays fresh while the page is open.
   const now = useNow();
-  const [sub, setSub] = useState<Subscription | null>(null);
+  const [rows, setRows] = useState<ScheduledReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  // Editor state: ``null`` = no editor open; otherwise the EditorState
+  // (with ``reportTypeLocked`` distinguishing Add from Edit mode).
+  const [editor, setEditor] = useState<EditorState | null>(null);
 
-  // Form
-  const [frequency, setFrequency] = useState('daily');
-  const [reportType, setReportType] = useState('faults');
-  const [sendHour, setSendHour] = useState(7);
-  const [timezone, setTimezone] = useState('America/New_York');
+  const emailEligible = useMemo(
+    () => Boolean(user?.email && user?.email_verified),
+    [user?.email, user?.email_verified],
+  );
+  const emailHint = useMemo(() => {
+    if (!user?.email) return 'Add an email to your profile to enable email delivery';
+    if (!user?.email_verified) return 'Verify your email to enable email delivery';
+    return '';
+  }, [user?.email, user?.email_verified]);
+  const telegramEligible = Boolean(user?.telegram_id);
+  const telegramHint = telegramEligible
+    ? ''
+    : 'Link your Telegram account to enable Telegram delivery';
+
+  const existingTypes = useMemo(
+    () => new Set(rows.map((r) => r.report_type)),
+    [rows],
+  );
+
+  // First available report type to pre-select when opening Add mode.
+  const firstAvailableType = useMemo(() => {
+    const first = REPORTS.find((r) => !existingTypes.has(r.key));
+    return first?.key ?? 'faults';
+  }, [existingTypes]);
+
+  const canAddMore = REPORTS.some((r) => !existingTypes.has(r.key));
 
   async function load() {
     setLoading(true);
     try {
-      const d = await apiJSON<{ subscription: Subscription | null }>('/user/subscriptions');
-      setSub(d.subscription);
-      if (d.subscription) {
-        setFrequency(d.subscription.frequency);
-        setReportType(d.subscription.report_type);
-        setSendHour(d.subscription.send_hour);
-        setTimezone(d.subscription.timezone);
-      }
+      const d = await apiJSON<{ scheduled_reports: ScheduledReport[] }>('/user/scheduled-reports');
+      setRows(d.scheduled_reports || []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
@@ -63,17 +335,46 @@ export default function Subscriptions() {
 
   useEffect(() => { load(); }, []);
 
-  async function save() {
-    setSaving(true);
-    setError('');
-    setSuccess('');
+  function openAdd() {
+    setError(''); setSuccess('');
+    setEditor({
+      reportType: firstAvailableType,
+      frequency: 'daily',
+      sendHour: 7,
+      timezone: user?.effective_timezone || 'America/New_York',
+      channels: telegramEligible ? ['telegram'] : (emailEligible ? ['email'] : ['telegram']),
+      reportTypeLocked: false,
+    });
+  }
+
+  function openEdit(row: ScheduledReport) {
+    setError(''); setSuccess('');
+    setEditor({
+      reportType: row.report_type,
+      frequency: row.frequency,
+      sendHour: row.send_hour,
+      timezone: row.timezone,
+      channels: parseChannels(row.delivery_channels),
+      reportTypeLocked: true,
+    });
+  }
+
+  async function handleSave(s: EditorState) {
+    setSaving(true); setError(''); setSuccess('');
     try {
-      await apiJSON('/user/subscriptions', {
+      const d = await apiJSON<{ scheduled_reports: ScheduledReport[] }>('/user/scheduled-reports', {
         method: 'PUT',
-        body: { frequency, report_type: reportType, send_hour: sendHour, timezone },
+        body: {
+          frequency: s.frequency,
+          report_type: s.reportType,
+          send_hour: s.sendHour,
+          timezone: s.timezone,
+          delivery_channels: s.channels,
+        },
       });
-      setSuccess('Subscription saved!');
-      await load();
+      setRows(d.scheduled_reports || []);
+      setSuccess('Schedule saved!');
+      setEditor(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed');
     } finally {
@@ -81,12 +382,15 @@ export default function Subscriptions() {
     }
   }
 
-  async function unsubscribe() {
-    if (!confirm('Unsubscribe from report subscriptions?')) return;
+  async function handleDelete(row: ScheduledReport) {
+    if (!confirm(`Stop the ${REPORT_LABEL[row.report_type] || row.report_type} schedule?`)) return;
+    setError(''); setSuccess('');
     try {
-      await apiJSON('/user/subscriptions', { method: 'DELETE' });
-      setSub(null);
-      setSuccess('Unsubscribed');
+      await apiJSON(`/user/scheduled-reports?report_type=${encodeURIComponent(row.report_type)}`, {
+        method: 'DELETE',
+      });
+      setSuccess('Schedule stopped');
+      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed');
     }
@@ -95,11 +399,6 @@ export default function Subscriptions() {
   if (loading) {
     return (
       <div className="max-w-xl">
-        <PageHeader
-          icon={Mail}
-          title={t('pages.subscriptions_title')}
-          description={t('pages.subscriptions_desc')}
-        />
         <CardSkeleton height="h-48" />
       </div>
     );
@@ -107,93 +406,54 @@ export default function Subscriptions() {
 
   return (
     <div className="max-w-xl">
-      <PageHeader
-        icon={Mail}
-        title={t('pages.subscriptions_title')}
-        description={t('pages.subscriptions_desc')}
-      />
-
       {error && <div className="mb-3"><ErrorState message={error} /></div>}
       {success && <p className="text-green-600 dark:text-green-400 text-sm mb-3">{success}</p>}
 
-      {sub && (
-        <div className="bg-muted rounded-lg p-4 mb-6 flex items-center justify-between">
-          <div>
-            <p className="text-sm text-foreground/80">
-              Currently subscribed: <span className="font-medium text-foreground">{REPORT_TYPES[sub.report_type] || sub.report_type}</span>{' '}
-              — {sub.frequency} at {fmtHour(sub.send_hour)} ({sub.timezone})
-            </p>
+      <div className="space-y-2 mb-4">
+        {rows.length === 0 && !editor && (
+          <div className="bg-muted/50 border border-border rounded-lg p-6 text-center text-sm text-muted-foreground">
+            No scheduled reports yet — add one to start receiving recurring deliveries.
           </div>
-          <button onClick={unsubscribe} className="text-destructive hover:text-destructive/80 text-sm">Unsubscribe</button>
-        </div>
+        )}
+        {rows.map((row) => (
+          <ScheduleRow
+            key={`${row.report_type}-${row.id ?? row.report_type}`}
+            row={row}
+            onEdit={() => openEdit(row)}
+            onDelete={() => handleDelete(row)}
+          />
+        ))}
+      </div>
+
+      {!editor && canAddMore && (
+        <button
+          onClick={openAdd}
+          className="w-full py-3 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary font-medium text-sm transition-colors border border-primary/30 flex items-center justify-center gap-2"
+        >
+          <Plus size={16} />
+          Add schedule
+        </button>
+      )}
+      {!editor && !canAddMore && rows.length > 0 && (
+        <p className="text-xs text-muted-foreground text-center mt-2">
+          All report types are scheduled. Edit or stop one above to swap.
+        </p>
       )}
 
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm text-muted-foreground mb-1">Report Type</label>
-          <div className="grid grid-cols-2 gap-2">
-            {Object.entries(REPORT_TYPES).map(([val, label]) => (
-              <button
-                key={val}
-                onClick={() => setReportType(val)}
-                className={`px-3 py-2 rounded-lg text-sm text-left transition-colors border ${
-                  reportType === val
-                    ? 'bg-primary/15 border-primary text-primary'
-                    : 'bg-muted border-border text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm text-muted-foreground mb-1">Frequency</label>
-          <div className="flex gap-2">
-            {FREQUENCIES.map((f) => (
-              <button
-                key={f}
-                onClick={() => setFrequency(f)}
-                className={`px-4 py-2 rounded-lg text-sm capitalize transition-colors border ${
-                  frequency === f
-                    ? 'bg-primary/15 border-primary text-primary'
-                    : 'bg-muted border-border text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex gap-4">
-          <div className="flex-1">
-            <label className="block text-sm text-muted-foreground mb-1">Delivery Hour</label>
-            <select value={sendHour} onChange={(e) => setSendHour(+e.target.value)} className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border">
-              {HOURS.map((h) => <option key={h} value={h}>{fmtHour(h)}</option>)}
-            </select>
-          </div>
-          <div className="flex-1">
-            <label className="block text-sm text-muted-foreground mb-1">Timezone</label>
-            <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border">
-              {TIMEZONE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {timezoneLabelWithTime(o.value, now)}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <button
-          onClick={save}
-          disabled={saving}
-          className="w-full py-3 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-sm transition-colors disabled:opacity-50"
-        >
-          {saving ? 'Saving...' : sub ? 'Update Subscription' : 'Subscribe'}
-        </button>
-      </div>
+      {editor && (
+        <ScheduleEditor
+          initial={editor}
+          existingTypes={existingTypes}
+          telegramEligible={telegramEligible}
+          emailEligible={emailEligible}
+          emailHint={emailHint}
+          telegramHint={telegramHint}
+          now={now}
+          onCancel={() => setEditor(null)}
+          onSave={handleSave}
+          saving={saving}
+        />
+      )}
     </div>
   );
 }

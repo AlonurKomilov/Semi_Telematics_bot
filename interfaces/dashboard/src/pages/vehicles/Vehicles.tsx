@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -15,13 +15,14 @@ import {
   FilterChips,
   useLoadingStage,
 } from '../../components/shell';
+import { useShellConfig } from '../../hooks/useShellConfig';
 import type { Vehicle, VehiclesResponse } from '../../types';
 import type { AnyColumn } from '../../types';
 
 type StatusFilter = 'all' | 'moving' | 'idle' | 'stopped';
 const STATUS_OPTIONS: readonly StatusFilter[] = ['all', 'moving', 'idle', 'stopped'] as const;
 
-const columns: AnyColumn[] = [
+const ALL_COLUMNS: AnyColumn[] = [
   { key: 'name', label: 'Vehicle' },
   { key: 'company', label: 'Company' },
   {
@@ -61,10 +62,47 @@ const columns: AnyColumn[] = [
   },
 ];
 
+// Universal columns rendered for every persona — the identity + status
+// fields a fleet manager, dispatcher, safety, HR, or accounting user
+// all need to recognize a truck.
+const UNIVERSAL_COLUMN_KEYS = new Set([
+  'name', 'company', 'status', 'address',
+]);
+
+// Per-persona column visibility.  Mirrors the strict-binding rule from
+// the Overview KPI grid: each role's table only includes columns
+// relevant to their workspace.  Fleet sees mechanical detail; Dispatch
+// sees fuel for low-fuel triage; Safety / HR / Accounting get just the
+// universals because they don't action vehicle ops from this list.
+//
+// Owner / Admin get the full superset — they're the cross-cutting
+// executive view; if they want a persona-tuned view they switch via
+// "View dashboard as…" → subdomain navigation → persona's view loads.
+const PERSONA_EXTRA_COLUMNS: Record<string, ReadonlyArray<string>> = {
+  owner:      ['fuel_percent', 'def_percent', 'fault_count', 'odometer_miles', 'engine_hours'],
+  admin:      ['fuel_percent', 'def_percent', 'fault_count', 'odometer_miles', 'engine_hours'],
+  fleet:      ['def_percent', 'fault_count', 'odometer_miles', 'engine_hours'],
+  dispatcher: ['fuel_percent'],
+  safety:     [],
+  hr:         [],
+  accounting: ['odometer_miles', 'engine_hours'],  // utilisation for CPM
+  driver:     [],
+};
+
 export default function Vehicles() {
   const { t } = useTranslation();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const navigate = useNavigate();
+  const { persona } = useShellConfig();
+
+  const columns = useMemo(() => {
+    const extras = PERSONA_EXTRA_COLUMNS[persona] ?? PERSONA_EXTRA_COLUMNS.owner ?? [];
+    const allowed = new Set<string>([
+      ...UNIVERSAL_COLUMN_KEYS,
+      ...extras,
+    ]);
+    return ALL_COLUMNS.filter((c) => allowed.has(c.key));
+  }, [persona]);
 
   const {
     data,
@@ -161,7 +199,10 @@ export default function Vehicles() {
           data={vehicles as unknown as Record<string, unknown>[]}
           searchKey="name"
           onRowClick={(row) =>
-            navigate(`/fleet/vehicle/${encodeURIComponent(row.name as string)}`)
+            // Route is mounted at root (`vehicles/:name`), not under
+            // `/fleet/`; the persona context (fleet./dispatch./safety.)
+            // is carried by the subdomain so the URL path stays neutral.
+            navigate(`/vehicles/${encodeURIComponent(row.name as string)}`)
           }
         />
       )}

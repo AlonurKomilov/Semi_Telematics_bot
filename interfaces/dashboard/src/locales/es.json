@@ -718,7 +718,7 @@
     "empty_no_articles": "Aún no hay artículos",
     "empty_desc_can_create": "Añade consejos, guías y procedimientos para tu equipo: texto, vídeo, PDF o enlaces.",
     "empty_desc_read_only": "Tu administrador puede añadir guías útiles para tu equipo aquí.",
-    "section_pinned": "Fijados",
+    "section_pinned": "Mis marcadores",
     "section_other": "Todos los artículos",
     "by_creator": "por {{name}}",
     "load_more": "Cargar más",
@@ -745,7 +745,9 @@
     "upload_pick_image": "Elegir un archivo de imagen",
     "upload_hint_pdf": "PDF · máx 25 MB",
     "upload_hint_image": "PNG, JPEG, WEBP · máx 25 MB",
-    "upload_or_url": "O pegue una URL externa"
+    "upload_or_url": "O pegue una URL externa",
+    "bookmark_add_title": "Añadir a mis marcadores",
+    "bookmark_remove_title": "Quitar de mis marcadores"
   },
   "profile": {
     "signin_title": "Métodos de inicio de sesión",

@@ -38,6 +38,19 @@ type ApiFetchOpts = Omit<RequestInit, 'body'> & {
   body?: BodyInit | Record<string, unknown> | null;
 };
 
+// Module-level mirror of RoleViewContext.activeView so apiFetch (a
+// free function with no React context access) can attach the
+// ``X-View-As`` header on every request.  RoleViewContext calls
+// ``setActiveViewForApi`` whenever the derived activeView changes;
+// during the first render before that effect fires, the value is
+// ``''`` and the header is omitted (backend falls back to the JWT
+// role, identical to pre-strict-binding behavior).
+let _activeViewForApi = '';
+
+export function setActiveViewForApi(view: string): void {
+  _activeViewForApi = view || '';
+}
+
 export async function apiFetch(path: string, opts: ApiFetchOpts = {}, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
   const token = getToken();
   const headers: Record<string, string> = {};
@@ -46,6 +59,7 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}, timeoutMs 
     Object.assign(headers, h);
   }
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (_activeViewForApi) headers['X-View-As'] = _activeViewForApi;
   let body = opts.body;
   if (body && typeof body === 'object' && !(body instanceof FormData) && !(body instanceof Blob) && !(body instanceof ArrayBuffer) && !(body instanceof URLSearchParams) && typeof body !== 'string') {
     headers['Content-Type'] = 'application/json';
@@ -123,6 +137,31 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}, timeoutMs 
   }
 }
 
+/**
+ * Error thrown by ``apiJSON`` on non-2xx responses.  Carries the HTTP
+ * ``status`` so callers can branch on 401 / 403 / 404 without parsing
+ * the message (which is the FastAPI ``detail`` field, useful for
+ * humans but not for control flow).
+ *
+ * Example: hide a permission-gated chip on 403 without blowing up the
+ * whole page.
+ *
+ *   try {
+ *     await apiJSON('/admin/escalations');
+ *   } catch (e) {
+ *     if (e instanceof ApiError && e.status === 403) return null;
+ *     throw e;
+ *   }
+ */
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 export async function apiJSON<T = unknown>(path: string, opts: ApiFetchOpts = {}, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   const res = await apiFetch(path, opts, timeoutMs);
   if (!res.ok) {
@@ -130,8 +169,12 @@ export async function apiJSON<T = unknown>(path: string, opts: ApiFetchOpts = {}
     const detail = err.detail;
     const msg = typeof detail === 'string' ? detail
       : Array.isArray(detail) ? detail.map((d: { msg?: string }) => d.msg || String(d)).join('; ')
+      // FastAPI errors that carry a structured body ({message, error_code})
+      // — surface the human message instead of falling back to statusText.
+      : (detail && typeof detail === 'object' && typeof (detail as { message?: unknown }).message === 'string')
+        ? (detail as { message: string }).message
       : res.statusText;
-    throw new Error(msg);
+    throw new ApiError(res.status, msg);
   }
   return res.json();
 }

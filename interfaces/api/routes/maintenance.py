@@ -232,10 +232,19 @@ async def list_tasks(
         try:
             # Bulk lookup pulls every state row for the account once; the
             # python-side index then routes each task to its OWN vehicle.
-            # One DB query, two index lookups per task.
+            # One DB query, three index lookups per task.
             state_rows = await tenant_db.get_vehicle_state(user["account_id"])
             by_id: dict[str, dict] = {}
             by_company_name: dict[tuple[str, str], dict] = {}
+            # Name-only fallback table — populated ONLY for vehicle names
+            # that appear exactly once across the whole account.  Lets us
+            # enrich legacy tasks that were created without
+            # company_code / vehicle_id without ever colliding into a
+            # cross-company match (when a name is ambiguous, the entry
+            # is removed and the task stays blank — better empty than
+            # wrong).
+            name_counts: dict[str, int] = {}
+            by_name_unique: dict[str, dict] = {}
             for row in state_rows:
                 vid = row.get("vehicle_id") or ""
                 if vid:
@@ -250,6 +259,12 @@ async def list_tasks(
                 # task and the state row.
                 elif nm:
                     by_company_name[("", nm)] = row
+                if nm:
+                    name_counts[nm] = name_counts.get(nm, 0) + 1
+                    if name_counts[nm] == 1:
+                        by_name_unique[nm] = row
+                    else:
+                        by_name_unique.pop(nm, None)
             for t in items:
                 live = None
                 tid = (t.get("vehicle_id") or "").strip()
@@ -260,8 +275,25 @@ async def list_tasks(
                     nm = (t.get("vehicle_name") or "").strip()
                     if nm:
                         live = by_company_name.get((cc, nm))
+                        # Final fallback: name-only when unambiguous.
+                        # Catches tasks that were created with neither
+                        # vehicle_id nor company_code (the SPN
+                        # auto-creator + legacy dashboard form did
+                        # this).  Skipped when the name resolves to
+                        # multiple companies — we'd rather leave the
+                        # company chip blank than guess wrong.
+                        if live is None:
+                            live = by_name_unique.get(nm)
                 if not live:
                     continue
+                # Backfill the task row's identity fields from the
+                # matched vehicle_state row so the Company column +
+                # future telemetry lookups have something to work with.
+                # ``or ""`` guards against None on the state row.
+                if not (t.get("company_code") or "").strip():
+                    t["company_code"] = live.get("company_code") or ""
+                if not (t.get("vehicle_id") or "").strip():
+                    t["vehicle_id"] = live.get("vehicle_id") or ""
                 # Use the live value when the stored one is NULL, or
                 # when the live reading is newer (higher odometer /
                 # higher engine-hours).  Never go backwards — a glitchy
@@ -337,8 +369,19 @@ async def get_task(
             state_rows = await tenant_db.get_vehicle_state(
                 user["account_id"], **kwargs,
             )
-            if state_rows:
+            # When the task has no company_code and the name resolves to
+            # multiple vehicle_state rows, leave both telemetry and the
+            # company chip blank rather than pick arbitrarily.  This is
+            # the same "unambiguous-only" guard the list view uses.
+            if len(state_rows) == 1:
                 live = state_rows[0]
+                # Backfill identity fields so the modal's company chip
+                # has something to render even though the task row was
+                # stored without it.
+                if not company_code:
+                    enriched["company_code"] = live.get("company_code") or ""
+                if not vehicle_id:
+                    enriched["vehicle_id"] = live.get("vehicle_id") or ""
                 live_odo = live.get("odometer_mi")
                 if isinstance(live_odo, (int, float)):
                     stored_odo = enriched.get("last_odometer")

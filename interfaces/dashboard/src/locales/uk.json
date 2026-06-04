@@ -582,7 +582,7 @@
     "empty_no_articles": "Поки що немає статей",
     "empty_desc_can_create": "Додайте поради, посібники та інструкції для команди — текст, відео, PDF або посилання.",
     "empty_desc_read_only": "Адміністратор може додавати корисні посібники тут.",
-    "section_pinned": "Закріплені",
+    "section_pinned": "Мої закладки",
     "section_other": "Усі статті",
     "by_creator": "автор: {{name}}",
     "load_more": "Завантажити ще",
@@ -609,7 +609,9 @@
     "upload_pick_image": "Виберіть файл зображення",
     "upload_hint_pdf": "PDF · макс. 25 МБ",
     "upload_hint_image": "PNG, JPEG, WEBP · макс. 25 МБ",
-    "upload_or_url": "Або вставте зовнішнє посилання"
+    "upload_or_url": "Або вставте зовнішнє посилання",
+    "bookmark_add_title": "Додати до моїх закладок",
+    "bookmark_remove_title": "Видалити з моїх закладок"
   },
   "profile": {
     "signin_title": "Способи входу",

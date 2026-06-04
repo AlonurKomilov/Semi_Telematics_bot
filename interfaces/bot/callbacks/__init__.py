@@ -76,10 +76,11 @@ from interfaces.bot.ai import (
     cmd_ai_models, cmd_ai_set_model, cmd_ai_set_vision_model, cmd_ai_alerts,
     handle_ai_usage,
 )
-from interfaces.bot.auto_reports import (
-    cmd_auto_reports, cmd_auto_reports_subscribe,
-    cmd_auto_reports_unsubscribe, cmd_auto_reports_set_hour,
-    cmd_auto_reports_set_tz, cmd_auto_reports_set_type,
+from interfaces.bot.scheduled_reports import (
+    cmd_scheduled_reports, cmd_scheduled_reports_subscribe,
+    cmd_scheduled_reports_unsubscribe, cmd_scheduled_reports_set_hour,
+    cmd_scheduled_reports_set_tz, cmd_scheduled_reports_set_type,
+    cmd_scheduled_reports_add, cmd_scheduled_reports_stop,
 )
 from interfaces.bot.knowledge import (
     cmd_tips, cmd_kb_category, cmd_kb_pinned, cmd_kb_article,
@@ -166,8 +167,20 @@ _router.exact("cmd_work_hours", cmd_work_hours)
 # The wizard sub-routes (whours_add / wsched_add / per-schedule
 # edit prefixes) were removed when /work_hours moved to the
 # dashboard; cached buttons fall through to "unknown action".
-_router.exact("cmd_auto_reports", cmd_auto_reports)
-_router.exact("ar_unsub", cmd_auto_reports_unsubscribe)
+# Callback strings kept as ``cmd_auto_reports`` / ``ar_*`` even though
+# the underlying handlers + file are renamed to ``scheduled_reports``
+# — these strings are baked into InlineKeyboardButton.callback_data on
+# every Scheduled-Reports message the bot has already sent.  Renaming
+# would break the buttons cached in users' Telegram chats.  Drop these
+# legacy strings only after one full release cycle has passed; until
+# then keep the routing stable and let the new code own the function
+# names.
+_router.exact("cmd_auto_reports", cmd_scheduled_reports)
+_router.exact("ar_unsub", cmd_scheduled_reports_unsubscribe)
+# Multi-schedule (2026-06): per-row Stop + Add-new entrypoints.  The
+# Stop handler is registered as a prefix so ``ar_stop_faults``,
+# ``ar_stop_fuel``, etc. all route through.
+_router.exact("ar_add", cmd_scheduled_reports_add)
 _router.exact("cmd_alert_history", cmd_alert_history)
 _router.exact("cmd_pending_alerts", cmd_pending_alerts)
 _router.exact("cmd_tips", cmd_tips)
@@ -244,21 +257,27 @@ async def _maint_done(u, c):
 # cached in Telegram chats fall through to the "unknown action"
 # fallback; new entries land on the dashboard via cmd_work_hours.
 
+async def _ar_stop_per_type(u, c):
+    """Per-row Stop button on the multi-schedule menu (2026-06)."""
+    rtype = u.callback_query.data.replace("ar_stop_", "")
+    await cmd_scheduled_reports_stop(u, c, report_type=rtype)
+
+
 async def _ar_freq(u, c):
     freq = u.callback_query.data.replace("ar_freq_", "")
-    await cmd_auto_reports_subscribe(u, c, frequency=freq)
+    await cmd_scheduled_reports_subscribe(u, c, frequency=freq)
 
 async def _ar_type(u, c):
     rtype = u.callback_query.data.replace("ar_type_", "")
-    await cmd_auto_reports_set_type(u, c, report_type=rtype)
+    await cmd_scheduled_reports_set_type(u, c, report_type=rtype)
 
 async def _ar_hour(u, c):
     hour = int(u.callback_query.data.replace("ar_hour_", ""))
-    await cmd_auto_reports_set_hour(u, c, hour=hour)
+    await cmd_scheduled_reports_set_hour(u, c, hour=hour)
 
 async def _ar_tz(u, c):
     tz = u.callback_query.data.replace("ar_tz_", "")
-    await cmd_auto_reports_set_tz(u, c, tz=tz)
+    await cmd_scheduled_reports_set_tz(u, c, tz=tz)
 
 async def _ai_setmodel(u, c):
     model = u.callback_query.data.replace("ai_setmodel_", "")
@@ -316,6 +335,10 @@ _router.prefix("maint_done_", _maint_done)
 # geofence-CRUD wizard prefixes (``del_zone:``, ``zone_roles:``,
 # ``gf_detail_``) all moved to the dashboard.  Working-hours
 # wizard prefixes (whours_* / wsched_*) too.
+# Order matters: ``ar_stop_`` must register BEFORE any prefix that
+# could also match (none today, but the rule keeps future overlaps
+# safe — longer-specific prefixes first).
+_router.prefix("ar_stop_", _ar_stop_per_type)
 _router.prefix("ar_freq_", _ar_freq)
 _router.prefix("ar_type_", _ar_type)
 _router.prefix("ar_hour_", _ar_hour)

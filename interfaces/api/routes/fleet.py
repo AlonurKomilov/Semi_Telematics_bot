@@ -25,6 +25,7 @@ from interfaces.api.deps import (
     validate_company_access,
     filter_by_allowed_companies,
     filter_by_assigned_trucks,
+    active_view,
 )
 from adapters.storage import Role
 from capabilities.iam.permissions import can
@@ -143,8 +144,16 @@ async def overview_stats(
     company: str | None = Query(None),
     user: dict = Depends(get_current_user),
     tenant_db=Depends(get_tenant_db),
+    view_role: str = Depends(active_view),
 ):
-    """Aggregated fleet stats for the overview page (role-aware)."""
+    """Aggregated fleet stats for the overview page (role-aware).
+
+    ``view_role`` is the role the operator is operating AS right now
+    (X-View-As header).  Owner/admin can switch view to Fleet/Safety/
+    etc. via the dashboard's persona selector; this endpoint scopes
+    its persona-aware counts (pending_alerts) to that active view so
+    the Overview hero card matches the workspace the SPA is showing.
+    """
     account_id = user["account_id"]
     # JWT payloads store role as a string; coerce to the str-backed enum so
     # type-checkers see a real Role and downstream ``can()`` calls type-check
@@ -159,9 +168,15 @@ async def overview_stats(
     # same shape within (account, role, company, allowed) so one
     # successful compute serves every Hero strip on every dashboard for
     # the next _STATS_TTL seconds.
+    #
+    # The cache key includes ``view_role`` so an Owner switching to
+    # Fleet view doesn't get a stale Owner-view cached response; the
+    # backend computes a fresh slice for each (real role, view role)
+    # pair.  Same TTL applies — cache hit rate is unchanged because
+    # each role+view combination is independently re-hot.
     cache_key = None
     if role != Role.DRIVER:
-        cache_key = _stats_cache_key(account_id, str(role), company, allowed)
+        cache_key = _stats_cache_key(account_id, f"{role}:{view_role}", company, allowed)
         cached = _stats_cache_get(cache_key)
         if cached is not None:
             return cached
@@ -268,7 +283,27 @@ async def overview_stats(
         )
 
     if fetch_parking:
-        result["pending_alerts"] = len(pending_alerts) if pending_alerts else 0
+        # Strict persona binding: count only alerts whose alert_type
+        # belongs to the active view's persona.  Owner / Admin land
+        # here too — their persona (owner_admin) has no operational
+        # alert types, so ``allowed_types`` is empty and pending_alerts
+        # is omitted from the response.  Owner's Overview shows
+        # EscalationStatusCard + AccountAlertSummary instead; to do
+        # operational triage they switch view to Fleet/Safety/Dispatch
+        # via the persona selector (SPA sends X-View-As; backend then
+        # returns that role's filtered count).
+        from capabilities.alerting import persona_mapping
+        allowed_types = persona_mapping.alert_types_for_role(view_role)
+        if allowed_types:
+            relevant_alerts = [
+                a for a in (pending_alerts or [])
+                if (a.get("alert_type") or "") in allowed_types
+            ]
+            result["pending_alerts"] = len(relevant_alerts)
+        # else: omit pending_alerts entirely so the SPA's
+        # ``showWhen: stats.pending_alerts !== undefined`` check hides
+        # the card on owner/admin views — they don't triage alerts.
+
         result["unsafe_parking"] = sum(1 for e in all_parked if e.get("location_class") == "unsafe")
         result["unknown_parking"] = sum(1 for e in all_parked if e.get("location_class") == "unknown")
 
@@ -278,6 +313,48 @@ async def overview_stats(
     if cache_key is not None:
         _stats_cache_put(cache_key, result)
     return result
+
+
+@router.get("/utilisation/heatmap")
+async def fleet_utilisation_heatmap(
+    days: int = Query(30, ge=1, le=90),
+    user: dict = Depends(require_permission("can_vehicle_all")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Aggregate fleet activity points for the Owner / Admin Live Map
+    ``UtilisationHeatmap`` overlay.
+
+    Built from ``parking_events`` — every stop a truck makes is a
+    sample of "where this fleet operates."  Each point's weight is
+    the ``duration_hours`` of that stop (capped at 24h to keep one
+    long weekend stop from drowning out a busy weekday).  The result
+    is a [[lat, lon, weight], ...] array sized for ``leaflet.heat`` —
+    same wire shape the Safety event heatmap uses, so the frontend
+    overlay reuses the heatLayer wiring.
+
+    Permission-gated by ``can_vehicle_all`` — only roles whose job
+    spans the full fleet (Owner / Admin / Fleet / Safety / Dispatch
+    today) see utilisation density.  Driver / HR / Accounting either
+    don't reach the Live Map or have their own persona overlay.
+    """
+    # 24h cap on a single stop's weight.  Without this, a 72-hour
+    # weekend yard-stop shows up 3× brighter than a 24h Friday
+    # parking, which makes the heatmap visually misleading
+    # ("everyone's at the yard!") when really it's just one truck.
+    MAX_HOURS_PER_POINT = 24.0
+
+    rows = await tenant_db.get_parking_points_for_heatmap(
+        user["account_id"], days=days,
+    )
+    points: list[list[float]] = []
+    for r in rows:
+        lat = float(r.get("latitude") or 0)
+        lon = float(r.get("longitude") or 0)
+        weight = min(float(r.get("duration_hours") or 0), MAX_HOURS_PER_POINT)
+        if weight <= 0:
+            continue
+        points.append([lat, lon, weight])
+    return {"points": points, "count": len(points), "days": days}
 
 
 legacy_router = APIRouter(tags=["fleet"], include_in_schema=False)

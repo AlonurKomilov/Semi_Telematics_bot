@@ -63,6 +63,20 @@ const HOSTS = [
     softFail: true,
   },
   {
+    host: `hr.${BASE_DOMAIN}`,
+    path: '/',
+    expect: { status: 200, contains: '<div id="root"' },
+    label: 'HR persona subdomain',
+    softFail: true,
+  },
+  {
+    host: `accounting.${BASE_DOMAIN}`,
+    path: '/',
+    expect: { status: 200, contains: '<div id="root"' },
+    label: 'Accounting persona subdomain',
+    softFail: true,
+  },
+  {
     host: `app.${BASE_DOMAIN}`,
     path: '/',
     expect: { status: 200, contains: '<div id="root"' },

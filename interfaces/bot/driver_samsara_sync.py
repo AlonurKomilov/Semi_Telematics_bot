@@ -103,6 +103,7 @@ async def check_driver_samsara_sync(_app: Application | None = None) -> None:
             posted = await post_alert_to_topic(
                 bot_app, account_id=acct.id,
                 alert_type="samsara_sync", text=text,
+                severity="info",
             )
             if posted:
                 total_sent += 1

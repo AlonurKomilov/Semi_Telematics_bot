@@ -95,6 +95,26 @@ async def billing_usage(
     return {"items": history, "count": len(history)}
 
 
+# ── Invoices ──────────────────────────────────────────────────────
+
+@router.get("/invoices")
+async def billing_invoices(
+    limit: int = 24,
+    user: dict = Depends(_billing_admin),
+    platform_db=Depends(get_platform_db),
+):
+    """List recorded invoices for the account (newest first).
+
+    The webhook handler mirrors Stripe invoices into ``billing_invoices``
+    as they happen; this endpoint surfaces them to the dashboard so
+    operators can download receipts without leaving the app.
+    """
+    if limit < 1 or limit > 100:
+        raise HTTPException(status_code=400, detail="limit must be 1–100")
+    items = await platform_db.get_invoices(user["account_id"], limit=limit)
+    return {"items": items, "count": len(items)}
+
+
 # ── Checkout (upgrade) ───────────────────────────────────────────
 
 class CheckoutRequest(BaseModel):
@@ -169,6 +189,183 @@ async def billing_webhook(
         # Signature mismatch — return 400 so Stripe retries
         raise HTTPException(status_code=400, detail=str(e))
     return result
+
+
+# ── Billing email ─────────────────────────────────────────────────
+
+class BillingEmailRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=320,
+                       description="Inbox that receives Stripe receipts + dunning.")
+
+
+@router.patch("/email")
+async def update_billing_email(
+    body: BillingEmailRequest,
+    user: dict = Depends(_billing_admin),
+    platform_db=Depends(get_platform_db),
+):
+    """Update the billing inbox for the current account.
+
+    Writes the local subscription row immediately so the dashboard's
+    "Receipts go to …" field reflects the change without a refresh
+    lag, and (on Stripe) PATCHes the Customer object so Stripe routes
+    receipts and dunning notices to the new address.  Accounts without
+    a Stripe customer yet get the local write only; their first
+    checkout will pick up the saved email.
+    """
+    email = body.email.strip()
+    if "@" not in email or "." not in email:
+        raise HTTPException(status_code=400, detail="Invalid email address")
+    from capabilities.billing import get_provider
+    provider = get_provider()
+    result = await provider.update_billing_email(
+        user["account_id"], platform_db, email,
+    )
+    return result
+
+
+# ── Comp accounts (system-owner only) ────────────────────────────
+
+def _require_system_owner(user: dict = Depends(_billing_admin)) -> dict:
+    """Gate comp endpoints to platform operators only.
+
+    A regular account owner can manage billing for their OWN account
+    (that's what ``_billing_admin`` already enforces) but they must NOT
+    be able to comp themselves into free service.  ``is_system_owner``
+    matches the user's Telegram id against the ``SYSTEM_OWNER_IDS`` env
+    var — only the 4truck operators on that allowlist may grant comp.
+    """
+    from capabilities.iam.permissions import is_system_owner
+    try:
+        tg_id = int(user["sub"])
+    except (KeyError, TypeError, ValueError):
+        tg_id = 0
+    if not is_system_owner(tg_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Comp account management is restricted to platform operators.",
+        )
+    return user
+
+
+class CompGrantRequest(BaseModel):
+    account_id: int = Field(..., ge=1)
+    expires_at: str = Field(..., min_length=10, description="ISO-8601 UTC (e.g. 2026-12-31T23:59:59+00:00)")
+    reason: str = Field(default="", max_length=500)
+
+
+class CompRenewRequest(BaseModel):
+    account_id: int = Field(..., ge=1)
+    new_expires_at: str = Field(..., min_length=10)
+    reason: str = Field(default="", max_length=500)
+
+
+class CompRevokeRequest(BaseModel):
+    account_id: int = Field(..., ge=1)
+    reason: str = Field(default="", max_length=500)
+
+
+@router.post("/comp/grant")
+async def comp_grant(
+    body: CompGrantRequest,
+    user: dict = Depends(_require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Mark an account as comped through ``expires_at``.
+
+    Comp accounts get full functionality at $0/mo for a bounded window.
+    ``expires_at`` is required — comp without an expiry is forbidden so
+    a free ride doesn't become permanent by accident.
+    """
+    try:
+        actor_id = int(user["sub"])
+    except (KeyError, TypeError, ValueError):
+        actor_id = None
+    try:
+        await platform_db.grant_comp(
+            account_id=body.account_id,
+            expires_at=body.expires_at,
+            reason=body.reason,
+            actor_user_id=actor_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    # Tell the recipient.  Best-effort — the comp itself is already
+    # persisted, so a notification failure doesn't roll back the grant.
+    try:
+        from capabilities.billing.notifications import notify_comp_granted
+        await notify_comp_granted(body.account_id, body.expires_at, body.reason)
+    except Exception:
+        logger.exception("notify_comp_granted failed acct=%s", body.account_id)
+    return {"ok": True, "account_id": body.account_id, "expires_at": body.expires_at}
+
+
+@router.post("/comp/renew")
+async def comp_renew(
+    body: CompRenewRequest,
+    user: dict = Depends(_require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Push out the expiration of an existing comp."""
+    try:
+        actor_id = int(user["sub"])
+    except (KeyError, TypeError, ValueError):
+        actor_id = None
+    try:
+        await platform_db.renew_comp(
+            account_id=body.account_id,
+            new_expires_at=body.new_expires_at,
+            reason=body.reason,
+            actor_user_id=actor_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    # Treat a renewal like a fresh grant for the recipient — they care
+    # about the new end date, not whether this was technically the
+    # first or fifth grant.
+    try:
+        from capabilities.billing.notifications import notify_comp_granted
+        await notify_comp_granted(body.account_id, body.new_expires_at, body.reason)
+    except Exception:
+        logger.exception("notify_comp_granted (renew) failed acct=%s", body.account_id)
+    return {"ok": True, "account_id": body.account_id, "expires_at": body.new_expires_at}
+
+
+@router.post("/comp/revoke")
+async def comp_revoke(
+    body: CompRevokeRequest,
+    user: dict = Depends(_require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Clear comp flags — the account is billed normally going forward.
+
+    The historical comp record stays in ``comp_account_history`` for
+    audit; tier/status are not changed (downgrading is a separate call).
+    """
+    try:
+        actor_id = int(user["sub"])
+    except (KeyError, TypeError, ValueError):
+        actor_id = None
+    await platform_db.revoke_comp(
+        account_id=body.account_id,
+        reason=body.reason,
+        actor_user_id=actor_id,
+    )
+    return {"ok": True, "account_id": body.account_id}
+
+
+@router.get("/comp/history")
+async def comp_history(
+    account_id: int,
+    limit: int = 50,
+    user: dict = Depends(_require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Return the comp audit trail for an account (system-owner only)."""
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=400, detail="limit must be 1–200")
+    items = await platform_db.get_comp_history(account_id, limit=limit)
+    return {"items": items, "count": len(items)}
 
 
 # ── Manual vehicle count sync ────────────────────────────────────

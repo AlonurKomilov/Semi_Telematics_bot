@@ -797,7 +797,7 @@
     "csv_caption": "📊 Warbixin Dhacdooyinka — {company}",
     "csv_exported": "✅ CSV dhacdooyinka waa la saaray."
   },
-  "auto_reports": {
+  "scheduled_reports": {
     "header": "📋  <b>RUKUNKA WARBIXINNADA</b>",
     "description": "Qorsheey warbixino gaariyo oo toos ah oo Telegram-kaaga la keeno.",
     "subscribed": "✅ Firfircoon: <b>{rtype}</b> · {freq} {time}",

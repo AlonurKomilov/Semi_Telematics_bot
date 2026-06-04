@@ -1,0 +1,819 @@
+"""System-operator API — cross-account read + admin endpoints.
+
+This router lives at ``/system/*`` and is reachable ONLY by users whose
+Telegram id is in the ``SYSTEM_OWNER_IDS`` env (the platform-operator
+allowlist).  It is the backend for the operator-only dashboard at
+``system.4truck.us`` and is intentionally separate from the per-account
+``/admin/*`` router (which is gated by ``can_manage_users`` /
+``can_manage_billing`` within a single tenant).
+
+Endpoints surfaced here:
+
+  GET  /system/accounts            — paginated, searchable account list
+  GET  /system/accounts/{id}       — full operator-view of one account
+  GET  /system/stats               — system-wide counters for the dashboard
+
+Comp grant / renew / revoke / history already live under
+``/billing/comp/*`` (see [interfaces/api/routes/billing.py]) and use the
+same ``SYSTEM_OWNER_IDS`` gate — the operator dashboard calls those
+endpoints directly rather than wrapping them here.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+
+from interfaces.api.deps import require_system_owner, get_platform_db
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/system", tags=["system"])
+
+
+# ── Accounts ────────────────────────────────────────────────────
+
+
+@router.get("/accounts")
+async def list_accounts(
+    search: str = Query(default="", description="Substring match on account name"),
+    status: str = Query(default="", description="Filter by subscription status"),
+    tier:   str = Query(default="", description="Filter by tier"),
+    is_comped: str = Query(default="", description="'yes' | 'no' | '' for all"),
+    limit:  int = Query(default=100, ge=1, le=500),
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Cross-account list with billing-summary join.
+
+    The N+1 here is bounded by ``limit`` (≤500); each subscription
+    lookup is a single primary-key fetch.  At realistic operator
+    cadence (a few page loads per day) this is fine without a JOIN.
+    """
+    accounts = await platform_db.list_accounts(active_only=False)
+    needle = search.strip().lower()
+    if needle:
+        accounts = [a for a in accounts if needle in a.name.lower()]
+    if tier:
+        accounts = [a for a in accounts if a.tier == tier]
+
+    items: list[dict] = []
+    for acc in accounts[:limit]:
+        sub = await platform_db.get_subscription(acc.id)
+        # Apply server-side filters that need the subscription row
+        if status and (not sub or sub.get("status") != status):
+            continue
+        if is_comped == "yes" and not (sub and sub.get("is_comped")):
+            continue
+        if is_comped == "no" and (sub and sub.get("is_comped")):
+            continue
+        items.append({
+            "id":             acc.id,
+            "name":           acc.name,
+            "slug":           acc.slug,
+            "tier":           acc.tier,
+            "is_active":      acc.is_active,
+            "created_at":     acc.created_at,
+            # Subscription fields are shallow — full detail is on the
+            # account-detail page; the list view stays cheap.
+            "subscription":   _sub_summary(sub),
+        })
+    return {"items": items, "count": len(items)}
+
+
+@router.get("/accounts/{account_id}")
+async def get_account_detail(
+    account_id: int,
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Full operator view: account, subscription, comp history, recent invoices."""
+    acc = await platform_db.get_account(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    sub = await platform_db.get_subscription(account_id)
+    billing = None
+    try:
+        billing = await platform_db.compute_billing(account_id)
+    except Exception:
+        logger.exception("compute_billing failed for acct=%d", account_id)
+    invoices = await platform_db.get_invoices(account_id, limit=10)
+    comp_history = await platform_db.get_comp_history(account_id, limit=20)
+    user_count = await platform_db.count_account_users(account_id)
+    return {
+        "account": {
+            "id":           acc.id,
+            "name":         acc.name,
+            "slug":         acc.slug,
+            "tier":         acc.tier,
+            "is_active":    acc.is_active,
+            "created_at":   acc.created_at,
+            "timezone":     acc.timezone,
+            "bot_username": acc.bot_username,
+        },
+        "subscription":  _sub_full(sub),
+        "billing":       billing,
+        "user_count":    user_count,
+        "invoices":      invoices,
+        "comp_history":  comp_history,
+    }
+
+
+# ── System-wide stats (read-only) ───────────────────────────────
+
+
+@router.get("/stats")
+async def system_stats(
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Counters for the operator dashboard landing card.
+
+    Pulled live each call — small numbers, fast queries.  No caching:
+    a fresh load on the dashboard takes ~50ms.
+    """
+    accounts = await platform_db.list_accounts(active_only=False)
+    by_status: dict[str, int] = {}
+    by_tier: dict[str, int] = {}
+    comped = 0
+    past_due = 0
+    for acc in accounts:
+        sub = await platform_db.get_subscription(acc.id)
+        if not sub:
+            by_status["no_subscription"] = by_status.get("no_subscription", 0) + 1
+            continue
+        st = sub.get("status") or "unknown"
+        by_status[st] = by_status.get(st, 0) + 1
+        tr = sub.get("tier") or "free"
+        by_tier[tr] = by_tier.get(tr, 0) + 1
+        if sub.get("is_comped"):
+            comped += 1
+        if sub.get("past_due_since"):
+            past_due += 1
+    return {
+        "accounts_total":    len(accounts),
+        "accounts_active":   sum(1 for a in accounts if a.is_active),
+        "by_status":         by_status,
+        "by_tier":           by_tier,
+        "comped":            comped,
+        "past_due":          past_due,
+    }
+
+
+# ── Metrics snapshot ─────────────────────────────────────────────
+
+
+@router.get("/metrics-snapshot")
+async def metrics_snapshot(
+    _user: dict = Depends(require_system_owner),
+):
+    """Aggregate billing-counter values for the operator landing card.
+
+    Reads directly from the in-process Prometheus registry instead of
+    scraping the text exposition at ``/metrics`` — same numbers, but
+    one less HTTP hop and we get them as floats rather than parsing
+    strings.  Falls back to all-zeros when ``prometheus_client`` isn't
+    installed (the stub metric path), so the UI renders cleanly in
+    dev too.
+
+    The counters are monotonic since process start; the UI does its
+    own "delta since I last loaded" math.  No labels are aggregated
+    here — the four buckets the landing card cares about are
+    extracted by their label combination.
+    """
+    snapshot = {
+        "webhook_events":          _counter_map("billing_webhook_events_total", labels=("event_type", "result")),
+        "sync_quantity":           _counter_map("billing_sync_quantity_total",  labels=("result",)),
+        "notifications":           _counter_map("billing_notifications_total",  labels=("kind", "channel")),
+        "comp_sweep":              _counter_map("billing_comp_sweep_total",     labels=("action",)),
+    }
+    return snapshot
+
+
+def _counter_map(metric_name: str, *, labels: tuple[str, ...]) -> dict:
+    """Pull a Counter's per-label-combination totals from the registry.
+
+    Returns a dict like ``{"checkout.session.completed|processed": 17}``
+    where the key joins each label value with ``|``.  Empty when the
+    counter doesn't exist (stub mode) or has no observations yet.
+    """
+    try:
+        from prometheus_client import REGISTRY
+    except ImportError:
+        return {}
+    out: dict[str, float] = {}
+    for metric in REGISTRY.collect():
+        if metric.name != metric_name.removesuffix("_total"):
+            # prometheus_client strips the ``_total`` suffix on Counters
+            # when iterating; tolerate both ways callers might pass it.
+            if metric.name != metric_name:
+                continue
+        for sample in metric.samples:
+            # Skip the auto-generated ``_created`` timestamp samples.
+            if sample.name.endswith("_created"):
+                continue
+            key = "|".join(sample.labels.get(lab, "") for lab in labels)
+            out[key] = out.get(key, 0.0) + sample.value
+    return out
+
+
+# ── Operator actions ─────────────────────────────────────────────
+#
+# These mutate state on a specific account.  Every action is logged at
+# INFO level with the operator's telegram_id so the audit trail in the
+# API log explains WHO triggered it (the comp helpers write to
+# comp_account_history; these ones don't have a dedicated table, but
+# the journaled API log is enough for ops post-mortems).
+
+
+@router.post("/accounts/{account_id}/sync-quantity")
+async def force_sync_quantity(
+    account_id: int,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Manually reconcile Stripe's extras-line qty against active vehicles.
+
+    The same logic runs after every Samsara ingest cycle (every 60s),
+    so this endpoint is mainly for debugging: customer says the bill
+    looks wrong, operator wants to force a sync now rather than wait
+    for the next tick.  Returns the same status dict
+    ``sync_billing_quantity`` would have returned from the scheduler.
+    """
+    acc = await platform_db.get_account(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    from capabilities.billing import get_provider
+    provider = get_provider()
+    result = await provider.sync_billing_quantity(account_id, platform_db)
+    logger.info(
+        "system: sync_billing_quantity manual run acct=%s operator_tg=%s result=%s",
+        account_id, user.get("sub"), result,
+    )
+    return result
+
+
+@router.post("/accounts/{account_id}/refresh-vehicles")
+async def force_refresh_vehicles(
+    account_id: int,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Pull the Samsara fleet overview for this account RIGHT NOW.
+
+    Wraps ``capabilities.telemetry.ingestor.ingest_vehicle_state`` —
+    the same function the scheduler runs every 60s — but lets the
+    operator force a fresh ingest when investigating discrepancies.
+    Returns the count of vehicles persisted on this run.
+
+    Inline blocking is intentional: a 3–5 s wait is fine for an
+    operator clicking a button, and returning the count synchronously
+    is the whole point (the operator wants to see the new number).
+    """
+    acc = await platform_db.get_account(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    from capabilities.telemetry.ingestor import ingest_vehicle_state
+    try:
+        persisted = await ingest_vehicle_state(account_id)
+    except Exception as e:
+        logger.exception(
+            "system: ingest_vehicle_state failed acct=%s operator_tg=%s",
+            account_id, user.get("sub"),
+        )
+        raise HTTPException(status_code=502, detail=f"Samsara ingest failed: {e}")
+    # Re-read the new active / inactive split so the operator sees the
+    # billing-relevant numbers, not just the raw persist count.
+    billing = await platform_db.compute_billing(account_id)
+    logger.info(
+        "system: refresh-vehicles acct=%s operator_tg=%s persisted=%d active=%d",
+        account_id, user.get("sub"), persisted,
+        billing.get("active_vehicles", 0),
+    )
+    return {
+        "account_id":        account_id,
+        "persisted":         persisted,
+        "active_vehicles":   billing.get("active_vehicles", 0),
+        "inactive_vehicles": billing.get("inactive_vehicles", 0),
+    }
+
+
+class BillingEmailOverride(BaseModel):
+    email: str = Field(..., min_length=3, max_length=320)
+
+
+@router.patch("/accounts/{account_id}/billing-email")
+async def operator_set_billing_email(
+    account_id: int,
+    body: BillingEmailOverride,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Operator-side email override for any account.
+
+    The customer-facing dashboard intentionally has no email-edit
+    surface (info-only).  This is the operator escape hatch — useful
+    when a customer-side admin contact is unreachable but the receipts
+    need to start landing somewhere else.  Calls
+    ``provider.update_billing_email`` which both writes the local row
+    AND pushes the change to Stripe's Customer object if one exists.
+    """
+    email = body.email.strip()
+    if "@" not in email or "." not in email:
+        raise HTTPException(status_code=400, detail="Invalid email address")
+    acc = await platform_db.get_account(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    from capabilities.billing import get_provider
+    provider = get_provider()
+    result = await provider.update_billing_email(account_id, platform_db, email)
+    logger.info(
+        "system: billing-email override acct=%s operator_tg=%s synced_to_provider=%s",
+        account_id, user.get("sub"), result.get("synced_to_provider"),
+    )
+    return result
+
+
+# ── Alert routing config ─────────────────────────────────────────
+#
+# Operator surface for switching an account between the legacy
+# ``single_group`` (one forum chat + topic per alert_type) and the
+# ``per_persona_groups`` mode (flat group per persona).  The
+# customer-side dashboard is intentionally info-only here — operators
+# flip the mode and register persona→chat bindings from
+# system.4truck.us.
+
+
+# Persona keys the operator UI can register.  Mirrors
+# capabilities.alerting.persona_mapping.PERSONAS but listed here as
+# a constant the request validator can rely on without a cross-package
+# import (and so a typo in the dashboard form gets a 400 immediately
+# instead of writing a bad row).
+_VALID_PERSONAS = ("owner_admin", "dispatcher", "safety", "fleet", "hr")
+
+
+class AlertRoutingModeBody(BaseModel):
+    mode: str = Field(..., description="'single_group' or 'per_persona_groups'")
+
+
+class PersonaGroupUpsertBody(BaseModel):
+    chat_id: int = Field(..., description="Telegram chat_id (negative for groups)")
+    chat_title: str = Field(default="", max_length=200)
+
+
+class PersonaGroupActiveBody(BaseModel):
+    is_active: bool
+
+
+@router.get("/accounts/{account_id}/alert-routing")
+async def get_alert_routing(
+    account_id: int,
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Read the account's routing config: current mode plus every
+    persona-group binding (active + inactive — operator needs to see
+    soft-disabled rows so they can re-enable them).
+
+    Always returns a fully-populated ``personas`` map keyed by every
+    valid persona slug so the operator UI doesn't have to coalesce
+    missing entries.  Unregistered personas come back as ``null``.
+    """
+    acc = await platform_db.get_account(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    rows = await platform_db.list_persona_groups(account_id)
+    by_persona: dict[str, dict | None] = {p: None for p in _VALID_PERSONAS}
+    for r in rows:
+        by_persona[r.persona] = {
+            "persona":    r.persona,
+            "chat_id":    r.chat_id,
+            "chat_title": r.chat_title,
+            "is_active":  r.is_active,
+            "created_at": r.created_at,
+            "updated_at": r.updated_at,
+        }
+    return {
+        "account_id":         account_id,
+        "alert_routing_mode": acc.alert_routing_mode,
+        "personas":           by_persona,
+        "valid_personas":     list(_VALID_PERSONAS),
+    }
+
+
+@router.put("/accounts/{account_id}/alert-routing/mode")
+async def set_alert_routing_mode(
+    account_id: int,
+    body: AlertRoutingModeBody,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Flip the account between ``single_group`` and
+    ``per_persona_groups``.  The adapter validates the mode string so
+    a typo never lands silently — invalid → 400.
+
+    Switching to ``per_persona_groups`` without registering the
+    operational persona groups first is allowed: the routing resolver
+    falls back to the legacy lookup during the partial-config window.
+    """
+    acc = await platform_db.get_account(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    try:
+        ok = await platform_db.set_alert_routing_mode(account_id, body.mode.strip())
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to update routing mode")
+    logger.info(
+        "system: alert_routing_mode acct=%s operator_tg=%s → %s",
+        account_id, user.get("sub"), body.mode,
+    )
+    return {"ok": True, "alert_routing_mode": body.mode.strip()}
+
+
+@router.put("/accounts/{account_id}/alert-routing/personas/{persona}")
+async def upsert_persona_group(
+    account_id: int,
+    persona: str,
+    body: PersonaGroupUpsertBody,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Bind a Telegram group chat to a persona for this account.
+    Re-upserting with the same persona overwrites the chat_id (and
+    reactivates if previously disabled — same shape as the underlying
+    mixin contract).
+    """
+    if persona not in _VALID_PERSONAS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid persona {persona!r} — expected one of {list(_VALID_PERSONAS)}",
+        )
+    acc = await platform_db.get_account(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    row = await platform_db.upsert_persona_group(
+        account_id=account_id, persona=persona,
+        chat_id=body.chat_id, chat_title=body.chat_title.strip(),
+    )
+    logger.info(
+        "system: persona group upserted acct=%s operator_tg=%s persona=%s chat=%s",
+        account_id, user.get("sub"), persona, body.chat_id,
+    )
+    return {
+        "persona":    row.persona,
+        "chat_id":    row.chat_id,
+        "chat_title": row.chat_title,
+        "is_active":  row.is_active,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+@router.patch("/accounts/{account_id}/alert-routing/personas/{persona}/active")
+async def set_persona_group_active(
+    account_id: int,
+    persona: str,
+    body: PersonaGroupActiveBody,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Soft-disable or re-enable a persona group without losing the
+    chat_id — convenient when an operator pauses one persona during
+    onboarding or after a Telegram-side permissions change."""
+    if persona not in _VALID_PERSONAS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid persona {persona!r}",
+        )
+    acc = await platform_db.get_account(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    # Existence check must include disabled rows — the whole point of
+    # PATCH /active is to flip ``is_active`` on rows that exist but
+    # are currently soft-disabled.  ``get_persona_group`` filters by
+    # ``is_active=1`` so it would 404 a legitimate re-enable; use the
+    # unfiltered list and look up the persona instead.
+    all_rows = await platform_db.list_persona_groups(account_id)
+    existing = next((r for r in all_rows if r.persona == persona), None)
+    if existing is None:
+        # No row at all → there's nothing to toggle.  The UI catches
+        # this 404 and switches to the upsert form.
+        raise HTTPException(
+            status_code=404,
+            detail="No persona group to toggle — upsert chat_id first",
+        )
+    await platform_db.set_persona_group_active(
+        account_id, persona, active=body.is_active,
+    )
+    logger.info(
+        "system: persona group set_active acct=%s operator_tg=%s persona=%s active=%s",
+        account_id, user.get("sub"), persona, body.is_active,
+    )
+    return {"ok": True, "persona": persona, "is_active": body.is_active}
+
+
+@router.delete("/accounts/{account_id}/alert-routing/personas/{persona}")
+async def delete_persona_group(
+    account_id: int,
+    persona: str,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Permanently remove a persona binding.  Use the PATCH /active
+    endpoint instead for reversible disable — this is the destructive
+    path (e.g. customer-side group deleted in Telegram, operator
+    cleaning up the dangling row)."""
+    if persona not in _VALID_PERSONAS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid persona {persona!r}",
+        )
+    acc = await platform_db.get_account(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    await platform_db.delete_persona_group(account_id, persona)
+    logger.info(
+        "system: persona group deleted acct=%s operator_tg=%s persona=%s",
+        account_id, user.get("sub"), persona,
+    )
+    return {"ok": True, "persona": persona}
+
+
+# ── System health ────────────────────────────────────────────────
+
+
+@router.get("/health")
+async def system_health(
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Operator landing health check — 'is the platform OK right now?'.
+
+    Each component reports a status token (``ok`` / ``warn`` / ``down``)
+    plus a human detail.  Checks are best-effort: a failure in one
+    probe degrades that component to ``down`` rather than 500-ing the
+    whole endpoint, so the operator still sees the rest.
+
+    Note on scope: the API process can't see the bot process's
+    in-memory registry (separate process), so 'bots' reports the
+    DB-derived count of accounts with a configured bot token, not live
+    daemon state.  Ingest freshness is inferred from the newest
+    ``vehicle_state.captured_at`` — if that's hours stale, the Samsara
+    ingest loop has stalled.
+    """
+    import time as _time
+    components: dict[str, dict] = {}
+
+    # DB — round-trip a trivial query + measure latency.
+    t0 = _time.perf_counter()
+    try:
+        cur = await platform_db._db.execute("SELECT 1")
+        await cur.fetchone()
+        ms = round((_time.perf_counter() - t0) * 1000, 1)
+        components["database"] = {
+            "status": "ok" if ms < 250 else "warn",
+            "detail": f"{ms} ms round-trip",
+        }
+    except Exception as e:
+        components["database"] = {"status": "down", "detail": str(e)[:200]}
+
+    # Redis — reflects the cache layer's own connection flag.
+    try:
+        import infra.cache as _cache
+        up = _cache.is_available()
+        components["redis"] = {
+            "status": "ok" if up else "down",
+            "detail": "connected" if up else "unavailable (degraded — no caching / locks)",
+        }
+    except Exception as e:
+        components["redis"] = {"status": "down", "detail": str(e)[:200]}
+
+    # Accounts + configured bots (DB-derived).
+    try:
+        accounts = await platform_db.list_accounts(active_only=False)
+        active = sum(1 for a in accounts if a.is_active)
+        with_bot = sum(1 for a in accounts if getattr(a, "bot_token_encrypted", None))
+        components["accounts"] = {
+            "status": "ok",
+            "detail": f"{active}/{len(accounts)} active · {with_bot} with per-account bot",
+        }
+    except Exception as e:
+        components["accounts"] = {"status": "down", "detail": str(e)[:200]}
+
+    # Samsara ingest freshness — newest captured_at across vehicle_state.
+    try:
+        cur = await platform_db._db.execute(
+            "SELECT MAX(captured_at) FROM vehicle_state WHERE captured_at <> ''"
+        )
+        row = await cur.fetchone()
+        latest = row[0] if row else None
+        if not latest:
+            components["ingest"] = {"status": "warn", "detail": "no vehicle signals recorded yet"}
+        else:
+            from datetime import datetime, timezone
+            try:
+                dt = datetime.fromisoformat(latest.replace("Z", "+00:00"))
+                age_min = (datetime.now(timezone.utc) - dt).total_seconds() / 60.0
+                status = "ok" if age_min < 30 else ("warn" if age_min < 180 else "down")
+                components["ingest"] = {
+                    "status": status,
+                    "detail": f"newest vehicle signal {round(age_min)} min ago",
+                }
+            except (ValueError, AttributeError):
+                components["ingest"] = {"status": "warn", "detail": f"latest={latest}"}
+    except Exception as e:
+        components["ingest"] = {"status": "down", "detail": str(e)[:200]}
+
+    # Error rate — counts from error_log.
+    try:
+        errors_1h = await platform_db.count_recent_errors(hours=1)
+        errors_24h = await platform_db.count_recent_errors(hours=24)
+        components["errors"] = {
+            "status": "ok" if errors_1h == 0 else ("warn" if errors_1h < 10 else "down"),
+            "detail": f"{errors_1h} in last hour · {errors_24h} in last 24h",
+        }
+    except Exception as e:
+        components["errors"] = {"status": "down", "detail": str(e)[:200]}
+
+    # Overall = worst component.
+    rank = {"ok": 0, "warn": 1, "down": 2}
+    overall = max((c["status"] for c in components.values()),
+                  key=lambda s: rank.get(s, 0), default="ok")
+    return {"overall": overall, "components": components}
+
+
+# ── Cross-account users ──────────────────────────────────────────
+
+
+@router.get("/users")
+async def list_users(
+    search: str = Query(default="", description="Name substring, email, or exact telegram_id"),
+    limit: int = Query(default=200, ge=1, le=500),
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Cross-account user search for support / debugging."""
+    items = await platform_db.list_all_users_cross_account(search=search, limit=limit)
+    return {"items": items, "count": len(items)}
+
+
+@router.get("/users/{user_id}/sessions")
+async def list_user_sessions(
+    user_id: int,
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Active sessions for one user — operator triage.
+
+    Used by the Users-page expand-row to surface where a specific
+    customer is logged in (helps with "they say it's still logged in
+    from their old laptop" support questions).  Limited to active rows;
+    revoked / expired sessions are excluded.
+    """
+    items = await platform_db.list_user_sessions(user_id)
+    return {"items": items, "count": len(items)}
+
+
+@router.delete("/sessions/{session_id}")
+async def revoke_session_as_operator(
+    session_id: int,
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Operator revoke of any session by id.
+
+    No user-ownership check — gated by ``require_system_owner``.  Used
+    when a customer calls support saying "my laptop was stolen, kill
+    that session" and the operator handles it on their behalf.  Pushes
+    the jti onto the Redis denylist with TTL equal to remaining JWT
+    life, same as the customer-side ``DELETE /user/sessions/{id}``.
+    """
+    revoked = await platform_db.revoke_user_session(session_id)
+    if not revoked:
+        raise HTTPException(
+            status_code=404,
+            detail="Session not found or already revoked.",
+        )
+    from interfaces.api.auth import mark_jti_revoked
+    await mark_jti_revoked(revoked["jti"], revoked.get("expires_at"))
+    return {"ok": True, "revoked": {"id": revoked["id"], "jti": revoked["jti"]}}
+
+
+# ── Error log ────────────────────────────────────────────────────
+
+
+@router.get("/errors")
+async def list_errors(
+    source: str = Query(default="", description="api | bot | scheduler | system_bot | task | startup"),
+    limit: int = Query(default=100, ge=1, le=500),
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Recent error_log rows (newest first) with optional source filter."""
+    items = await platform_db.list_recent_errors(source=source or "", limit=limit)
+    return {"items": items, "count": len(items)}
+
+
+# ── Cross-account audit feed ─────────────────────────────────────
+
+
+@router.get("/audit/comp-actions")
+async def audit_comp_actions(
+    limit: int = Query(default=50, ge=1, le=500),
+    action: str = Query(default="", description="Filter to one action token"),
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Recent comp grant/renew/revoke/expire/reminder rows, all accounts."""
+    items = await platform_db.list_recent_comp_actions(
+        limit=limit, action=action or None,
+    )
+    return {"items": items, "count": len(items)}
+
+
+@router.get("/audit/past-due")
+async def audit_past_due(
+    days: int = Query(default=30, ge=1, le=365),
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Accounts that entered past_due within the last N days."""
+    items = await platform_db.list_recently_past_due(days=days)
+    return {"items": items, "count": len(items), "window_days": days}
+
+
+@router.get("/audit/webhook-events")
+async def audit_webhook_events(
+    limit: int = Query(default=100, ge=1, le=500),
+    event_type: str = Query(default="", description="Filter to one Stripe event_type"),
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Recent processed Stripe webhook events with resolved account name."""
+    items = await platform_db.list_recent_processed_events(
+        limit=limit, event_type=event_type or None,
+    )
+    return {"items": items, "count": len(items)}
+
+
+# ── Cross-account invoice viewer ────────────────────────────────
+
+
+@router.get("/invoices")
+async def invoices_search(
+    status: str = Query(default="", description="paid | open | uncollectible | void"),
+    from_date: str = Query(default="", description="ISO-8601 lower bound on created_at"),
+    to_date: str = Query(default="", description="ISO-8601 upper bound on created_at"),
+    account_search: str = Query(default="", description="Substring match on account name"),
+    limit: int = Query(default=100, ge=1, le=500),
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Cross-account invoice search for the operator console."""
+    items = await platform_db.list_recent_invoices_cross_account(
+        status=status or None,
+        from_date=from_date or None,
+        to_date=to_date or None,
+        account_search=account_search or None,
+        limit=limit,
+    )
+    return {"items": items, "count": len(items)}
+
+
+# ── Helpers ─────────────────────────────────────────────────────
+
+
+def _sub_summary(sub: dict | None) -> dict:
+    """Project a subscription row to the small list-view shape.
+
+    Kept small so the accounts list page stays under ~50KB even with
+    1000 tenants.  Detail page hits ``/system/accounts/{id}`` for the
+    full shape.
+    """
+    if not sub:
+        return {"status": "no_subscription", "tier": "free"}
+    return {
+        "tier":              sub.get("tier") or "free",
+        "status":            sub.get("status") or "active",
+        "vehicle_count":     sub.get("vehicle_count") or 0,
+        "is_comped":         bool(sub.get("is_comped")),
+        "comp_expires_at":   sub.get("comp_expires_at"),
+        "past_due_since":    sub.get("past_due_since"),
+        "billing_email":     sub.get("billing_email") or "",
+        "provider":          sub.get("provider") or "stub",
+    }
+
+
+def _sub_full(sub: dict | None) -> dict | None:
+    """Project a subscription row to the full detail-view shape."""
+    if not sub:
+        return None
+    # The DB row already has the right shape; we just strip nothing
+    # and let FastAPI/Pydantic JSON-encode it.  Listed-fields-only
+    # version not needed — operator detail page benefits from seeing
+    # everything (provider customer ids, item ids for debugging).
+    return dict(sub)

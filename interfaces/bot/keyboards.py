@@ -498,25 +498,53 @@ def fuelcost_menu_kb() -> InlineKeyboardMarkup:
 # interfaces/bot/maintenance.py via _done_kb().
 
 
-def auto_reports_menu_kb(current_sub: dict | None = None) -> InlineKeyboardMarkup:
-    """Auto Reports subscription menu."""
+def scheduled_reports_menu_kb(subs: list[dict] | dict | None = None) -> InlineKeyboardMarkup:
+    """Scheduled Reports main menu — list view with multi-schedule.
+
+    Accepts either a list of schedule dicts (multi-schedule model,
+    2026-06+) OR a single dict / None for backward compat with callers
+    that haven't migrated yet.  Normalises to a list internally.
+
+    When the user has zero schedules: shows the frequency picker
+    inline (Daily/Weekly/Monthly) so the first-time experience is one
+    tap from the main menu.
+
+    When the user has at least one schedule: shows a "🔕 Stop {label}"
+    button per row + an "+ Add new schedule" entry that re-opens the
+    frequency picker.  Each per-row stop uses callback prefix
+    ``ar_stop_<report_type>`` (handled by ``_ar_stop_per_type`` in
+    callbacks/__init__.py); the legacy exact callback ``ar_unsub``
+    still works (it stops every schedule the user has — kept for the
+    in-flight buttons baked into older messages).
+    """
     rows = []
-    if current_sub:
-        rtype = current_sub.get("report_type", "faults")
-        freq = current_sub.get("frequency", "daily")
-        hour = current_sub.get("send_hour", 7)
-        tz = current_sub.get("timezone", "UTC")
-        tz_short = tz.split("/")[-1].replace("_", " ") if "/" in tz else tz
+    # Normalise to a list so we can iterate uniformly.
+    if subs is None:
+        subs_list: list[dict] = []
+    elif isinstance(subs, dict):
+        subs_list = [subs]
+    else:
+        subs_list = list(subs)
+
+    if subs_list:
         # Derived from the canonical report registry — guarantees this
         # menu never drifts from the dashboard tabs or the bot scheduler.
         from capabilities.reporting.registry import REPORTS as _R
         type_labels = {r.key: r.label_with_emoji for r in _R}
-        label = type_labels.get(rtype, rtype.title())
+        # One row per schedule with a per-row Stop button.  The
+        # detail line (frequency / hour / tz) lives in the message
+        # text above the keyboard so the buttons stay short.
+        for sub in subs_list:
+            rtype = sub.get("report_type", "faults")
+            label = type_labels.get(rtype, rtype.title())
+            rows.append([InlineKeyboardButton(
+                f"🔕 Stop {label}",
+                callback_data=f"ar_stop_{rtype}",
+            )])
         rows.append([InlineKeyboardButton(
-            f"📋 Active: {label} · {freq.title()} at {hour:02d}:00 {tz_short}",
-            callback_data="noop",
+            "➕ Add new schedule",
+            callback_data="ar_add",
         )])
-        rows.append([InlineKeyboardButton("🔕 Unsubscribe", callback_data="ar_unsub")])
     else:
         rows.append([
             InlineKeyboardButton("📅 Daily", callback_data="ar_freq_daily"),
@@ -529,7 +557,7 @@ def auto_reports_menu_kb(current_sub: dict | None = None) -> InlineKeyboardMarku
     return InlineKeyboardMarkup(rows)
 
 
-def auto_reports_type_kb() -> InlineKeyboardMarkup:
+def scheduled_reports_type_kb() -> InlineKeyboardMarkup:
     """Report type picker for Auto Reports."""
     rows = [
         [
@@ -546,7 +574,7 @@ def auto_reports_type_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def auto_reports_hour_kb() -> InlineKeyboardMarkup:
+def scheduled_reports_hour_kb() -> InlineKeyboardMarkup:
     """Hour picker for Auto Reports delivery time."""
     rows = [
         [
@@ -564,7 +592,7 @@ def auto_reports_hour_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def auto_reports_tz_kb() -> InlineKeyboardMarkup:
+def scheduled_reports_tz_kb() -> InlineKeyboardMarkup:
     """Timezone picker for Auto Reports delivery.
 
     Kept aligned with the dashboard's 4-zone whitelist
@@ -618,48 +646,66 @@ def geofence_list_kb(geofences: list[dict]) -> InlineKeyboardMarkup:
 
 
 def alert_settings_kb(user) -> InlineKeyboardMarkup:
-    """Per-type alert toggle keyboard.
+    """Per-type alert toggle keyboard, role-filtered.
 
     Shows a checkmark (✅) or cross (❌) for each alert category.
     Tapping a row toggles that category on/off.
+
+    The visible toggle list is narrowed by
+    ``capabilities/alerting/relevance.alert_types_for_role`` — a
+    Safety user doesn't see a Fuel toggle, a Dispatcher doesn't see
+    Health, etc.  The subscriber-fetch path
+    (``adapters/storage/users.get_typed_alert_subscribers``) applies
+    the same filter so a stale "on" toggle for an irrelevant type
+    can't leak alerts the user shouldn't get.
+
+    The "🟢 Resolve receipts" toggle is always shown (every role can
+    opt in to receive resolve-confirmation DMs).  Defaults to OFF.
     """
+    from capabilities.alerting.relevance import alert_types_for_role
+
     def _icon(on: bool) -> str:
         return "✅" if on else "❌"
 
-    rows = [
-        [InlineKeyboardButton(
-            f"{_icon(user.alert_faults)} {t('alert_settings.faults')}",
-            callback_data="alert_toggle_faults",
-        )],
-        [InlineKeyboardButton(
-            f"{_icon(user.alert_health)} {t('alert_settings.health')}",
-            callback_data="alert_toggle_health",
-        )],
-        [InlineKeyboardButton(
-            f"{_icon(user.alert_fuel)} {t('alert_settings.fuel')}",
-            callback_data="alert_toggle_fuel",
-        )],
-        [InlineKeyboardButton(
-            f"{_icon(user.alert_geofence)} {t('alert_settings.geofence')}",
-            callback_data="alert_toggle_geofence",
-        )],
-        [InlineKeyboardButton(
-            f"{_icon(user.alert_events)} {t('alert_settings.events')}",
-            callback_data="alert_toggle_events",
-        )],
-        [InlineKeyboardButton(
-            f"{_icon(user.alert_camera)} 📷 Camera",
-            callback_data="alert_toggle_camera",
-        )],
-        [InlineKeyboardButton(
-            f"{_icon(user.alert_parking)} {t('alert_settings.parking')}",
-            callback_data="alert_toggle_parking",
-        )],
+    # Display-friendly label + the user-prefs column each alert type
+    # maps to.  Order matches ALERT_TYPE_REQUIRED_PERM for consistency
+    # across the bot and dashboard.
+    _ROWS: list[tuple[str, str, str, str]] = [
+        # (alert_type, user-attr, callback, label)
+        ("faults",   "alert_faults",   "alert_toggle_faults",   t("alert_settings.faults")),
+        ("health",   "alert_health",   "alert_toggle_health",   t("alert_settings.health")),
+        ("fuel",     "alert_fuel",     "alert_toggle_fuel",     t("alert_settings.fuel")),
+        ("geofence", "alert_geofence", "alert_toggle_geofence", t("alert_settings.geofence")),
+        ("events",   "alert_events",   "alert_toggle_events",   t("alert_settings.events")),
+        ("camera",   "alert_camera",   "alert_toggle_camera",   "📷 Camera"),
+        ("parking",  "alert_parking",  "alert_toggle_parking",  t("alert_settings.parking")),
+    ]
+
+    relevant = set(alert_types_for_role(user.role))
+    rows: list[list[InlineKeyboardButton]] = []
+    for alert_type, attr, callback, label in _ROWS:
+        if alert_type not in relevant:
+            continue
+        rows.append([InlineKeyboardButton(
+            f"{_icon(getattr(user, attr, True))} {label}",
+            callback_data=callback,
+        )])
+
+    # Resolve-receipts toggle (per-user DM opt-in).  Always shown
+    # regardless of role — every role can choose whether they want
+    # the 🟢 RESOLVED follow-up in their personal chat.
+    rows.append([InlineKeyboardButton(
+        f"{_icon(getattr(user, 'alert_resolve_receipts', False))} "
+        "🟢 Resolve receipts",
+        callback_data="alert_toggle_resolve_receipts",
+    )])
+
+    rows.extend([
         [InlineKeyboardButton(t("alert_settings.pending"), callback_data="cmd_pending_alerts"),
          InlineKeyboardButton(t("alert_settings.history"), callback_data="cmd_alert_history")],
         [InlineKeyboardButton(t("alert_settings.disable_all"), callback_data="alert_disable_all")],
         [InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")],
-    ]
+    ])
     return InlineKeyboardMarkup(rows)
 
 

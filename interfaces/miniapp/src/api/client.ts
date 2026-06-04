@@ -169,6 +169,10 @@ export async function apiJSON<T = unknown>(path: string, opts: ApiFetchOpts = {}
         ? detail
         : Array.isArray(detail)
         ? detail.map((d: { msg?: string }) => d.msg ?? String(d)).join('; ')
+        // Structured error body ({message, error_code}) — show the
+        // human message (e.g. expired Google Drive) not "[object Object]".
+        : (detail && typeof detail === 'object' && typeof detail.message === 'string')
+        ? detail.message
         : res.statusText;
     throw new ApiError(msg, res.status);
   }

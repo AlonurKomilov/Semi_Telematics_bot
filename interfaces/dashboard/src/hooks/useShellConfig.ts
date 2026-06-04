@@ -1,5 +1,6 @@
 import { useAuth } from '../context/AuthContext';
 import { useRoleView } from '../context/RoleViewContext';
+import type { Persona } from '../features/_lib/types';
 
 /**
  * Single source of truth for role-aware UI decisions.
@@ -42,6 +43,8 @@ export function useShellConfig() {
   const isDriverView = activeView === 'driver';
   const isOwnerView = activeView === 'owner';
   const isAdminView = activeView === 'admin';
+  const isHRView = activeView === 'hr';
+  const isAccountingView = activeView === 'accounting';
 
   // Persona-tuned button label for the AI assistant's primary briefing.
   const briefingLabel =
@@ -73,6 +76,13 @@ export function useShellConfig() {
     activeView === 'dispatcher' ? 'Use this time to plan upcoming routes.' :
     'Use this time to review scorecards or coaching backlogs.';
 
+  // ``persona`` is the canonical Persona-typed handle on the active
+  // view — Pattern B layout maps key against this, and adding HR /
+  // Accounting later just extends the Persona union in one place.
+  // ``activeView`` stays the wider ``string`` type for compatibility
+  // with existing callers that still compare against literals.
+  const persona: Persona = (activeView as Persona) || 'owner';
+
   return {
     realRole,
     isDriver,
@@ -80,12 +90,15 @@ export function useShellConfig() {
     isAdmin,
     isOwnerOrAdmin,
     activeView,
+    persona,
     isFleetView,
     isDispatchView,
     isSafetyView,
     isDriverView,
     isOwnerView,
     isAdminView,
+    isHRView,
+    isAccountingView,
     briefingLabel,
     chatSubject,
     aiSubjectAll,

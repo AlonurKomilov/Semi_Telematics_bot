@@ -28,8 +28,8 @@ from interfaces.bot.config import (
     WEBHOOK_URL, WEBHOOK_PORT, WEBHOOK_SECRET, USE_WEBHOOK,
     logger,
 )
-from interfaces.bot.state import db, _active_messages
-from interfaces.bot.keyboards import system_owner_kb, user_settings_kb, back_kb
+from interfaces.bot.state import db
+from interfaces.bot.keyboards import user_settings_kb, back_kb
 from interfaces.bot.auth import _get_user
 from interfaces.bot.helpers import _show, _render_audit_log
 from interfaces.bot.scheduler import register_all as _register_jobs
@@ -109,29 +109,20 @@ async def post_init(app: Application):
     _cfg.bot_username = me.username or ""
     logger.info(f"Bot username: @{_cfg.bot_username}")
 
-    # Set bot commands
+    # Set the LOGIN-bot command menu — minimal signup/registration set
+    # only.  Per-account bots advertise the full tenant command list via
+    # ``bot_registry._build_bot_app`` (the same set we used to expose
+    # here).  Listing tenant commands on the login bot would just be
+    # misleading — a fresh visitor who picks /faults from the menu
+    # would get "command not found".
     await app.bot.set_my_commands([
-        BotCommand("start", "🏠 Main menu"),
-        BotCommand("register", "📝 Register company"),
-        BotCommand("join", "🔑 Join with invite code"),
-        BotCommand("faults", "🔧 Fault report (PDF)"),
-        BotCommand("truck", "🚛 Truck detail"),
-        BotCommand("fuel", "⛽ Low fuel"),
-        BotCommand("alerts", "🔔 Auto-alerts"),
-        BotCommand("invite", "✉️ Invite team member"),
-        BotCommand("account", "🏢 Account info"),
-        BotCommand("users", "👥 Manage users"),
-        BotCommand("addorg", "📡 Connect company"),
-        BotCommand("groups", "💬 Manage group access"),
-        BotCommand("chatid", "🆔 Show chat ID"),
-        BotCommand("health", "🏥 Vehicle health"),
-        BotCommand("efficiency", "📊 Efficiency report"),
-        BotCommand("admin", "⚙️ System admin panel"),
-        BotCommand("settings", "🔧 Notification settings"),
-        BotCommand("audit", "📋 View audit log"),
-        BotCommand("help", "ℹ️ Help"),
+        BotCommand("start",    "🏠 Welcome / sign in"),
+        BotCommand("register", "📝 Register a new account"),
+        BotCommand("join",     "🔑 Join with invite code"),
+        BotCommand("help",     "ℹ️ How 4truck works"),
+        BotCommand("chatid",   "🆔 Show my chat id"),
     ])
-    logger.info("Commands set")
+    logger.info("Login bot command menu set (minimal)")
 
     # Initialize known faults and run initial parking check in background
     # (these make Samsara API calls that can take minutes — don't block startup)
@@ -161,32 +152,37 @@ async def post_init(app: Application):
     # Store reference on the app to prevent GC of the background task
     app.bot_data["_deferred_init_task"] = _bg_task
 
-    # Notify system owner(s) that bot is online
-    sys_accounts = await db.list_accounts()
-    sys_total_users = await db.count_all_users()
-    for soid in SYSTEM_OWNER_IDS:
-        try:
-            sys_msg = (
-                "━━━━━━━━━━━━━━━━━━━━━\n"
-                "  ⚙️  <b>Bot is Online</b>\n"
-                "━━━━━━━━━━━━━━━━━━━━━\n"
-                "\n"
-                f"  System Owner Dashboard\n"
-                f"  🏢 {len(sys_accounts)} accounts\n"
-                f"  👥 {sys_total_users} users\n"
-                "  Use /admin for full stats"
-            )
-            msg = await app.bot.send_message(
-                chat_id=soid,
-                text=sys_msg,
-                parse_mode=ParseMode.HTML,
-                reply_markup=system_owner_kb(),
-            )
-            _active_messages[(0, soid, soid)] = [msg.message_id]
-        except Exception as e:
-            logger.warning(f"Startup msg to system owner {soid}: {e}")
-
-    logger.info("Startup complete — notified system owners only")
+    # Notify system owner(s) that the bot is online.  We route this
+    # through the SYSTEM bot client, not the customer daemon, so the
+    # operator chat history with the customer-facing bot stays free
+    # of operator-only content.  See infra/system_bot.py for the
+    # send-only client; the buttons are URL buttons that open the
+    # system.4truck.us console (no callback handler required).
+    try:
+        from infra import system_bot
+        sys_accounts = await db.list_accounts()
+        sys_total_users = await db.count_all_users()
+        sys_msg = (
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "  ⚙️  <b>Bot is Online</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "\n"
+            f"  🏢 {len(sys_accounts)} accounts\n"
+            f"  👥 {sys_total_users} users\n"
+            "\n"
+            "  Operator console: <code>system.4truck.us</code>"
+        )
+        sent = await system_bot.send_to_owners(
+            SYSTEM_OWNER_IDS,
+            sys_msg,
+            reply_markup=system_bot.system_console_kb(),
+        )
+        logger.info(
+            "Startup ping sent via system bot to %d/%d owners",
+            sent, len(list(SYSTEM_OWNER_IDS)),
+        )
+    except Exception as e:
+        logger.warning("Startup system-owner ping failed: %s", e)
 
 
 async def post_shutdown(app: Application):
@@ -204,7 +200,10 @@ def build_app() -> Application:
     Does NOT start the bot — caller is responsible for lifecycle.
     """
     if not TELEGRAM_TOKEN:
-        raise RuntimeError("TELEGRAM_BOT_TOKEN not set")
+        raise RuntimeError(
+            "Customer-facing bot token not set — define TELEGRAM_LOGIN_BOT_TOKEN "
+            "(preferred) or TELEGRAM_BOT_TOKEN (legacy fallback) in .env."
+        )
 
     app = (Application.builder()
            .token(TELEGRAM_TOKEN)
@@ -223,8 +222,13 @@ def build_app() -> Application:
 
     app.add_error_handler(_ptb_error_handler)
 
-    from interfaces.bot.handler_setup import register_handlers
-    register_handlers(app)
+    # Login bot gets the MINIMAL handler set — /start /register /join
+    # /help /chatid only.  Tenant commands (/faults /vehicle etc.)
+    # belong on per-account bots in bot_registry, not on the global
+    # login bot; routing 1000 customers' tenant traffic through one
+    # PTB Application is the bottleneck we explicitly want to avoid.
+    from interfaces.bot.handler_setup import register_login_handlers
+    register_login_handlers(app)
 
     return app
 

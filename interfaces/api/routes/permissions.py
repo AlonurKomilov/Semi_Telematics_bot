@@ -1,5 +1,6 @@
 """API endpoints for managing role permissions per account."""
 
+import json
 import logging
 from dataclasses import asdict, fields as dc_fields
 from typing import Optional
@@ -22,6 +23,42 @@ router = APIRouter(prefix="/admin/permissions", tags=["permissions"])
 
 VALID_ROLES = {r.value for r in Role}
 VALID_FIELDS = {f.name for f in dc_fields(FeatureSet)}
+
+
+async def _assert_company_belongs_to_account(
+    tenant_db, account_id: int, company_id: Optional[int],
+) -> None:
+    """Defense-in-depth: when a permission route accepts a company_id
+    from the request body, refuse the write unless the company is
+    owned by the caller's account.
+
+    Without this check, an Owner of Account A could send
+    ``company_id=99`` where company 99 belongs to Account B and write
+    a row tagged ``(account_id=A, company_id=99)``.  Today's read
+    queries always filter by account_id so the row is functionally a
+    no-op, but it pollutes the table and would become a real leak if
+    any future query reads by company_id alone.  Validating here
+    keeps the table clean and forecloses the future-bug surface.
+    """
+    if company_id is None:
+        return
+    co = await tenant_db.get_company_in_account(account_id, company_id)
+    if co is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Company {company_id} not found in this account",
+        )
+
+
+def _permissions_diff(before: dict, after: dict) -> dict:
+    """Return only the changed permission flags as ``{field: [old, new]}``.
+
+    Used to keep audit_log details compact — a full FeatureSet dump
+    would put 40 unchanged fields into every audit row.
+    """
+    keys = set(before) | set(after)
+    return {k: [before.get(k), after.get(k)] for k in keys
+            if before.get(k) != after.get(k)}
 
 
 class UpdatePermissionsRequest(BaseModel):
@@ -134,6 +171,7 @@ async def update_role_perms(
     body: UpdatePermissionsRequest,
     user: dict = Depends(require_permission("can_manage_account")),
     platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
 ):
     """Update permission set for a role in the account."""
     if body.role not in VALID_ROLES:
@@ -153,10 +191,15 @@ async def update_role_perms(
     account_id = user["account_id"]
     updated_by = int(user["sub"])
 
+    # Defense-in-depth: when a company_id is provided, refuse the
+    # write unless the company belongs to the caller's account.
+    await _assert_company_belongs_to_account(tenant_db, account_id, body.company_id)
+
     # Merge with defaults for any fields not provided
     role_enum = Role(body.role)
     current = await get_account_permissions(role_enum, account_id, body.company_id)
-    merged = asdict(current)
+    before = asdict(current)
+    merged = dict(before)
     merged.update(body.permissions)
 
     await platform_db.set_role_permissions(
@@ -166,9 +209,28 @@ async def update_role_perms(
     # Clear cache so all layers pick up changes immediately
     invalidate_permissions_cache(account_id)
 
+    # Audit log — record only the diff so a future Owner asking
+    # "who changed this and when" gets a clean per-flag answer
+    # instead of a 40-row before/after dump.
+    diff = _permissions_diff(before, merged)
+    scope = f"company={body.company_id}" if body.company_id else "account-wide"
+    target_id = f"{body.role}:{body.company_id}" if body.company_id else body.role
+    try:
+        await tenant_db.add_audit_log(
+            account_id, updated_by,
+            "permissions_update",
+            target_type="role", target_id=target_id,
+            details=json.dumps({"scope": scope, "diff": diff}),
+        )
+    except Exception as e:
+        # Audit-log failures must not block the permission write
+        # itself — the write already succeeded and is the
+        # operationally important part.
+        logger.warning("Permissions audit-log write failed: %s", e)
+
     logger.info(
-        "Permissions updated: account=%d role=%s by=%d",
-        account_id, body.role, updated_by,
+        "Permissions updated: account=%d role=%s scope=%s by=%d changed=%d",
+        account_id, body.role, scope, updated_by, len(diff),
     )
     return {"ok": True, "role": body.role, "permissions": merged}
 
@@ -178,6 +240,7 @@ async def reset_role_perms(
     body: UpdatePermissionsRequest,
     user: dict = Depends(require_permission("can_manage_account")),
     platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
 ):
     """Reset a role's permissions to factory defaults."""
     if body.role not in VALID_ROLES:
@@ -187,11 +250,26 @@ async def reset_role_perms(
     updated_by = int(user["sub"])
     role_enum = Role(body.role)
 
+    # Defense-in-depth: verify company_id belongs to caller's account.
+    await _assert_company_belongs_to_account(tenant_db, account_id, body.company_id)
+
     default = asdict(ROLE_PERMISSIONS.get(role_enum, FeatureSet()))
     await platform_db.set_role_permissions(
         account_id, body.role, default, updated_by, body.company_id,
     )
     invalidate_permissions_cache(account_id)
+
+    scope = f"company={body.company_id}" if body.company_id else "account-wide"
+    target_id = f"{body.role}:{body.company_id}" if body.company_id else body.role
+    try:
+        await tenant_db.add_audit_log(
+            account_id, updated_by,
+            "permissions_reset",
+            target_type="role", target_id=target_id,
+            details=json.dumps({"scope": scope}),
+        )
+    except Exception as e:
+        logger.warning("Permissions audit-log write failed: %s", e)
 
     return {"ok": True, "role": body.role, "permissions": default}
 
@@ -200,6 +278,7 @@ async def reset_role_perms(
 async def reset_all_perms(
     user: dict = Depends(require_permission("can_manage_account")),
     platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
 ):
     """Reset ALL role permissions for the account to factory defaults."""
     account_id = user["account_id"]
@@ -211,6 +290,17 @@ async def reset_all_perms(
         )
 
     invalidate_permissions_cache(account_id)
+
+    try:
+        await tenant_db.add_audit_log(
+            account_id, updated_by,
+            "permissions_reset_all",
+            target_type="account", target_id=str(account_id),
+            details="",
+        )
+    except Exception as e:
+        logger.warning("Permissions audit-log write failed: %s", e)
+
     return {"ok": True, "message": "All role permissions reset to defaults"}
 
 
@@ -224,12 +314,22 @@ async def delete_company_override(
     body: DeleteOverrideRequest,
     user: dict = Depends(require_permission("can_manage_account")),
     platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
 ):
     """Delete a company-specific permission override (revert to account-wide)."""
     if body.role not in VALID_ROLES:
         raise HTTPException(400, f"Invalid role: {body.role}")
 
     account_id = user["account_id"]
+    updated_by = int(user["sub"])
+
+    # Defense-in-depth: verify company_id belongs to caller's account
+    # BEFORE attempting the delete.  Without this an attacker could
+    # probe whether arbitrary company ids exist by checking 404 vs
+    # success — and on success would write an audit row referencing a
+    # cross-account company id.
+    await _assert_company_belongs_to_account(tenant_db, account_id, body.company_id)
+
     deleted = await platform_db.delete_role_permissions(
         account_id, body.role, body.company_id,
     )
@@ -238,8 +338,18 @@ async def delete_company_override(
 
     invalidate_permissions_cache(account_id)
 
+    try:
+        await tenant_db.add_audit_log(
+            account_id, updated_by,
+            "permissions_override_deleted",
+            target_type="role", target_id=f"{body.role}:{body.company_id}",
+            details=json.dumps({"company_id": body.company_id}),
+        )
+    except Exception as e:
+        logger.warning("Permissions audit-log write failed: %s", e)
+
     logger.info(
         "Company override deleted: account=%d role=%s company=%d by=%d",
-        account_id, body.role, body.company_id, int(user["sub"]),
+        account_id, body.role, body.company_id, updated_by,
     )
     return {"ok": True, "role": body.role, "company_id": body.company_id}

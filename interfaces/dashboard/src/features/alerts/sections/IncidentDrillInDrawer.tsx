@@ -1,0 +1,318 @@
+/**
+ * Safety persona's incident drawer — slides over the page when the
+ * operator clicks an alert id in AlertsResults.
+ *
+ * Composes existing widgets without duplicating their data layer:
+ *   • Header  — type badge, severity dot, vehicle name, last seen.
+ *   • Description — same formatter the queue uses, full text (no truncate).
+ *   • Quick links — to Vehicle page (for the truck), Scorecards
+ *                   (filtered to driver if alert carries acknowledged_by
+ *                   metadata), and Coaching (assignments view).  Routes
+ *                   exist independently; this drawer is a navigation hub,
+ *                   not a data sink.
+ *   • Video preview — for safety_events alerts that have a video_url
+ *                     and the operator has ``can_camera``.  Fetches
+ *                     /safety/events/{event_id}/video to refresh the
+ *                     S3 signature on demand (existing endpoint).
+ *
+ * The drawer mounts only on the safety persona's layout, but the
+ * underlying open-state machinery is in AlertsSelectionContext so
+ * other personas could host the drawer in their own layouts without
+ * touching AlertsResults again.  See AlertsSelectionContext.drillInAlert.
+ *
+ * Permission-gated:
+ *   • can_camera ⇒ video preview block shown
+ *   • can_scorecard_all / _own ⇒ scorecard link shown
+ *   • can_coaching_admin ⇒ coaching link shown
+ *
+ * No new backend dependency.
+ */
+import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
+import {
+  X, ExternalLink, Truck, BarChart3, GraduationCap, Video,
+} from 'lucide-react';
+import { apiJSON, ApiError } from '../../../api/client';
+import { usePermissions } from '../../../hooks/usePermissions';
+import { useAlertsSelection } from '../_shared/AlertsSelectionContext';
+import {
+  TypeBadge, SeverityDot,
+} from '../_shared/components';
+import { formatAlertDescription } from '../../../utils/alertDescription';
+import type { Alert } from '../../../types';
+
+export default function IncidentDrillInDrawer() {
+  const { t } = useTranslation();
+  const { drillInAlert, closeDrillIn } = useAlertsSelection();
+  // Close on Escape — global listener bound only while the drawer is open.
+  useEffect(() => {
+    if (!drillInAlert) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeDrillIn();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drillInAlert, closeDrillIn]);
+
+  if (!drillInAlert) return null;
+
+  return (
+    <>
+      {/* Backdrop — click-outside closes. */}
+      <button
+        type="button"
+        aria-label={t('alerts.drillin.close')}
+        onClick={closeDrillIn}
+        className="fixed inset-0 z-40 bg-black/40 cursor-default"
+      />
+      {/* Drawer — slides in from the right; max-width keeps it readable
+          on wide monitors. */}
+      <aside
+        role="dialog"
+        aria-label={t('alerts.drillin.open_incident_details')}
+        className="fixed top-0 right-0 bottom-0 z-50 w-full sm:max-w-md bg-background border-l border-border shadow-2xl flex flex-col"
+      >
+        <DrawerHeader alert={drillInAlert} onClose={closeDrillIn} />
+        <DrawerBody alert={drillInAlert} />
+      </aside>
+    </>
+  );
+}
+
+
+function DrawerHeader({ alert, onClose }: {
+  alert: Alert;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <header className="px-5 py-4 border-b border-border flex items-start gap-3">
+      <SeverityDot severity={alert.severity} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <TypeBadge type={alert.alert_type || 'unknown'} />
+          <span className="text-xs text-muted-foreground font-mono">
+            #{alert.id}
+          </span>
+        </div>
+        <h2 className="mt-1.5 text-base font-semibold text-foreground truncate">
+          {alert.vehicle_name || alert.vehicle_id || 'Unknown vehicle'}
+        </h2>
+        {alert.last_seen && (
+          <p className="text-xs text-muted-foreground mt-0.5">
+            last seen {new Date(alert.last_seen).toLocaleString()}
+            {(alert.occurrence_count ?? 1) > 1 && (
+              <span className="ml-2 text-orange-500">
+                × {alert.occurrence_count}
+              </span>
+            )}
+          </p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="text-muted-foreground hover:text-foreground p-1 -m-1"
+        aria-label={t('alerts.drillin.close')}
+      >
+        <X size={18} />
+      </button>
+    </header>
+  );
+}
+
+
+function DrawerBody({ alert }: { alert: Alert }) {
+  const { t } = useTranslation();
+  const { has, hasAny } = usePermissions();
+  const description = formatAlertDescription(
+    alert as Alert & { last_detail?: string; message?: string },
+  );
+
+  // Quick-link visibility maps to existing dashboard pages.  Permission
+  // gates mirror the route guards on each page so operators don't see
+  // dead links.
+  const canScorecards = hasAny('can_scorecard_all', 'can_scorecard_own');
+  const canCoaching = has('can_coaching_admin');
+  const canCamera = has('can_camera');
+  const isEventAlert = alert.alert_type === 'events' || alert.alert_type === 'event';
+
+  return (
+    <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+      {description && (
+        <section>
+          <h3 className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">
+            {t('alerts.drillin.description_label')}
+          </h3>
+          <p className="text-sm text-foreground leading-relaxed">{description}</p>
+        </section>
+      )}
+
+      {canCamera && isEventAlert && (
+        <VideoBlock alert={alert} />
+      )}
+
+      <section>
+        <h3 className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-2">
+          {t('alerts.drillin.quick_links')}
+        </h3>
+        <div className="grid gap-2">
+          {alert.vehicle_id && (
+            <DrawerLink
+              icon={Truck}
+              label={t('alerts.drillin.vehicle_page')}
+              hint={t('alerts.drillin.vehicle_page_hint')}
+              to={`/vehicles/${encodeURIComponent(alert.vehicle_id)}`}
+            />
+          )}
+          {canScorecards && (
+            <DrawerLink
+              icon={BarChart3}
+              label={t('alerts.drillin.scorecards')}
+              hint={t('alerts.drillin.scorecards_hint')}
+              to={`/scorecards${
+                alert.acknowledged_by
+                  ? `?driver_id=${encodeURIComponent(String(alert.acknowledged_by))}`
+                  : ''
+              }`}
+            />
+          )}
+          {canCoaching && (
+            <DrawerLink
+              icon={GraduationCap}
+              label={t('alerts.drillin.coaching')}
+              hint={t('alerts.drillin.coaching_hint')}
+              to="/coaching"
+            />
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+
+function DrawerLink({ icon: Icon, label, hint, to }: {
+  icon: typeof Truck;
+  label: string;
+  hint: string;
+  to: string;
+}) {
+  return (
+    <Link
+      to={to}
+      className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border hover:border-primary/40 hover:bg-muted/40 transition group"
+    >
+      <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-muted text-muted-foreground group-hover:text-primary group-hover:bg-primary/10">
+        <Icon size={16} />
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm font-medium text-foreground">{label}</span>
+        <span className="block text-[11px] text-muted-foreground">{hint}</span>
+      </span>
+      <ExternalLink size={14} className="text-muted-foreground/60" />
+    </Link>
+  );
+}
+
+
+/**
+ * Video preview — fetches the freshly-signed S3 url from
+ * /safety/events/{id}/video so the link doesn't 403 on stale signatures.
+ *
+ * The video block only renders when the alert carries an event_id /
+ * acknowledged_by-derived id; if the underlying endpoint 404s (the
+ * Samsara event isn't ingested) we hide the block silently rather
+ * than surfacing a broken-video error to the safety operator.
+ */
+function VideoBlock({ alert }: { alert: Alert }) {
+  const { t } = useTranslation();
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+
+  // The Alert shape doesn't carry event_id directly; the AlertHistory
+  // row records it inside alert_key for safety events
+  // ("eventId:driverId").  Try to recover it; if absent the video
+  // block can't render and we hide.
+  const eventId = parseEventId(alert);
+
+  useEffect(() => {
+    if (!eventId) return;
+    let cancelled = false;
+    setLoading(true);
+    apiJSON<{ url?: string }>(`/safety/events/${encodeURIComponent(eventId)}/video?angle=forward`)
+      .then((r) => {
+        if (cancelled) return;
+        if (r?.url) setUrl(r.url);
+        else setError(t('alerts.drillin.no_video_for_event'));
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        if (e instanceof ApiError && (e.status === 404 || e.status === 403)) {
+          setError(t('alerts.drillin.video_unavailable'));
+        } else {
+          setError(e instanceof Error ? e.message : t('alerts.drillin.video_request_failed'));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [eventId, t]);
+
+  if (!eventId) return null;
+
+  return (
+    <section>
+      <h3 className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-2 inline-flex items-center gap-1.5">
+        <Video size={12} />
+        {t('alerts.drillin.forward_camera')}
+      </h3>
+      {loading && (
+        <div className="text-xs text-muted-foreground py-4 text-center bg-muted rounded">
+          {t('alerts.drillin.loading_video')}
+        </div>
+      )}
+      {!loading && error && (
+        <div className="text-[11px] text-muted-foreground py-3 px-3 bg-muted/50 rounded">
+          {error}
+        </div>
+      )}
+      {!loading && url && (
+        // controls only — autoplay is rude for an incident drawer
+        // that may open in a crowded ops room.
+        <video
+          src={url}
+          controls
+          preload="metadata"
+          className="w-full rounded border border-border bg-black"
+        />
+      )}
+    </section>
+  );
+}
+
+
+// Safety-event alert_key shape: "<event_id>:<driver_id>" or just
+// "<event_id>".  ``parseEventId`` extracts the event_id when present;
+// returns null when the alert isn't a safety event or the key shape
+// doesn't match.  Defensive: events from non-Samsara sources won't
+// carry an event_id and the video block stays hidden.
+function parseEventId(alert: Alert): string | null {
+  const t = alert.alert_type;
+  if (t !== 'events' && t !== 'event') return null;
+  const key = alert.alert_key || '';
+  if (!key) return null;
+  // alert_key is "<vehicle_id>:event:<event_id>" or
+  // "<event_id>:<driver_id>" historically — be permissive.
+  const parts = key.split(':');
+  // Find the first long alphanumeric token that looks like a Samsara
+  // event id (24+ char hex-ish UUID).  Falls through to null if none
+  // of the parts match.
+  for (const p of parts) {
+    if (p.length >= 16 && /^[A-Za-z0-9_-]+$/.test(p)) return p;
+  }
+  return null;
+}

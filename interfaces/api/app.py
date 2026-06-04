@@ -24,8 +24,10 @@ from interfaces.api.routes import reports as reports_routes
 from interfaces.api.routes import costs as costs_routes
 from interfaces.api.routes import user as user_routes
 from interfaces.api.routes import admin as admin_routes
+from interfaces.api.routes import system as system_routes
 from interfaces.api.routes import maintenance as maintenance_routes
 from interfaces.api.routes import work_orders as work_orders_routes
+from interfaces.api.routes import inspections as inspections_routes
 from interfaces.api.routes import storage as storage_routes
 from interfaces.api.routes import ai as ai_routes
 from interfaces.api.routes import knowledge as knowledge_routes
@@ -136,6 +138,92 @@ class ApiNoStoreMiddleware(BaseHTTPMiddleware):
         return response
 
 
+# Path suffixes (post-prefix, so /api and /api/v1 both match) that the
+# enforcement middleware leaves open even when the account is blocked.
+# Billing routes must stay reachable so the admin can update their card
+# or open the customer portal; auth routes must stay reachable so a
+# logged-out session can refresh; health/version stay open for monitors.
+_ENFORCEMENT_BYPASS_SUFFIXES = (
+    "/billing/summary", "/billing/usage", "/billing/invoices",
+    "/billing/portal", "/billing/webhook",
+    "/auth/login", "/auth/refresh", "/auth/logout",
+    "/health", "/version",
+)
+
+
+class BillingEnforcementMiddleware(BaseHTTPMiddleware):
+    """Return HTTP 402 when the JWT-bearer's account is past-due past grace.
+
+    Gated by ``BILLING_ENFORCEMENT_ENABLED`` so this can land dark and
+    flip on once the dashboard banner is shipped.  Only acts on
+    ``/api/*`` paths — static assets and the public landing page are
+    unaffected.  Unauthenticated requests fall through (the route's own
+    auth dependency will 401 them); decode failures fall through too,
+    same reason.  Bypass list keeps billing + auth + health open so a
+    blocked account can still recover.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        # Read the env directly each call rather than the cached
+        # module-level constant in infra.config — tests need to flip
+        # this with monkeypatch.setenv and that wouldn't work against a
+        # constant captured at import time.  The overhead is a single
+        # dict lookup per request.
+        if os.getenv("BILLING_ENFORCEMENT_ENABLED", "0") != "1":
+            return await call_next(request)
+        grace_days = int(os.getenv("BILLING_GRACE_PERIOD_DAYS", "7"))
+        path = request.url.path
+        if not path.startswith("/api/"):
+            return await call_next(request)
+        if any(path.endswith(s) for s in _ENFORCEMENT_BYPASS_SUFFIXES):
+            return await call_next(request)
+        # Pull the JWT — header OR cookie — same fallback order the
+        # ``get_current_user`` dependency uses, so a request the route
+        # would consider authenticated is the same set this middleware
+        # blocks.  Decode failures are treated as "no auth" and fall
+        # through to the route (which will 401 if it needs auth).
+        from interfaces.api.auth import AUTH_COOKIE_NAME, decode_jwt
+        from jose import JWTError
+        token = ""
+        auth_h = request.headers.get("authorization", "")
+        if auth_h.startswith("Bearer "):
+            token = auth_h[7:]
+        if not token:
+            token = request.cookies.get(AUTH_COOKIE_NAME, "")
+        if not token:
+            return await call_next(request)
+        try:
+            payload = decode_jwt(token)
+        except JWTError:
+            return await call_next(request)
+        account_id = payload.get("account_id")
+        if not account_id:
+            return await call_next(request)
+        from infra.platform import get_router
+        from adapters.storage.billing import BillingMixin
+        try:
+            platform_db = get_router().platform
+            sub = await platform_db.get_subscription(int(account_id))
+        except Exception:
+            # DB hiccup shouldn't lock everyone out.  Log and pass; the
+            # route's own queries will surface the real failure with
+            # better context than a 402 here would.
+            logger.warning("BillingEnforcement: subscription lookup failed for account=%s", account_id, exc_info=True)
+            return await call_next(request)
+        blocked, reason = BillingMixin.is_account_blocked(sub, grace_days)
+        if blocked:
+            return JSONResponse(
+                status_code=402,
+                content={
+                    "detail": "Payment required",
+                    "reason": reason,
+                    "subscription_status": sub.get("status") if sub else "",
+                    "billing_portal": "/dashboard/billing",
+                },
+            )
+        return await call_next(request)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     """Per-worker startup/shutdown for the API process.
@@ -240,6 +328,11 @@ def create_api() -> FastAPI:
     # Request body size limit
     app.add_middleware(LimitBodyMiddleware)
 
+    # Billing enforcement — returns 402 once a non-paying account passes
+    # the grace window.  Gated by BILLING_ENFORCEMENT_ENABLED so this
+    # can land dark until the dashboard's past-due banner is shipped.
+    app.add_middleware(BillingEnforcementMiddleware)
+
     # Compress JSON responses ≥500 B with gzip — typical fleet payloads
     # (vehicles, events, scorecards) shrink ~70 %. Below 500 B the gzip
     # framing overhead exceeds the savings. Browsers send Accept-Encoding
@@ -276,9 +369,11 @@ def create_api() -> FastAPI:
         app.include_router(reports_routes.router, prefix=prefix)
         app.include_router(costs_routes.router, prefix=prefix)
         app.include_router(admin_routes.router, prefix=prefix)
+        app.include_router(system_routes.router, prefix=prefix)
         app.include_router(permissions_routes.router, prefix=prefix)
         app.include_router(maintenance_routes.router, prefix=prefix)
         app.include_router(work_orders_routes.router, prefix=prefix)
+        app.include_router(inspections_routes.router, prefix=prefix)
         app.include_router(storage_routes.router, prefix=prefix)
         app.include_router(ai_routes.router, prefix=prefix)
         app.include_router(knowledge_routes.router, prefix=prefix)

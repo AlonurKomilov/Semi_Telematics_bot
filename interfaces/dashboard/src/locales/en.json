@@ -161,6 +161,7 @@
     "dispatching_group": "Dispatching",
     "safety_group": "Safety",
     "reports_group": "Reports",
+    "costs_group": "Costs",
     "workforce_group": "Workforce",
     "admin_group": "Admin",
     "live_map": "Live Map",
@@ -809,7 +810,7 @@
     "empty_no_articles": "No articles yet",
     "empty_desc_can_create": "Add tips, guides and SOPs for your team — text, video, PDF or links are all supported.",
     "empty_desc_read_only": "Your admin can add helpful guides for your team here.",
-    "section_pinned": "Pinned",
+    "section_pinned": "My bookmarks",
     "section_other": "All articles",
     "by_creator": "by {{name}}",
     "load_more": "Load more",
@@ -836,7 +837,9 @@
     "upload_pick_image": "Choose an image file",
     "upload_hint_pdf": "PDF · max 25 MB",
     "upload_hint_image": "PNG, JPEG, WEBP · max 25 MB",
-    "upload_or_url": "Or paste a hosted URL"
+    "upload_or_url": "Or paste a hosted URL",
+    "bookmark_add_title": "Bookmark for myself",
+    "bookmark_remove_title": "Remove from my bookmarks"
   },
   "storage": {
     "page_title": "Attachment Storage",

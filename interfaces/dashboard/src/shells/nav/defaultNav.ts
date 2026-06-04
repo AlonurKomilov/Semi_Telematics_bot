@@ -2,22 +2,30 @@
  * Default sidebar navigation tree — used by DefaultShell (Owner / Admin).
  *
  * This file is the SSOT for "what's in the sidebar" for the default
- * shell.  Per-role shells (FleetShell, DispatchShell, …) will export
- * their own nav configs from sibling files (fleetNav.ts, etc.) that
- * pick a subset of these items and reorder them to match each role's
- * workflow.
+ * shell.  Per-role shells (FleetShell, DispatchShell, …) export their
+ * own nav configs from sibling files (fleetNav.ts, etc.).
  *
- * The structure was extracted from the original Sidebar.tsx during
- * Phase 0 of the role-shell migration so the Sidebar component itself
- * stays presentational (renders whatever config you pass in) and the
- * groupings/order become per-shell data.
+ * **Strict role binding** — Owner/Admin's default sidebar contains
+ * ONLY items that are Owner/Admin's own work: executive visibility
+ * (Live Map + Vehicles + their scoped Alerts), Reports (persona-
+ * filtered tabs), Workforce admin (staffing the account), and
+ * Account admin (configuring the account).  Operational items
+ * (Routes/Geofences/Parking/Maintenance/Work Orders/Inspections/
+ * Driver Scorecards/Safety Events/Cameras/Coaching/Drivers/Payroll/
+ * Fuel Costs/Cost per Mile) are NOT in the default sidebar — Owner
+ * accesses them by switching view via the persona selector
+ * (RoleViewContext.switchView → fleet/dispatch/safety/hr/accounting.
+ * 4truck.us).  See docs/architecture/PERSONA.md for the model.
+ *
+ * Exceptions kept as executive concerns:
+ *   • Risk Summary — owner-level risk oversight signal
+ *   • Cost Reports — owner-level quarterly economics review
  */
 import {
-  LayoutDashboard, Truck, Bell, Bot, FileText, Mail, MapPin, BookOpen,
-  Wrench, Map, Route, Trophy, AlertTriangle,
-  Camera, ParkingSquare, Fuel, DollarSign, Users, Shield, Building2,
-  Link, ClipboardList, Clock, CreditCard, GraduationCap, Receipt,
-  TrendingUp, Cloud, IdCard, Settings as SettingsIcon,
+  LayoutDashboard, Truck, Bell, Bot, FileText, Mail, BookOpen,
+  Map, Trophy, Users, Shield, Building2,
+  Link, ClipboardList, Clock, CreditCard,
+  TrendingUp, Cloud, Settings as SettingsIcon,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -40,59 +48,60 @@ export const defaultNav: NavGroup[] = [
     titleKey: null,
     items: [
       { labelKey: 'nav.overview',     path: '/',        icon: LayoutDashboard, permission: null },
-      { labelKey: 'nav.ai_assistant', path: '/ai/chat', icon: Bot,             permission: ['can_vehicle_all', 'can_vehicle_own'] },
+      { labelKey: 'nav.ai_assistant', path: '/ai/chat', icon: Bot,             permission: ['can_faults', 'can_vehicle_all', 'can_vehicle_own'] },
     ],
   },
   {
+    // Executive visibility — Owner needs asset-level "where are my
+    // trucks and what do I have" without doing the operational work.
+    // Routes / Geofences / Maintenance / Work Orders / Inspections /
+    // Parking moved to their owning persona's sidebar (Dispatch,
+    // Fleet); Owner switches view via the persona selector.
     titleKey: 'nav.fleet_group',
     items: [
-      { labelKey: 'nav.live_map',    path: '/live-map',       icon: Map,           permission: ['can_location_map', 'can_location_own'] },
-      { labelKey: 'nav.vehicles',    path: '/vehicles',  icon: Truck,         permission: ['can_vehicle_all', 'can_vehicle_own'] },
-      { labelKey: 'nav.routes',      path: '/routes',    icon: Route,         permission: ['can_route_all', 'can_route_own'] },
-      { labelKey: 'nav.geofences',   path: '/geofences', icon: MapPin,        permission: ['can_geofence_all', 'can_geofence_own'] },
-      { labelKey: 'nav.maintenance', path: '/maintenance',     icon: Wrench,        permission: ['can_maintenance_all', 'can_maintenance_own'] },
-      // Work Orders sits next to Maintenance — same permission family
-      // but separate page since the data model and workflow are
-      // distinct (shop-invoice records vs scheduled tasks).
-      { labelKey: 'nav.work_orders', path: '/work-orders',     icon: Receipt,       permission: ['can_maintenance_all', 'can_maintenance_own'] },
-      { labelKey: 'nav.parking',     path: '/parking',   icon: ParkingSquare, permission: ['can_alerts_all', 'can_alerts_own'] },
+      { labelKey: 'nav.live_map', path: '/live-map', icon: Map,   permission: ['can_location_map', 'can_location_own'] },
+      { labelKey: 'nav.vehicles', path: '/vehicles', icon: Truck, permission: ['can_vehicle_all', 'can_vehicle_own'] },
     ],
   },
   {
-    titleKey: 'nav.safety_group',
+    // Owner inbox — the persona-scoped Alerts count (Phase 3-D strict
+    // binding) shows system + reescalate alerts only.  Operational
+    // triage (driver scorecards / safety events / cameras) lives on
+    // Safety's sidebar; Owner switches view to drill in.
+    titleKey: null,
     items: [
-      { labelKey: 'nav.driver_scorecards', path: '/driver-scorecards', icon: Trophy,        permission: ['can_scorecard_all', 'can_scorecard_own'] },
-      { labelKey: 'nav.safety_events',     path: '/safety-events',     icon: AlertTriangle, permission: ['can_events_all', 'can_events_own'] },
-      { labelKey: 'nav.cameras',           path: '/cameras',    icon: Camera,        permission: ['can_faults'] },
-      { labelKey: 'nav.alerts',            path: '/alerts',     icon: Bell,          permission: ['can_alerts_all', 'can_alerts_own'] },
+      { labelKey: 'nav.alerts', path: '/alerts', icon: Bell, permission: ['can_alerts_all', 'can_alerts_own'] },
     ],
   },
   {
+    // Reports — collapsed to a single entry pointing at the Reports
+    // module shell.  Inside the module, ReportsLayout.tsx renders a
+    // cross-page sub-nav with Reports / Risk Summary / Cost Reports /
+    // Scheduled Reports.  Per-tab visibility is gated there by the
+    // user's flags so the sub-nav stays in lock-step with what the
+    // sidebar used to show as four separate items.  Pre-2026-06 each
+    // sub-page had its own sidebar entry; collapsed here so the
+    // sidebar doesn't drift from the in-module tab list.
     titleKey: 'nav.reports_group',
     items: [
-      { labelKey: 'nav.reports',       path: '/reports',               icon: FileText,   permission: null },
-      { labelKey: 'nav.risk_summary',  path: '/reports/risk-summary',  icon: FileText,   permission: ['can_risk_report_all', 'can_risk_report_own'] },
-      { labelKey: 'nav.subscriptions', path: '/reports/subscriptions', icon: Mail,       permission: null },
-      { labelKey: 'nav.fuel_costs',    path: '/costs/fuel',            icon: Fuel,       permission: ['can_fuel_cost'] },
-      { labelKey: 'nav.cost_per_mile', path: '/costs/cpm',             icon: DollarSign, permission: ['can_cost_per_mile'] },
-      // Cost Reports — sits under Reports rather than next to Work
-      // Orders so a manager doing the quarterly review finds it
-      // alongside the other money reports.
-      { labelKey: 'nav.cost_reports',  path: '/cost-reports',          icon: TrendingUp, permission: ['can_maintenance_all'] },
+      { labelKey: 'nav.reports', path: '/reports', icon: FileText,
+        permission: ['can_faults', 'can_risk_report_all', 'can_risk_report_own', 'can_cost_reports', 'can_digest'] },
     ],
   },
   {
+    // Workforce admin — staffing the account is Owner/Admin's work.
+    // Drivers / Coaching / Payroll moved to their owning persona's
+    // sidebar (HR / Safety / Accounting); Owner switches view to
+    // those personas to manage day-to-day workforce ops.
     titleKey: 'nav.workforce_group',
     items: [
-      { labelKey: 'nav.drivers',         path: '/workforce/drivers', icon: IdCard,        permission: ['can_manage_driver_docs'] },
-      { labelKey: 'nav.coaching',        path: '/coaching',         icon: GraduationCap, permission: ['can_coaching_admin'] },
-      { labelKey: 'nav.payroll',         path: '/payroll',          icon: DollarSign,    permission: ['can_payroll_admin'] },
-      { labelKey: 'nav.working_hours',   path: '/admin/work-hours', icon: Clock,         permission: ['can_manage_account'] },
-      { labelKey: 'nav.team_management', path: '/admin/users',      icon: Users,         permission: ['can_manage_users'] },
-      { labelKey: 'nav.invites',         path: '/admin/invites',    icon: Link,          permission: ['can_invite'] },
+      { labelKey: 'nav.team_management', path: '/admin/users',      icon: Users, permission: ['can_manage_users'] },
+      { labelKey: 'nav.invites',         path: '/admin/invites',    icon: Link,  permission: ['can_invite'] },
+      { labelKey: 'nav.working_hours',   path: '/admin/work-hours', icon: Clock, permission: ['can_manage_account'] },
     ],
   },
   {
+    // Account admin — Owner/Admin's core configuration work.
     titleKey: 'nav.admin_group',
     items: [
       { labelKey: 'nav.companies',        path: '/admin/companies',       icon: Building2,     permission: ['can_manage_companies'] },
@@ -106,10 +115,9 @@ export const defaultNav: NavGroup[] = [
       { labelKey: 'nav.storage',          path: '/admin/storage',         icon: Cloud,         permission: ['can_manage_account'] },
       { labelKey: 'nav.audit_log',        path: '/admin/audit',           icon: ClipboardList, permission: ['can_manage_users'] },
       // Account-wide settings (timezone, Telegram bot, working hours,
-      // feature flags). Lives in the sidebar so admins can find it
-      // without going through the user menu — personal preferences
-      // (display name, language, own timezone override, quiet hours)
-      // moved to /profile and stay accessible via the AvatarMenu.
+      // feature flags).  Personal preferences (display name, language,
+      // own timezone override, quiet hours) live in /profile via the
+      // AvatarMenu.
       { labelKey: 'nav.settings',         path: '/admin/settings',        icon: SettingsIcon,  permission: ['can_manage_account'] },
     ],
   },

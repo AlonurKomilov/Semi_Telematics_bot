@@ -1162,6 +1162,98 @@ async def safety_events(
     }
 
 
+@router.get("/events/summary")
+async def safety_events_summary(
+    days: int = Query(7, ge=1, le=90),
+    company: str | None = Query(None),
+    user: dict = Depends(require_permission_any("can_events_all", "can_events_own")),
+    platform_db=Depends(get_platform_db),
+):
+    """Lightweight summary counts for the Safety persona's hero strip.
+
+    Returns just the aggregates — no event rows — so the SafetySummaryStrip
+    component can land before AlertsResults paints.  Same filter rules as
+    /events: company access via ``allowed_companies``, ``_own`` users
+    constrained to their assigned vehicles.
+
+    Today vs week is computed in the account's timezone (matches the
+    rest of the safety surface).
+    """
+    allowed = await get_user_company_codes(user)
+    validate_company_access(allowed, company)
+    client = await get_client(user["account_id"])
+
+    async def _live():
+        return await client.get_events(days=days, company=company)
+
+    from capabilities.telemetry import warehouse_reader as _wh
+    wh_rows = await _wh.get_safety_events(
+        user["account_id"],
+        days=days,
+        event_type=None,
+        samsara_fallback=_live,
+        include_raw=False,
+    )
+
+    # Project to a minimal shape — we only need event_type, severity,
+    # time, company, vehicle for filtering + counting.
+    rows: list[dict] = []
+    for r in wh_rows:
+        time_val = r.get("occurred_at") or r.get("time") or ""
+        severity = r.get("severity") or ""
+        g_force_raw = r.get("g_force", 0) or 0
+        if not severity:
+            severity = _classify_severity(r.get("event_type", ""), g_force_raw)
+        rows.append({
+            "event_type":   r.get("event_type") or "unknown",
+            "severity":     severity,
+            "vehicle_name": r.get("vehicle_name") or "",
+            "time":         time_val,
+            "company":      r.get("company_code") or r.get("_org") or "",
+        })
+    rows = filter_by_allowed_companies(rows, allowed, key="company")
+
+    if user.get("_matched_perm") == "can_events_own":
+        trucks = await get_user_vehicle_nums(user)
+        if trucks:
+            needles = [t.lower() for t in trucks]
+            rows = [e for e in rows if any(n in e["vehicle_name"].lower() for n in needles)]
+        else:
+            rows = []
+
+    # "Today" boundary in the account's timezone so the count matches
+    # what an operator sees on their wall clock.  Falls back to UTC if
+    # the account row is missing a tz (shouldn't happen — every account
+    # has a default — but defensive).
+    acc = await platform_db.get_account(user["account_id"])
+    tz_name = (getattr(acc, "timezone", None) or "America/New_York") if acc else "America/New_York"
+    try:
+        from zoneinfo import ZoneInfo
+        local_today = datetime.now(ZoneInfo(tz_name)).date().isoformat()
+    except Exception:
+        local_today = datetime.now(timezone.utc).date().isoformat()
+
+    today_count = 0
+    week_count = len(rows)
+    by_severity: dict[str, int] = {}
+    by_type: dict[str, int] = {}
+    for e in rows:
+        if isinstance(e["time"], str) and e["time"][:10] == local_today:
+            today_count += 1
+        sev = e["severity"] or "unknown"
+        by_severity[sev] = by_severity.get(sev, 0) + 1
+        by_type[e["event_type"]] = by_type.get(e["event_type"], 0) + 1
+
+    return {
+        "today":       today_count,
+        "week":        week_count,
+        "days":        days,
+        "by_severity": by_severity,
+        "by_type":     by_type,
+        "timezone":    tz_name,
+    }
+
+
 @router.get("/events/{event_id}/video")
 async def safety_event_video(
     event_id: str,

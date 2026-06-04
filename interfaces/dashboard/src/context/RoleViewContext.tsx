@@ -1,6 +1,6 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import { useAuth } from './AuthContext';
-import { apiJSON } from '../api/client';
+import { apiJSON, setActiveViewForApi } from '../api/client';
 import type { Permissions } from '../types';
 
 const VIEW_LABELS: Record<string, string> = {
@@ -9,6 +9,8 @@ const VIEW_LABELS: Record<string, string> = {
   fleet: 'Fleet',
   safety: 'Safety',
   dispatcher: 'Dispatch',
+  hr: 'HR',
+  accounting: 'Accounting',
   driver: 'Driver',
 };
 
@@ -21,6 +23,8 @@ const VIEW_ICONS: Record<string, string> = {
   fleet: '🔧',
   safety: '🛡️',
   dispatcher: '📡',
+  hr: '👥',
+  accounting: '💰',
   driver: '🚛',
 };
 
@@ -39,6 +43,11 @@ const VIEW_HOME_ROUTE: Record<string, string> = {
   fleet: '/live-map',
   safety: '/driver-scorecards',
   dispatcher: '/live-map',
+  // HR lands on Drivers — the daily entry point for compliance work
+  // (CDL expirations, document review).  Accounting lands on Cost
+  // Reports — same logic, the cost-rollup view is the day's start.
+  hr: '/workforce/drivers',
+  accounting: '/cost-reports',
   driver: '/',
 };
 
@@ -51,7 +60,7 @@ const SWITCHABLE_ROLES = ['owner', 'admin'];
 // dashboard the actual driver would never open).  If a Driver does
 // happen to log into the dashboard directly, they'll still see their
 // own role label correctly via the non-switchable static pill.
-const PREVIEWABLE_ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher'];
+const PREVIEWABLE_ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'hr', 'accounting'];
 
 // localStorage key — survives reloads so the dashboard reopens in the
 // same persona the user last chose.  We deliberately do NOT clear it on
@@ -71,6 +80,8 @@ const SUBDOMAIN_TO_ROLE: Record<string, string> = {
   fleet: 'fleet',
   dispatch: 'dispatcher',
   safety: 'safety',
+  hr: 'hr',
+  accounting: 'accounting',
 };
 
 // Persona → host mapping (inverse of SUBDOMAIN_TO_ROLE plus the
@@ -125,36 +136,74 @@ const RoleViewContext = createContext<RoleViewContextValue | null>(null);
 
 export function RoleViewProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const realRole = user?.role ?? 'driver';
-  const canSwitch = SWITCHABLE_ROLES.includes(realRole);
+  // Real role stays optional — ``undefined`` while fetchUser is in
+  // flight.  We deliberately do NOT default to a sentinel role here,
+  // because the old ``?? 'driver'`` default produced a brief render
+  // frame where Owner pages painted with activeView='driver' before
+  // the corrective useEffect could fire.  That frame is the "stuck
+  // in Driver view on refresh" symptom: it wasn't stuck, it was a
+  // one-frame paint that was just enough to capture in a screenshot
+  // on slow renders.  ``activeView`` below is now DERIVED rather
+  // than stored as useState-then-useEffect, so it transitions in
+  // the same render cycle as ``realRole`` — no flicker possible.
+  const realRole = user?.role;
+  const canSwitch = realRole ? SWITCHABLE_ROLES.includes(realRole) : false;
 
-  // Initial activeView resolution order (switchable users only):
-  //   1. Explicit localStorage preference — user already chose a view
-  //   2. Branded subdomain hint — fleet./dispatch./safety. landing page
-  //   3. User's real role
-  // Non-switchable users always see their real role.  The subdomain
-  // check sits between persistence and default so the URL acts as a
-  // first-time hint without overriding a deliberate user choice.
-  const [activeView, setActiveView] = useState(() => {
-    if (!canSwitch) return realRole;
+  // The user's explicit "preview as X" choice — the ONLY thing that
+  // needs imperative state, because it persists across renders until
+  // the operator picks a different persona.  Loaded from localStorage
+  // on mount; mutated by switchView (which also writes the new value
+  // back to localStorage).  Anything invalid in localStorage (e.g. a
+  // stale 'driver' from an older code path) is rejected at read time
+  // AND removed so the dead value doesn't linger.
+  const [savedChoice, setSavedChoice] = useState<string | null>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      // Validate against PREVIEWABLE_ROLES, not the wider VIEW_LABELS
-      // (which includes ``driver``).  Driver is intentionally excluded
-      // from the persona switcher — drivers use the Telegram Mini App,
-      // not the desktop dashboard — so a stale ``driver`` value in
-      // localStorage (from an older code path, a manual DevTools edit,
-      // or pre-fix data) must NOT auto-select Driver view for an
-      // Owner/Admin, which would render a stripped-down view they
-      // can't navigate out of without clearing storage.
       if (saved && PREVIEWABLE_ROLES.includes(saved)) return saved;
+      if (saved) localStorage.removeItem(STORAGE_KEY);
     } catch {
-      /* localStorage disabled — fall through */
+      /* localStorage disabled */
     }
+    return null;
+  });
+
+  // activeView is fully derived — recomputed in every render from
+  // (realRole, canSwitch, savedChoice, current hostname).  No
+  // useState, no useEffect chase, no flicker frame.
+  //
+  // Resolution order (switchable users only):
+  //   1. Explicit user choice (savedChoice)
+  //   2. Branded subdomain hint (fleet./dispatch./safety.)
+  //   3. User's real role
+  // Non-switchable users always see their real role.
+  //
+  // While ``realRole`` is still undefined (user not loaded yet),
+  // activeView resolves to 'owner' — a safe placeholder that never
+  // renders because App.tsx is showing the loading spinner during
+  // that window.  Using a defined value keeps every consumer's
+  // ``activeView`` typed as ``string`` instead of ``string |
+  // undefined``, which avoids a cascade of optional-chaining noise
+  // through downstream components.
+  const activeView = useMemo(() => {
+    if (!realRole) return 'owner';
+    if (!canSwitch) return realRole;
+    if (savedChoice && PREVIEWABLE_ROLES.includes(savedChoice)) return savedChoice;
     const subRole = getSubdomainRole();
     if (subRole && subRole in VIEW_LABELS) return subRole;
     return realRole;
-  });
+  }, [realRole, canSwitch, savedChoice]);
+
+  // Mirror activeView into the api/client module so apiFetch can
+  // attach the ``X-View-As`` header on every authenticated request.
+  // Without this the backend sees only the JWT role and persona-aware
+  // counts (Overview hero card, Alerts tab badge) ignore which
+  // workspace the user is currently operating in.  The header is the
+  // contract between the SPA's role-switcher and the backend's
+  // active_view dep.
+  useEffect(() => {
+    setActiveViewForApi(activeView);
+  }, [activeView]);
+
   const [rolePermSets, setRolePermSets] = useState<Record<string, Partial<Permissions>>>({});
 
   // Fetch all role permission sets from backend (Owner/Admin only)
@@ -173,34 +222,6 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     fetchRolePerms();
   }, [fetchRolePerms]);
-
-  // If the user's real role changes (e.g. log out + log in as a different
-  // account), reset activeView so we don't carry over the previous user's
-  // persona preference.  Non-switchable users always see their real role.
-  // Switchable users follow the same resolution order as the initial
-  // mount: saved preference → subdomain hint → real role.
-  useEffect(() => {
-    if (!canSwitch) {
-      setActiveView(realRole);
-      return;
-    }
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      // Same tightening as the useState initializer — only honor a
-      // persisted preview choice if it's one we actually offer in the
-      // switcher.  ``driver`` slipped through here before and stuck
-      // Owner/Admin in Driver view across reloads.
-      if (saved && PREVIEWABLE_ROLES.includes(saved)) return;
-    } catch {
-      /* localStorage disabled — fall through */
-    }
-    const subRole = getSubdomainRole();
-    if (subRole && subRole in VIEW_LABELS) {
-      setActiveView(subRole);
-      return;
-    }
-    setActiveView(realRole);
-  }, [realRole, canSwitch]);
 
   const switchView = useCallback((role: string) => {
     if (!canSwitch) return;
@@ -235,7 +256,7 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    setActiveView(role);
+    setSavedChoice(role);
     try {
       localStorage.setItem(STORAGE_KEY, role);
     } catch {
@@ -251,17 +272,23 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
   const viewHas = (flag: string) => !!viewPerms[flag as keyof Permissions];
   const viewHasAny = (...flags: string[]) => flags.some((f) => !!viewPerms[f as keyof Permissions]);
 
+  // Non-switchable users see a single static pill showing their own
+  // role.  During the loading window where realRole is undefined we
+  // return an empty list — the consumer hides the pill entirely, and
+  // App.tsx is showing the spinner anyway so no shell is visible.
   const availableViews = canSwitch
     ? PREVIEWABLE_ROLES.map(key => ({
         key,
         label: VIEW_LABELS[key] ?? key,
         icon: VIEW_ICONS[key] ?? '',
       }))
-    : [{
+    : realRole
+    ? [{
         key: realRole,
         label: VIEW_LABELS[realRole] ?? realRole,
         icon: VIEW_ICONS[realRole] ?? '',
-      }];
+      }]
+    : [];
 
   const viewLabel = VIEW_LABELS[activeView] ?? activeView;
   const viewIcon = VIEW_ICONS[activeView] ?? '';

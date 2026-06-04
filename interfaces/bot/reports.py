@@ -76,7 +76,7 @@ async def cmd_faults(
             "Browse fleet-wide fault codes with per-truck drill-down "
             "and CSV/PDF export on the dashboard."
         ),
-        path="/reports/faults",
+        path="/reports?tab=faults",
         label="Open Faults Report",
     )
 
@@ -95,7 +95,7 @@ async def cmd_fuel(
             "Per-truck fuel levels, consumption trends, and low-fuel "
             "alerts now live on the dashboard."
         ),
-        path="/reports/fuel",
+        path="/reports?tab=fuel",
         label="Open Fuel Report",
     )
 
@@ -114,7 +114,7 @@ async def cmd_efficiency(
             "MPG, idle time, and per-driver efficiency rankings with "
             "drill-down + charts on the dashboard."
         ),
-        path="/reports/efficiency",
+        path="/reports?tab=efficiency",
         label="Open Efficiency Report",
     )
 
@@ -133,7 +133,7 @@ async def cmd_health(
             "Battery, oil pressure, coolant, DEF, and load per truck "
             "with historical trends on the dashboard."
         ),
-        path="/reports/vehicle-health",
+        path="/reports?tab=health",
         label="Open Vehicle Health",
     )
 

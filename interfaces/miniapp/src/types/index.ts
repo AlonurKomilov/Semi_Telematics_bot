@@ -99,4 +99,77 @@ export interface Alert {
   status?: string;
 }
 
-export type Page = 'map' | 'vehicles' | 'alerts' | 'scorecard' | 'ai' | 'profile';
+export type Page = 'map' | 'vehicles' | 'pti' | 'alerts' | 'scorecard' | 'ai' | 'profile';
+
+// ── PTI (Pre-Trip Inspection) ───────────────────────────────────────
+
+export interface PTIItem {
+  id: number;
+  inspection_id: number;
+  item_key: string;
+  label: string;
+  category: string;
+  /** 'pending' | 'ok' | 'minor' | 'major' | 'oos' | 'na' */
+  status: string;
+  notes: string | null;
+  requires_media: number; // 0 or 1
+  required: number;       // 0 or 1
+  sort_order: number;
+  completed_at: string | null;
+  /** 'check' (status buttons) | 'photo' (guided shot) | 'document' (upload). */
+  item_type?: string;
+  /** ObjectStore filename of the reference example photo (null = none). */
+  reference_image_url?: string | null;
+}
+
+export interface PTIMedia {
+  id: number;
+  inspection_id: number;
+  item_id: number | null;
+  media_type: 'photo' | 'video' | 'document';
+  file_path: string;
+  file_name: string;
+  file_size: number;
+  content_type: string;
+  uploaded_by: number;
+  uploaded_at: string;
+  /** ISO timestamp when the driver baked annotations into the blob. */
+  annotated_at?: string | null;
+  /** Per-photo AI vision review (null = never checked). */
+  ai_review_status?: string | null;   // 'completed' | 'error'
+  ai_review_result?: string | null;    // JSON: {verdict, confidence, summary, model}
+  ai_reviewed_at?: string | null;
+  /** Hybrid-storage state: 'local' | 'syncing' | 'remote' | 'stuck'.
+   *  Drives the small badge on the per-item thumbnail strip. */
+  storage_state?: string | null;
+}
+
+export interface PTIInspection {
+  id: number;
+  account_id: number;
+  user_id: number;
+  vehicle_name: string;
+  trailer_name: string | null;
+  inspection_type: string;
+  /** Workflow status. */
+  status: 'scheduled' | 'in_progress' | 'submitted' | 'reviewed' | 'revision_required';
+  /** Review outcome (null until reviewed). */
+  review_status: 'approved' | 'needs_service' | 'rejected' | 'revision_required' | null;
+  review_notes: string | null;
+  scheduled_for: string | null;
+  due_by: string | null;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  reviewed_by: number | null;
+  defects_count: number;
+  has_oos_defect: number;
+  template_id: number;
+  template_version: number;
+  /** Base64 PNG data URL — present once captured. */
+  driver_signature?: string | null;
+  driver_signed_at?: string | null;
+  reviewer_signature?: string | null;
+  reviewer_signed_at?: string | null;
+  items?: PTIItem[];
+  media?: PTIMedia[];
+}

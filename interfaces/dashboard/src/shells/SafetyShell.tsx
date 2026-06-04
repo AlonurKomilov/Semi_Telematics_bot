@@ -13,22 +13,19 @@
  */
 import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
-import { Search, Menu, X, Eye } from 'lucide-react';
+import { Search, Menu, X } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
-import Breadcrumb from '../components/shell/Breadcrumb';
 import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
-import { useRoleView } from '../context/RoleViewContext';
 import { safetyNav } from './nav/safetyNav';
 import SafetyHero from './heroes/SafetyHero';
 
 export default function SafetyShell() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const { isPreviewing, viewLabel, switchView } = useRoleView();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -61,31 +58,10 @@ export default function SafetyShell() {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col overflow-hidden bg-background">
-        {isPreviewing && (
-          <div
-            className="bg-primary/10 border-b border-primary/30 text-primary text-[12px] px-4 py-1.5 flex items-center justify-between gap-3 shrink-0"
-            role="status"
-            aria-live="polite"
-          >
-            <span className="flex items-center gap-2">
-              <Eye size={13} />
-              <span>
-                Previewing dashboard as <span className="font-medium">{viewLabel}</span> —
-                data and permissions are unchanged
-              </span>
-            </span>
-            <button
-              type="button"
-              onClick={() => switchView('owner')}
-              className="text-[11px] underline opacity-80 hover:opacity-100"
-            >
-              Exit preview
-            </button>
-          </div>
-        )}
-        <header className="h-14 bg-card border-b border-border flex items-center justify-between px-3 lg:px-4 shrink-0 gap-3">
-          <div className="flex items-center gap-3 min-w-0">
+      <div className="flex-1 flex flex-col overflow-hidden bg-sidebar pr-2 pb-2">
+        {/* Three-zone header — see DefaultShell for the design note. */}
+        <header className="h-12 bg-sidebar text-sidebar-foreground flex items-center px-3 lg:px-4 shrink-0 gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             <button
               onClick={() => setMobileSidebarOpen((o) => !o)}
               className="lg:hidden p-1.5 rounded hover:bg-muted text-muted-foreground"
@@ -93,18 +69,19 @@ export default function SafetyShell() {
             >
               {mobileSidebarOpen ? <X size={18} /> : <Menu size={18} />}
             </button>
-            <Breadcrumb />
           </div>
 
-          <div className="flex items-center gap-2">
+          <SafetyHero />
+
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => setPaletteOpen(true)}
-              className="hidden md:inline-flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground bg-muted/40 border border-border rounded-md hover:bg-muted hover:text-foreground transition"
+              className="hidden md:inline-flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground bg-muted/40 border border-border rounded-md hover:bg-muted hover:text-foreground transition w-[220px] lg:w-[280px]"
               aria-label="Open command palette"
             >
               <Search size={13} />
               <span>Search…</span>
-              <kbd className="ml-3 px-1.5 py-0.5 text-[10px] border border-border rounded bg-card">
+              <kbd className="ml-auto px-1.5 py-0.5 text-[10px] border border-border rounded bg-card">
                 ⌘K
               </kbd>
             </button>
@@ -121,13 +98,11 @@ export default function SafetyShell() {
           </div>
         </header>
 
-        {/* Safety-tuned status strip — open alerts, unsafe parking,
-            active faults.  Green when all-clear, critical when there
-            are open compliance items the safety manager should triage. */}
-        <SafetyHero />
 
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6 bg-background">
-          <Outlet />
+        <main className="flex-1 bg-background rounded-xl overflow-hidden">
+          <div className="h-full overflow-y-auto p-4 lg:p-6">
+            <Outlet />
+          </div>
         </main>
       </div>
 

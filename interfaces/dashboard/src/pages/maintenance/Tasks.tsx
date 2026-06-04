@@ -226,28 +226,18 @@ export default function Tasks() {
   // (filter chip flip, refetch) so stale ids never get sent to the
   // server.  Kept as Set for O(1) toggle.
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  // DOT binder filter dialog — null when closed; the dialog state
-  // collects window + vehicle filter and submits to the export route.
   const [templatesOpen, setTemplatesOpen] = useState(false);
-  const [binderDialogOpen, setBinderDialogOpen] = useState(false);
-  const [binderDays, setBinderDays] = useState('365');
-  const [binderVehicle, setBinderVehicle] = useState('');
-  const [binderGenerating, setBinderGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Keyboard accessibility: Escape closes the open detail sidebar,
-  // history modal, or DOT binder dialog (whichever is on top).
-  // Native pattern — sighted users expect this on every modal/drawer.
-  // selectedIds tracked separately — bulk-action bar stays visible on
-  // Escape (user might want to refine the selection, not abandon it);
-  // cleared via the dedicated Clear button instead.
+  // Keyboard accessibility: Escape closes the open detail sidebar or
+  // history modal (whichever is on top).  Native pattern — sighted
+  // users expect this on every modal/drawer.  selectedIds tracked
+  // separately — bulk-action bar stays visible on Escape (user might
+  // want to refine the selection, not abandon it); cleared via the
+  // dedicated Clear button instead.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        // Close the topmost surface first so chained dismissals (e.g.
-        // binder dialog opened from inside an open sidebar) unwind one
-        // layer at a time.
-        if (binderDialogOpen) { setBinderDialogOpen(false); return; }
         if (historyVehicle)   { setHistoryVehicle(null); return; }
         if (selected)         { setSelected(null); return; }
         return;
@@ -262,16 +252,22 @@ export default function Tasks() {
         const isEditing = tag === 'input' || tag === 'textarea' || tag === 'select'
           || (tgt?.isContentEditable ?? false);
         if (isEditing) return;
-        if (selected || historyVehicle || binderDialogOpen) return;
+        if (selected || historyVehicle) return;
         setShowAdd(s => !s);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selected, historyVehicle, binderDialogOpen]);
+  }, [selected, historyVehicle]);
 
   // Add form
   const [fVehicle, setFVehicle] = useState('');
+  // Company the picked vehicle belongs to.  Persists through the POST
+  // body as ``company_code`` so the task row knows WHICH "103" the
+  // user chose when two companies under the account share a vehicle
+  // name.  Cleared whenever the vehicle text is cleared or no
+  // matching fleet entry is found.
+  const [fCompany, setFCompany] = useState('');
   const [fType, setFType] = useState('inspection');
   const [fDesc, setFDesc] = useState('');
   const [fDueDate, setFDueDate] = useState('');
@@ -302,9 +298,20 @@ export default function Tasks() {
   // hours period → recur_interval_engine_hours).  Mirrors the trigger
   // mode so the user only thinks about one number per task.
   const [fRepeat, setFRepeat] = useState(false);
+  // Separate recurrence-period input on the create form — mirrors the
+  // edit drawer.  Defaults to the due-period value when the user
+  // flips the checkbox on; freely editable so an operator can set
+  // "due in 39,250 mi, repeat every 40,000 mi".
+  const [fRecurValue, setFRecurValue] = useState('');
 
   // Edit form
   const [eStatus, setEStatus] = useState('');
+  // Task-type picker for the drawer.  Lets the operator FIX a
+  // mistyped type after creation — without this they had to delete
+  // the task and re-create it to swap, say, "Oil Change" to
+  // "Inspection".  Defaults to whatever the row already has so an
+  // unchanged save doesn't accidentally rewrite it.
+  const [eType, setEType] = useState('inspection');
   const [eDesc, setEDesc] = useState('');
   const [eDueDate, setEDueDate] = useState('');
   const [eDueMiles, setEDueMiles] = useState('');
@@ -319,6 +326,13 @@ export default function Tasks() {
   // task; toggling on save populates/clears that one column only,
   // leaving the other dimensions' recurrence intact.
   const [eRepeat, setERepeat] = useState(false);
+  // Recurrence period — DECOUPLED from the due-period so an operator
+  // can schedule a one-time oil change "in 39,250 mi" but make the
+  // recurrence land on the standard 40,000 mi interval.  Defaults to
+  // the due-period value when the checkbox flips on (so today's
+  // "they're the same" muscle-memory keeps working), but the input
+  // is freely editable.  String to match the other due-period inputs.
+  const [eRecurValue, setERecurValue] = useState('');
 
   // Re-seed the Repeat checkbox whenever the active edit-trigger mode
   // changes — the loaded task's per-dimension recurrence is the source
@@ -331,6 +345,15 @@ export default function Tasks() {
       : eTriggerMode === 'miles' ? selected.recur_interval_miles != null
       : selected.recur_interval_engine_hours != null,
     );
+    // Re-seed the recur input from the row's stored interval for the
+    // active trigger.  Falls back to '' when no interval is set;
+    // the checkbox handler below seeds from the due-period when the
+    // user flips it on without a pre-existing interval.
+    const stored =
+      eTriggerMode === 'date'  ? selected.recur_interval_days
+      : eTriggerMode === 'miles' ? selected.recur_interval_miles
+      : selected.recur_interval_engine_hours;
+    setERecurValue(stored != null ? String(stored) : '');
   }, [eTriggerMode, selected]);
 
   // Cost is held as a dollars string in the form (free-text decimal),
@@ -416,6 +439,7 @@ export default function Tasks() {
   const openTaskForEdit = (t: MaintenanceTask) => {
     setSelected(t);
     setEStatus(t.status);
+    setEType(t.task_type || 'inspection');
     setEDesc(t.description);
     setEDueDate(_dueDateToPeriodDays(t.due_date));
     setEPriority(((t.priority || 'medium') as Priority));
@@ -729,12 +753,18 @@ export default function Tasks() {
       // the user just configured.  Only the active dimension's
       // recurrence column is set; the other two stay undefined so the
       // task ships with a single, coherent trigger + repeat policy.
-      const recurDays =
-        fRepeat && fTriggerMode === 'date' && fDueDate ? Number(fDueDate) : undefined;
-      const recurMiles =
-        fRepeat && fTriggerMode === 'miles' && fDueMiles ? Number(fDueMiles) : undefined;
-      const recurHours =
-        fRepeat && fTriggerMode === 'hours' && fDueEngineHours ? Number(fDueEngineHours) : undefined;
+      // Recurrence picks the user-typed ``fRecurValue`` first; falls
+      // back to the due-period when the recur input was left blank
+      // (preserves the "they're the same" old default).
+      const recurNum = fRecurValue.trim() ? Number(fRecurValue) : NaN;
+      const recurFor = (fallback: string) =>
+        fRepeat
+          ? (Number.isFinite(recurNum) ? recurNum
+            : fallback ? Number(fallback) : undefined)
+          : undefined;
+      const recurDays  = fTriggerMode === 'date'  ? recurFor(fDueDate) : undefined;
+      const recurMiles = fTriggerMode === 'miles' ? recurFor(fDueMiles) : undefined;
+      const recurHours = fTriggerMode === 'hours' ? recurFor(fDueEngineHours) : undefined;
       const shared = {
         task_type: fType,
         description: fDesc,
@@ -767,14 +797,20 @@ export default function Tasks() {
         await apiJSON('/maintenance/tasks', { method: 'POST', body: {
           ...shared,
           vehicle_name: fVehicle,
+          // ``company_code`` lets the backend store WHICH "103" the
+          // user picked when two companies share a vehicle name.
+          // Empty string flows through harmlessly when the user
+          // free-typed the name without picking a fleet row.
+          company_code: fCompany,
         }});
       }
       setShowAdd(false);
-      setFVehicle(''); setFDesc(''); setFDueDate(''); setFDueMiles('');
+      setFVehicle(''); setFCompany(''); setFDesc(''); setFDueDate(''); setFDueMiles('');
       setFDueEngineHours(''); setFPriority('medium'); setFOdometer(null); setFEngineHours(null);
       setFMultiMode(false); setFMultiVehicles(new Set());
       setFTriggerMode('date');
       setFRepeat(false);
+      setFRecurValue('');
       load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     finally { setSaving(false); }
@@ -799,6 +835,7 @@ export default function Tasks() {
       : null;
     const body: Record<string, unknown> = {};
     if (eStatus !== selected.status) body.status = eStatus;
+    if (eType !== (selected.task_type || 'inspection')) body.task_type = eType;
     if (eDesc !== selected.description) body.description = eDesc;
     // Only patch the trigger field matching the current view —
     // switching modes in the segmented control doesn't wipe a
@@ -817,25 +854,38 @@ export default function Tasks() {
     }
     // Recurrence: the "Repeat after completion" checkbox controls the
     // active trigger's recurrence interval — when checked, the
-    // recur_interval_* column is set to the same period the user
-    // entered for the trigger.  When unchecked, that column is
+    // recur_interval_* column is set to the user-typed recurrence
+    // value (separate from the due-period).  Falls back to the
+    // due-period when the recur input is blank, so the old
+    // "they're the same" UX still works for users who don't bother
+    // entering a separate value.  When unchecked, that column is
     // nulled.  Only the active dimension is touched so the other two
     // recurrence columns (set via a previous edit on another tab)
     // stay intact.
+    const recurNum = eRecurValue.trim() ? Number(eRecurValue) : NaN;
     if (eTriggerMode === 'date') {
-      const want = eRepeat && eDueDate ? Number(eDueDate) : null;
+      const fallback = eDueDate ? Number(eDueDate) : null;
+      const want = eRepeat
+        ? (Number.isFinite(recurNum) ? recurNum : fallback)
+        : null;
       if (want !== (selected.recur_interval_days ?? null)) {
         body.recur_interval_days = want;
       }
     }
     if (eTriggerMode === 'miles') {
-      const want = eRepeat && eDueMiles ? Number(eDueMiles) : null;
+      const fallback = eDueMiles ? Number(eDueMiles) : null;
+      const want = eRepeat
+        ? (Number.isFinite(recurNum) ? recurNum : fallback)
+        : null;
       if (want !== (selected.recur_interval_miles ?? null)) {
         body.recur_interval_miles = want;
       }
     }
     if (eTriggerMode === 'hours') {
-      const want = eRepeat && eDueEngineHours ? Number(eDueEngineHours) : null;
+      const fallback = eDueEngineHours ? Number(eDueEngineHours) : null;
+      const want = eRepeat
+        ? (Number.isFinite(recurNum) ? recurNum : fallback)
+        : null;
       if (want !== (selected.recur_interval_engine_hours ?? null)) {
         body.recur_interval_engine_hours = want;
       }
@@ -973,6 +1023,25 @@ export default function Tasks() {
   // ``snoozed_until`` and clears ``alerted_at`` so the next alert fires
   // fresh once the snooze expires.  We refresh the list so the row
   // shows its updated snooze badge.
+  // One-click "this task is done" — mirrors the bulk-select
+  // ``Mark complete`` action so the per-task drawer doesn't force a
+  // two-step (change Status dropdown → click Update).  The drawer
+  // closes and the list refreshes so the row's status badge flips
+  // and the row sinks below the open tasks per the urgency sort.
+  const handleMarkComplete = async () => {
+    if (!selected) return;
+    try {
+      await apiJSON('/maintenance/tasks/' + selected.id, {
+        method: 'PUT', body: { status: 'completed' },
+      });
+      toast.success('Marked complete');
+      setSelected(null);
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Mark complete failed');
+    }
+  };
+
   const handleSnooze = async (hours: number | null) => {
     if (!selected) return;
     const until = hours === null
@@ -1007,48 +1076,14 @@ export default function Tasks() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
   };
 
-  // DOT compliance binder download.  Same auth-aware blob pattern as
-  // exportTasksCsv but routes through the dialog so the user can pick
-  // window + vehicle before generation kicks off (heavy compute on
-  // large fleets — we don't want a single button to drop a 200-page
-  // PDF without warning).
-  const generateDotBinder = async () => {
-    setBinderGenerating(true);
-    try {
-      const params = new URLSearchParams({ days: binderDays });
-      if (binderVehicle.trim()) params.set('vehicle', binderVehicle.trim());
-      const res = await apiFetch(
-        `/maintenance/dot-binder?${params.toString()}`,
-        {},
-        // PDF generation on a 50-truck fleet can legitimately take
-        // 10-20 s — override the default 30s timeout so the request
-        // doesn't get aborted under the user.
-        90_000,
-      );
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        toast.error(typeof err.detail === 'string' ? err.detail : 'Binder generation failed');
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const datePart = new Date().toISOString().slice(0, 10);
-      const vehiclePart = binderVehicle.trim() ? `-${binderVehicle.trim()}` : '';
-      a.href = url;
-      a.download = `dot-binder-${datePart}${vehiclePart}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      toast.success('DOT binder downloaded');
-      setBinderDialogOpen(false);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Binder generation failed');
-    } finally {
-      setBinderGenerating(false);
-    }
-  };
+  // DOT Binder generation moved to the Reports module (Reports →
+  // DOT Binder tab, /reports/dot-binder) in 2026-06.  The button was
+  // removed from this page because the binder is a stakeholder-facing
+  // compliance PDF, not a maintenance-editing surface — see
+  // docs/architecture/reports-hierarchy-audit.md.  The backend
+  // endpoint /api/maintenance/dot-binder is still served (one release
+  // cycle of backward compatibility) but the dashboard now calls the
+  // canonical /api/reports/dot-binder URL.
 
   // CSV download.  The browser's native download UI doesn't carry our
   // Bearer token, so a plain <a href="/api/…csv"> would 401.  Pull the
@@ -1139,15 +1174,10 @@ export default function Tasks() {
               <ClipboardList size={13} />
               Templates
             </button>
-            <button
-              type="button"
-              onClick={() => setBinderDialogOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-xs font-medium text-foreground transition border border-border"
-              title="Generate a DOT compliance binder PDF"
-            >
-              <FileText size={13} />
-              DOT Binder
-            </button>
+            {/* DOT Binder button moved to Reports module (Reports →
+                DOT Binder tab) in 2026-06 — the binder is a
+                stakeholder-facing compliance PDF, not a maintenance-
+                editing surface. */}
             <button onClick={() => { setShowAdd(!showAdd); setError(''); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-md text-xs font-medium text-primary-foreground transition">
               <Plus size={13} />
               {showAdd ? 'Cancel' : 'New task'}
@@ -1156,40 +1186,10 @@ export default function Tasks() {
         }
       />
 
-      {/* : filter chip row with derived counts.  Click cycles
-          the active chip; clicking the active chip clears back to "All".
-          Counts pull from the same memo as the rendered list, so they
-          stay accurate even when the underlying query refetches. */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {([
-          { key: '',          label: 'All',       count: allTasks.length,            dot: 'bg-muted-foreground/40' },
-          { key: 'overdue',   label: 'Overdue',   count: buckets.overdue.length,     dot: 'bg-red-500'    },
-          { key: 'due_soon',  label: 'Due Soon',  count: buckets.dueSoon.length,     dot: 'bg-orange-500' },
-          { key: 'pending',   label: 'Pending',   count: buckets.pending.length,     dot: 'bg-blue-500'   },
-          { key: 'completed', label: 'Completed', count: buckets.completed.length,   dot: 'bg-green-500'  },
-        ] as const).map(chip => {
-          const active = statusFilter === chip.key;
-          return (
-            <button
-              key={chip.key || 'all'}
-              onClick={() => setStatusFilter(active ? '' : chip.key)}
-              aria-pressed={active}
-              aria-label={`${chip.label}, ${chip.count} task${chip.count === 1 ? '' : 's'}${active ? ', selected' : ''}`}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition border ${
-                active
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-card hover:bg-muted text-foreground border-border'
-              }`}
-            >
-              <span aria-hidden className={`w-2 h-2 rounded-full ${chip.dot}`} />
-              {chip.label}
-              <span className={`tabular-nums ${active ? 'opacity-80' : 'text-muted-foreground'}`}>
-                {chip.count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      {/* Filter chips moved INLINE next to the table search box (see
+          ``headerToolbar`` prop below) so the "narrow this list"
+          controls live in one zone.  Keeping the chip-render code
+          here as a memoised JSX block keeps the props readable. */}
 
       {(error || fetchError) && (
         <div className="mb-3">
@@ -1297,6 +1297,14 @@ export default function Tasks() {
                 loading={fleetLoading}
                 onChange={(name, vehicle) => {
                   setFVehicle(name);
+                  // ``vehicle`` is non-null only when the user clicked
+                  // a row in the picker dropdown — that's the
+                  // unambiguous signal of WHICH company's "103" they
+                  // picked.  Free-typed names leave fCompany blank,
+                  // which the backend treats as "unknown" and the
+                  // server-side enrichment leaves the company chip
+                  // empty rather than guessing.
+                  setFCompany(vehicle?.company ?? '');
                   setFOdometer(null);
                   setFEngineHours(null);
                   if (vehicle) fetchOdometer(vehicle.name);
@@ -1438,26 +1446,47 @@ export default function Tasks() {
               trigger.  Phrasing varies depending on whether a value
               has been entered yet ("Repeat every 90 days after
               completion" vs the plain "Repeat after completion"). */}
-          <label className="col-span-full inline-flex items-center gap-2 text-xs">
+          <div className="col-span-full flex flex-wrap items-center gap-2 text-xs">
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={fRepeat}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setFRepeat(on);
+                  // Seed from the due-period when the user flips it
+                  // on and hasn't set a separate recur value yet —
+                  // matches today's "same as due" default while
+                  // still letting them override.
+                  if (on && !fRecurValue.trim()) {
+                    const seed =
+                      fTriggerMode === 'date'  ? fDueDate
+                      : fTriggerMode === 'miles' ? fDueMiles
+                      : fDueEngineHours;
+                    if (seed) setFRecurValue(String(seed));
+                  }
+                }}
+                className="accent-primary cursor-pointer"
+              />
+              <span className="text-foreground">Repeat every</span>
+            </label>
             <input
-              type="checkbox"
-              checked={fRepeat}
-              onChange={e => setFRepeat(e.target.checked)}
-              className="accent-primary cursor-pointer"
+              type="number"
+              min={0}
+              value={fRecurValue}
+              onChange={e => setFRecurValue(e.target.value)}
+              disabled={!fRepeat}
+              placeholder={
+                fTriggerMode === 'date' ? '30'
+                : fTriggerMode === 'miles' ? '5000'
+                : '500'
+              }
+              className="w-20 bg-muted border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-ring disabled:opacity-50"
             />
             <span className="text-foreground">
-              {(() => {
-                const active =
-                  fTriggerMode === 'date'  ? fDueDate
-                  : fTriggerMode === 'miles' ? fDueMiles
-                  : fDueEngineHours;
-                const unit = fTriggerMode === 'date' ? 'days' : fTriggerMode === 'miles' ? 'mi' : 'h';
-                return active
-                  ? <>Repeat every {Number(active).toLocaleString()} {unit} after completion</>
-                  : <>Repeat after completion</>;
-              })()}
+              {fTriggerMode === 'date' ? 'days' : fTriggerMode === 'miles' ? 'mi' : 'h'} after completion
             </span>
-          </label>
+          </div>
           <div className="flex items-end">
             <button type="submit" disabled={saving} className="w-full px-4 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition">
               {saving ? 'Saving...' : 'Create'}
@@ -1494,14 +1523,47 @@ export default function Tasks() {
             columns={columns}
             data={tasks as unknown as Record<string, unknown>[]}
             searchKey={['vehicle_name', 'company_code', 'description', 'task_type']}
-            searchPlaceholder="Search vehicle, company, type, or description..."
+            searchPlaceholder="Filter this list…"
             onRowClick={(row) => openTaskForEdit(row as unknown as MaintenanceTask)}
+            headerToolbar={
+              <div className="flex flex-wrap items-center gap-1.5">
+                {([
+                  { key: '',          label: 'All',       count: allTasks.length,          dot: 'bg-muted-foreground/40' },
+                  { key: 'overdue',   label: 'Overdue',   count: buckets.overdue.length,   dot: 'bg-red-500'    },
+                  { key: 'due_soon',  label: 'Due Soon',  count: buckets.dueSoon.length,   dot: 'bg-orange-500' },
+                  { key: 'pending',   label: 'Pending',   count: buckets.pending.length,   dot: 'bg-blue-500'   },
+                  { key: 'completed', label: 'Completed', count: buckets.completed.length, dot: 'bg-green-500'  },
+                ] as const).map(chip => {
+                  const active = statusFilter === chip.key;
+                  return (
+                    <button
+                      key={chip.key || 'all'}
+                      type="button"
+                      onClick={() => setStatusFilter(active ? '' : chip.key)}
+                      aria-pressed={active}
+                      aria-label={`${chip.label}, ${chip.count} ${chip.count === 1 ? 'task' : 'tasks'}${active ? ', selected' : ''}`}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition border ${
+                        active
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-card hover:bg-muted text-foreground border-border'
+                      }`}
+                    >
+                      <span aria-hidden className={`w-2 h-2 rounded-full ${chip.dot}`} />
+                      {chip.label}
+                      <span className={`tabular-nums ${active ? 'opacity-80' : 'text-muted-foreground'}`}>
+                        {chip.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            }
           />
           {/* Result count footer.  Always shows the filtered count
               followed by what's hidden, so the user understands they're
               not seeing the whole list when a chip is active. */}
           <p className="text-xs text-muted-foreground mt-2">
-            {tasks.length} task{tasks.length !== 1 ? 's' : ''}
+            {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}
             {statusFilter && allTasks.length !== tasks.length
               ? ` · ${allTasks.length - tasks.length} hidden by filter`
               : ''}
@@ -1694,6 +1756,23 @@ export default function Tasks() {
                   {STATUS_OPTIONS.map(s => <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>)}
                 </select>
               </label>
+              {/* Type selector — lets the operator FIX a mistyped task
+                  type after creation.  Without this they had to delete
+                  the row and re-create just to flip e.g. "Oil Change"
+                  to "Inspection".  Uses the same TASK_TYPE_OPTIONS the
+                  add form does. */}
+              <label className="block">
+                <span className="block text-xs text-muted-foreground mb-1">Type</span>
+                <select
+                  value={eType}
+                  onChange={e => setEType(e.target.value)}
+                  className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+                >
+                  {TASK_TYPE_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </label>
               <label className="block">
                 <span className="block text-xs text-muted-foreground mb-1">Priority</span>
                 <select
@@ -1807,26 +1886,55 @@ export default function Tasks() {
                   trigger's recurrence is touched on save.  Other
                   dimensions' recurrence (if any) stays intact and
                   surfaces when the user switches tabs. */}
-              <label className="inline-flex items-center gap-2 text-xs">
+              {/* Repeat-after-completion with a SEPARATE recurrence
+                  input.  The due-period is when this specific service
+                  is due; the recur input is the standard interval to
+                  apply on every completion.  They CAN be the same
+                  (default) but no longer HAVE to be — common case:
+                  schedule an oil change in 39,250 mi but make the
+                  recurrence land on the standard 40,000 mi. */}
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <label className="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={eRepeat}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setERepeat(on);
+                      // Seed the recur input from the due-period when
+                      // the user flips the checkbox on and the field
+                      // is still empty — preserves the "they're the
+                      // same" default for users who don't care about
+                      // setting a separate interval.
+                      if (on && !eRecurValue.trim()) {
+                        const seed =
+                          eTriggerMode === 'date'  ? eDueDate
+                          : eTriggerMode === 'miles' ? eDueMiles
+                          : eDueEngineHours;
+                        if (seed) setERecurValue(String(seed));
+                      }
+                    }}
+                    className="accent-primary cursor-pointer"
+                  />
+                  <span className="text-foreground">Repeat every</span>
+                </label>
                 <input
-                  type="checkbox"
-                  checked={eRepeat}
-                  onChange={e => setERepeat(e.target.checked)}
-                  className="accent-primary cursor-pointer"
+                  type="number"
+                  min={0}
+                  value={eRecurValue}
+                  onChange={e => setERecurValue(e.target.value)}
+                  disabled={!eRepeat}
+                  placeholder={
+                    eTriggerMode === 'date' ? '30'
+                    : eTriggerMode === 'miles' ? '5000'
+                    : '500'
+                  }
+                  className="w-20 bg-muted border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-ring disabled:opacity-50"
                 />
                 <span className="text-foreground">
-                  {(() => {
-                    const active =
-                      eTriggerMode === 'date'  ? eDueDate
-                      : eTriggerMode === 'miles' ? eDueMiles
-                      : eDueEngineHours;
-                    const unit = eTriggerMode === 'date' ? 'days' : eTriggerMode === 'miles' ? 'mi' : 'h';
-                    return active
-                      ? <>Repeat every {Number(active).toLocaleString()} {unit} after completion</>
-                      : <>Repeat after completion</>;
-                  })()}
+                  {eTriggerMode === 'date' ? 'days' : eTriggerMode === 'miles' ? 'mi' : 'h'} after completion
                 </span>
-              </label>
+              </div>
 
               {/* Completion-time evidence (receipt / photo / cost /
                   vendor) sits AFTER the trigger/repeat block since it
@@ -1955,6 +2063,22 @@ export default function Tasks() {
                 </button>
               </div>
 
+              {/* Mark complete — one-click parity with the bulk-select
+                  toolbar's "Mark complete" pill.  Hidden when the
+                  task is already completed or cancelled (it would be
+                  a no-op) so the action area stays uncluttered. */}
+              {selected.status !== 'completed' && selected.status !== 'cancelled' && (
+                <button
+                  type="button"
+                  onClick={handleMarkComplete}
+                  disabled={saving}
+                  className="mt-2 w-full py-1.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 rounded text-xs font-medium text-green-700 dark:text-green-400 transition inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <CheckSquare size={12} />
+                  Mark complete
+                </button>
+              )}
+
               {/* Snooze pill — only shows when a snooze would actually
                   do something (task is overdue or close to threshold).
                   Collapsed: subtle button.  Expanded: inline 48h/7d/30d
@@ -2066,100 +2190,9 @@ export default function Tasks() {
         />
       )}
 
-      {binderDialogOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 z-50 flex justify-center items-start pt-24"
-          onClick={() => !binderGenerating && setBinderDialogOpen(false)}
-        >
-          <div
-            className="w-[420px] bg-card border border-border rounded-xl p-6 shadow-2xl"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-semibold inline-flex items-center gap-2">
-                  <FileText size={18} className="text-muted-foreground" />
-                  Generate DOT Binder
-                </h2>
-                <p className="text-xs text-muted-foreground mt-1">
-                  One printable PDF covering maintenance + work orders +
-                  attestations for the selected window.
-                </p>
-              </div>
-              <button
-                onClick={() => !binderGenerating && setBinderDialogOpen(false)}
-                aria-label="Close"
-                className="text-muted-foreground hover:text-foreground p-1"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="space-y-3 mb-5">
-              <label className="block">
-                <span className="block text-xs text-muted-foreground mb-1">
-                  Coverage window
-                </span>
-                <select
-                  value={binderDays}
-                  onChange={e => setBinderDays(e.target.value)}
-                  disabled={binderGenerating}
-                  className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
-                >
-                  <option value="30">Last 30 days</option>
-                  <option value="90">Last 90 days</option>
-                  <option value="180">Last 6 months</option>
-                  <option value="365">Last 12 months (DOT default)</option>
-                  <option value="730">Last 24 months</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className="block text-xs text-muted-foreground mb-1">
-                  Single vehicle (optional)
-                </span>
-                <input
-                  type="text"
-                  value={binderVehicle}
-                  onChange={e => setBinderVehicle(e.target.value)}
-                  disabled={binderGenerating}
-                  placeholder="Leave empty for the whole fleet"
-                  className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
-                />
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Useful when only one truck is being audited or sold.
-                </p>
-              </label>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setBinderDialogOpen(false)}
-                disabled={binderGenerating}
-                className="px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-xs font-medium border border-border"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={generateDotBinder}
-                disabled={binderGenerating}
-                className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-md text-xs font-medium text-primary-foreground transition"
-              >
-                <FileText size={13} />
-                {binderGenerating ? 'Generating PDF…' : 'Generate PDF'}
-              </button>
-            </div>
-
-            {binderGenerating && (
-              <p className="text-xs text-muted-foreground mt-3 text-center">
-                Compiling per-vehicle records — this may take up to 30 seconds
-                for large fleets.
-              </p>
-            )}
-          </div>
-        </div>
-      )}
+      {/* DOT Binder dialog removed — the binder generator now lives
+          at /reports/dot-binder as its own page inside the Reports
+          module shell. */}
     </div>
   );
 }

@@ -46,7 +46,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         check_unsafe_parking,
         re_escalate_critical_alerts,
     )
-    from interfaces.bot.auto_reports import send_auto_reports
+    from interfaces.bot.scheduled_reports import send_scheduled_reports
     from interfaces.bot.maintenance import (
         check_overdue_maintenance,
         check_overdue_by_mileage,
@@ -57,6 +57,12 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     from interfaces.bot.driver_samsara_sync import check_driver_samsara_sync
     from interfaces.bot.geofences import check_geofence_events
     from capabilities.scoring.jobs import take_daily_scorecard_snapshots
+    from capabilities.pti.jobs import (
+        job_pti_spawn_weekly,
+        job_pti_remind_due_soon,
+        job_pti_escalate_overdue,
+        job_pti_fleet_digest,
+    )
 
     scheduler.add_job(
         check_new_faults, "interval",
@@ -74,8 +80,8 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         max_instances=1, coalesce=True,
     )
     scheduler.add_job(
-        send_auto_reports, "interval",
-        hours=1, args=[app], id="auto_reports_send",
+        send_scheduled_reports, "interval",
+        hours=1, args=[app], id="scheduled_reports_send",
         max_instances=1, coalesce=True,
     )
     scheduler.add_job(
@@ -104,6 +110,35 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     scheduler.add_job(
         check_upcoming_maintenance_warnings, "interval",
         hours=24, args=[app], id="maintenance_warning_check",
+        max_instances=1, coalesce=True,
+    )
+    # ── PTI (Pre-Trip Inspection) jobs ──────────────────────────────
+    #
+    # All four jobs use the hourly-cron pattern + per-account local-hour
+    # gating: APScheduler fires every hour at a staggered minute and
+    # each job iterates active accounts, skipping any whose local clock
+    # isn't at the target hour.  Same convention the doc-expiry and
+    # samsara-sync jobs use.  Minute offsets are spread out (10/15/20/25)
+    # so all four don't race to acquire the single-writer DB lock at the
+    # top of the hour.
+    scheduler.add_job(
+        job_pti_spawn_weekly, "cron",
+        minute=10, args=[app], id="pti_spawn_weekly",
+        max_instances=1, coalesce=True,
+    )
+    scheduler.add_job(
+        job_pti_remind_due_soon, "cron",
+        minute=15, args=[app], id="pti_remind_due_soon",
+        max_instances=1, coalesce=True,
+    )
+    scheduler.add_job(
+        job_pti_escalate_overdue, "cron",
+        minute=20, args=[app], id="pti_escalate_overdue",
+        max_instances=1, coalesce=True,
+    )
+    scheduler.add_job(
+        job_pti_fleet_digest, "cron",
+        minute=25, args=[app], id="pti_fleet_digest",
         max_instances=1, coalesce=True,
     )
     # Driver-document expiration alerts (CDL, medical card, MVR, …).
@@ -151,9 +186,33 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         minutes=30, args=[app], id="parking_check",
         max_instances=1, coalesce=True,
     )
+    # Hybrid-storage sync: drain ``storage_sync_queue`` to each
+    # account's cloud backend (Drive).  60s interval is the right
+    # cadence — files land in cloud within a minute of upload in the
+    # happy path, and a per-row lease ensures a crashed worker's rows
+    # auto-recover.  Env-tunable batch + per-account concurrency:
+    # ``SYNC_WORKER_BATCH_SIZE`` / ``SYNC_WORKER_ACCOUNT_CONCURRENCY``.
+    from capabilities.storage.sync_worker import sync_pending_storage
+    scheduler.add_job(
+        sync_pending_storage, "interval",
+        seconds=60, args=[app], id="storage_sync",
+        max_instances=1, coalesce=True,
+    )
     scheduler.add_job(
         re_escalate_critical_alerts, "interval",
         hours=1, args=[app], id="critical_reescalate",
+        max_instances=1, coalesce=True,
+    )
+    # Nightly stale-alert cleanup — closes ``alert_acknowledgments`` rows
+    # that have been sitting at ``status='active'`` for > 14 days (per
+    # NIGHTLY_DEFAULT_DAYS) so the Alerts dashboard stays scannable.
+    # ``events`` + ``maintenance`` types are skipped — see
+    # ``capabilities/alerting/cleanup.py`` for the safety rails.
+    # Scheduled at 03:15 UTC = quiet hours across all US zones.
+    from capabilities.alerting.cleanup import nightly_stale_close
+    scheduler.add_job(
+        nightly_stale_close, "cron",
+        hour=3, minute=15, args=[app], id="nightly_stale_close",
         max_instances=1, coalesce=True,
     )
     # Nightly scorecard snapshot. Tick hourly; the per-account body
@@ -178,6 +237,30 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     scheduler.add_job(
         run_monthly_payroll_job, "cron",
         day=1, hour=2, minute=0, args=[app], id="payroll_monthly",
+        max_instances=1, coalesce=True,
+    )
+
+    # ── monthly billing snapshot ─────────────────────────
+    # Records one billing_usage_snapshots row per active account so the
+    # dashboard can render historical periods (and finance can audit
+    # what we actually billed for).  Fires 30 min after payroll so the
+    # database isn't doing two big batches simultaneously.
+    from capabilities.billing.jobs import run_monthly_billing_snapshots
+    scheduler.add_job(
+        run_monthly_billing_snapshots, "cron",
+        day=1, hour=2, minute=30, args=[app], id="billing_snapshot_monthly",
+        max_instances=1, coalesce=True,
+    )
+
+    # ── daily comp-expiry sweep ──────────────────────────
+    # Flips ``is_comped`` off for accounts whose comp window has
+    # closed (and pings their admins), then sends 7-day / 3-day /
+    # 1-day reminders to comps approaching expiry.  Both phases are
+    # idempotent so a re-run on the same UTC day is a no-op.
+    from capabilities.billing.jobs import run_comp_expiry_sweep
+    scheduler.add_job(
+        run_comp_expiry_sweep, "cron",
+        hour=3, minute=0, args=[app], id="billing_comp_expiry_sweep",
         max_instances=1, coalesce=True,
     )
 

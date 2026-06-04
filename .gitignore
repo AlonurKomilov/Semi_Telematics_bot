@@ -22,6 +22,7 @@ env/
 # Build outputs
 interfaces/dashboard/dist/
 interfaces/miniapp/dist/
+interfaces/system_dashboard/dist/
 node_modules/
 *.tar.gz
 

@@ -44,6 +44,16 @@
   --st-green-tint:  rgba(48, 209, 88, 0.18);
   --st-orange-tint: rgba(255, 159, 10, 0.18);
   --st-red-tint:    rgba(255, 69, 58, 0.18);
+  --st-yellow:      #ffd60a;
+  --st-yellow-tint: rgba(255, 214, 10, 0.18);
+  --st-grey:        #8e8e93;
+  --st-grey-tint:   rgba(142, 142, 147, 0.18);
+
+  /* Theme-aware hairline + fill.  Grey-based so they stay visible on
+     BOTH Telegram light and dark themes (a plain rgba(0,0,0,…) border
+     vanishes on dark). */
+  --st-border:      rgba(128, 128, 128, 0.28);
+  --st-fill-subtle: rgba(128, 128, 128, 0.14);
 }
 
 html,
@@ -2087,3 +2097,255 @@ button.profile-row:focus-visible {
 }
 .ai-bubble th     { font-weight: 600; opacity: 0.9; }
 .ai-bubble br     { line-height: 1.4; }
+
+/* ── PTI (Pre-Trip Inspection) ─────────────────────────────────── */
+
+.pti-status-card {
+  background: var(--tgui--secondary_bg_color);
+  border: 1px solid var(--st-border);
+  border-radius: var(--st-radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pti-status-card__chip {
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+/* Tint + bright text token = readable on both light and dark. */
+.pti-status-card__chip--info    { background: rgba(41,144,255,0.18); color: var(--st-blue, #2990ff); }
+.pti-status-card__chip--success { background: var(--st-green-tint);   color: var(--st-green, #30d158); }
+.pti-status-card__chip--warn    { background: var(--st-orange-tint);  color: var(--st-orange, #ff9f0a); }
+.pti-status-card__chip--danger  { background: var(--st-red-tint);     color: var(--st-red, #ff453a); }
+.pti-status-card__title { font-size: 16px; font-weight: 600; }
+.pti-status-card__sub   { font-size: 13px; color: var(--tg-theme-hint-color, #8e8e93); }
+.pti-status-card__notes {
+  font-size: 13px;
+  background: var(--st-fill-subtle);
+  padding: 8px 10px;
+  border-radius: var(--st-radius-sm);
+  margin-top: 4px;
+}
+
+.pti-banner {
+  border-radius: var(--st-radius-sm);
+  padding: 10px 12px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+.pti-banner--warn {
+  background: var(--st-orange-tint);
+  color: var(--st-orange, #ff9f0a);
+  border: 1px solid rgba(255,159,10,0.4);
+}
+.pti-banner__notes { font-size: 12px; margin-top: 4px; opacity: 0.9; }
+
+.pti-start {
+  background: var(--tgui--secondary_bg_color);
+  border: 1px solid var(--st-border);
+  border-radius: var(--st-radius-md);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+.pti-start__title { font-size: 18px; font-weight: 600; }
+.pti-start__due, .pti-start__count {
+  font-size: 14px;
+  color: var(--tg-theme-hint-color, #8e8e93);
+}
+.pti-start__btn {
+  margin-top: 8px;
+  padding: 14px;
+  border-radius: var(--st-radius-md);
+  background: var(--st-blue, #2990ff);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.pti-start__btn:active { opacity: 0.85; }
+
+.pti-wizard__progress { padding: 0 4px 10px; }
+.pti-wizard__progress-text {
+  font-size: 12px;
+  color: var(--tg-theme-hint-color, #8e8e93);
+  margin-bottom: 6px;
+}
+.pti-wizard__progress-bar {
+  height: 5px; border-radius: 3px;
+  background: var(--st-fill-subtle);
+  overflow: hidden;
+}
+.pti-wizard__progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--st-blue, #2990ff);
+  transition: width 220ms ease;
+}
+
+.pti-wizard__card {
+  background: var(--tgui--secondary_bg_color);
+  border: 1px solid var(--st-border);
+  border-radius: var(--st-radius-md);
+  padding: 16px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pti-wizard__category {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  color: var(--st-blue, #2990ff);
+}
+.pti-wizard__label {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.pti-wizard__required { color: var(--st-red, #ff453a); }
+.pti-wizard__statuses {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+.pti-wizard__status {
+  border: 1.5px solid var(--st-border);
+  background: var(--tg-theme-bg-color, #1c1c1e);
+  color: var(--tg-theme-text-color, #fff);
+  padding: 10px 4px;
+  border-radius: var(--st-radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.pti-wizard__status:active { transform: scale(0.95); }
+/* Active state: each severity lights up in its OWN colour rather than
+   a generic blue — so OK reads green, OOS reads red, at a glance. */
+.pti-wizard__status.is-active {
+  color: #fff;
+  border-color: transparent;
+}
+.pti-wizard__status--ok.is-active    { background: var(--st-green, #30d158); }
+.pti-wizard__status--minor.is-active { background: var(--st-yellow, #ffd60a); color: #1c1c1e; }
+.pti-wizard__status--major.is-active { background: var(--st-orange, #ff9f0a); }
+.pti-wizard__status--oos.is-active   { background: var(--st-red, #ff453a); }
+.pti-wizard__status--na.is-active    { background: var(--st-grey, #8e8e93); }
+.pti-wizard__notes {
+  width: 100%;
+  border: 1px solid var(--st-border);
+  border-radius: var(--st-radius-sm);
+  padding: 10px 12px;
+  font-size: 14px;
+  resize: vertical;
+  background: var(--tg-theme-bg-color, #1c1c1e);
+  color: inherit;
+}
+.pti-wizard__notes::placeholder { color: var(--tg-theme-hint-color, #8e8e93); }
+.pti-wizard__notes:focus {
+  outline: none;
+  border-color: var(--st-blue, #2990ff);
+}
+.pti-wizard__media-label {
+  font-size: 12px;
+  color: var(--tg-theme-hint-color, #8e8e93);
+  margin-bottom: 6px;
+}
+.pti-wizard__media-count { color: var(--tg-theme-hint-color, #8e8e93); }
+.pti-wizard__nav {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.pti-wizard__nav-btn {
+  flex: 1;
+  padding: 11px;
+  border-radius: var(--st-radius-sm);
+  background: var(--st-fill-subtle);
+  border: 1px solid var(--st-border);
+  color: var(--tg-theme-text-color, #fff);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.pti-wizard__nav-btn:active { opacity: 0.7; }
+.pti-wizard__nav-btn:disabled { opacity: 0.35; }
+.pti-wizard__submit { margin-top: 4px; }
+.pti-wizard__submit-hint {
+  font-size: 12px;
+  color: var(--st-orange, #ff9f0a);
+  margin-bottom: 8px;
+}
+.pti-wizard__submit-btn {
+  width: 100%;
+  padding: 15px;
+  border-radius: var(--st-radius-md);
+  background: var(--st-blue, #2990ff);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.pti-wizard__submit-btn:active { opacity: 0.85; }
+.pti-wizard__submit-btn:disabled {
+  background: var(--st-fill-subtle);
+  color: var(--tg-theme-hint-color, #8e8e93);
+  cursor: not-allowed;
+}
+.pti-wizard__submit-error { color: var(--st-red, #ff453a); font-size: 12px; margin-top: 6px; }
+
+/* Reference example image — "here's what a correct shot looks like". */
+.pti-wizard__ref {
+  border: 1px solid var(--st-border);
+  border-radius: var(--st-radius-sm);
+  overflow: hidden;
+  background: var(--tg-theme-bg-color, #1c1c1e);
+}
+.pti-wizard__ref-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--st-blue, #2990ff);
+  padding: 6px 10px 4px;
+}
+.pti-wizard__ref-img {
+  width: 100%;
+  max-height: 160px;
+  object-fit: contain;
+  display: block;
+  background: #000;
+}
+
+.media-capture__btn {
+  flex: 1;
+  padding: 12px;
+  border-radius: var(--st-radius-sm);
+  background: var(--st-fill-subtle);
+  border: 1px solid var(--st-border);
+  color: var(--tg-theme-text-color, #fff);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.media-capture__btn:active { opacity: 0.7; }
+.media-capture__btn:disabled { opacity: 0.45; }
+.media-capture__error { color: var(--st-red, #ff453a); font-size: 12px; margin-top: 6px; }

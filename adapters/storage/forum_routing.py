@@ -233,6 +233,13 @@ class ForumRoutingMixin:
         await self._db.commit()
 
     def _row_to_alert_route(self, row) -> AlertRoute:
+        # ``send_resolve_receipt`` column was added in migration 079.
+        # Use dict-style ``.keys()`` check so this method keeps working
+        # against a pre-migration sqlite row (treat missing as True =
+        # legacy "always send receipt" behavior).
+        keys = row.keys() if hasattr(row, "keys") else []
+        send_receipt = bool(row["send_resolve_receipt"]) \
+            if "send_resolve_receipt" in keys else True
         return AlertRoute(
             id=row["id"],
             account_id=row["account_id"],
@@ -242,9 +249,31 @@ class ForumRoutingMixin:
             topic_name_snapshot=row["topic_name_snapshot"],
             icon_emoji=row["icon_emoji"],
             is_active=bool(row["is_active"]),
+            send_resolve_receipt=send_receipt,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
+
+    async def set_alert_route_send_resolve_receipt(
+        self, account_id: int, alert_type: str, enabled: bool,
+    ) -> bool:
+        """Toggle the per-topic resolve-receipt flag.
+
+        The auto-resolve pipeline consults this before posting a
+        🟢 RESOLVED receipt to the forum topic — when False, the
+        underlying alert_history row still flips to resolved (so the
+        dashboard monitoring view stays accurate) but no chat message
+        gets posted.
+        """
+        now = self._now()
+        cur = await self._db.execute(
+            "UPDATE alert_routing "
+            "SET send_resolve_receipt = ?, updated_at = ? "
+            "WHERE account_id = ? AND alert_type = ?",
+            (1 if enabled else 0, now, account_id, alert_type),
+        )
+        await self._db.commit()
+        return (cur.rowcount or 0) > 0
 
     # ── forum_topics_seen (duplicate-prevention index) ───────────
 

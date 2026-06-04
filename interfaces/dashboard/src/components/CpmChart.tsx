@@ -22,7 +22,7 @@ export default function CpmChart({ vehicles, avgCpm }: Props) {
         <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={(v) => `$${v.toFixed(2)}`} />
         <Tooltip
           formatter={(v) => [`$${(v as number).toFixed(3)}`, 'CPM']}
-          contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, color: '#f9fafb' }}
+          contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }}
         />
         {avgCpm != null && <ReferenceLine y={avgCpm} stroke="#6b7280" strokeDasharray="4 4" label={{ value: 'avg', fill: '#6b7280', fontSize: 11 }} />}
         <Bar dataKey="cpm" radius={[4, 4, 0, 0]}>

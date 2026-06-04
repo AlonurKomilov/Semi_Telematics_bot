@@ -25,8 +25,18 @@ export function PriorityBadge({ value }: { value: unknown }) {
   );
 }
 
+// Consistent empty-state for the three "due-by" cells (Due Date /
+// Mileage / Engine Hours).  Muted em-dash so a row with no value
+// reads as "no value" instead of a missing cell that looks like a
+// rendering bug.
+export function EmptyDueCell() {
+  return (
+    <span className="text-muted-foreground/50 text-xs">—</span>
+  );
+}
+
 export function EngineHoursProgress({ row }: { row: MaintenanceTask }) {
-  if (row.due_engine_hours == null) return null;
+  if (row.due_engine_hours == null) return <EmptyDueCell />;
   if (row.last_engine_hours == null) {
     return (
       <span className="text-muted-foreground text-xs">
@@ -38,7 +48,7 @@ export function EngineHoursProgress({ row }: { row: MaintenanceTask }) {
   const overdue = pct >= 100;
   const remaining = Math.round(row.due_engine_hours - row.last_engine_hours);
   return (
-    <div className="flex flex-col gap-1 min-w-[120px]">
+    <div className="flex flex-col gap-1.5 min-w-[120px]">
       <div className="text-xs">
         {Number(row.last_engine_hours).toLocaleString()} / {Number(row.due_engine_hours).toLocaleString()} hrs
       </div>
@@ -59,17 +69,24 @@ export function EngineHoursProgress({ row }: { row: MaintenanceTask }) {
 
 // Task-type options — MUST match capabilities/maintenance/service.py:TASK_TYPES
 // (the SSOT used by the bot wizard and the AI tool).
+//
+// Labels stay text-only here.  HTML ``<select>`` options can't render
+// SVGs reliably across browsers, and the emoji prefixes the form used
+// before rendered as missing-glyph placeholders on some platforms
+// (the user's screenshot showed several broken).  The table cell
+// renders proper lucide-react icons via ``TaskTypeCell`` — that's
+// where the visual icon belongs, not in the picker dropdown.
 export const TASK_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'inspection',     label: '📋 General Inspection' },
-  { value: 'oil',            label: '🛢 Oil Change' },
-  { value: 'tires',          label: '🛞 Tire Service' },
-  { value: 'brakes',         label: '🔴 Brake Inspection' },
-  { value: 'transmission',   label: '⚙️ Transmission' },
-  { value: 'electrical',     label: '⚡ Electrical' },
-  { value: 'dot_inspection', label: '🏛 DOT Inspection' },
-  { value: 'dpf_regen',      label: '♨️ DPF Regen' },
-  { value: 'def_refill',     label: '💧 DEF Refill' },
-  { value: 'custom',         label: '✏️ Custom' },
+  { value: 'inspection',     label: 'General Inspection' },
+  { value: 'oil',            label: 'Oil Change' },
+  { value: 'tires',          label: 'Tire Service' },
+  { value: 'brakes',         label: 'Brake Inspection' },
+  { value: 'transmission',   label: 'Transmission' },
+  { value: 'electrical',     label: 'Electrical' },
+  { value: 'dot_inspection', label: 'DOT Inspection' },
+  { value: 'dpf_regen',      label: 'DPF Regen' },
+  { value: 'def_refill',     label: 'DEF Refill' },
+  { value: 'custom',         label: 'Custom' },
 ];
 
 const TYPE_ICON_COMPONENTS: Record<string, ElementType> = {
@@ -123,7 +140,7 @@ export function TaskTypeCell({ type }: { type: string }) {
 
 // due-date urgency chip. Buckets mirror the bot's overdue-alert scheduler.
 export function DueDateChip({ value }: { value: unknown }) {
-  if (!value) return <span className="text-muted-foreground">—</span>;
+  if (!value) return <EmptyDueCell />;
   // Pin bare YYYY-MM-DD to local midnight; otherwise Date() treats it
   // as UTC midnight, which renders one day early in negative timezones
   // (US, etc). Same pattern Tasks.tsx uses in _formatDate.
@@ -131,7 +148,7 @@ export function DueDateChip({ value }: { value: unknown }) {
   const iso = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw + 'T00:00:00' : raw;
   const due = new Date(iso);
   if (Number.isNaN(due.getTime())) {
-    return <span className="text-muted-foreground">—</span>;
+    return <EmptyDueCell />;
   }
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -159,7 +176,7 @@ export function DueDateChip({ value }: { value: unknown }) {
 }
 
 export function MileageProgress({ row }: { row: MaintenanceTask }) {
-  if (row.due_miles == null) return <>—</>;
+  if (row.due_miles == null) return <EmptyDueCell />;
   if (row.last_odometer == null) {
     return (
       <span
@@ -174,7 +191,7 @@ export function MileageProgress({ row }: { row: MaintenanceTask }) {
   const overdue = pct >= 100;
   const remaining = Math.round(row.due_miles - row.last_odometer);
   return (
-    <div className="flex flex-col gap-1 min-w-[140px]">
+    <div className="flex flex-col gap-1.5 min-w-[140px]">
       <div className="text-xs">
         {Number(row.last_odometer).toLocaleString()} / {Number(row.due_miles).toLocaleString()} mi
       </div>

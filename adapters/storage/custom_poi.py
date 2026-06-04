@@ -12,8 +12,10 @@ hardcoded built-ins (fuel_station, weigh_station, etc.).  Three source types:
   - ``csv``       — static rows uploaded by admin, stored in
                     ``custom_poi_points`` and served from DB (no Overpass).
 
-Tenant isolation is by file (each tenant has its own SQLite); ``account_id``
-is kept on rows for backward-compat audit and to allow defensive WHEREs.
+Tenant isolation is enforced by the ``account_id`` filter on every query
+(and by Postgres RLS policies when ``ENABLE_RLS=1``).  Every row carries
+``account_id`` so the WHERE clause + RLS policy can scope reads to the
+calling tenant.
 """
 
 from __future__ import annotations

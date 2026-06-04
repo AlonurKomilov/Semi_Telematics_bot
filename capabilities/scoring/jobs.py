@@ -263,6 +263,7 @@ async def check_scorecard_drop_alerts(_app=None) -> None:
                 posted = await post_alert_to_topic(
                     bot_app, account_id=acc.id,
                     alert_type="scorecard", text=text,
+                    severity="warning",
                 )
                 if posted:
                     continue

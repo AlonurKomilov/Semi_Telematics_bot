@@ -718,7 +718,7 @@
     "empty_no_articles": "Aucun article pour le moment",
     "empty_desc_can_create": "Ajoutez des conseils, guides et procédures pour votre équipe — texte, vidéo, PDF ou liens.",
     "empty_desc_read_only": "Votre administrateur peut ajouter des guides utiles pour votre équipe ici.",
-    "section_pinned": "Épinglés",
+    "section_pinned": "Mes favoris",
     "section_other": "Tous les articles",
     "by_creator": "par {{name}}",
     "load_more": "Charger plus",
@@ -745,7 +745,9 @@
     "upload_pick_image": "Choisir un fichier image",
     "upload_hint_pdf": "PDF · max 25 Mo",
     "upload_hint_image": "PNG, JPEG, WEBP · max 25 Mo",
-    "upload_or_url": "Ou collez une URL externe"
+    "upload_or_url": "Ou collez une URL externe",
+    "bookmark_add_title": "Ajouter à mes favoris",
+    "bookmark_remove_title": "Retirer de mes favoris"
   },
   "profile": {
     "signin_title": "Méthodes de connexion",

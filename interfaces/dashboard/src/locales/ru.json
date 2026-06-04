@@ -718,7 +718,7 @@
     "empty_no_articles": "Пока нет статей",
     "empty_desc_can_create": "Добавьте советы, руководства и инструкции для команды — текст, видео, PDF или ссылки.",
     "empty_desc_read_only": "Ваш администратор может добавлять полезные руководства здесь.",
-    "section_pinned": "Закреплённые",
+    "section_pinned": "Мои закладки",
     "section_other": "Все статьи",
     "by_creator": "автор: {{name}}",
     "load_more": "Загрузить ещё",
@@ -745,7 +745,9 @@
     "upload_pick_image": "Выберите файл изображения",
     "upload_hint_pdf": "PDF · макс. 25 МБ",
     "upload_hint_image": "PNG, JPEG, WEBP · макс. 25 МБ",
-    "upload_or_url": "Или вставьте внешнюю ссылку"
+    "upload_or_url": "Или вставьте внешнюю ссылку",
+    "bookmark_add_title": "Добавить в закладки",
+    "bookmark_remove_title": "Удалить из моих закладок"
   },
   "profile": {
     "signin_title": "Способы входа",

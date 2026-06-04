@@ -84,6 +84,9 @@ async def run_all(conn) -> None:
     # per-user vote table.  Drivers can mark articles helpful/unhelpful;
     # admins use the counters to see which articles are actually read.
     await migrate_kb_engagement_columns(conn)
+    # Per-user bookmarks replace the legacy "global pin" UX.  Each
+    # user can pin their own favorites without affecting anyone else.
+    await migrate_create_kb_bookmarks_table(conn)
     # The next steps MUST be the last entries — each touches every
     # table that has an ``account_id`` column, so they need every
     # CREATE TABLE already applied.  Run order matters:
@@ -2555,3 +2558,37 @@ async def migrate_kb_engagement_columns(conn) -> None:
         await conn.commit()
     except Exception as e:
         logger.debug("knowledge_feedback CREATE skipped (%s)", e)
+
+
+# ── Knowledge base: per-user personal bookmarks ───────────────────
+
+
+async def migrate_create_kb_bookmarks_table(conn) -> None:
+    """Per-user bookmark table for the knowledge base.
+
+    Replaces the global ``knowledge_base.pinned`` column as the
+    user-facing pin: each user gets their own bookmark list instead
+    of one row being pinned for everyone in the company.  The legacy
+    ``pinned`` column stays on the schema for now (a follow-up
+    migration drops it once we're confident nothing reads it) — this
+    migration only ADDS, never touches existing rows.
+
+    UNIQUE(article_id, user_id) makes re-bookmarking a no-op without
+    needing a SELECT-then-INSERT race window.
+    """
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS knowledge_bookmarks (
+                article_id INTEGER NOT NULL,
+                user_id    INTEGER NOT NULL,
+                created_at TEXT    NOT NULL,
+                PRIMARY KEY (article_id, user_id)
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_kb_bookmarks_user "
+            "ON knowledge_bookmarks(user_id)"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.debug("knowledge_bookmarks CREATE skipped (%s)", e)

@@ -212,7 +212,7 @@ class DriverVehiclesMixin(_MixinBase):
 
     @staticmethod
     def _row_to_driver_vehicle(row) -> DriverVehicle:
-        """Convert a sqlite3.Row to DriverVehicle dataclass."""
+        """Convert an asyncpg Record row to DriverVehicle dataclass."""
         return DriverVehicle(
             id=row[0],
             user_id=row[1],

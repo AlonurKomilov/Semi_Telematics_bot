@@ -797,7 +797,7 @@
     "csv_caption": "📊 Hodisalar hisoboti — {company}",
     "csv_exported": "✅ Hodisalar CSV eksport qilindi."
   },
-  "auto_reports": {
+  "scheduled_reports": {
     "header": "📋  <b>HISOBOT OBUNALARI</b>",
     "description": "Telegram chatIngizga avtomatik flot hisobotlarini rejalashtiring.",
     "subscribed": "✅ Faol: <b>{rtype}</b> · {freq} soat {time}",

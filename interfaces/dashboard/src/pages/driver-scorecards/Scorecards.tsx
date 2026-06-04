@@ -120,7 +120,7 @@ function ScoreDistribution({ cards }: { cards: CompositeScorecard[] }) {
             const pct = cards.length > 0 ? Math.round((props.payload.count / cards.length) * 100) : 0;
             return [`${v} trucks (${pct}%)`, 'Count'];
           }}
-          contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, color: '#f9fafb' }} />
+          contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }} />
         <Bar dataKey="count" radius={[6, 6, 0, 0]} label={{ position: 'top', fontSize: 10, fill: '#9ca3af', formatter: (v: unknown) => Number(v) > 0 ? Number(v) : '' }}>
           {buckets.map((b) => <Cell key={b.label} fill={b.color} />)}
         </Bar>
@@ -150,7 +150,7 @@ function TopBottomChart({ cards }: { cards: CompositeScorecard[] }) {
           <YAxis type="category" dataKey="name" width={56} tick={{ fill: '#9ca3af', fontSize: 12 }} />
           <Tooltip
             formatter={(v) => [`${v}`, 'Score']}
-            contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, color: '#f9fafb' }} />
+            contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }} />
           <ReferenceLine x={70} stroke="#6b7280" strokeDasharray="3 3" />
           <Bar dataKey="score" radius={[0, 4, 4, 0]} label={{ position: 'right', fontSize: 11, fill: '#9ca3af' }}>
             {items.map((d, i) => <Cell key={i} fill={scoreColor(d.score)} />)}
@@ -239,7 +239,7 @@ function HistoryChart({ driverId, days }: { driverId: string; days: number }) {
                tickFormatter={(d: string) => d.slice(5)} />
         <YAxis domain={[0, 100]} tick={{ fill: '#9ca3af', fontSize: 10 }} />
         <Tooltip
-          contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, color: '#f9fafb' }} />
+          contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }} />
         {/* Faded pillar lines underneath the bold total */}
         <Line type="monotone" dataKey="safety"     name="🛡 Safety"
               stroke="#ef4444" strokeWidth={1.25} strokeOpacity={0.55}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CreditCard, ExternalLink } from 'lucide-react';
+import { CreditCard, ExternalLink, FileText, AlertTriangle, Gift } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { PageHeader, CardSkeleton } from '../../components/shell';
 
@@ -19,17 +19,46 @@ interface AiUsage {
   days: number;
 }
 
+interface LineItem {
+  label: string;
+  amount_cents: number;  // negative for discount lines
+}
+
+interface InactiveVehicleSample {
+  vehicle_id: string;
+  vehicle_name: string;
+  captured_at: string;
+}
+
 interface BillingSummary {
   tier: string;
   status: string;
+  // Raw Samsara fleet count (informational; not what we bill)
   vehicle_count: number;
+  // Activity-driven counts — these drive the math
+  active_vehicles: number;
+  inactive_vehicles: number;
+  inactive_sample: InactiveVehicleSample[];
   base_vehicles: number;
   monthly_base_cents: number;
   extra_vehicle_cents: number;
-  billing_email: string | null;
-  amount_due_cents: number;
   extra_vehicles: number;
+  // New cost breakdown
+  subtotal_cents: number;
+  discount_cents: number;
+  amount_due_cents: number;
+  line_items: LineItem[];
+  // Comp account fields
+  is_comped: boolean;
+  comp_expires_at: string | null;
+  comp_reason: string;
+  // Set by the webhook handler when an invoice payment fails;
+  // cleared on recovery.  Drives the past-due banner + the
+  // enforcement-middleware grace-period check.
+  past_due_since: string | null;
+  billing_email: string | null;
   trial_ends_at: string | null;
+  current_period_start: string | null;
   current_period_end: string | null;
   provider: string;
   account_name: string;
@@ -41,10 +70,27 @@ interface UsageSnapshot {
   period_start: string;
   period_end: string;
   vehicle_count: number;
+  active_vehicles?: number;
+  inactive_vehicles?: number;
   extra_vehicles: number;
   amount_due_cents: number;
   ai_queries: number;
   user_count: number;
+}
+
+interface Invoice {
+  id: number;
+  provider_invoice_id: string;
+  status: string;
+  amount_due_cents: number;
+  amount_paid_cents: number;
+  currency: string;
+  period_start: string | null;
+  period_end: string | null;
+  hosted_invoice_url: string;
+  invoice_pdf_url: string;
+  paid_at: string | null;
+  created_at: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -85,6 +131,80 @@ function Stat({ label, value, accent, sub }: { label: string; value: string; acc
   );
 }
 
+// ── Past-due banner ───────────────────────────────────────────────
+
+function PastDueBanner({ since }: { since: string }) {
+  // Days since the first failed payment.  Mirrors the backend grace
+  // computation; the API itself still gates blocking via
+  // BILLING_GRACE_PERIOD_DAYS so the banner copy just communicates
+  // urgency without claiming a specific cutoff.
+  const days = Math.max(0, Math.floor((Date.now() - new Date(since).getTime()) / 86_400_000));
+  return (
+    <div className="mb-4 bg-destructive/10 border border-destructive/40 rounded-lg px-4 py-3 flex items-start gap-3">
+      <AlertTriangle className="text-destructive shrink-0 mt-0.5" size={18} />
+      <div className="text-sm">
+        <p className="font-semibold text-destructive">Payment past due ({days} day{days === 1 ? '' : 's'})</p>
+        <p className="text-muted-foreground mt-0.5">
+          Your latest invoice couldn't be charged.  Service is still active during the grace
+          window — update your payment method or pay the open invoice to keep it that way.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Comp account banner ───────────────────────────────────────────
+
+function CompBanner({ summary }: { summary: BillingSummary }) {
+  if (!summary.is_comped) return null;
+  const exp = summary.comp_expires_at ? new Date(summary.comp_expires_at) : null;
+  const daysLeft = exp ? Math.max(0, Math.ceil((exp.getTime() - Date.now()) / 86_400_000)) : null;
+  const wouldBe = summary.subtotal_cents;
+  return (
+    <div className="mb-4 bg-primary/5 border border-primary/30 rounded-lg px-4 py-3 flex items-start gap-3">
+      <Gift className="text-primary shrink-0 mt-0.5" size={18} />
+      <div className="text-sm">
+        <p className="font-semibold text-foreground">Complimentary Account</p>
+        <p className="text-muted-foreground mt-0.5">
+          4truck is covering <span className="font-semibold text-foreground">{usd(wouldBe)}/month</span> for you.
+          {exp && daysLeft != null && (
+            <>
+              {' '}Expires <span className="font-medium text-foreground">{exp.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+              {' '}<span className="text-xs">({daysLeft} day{daysLeft === 1 ? '' : 's'} remaining)</span>
+            </>
+          )}
+        </p>
+        {summary.comp_reason && (
+          <p className="text-xs text-muted-foreground mt-1 italic">"{summary.comp_reason}"</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Inactive vehicles footer ──────────────────────────────────────
+
+function InactiveVehiclesFooter({ summary }: { summary: BillingSummary }) {
+  if (summary.inactive_vehicles === 0) return null;
+  const sampleNames = summary.inactive_sample.map((v) => v.vehicle_name || v.vehicle_id).filter(Boolean);
+  const previewCount = Math.min(3, sampleNames.length);
+  const preview = sampleNames.slice(0, previewCount).join(', ');
+  const extra = summary.inactive_vehicles - previewCount;
+  return (
+    <div className="mt-3 text-xs text-muted-foreground border-t border-border pt-3 flex items-start gap-2">
+      <span className="shrink-0">ⓘ</span>
+      <p>
+        <span className="font-medium text-foreground/80">
+          {summary.inactive_vehicles} vehicle{summary.inactive_vehicles === 1 ? '' : 's'} inactive for 3+ days
+        </span>
+        {' '}— not billed{preview && (
+          <> (e.g. {preview}{extra > 0 ? `, +${extra} more` : ''})</>
+        )}.
+      </p>
+    </div>
+  );
+}
+
 // ── Plan summary card ─────────────────────────────────────────────
 
 function SummaryCard({ summary }: { summary: BillingSummary }) {
@@ -102,8 +222,10 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
           <span className={`px-2 py-0.5 rounded text-xs font-medium border ${
             summary.status === 'active' ? 'bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/30' :
             summary.status === 'trialing' ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-300 border-yellow-500/30' :
+            summary.status === 'past_due' ? 'bg-destructive/10 text-destructive border-destructive/30' :
+            summary.status === 'canceled' || summary.status === 'unpaid' ? 'bg-destructive/15 text-destructive border-destructive/40' :
             'bg-muted text-muted-foreground border-border'
-          }`}>{summary.status}</span>
+          }`}>{summary.status.replace('_', ' ')}</span>
           <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${tierBadge(summary.tier)}`}>
             {summary.tier.toUpperCase()}
           </span>
@@ -111,28 +233,61 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <Stat label="Vehicles Active" value={String(summary.vehicle_count)} />
+        <Stat label="Active Vehicles" value={String(summary.active_vehicles)}
+              sub={summary.inactive_vehicles > 0 ? `${summary.inactive_vehicles} parked` : 'last 3 days'} />
         <Stat label="Included" value={String(summary.base_vehicles)} sub="per plan" />
         <Stat label="Extra Trucks" value={String(summary.extra_vehicles)}
               accent={isOverLimit ? 'text-yellow-700 dark:text-yellow-400' : 'text-foreground'} />
-        <Stat label="Est. Monthly" value={usd(summary.amount_due_cents)} accent="text-green-600 dark:text-green-400" />
+        <Stat
+          label={summary.is_comped ? 'Total Due' : 'Est. Monthly'}
+          value={usd(summary.amount_due_cents)}
+          accent={summary.is_comped ? 'text-foreground' : 'text-green-600 dark:text-green-400'}
+        />
       </div>
 
+      {/* Itemized breakdown — uses the server's line_items if present,
+          falls back to the old computed pair so a backend that hasn't
+          shipped the new fields yet still renders something. */}
       <div className="border-t border-border pt-4 text-sm text-muted-foreground space-y-1.5">
-        <div className="flex justify-between">
-          <span>Base plan — {summary.base_vehicles} trucks included</span>
-          <span className="text-foreground font-medium">{usd(summary.monthly_base_cents)}/mo</span>
-        </div>
-        {isOverLimit && (
-          <div className="flex justify-between">
-            <span>{summary.extra_vehicles} extra truck{summary.extra_vehicles !== 1 ? 's' : ''} x {usd(summary.extra_vehicle_cents)} ea</span>
-            <span className="text-yellow-600 dark:text-yellow-400">+{usd(summary.extra_vehicles * summary.extra_vehicle_cents)}/mo</span>
+        {summary.line_items && summary.line_items.length > 0 ? (
+          summary.line_items.map((item, idx) => (
+            <div key={`${item.label}-${idx}`} className="flex justify-between">
+              <span>{item.label}</span>
+              <span className={item.amount_cents < 0
+                ? 'text-primary font-medium'
+                : 'text-foreground font-medium'}
+              >
+                {item.amount_cents < 0 ? '−' : ''}{usd(Math.abs(item.amount_cents))}
+              </span>
+            </div>
+          ))
+        ) : (
+          <>
+            <div className="flex justify-between">
+              <span>Base plan — {summary.base_vehicles} trucks included</span>
+              <span className="text-foreground font-medium">{usd(summary.monthly_base_cents)}/mo</span>
+            </div>
+            {isOverLimit && (
+              <div className="flex justify-between">
+                <span>{summary.extra_vehicles} extra truck{summary.extra_vehicles !== 1 ? 's' : ''} × {usd(summary.extra_vehicle_cents)} ea</span>
+                <span className="text-yellow-600 dark:text-yellow-400">+{usd(summary.extra_vehicles * summary.extra_vehicle_cents)}/mo</span>
+              </div>
+            )}
+          </>
+        )}
+        {summary.is_comped && summary.subtotal_cents > 0 && (
+          <div className="flex justify-between text-xs text-muted-foreground border-t border-border/50 pt-1.5 mt-1.5">
+            <span>Subtotal (covered by 4truck)</span>
+            <span>{usd(summary.subtotal_cents)}</span>
           </div>
         )}
         <div className="flex justify-between font-semibold border-t border-border pt-2 mt-1">
-          <span className="text-foreground">Total Estimate</span>
-          <span className={tierColor(summary.tier)}>{usd(summary.amount_due_cents)}/mo</span>
+          <span className="text-foreground">Total Due</span>
+          <span className={summary.is_comped ? 'text-foreground' : tierColor(summary.tier)}>
+            {usd(summary.amount_due_cents)}/mo
+          </span>
         </div>
+        <InactiveVehiclesFooter summary={summary} />
       </div>
 
       <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t border-border text-xs text-muted-foreground">
@@ -265,7 +420,7 @@ function UsageTable({ items }: { items: UsageSnapshot[] }) {
         <thead>
           <tr className="text-left text-muted-foreground border-b border-border text-xs uppercase tracking-wider">
             <th className="pb-2 pr-4">Period</th>
-            <th className="pb-2 pr-4">Vehicles</th>
+            <th className="pb-2 pr-4">Active</th>
             <th className="pb-2 pr-4">Extra</th>
             <th className="pb-2 pr-4">Users</th>
             <th className="pb-2 pr-4">AI Queries</th>
@@ -273,18 +428,90 @@ function UsageTable({ items }: { items: UsageSnapshot[] }) {
           </tr>
         </thead>
         <tbody>
-          {items.map((row) => (
-            <tr key={row.period_start} className="border-b border-border/50 hover:bg-muted/30">
-              <td className="py-2.5 pr-4 text-foreground/80 tabular-nums">{row.period_start.slice(0, 7)}</td>
-              <td className="py-2.5 pr-4 text-foreground">{row.vehicle_count}</td>
-              <td className="py-2.5 pr-4">
-                {row.extra_vehicles > 0
-                  ? <span className="text-yellow-700 dark:text-yellow-400">+{row.extra_vehicles}</span>
-                  : <span className="text-muted-foreground">—</span>}
+          {items.map((row) => {
+            // ``active_vehicles`` is the post-Day-5 column.  Pre-migration
+            // rows have only ``vehicle_count`` (raw fleet); show that
+            // as a fallback rather than ``—`` so old months stay legible.
+            const billable = row.active_vehicles ?? row.vehicle_count;
+            return (
+              <tr key={row.period_start} className="border-b border-border/50 hover:bg-muted/30">
+                <td className="py-2.5 pr-4 text-foreground/80 tabular-nums">{row.period_start.slice(0, 7)}</td>
+                <td className="py-2.5 pr-4 text-foreground">
+                  {billable}
+                  {row.inactive_vehicles ? (
+                    <span className="text-xs text-muted-foreground ml-1.5">(+{row.inactive_vehicles} idle)</span>
+                  ) : null}
+                </td>
+                <td className="py-2.5 pr-4">
+                  {row.extra_vehicles > 0
+                    ? <span className="text-yellow-700 dark:text-yellow-400">+{row.extra_vehicles}</span>
+                    : <span className="text-muted-foreground">—</span>}
+                </td>
+                <td className="py-2.5 pr-4 text-muted-foreground">{row.user_count ?? '—'}</td>
+                <td className="py-2.5 pr-4 text-muted-foreground">{fmtNum(row.ai_queries)}</td>
+                <td className="py-2.5 text-right font-semibold text-green-600 dark:text-green-400">{usd(row.amount_due_cents)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Invoices table ────────────────────────────────────────────────
+
+function InvoicesTable({ items }: { items: Invoice[] }) {
+  if (items.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground text-center py-8">
+        No invoices yet — your first invoice arrives at the end of the current billing period.
+      </p>
+    );
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-muted-foreground border-b border-border text-xs uppercase tracking-wider">
+            <th className="pb-2 pr-4">Date</th>
+            <th className="pb-2 pr-4">Status</th>
+            <th className="pb-2 pr-4">Period</th>
+            <th className="pb-2 pr-4 text-right">Amount</th>
+            <th className="pb-2 text-right">Receipt</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((inv) => (
+            <tr key={inv.id} className="border-b border-border/50 hover:bg-muted/30">
+              <td className="py-2.5 pr-4 text-foreground/80 tabular-nums">
+                {new Date(inv.created_at).toLocaleDateString()}
               </td>
-              <td className="py-2.5 pr-4 text-muted-foreground">{row.user_count ?? '—'}</td>
-              <td className="py-2.5 pr-4 text-muted-foreground">{fmtNum(row.ai_queries)}</td>
-              <td className="py-2.5 text-right font-semibold text-green-600 dark:text-green-400">{usd(row.amount_due_cents)}</td>
+              <td className="py-2.5 pr-4">
+                <span className={`px-2 py-0.5 rounded text-xs font-medium border ${
+                  inv.status === 'paid' ? 'bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/30' :
+                  inv.status === 'open' ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-300 border-yellow-500/30' :
+                  inv.status === 'uncollectible' || inv.status === 'void' ? 'bg-destructive/10 text-destructive border-destructive/30' :
+                  'bg-muted text-muted-foreground border-border'
+                }`}>{inv.status || '—'}</span>
+              </td>
+              <td className="py-2.5 pr-4 text-muted-foreground text-xs">
+                {inv.period_start ? new Date(inv.period_start).toLocaleDateString() : '—'}
+                {inv.period_end && (
+                  <> → {new Date(inv.period_end).toLocaleDateString()}</>
+                )}
+              </td>
+              <td className="py-2.5 pr-4 text-right font-semibold text-foreground tabular-nums">
+                {usd(inv.amount_paid_cents || inv.amount_due_cents)}
+              </td>
+              <td className="py-2.5 text-right">
+                {inv.hosted_invoice_url ? (
+                  <a href={inv.hosted_invoice_url} target="_blank" rel="noopener noreferrer"
+                     className="inline-flex items-center gap-1 text-primary text-xs hover:underline">
+                    <FileText size={12} /> View
+                  </a>
+                ) : <span className="text-muted-foreground text-xs">—</span>}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -293,12 +520,21 @@ function UsageTable({ items }: { items: UsageSnapshot[] }) {
   );
 }
 
+// NOTE: A billing-email edit control lived here briefly and was
+// removed.  Customers update billing details (including the receipt
+// email) via the Stripe Customer Portal — the "Manage payment" button
+// in the page header opens that.  Doing system-side writes from the
+// user dashboard mixes operator and customer surfaces, which we
+// explicitly want to avoid.  The ``PATCH /billing/email`` API endpoint
+// stays — it's used by the operator-only system.4truck.us console.
+
 // ── Main Page ─────────────────────────────────────────────────────
 
 export default function Billing() {
   const { t } = useTranslation();
   const [summary, setSummary] = useState<BillingSummary | null>(null);
   const [usage, setUsage] = useState<UsageSnapshot[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loadingMain, setLoadingMain] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
@@ -310,8 +546,13 @@ export default function Billing() {
     Promise.all([
       apiJSON<BillingSummary>('/billing/summary'),
       apiJSON<{ items: UsageSnapshot[] }>('/billing/usage?limit=12'),
+      apiJSON<{ items: Invoice[] }>('/billing/invoices?limit=24'),
     ])
-      .then(([s, u]) => { setSummary(s); setUsage(u.items ?? []); })
+      .then(([s, u, i]) => {
+        setSummary(s);
+        setUsage(u.items ?? []);
+        setInvoices(i.items ?? []);
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoadingMain(false));
   };
@@ -393,6 +634,13 @@ export default function Billing() {
         </div>
       )}
 
+      {/* Banners — past-due first (urgent), then comp (informational).
+          Comp wins the visual hierarchy when both are somehow active
+          (shouldn't happen — enforcement bypasses comped accounts —
+          but defensive UI ordering). */}
+      {summary?.past_due_since && !summary.is_comped && <PastDueBanner since={summary.past_due_since} />}
+      {summary && <CompBanner summary={summary} />}
+
       {summary && <SummaryCard summary={summary} />}
 
       {summary?.ai_usage && summary.ai_usage.total_requests > 0 && (
@@ -437,17 +685,31 @@ export default function Billing() {
       <div className="bg-card border border-border rounded-xl p-4 mb-6 text-sm text-muted-foreground">
         <p className="font-medium text-foreground/80 mb-1.5">💡 How pricing works</p>
         <ul className="space-y-1 list-disc list-inside text-xs">
-          <li>Each plan includes 10 trucks. Additional trucks: $2.99/truck/month.</li>
-          <li>Vehicle count syncs automatically from Samsara each day.</li>
+          <li>Each plan includes 10 trucks. Additional <em>active</em> trucks: $2.99/truck/month.</li>
+          <li>A truck is "active" if it sent any telemetry signal in the last 3 days — parked trucks are automatically excluded.</li>
           <li>AI usage (tokens) is included — no per-query fees on any plan.</li>
-          <li>Invoices generated at the end of each billing period.</li>
+          <li>Invoices generated at the end of each billing period, with mid-cycle vehicle changes pro-rated automatically.</li>
         </ul>
       </div>
 
-      {/* Billing history */}
+      {/* Invoices — Stripe-issued bills.  Hidden when empty AND on
+          stub provider so test installs don't show a dead section. */}
+      {(invoices.length > 0 || summary?.provider === 'stripe') && (
+        <div className="bg-card border border-border rounded-xl p-6 mb-4">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-foreground">Invoices</h2>
+            <span className="text-xs text-muted-foreground">Last 24</span>
+          </div>
+          <InvoicesTable items={invoices} />
+        </div>
+      )}
+
+      {/* Billing history — internal monthly usage snapshots, separate
+          from the Stripe invoices above.  Useful even on the stub
+          provider where invoices don't exist. */}
       <div className="bg-card border border-border rounded-xl p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-foreground">Billing History</h2>
+          <h2 className="text-lg font-semibold text-foreground">Usage History</h2>
           <span className="text-xs text-muted-foreground">Last 12 periods</span>
         </div>
         <UsageTable items={usage} />

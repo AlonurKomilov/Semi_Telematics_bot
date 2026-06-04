@@ -66,7 +66,11 @@ export default function Invites() {
   useEffect(() => { load(); }, [showAll]);
 
   useEffect(() => {
-    apiJSON<{ bot_username: string }>('/auth/bot-info')
+    // /auth/bot-info doesn't exist — call /auth/config, which returns
+    // the per-account bot when the request carries an admin JWT (so
+    // invite links land on the account's branded bot rather than the
+    // global login bot — the right semantic for "join my company").
+    apiJSON<{ bot_username: string }>('/auth/config')
       .then(d => { if (d.bot_username) setBotUsername(d.bot_username); })
       .catch(() => {});
   }, []);

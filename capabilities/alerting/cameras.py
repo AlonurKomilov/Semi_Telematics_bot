@@ -217,6 +217,7 @@ async def _check_cameras_account(
         posted_to_topic = await post_alert_to_topic(
             bot_app, account_id=account_id,
             alert_type="camera", text=topic_text,
+            severity=digest_sev,
         )
 
         # Per-issue photo posts in the group so each photo carries its

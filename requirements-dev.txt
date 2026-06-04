@@ -3,19 +3,15 @@
 # Install in addition to requirements.txt:
 #   pip install -r requirements.txt -r requirements-dev.txt
 #
-# Production deployments must NOT install this file — anything here is
-# either a tooling dep (linters, formatters) or a test backend that
-# would silently degrade behaviour if it reached prod.  The most
-# important example is aiosqlite: the legacy SQLite branch in
-# adapters/storage/core.py refuses to start outside of pytest (gated
-# by PYTEST_CURRENT_TEST), but the dep itself doesn't belong in a
-# production image.
+# Production deployments must NOT install this file — everything here
+# is a tooling dep (linters, formatters) or the testcontainers driver
+# for the ephemeral Postgres test fixture.
 
 # ── Test backend ────────────────────────────────────
-# testcontainers spins up an ephemeral PG container for the pg_db
-# fixture so the test suite runs against the same engine production
-# uses.  ``aiosqlite`` is intentionally absent — the SQLite branch
-# was retired and the tests now share the production code path.
+# testcontainers spins up an ephemeral Postgres container for the
+# ``pg_db`` fixture in tests/conftest.py, so the suite runs against
+# the same engine production uses.  No SQLite fallback — when Docker
+# isn't available the fixture ``pytest.skip``s rather than degrading.
 testcontainers>=4.0
 
 # ── Test runner ─────────────────────────────────────

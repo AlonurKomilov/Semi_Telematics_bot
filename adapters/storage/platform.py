@@ -43,7 +43,7 @@ class PlatformDB(
     AIChatHistoryMixin,
     _DatabaseCore,
 ):
-    """SQLite database for platform-wide tables: accounts, users, invites, chats, ai_usage.
+    """Postgres database for platform-wide tables: accounts, users, invites, chats, ai_usage.
 
     These tables are shared across all tenants and needed for auth/login.
     """
@@ -82,6 +82,49 @@ class PlatformDB(
             (source, job_name, account_id, error_type, error_msg, traceback_text or None, now),
         )
         await self._db.commit()
+
+    async def list_recent_errors(
+        self,
+        source: str = "",
+        limit: int = 100,
+    ) -> list[dict]:
+        """Recent ``error_log`` rows for the operator console, newest first.
+
+        ``source`` filters to one of {api, bot, scheduler, system_bot,
+        task, startup, …} when set.  The traceback can be large, so
+        callers that only want a list should render it collapsed.
+        """
+        where = ""
+        params: list = []
+        if source:
+            where = "WHERE source = ?"
+            params.append(source)
+        params.append(limit)
+        cur = await self._db.execute(
+            f"""
+            SELECT id, source, job_name, account_id, error_type,
+                   error_msg, traceback, created_at
+            FROM error_log
+            {where}
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+            """,
+            params,
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def count_recent_errors(self, hours: int = 24) -> int:
+        """Count error_log rows in the last ``hours`` — health-page signal.
+
+        ``created_at`` is TEXT (ISO-8601); cast to timestamptz so the
+        comparison against ``NOW() - INTERVAL`` is legal in Postgres.
+        """
+        cur = await self._db.execute(
+            "SELECT COUNT(*) FROM error_log "
+            f"WHERE created_at::timestamptz > datetime('now', '-{int(hours)} hours')",
+        )
+        row = await cur.fetchone()
+        return int(row[0]) if row else 0
 
     # ── AI usage (lives in platform DB alongside accounts) ────────
 

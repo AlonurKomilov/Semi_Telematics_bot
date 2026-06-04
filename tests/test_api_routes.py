@@ -81,13 +81,18 @@ def _headers(token: str) -> dict:
 # ---------------------------------------------------------------------------
 
 class TestAuth:
-    async def test_no_token_returns_422(self, db_and_app):
+    async def test_no_token_returns_401(self, db_and_app):
         app = db_and_app["app"]
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
         ) as client:
             r = await client.get("/api/user/me")
-            assert r.status_code == 422  # Missing Authorization header
+            # With cross-subdomain SSO, Authorization is optional — the
+            # ``.4truck.us`` cookie is an equally valid token source.
+            # When neither is present, get_current_user raises 401
+            # "Not authenticated" rather than 422 (which would require
+            # a strict Header(...) and break cookie-only SSO sessions).
+            assert r.status_code == 401
 
     async def test_bad_token_returns_401(self, db_and_app):
         app = db_and_app["app"]

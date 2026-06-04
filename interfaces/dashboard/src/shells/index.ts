@@ -18,22 +18,33 @@ import DefaultShell from './DefaultShell';
 import FleetShell from './FleetShell';
 import DispatchShell from './DispatchShell';
 import SafetyShell from './SafetyShell';
+import HRShell from './HRShell';
+import AccountingShell from './AccountingShell';
 
-export type ShellKey = 'owner' | 'admin' | 'fleet' | 'dispatcher' | 'safety' | 'driver';
+export type ShellKey =
+  | 'owner'
+  | 'admin'
+  | 'fleet'
+  | 'dispatcher'
+  | 'safety'
+  | 'driver'
+  | 'hr'
+  | 'accounting';
 
-// Phase 2 of the role-shell migration: each non-Owner/Admin role now
-// renders through its dedicated shell file.  At this point the shells
-// are clones of DefaultShell, so behavior is identical to Phase 0/1.
-// Phase 3 swaps each shell's <Sidebar /> for a navConfig prop tuned to
-// that persona; Phase 4 layers in per-role hero widgets.  Until then,
-// editing FleetShell.tsx / DispatchShell.tsx / SafetyShell.tsx is the
-// way to introduce per-role behavior without touching the others.
+// Each non-Owner/Admin persona renders through its dedicated shell
+// file.  Editing FleetShell.tsx / DispatchShell.tsx / SafetyShell.tsx
+// / HRShell.tsx / AccountingShell.tsx is the way to introduce
+// per-role behaviour without touching the others — shell chrome
+// (sidebar nav + topbar hero) is the only persona-level difference;
+// the page content is the same for every persona.
 export const SHELLS: Partial<Record<ShellKey, ComponentType>> = {
   owner:      DefaultShell,
   admin:      DefaultShell,
   fleet:      FleetShell,
   dispatcher: DispatchShell,
   safety:     SafetyShell,
+  hr:         HRShell,
+  accounting: AccountingShell,
   driver:     DefaultShell,   // Drivers use the Mini App; this is a fallback only
 };
 

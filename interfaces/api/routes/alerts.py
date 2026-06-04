@@ -6,7 +6,7 @@ import re
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
 
-from interfaces.api.deps import require_permission_any, get_tenant_db, get_user_vehicle_nums, paginate
+from interfaces.api.deps import require_permission_any, get_tenant_db, get_user_vehicle_nums, paginate, active_view
 from capabilities.alerting.service import filter_alerts_by_access
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
@@ -270,30 +270,104 @@ async def pending_alerts_by_vehicle(
     }
 
 
+@router.get("/aggregate")
+async def alerts_aggregate(
+    days: int = Query(7, ge=1, le=90),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Histogram of alert counts by alert_type for the last N days.
+
+    Powers the owner/admin AccountAlertSummary card — small, dependable,
+    server-aggregated so the dashboard doesn't have to walk a page of
+    rows to render a one-line bar chart.
+
+    Respects the same driver-scope rule the queue uses: ``_own`` users
+    only count their assigned trucks' alerts; ``_all`` users see the
+    full account aggregate.
+    """
+    is_driver_scope = user.get("_matched_perm") == "can_alerts_own"
+
+    if is_driver_scope:
+        rows = await tenant_db.get_active_alert_history_for_account(user["account_id"])
+        alerts = [_shape_history_for_pending_api(r) for r in rows]
+        alerts = await _filter_own(user, alerts)
+    else:
+        # Pull the full active set bounded by ``days`` so the histogram
+        # reflects recent activity, not the lifetime of the account.
+        # Same SQL path the dashboard's /pending uses with no extra
+        # filters, just the window.
+        rows = await tenant_db.get_active_alert_history_for_account_paged(
+            user["account_id"], days=days,
+        )
+        alerts = [_shape_history_for_pending_api(r) for r in rows]
+
+    by_type: dict[str, int] = {}
+    by_severity: dict[str, int] = {}
+    for a in alerts:
+        t = a.get("alert_type") or "unknown"
+        s = (a.get("severity") or "unknown").lower()
+        by_type[t] = by_type.get(t, 0) + 1
+        by_severity[s] = by_severity.get(s, 0) + 1
+
+    return {
+        "by_type":     by_type,
+        "by_severity": by_severity,
+        "total":       len(alerts),
+        "days":        days,
+    }
+
+
 @router.get("/pending/count")
 async def pending_alerts_count(
     user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
     tenant_db=Depends(get_tenant_db),
+    view_role: str = Depends(active_view),
 ):
-    """Lightweight count of pending alerts respecting driver isolation.
+    """Lightweight count of pending alerts respecting driver isolation
+    AND strict persona scoping.
 
     Used by the miniapp tab badge poll — avoids serialising the full
     paginated list when only the count is needed.  Reads
     `alert_history` (logical alerts) for consistency with /pending.
+
+    Strict binding: every role counts only alerts in its own persona's
+    type set.  Owner / Admin's persona (owner_admin) has no
+    operational types, so their badge count is 0 — they don't ack
+    alerts directly; they review escalations.  To do operational
+    triage Owner/Admin switch view to Fleet/Safety/etc. via the
+    persona selector and the X-View-As header re-scopes the count.
     """
     is_driver_scope = user.get("_matched_perm") == "can_alerts_own"
     if is_driver_scope:
         # Driver scope still needs the row list because access filtering
         # joins user→vehicle assignments.  Their truck count is small,
-        # so the full fetch is cheap here.
+        # so the full fetch is cheap here.  No persona filter — driver
+        # gets EVERYTHING about their own truck.
         rows = await tenant_db.get_active_alert_history_for_account(user["account_id"])
         alerts = [_shape_history_for_pending_api(r) for r in rows]
         alerts = await _filter_own(user, alerts)
         return {"count": len(alerts)}
-    # Fast path: SQL COUNT(*) — the badge poll fires every few seconds
-    # so this saves real wall time on dashboards with many active rows.
-    count = await tenant_db.count_active_alert_history_for_account(user["account_id"])
-    return {"count": count}
+
+    from capabilities.alerting import persona_mapping
+    allowed_types = persona_mapping.alert_types_for_role(view_role)
+    if not allowed_types:
+        # No operational alert types for this active view (owner /
+        # admin / accounting / unknown) — badge is 0.  The dashboard
+        # tab won't surface a misleading count for a role that
+        # doesn't actually triage alerts at this scope.
+        return {"count": 0}
+
+    # Persona-filtered fast path: sum filtered COUNT(*) per type.  The
+    # type set per persona is small (≤6 entries) so this stays sub-ms
+    # in practice — way cheaper than fetching every row and filtering
+    # in Python.
+    total = 0
+    for at in allowed_types:
+        total += await tenant_db.count_active_alert_history_for_account_filtered(
+            user["account_id"], alert_type=at,
+        )
+    return {"count": total}
 
 
 @router.get("/history")

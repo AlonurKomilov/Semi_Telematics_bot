@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserCog, LogOut, ChevronDown } from 'lucide-react';
+import { UserCog, LogOut, Bell } from 'lucide-react';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { useAuth } from '../context/AuthContext';
 
@@ -44,23 +44,21 @@ export function AvatarMenu() {
 
   return (
     <div className="relative" ref={ref}>
-      {/* Trigger */}
+      {/* Trigger — avatar only.  The name and role used to live next
+          to the circle, but they're already shown inside the opened
+          menu so the top-bar version was just duplicating identity
+          information.  Matches Samsara / Linear / GitHub's pattern of
+          a compact identity dot that expands to a full panel. */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-muted/50 transition-colors"
+        aria-label={user?.display_name || 'Account menu'}
+        className="rounded-full hover:ring-2 hover:ring-border transition"
       >
-        <Avatar className="h-7 w-7 shrink-0">
+        <Avatar className="h-8 w-8 shrink-0">
           <AvatarFallback className="text-xs bg-primary/20 text-primary">{initials}</AvatarFallback>
         </Avatar>
-        <div className="hidden sm:flex flex-col items-start min-w-0 max-w-[130px]">
-          <span className="text-sm font-medium text-foreground leading-tight truncate w-full">
-            {user?.display_name || 'User'}
-          </span>
-          <span className="text-[11px] text-muted-foreground capitalize leading-tight">{role}</span>
-        </div>
-        <ChevronDown size={13} className="text-muted-foreground shrink-0" />
       </button>
 
       {/* Dropdown panel */}
@@ -84,6 +82,17 @@ export function AvatarMenu() {
               icon={<UserCog size={14} />}
               label="My Profile"
               onClick={() => go('/profile')}
+            />
+            {/* "My Notifications" is intentionally placed in this
+                personal menu (not under the admin Alerts page) because
+                each user owns their own DM alert preferences.  Admins
+                still control group/forum routing separately via
+                Account Settings → Forum Routing — the two surfaces
+                don't override each other. */}
+            <MenuButton
+              icon={<Bell size={14} />}
+              label="My Notifications"
+              onClick={() => go('/notifications')}
             />
           </div>
 

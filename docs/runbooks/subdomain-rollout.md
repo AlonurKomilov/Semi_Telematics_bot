@@ -53,9 +53,10 @@ Apex paths 301-redirect to the new homes so existing bookmarks survive.
 
 ### 5. Re-register the bot webhook with Telegram
 
-   For the **system bot** (the global `TELEGRAM_BOT_TOKEN`):
+   For the **customer login bot** (the global `TELEGRAM_LOGIN_BOT_TOKEN`
+   that serves `bot.4truck.us/webhook`):
 
-       curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
+       curl -X POST "https://api.telegram.org/bot$TELEGRAM_LOGIN_BOT_TOKEN/setWebhook" \
          -d url=https://bot.4truck.us/webhook \
          -d secret_token=$WEBHOOK_SECRET
 

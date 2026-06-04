@@ -8,7 +8,7 @@ import {
   type ColumnDef,
   type SortingState,
 } from '@tanstack/react-table';
-import { ChevronUp, ChevronDown, ChevronsUpDown, Rows3, Rows2, Rows4 } from 'lucide-react';
+import { ChevronUp, ChevronDown, ChevronsUpDown, Rows3, Rows2, Rows4, Search } from 'lucide-react';
 import { Input } from './ui/input';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -43,10 +43,18 @@ interface DataTableProps {
    */
   stickyHeader?: string;
   searchPlaceholder?: string;
+  /** Rendered next to the search box on the table toolbar row.
+   *  Use for inline filter chips so the "narrow this list" controls
+   *  live in one place instead of stacking above the table.  Wrap
+   *  itself, so the chip strip can flow to a second row on narrow
+   *  viewports without colliding with the density toggle on the
+   *  right edge. */
+  headerToolbar?: React.ReactNode;
 }
 
 export default function DataTable({
   columns, data, onRowClick, searchKey, stickyHeader, searchPlaceholder,
+  headerToolbar,
 }: DataTableProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
@@ -135,15 +143,28 @@ export default function DataTable({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3 gap-3">
-        {hasSearch ? (
-          <Input
-            placeholder={searchPlaceholder ?? 'Search...'}
-            value={globalFilter}
-            onChange={(e) => setGlobalFilter(e.target.value)}
-            className="max-w-xs"
-          />
-        ) : <span />}
+      <div className="flex flex-wrap items-center justify-between mb-3 gap-3">
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
+          {hasSearch ? (
+            // Inline search-icon prefix + tighter width visually
+            // distinguishes the table-level search from the global
+            // ⌘K command palette that lives in the page header.
+            <div className="relative max-w-xs flex-shrink-0">
+              <Search
+                size={14}
+                aria-hidden
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+              />
+              <Input
+                placeholder={searchPlaceholder ?? 'Search...'}
+                value={globalFilter}
+                onChange={(e) => setGlobalFilter(e.target.value)}
+                className="pl-8"
+              />
+            </div>
+          ) : null}
+          {headerToolbar}
+        </div>
         <div className="inline-flex items-center gap-0.5 p-0.5 bg-muted/50 border border-border rounded-md" role="group" aria-label="Row density">
           {([
             { v: 'compact', icon: Rows4, label: 'Compact' },
@@ -230,7 +251,7 @@ export default function DataTable({
         </Table>
       </div>
       <p className="text-xs text-muted-foreground mt-2">
-        {rowCount} row{rowCount !== 1 && 's'}
+        {rowCount} {rowCount === 1 ? 'row' : 'rows'}
       </p>
     </div>
   );

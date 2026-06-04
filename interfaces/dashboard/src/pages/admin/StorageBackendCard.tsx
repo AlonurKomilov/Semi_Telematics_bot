@@ -128,7 +128,7 @@ export default function StorageBackendCard() {
     try {
       await apiJSON('/storage/backend', {
         method: 'POST',
-        body: JSON.stringify({ backend }),
+        body: { backend },
       });
       toast.success(t('storage.settings.switch_done', { backend }));
       qc.invalidateQueries({ queryKey: ['storage-config'] });

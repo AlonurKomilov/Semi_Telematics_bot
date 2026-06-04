@@ -130,6 +130,7 @@ async def check_document_expirations(_app: Application | None = None) -> None:
                 posted = await post_alert_to_topic(
                     bot_app, account_id=acct.id,
                     alert_type="documents", text=admin_text,
+                    severity="warning",
                 )
                 if not posted:
                     # Fallback: send to each admin, skipping the driver

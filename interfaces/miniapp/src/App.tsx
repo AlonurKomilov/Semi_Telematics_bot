@@ -10,6 +10,7 @@ import { MapPage } from './pages/MapPage';
 // first visit each page stays mounted (display:none when inactive) so
 // component state survives subsequent tab switches.
 const VehiclesPage = lazy(() => import('./pages/VehiclesPage').then(m => ({ default: m.VehiclesPage })));
+const PTIPage = lazy(() => import('./pages/PTIPage').then(m => ({ default: m.PTIPage })));
 const AlertsPage = lazy(() => import('./pages/AlertsPage').then(m => ({ default: m.AlertsPage })));
 const ScorecardPage = lazy(() => import('./pages/ScorecardPage').then(m => ({ default: m.ScorecardPage })));
 const AIChatPage = lazy(() => import('./pages/AIChatPage').then(m => ({ default: m.AIChatPage })));
@@ -26,7 +27,7 @@ interface UserMeBasic {
 
 function getHashPage(): Page {
   const hash = window.location.hash.replace('#', '');
-  return (['map', 'vehicles', 'alerts', 'scorecard', 'ai', 'profile'] as Page[]).includes(hash as Page)
+  return (['map', 'vehicles', 'pti', 'alerts', 'scorecard', 'ai', 'profile'] as Page[]).includes(hash as Page)
     ? (hash as Page)
     : 'map';
 }
@@ -57,6 +58,7 @@ export default function App() {
   const pageRefs = {
     map: useRef<HTMLDivElement | null>(null),
     vehicles: useRef<HTMLDivElement | null>(null),
+    pti: useRef<HTMLDivElement | null>(null),
     alerts: useRef<HTMLDivElement | null>(null),
     scorecard: useRef<HTMLDivElement | null>(null),
     ai: useRef<HTMLDivElement | null>(null),
@@ -295,12 +297,21 @@ export default function App() {
             map survives tab switches. Hidden pages use display:none. */}
         <main className="app-content">
           <div ref={pageRefs.map} className={`page${page !== 'map' ? ' page--hidden' : ''}`}>
-            <MapPage active={page === 'map'} />
+            <MapPage
+              active={page === 'map'}
+              userPerms={userPerms}
+              onNavigate={navigate}
+            />
           </div>
           <Suspense fallback={null}>
             {visited.has('vehicles') && (
               <div ref={pageRefs.vehicles} className={`page${page !== 'vehicles' ? ' page--hidden' : ''}`}>
                 <VehiclesPage active={page === 'vehicles'} onGoToMap={() => navigate('map')} />
+              </div>
+            )}
+            {visited.has('pti') && (
+              <div ref={pageRefs.pti} className={`page${page !== 'pti' ? ' page--hidden' : ''}`}>
+                <PTIPage active={page === 'pti'} />
               </div>
             )}
             {visited.has('alerts') && (

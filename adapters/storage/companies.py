@@ -64,6 +64,25 @@ class CompaniesMixin:
         row = await cur.fetchone()
         return self._row_to_company(row) if row else None
 
+    async def get_company_in_account(
+        self, account_id: int, company_id: int,
+    ) -> Optional[Company]:
+        """Look up a company by id, scoped to an account.
+
+        Used by handlers that accept ``company_id`` from a request body
+        and need to verify the caller's account owns that company
+        before acting on it (cross-tenant write protection).  Returns
+        None when the id either doesn't exist or belongs to a different
+        account — callers should treat both the same way (404 / refuse
+        the write).
+        """
+        cur = await self._db.execute(
+            "SELECT * FROM companies WHERE account_id = ? AND id = ?",
+            (account_id, company_id),
+        )
+        row = await cur.fetchone()
+        return self._row_to_company(row) if row else None
+
     async def remove_company(self, company_id: int, account_id: int = 0) -> bool:
         """Soft-delete a company.
 

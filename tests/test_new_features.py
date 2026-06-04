@@ -253,17 +253,17 @@ class TestNewKeyboards:
     def _callbacks(self, kb):
         return [btn.callback_data for row in kb.inline_keyboard for btn in row]
 
-    def test_auto_reports_hour_kb(self):
-        from interfaces.bot.keyboards import auto_reports_hour_kb
-        kb = auto_reports_hour_kb()
+    def test_scheduled_reports_hour_kb(self):
+        from interfaces.bot.keyboards import scheduled_reports_hour_kb
+        kb = scheduled_reports_hour_kb()
         callbacks = self._callbacks(kb)
         assert "ar_hour_7" in callbacks
         assert "ar_hour_12" in callbacks
         assert "cmd_auto_reports" in callbacks  # cancel button
 
-    def test_auto_reports_tz_kb(self):
-        from interfaces.bot.keyboards import auto_reports_tz_kb
-        kb = auto_reports_tz_kb()
+    def test_scheduled_reports_tz_kb(self):
+        from interfaces.bot.keyboards import scheduled_reports_tz_kb
+        kb = scheduled_reports_tz_kb()
         callbacks = self._callbacks(kb)
         # Whitelist trimmed to the four contiguous-US zones — UTC was
         # removed when the product committed to a US-only customer base.
@@ -272,9 +272,9 @@ class TestNewKeyboards:
         assert "cmd_auto_reports" in callbacks
         assert "ar_tz_UTC" not in callbacks
 
-    def test_auto_reports_type_kb(self):
-        from interfaces.bot.keyboards import auto_reports_type_kb
-        kb = auto_reports_type_kb()
+    def test_scheduled_reports_type_kb(self):
+        from interfaces.bot.keyboards import scheduled_reports_type_kb
+        kb = scheduled_reports_type_kb()
         callbacks = self._callbacks(kb)
         assert "ar_type_faults" in callbacks
         assert "ar_type_fuel" in callbacks
@@ -418,10 +418,10 @@ class TestNewKeyboards:
         assert "set_tz_UTC" not in callbacks
         assert "set_tz_America/Anchorage" not in callbacks
 
-    def test_auto_reports_menu_with_subscription(self):
-        from interfaces.bot.keyboards import auto_reports_menu_kb
+    def test_scheduled_reports_menu_with_subscription(self):
+        from interfaces.bot.keyboards import scheduled_reports_menu_kb
         sub = {"frequency": "daily", "send_hour": 9, "timezone": "America/Chicago", "report_type": "faults"}
-        kb = auto_reports_menu_kb(sub)
+        kb = scheduled_reports_menu_kb(sub)
         callbacks = self._callbacks(kb)
         assert "ar_unsub" in callbacks
 

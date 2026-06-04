@@ -39,13 +39,30 @@ export function VehiclePicker({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  // Dedupe by (company, name) — defensive against the fleet API
+  // occasionally returning duplicate rows (cache merge / pagination
+  // overlap).  Without this the picker shows "103 OSY" three times in
+  // a row, which is confusing and breaks the React key.
+  const deduped = (() => {
+    const seen = new Set<string>();
+    const out: FleetVehicle[] = [];
+    for (const v of vehicles) {
+      const key = `${(v.company || '').toLowerCase()}::${(v.name || '').toLowerCase()}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push(v);
+      }
+    }
+    return out;
+  })();
+
   const filtered = query.trim()
-    ? vehicles.filter(
+    ? deduped.filter(
         (v) =>
           v.name.toLowerCase().includes(query.toLowerCase()) ||
           v.company.toLowerCase().includes(query.toLowerCase()),
       )
-    : vehicles;
+    : deduped;
 
   const select = (v: FleetVehicle) => {
     setQuery(v.name);
@@ -71,7 +88,12 @@ export function VehiclePicker({
         <ul className="absolute z-50 mt-1 w-72 max-h-64 overflow-y-auto bg-card border border-border rounded-lg shadow-xl text-sm">
           {filtered.map((v) => (
             <li
-              key={v.name}
+              // Composite key — vehicle names can repeat across
+              // companies (one "103" per company is legit), so a
+              // name-only key collides and React warns / reorders
+              // wrong.  ``${company}::${name}`` is unique per fleet
+              // row and survives the de-dup pass above.
+              key={`${v.company}::${v.name}`}
               onMouseDown={() => select(v)}
               className="flex items-center gap-2 px-3 py-2 hover:bg-muted cursor-pointer"
             >

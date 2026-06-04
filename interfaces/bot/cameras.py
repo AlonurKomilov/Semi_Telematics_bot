@@ -37,7 +37,7 @@ from interfaces.bot.helpers import reply_dashboard_redirect
 from interfaces.bot.auth import _require_registered
 
 # Re-export camera helpers from their canonical home in capabilities/media.
-# auto_reports.py / capabilities/reporting/data_fetch.py import these as
+# scheduled_reports.py / capabilities/reporting/data_fetch.py import these as
 # ``interfaces.bot.cameras._gather_snapshots`` etc., so the names stay
 # stable here even though every interactive command path has been cut.
 from capabilities.media.service import (  # noqa: F401

@@ -28,6 +28,22 @@ class AccountsMixin:
             await self.seed_account_permissions(acct.id)
         except Exception as e:
             logger.warning("Could not seed default permissions for account %d: %s", acct.id, e)
+        # Seed Standard DOT PTI templates (truck + trailer) for the new
+        # account.  The one-time migration 060 backfill covers existing
+        # tenants; this hook covers every account created after the
+        # migration ran.
+        try:
+            from capabilities.pti.templates import (
+                STANDARD_DOT_TRUCK_ITEMS,
+                STANDARD_DOT_TRAILER_ITEMS,
+            )
+            await self.seed_account_pti_templates(
+                acct.id, STANDARD_DOT_TRUCK_ITEMS, STANDARD_DOT_TRAILER_ITEMS,
+            )
+        except Exception as e:
+            logger.warning(
+                "Could not seed PTI templates for account %d: %s", acct.id, e,
+            )
         return acct
 
     async def get_account(self, account_id: int) -> Optional[Account]:
@@ -54,8 +70,8 @@ class AccountsMixin:
         return [self._row_to_account(r) for r in rows]
 
     async def update_account(self, account_id: int, **kwargs) -> bool:
-        """Update account fields. Allowed keys: name, tier, is_active, bot_token_encrypted, bot_username, webhook_secret."""
-        allowed = {"name", "tier", "is_active", "bot_token_encrypted", "bot_username", "webhook_secret", "payroll_enabled", "coaching_enabled", "timezone"}
+        """Update account fields. Allowed keys: name, tier, is_active, bot_token_encrypted, bot_username, webhook_secret, payroll_enabled, coaching_enabled, timezone, alert_routing_mode."""
+        allowed = {"name", "tier", "is_active", "bot_token_encrypted", "bot_username", "webhook_secret", "payroll_enabled", "coaching_enabled", "timezone", "alert_routing_mode"}
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
             return False
@@ -78,6 +94,20 @@ class AccountsMixin:
     async def update_account_tier(self, account_id: int, tier: str) -> bool:
         """Shortcut to update only the tier column on accounts."""
         return await self.update_account(account_id, tier=tier)
+
+    async def set_alert_routing_mode(self, account_id: int, mode: str) -> bool:
+        """Switch the account between legacy ``single_group`` and the new
+        ``per_persona_groups`` routing.  Validates the mode string so a
+        typo from the admin UI can't silently fall back to single_group
+        in the resolver — better to reject the write than to route
+        alerts to the wrong place.
+        """
+        if mode not in ("single_group", "per_persona_groups"):
+            raise ValueError(
+                f"Invalid alert_routing_mode {mode!r} — "
+                "expected 'single_group' or 'per_persona_groups'"
+            )
+        return await self.update_account(account_id, alert_routing_mode=mode)
 
     async def get_accounts_with_bot_tokens(self) -> list[Account]:
         """Return all active accounts that have a bot token configured."""

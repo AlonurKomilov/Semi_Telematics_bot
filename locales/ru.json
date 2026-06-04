@@ -797,7 +797,7 @@
     "csv_caption": "📊 Отчет о событиях — {company}",
     "csv_exported": "✅ CSV событий экспортирован."
   },
-  "auto_reports": {
+  "scheduled_reports": {
     "header": "📋  <b>ПОДПИСКИ НА ОТЧЁТЫ</b>",
     "description": "Запланируйте автоматические отчёты по автопарку в Telegram.",
     "subscribed": "✅ Активно: <b>{rtype}</b> · {freq} в {time}",

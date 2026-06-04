@@ -29,7 +29,7 @@ install:
 	@bash install-service.sh
 
 ## Start all services: Redis + bot/API (systemd or nohup fallback)
-start: dashboard-build-if-needed miniapp-build-if-needed
+start: dashboard-build-if-needed miniapp-build-if-needed system-dashboard-build-if-needed
 	@echo "🚀 Starting 4truck services..."
 	@# ── 0. Clear stale Python bytecode so live source is always used ──
 	@find . -path ./.git -prune -o -name '*.pyc' -delete 2>/dev/null; true
@@ -266,16 +266,28 @@ clean:
 	@rm -rf interfaces/miniapp/node_modules/.vite 2>/dev/null; true
 	@# Clear dashboard Vite cache
 	@rm -rf interfaces/dashboard/node_modules/.vite 2>/dev/null; true
+	@# Clear system console Vite cache
+	@rm -rf interfaces/system_dashboard/node_modules/.vite 2>/dev/null; true
 	@echo "✅  Cache cleared (DB and source untouched)"
 
-## Build all frontend assets (dashboard + miniapp)
-build: dashboard-build miniapp-build
+## Build all frontend assets (dashboard + miniapp + system console)
+build: dashboard-build miniapp-build system-dashboard-build
 
 ## Build the dashboard React app (always rebuilds)
 dashboard-build:
 	@echo "🔨 Building dashboard..."
 	@cd interfaces/dashboard && npm run build
 	@echo "✅  Dashboard built → interfaces/dashboard/dist/"
+
+## Build the operator-only system console.  Installs deps on first run.
+system-dashboard-build:
+	@echo "🔨 Building system console..."
+	@if [ ! -d interfaces/system_dashboard/node_modules ]; then \
+		echo "   📦 Installing system-dashboard deps (first run)..."; \
+		cd interfaces/system_dashboard && npm install --silent; \
+	fi
+	@cd interfaces/system_dashboard && npm run build
+	@echo "✅  System console built → interfaces/system_dashboard/dist/"
 
 ## Build the miniapp only when sources are newer than the last build output.
 miniapp-build-if-needed:
@@ -306,6 +318,23 @@ dashboard-build-if-needed:
 		echo "   ✅ Dashboard dist up to date (no rebuild needed)"; \
 	fi
 
+## Build the operator system console only when its sources changed.
+## Called automatically by `make start` so the system.4truck.us bundle
+## stays in lockstep with dash./miniapp.  First run installs deps (the
+## system-dashboard-build target handles the npm install itself).
+system-dashboard-build-if-needed:
+	@DIST=interfaces/system_dashboard/dist/index.html; \
+	if [ ! -f "$$DIST" ]; then \
+		echo "📦 System console dist missing — building..."; \
+		$(MAKE) system-dashboard-build; \
+	elif find interfaces/system_dashboard/src interfaces/system_dashboard/index.html interfaces/system_dashboard/vite.config.* \
+		-newer "$$DIST" -print -quit 2>/dev/null | grep -q .; then \
+		echo "📦 System console sources changed — rebuilding..."; \
+		$(MAKE) system-dashboard-build; \
+	else \
+		echo "   ✅ System console dist up to date (no rebuild needed)"; \
+	fi
+
 # ── testing targets ──────────────────────────────────
 
 ## Run tests
@@ -323,6 +352,31 @@ test-fast:
 ## Watch mode — re-runs tests on file changes
 test-watch:
 	ptw -- tests/ -v --tb=short
+
+# ── PTI manual triggers (development / staging) ──────
+#
+# Each target runs ONE PTI job once against every active account.
+# Useful for: deploy-time smoke ("did the new templates seed?"),
+# debugging stuck rows ("force-spawn now"), and pre-prod rehearsal of
+# the notification path.  The local-hour gates inside each job still
+# fire — if you need to bypass them, set ``PTI_FORCE_LOCAL_HOUR=1``
+# in the environment before invoking.
+
+## Spawn weekly PTI inspections now (gated on local 06:00 by default)
+pti-spawn:
+	python3 -c "import asyncio; from capabilities.pti.jobs import job_pti_spawn_weekly; asyncio.run(job_pti_spawn_weekly())"
+
+## Remind drivers whose PTI is due in <24h
+pti-remind:
+	python3 -c "import asyncio; from capabilities.pti.jobs import job_pti_remind_due_soon; asyncio.run(job_pti_remind_due_soon())"
+
+## Escalate overdue PTIs to admin (gated on local 09:00)
+pti-escalate:
+	python3 -c "import asyncio; from capabilities.pti.jobs import job_pti_escalate_overdue; asyncio.run(job_pti_escalate_overdue())"
+
+## Send the daily fleet PTI digest (gated on local 09:00)
+pti-digest:
+	python3 -c "import asyncio; from capabilities.pti.jobs import job_pti_fleet_digest; asyncio.run(job_pti_fleet_digest())"
 
 # ── Docker targets ───────────────────────────────────
 

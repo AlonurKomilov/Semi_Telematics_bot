@@ -10,7 +10,7 @@
  */
 import { useTranslation } from 'react-i18next';
 import { useState, useRef, useEffect } from 'react';
-import { Languages, Check } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { SUPPORTED_LOCALES, type Locale } from '../i18n';
 import { apiJSON } from '../api/client';
 
@@ -62,7 +62,7 @@ export function LanguageSelector() {
     try {
       await apiJSON<{ ok: boolean }>('/user/preferences', {
         method: 'PUT',
-        body: JSON.stringify({ language: lng }),
+        body: { language: lng },
       });
     } catch {
       /* best-effort — localStorage persistence keeps the UI consistent */
@@ -77,9 +77,8 @@ export function LanguageSelector() {
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={t('language.switch')}
-        className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition"
+        className="inline-flex items-center px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition"
       >
-        <Languages size={14} />
         <span className="font-mono tracking-wider">{SHORT_CODE[current]}</span>
       </button>
       {open && (

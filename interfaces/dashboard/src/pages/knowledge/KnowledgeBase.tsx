@@ -61,6 +61,10 @@ interface KBArticle {
   unhelpful_count?: number;
   /** Decoded from the detail endpoint: 1 / 0 / null. */
   my_vote?: number | null;
+  /** Per-user bookmark state — server returns it on every list / get
+   *  response.  Distinct from the legacy global ``pinned`` column,
+   *  which is no longer surfaced in the UI. */
+  is_bookmarked?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -115,7 +119,6 @@ export default function KnowledgeBase() {
   const [fTags, setFTags] = useState('');
   const [fVisibility, setFVisibility] = useState('private');
   const [fTargetRole, setFTargetRole] = useState('all');
-  const [fPinned, setFPinned] = useState(false);
   // Upload state: when set, the user attached a file (not a URL).  The
   // backend stores the upload's path in media_url just like any other
   // value, so the create payload doesn't need a special field.
@@ -170,7 +173,7 @@ export default function KnowledgeBase() {
 
   const resetForm = () => {
     setFTitle(''); setFDesc(''); setFCategory('general'); setFMediaUrl('');
-    setFMediaType('link'); setFTags(''); setFVisibility('private'); setFTargetRole('all'); setFPinned(false);
+    setFMediaType('link'); setFTags(''); setFVisibility('private'); setFTargetRole('all');
     setFUploadName(''); setFUploadSize(0); setFUploading(false);
     setEditing(null); setShowForm(false);
     setError('');
@@ -243,7 +246,6 @@ export default function KnowledgeBase() {
     setFTags(a.tags);
     setFVisibility(a.visibility);
     setFTargetRole(a.target_role || 'all');
-    setFPinned(!!a.pinned);
     setShowForm(true);
   };
 
@@ -261,7 +263,6 @@ export default function KnowledgeBase() {
         tags: fTags,
         visibility: fVisibility,
         target_role: fVisibility === 'public' ? fTargetRole : 'all',
-        pinned: fPinned,
       };
       if (editing) {
         await apiJSON(`/knowledge/articles/${editing.id}`, { method: 'PUT', body });
@@ -312,6 +313,30 @@ export default function KnowledgeBase() {
     }
   };
 
+  // Per-user bookmark toggle.  Optimistic — the row reorders before
+  // the server confirms because list-sorting bookmarked-first is what
+  // the user expects to see immediately.  Failure path snaps back.
+  const handleToggleBookmark = async (id: number, currentlyBookmarked: boolean) => {
+    qc.setQueryData<ArticleListResponse>(
+      ['kb-articles', catFilter, search, page],
+      (prev) => prev && {
+        ...prev,
+        articles: [...prev.articles]
+          .map((a) => a.id === id ? { ...a, is_bookmarked: !currentlyBookmarked } : a)
+          .sort((a, b) => Number(b.is_bookmarked ?? 0) - Number(a.is_bookmarked ?? 0)),
+      },
+    );
+    try {
+      await apiJSON(`/knowledge/articles/${id}/bookmark`, {
+        method: currentlyBookmarked ? 'DELETE' : 'POST',
+      });
+    } catch (e) {
+      // Rollback: re-fetch since our optimistic state is stale.
+      load();
+      setError(e instanceof Error ? e.message : 'Failed to update bookmark');
+    }
+  };
+
   const getCatLabel = (key: string) => {
     const c = categories.find(cat => cat.key === key);
     return c?.label || key;
@@ -334,11 +359,13 @@ export default function KnowledgeBase() {
     }
   };
 
-  // B7 fix: split pinned vs. non-pinned visually so they don't blend.
+  // Split bookmarked-by-me vs the rest so the user's personal pins
+  // get their own visually distinct section.  Replaces the older
+  // global-pinned split — pinning is now a per-user concept.
   const { pinned: pinnedArticles, other: otherArticles } = useMemo(() => {
     const pinned: KBArticle[] = [];
     const other: KBArticle[] = [];
-    for (const a of articles) (a.pinned ? pinned : other).push(a);
+    for (const a of articles) (a.is_bookmarked ? pinned : other).push(a);
     return { pinned, other };
   }, [articles]);
 
@@ -560,26 +587,10 @@ export default function KnowledgeBase() {
               )}
             </div>
 
-            {/* Pin checkbox is an EDIT-time curation tool — pinning a
-                brand-new article you just wrote almost never reflects
-                the editor's actual intent (they're focused on getting
-                the content right).  Show it only when editing an
-                existing row, where the choice is a deliberate "I want
-                this near the top". */}
-            {editing && (
-              <div>
-                <label className="inline-flex items-center gap-2 text-sm text-foreground/80 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={fPinned}
-                    onChange={(e) => setFPinned(e.target.checked)}
-                    className="rounded border-border"
-                  />
-                  <Pin size={13} />
-                  {t('knowledge.field_pin_label')}
-                </label>
-              </div>
-            )}
+            {/* Pin moved out of the form entirely: pinning is now a
+                per-user bookmark (see the Pin button on every article
+                card).  Every reader can curate their own quick-access
+                list without affecting anyone else in the company. */}
 
             {fVisibility === 'public' && (
               <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-sm text-yellow-700 dark:text-yellow-400 inline-flex items-start gap-2">
@@ -662,6 +673,7 @@ export default function KnowledgeBase() {
               onDelete={handleDelete}
               onApprove={handleApprove}
               onReject={handleReject}
+              onToggleBookmark={handleToggleBookmark}
               t={t}
             />
           )}
@@ -681,6 +693,7 @@ export default function KnowledgeBase() {
               onDelete={handleDelete}
               onApprove={handleApprove}
               onReject={handleReject}
+              onToggleBookmark={handleToggleBookmark}
               t={t}
             />
           )}
@@ -740,13 +753,14 @@ interface SectionProps {
   onDelete: (id: number) => void;
   onApprove: (id: number) => void;
   onReject: (id: number) => void;
+  onToggleBookmark: (id: number, currentlyBookmarked: boolean) => void;
   t: TFunction;
 }
 
 function ArticleSection({
   title, articles, expanded, setExpanded, myUserId, canApprove,
   getCatLabel, mediaLinkLabel, MediaIcon, onEdit, onDelete, onApprove,
-  onReject, t,
+  onReject, onToggleBookmark, t,
 }: SectionProps) {
   return (
     <section className="space-y-3">
@@ -774,6 +788,7 @@ function ArticleSection({
             onDelete={onDelete}
             onApprove={onApprove}
             onReject={onReject}
+            onToggleBookmark={onToggleBookmark}
             t={t}
           />
         ))}
@@ -796,26 +811,39 @@ interface CardProps {
   onDelete: (id: number) => void;
   onApprove: (id: number) => void;
   onReject: (id: number) => void;
+  onToggleBookmark: (id: number, currentlyBookmarked: boolean) => void;
   t: TFunction;
 }
 
 function ArticleCard({
   article: a, expanded, onToggle, isOwner, canApprove,
   getCatLabel, mediaLinkLabel, MediaIcon, onEdit, onDelete,
-  onApprove, onReject, t,
+  onApprove, onReject, onToggleBookmark, t,
 }: CardProps) {
+  const bookmarked = Boolean(a.is_bookmarked);
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden hover:border-border transition-colors">
-      <button
+      {/* Header row.  Native ``<button>`` doesn't allow a nested
+          button (the bookmark pin), so we use a div with a click +
+          keyboard handler.  The bookmark button stops propagation so
+          clicking it doesn't also toggle the expand. */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onToggle}
-        className="w-full flex items-center gap-3 p-4 text-left"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+        className="w-full flex items-center gap-3 p-4 text-left cursor-pointer"
       >
         <span className="shrink-0 text-muted-foreground">
           <MediaIcon type={a.media_type} size={16} />
         </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            {!!a.pinned && <Pin size={12} className="text-amber-600 dark:text-amber-400 shrink-0" />}
             <span className="font-medium text-foreground truncate">{a.title}</span>
           </div>
           <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
@@ -854,10 +882,38 @@ function ArticleCard({
             )}
           </div>
         </div>
+        {/* Personal bookmark toggle.  Per-user — clicking changes
+            only what THIS user sees in their list; other users in
+            the same company are unaffected.  stopPropagation keeps
+            the surrounding row from also toggling expand. */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleBookmark(a.id, bookmarked);
+          }}
+          title={
+            bookmarked
+              ? t('knowledge.bookmark_remove_title', 'Remove from my bookmarks')
+              : t('knowledge.bookmark_add_title', 'Bookmark for myself')
+          }
+          aria-label={
+            bookmarked
+              ? t('knowledge.bookmark_remove_title', 'Remove from my bookmarks')
+              : t('knowledge.bookmark_add_title', 'Bookmark for myself')
+          }
+          className={`shrink-0 p-1.5 rounded transition-colors ${
+            bookmarked
+              ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+          }`}
+        >
+          <Pin size={14} className={bookmarked ? 'fill-current' : ''} />
+        </button>
         <span className="text-muted-foreground shrink-0">
           {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </span>
-      </button>
+      </div>
 
       {expanded && (
         <ExpandedArticleBody

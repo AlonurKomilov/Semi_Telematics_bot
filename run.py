@@ -121,6 +121,7 @@ async def main():
         loop.add_signal_handler(sig, stop_event.set)
 
     tg_app = None
+    sys_tg_app = None  # Optional operator-only daemon — see system_app.py
     scheduler = None
     registry = None
     api_task = None
@@ -138,6 +139,12 @@ async def main():
                 logger.info("Started %d per-account bot(s) from database", started)
         except Exception:
             logger.exception("Failed to start per-account bots (continuing with system bot)")
+
+        # System / operator bot — separate daemon on TELEGRAM_BOT_TOKEN.
+        # Skipped silently when the token isn't configured; operators
+        # can use system.4truck.us instead.
+        from interfaces.bot.system_app import build_system_app
+        sys_tg_app = build_system_app()
 
     # ── 3. Scheduler setup ───────────────────────────────────────
     if _ENABLE_SCHEDULER:
@@ -177,7 +184,7 @@ async def main():
                         pass
         api_task.add_done_callback(_api_task_done)
 
-    # ── 5. Start bot ─────────────────────────────────────────────
+    # ── 5. Start bot(s) ──────────────────────────────────────────
     if _ENABLE_BOT and tg_app:
         try:
             await run_bot(tg_app)
@@ -186,6 +193,22 @@ async def main():
             try:
                 from infra.error_reporter import report_error
                 await report_error(exc, source="task", job_name="run_bot")
+            except Exception:
+                pass
+
+    # Operator-only system bot — independent polling loop on a
+    # different token.  Lifecycle is the same shape as the customer
+    # daemon but its handler set is just the /admin family, so it
+    # doesn't share state with the customer or per-account bots.
+    if _ENABLE_BOT and sys_tg_app:
+        try:
+            await run_bot(sys_tg_app)
+            logger.info("System bot daemon started (TELEGRAM_BOT_TOKEN)")
+        except Exception as exc:
+            logger.exception("System bot polling crashed")
+            try:
+                from infra.error_reporter import report_error
+                await report_error(exc, source="task", job_name="run_system_bot")
             except Exception:
                 pass
 
@@ -261,6 +284,18 @@ async def main():
             await tg_app.updater.stop()
         await tg_app.stop()
         await tg_app.shutdown()
+
+    # Stop the operator daemon too if it was started.  Same teardown
+    # shape; failures here are logged but don't block the rest of the
+    # shutdown sequence.
+    if sys_tg_app:
+        try:
+            if sys_tg_app.updater and sys_tg_app.updater.running:
+                await sys_tg_app.updater.stop()
+            await sys_tg_app.stop()
+            await sys_tg_app.shutdown()
+        except Exception:
+            logger.exception("System bot shutdown error")
 
     # Platform shutdown (Redis, DB, caches)
     await infra.startup.shutdown()

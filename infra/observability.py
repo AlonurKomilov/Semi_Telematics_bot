@@ -1,4 +1,4 @@
-"""Phase 6 — Prometheus metrics + OpenTelemetry tracing.
+"""Prometheus metrics + OpenTelemetry tracing.
 
 One module that owns ALL observability wiring. The two contracts:
 
@@ -80,6 +80,16 @@ SCORECARD_STAGE: Any = _STUB
 ARQ_JOB: Any = _STUB
 ARQ_QUEUE_DEPTH: Any = _STUB
 
+# ── Billing metrics (Stripe webhook + sync + notifications) ────
+#
+# Cardinality is bounded: ~6 webhook event types we handle × a small
+# fixed result set, ~6 sync outcomes, 6 notification kinds.  Safe for
+# Prometheus storage even at thousands of accounts.
+BILLING_WEBHOOK_EVENTS: Any = _STUB
+BILLING_SYNC_QTY: Any = _STUB
+BILLING_NOTIFICATIONS: Any = _STUB
+BILLING_COMP_SWEEP: Any = _STUB
+
 
 def _build_metrics() -> bool:
     """Replace the module-level stubs with real Prometheus metrics.
@@ -89,6 +99,8 @@ def _build_metrics() -> bool:
     """
     global SAMSARA_LATENCY, SAMSARA_REQUESTS, CACHE_RESULT
     global SINGLE_FLIGHT_COLLAPSE, SCORECARD_STAGE, ARQ_JOB, ARQ_QUEUE_DEPTH
+    global BILLING_WEBHOOK_EVENTS, BILLING_SYNC_QTY
+    global BILLING_NOTIFICATIONS, BILLING_COMP_SWEEP
 
     if not isinstance(SAMSARA_LATENCY, _StubMetric):
         return True  # already built
@@ -151,7 +163,45 @@ def _build_metrics() -> bool:
         labelnames=("queue",),
     )
 
-    logger.info("Prometheus metrics registered (7 instruments)")
+    # Billing — Stripe webhook dispatch outcomes.  ``result`` keeps
+    # cardinality bounded: processed / duplicate / unmatched / error /
+    # invalid_signature.  Combined with ``event_type`` this gives one
+    # series per Stripe event family we handle (~6) × 5 results = 30
+    # series, dwarfed by Samsara / cache counters.
+    BILLING_WEBHOOK_EVENTS = Counter(
+        "billing_webhook_events_total",
+        "Stripe webhook events received and the outcome of dispatch",
+        labelnames=("event_type", "result"),
+    )
+
+    # Billing — extras-quantity reconciliation after every Samsara
+    # ingest.  ``result`` captures both the happy path (noop / patched)
+    # and the various reasons we skip (not_stripe, no_extras_item, …).
+    BILLING_SYNC_QTY = Counter(
+        "billing_sync_quantity_total",
+        "Outcomes of sync_billing_quantity calls",
+        labelnames=("result",),
+    )
+
+    # Billing — Telegram notification dispatch.  ``channel`` is fixed
+    # to ``telegram`` today; the label keeps the metric extensible if
+    # email / SMS layers come later.
+    BILLING_NOTIFICATIONS = Counter(
+        "billing_notifications_total",
+        "Billing notifications dispatched (count is # recipients reached)",
+        labelnames=("kind", "channel"),
+    )
+
+    # Billing — daily comp-expiry sweep outcomes.  Each tick records
+    # how many comps lapsed, how many "expiring soon" reminders fired,
+    # how many accounts were checked.
+    BILLING_COMP_SWEEP = Counter(
+        "billing_comp_sweep_total",
+        "Comp-expiry sweep outcomes",
+        labelnames=("action",),
+    )
+
+    logger.info("Prometheus metrics registered (11 instruments)")
     return True
 
 
@@ -182,6 +232,57 @@ def record_scorecard_stage(stage: str, subject: str, seconds: float) -> None:
 def record_arq_job(function: str, status: str, seconds: float) -> None:
     """Record one completed ARQ job."""
     ARQ_JOB.labels(function=function, status=status).observe(seconds)
+
+
+# ── Billing recorders ────────────────────────────────────────────
+
+
+def record_billing_webhook(event_type: str, result: str) -> None:
+    """One Stripe webhook event dispatched.
+
+    ``result`` ∈ {``processed``, ``duplicate``, ``unmatched``, ``error``,
+    ``invalid_signature``}.  Missing event_type is normalized to
+    ``unknown`` to keep cardinality finite if Stripe ships a new type
+    we don't handle yet.
+    """
+    BILLING_WEBHOOK_EVENTS.labels(
+        event_type=(event_type or "unknown"),
+        result=result,
+    ).inc()
+
+
+def record_sync_billing_quantity(result: str) -> None:
+    """One ``sync_billing_quantity`` call.
+
+    ``result`` ∈ {``noop``, ``patched``, ``stripe_error``, ``not_stripe``,
+    ``no_extras_item``, ``no_subscription``} — matches the ``skipped``
+    tokens the provider returns plus ``patched`` for the happy path.
+    """
+    BILLING_SYNC_QTY.labels(result=result).inc()
+
+
+def record_billing_notification(kind: str, channel: str = "telegram", count: int = 1) -> None:
+    """One billing notification dispatch.
+
+    ``count`` is the number of recipients reached (admins per account).
+    ``kind`` ∈ {checkout_complete, payment_failed, payment_recovered,
+    comp_granted, comp_expiring, comp_expired}.
+    """
+    if count <= 0:
+        return
+    BILLING_NOTIFICATIONS.labels(kind=kind, channel=channel).inc(count)
+
+
+def record_comp_sweep(action: str, count: int = 1) -> None:
+    """Comp-expiry sweep outcome.
+
+    ``action`` ∈ {``expired``, ``reminder_sent``, ``checked``}.
+    ``count`` lets one sweep record N expirations / reminders in
+    a single line.
+    """
+    if count <= 0:
+        return
+    BILLING_COMP_SWEEP.labels(action=action).inc(count)
 
 
 def time_block(timings: dict, name: str):

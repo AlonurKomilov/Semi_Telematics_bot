@@ -13,7 +13,14 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: false,
-    include: ['src/**/*.test.{ts,tsx}'],
+    // src/**/*.test.{ts,tsx} — application code tests.
+    // scripts/**/*.test.mjs  — integration tests for the audit
+    // scripts (check-role-drift, check-layout-coverage); they
+    // spawn the script as a child process so they need .mjs.
+    include: [
+      'src/**/*.test.{ts,tsx}',
+      'scripts/**/*.test.{mjs,ts}',
+    ],
     css: false,
   },
 });

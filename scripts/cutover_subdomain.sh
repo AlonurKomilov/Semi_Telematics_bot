@@ -3,18 +3,20 @@
 # Subdomain cutover automator.  Idempotent — safe to re-run.
 #
 # What it does:
-#   1. Verifies prerequisites (JWT_SECRET, TELEGRAM_BOT_TOKEN, new Origin cert)
+#   1. Verifies prerequisites (JWT_SECRET, a bot token, new Origin cert)
 #   2. Writes missing subdomain env vars into .env (preserves existing values)
 #   3. Backs up + installs the new nginx config
 #   4. Restarts API + bot + queue
-#   5. Re-registers the system bot's Telegram webhook
+#   5. Re-registers the customer login bot's Telegram webhook
 #   6. Verifies every endpoint returns the expected status
 #
 # Run from the project root:
 #   bash scripts/cutover_subdomain.sh
 #
-# The script reads .env to grab TELEGRAM_BOT_TOKEN for the setWebhook call.
-# No secrets are printed to stdout.
+# The script reads .env to grab the customer login bot token (preferred
+# env name TELEGRAM_LOGIN_BOT_TOKEN, falling back to
+# TELEGRAM_SYSTEM_BOT_TOKEN / legacy TELEGRAM_BOT_TOKEN) for the
+# setWebhook call.  No secrets are printed to stdout.
 
 set -euo pipefail
 
@@ -46,10 +48,20 @@ ensure_env_set() {
     die "${key} is missing or empty in .env — set it before re-running"
   fi
 }
+# Resolve the customer-facing bot token under any of its accepted env
+# names (preferred → legacy).  The webhook at bot.4truck.us belongs to
+# the customer login bot post-split, so we look for its token first.
+read_env() { grep -E "^${1}=.+" .env | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'"; }
+LOGIN_BOT_TOKEN="$(read_env TELEGRAM_LOGIN_BOT_TOKEN)"
+[ -z "$LOGIN_BOT_TOKEN" ] && LOGIN_BOT_TOKEN="$(read_env TELEGRAM_SYSTEM_BOT_TOKEN)"
+[ -z "$LOGIN_BOT_TOKEN" ] && LOGIN_BOT_TOKEN="$(read_env TELEGRAM_BOT_TOKEN)"
+
 ensure_env_set JWT_SECRET
-ensure_env_set TELEGRAM_BOT_TOKEN
 ensure_env_set DATABASE_URL
-ok "JWT_SECRET / TELEGRAM_BOT_TOKEN / DATABASE_URL are set"
+if [ -z "$LOGIN_BOT_TOKEN" ]; then
+  die "No bot token in .env — set TELEGRAM_LOGIN_BOT_TOKEN (preferred) or TELEGRAM_SYSTEM_BOT_TOKEN"
+fi
+ok "JWT_SECRET / bot token / DATABASE_URL are set"
 
 # ── 2. Append missing subdomain env vars ──────────────────────────
 say "Setting subdomain env vars (preserves existing values)"
@@ -159,19 +171,21 @@ for svc in 4truck-api.service 4truck-bot.service 4truck-queue.service; do
   fi
 done
 
-# ── 6. Re-register Telegram webhook (system bot only) ─────────────
-say "Re-registering Telegram webhook for system bot"
+# ── 6. Re-register Telegram webhook (customer login bot) ──────────
+# The bot.4truck.us/webhook endpoint serves the customer-facing login
+# bot daemon (interfaces/bot/app.py).  The system / operator bot runs
+# its own daemon and isn't registered here.
+say "Re-registering Telegram webhook for the customer login bot"
 
-# Source ONLY the lines we need; never log them.
-TELEGRAM_BOT_TOKEN=$(grep -E "^TELEGRAM_BOT_TOKEN=" .env | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+# Resolved above as $LOGIN_BOT_TOKEN; never log it.
 WEBHOOK_SECRET=$(grep -E "^WEBHOOK_SECRET=" .env | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 
-if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
-  die "TELEGRAM_BOT_TOKEN is empty — can't call setWebhook"
+if [ -z "$LOGIN_BOT_TOKEN" ]; then
+  die "No bot token resolved — can't call setWebhook"
 fi
 
 resp=$(curl -sS -X POST \
-  "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+  "https://api.telegram.org/bot${LOGIN_BOT_TOKEN}/setWebhook" \
   -d url="https://bot.4truck.us/webhook" \
   ${WEBHOOK_SECRET:+-d secret_token="${WEBHOOK_SECRET}"} \
   -d drop_pending_updates=true)
@@ -179,7 +193,7 @@ resp=$(curl -sS -X POST \
 if echo "$resp" | grep -q '"ok":true'; then
   ok "Telegram setWebhook succeeded"
   # Read it back to confirm.
-  info=$(curl -sS "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo")
+  info=$(curl -sS "https://api.telegram.org/bot${LOGIN_BOT_TOKEN}/getWebhookInfo")
   url=$(echo "$info" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['result'].get('url',''))")
   pending=$(echo "$info" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['result'].get('pending_update_count',0))")
   ok "getWebhookInfo → url=${url}  pending=${pending}"

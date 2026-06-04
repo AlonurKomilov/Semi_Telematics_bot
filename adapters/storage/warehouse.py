@@ -92,7 +92,13 @@ class WarehouseMixin(_MixinBase):
                 int(r.get("dtc_critical_count") or 0),
                 str(r.get("last_driver_id") or ""),
                 str(r.get("last_driver_name") or ""),
-                str(r.get("captured_at") or ts),
+                # Preserve an empty ``captured_at`` instead of substituting
+                # the upsert timestamp.  Billing's activity-window query
+                # reads this column to decide whether a vehicle has had
+                # any Samsara signal in the last N days; substituting NOW
+                # would silently bill vehicles that were added to Samsara
+                # but haven't transmitted location yet.
+                str(r.get("captured_at") or ""),
                 ts,
             ))
         if values:
@@ -125,7 +131,16 @@ class WarehouseMixin(_MixinBase):
                     dtc_critical_count=excluded.dtc_critical_count,
                     last_driver_id=excluded.last_driver_id,
                     last_driver_name=excluded.last_driver_name,
-                    captured_at=excluded.captured_at,
+                    -- Keep the most recent non-empty Samsara location
+                    -- timestamp.  If Samsara hiccups and returns the
+                    -- vehicle without a location ``time``, we shouldn't
+                    -- blank out the previous-good value — billing reads
+                    -- this column for activity detection.
+                    captured_at=CASE
+                        WHEN COALESCE(excluded.captured_at, '') = ''
+                            THEN vehicle_state.captured_at
+                        ELSE excluded.captured_at
+                    END,
                     updated_at=excluded.updated_at
                 """,
                 values,

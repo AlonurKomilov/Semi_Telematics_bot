@@ -14,7 +14,7 @@
 import {
   LayoutDashboard, Bell, Bot, FileText, Mail, BookOpen,
   Trophy, AlertTriangle, Camera, ParkingSquare,
-  IdCard, GraduationCap, Map,
+  IdCard, GraduationCap, Map, Truck,
 } from 'lucide-react';
 import type { NavGroup } from './defaultNav';
 
@@ -23,10 +23,15 @@ export const safetyNav: NavGroup[] = [
     titleKey: null,
     items: [
       { labelKey: 'nav.overview',     path: '/',        icon: LayoutDashboard, permission: null },
-      { labelKey: 'nav.ai_assistant', path: '/ai/chat', icon: Bot,             permission: ['can_vehicle_all', 'can_vehicle_own'] },
+      { labelKey: 'nav.ai_assistant', path: '/ai/chat', icon: Bot,             permission: ['can_faults', 'can_vehicle_all', 'can_vehicle_own'] },
     ],
   },
   {
+    // Inspections intentionally omitted under strict role binding —
+    // PTI history is HR/Fleet's compliance + mechanical workflow,
+    // not safety's behavioural focus.  Safety operators needing
+    // walkaround context for an incident review switch view to HR
+    // or Fleet via the persona selector.
     titleKey: 'nav.safety_group',
     items: [
       { labelKey: 'nav.driver_scorecards', path: '/driver-scorecards', icon: Trophy,        permission: ['can_scorecard_all', 'can_scorecard_own'] },
@@ -46,21 +51,24 @@ export const safetyNav: NavGroup[] = [
     ],
   },
   {
-    // Reports — safety-leaning report items (Risk Summary belongs here
-    // primarily, fuel/cost reports are de-emphasized for this persona).
+    // Reports — collapsed to a single entry; Risk Summary is the
+    // Safety persona's primary report and it surfaces inside the
+    // Reports module via the cross-page sub-nav.
     titleKey: 'nav.reports_group',
     items: [
-      { labelKey: 'nav.risk_summary',  path: '/reports/risk-summary',  icon: FileText, permission: ['can_risk_report_all', 'can_risk_report_own'] },
-      { labelKey: 'nav.reports',       path: '/reports',               icon: FileText, permission: null },
-      { labelKey: 'nav.subscriptions', path: '/reports/subscriptions', icon: Mail,     permission: null },
+      { labelKey: 'nav.reports', path: '/reports', icon: FileText,
+        permission: ['can_faults', 'can_risk_report_all', 'can_risk_report_own', 'can_cost_reports', 'can_digest'] },
     ],
   },
   {
-    // Fleet items kept lightweight — a safety manager occasionally
-    // needs the Live Map to see where a vehicle was during an incident.
+    // Fleet items a safety manager needs for context: Live Map to see
+    // where a vehicle was during an incident, Vehicles to drill into a
+    // specific truck's profile.  Maintenance removed under strict role
+    // binding — that's Fleet's workspace.
     titleKey: 'nav.fleet_group',
     items: [
-      { labelKey: 'nav.live_map', path: '/live-map', icon: Map, permission: ['can_location_map', 'can_location_own'] },
+      { labelKey: 'nav.live_map', path: '/live-map', icon: Map,   permission: ['can_location_map', 'can_location_own'] },
+      { labelKey: 'nav.vehicles', path: '/vehicles', icon: Truck, permission: ['can_vehicle_all', 'can_vehicle_own'] },
     ],
   },
   {
@@ -69,8 +77,9 @@ export const safetyNav: NavGroup[] = [
       { labelKey: 'nav.knowledge_base', path: '/knowledge', icon: BookOpen, permission: null },
     ],
   },
-  // NOTE: Maintenance/Work Orders/Costs intentionally omitted — those
-  // are Fleet/Admin concerns and don't belong in a safety manager's
-  // daily flow.  Same for account_admin group (Companies, Billing,
-  // etc.).
+  // NOTE: Work Orders / Costs / Maintenance / Inspections intentionally
+  // omitted — those are Fleet / HR / Admin concerns.  A safety operator
+  // needing cross-role context uses the "View dashboard as…" switcher
+  // to jump to that persona's workspace via subdomain.  Same omission
+  // rationale for account_admin group (Companies, Billing, etc.).
 ];

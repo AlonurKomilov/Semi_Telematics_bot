@@ -7,6 +7,27 @@ the API routes and the bot handlers produce identical output.
 
 from __future__ import annotations
 
+from typing import Optional
+
+
+def _round_or_none(value, ndigits: int = 1) -> Optional[float]:
+    """``round`` that survives ``None`` cleanly.
+
+    ``dict.get(key, default)`` only returns *default* when the key is
+    *missing* — a key that's present-but-``None`` (which the Samsara
+    client deliberately produces for vehicles without a paired driver,
+    see ``adapters/samsara/client.py:1258``) propagates through and
+    blows up ``round(None, 1)``.  This helper coerces None to ``None``
+    in the output dict so the API serialises it as JSON ``null`` rather
+    than crashing the request.
+    """
+    if value is None:
+        return None
+    try:
+        return round(value, ndigits)
+    except (TypeError, ValueError):
+        return None
+
 
 def check_light_severity(lights: dict) -> str:
     """Map J1939 check-engine lights to a severity string."""
@@ -80,17 +101,25 @@ def simplify_health(v: dict) -> dict:
 
 
 def simplify_efficiency(v: dict) -> dict:
-    """Flatten a driver/vehicle efficiency record into a summary dict."""
+    """Flatten a driver/vehicle efficiency record into a summary dict.
+
+    Vehicles without a paired driver have ``_miles``/``_mpg``/etc.
+    explicitly set to ``None`` by the Samsara client (see
+    ``adapters/samsara/client.py:1258``).  Use ``_round_or_none`` so
+    those nulls round-trip as JSON ``null`` instead of crashing the
+    endpoint with ``round(None, 1)`` → ``TypeError`` (the 500 on
+    ``/api/reports/efficiency`` from 2026-06).
+    """
     return {
         "vehicle_name": v.get("name", v.get("vehicle_name", "")),
         "company": v.get("_org", ""),
         "driver_name": v.get("driver_name", ""),
-        "miles": round(v.get("_miles", 0), 1),
-        "mpg": round(v.get("_mpg", 0), 1),
-        "drive_hours": round(v.get("_drive_h", 0), 1),
-        "idle_hours": round(v.get("_idle_h", 0), 1),
-        "drive_pct": round(v.get("_drive_pct", 0), 1),
-        "idle_pct": round(v.get("_idle_pct", 0), 1),
-        "eco_pct": round(v.get("_green_pct", 0), 1),
-        "overspeed_min": round(v.get("_overspeed_min", 0), 1),
+        "miles":        _round_or_none(v.get("_miles")),
+        "mpg":          _round_or_none(v.get("_mpg")),
+        "drive_hours":  _round_or_none(v.get("_drive_h")),
+        "idle_hours":   _round_or_none(v.get("_idle_h")),
+        "drive_pct":    _round_or_none(v.get("_drive_pct")),
+        "idle_pct":     _round_or_none(v.get("_idle_pct")),
+        "eco_pct":      _round_or_none(v.get("_green_pct")),
+        "overspeed_min": _round_or_none(v.get("_overspeed_min")),
     }

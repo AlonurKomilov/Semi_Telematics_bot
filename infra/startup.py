@@ -53,10 +53,13 @@ async def initialize() -> TenantRegistry:
     import infra.jobs as rjobs
     await rjobs.init_jobs()
 
-    # 6. Error reporter — Telegram notifications + error_log DB table
+    # 6. Error reporter — Telegram notifications + error_log DB table.
+    # Always uses the SYSTEM bot (not the customer-facing login bot)
+    # so ops alerts go to the operator channel even when the login bot
+    # is rotated or down.
     from infra.error_reporter import init_error_reporter
-    from infra.config import TELEGRAM_TOKEN, ERROR_REPORT_CHAT_ID
-    init_error_reporter(TELEGRAM_TOKEN or "", ERROR_REPORT_CHAT_ID, _platform.get_db())
+    from infra.config import TELEGRAM_SYSTEM_BOT_TOKEN, ERROR_REPORT_CHAT_ID
+    init_error_reporter(TELEGRAM_SYSTEM_BOT_TOKEN, ERROR_REPORT_CHAT_ID, _platform.get_db())
 
     # 7. Tenant registry
     tenant_registry = TenantRegistry()

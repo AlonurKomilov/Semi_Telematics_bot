@@ -247,6 +247,22 @@ async def ingest_vehicle_state(account_id: int) -> int:
         len(odometer_by_vehicle_id),
         len(engine_hours_by_vehicle_id),
     )
+    # Reconcile billing quantity with the freshly-ingested activity.
+    # The provider only PATCHes Stripe when the active-vehicle count
+    # actually changed, so most ingests are no-ops; failures here must
+    # not poison the ingest result, so we swallow.  Skipped silently
+    # for stub-provider accounts and any account without a saved
+    # extras subscription_item id.
+    try:
+        from capabilities.billing import get_provider as _get_billing_provider
+        provider = _get_billing_provider()
+        await provider.sync_billing_quantity(account_id, tenant)
+    except Exception:
+        logger.exception(
+            "sync_billing_quantity raised during ingest for acct=%d "
+            "(non-fatal — vehicle_state still persisted)",
+            account_id,
+        )
     return n
 
 
@@ -375,7 +391,7 @@ async def _for_each_active_account(coro_factory) -> None:
     (~3–5 s); running them serially caused the 60 s cadence jobs to
     overrun once a deployment passed ~10 accounts. Bounded by env var
     ``INGEST_MAX_CONCURRENT_ACCOUNTS`` (default 5) so we don't burst
-    the Samsara API or starve the SQLite single-writer lane.
+    the Samsara API or saturate the Postgres connection pool.
     """
     import time as _time
     job_name = getattr(coro_factory, "__name__", "anon")

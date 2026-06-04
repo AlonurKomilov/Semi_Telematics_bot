@@ -39,37 +39,66 @@ class SettingsMixin:
         )
         await self._db.commit()
 
-    # ── Digest Subscriptions ──────────────────────────────────────
+    # ── Scheduled Reports (legacy table name: digest_subscriptions) ──
 
-    async def subscribe_digest(
-        self, user_id: int, frequency: str = "daily", send_hour: int = 7,
+    async def unsubscribe_digest(
+        self, user_id: int, report_type: Optional[str] = None,
     ) -> None:
-        now = self._now()
-        await self._db.execute(
-            """INSERT INTO digest_subscriptions (user_id, frequency, send_hour, created_at)
-               VALUES (?, ?, ?, ?)
-               ON CONFLICT(user_id) DO UPDATE
-               SET frequency = excluded.frequency,
-                   send_hour = excluded.send_hour,
-                   is_active = 1""",
-            (user_id, frequency, send_hour, now),
-        )
-        await self._db.commit()
+        """Deactivate a Scheduled Report row.
 
-    async def unsubscribe_digest(self, user_id: int) -> None:
-        await self._db.execute(
-            "UPDATE digest_subscriptions SET is_active = 0 WHERE user_id = ?",
-            (user_id,),
-        )
+        ``report_type=None`` (the default, pre-2026-06 behaviour)
+        deactivates every schedule the user has — used when an admin
+        revokes ``can_digest`` or the user clicks "Stop all" in the bot
+        wizard.
+
+        ``report_type="faults"`` deactivates only the faults schedule —
+        used by the dashboard's per-row delete button and the bot
+        wizard's per-schedule "Stop" action.
+        """
+        if report_type is None:
+            await self._db.execute(
+                "UPDATE digest_subscriptions SET is_active = 0 WHERE user_id = ?",
+                (user_id,),
+            )
+        else:
+            await self._db.execute(
+                "UPDATE digest_subscriptions SET is_active = 0 "
+                "WHERE user_id = ? AND report_type = ?",
+                (user_id, report_type),
+            )
         await self._db.commit()
 
     async def get_digest_subscription(self, user_id: int) -> Optional[dict]:
+        """Return ANY active schedule for the user, or None.
+
+        Single-row accessor — kept for backward compat with callers
+        that expect "one schedule per user" (the pre-2026-06 model).
+        New code should call :py:meth:`get_digest_subscriptions`
+        instead so it sees the full list.
+        """
         cur = await self._db.execute(
-            "SELECT * FROM digest_subscriptions WHERE user_id = ? AND is_active = 1",
+            "SELECT * FROM digest_subscriptions "
+            "WHERE user_id = ? AND is_active = 1 "
+            "ORDER BY id LIMIT 1",
             (user_id,),
         )
         row = await cur.fetchone()
         return dict(row) if row else None
+
+    async def get_digest_subscriptions(self, user_id: int) -> list[dict]:
+        """Return every active schedule for the user, ordered by id.
+
+        The multi-schedule entrypoint — one row per (user, report_type).
+        Empty list when the user has no schedules.
+        """
+        cur = await self._db.execute(
+            "SELECT * FROM digest_subscriptions "
+            "WHERE user_id = ? AND is_active = 1 "
+            "ORDER BY id",
+            (user_id,),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
 
     async def get_digest_subscribers(self, send_hour: int, frequency: str = "daily") -> list[dict]:
         """Get all active subscribers for a given hour and frequency."""
@@ -88,20 +117,34 @@ class SettingsMixin:
         self, user_id: int, frequency: str = "daily",
         send_hour: int = 7, timezone: str = "America/New_York",
         report_type: str = "faults",
+        delivery_channels: Optional[list[str]] = None,
     ) -> None:
-        """Subscribe to auto reports with timezone and report type support."""
+        """Upsert a Scheduled Reports row with timezone, report type,
+        and delivery channels.
+
+        ``delivery_channels`` is a list of channel names — currently
+        ``"telegram"`` and/or ``"email"``.  Defaults to ``["telegram"]``
+        to preserve pre-2026-06 behaviour.  Stored as a comma-separated
+        TEXT column; the bot scheduler splits + dispatches per channel.
+        """
         now = self._now()
+        channels = ",".join(delivery_channels) if delivery_channels else "telegram"
+        # ON CONFLICT key is (user_id, report_type) — multi-schedule
+        # model added 2026-06.  A user can stack Faults Daily + Fuel
+        # Weekly + Health Monthly as three independent rows; saving
+        # the same (user, report_type) twice updates the existing row.
         await self._db.execute(
             """INSERT INTO digest_subscriptions
-               (user_id, frequency, send_hour, timezone, report_type, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)
-               ON CONFLICT(user_id) DO UPDATE
+               (user_id, frequency, send_hour, timezone, report_type,
+                delivery_channels, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(user_id, report_type) DO UPDATE
                SET frequency = excluded.frequency,
                    send_hour = excluded.send_hour,
                    timezone = excluded.timezone,
-                   report_type = excluded.report_type,
+                   delivery_channels = excluded.delivery_channels,
                    is_active = 1""",
-            (user_id, frequency, send_hour, timezone, report_type, now),
+            (user_id, frequency, send_hour, timezone, report_type, channels, now),
         )
         await self._db.commit()
 
@@ -111,9 +154,14 @@ class SettingsMixin:
         Computes which UTC hour each subscriber's local send_hour maps to,
         and returns those matching the given utc_hour.
         """
-        # Fetch all active subscriptions with user info
+        # Fetch all active subscriptions with user info.  Includes
+        # ``email`` + ``email_verified`` so the scheduler can dispatch
+        # the email-delivery branch (added 2026-06) without a second
+        # round-trip per subscriber.
         cur = await self._db.execute(
-            """SELECT ds.*, u.telegram_id, u.account_id, u.role, u.truck_num
+            """SELECT ds.*,
+                      u.telegram_id, u.account_id, u.role, u.truck_num,
+                      u.email, u.email_verified, u.display_name
                FROM digest_subscriptions ds
                JOIN users u ON u.id = ds.user_id
                WHERE ds.is_active = 1 AND u.is_active = 1""",

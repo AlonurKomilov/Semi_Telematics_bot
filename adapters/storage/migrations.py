@@ -3677,3 +3677,80 @@ async def migrate_vehicle_state_unique_per_company_name(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+@_register("079_alert_routing_send_resolve_receipt")
+async def migrate_alert_routing_send_resolve_receipt(conn) -> None:
+    """Add per-topic '🟢 RESOLVED' receipt toggle to ``alert_routing``.
+
+    The auto-resolve pipeline (capabilities/alerting/escalation.py)
+    currently fans the resolve receipt to every recipient of the
+    original alert — including the forum topic the alert was posted to.
+    Operators with high-volume parking / geofence topics report this
+    as chat noise: every truck that ends a stop adds a "RESOLVED —
+    Vehicle Moving" follow-up.
+
+    This column lets the admin disable the resolve receipt PER TOPIC
+    without losing the alert itself (the underlying ``alert_history``
+    row still flips to resolved — the dashboard's monitoring view
+    stays accurate; only the new chat message is suppressed).
+
+    Default: ``1`` (current behavior preserved on upgrade).  The admin
+    flips it off via the ForumRoutingSection on the Account Settings
+    page.  Personal DM receipts are governed by a parallel per-user
+    column (``users.alert_resolve_receipts``, migration 080).
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(alert_routing)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "send_resolve_receipt" in cols:
+            return
+        await conn.execute(
+            "ALTER TABLE alert_routing "
+            "ADD COLUMN send_resolve_receipt INTEGER NOT NULL DEFAULT 1"
+        )
+        await conn.commit()
+        logger.info("Migration 079: added alert_routing.send_resolve_receipt")
+    except Exception as e:
+        logger.error("Migration 079 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
+@_register("080_users_alert_resolve_receipts")
+async def migrate_users_alert_resolve_receipts(conn) -> None:
+    """Add per-user '🟢 RESOLVED' DM-receipt toggle to ``users``.
+
+    Twin of migration 079 but for personal DMs.  When set to 1 the
+    user receives the resolve receipt in their personal Telegram
+    chat; when 0 they don't.  The per-user toggle is independent of
+    the per-topic toggle — a user can have DM receipts off while
+    still seeing them in a forum topic they belong to (or vice
+    versa).
+
+    Default: ``0`` (opt-in).  Existing users start silent — they
+    won't get a flood of receipts on the first deploy.  Each user
+    enables their own via the new "My Notifications" page in the
+    dashboard avatar menu.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(users)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "alert_resolve_receipts" in cols:
+            return
+        await conn.execute(
+            "ALTER TABLE users "
+            "ADD COLUMN alert_resolve_receipts INTEGER NOT NULL DEFAULT 0"
+        )
+        await conn.commit()
+        logger.info("Migration 080: added users.alert_resolve_receipts (default OFF)")
+    except Exception as e:
+        logger.error("Migration 080 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise

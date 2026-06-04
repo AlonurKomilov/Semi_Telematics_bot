@@ -78,15 +78,16 @@ def _format_parking_alert(
     # serves as the body marker — no severity marker prefix here, the
     # two would visually duplicate ("🔴 🔴 Roadside").
     #
-    # ``<a href=…>View on map</a>`` used to live on the line below;
-    # it's been promoted to a URL button in the inline keyboard (see
-    # ``pipeline.build_alert_keyboard``'s ``maps_url`` parameter,
-    # populated by ``capabilities/parking/check.py``) — bigger tap
-    # target than an inline link, and group-safe.  Coordinates stay
-    # here as plain copyable text for anyone who needs the raw lat/lng.
+    # Raw lat/lng used to render on the line below the class label —
+    # removed because the 🗺 View on map button in the inline
+    # keyboard already carries the precise coordinates (built by
+    # check.py and passed via ``send_alert(maps_url=…)``).  Showing
+    # them in the body too was redundant noise.  ``lat`` / ``lng``
+    # remain on the function signature because the call site in
+    # check.py still passes them and the public API hasn't changed.
     lines.append("")
     lines.append(class_label)
-    lines.append(f"      <code>{lat:.5f}, {lng:.5f}</code>")
+    del lat, lng  # parameters retained on signature for API stability
 
     if ai_analysis:
         lines.append("")
@@ -145,21 +146,39 @@ async def _send_parking_resolved(
 
     tenant = await get_tenant_db(account_id)
 
-    # Resolve every active parking ack row for this vehicle and get
-    # the rows back (with ``message_id`` / ``chat_id`` per surface)
-    # so we can thread the receipt as a reply to each original
-    # alert.  ``vid`` is the raw Samsara vehicle id; falls back to
-    # the display name when callers haven't been updated yet — older
-    # callers will skip the threading path and post fresh.
-    resolved_rows: list[dict] = []
+    # ── Two-step lookup + resolution ─────────────────────────────
+    # Step 1: find the original alert rows REGARDLESS of ack state
+    # so we can thread the receipt as a reply to each surface's
+    # original message.  If we only used ``auto_resolve_alerts_by_vehicle``
+    # (which filters out already-acked rows), any alert a user
+    # already pressed Acknowledge on would have no thread target —
+    # the receipt would post as a fresh unattached message in the
+    # topic with no link back to the alert it cleared.
+    #
+    # Step 2: AFTER capturing the lookup rows, run the DB resolution
+    # sweep to mark un-acked rows as system-acked.  That sweep no
+    # longer needs to return rows for us — we already have what we
+    # need from step 1.
+    reply_targets: list[dict] = []
     if vid:
         try:
-            resolved_rows = await tenant.auto_resolve_alerts_by_vehicle(
+            reply_targets = await tenant.get_recent_alerts_for_resolution(
                 account_id, "parking", vid,
             )
         except Exception as e:
-            logger.debug("Parking auto-resolve sweep failed (acct=%s vid=%s): %s",
-                         account_id, vid, e)
+            logger.debug(
+                "Parking reply-target lookup failed (acct=%s vid=%s): %s",
+                account_id, vid, e,
+            )
+        try:
+            await tenant.auto_resolve_alerts_by_vehicle(
+                account_id, "parking", vid,
+            )
+        except Exception as e:
+            logger.debug(
+                "Parking auto-resolve sweep failed (acct=%s vid=%s): %s",
+                account_id, vid, e,
+            )
 
     # Look up the forum topic id once so the group-resolve send can
     # route explicitly — same pattern + same rationale as the
@@ -182,7 +201,7 @@ async def _send_parking_resolved(
     group_posted = False
     dm_replied: set[int] = set()  # telegram_ids that got a threaded DM resolve
 
-    for row in resolved_rows:
+    for row in reply_targets:
         recipient_id = row.get("sent_to") or 0
         msg_id = row.get("message_id")
         chat_id = row.get("chat_id")
@@ -228,6 +247,7 @@ async def _send_parking_resolved(
             await post_alert_to_topic(
                 bot_app, account_id=account_id,
                 alert_type="parking", text=text,
+                severity="info",
             )
         except Exception as e:
             logger.debug("Parking resolved → group topic post failed: %s", e)

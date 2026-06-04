@@ -28,7 +28,7 @@ export default function FleetStatusChart({ moving, idle, stopped }: Props) {
           <Cell fill="#ef4444" />
         </Pie>
         <Tooltip
-          contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, color: '#f9fafb' }}
+          contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }}
         />
         <Legend iconType="circle" iconSize={10} />
       </PieChart>

@@ -1,0 +1,129 @@
+/**
+ * Owner / Admin / Accounting overlay: color-coded company partition.
+ *
+ * Adds a small colored dot beside each vehicle marker, where the
+ * color is derived from the truck's ``company`` field.  Owner sees
+ * "all my companies on one map" with a visual partition; Accounting
+ * uses it to spot which assets belong to which billing entity at a
+ * glance.
+ *
+ * Pure client-side — uses the same ``vehicles`` data the host page
+ * already fetched, no extra API call.  Stable color hash so the
+ * SAME company always gets the SAME color across page reloads (vs.
+ * a random palette that would confuse "wait, my Company A trucks
+ * were blue yesterday").
+ *
+ * Permission-gated by ``can_manage_companies`` OR
+ * ``can_vehicle_all`` — both are roles whose job involves spanning
+ * multiple companies under one account.  The overlay no-ops for
+ * personas without that scope.
+ */
+import { useEffect, useRef } from 'react';
+import type L from 'leaflet';
+import { usePermissions } from '../../../hooks/usePermissions';
+import type { LiveMapSectionProps } from './_shared/types';
+
+// Palette chosen for distinguishability against the base map colors
+// (which use blue/green/red for status).  All entries are
+// mid-saturation so multiple dots don't compete with the truck
+// markers for attention.
+const COMPANY_PALETTE = [
+  '#7c3aed',  // violet
+  '#0891b2',  // cyan
+  '#16a34a',  // green (slightly different shade from moving)
+  '#ca8a04',  // amber
+  '#db2777',  // pink
+  '#0284c7',  // sky
+  '#9333ea',  // purple
+  '#65a30d',  // lime
+];
+
+/** Deterministic color hash so the SAME company name always gets the
+ * SAME color across reloads.  Simple DJB2-like hash modulo palette
+ * length — no crypto needed, just stable + cheap. */
+function colorForCompany(name: string): string {
+  if (!name) return COMPANY_PALETTE[0];
+  let hash = 5381;
+  for (let i = 0; i < name.length; i++) {
+    hash = ((hash << 5) + hash + name.charCodeAt(i)) | 0;
+  }
+  return COMPANY_PALETTE[Math.abs(hash) % COMPANY_PALETTE.length];
+}
+
+export default function CompanyColorPartition({
+  leafletMap,
+  isReady,
+  vehicles,
+}: LiveMapSectionProps) {
+  const { has } = usePermissions();
+  const hasMultiCompanyScope =
+    has('can_manage_companies') || has('can_vehicle_all');
+  const layerRef = useRef<L.LayerGroup | null>(null);
+
+  useEffect(() => {
+    if (!isReady || !leafletMap.current) return;
+    if (!hasMultiCompanyScope) return;
+
+    const Leaf = window.L as typeof L;
+
+    function clear() {
+      if (layerRef.current) {
+        layerRef.current.remove();
+        layerRef.current = null;
+      }
+    }
+
+    // Skip the overlay entirely when there's only one company —
+    // partitioning by company is meaningless if everything is
+    // Company A, and the extra dots are visual noise.
+    const distinctCompanies = new Set<string>();
+    for (const v of vehicles) {
+      const c = (v.properties.company as string | undefined) || '';
+      if (c) distinctCompanies.add(c);
+    }
+    if (distinctCompanies.size <= 1) {
+      clear();
+      return;
+    }
+
+    const group = Leaf.layerGroup();
+    for (const v of vehicles) {
+      const company = (v.properties.company as string | undefined) || '';
+      if (!company) continue;
+      const coords = v.geometry?.coordinates;
+      if (!coords || coords.length < 2) continue;
+      const [lon, lat] = coords as [number, number];
+      if (!isFinite(lat) || !isFinite(lon)) continue;
+
+      const color = colorForCompany(company);
+      // Small offset dot — placed up-and-right of the vehicle marker
+      // so it doesn't overlap the marker's clickable area.  Uses
+      // divIcon so the dot can be styled without rasterising.
+      const dot = Leaf.marker([lat, lon], {
+        icon: Leaf.divIcon({
+          html: `<div style="
+            width:8px;height:8px;border-radius:50%;
+            background:${color};border:1.5px solid #fff;
+            box-shadow:0 0 2px rgba(0,0,0,.5);
+            margin-left:14px;margin-top:-22px;
+          "></div>`,
+          className: 'company-partition-dot',
+          iconSize: [22, 22],
+          iconAnchor: [0, 0],
+        }),
+        // High z so the company dot stays visible above the truck
+        // marker but below clickable overlays.
+        zIndexOffset: 300,
+        interactive: false,
+      });
+      group.addLayer(dot);
+    }
+    group.addTo(leafletMap.current);
+    clear();
+    layerRef.current = group;
+
+    return clear;
+  }, [isReady, hasMultiCompanyScope, vehicles, leafletMap]);
+
+  return null;
+}

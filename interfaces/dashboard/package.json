@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "check:role-drift": "node scripts/check-role-drift.mjs",
     "check:hosts": "node scripts/check-hosts.mjs",
-    "test": "vitest run",
+    "check:layout-coverage": "node scripts/check-layout-coverage.mjs",
+    "check:all": "npm run check:role-drift && npm run check:layout-coverage",
+    "test": "npm run check:all && vitest run",
+    "test:unit": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {

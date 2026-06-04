@@ -66,7 +66,10 @@ export default function MapTypeControl({
   setShowLabels,
   isReady,
 }: MapTypeControlProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  // Collapsed by default so the live-map opens with a clean overlay —
+  // the user expands the picker only when they actually want to switch
+  // map type / labels.
+  const [collapsed, setCollapsed] = useState(true);
 
   if (!isReady) return null;
 

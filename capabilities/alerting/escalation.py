@@ -159,10 +159,19 @@ async def _auto_resolve_vehicle_alerts(
     """
     tenant = await get_tenant_db(account_id)
 
-    # Fetch first_seen from the shared history record BEFORE clearing it
-    # (get_active_alert_history filters status='active', so must come first)
+    # Fetch first_seen from the shared history record BEFORE clearing it.
+    # ``hist`` doubles as the "is anything in flight right now?" gate —
+    # when it's None there's no active alert for this vehicle+type and
+    # we MUST return before doing anything else.  Without this guard,
+    # the health/fault check loops over every healthy vehicle and the
+    # downstream lookup + send would re-fire a "RESOLVED" receipt for
+    # whatever old already-resolved delivery row still lives in
+    # alert_acknowledgments — operators saw 1000+ spurious "Health
+    # Cleared" messages from one account on a single health-check tick.
     hist = await tenant.get_active_alert_history(account_id, alert_type, vehicle_id)
-    first_seen_str = hist["first_seen"] if hist else ""
+    if hist is None:
+        return
+    first_seen_str = hist["first_seen"] or ""
 
     # Capture the earliest human ack BEFORE the auto-resolve sweep
     # (which marks every un-acked row as system-acked with
@@ -177,12 +186,24 @@ async def _auto_resolve_vehicle_alerts(
     # Clear the single alert_history record (single source of truth)
     await tenant.clear_alert_history(account_id, alert_type, vehicle_id)
 
-    # Resolve all subscriber ack rows (one per subscriber)
-    resolved = await tenant.auto_resolve_alerts_by_vehicle(
+    # ── Two-step lookup + resolution ─────────────────────────────
+    # Step 1: capture every recent delivery row REGARDLESS of ack
+    # state so the resolve receipt can thread to the original alert
+    # in each surface.  Using only ``auto_resolve_alerts_by_vehicle``
+    # here would skip alerts the user already ACK'd, and the receipt
+    # would either not send (if every row was acked) or post as a
+    # fresh unattached message in the topic — both UX regressions.
+    reply_targets = await tenant.get_recent_alerts_for_resolution(
         account_id, alert_type, vehicle_id,
     )
-    if not resolved:
-        return
+    # Step 2: mark un-acked rows as system-acked (the actual DB
+    # resolution).  Return value no longer needed here — step 1
+    # already gave us the threading targets.
+    await tenant.auto_resolve_alerts_by_vehicle(
+        account_id, alert_type, vehicle_id,
+    )
+    if not reply_targets:
+        return  # never delivered anywhere — nothing to send a receipt to
 
     # Resolve per-account bot — skip if no account bot registered
     if bot_app is None:
@@ -192,11 +213,11 @@ async def _auto_resolve_vehicle_alerts(
         return
 
     from capabilities.formatting.helpers import escape_html
-    vname = escape_html(str(vehicle_name or resolved[0].get("vehicle_name", "?")))
+    vname = escape_html(str(vehicle_name or reply_targets[0].get("vehicle_name", "?")))
     alert_co = escape_html(str(co or "?"))
 
-    # Build resolve detail from the shared alert_key (same for all subscribers)
-    alert_key = resolved[0].get("alert_key", "")
+    # Build resolve detail from the shared alert_key (same for all subscribers).
+    alert_key = reply_targets[0].get("alert_key", "")
     key_parts = alert_key.split(":", 2)
     detail = key_parts[2] if len(key_parts) > 2 else ""
     detail_lines = _build_resolve_detail(alert_type, detail)
@@ -344,7 +365,28 @@ async def _auto_resolve_vehicle_alerts(
                     "(acct=%d type=%s): %s", account_id, alert_type, e,
                 )
 
-    for alert in resolved:
+    # ── Per-topic resolve-receipt gate (migration 079) ──────────────
+    # Admins can mute the "🟢 RESOLVED — Vehicle Moving" follow-up per
+    # topic on the Account Settings → Forum Routing page.  Resolve the
+    # admin-side decision once before the per-recipient loop so it's a
+    # single DB hit per auto-resolve event (not per group recipient).
+    # The underlying alert_history row was already flipped to resolved
+    # by ``auto_resolve_alerts_by_vehicle`` above — turning the receipt
+    # off only suppresses the chat message; the dashboard's monitoring
+    # view stays accurate.
+    group_receipt_enabled = True
+    try:
+        route = await tenant.get_alert_route(account_id, alert_type)
+        if route is not None:
+            group_receipt_enabled = bool(route.send_resolve_receipt)
+    except Exception as e:
+        logger.debug(
+            "Could not load alert_route for resolve-receipt gate "
+            "(acct=%d type=%s): %s — defaulting to ENABLED",
+            account_id, alert_type, e,
+        )
+
+    for alert in reply_targets:
         recipient_id = alert.get("sent_to")
         msg_id = alert.get("message_id")
         chat_id = alert.get("chat_id")
@@ -355,6 +397,13 @@ async def _auto_resolve_vehicle_alerts(
         # each member's personal silencer.  Personal DND uses the SSoT
         # helper that prefers per-user override and falls back to the
         # account's Working Hours for the user's role.
+        #
+        # Per-user resolve-receipt gate (migration 080): users who
+        # haven't opted in via the dashboard "My Notifications" page
+        # don't get the 🟢 RESOLVED DM at all (default off).  The
+        # original alert message in their DM stays as-is; the next
+        # alert delivery still happens normally.
+        recipient = None
         if recipient_id and not is_group_post:
             recipient = await get_platform_db().get_user_by_telegram_id(recipient_id)
             if recipient:
@@ -368,6 +417,11 @@ async def _auto_resolve_vehicle_alerts(
                         alert_text=f"✅ Auto-resolved: {alert_type} alert cleared",
                     )
                     continue
+                if not getattr(recipient, "alert_resolve_receipts", False):
+                    # User opted out (or never opted in).  Skip the
+                    # DM receipt entirely.  Don't queue for DND replay
+                    # either — they explicitly don't want these.
+                    continue
 
         # ── Group posts: send resolution as a REPLY to the original ──
         # In a forum topic the original "🚨 ALERT" message has to stay
@@ -377,6 +431,11 @@ async def _auto_resolve_vehicle_alerts(
         # leave only "✅ AUTO-RESOLVED" with no clue what the alert
         # said.  So for group posts we post a NEW resolution message
         # as a reply to the original, preserving both in the thread.
+        if is_group_post and not group_receipt_enabled:
+            # Admin has muted the resolve receipt for this topic.  The
+            # original alert message stays; only the new "RESOLVED"
+            # message is suppressed.
+            continue
         if is_group_post:
             if msg_id and chat_id:
                 try:
@@ -462,15 +521,15 @@ async def _auto_resolve_vehicle_alerts(
         user_id=None,
         action="alert_auto_resolved",
         target_type="alert",
-        target_id=str(resolved[0]["id"]),
+        target_id=str(reply_targets[0]["id"]),
         details=(
             f"{alert_type} alert for Truck {vname} auto-resolved; "
-            f"{len(resolved)} subscriber(s) notified"
+            f"{len(reply_targets)} subscriber(s) notified"
         ),
     )
     logger.info(
         "Auto-resolved %s alert for Truck %s — notified %d subscriber(s)",
-        alert_type, vname, len(resolved),
+        alert_type, vname, len(reply_targets),
     )
 
 async def handle_back_to_alert(update, context, ack_id: int):

@@ -38,6 +38,7 @@ import { apiJSON, classifyError, type ClassifiedError } from '../api/client';
 import type { VehicleFeature, GeofenceFeature } from '../types';
 import { BottomSheet } from '../components/BottomSheet';
 import { RelativeTime } from '../components/RelativeTime';
+import { PTIChip } from '../components/PTIChip';
 import { haptics } from '../hooks/useTelegram';
 import { useUnitSystem } from '../hooks/useUnitSystem';
 import { fmtSpeed } from '../utils/units';
@@ -61,6 +62,11 @@ interface SheetVehicle {
 
 interface Props {
   active: boolean;
+  /** Permissions map from /api/user/me — used to gate the PTI chip. */
+  userPerms?: Record<string, boolean>;
+  /** Route to a different tab.  Passed through to the PTI chip so a
+      tap on the chip lands the driver on the PTI page. */
+  onNavigate?: (page: 'pti') => void;
 }
 
 /**
@@ -175,7 +181,7 @@ function makeClusterIcon(cluster: { getAllChildMarkers: () => L.Marker[]; getChi
   });
 }
 
-export function MapPage({ active }: Props) {
+export function MapPage({ active, userPerms, onNavigate }: Props) {
   const units = useUnitSystem();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -483,6 +489,13 @@ export function MapPage({ active }: Props) {
             </div>
           )}
         </div>
+      )}
+
+      {/* PTI chip — visible only for drivers with an open inspection.
+          Sits above the status card so it's the first thing a driver
+          sees when they open the mini app on Monday morning. */}
+      {!loading && !error && userPerms && onNavigate && (
+        <PTIChip userPerms={userPerms} onTap={() => onNavigate('pti')} />
       )}
 
       {/* FAB group — right column, stacked above the status card */}

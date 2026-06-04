@@ -259,7 +259,12 @@ class KnowledgeBaseMixin:
             q += " AND (title ILIKE ? OR description ILIKE ? OR tags ILIKE ?)"
             term = f"%{search}%"
             params.extend([term, term, term])
-        q += " ORDER BY pinned DESC, created_at DESC LIMIT ? OFFSET ?"
+        # Sort: newest first.  Per-user bookmarks are sorted client-
+        # side after the route hydrates each row's ``is_bookmarked``
+        # flag — keeps the SQL simple and the join out of the hot
+        # path on accounts with thousands of bookmarks.  The legacy
+        # global ``pinned`` column is no longer part of the order.
+        q += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
         params.extend([max(1, min(int(limit), 500)), max(0, int(offset))])
         cur = await self._db.execute(q, params)
         rows = await cur.fetchall()
@@ -493,6 +498,55 @@ class KnowledgeBaseMixin:
         if row is None:
             return None
         return int(dict(row)["helpful"])
+
+    async def add_kb_bookmark(self, article_id: int, user_id: int) -> bool:
+        """Bookmark an article for a user.  No-op if already bookmarked.
+
+        Returns True when a new row was created, False on conflict.
+        """
+        try:
+            await self._db.execute(
+                """INSERT INTO knowledge_bookmarks (article_id, user_id, created_at)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT (article_id, user_id) DO NOTHING""",
+                (article_id, user_id, self._now()),
+            )
+            await self._db.commit()
+            return True
+        except Exception:
+            return False
+
+    async def remove_kb_bookmark(self, article_id: int, user_id: int) -> bool:
+        """Drop a bookmark.  Idempotent — no error if it wasn't there."""
+        try:
+            cur = await self._db.execute(
+                "DELETE FROM knowledge_bookmarks "
+                "WHERE article_id = ? AND user_id = ?",
+                (article_id, user_id),
+            )
+            await self._db.commit()
+            return getattr(cur, "rowcount", 0) > 0
+        except Exception:
+            return False
+
+    async def get_kb_user_bookmark_ids(self, user_id: int) -> set[int]:
+        """Return every article_id this user has bookmarked.
+
+        Returned as a set so the route can decorate the article list
+        in O(1) per row instead of an N+1 lookup.  Cap at a generous
+        10 000 — anything past that is a UI problem, not a storage
+        problem.
+        """
+        try:
+            cur = await self._db.execute(
+                "SELECT article_id FROM knowledge_bookmarks "
+                "WHERE user_id = ? LIMIT 10000",
+                (user_id,),
+            )
+            rows = await cur.fetchall()
+            return {int(dict(r)["article_id"]) for r in rows}
+        except Exception:
+            return set()
 
     async def get_kb_categories(
         self, account_id: int, user_role: str = "all", user_id: int = 0,

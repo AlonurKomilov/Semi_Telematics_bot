@@ -1,0 +1,240 @@
+import { useMemo, useState } from 'react';
+import { X, Download } from 'lucide-react';
+import { apiFetch } from '../../api/client';
+import type { PTIInspectionDetail, PTIInspectionMedia } from '../../types';
+import { parseVerdict, VERDICT_EMOJI } from './aiVerdict';
+
+const VERDICT_DOT: Record<string, string> = {
+  ok: '#30d158', possible_issue: '#ff9f0a', likely_defect: '#ff3b30', unclear: '#8e8e93',
+};
+
+interface Props {
+  inspection: PTIInspectionDetail;
+}
+
+/**
+ * Photo + video gallery for the inspection detail drawer.
+ *
+ * Thumbnails are streamed directly from
+ * ``/api/inspections/{id}/media/{media_id}`` — same auth path as work
+ * orders.  Click → lightbox modal with full-size image / ``<video
+ * controls>``.  Download button writes the file to disk via a
+ * synthetic ``<a download>`` click (works in all modern browsers; the
+ * blob comes from a fresh ``apiFetch`` so the Bearer token rides
+ * along).
+ */
+
+
+type GroupKey = string;  // either 'general' or the item_key
+
+
+function ThumbnailImage({ src, alt }: { src: string; alt: string }) {
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      className="w-full h-full object-cover rounded-md"
+    />
+  );
+}
+
+
+function ThumbnailVideo({ src, alt: _alt }: { src: string; alt: string }) {
+  // ``poster`` would be cleaner but we have no thumbnail extractor on
+  // the server.  Show the first frame via metadata preload.
+  return (
+    <video
+      src={src}
+      preload="metadata"
+      className="w-full h-full object-cover rounded-md bg-black"
+      muted
+    />
+  );
+}
+
+
+async function downloadMedia(inspectionId: number, media: PTIInspectionMedia) {
+  // The browser's native download UI doesn't carry our Bearer token,
+  // so we pull the bytes via apiFetch + create an object URL.
+  const res = await apiFetch(`/inspections/${inspectionId}/media/${media.id}`);
+  if (!res.ok) return;
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = media.file_name || `media-${media.id}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+
+export function MediaGallery({ inspection }: Props) {
+  const media = inspection.media ?? [];
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+
+  // Group media by source item so the gallery reads "Tires walkaround"
+  // then the 4 tire photos under it, rather than a flat alphabetical
+  // soup of 18 photos.
+  const grouped = useMemo(() => {
+    const groups: Record<GroupKey, { label: string; media: PTIInspectionMedia[]; }> = {};
+    const itemLabel = (id: number | null): string => {
+      if (id == null) return 'General';
+      return inspection.items?.find(i => i.id === id)?.label ?? `Item #${id}`;
+    };
+    for (const m of media) {
+      const key: GroupKey = m.item_id == null ? 'general' : String(m.item_id);
+      if (!groups[key]) {
+        groups[key] = { label: itemLabel(m.item_id), media: [] };
+      }
+      groups[key].media.push(m);
+    }
+    return groups;
+  }, [media, inspection.items]);
+
+  if (media.length === 0) {
+    return <p className="text-sm text-muted-foreground">No photos or videos attached.</p>;
+  }
+
+  const flatMedia = media;  // for lightbox prev/next
+  const active = lightboxIdx != null ? flatMedia[lightboxIdx] : null;
+
+  return (
+    <>
+      {Object.entries(grouped).map(([key, group]) => (
+        <div key={key} className="mb-5">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">
+            {group.label}
+            <span className="ml-2 text-xs">· {group.media.length}</span>
+          </h3>
+          <div className="grid grid-cols-3 gap-2">
+            {group.media.map((m) => {
+              const idx = flatMedia.indexOf(m);
+              const src = `/api/inspections/${inspection.id}/media/${m.id}`;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setLightboxIdx(idx)}
+                  className="relative aspect-square overflow-hidden bg-muted rounded-md hover:opacity-80"
+                  aria-label={`Open ${m.file_name}`}
+                >
+                  {m.media_type === 'document' && (m.content_type || '').includes('pdf') ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-muted-foreground p-2">
+                      <span className="text-2xl">📄</span>
+                      <span className="text-[10px] text-center break-all line-clamp-2">{m.file_name}</span>
+                    </div>
+                  ) : m.media_type === 'video' ? (
+                    <ThumbnailVideo src={src} alt={m.file_name} />
+                  ) : (
+                    <ThumbnailImage src={src} alt={m.file_name} />
+                  )}
+                  {m.media_type === 'video' && (
+                    <span className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+                      ▶ video
+                    </span>
+                  )}
+                  {m.media_type === 'document' && (
+                    <span className="absolute bottom-1 right-1 bg-violet-500/80 text-white text-[10px] px-1.5 py-0.5 rounded">
+                      doc
+                    </span>
+                  )}
+                  {m.annotated_at && (
+                    <span
+                      className="absolute top-1 right-1 bg-red-500 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                      title={`Annotated by driver · ${new Date(m.annotated_at).toLocaleString()}`}
+                    >
+                      ✎ Annotated
+                    </span>
+                  )}
+                  {(() => {
+                    const v = parseVerdict(m);
+                    if (!v) return null;
+                    return (
+                      <span
+                        className="absolute bottom-1 left-1 text-white text-[11px] font-bold w-5 h-5 rounded-full flex items-center justify-center"
+                        style={{ background: VERDICT_DOT[v.verdict] ?? '#8e8e93' }}
+                        title={`AI: ${v.summary || v.verdict}`}
+                      >
+                        {VERDICT_EMOJI[v.verdict]}
+                      </span>
+                    );
+                  })()}
+                  {/* Storage state badge — shown only when state is
+                      worth flagging.  'remote' is the healthy default
+                      so we don't clutter the gallery with a ☁ on
+                      every thumb; 'local' / 'syncing' / 'stuck' get
+                      visible badges so the reviewer instantly sees a
+                      file's tier. */}
+                  {(() => {
+                    const s = (m.storage_state || 'remote').toLowerCase();
+                    if (s === 'remote') return null;
+                    const ICON: Record<string, { glyph: string; bg: string; label: string }> = {
+                      local:   { glyph: '💾', bg: 'bg-slate-500',  label: 'Stored locally · sync pending' },
+                      syncing: { glyph: '🔄', bg: 'bg-blue-500',   label: 'Uploading to Google Drive…' },
+                      stuck:   { glyph: '⚠',  bg: 'bg-red-500',    label: 'Sync blocked — reconnect Drive' },
+                    };
+                    const cfg = ICON[s];
+                    if (!cfg) return null;
+                    return (
+                      <span
+                        className={`absolute top-1 left-1 ${cfg.bg} text-white text-[10px] font-semibold px-1.5 py-0.5 rounded shadow-sm`}
+                        title={cfg.label}
+                      >
+                        {cfg.glyph}
+                      </span>
+                    );
+                  })()}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      {/* Lightbox modal */}
+      {active && lightboxIdx != null && (
+        <div
+          className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center"
+          onClick={() => setLightboxIdx(null)}
+        >
+          <button
+            onClick={() => setLightboxIdx(null)}
+            aria-label="Close"
+            className="absolute top-4 right-4 text-white hover:text-white/80 p-2"
+          >
+            <X size={24} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); downloadMedia(inspection.id, active); }}
+            aria-label="Download"
+            className="absolute top-4 right-16 text-white hover:text-white/80 p-2"
+          >
+            <Download size={20} />
+          </button>
+          <div className="max-w-[95vw] max-h-[90vh]" onClick={e => e.stopPropagation()}>
+            {active.media_type === 'photo' ? (
+              <img
+                src={`/api/inspections/${inspection.id}/media/${active.id}`}
+                alt={active.file_name}
+                className="max-w-[95vw] max-h-[90vh] object-contain"
+              />
+            ) : (
+              <video
+                src={`/api/inspections/${inspection.id}/media/${active.id}`}
+                controls
+                autoPlay
+                className="max-w-[95vw] max-h-[90vh] bg-black"
+              />
+            )}
+            <p className="text-white/80 text-xs text-center mt-2">
+              {active.file_name}
+            </p>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

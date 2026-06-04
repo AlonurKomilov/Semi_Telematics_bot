@@ -112,8 +112,19 @@ export default function Chat() {
   // Load conversation history + models on mount
   useEffect(() => {
     apiJSON<AIHistoryResponse>('/ai/history')
-      .then((d) => setMessages((d.messages || []).map(m => ({ ...m, timestamp: new Date() }))))
-      .catch(() => {});
+      .then((d) => setMessages((d.messages || []).map(m => ({
+        ...m,
+        // Use the backend timestamp when present so loaded scrollback
+        // shows the real send time, not "12:34 PM" stamped at page load.
+        timestamp: m.ts ? new Date(m.ts) : new Date(),
+      }))))
+      .catch((e: unknown) => {
+        // Don't swallow silently — an empty chat after history failed
+        // to load is indistinguishable from a genuine first-visit
+        // empty state, which is confusing.  Surface it.
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(`Couldn't load chat history: ${msg}`);
+      });
     apiJSON<AIModelsResponse>('/ai/models')
       .then((d) => {
         setModels(d.models || []);

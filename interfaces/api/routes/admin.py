@@ -1592,6 +1592,12 @@ async def get_forum_routing(
             "is_active":           bool(r and r.is_active),
             "message_thread_id":   r.message_thread_id if r else None,
             "topic_name_snapshot": r.topic_name_snapshot if r else "",
+            # Per-topic "🟢 RESOLVED" receipt toggle (migration 079).
+            # When false the auto-resolve pipeline still flips the
+            # underlying alert_history row but skips the chat post.
+            # Defaults to True on legacy rows; admin flips via the
+            # ForumRoutingSection on the dashboard.
+            "send_resolve_receipt": bool(r.send_resolve_receipt) if r else True,
         })
 
     # Account-level group-routing settings.  Per-alert-type AI
@@ -1713,6 +1719,56 @@ async def toggle_forum_route(
         details=f"is_active={body.is_active}",
     )
     return {"alert_type": alert_type, "is_active": body.is_active}
+
+
+# ── Per-topic "🟢 RESOLVED" receipt toggle ──────────────────────────
+# Migration 079 added ``alert_routing.send_resolve_receipt``.  This
+# endpoint lets admins flip it per route from the ForumRoutingSection
+# checkbox.  Defaults to True on existing rows — turning it off
+# suppresses the chat receipt only; the underlying alert_history row
+# still flips to resolved, so the dashboard monitoring view stays
+# accurate.
+
+
+class ForumRouteReceiptToggle(BaseModel):
+    send_resolve_receipt: bool
+
+
+@router.put("/forum-routing/routes/{alert_type}/receipt")
+async def toggle_forum_route_receipt(
+    alert_type: str,
+    body: ForumRouteReceiptToggle,
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Enable or disable the '🟢 RESOLVED' chat receipt for one topic."""
+    from adapters.storage.models import ALERT_TYPE_KEYS
+
+    if alert_type not in ALERT_TYPE_KEYS:
+        raise HTTPException(status_code=422, detail=f"Unknown alert_type: {alert_type}")
+
+    account_id = user["account_id"]
+    route = await platform_db.get_alert_route(account_id, alert_type)
+    if route is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No route exists for '{alert_type}'. Run /setupforum or /repairforum first.",
+        )
+    ok = await platform_db.set_alert_route_send_resolve_receipt(
+        account_id, alert_type, body.send_resolve_receipt,
+    )
+    await tenant_db.add_audit_log(
+        account_id, int(user["sub"]),
+        "forum_route_receipt_toggle",
+        target_type="alert_type", target_id=alert_type,
+        details=f"send_resolve_receipt={body.send_resolve_receipt}",
+    )
+    return {
+        "alert_type": alert_type,
+        "send_resolve_receipt": body.send_resolve_receipt,
+        "ok": ok,
+    }
 
 
 @router.post("/forum-routing/disconnect")

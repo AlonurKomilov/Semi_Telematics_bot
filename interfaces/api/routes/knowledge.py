@@ -294,13 +294,29 @@ async def list_articles(
         pinned_only=pinned,
         include_pending=is_kb_approver_role(role),
     )
+    # Decorate each row with the requesting user's bookmark state +
+    # sort bookmarked-by-me first.  One DB lookup per list response,
+    # not per row.
+    bookmarks: set[int] = set()
+    try:
+        bookmarks = await platform_db.get_kb_user_bookmark_ids(internal_uid)
+    except Exception:
+        pass
+    decorated = []
+    for a in articles:
+        is_bk = int(a.get("id", 0)) in bookmarks
+        decorated.append({**a, "is_bookmarked": is_bk})
+    # Stable sort: bookmarked rows float to the top, the existing
+    # created_at DESC ordering from the storage layer survives within
+    # each group.
+    decorated.sort(key=lambda r: 0 if r["is_bookmarked"] else 1)
     return {
-        "articles": articles,
-        "count": len(articles),
+        "articles": decorated,
+        "count": len(decorated),
         "total": total,
         "limit": limit,
         "offset": offset,
-        "has_more": offset + len(articles) < total,
+        "has_more": offset + len(decorated) < total,
     }
 
 
@@ -331,8 +347,16 @@ async def get_article(
         my_vote = await platform_db.get_kb_user_feedback(article_id, internal_uid)
     except Exception:
         my_vote = None
+    try:
+        my_bookmarks = await platform_db.get_kb_user_bookmark_ids(internal_uid)
+    except Exception:
+        my_bookmarks = set()
     if isinstance(article, dict):
-        article = {**article, "my_vote": my_vote}
+        article = {
+            **article,
+            "my_vote": my_vote,
+            "is_bookmarked": int(article.get("id", 0)) in my_bookmarks,
+        }
     return article
 
 
@@ -424,6 +448,51 @@ async def record_feedback(
         "helpful_count":   int((fresh or {}).get("helpful_count", 0) or 0),
         "unhelpful_count": int((fresh or {}).get("unhelpful_count", 0) or 0),
     }
+
+
+# ── Personal bookmarks ────────────────────────────────────────────
+
+
+@router.post("/articles/{article_id}/bookmark")
+async def add_bookmark(
+    article_id: int,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Bookmark an article for the requesting user.
+
+    Per-user — does NOT touch what other users in the same account
+    see.  Idempotent: re-bookmarking is a no-op.
+    """
+    article = await platform_db.get_kb_article(article_id)
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    internal_uid = await resolve_user_id(user)
+    if not internal_uid:
+        raise HTTPException(status_code=401, detail="User not found")
+    if not _can_view_article(
+        user_id=internal_uid,
+        account_id=user["account_id"],
+        role=user.get("role", "driver"),
+        article=article,
+    ):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    await platform_db.add_kb_bookmark(article_id, internal_uid)
+    return {"ok": True, "is_bookmarked": True}
+
+
+@router.delete("/articles/{article_id}/bookmark")
+async def remove_bookmark(
+    article_id: int,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Remove a bookmark.  Idempotent — no error if it wasn't there."""
+    internal_uid = await resolve_user_id(user)
+    if not internal_uid:
+        raise HTTPException(status_code=401, detail="User not found")
+    await platform_db.remove_kb_bookmark(article_id, internal_uid)
+    return {"ok": True, "is_bookmarked": False}
 
 
 # ── Write endpoints ─────────────────────────────────────────────────

@@ -88,13 +88,31 @@ def _h(token: str) -> dict:
 
 
 class TestPendingCountEndpoint:
-    async def test_owner_sees_full_count(self, seeded):
+    async def test_owner_default_view_strict_to_owner_admin_types(self, seeded):
+        """Strict persona binding: Owner's default view counts only
+        owner_admin alert types (system / reescalate).  Seeded data
+        is two ``fault`` alerts (Fleet's persona) → count is 0 for
+        Owner's default view; Owner switches X-View-As: fleet to see
+        the operational count."""
         async with AsyncClient(
             transport=ASGITransport(app=seeded["app"]), base_url="http://t"
         ) as c:
             r = await c.get(
                 "/api/alerts/pending/count",
                 headers=_h(seeded["token_owner"]),
+            )
+            assert r.status_code == 200
+            assert r.json() == {"count": 0}
+
+    async def test_owner_with_view_as_fleet_sees_fleet_count(self, seeded):
+        """Owner sending X-View-As: fleet re-scopes to Fleet's persona.
+        Both seeded fault alerts now count."""
+        async with AsyncClient(
+            transport=ASGITransport(app=seeded["app"]), base_url="http://t"
+        ) as c:
+            r = await c.get(
+                "/api/alerts/pending/count",
+                headers={**_h(seeded["token_owner"]), "X-View-As": "fleet"},
             )
             assert r.status_code == 200
             assert r.json() == {"count": 2}

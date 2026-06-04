@@ -16,17 +16,17 @@ import HeroChip from './HeroChip';
 
 export default function DispatchHero() {
   const { data, isLoading, isError } = useShellStats();
-  if (isError) return null;
+  if (isError) return <div className="flex-1 min-w-0" />;
   if (isLoading || !data) {
     return (
-      <div className="h-9 bg-muted/20 border-b border-border/60 shrink-0 flex items-center px-4 gap-1.5">
+      <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5">
         <span className="text-[11px] text-muted-foreground/60">Loading dispatch status…</span>
       </div>
     );
   }
-  const { fleet, pending_alerts, unsafe_parking, unknown_parking } = data;
+  const { fleet, pending_alerts, unsafe_parking, unknown_parking, low_fuel } = data;
   return (
-    <div className="h-9 bg-muted/20 border-b border-border/60 shrink-0 flex items-center px-4 gap-1.5 overflow-x-auto scrollbar-thin">
+    <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto scrollbar-thin">
       <HeroChip label="On the road" value={fleet.moving} tone="positive" title="Vehicles currently moving" />
       <HeroChip label="Idle" value={fleet.idle} tone="warning" title="Engine on but stationary" />
       <HeroChip label="Stopped" value={fleet.stopped} tone="neutral" />
@@ -39,6 +39,9 @@ export default function DispatchHero() {
       )}
       {unknown_parking !== undefined && unknown_parking > 0 && (
         <HeroChip label="Parked (unknown zone)" value={unknown_parking} tone="warning" />
+      )}
+      {low_fuel !== undefined && low_fuel > 0 && (
+        <HeroChip label="Low fuel" value={low_fuel} tone="warning" title="Vehicles below 20% fuel" />
       )}
     </div>
   );
