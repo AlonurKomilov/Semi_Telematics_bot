@@ -90,10 +90,12 @@ Every badge/chip uses one treatment: a **15% tinted fill + solid text +
 30% border**, in one hue. Each tone exposes three tokens for this:
 `text-<tone>` (solid), `bg-<tone>-bg` (fill), `border-<tone>-bd` (border).
 
-> ⚠️ The alpha is **baked into the `-bg`/`-bd` tokens** (via `color-mix`
-> in [index.css](src/index.css)). Do **not** try `bg-ok/15` — Tailwind's
-> opacity modifier silently no-ops on this project's full-`oklch()` var
-> colours (that's also why the old `bg-destructive/10` never rendered).
+> The `-bg`/`-bd` tokens pre-bake the alpha (via `color-mix` in
+> [index.css](src/index.css)) so the recipe is one short class set.
+> `bg-ok/15` etc. **also** work — the `/<alpha>` modifier is enabled on
+> every token by `tokenColor()` in [tailwind.config.js](tailwind.config.js)
+> — but prefer `toneClasses()` / the `-bg`/`-bd` tokens so the soft-pill
+> stays identical everywhere.
 
 Don't hand-write the recipe — call the helper in
 [`src/lib/status.ts`](src/lib/status.ts):
@@ -125,16 +127,47 @@ that map — never pick a colour at the call-site.**
 - **Font:** Geist Variable (`--font-sans`). Don't import another family.
 - **Scale (what's actually used):**
 
-| Class | Role |
-|---|---|
-| `text-xs` | Dominant body / table cells / badges / metadata |
-| `text-sm` | Default body, form labels, buttons |
-| `text-base` | Emphasised body |
-| `text-lg` / `text-xl` | Section / card titles |
-| `text-2xl`+ | Page titles, big KPI numbers only |
+| Class | Size | Role |
+|---|---|---|
+| `text-3xs` | 10px | Densest micro-labels — chip captions, axis hints, sparkline notes |
+| `text-2xs` | 11px | Dense metadata — table sub-text, timestamps, secondary chips |
+| `text-xs` | 12px | Dominant body / table cells / badges / metadata |
+| `text-sm` | 14px | Default body, form labels, buttons |
+| `text-base` | 16px | Emphasised body |
+| `text-lg` / `text-xl` | 18/20px | Section / card titles |
+| `text-2xl`+ | 24px+ | Page titles, big KPI numbers only |
 
+- **No arbitrary sizes.** Use the scale — including `text-2xs` / `text-3xs`
+  for sub-12px text. **Never** `text-[10px]` / `text-[11px]` / `text-[9px]`:
+  those re-type the same value inconsistently. (`text-3xs` also covers the
+  rare 8–9px cases.) Charts/SVG that need a numeric `fontSize` are the only
+  exception.
 - **Weights:** `font-medium` (default emphasis), `font-semibold`
   (headings), `font-bold` (KPI figures). Avoid `font-light`/`thin`.
+
+### Roles — pick by role, not by eye
+
+The scale above is the vocabulary; these are the **fixed combinations** for
+each semantic role. A heading is the SAME size+weight on every page — don't
+improvise (that's why some pages used to look heavier/lighter than others).
+
+| Role | Classes | Where |
+|---|---|---|
+| Page title | `text-2xl font-bold` | top of page — **use `PageHeader`**, don't hand-roll |
+| Section title | `text-lg font-semibold` | heading of a major section / card |
+| Card / subsection title | `text-base font-semibold` | smaller card or sub-block heading |
+| Section label (caps) | `text-xs font-medium uppercase tracking-wide text-muted-foreground` | small-caps group labels |
+| Body / table cell | `text-sm` (`text-xs` in dense tables) | default running text |
+| Caption / meta | `text-xs text-muted-foreground` | timestamps, secondary metadata |
+| Code / ID | `font-mono text-xs` | **only** technical identifiers — record IDs, IPs, hashes, tokens, code snippets |
+
+- **`font-mono` is for machine identifiers only.** Human-readable data —
+  company codes, vehicle names, statuses, labels — uses the normal sans
+  font (the default `DataTable` cell). Don't `font-mono` a Company column
+  on one page and leave it plain on another.
+- **Same column, same render.** When the same logical column (Company,
+  status, a count) appears on multiple pages, style it identically — lift
+  the renderer to a shared helper rather than re-styling per page.
 
 ---
 
@@ -188,6 +221,28 @@ scaffolding: `PageHeader`, `KpiCard`, `EmptyState`, `ErrorState`,
 `LoadingSkeleton`, `FilterBar`, `Breadcrumb`, toasts. Use these for
 headers/empty/error/loading states — don't roll your own.
 
+### Icons
+
+- **Library:** [`lucide-react`](https://lucide.dev) only. Don't add a
+  second icon set or use inline `<svg>` / emoji as a UI icon (emoji are
+  fine in *data* — POI markers, etc.).
+- **Size = a standard step.** Pick from **`12 · 14 · 16 · 18 · 20 · 24`**
+  (px), matched to the adjacent text:
+
+| Icon | Pairs with | Use |
+|---|---|---|
+| `12` | `text-2xs`/`xs` | dense inline (table cells, chips) |
+| `14` | `text-sm` | default inline (buttons, list rows) |
+| `16` | `text-sm`/`base` | standalone / toolbar |
+| `18`–`20` | `text-lg`/`xl` | section headers, emphasis |
+| `24` | hero | empty-states, big callouts |
+
+- **Colour** comes from a token — `text-muted-foreground`, `toneText('warn')`,
+  `text-primary` — never a raw palette class.
+- **Convention:** `size={16}` (lucide prop) or `size-4` (Tailwind) — both
+  fine; just stay on the step values above. **Don't** invent in-between
+  sizes (`size={11}`, `size={13}`, `size={22}`).
+
 ---
 
 ## 8. Charts & maps
@@ -223,10 +278,20 @@ This doc governs `dashboard` only.
 - ❌ No raw Tailwind palette for meaning: `text-red-500`, `bg-green-100`,
   `border-amber-500` → use `toneClasses()` / status tokens.
 - ❌ No arbitrary spacing/size (`p-[13px]`, `h-[42px]`) for layout.
+- ❌ No arbitrary text size (`text-[10px]`, `text-[11px]`) → use the scale,
+  incl. `text-2xs` / `text-3xs`.
+- ❌ No off-step icon sizes (`size={11}`, `size={13}`, `size={22}`) → use
+  `12 · 14 · 16 · 18 · 20 · 24`; lucide-react only.
+- ❌ No improvised heading styles — use the §4 **role** combos (page title
+  `text-2xl font-bold`, section title `text-lg font-semibold`, card title
+  `text-base font-semibold`). A heading is the same size+weight everywhere.
+- ❌ No `font-mono` on human-readable data (company codes, names, statuses)
+  — mono is for machine identifiers (IDs/IPs/hashes/code) only.
 - ❌ No hardcoded radius (`rounded-[10px]`, `rounded-4xl`).
 - ❌ No re-implemented primitives — use `ui/*` and `shell/*`.
 - ✅ Colour comes from a token; status from a tone; spacing from the 4px
-  scale; radius from `--radius`; type from the Geist scale.
+  scale; radius from `--radius`; type from the Geist scale (incl. 2xs/3xs)
+  at a §4 role combo; icons from lucide at a standard step.
 
 When unsure, grep for an existing screen that does the same thing and
 copy its tokens.

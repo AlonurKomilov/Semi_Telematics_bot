@@ -120,11 +120,10 @@
        `bg /15 + border /30` pill treatment.  Defined ONCE here (not
        repeated in .dark) because they reference var(--ok) etc., which
        the .dark block re-points — so the fill/border auto-flip with
-       the base hue.  We bake the alpha into the var with color-mix
-       rather than using Tailwind's `/15` opacity modifier: this
-       project's tokens are full oklch() colours, and the modifier
-       silently drops on them (TW emits no class at all — the same
-       reason `bg-destructive/10` never rendered). */
+       the base hue.  Pre-baking the alpha here keeps the canonical
+       soft-pill to one short class set; `bg-ok/15` also works now (the
+       `/<alpha>` modifier is enabled on every token by tokenColor() in
+       tailwind.config.js). */
     --ok-bg:     color-mix(in oklab, var(--ok) 15%, transparent);
     --ok-bd:     color-mix(in oklab, var(--ok) 30%, transparent);
 

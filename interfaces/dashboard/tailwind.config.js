@@ -1,4 +1,30 @@
 /** @type {import('tailwindcss').Config} */
+
+/**
+ * CSS-var token colour that supports Tailwind's `/<alpha>` opacity
+ * modifier.
+ *
+ * Plain `'var(--x)'` colours can't take the modifier in this setup: our
+ * tokens are complete `oklch(…)` values (not bare channels), so Tailwind
+ * can't inject an alpha and emits NO class at all for `bg-primary/80`,
+ * `border-border/50`, `bg-destructive/10`, … — they silently render as
+ * nothing.  This function form returns the bare var when there's no
+ * modifier (identical to before) and a `color-mix()` when there is, so
+ * every token supports `/<alpha>` uniformly.  `color-mix` is supported
+ * in all evergreen browsers (this is an internal tool).
+ *
+ * Tailwind calls colour functions with `{ opacityVariable, opacityValue }`.
+ * For a bare utility (no modifier) it passes the `--tw-*-opacity` hook as
+ * `opacityValue` (e.g. `'var(--tw-bg-opacity, 1)'`); for `/50` it passes
+ * the literal `'0.5'`.  We only want color-mix for the literal case, so a
+ * bare `bg-card` stays the simple `var(--card)` it always was — and we
+ * don't pay color-mix on the thousands of unmodified token usages.
+ */
+const tokenColor = (cssVar) => ({ opacityValue }) =>
+  (opacityValue === undefined || String(opacityValue).startsWith('var('))
+    ? `var(${cssVar})`
+    : `color-mix(in oklab, var(${cssVar}) calc(${opacityValue} * 100%), transparent)`;
+
 export default {
   darkMode: 'class',
   content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'],
@@ -6,50 +32,51 @@ export default {
     extend: {
       colors: {
         brand: { 50: '#eef7ff', 100: '#d9edff', 200: '#bce0ff', 300: '#8eccff', 400: '#59b0ff', 500: '#338cff', 600: '#1a6bf5', 700: '#1355e1', 800: '#1646b6', 900: '#183d8f' },
-        // shadcn CSS-var tokens — lets Tailwind JIT generate bg-primary, text-muted-foreground etc.
-        background: 'var(--background)',
-        foreground: 'var(--foreground)',
-        card: { DEFAULT: 'var(--card)', foreground: 'var(--card-foreground)' },
-        popover: { DEFAULT: 'var(--popover)', foreground: 'var(--popover-foreground)' },
-        primary: { DEFAULT: 'var(--primary)', foreground: 'var(--primary-foreground)' },
-        secondary: { DEFAULT: 'var(--secondary)', foreground: 'var(--secondary-foreground)' },
-        muted: { DEFAULT: 'var(--muted)', foreground: 'var(--muted-foreground)' },
-        accent: { DEFAULT: 'var(--accent)', foreground: 'var(--accent-foreground)' },
-        destructive: { DEFAULT: 'var(--destructive)' },
+        // shadcn CSS-var tokens — wrapped in tokenColor() so `bg-primary`,
+        // `text-muted-foreground/60`, `border-border/50`, etc. all work
+        // (the bare class AND the `/<alpha>` modifier).
+        background: tokenColor('--background'),
+        foreground: tokenColor('--foreground'),
+        card: { DEFAULT: tokenColor('--card'), foreground: tokenColor('--card-foreground') },
+        popover: { DEFAULT: tokenColor('--popover'), foreground: tokenColor('--popover-foreground') },
+        primary: { DEFAULT: tokenColor('--primary'), foreground: tokenColor('--primary-foreground') },
+        secondary: { DEFAULT: tokenColor('--secondary'), foreground: tokenColor('--secondary-foreground') },
+        muted: { DEFAULT: tokenColor('--muted'), foreground: tokenColor('--muted-foreground') },
+        accent: { DEFAULT: tokenColor('--accent'), foreground: tokenColor('--accent-foreground') },
+        destructive: { DEFAULT: tokenColor('--destructive') },
         // Semantic status hues — the meaning layer (ok/warn/danger/info).
-        // Each tone has three tokens: solid (text/icons), `-bg` (15%
-        // tinted fill) and `-bd` (30% border).  The alpha is baked into
-        // the CSS var (color-mix, see index.css) rather than applied via
-        // Tailwind's `/15` modifier — the modifier silently drops on
-        // full-oklch() var colours in this setup.  Always reach for these
-        // (or toneClasses() in lib/status.ts) instead of raw
-        // `text-green-500` / `#22c55e` — see design.md.
-        ok: 'var(--ok)',
+        // The solid tone supports `/<alpha>` via tokenColor().  Each tone
+        // also ships pre-baked `-bg` (15% fill) and `-bd` (30% border)
+        // tokens for the canonical soft-pill recipe — these are already
+        // translucent CSS vars, so they stay as plain `var()` (no
+        // modifier applied to them).  Reach for these (or toneClasses()
+        // in lib/status.ts) for any status colour — see design.md §3.
+        ok: tokenColor('--ok'),
         'ok-bg': 'var(--ok-bg)',
         'ok-bd': 'var(--ok-bd)',
-        warn: 'var(--warn)',
+        warn: tokenColor('--warn'),
         'warn-bg': 'var(--warn-bg)',
         'warn-bd': 'var(--warn-bd)',
-        danger: 'var(--danger)',
+        danger: tokenColor('--danger'),
         'danger-bg': 'var(--danger-bg)',
         'danger-bd': 'var(--danger-bd)',
-        info: 'var(--info)',
+        info: tokenColor('--info'),
         'info-bg': 'var(--info-bg)',
         'info-bd': 'var(--info-bd)',
-        border: 'var(--border)',
-        input: 'var(--input)',
-        ring: 'var(--ring)',
+        border: tokenColor('--border'),
+        input: tokenColor('--input'),
+        ring: tokenColor('--ring'),
         // Shell-chrome tokens — used by the persistent sidebar and the
         // top header bar.  Distinct from ``card`` (which is the surface
         // colour of standalone content cards) so the chrome reads as
         // chrome and the canvas reads as canvas — Samsara-style depth
         // hierarchy instead of one flat dark tone.
         sidebar: {
-          DEFAULT: 'var(--sidebar)',
-          foreground: 'var(--sidebar-foreground)',
-          accent: 'var(--sidebar-accent)',
-          'accent-foreground': 'var(--sidebar-accent-foreground)',
-          border: 'var(--sidebar-border)',
+          DEFAULT: tokenColor('--sidebar'),
+          foreground: tokenColor('--sidebar-foreground'),
+          accent: tokenColor('--sidebar-accent'),
+          'accent-foreground': tokenColor('--sidebar-accent-foreground'),
+          border: tokenColor('--sidebar-border'),
         },
       },
       // Every common rounded-* variant tracks ``--radius`` so the
@@ -73,6 +100,17 @@ export default {
         xl: 'calc(var(--radius) + 4px)',
         '2xl': 'calc(var(--radius) + 8px)',
         '3xl': 'calc(var(--radius) + 16px)',
+      },
+      // Dense-data micro sizes BELOW Tailwind's `text-xs` (12px) floor.
+      // This UI needs sub-12px label text (table meta, chips, axis hints)
+      // and ~226 spots were hardcoding it as `text-[10px]` / `text-[11px]`
+      // / `text-[9px]` — the same value re-typed inconsistently.  These two
+      // named steps absorb all of them.  Defined size-only (no forced
+      // line-height) so they're a 1:1 swap for the arbitrary values they
+      // replace — no vertical-rhythm shift.  See design.md §4.
+      fontSize: {
+        '2xs': '0.6875rem', // 11px
+        '3xs': '0.625rem',  // 10px (also absorbs the rare 8–9px)
       },
     },
   },

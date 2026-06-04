@@ -16,9 +16,11 @@
  *       This is the treatment that was hand-written ~900 times across
  *       the app as `bg-green-500/15 text-green-700 dark:text-green-400
  *       border-green-500/30`.  Now it lives once.  NB: the alpha is
- *       baked into the `-bg`/`-bd` tokens (color-mix, in index.css) —
- *       Tailwind's `/15` opacity modifier silently no-ops on this
- *       project's full-oklch() var colours, so we don't use it.
+ *       pre-baked into the `-bg`/`-bd` tokens (color-mix, in index.css)
+ *       so the recipe is one short class set.  `bg-ok/15` also works now
+ *       (the `/<alpha>` modifier is enabled on every token by
+ *       tokenColor() in tailwind.config.js) — we just prefer the baked
+ *       tokens here so the soft-pill is byte-identical everywhere.
  *
  * Why a helper and not just classes: most call-sites start from a
  * *domain* string ("overdue", "in_progress", "moving") rather than a
@@ -62,8 +64,14 @@ const STATUS_TONE: Record<string, Tone> = {
   idle: 'warn',
   stopped: 'danger', inactive: 'danger', offline: 'danger',
   off: 'neutral', unknown: 'neutral',
-  // Task / work-order lifecycle
-  pending: 'warn', in_progress: 'info', scheduled: 'info',
+  // Task / work-order lifecycle.  Urgency progression reads as
+  // info → warn → danger so an operator can tell the severity at a
+  // glance: pending=info (scheduled, no action needed), due_soon=warn
+  // (act this week), overdue=danger (act now).  Pending used to be
+  // warn which collapsed it visually with due_soon — confusing on a
+  // long list.
+  pending: 'info', in_progress: 'info', scheduled: 'info',
+  due_soon: 'warn',
   overdue: 'danger', failed: 'danger', error: 'danger',
   completed: 'ok', done: 'ok', resolved: 'ok', paid: 'ok',
   cancelled: 'neutral', canceled: 'neutral', draft: 'neutral',

@@ -15,8 +15,19 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   arbitrary values (`p-[13px]`, `h-[42px]`) for layout.
 - **Radius = `--radius`.** Use `rounded`, `rounded-md`, `rounded-lg`.
   Never `rounded-[10px]` or `rounded-4xl` (ignores the theme picker).
-- **Type = Geist scale.** `text-xs`/`text-sm` body, `font-medium`/
-  `font-semibold` emphasis.
+- **Type = Geist scale, by ROLE.** `text-xs`/`text-sm` body, sub-12px via
+  `text-2xs`/`text-3xs` (never `text-[10px]`). Headings use the fixed §4
+  role combos so they're identical on every page: **page title** `text-2xl
+  font-bold` (use `PageHeader`), **section title** `text-lg font-semibold`,
+  **card title** `text-base font-semibold`, **caps label** `text-xs
+  font-medium uppercase tracking-wide text-muted-foreground`. Don't
+  improvise heading sizes/weights.
+- **`font-mono` = machine identifiers only** (IDs, IPs, hashes, tokens,
+  code). Never on human-readable data (company codes, names, statuses) — and
+  style the same column (Company, status) identically across pages.
+- **Icons = lucide-react at a standard size.** `12 · 14 · 16 · 18 · 20 · 24`
+  (via `size={16}` or `size-4`), coloured by a token. No off-step sizes
+  (`size={11}`/`{13}`/`{22}`), no second icon set, no emoji as UI icons.
 - **Compose primitives.** Build from [`src/components/ui/`](src/components/ui/)
   and [`src/components/shell/`](src/components/shell/) — don't re-implement
   buttons, badges, dialogs, empty/error/loading states.
