@@ -24,6 +24,7 @@ import {
 } from './badges';
 import { VehiclePicker, MilesPicker, HoursPicker, DaysPicker, type FleetVehicle } from './pickers';
 import { CalendarMonth } from './CalendarMonth';
+import { toneClasses } from '@/lib/status';
 import { ServiceHistoryModal } from './ServiceHistoryModal';
 import { TemplatesModal } from './TemplatesModal';
 import type { MaintenanceTemplate } from '../../types';
@@ -133,7 +134,7 @@ const baseColumns: AnyColumn[] = [
     render: (v) => {
       const s = String(v || '').trim();
       return s
-        ? <span className="text-xs font-mono">{s}</span>
+        ? <span className="text-xs">{s}</span>
         : <span className="text-muted-foreground text-xs">—</span>;
     } },
   // Priority badge — first column after vehicle so it carries the most
@@ -154,7 +155,10 @@ const baseColumns: AnyColumn[] = [
     const s = String(v || '');
     return s.length > 60 ? <span title={s}>{s.slice(0, 60)}…</span> : s;
   }},
-  { key: 'due_date', label: 'Due Date', sortable: true, render: (v) => <DueDateChip value={v} /> },
+  { key: 'due_date', label: 'Due Date', sortable: true, render: (v, row) => {
+    const r = row as MaintenanceTask;
+    return <DueDateChip value={v} status={r.status} recurDays={r.recur_interval_days} />;
+  } },
   // Combined "Mileage Progress" replaces the bare "Due Miles" cell so the
   // operator can see how close each truck is to the next service without
   // doing the arithmetic in their head.
@@ -528,6 +532,51 @@ export default function Tasks() {
   // count without re-walking the list on every render of a chip.  Same
   // boundary as ``DueDateChip`` (calendar-day basis) so a "due today"
   // task lands in the due-soon bucket and not overdue.
+  //
+  // "Due soon" thresholds:
+  //   • date     — within 7 days
+  //   • miles    — within 5,000 mi
+  //   • hours    — within 100 engine hours
+  // These mirror the typical service-interval warning windows in the
+  // industry (oil-change comes "due soon" ~5k miles out, DOT
+  // inspections ~1 week out, PTO hours ~100h out).  A task lands in
+  // dueSoon if ANY axis is within its window; pending otherwise.
+  // Without this the Due Soon chip stayed at 0 for fleets that schedule
+  // by mileage — every "1,922 mi to go" task got bucketed as pending.
+  // Same helper drives the Status column's "due_soon" override so the
+  // chip count and the per-row badge can't drift.
+  const dueSoonClassify = useMemo(() => {
+    const DUE_SOON_DAYS = 7;
+    const DUE_SOON_MILES = 5_000;
+    const DUE_SOON_HOURS = 100;
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    return (t: MaintenanceTask): 'overdue' | 'due_soon' | null => {
+      if (t.due_date) {
+        const due = new Date(t.due_date);
+        if (!Number.isNaN(due.getTime())) {
+          const startOfDue = new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime();
+          const days = Math.round((startOfDue - startOfToday) / 86_400_000);
+          if (days < 0) return 'overdue';
+          if (days <= DUE_SOON_DAYS) return 'due_soon';
+        }
+      }
+      if (t.due_miles != null && t.last_odometer != null) {
+        const remaining = t.due_miles - t.last_odometer;
+        if (remaining < 0) return 'overdue';
+        if (remaining <= DUE_SOON_MILES) return 'due_soon';
+      }
+      if (t.due_engine_hours != null && t.last_engine_hours != null) {
+        const remaining = t.due_engine_hours - t.last_engine_hours;
+        if (remaining < 0) return 'overdue';
+        if (remaining <= DUE_SOON_HOURS) return 'due_soon';
+      }
+      return null;
+    };
+  }, []);
+  const DUE_SOON_DAYS = 7;
+  const DUE_SOON_MILES = 5_000;
+  const DUE_SOON_HOURS = 100;
   const buckets = useMemo(() => {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -546,16 +595,32 @@ export default function Tasks() {
       // the Overdue and Pending chips, making the counts overlap.
       const isOverdueStatus = t.status === 'overdue';
       let placed = false;
+      // 1. Date axis — overdue first (lets the backend's status='overdue'
+      //    flag also force this), then "due in next 7 days".
       if (t.due_date) {
         const due = new Date(t.due_date);
         if (!Number.isNaN(due.getTime())) {
           const startOfDue = new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime();
           const days = Math.round((startOfDue - startOfToday) / 86_400_000);
           if (days < 0 || isOverdueStatus) { overdue.push(t); placed = true; }
-          else if (days <= 7) { dueSoon.push(t); placed = true; }
+          else if (days <= DUE_SOON_DAYS) { dueSoon.push(t); placed = true; }
         }
       }
       if (!placed && isOverdueStatus) { overdue.push(t); placed = true; }
+      // 2. Mileage axis — only check when no date pinned the task to
+      //    another bucket already.  Past due (negative remaining) goes
+      //    to overdue; within threshold goes to dueSoon.
+      if (!placed && t.due_miles != null && t.last_odometer != null) {
+        const remaining = t.due_miles - t.last_odometer;
+        if (remaining < 0) { overdue.push(t); placed = true; }
+        else if (remaining <= DUE_SOON_MILES) { dueSoon.push(t); placed = true; }
+      }
+      // 3. Engine hours axis — same shape as mileage.
+      if (!placed && t.due_engine_hours != null && t.last_engine_hours != null) {
+        const remaining = t.due_engine_hours - t.last_engine_hours;
+        if (remaining < 0) { overdue.push(t); placed = true; }
+        else if (remaining <= DUE_SOON_HOURS) { dueSoon.push(t); placed = true; }
+      }
       if (!placed) { pending.push(t); }
     }
     return { overdue, dueSoon, pending, completed, cancelled };
@@ -572,20 +637,19 @@ export default function Tasks() {
     if (statusFilter === 'pending')   return buckets.pending;
     if (statusFilter === 'completed') return buckets.completed;
     if (statusFilter === 'cancelled') return buckets.cancelled;
-    // "All" view: stitch the buckets in urgency order so a critical
-    // overdue task can't be buried below a low-priority pending task
-    // that was just created.  Each bucket already inherits the
-    // backend's status+priority sort (see get_maintenance_tasks ORDER
-    // BY), and dueSoon is a client-side date-derived bucket that the
-    // backend can't sort — so we have to splice it here.  Completed
-    // and cancelled drop to the bottom; an operator scanning the list
-    // for "what's next" shouldn't see closed tickets above open ones.
+    // Default "All" view = OPEN work only.  Completed and cancelled
+    // tasks are closed tickets; surfacing them in the main list
+    // clutters the "what do I need to do next?" read.  They stay
+    // reachable via the Completed chip, and per-vehicle they're
+    // available in the History button on the drawer.  The recurring-
+    // task auto-spawn (see capabilities/maintenance/service.py:
+    // spawn_recurring_if_completed) already creates the NEXT task
+    // when a recurring one closes, so the list stays populated with
+    // the freshly-spawned children.
     return [
       ...buckets.overdue,
       ...buckets.dueSoon,
       ...buckets.pending,
-      ...buckets.completed,
-      ...buckets.cancelled,
     ];
   }, [statusFilter, buckets]);
 
@@ -644,8 +708,30 @@ export default function Tasks() {
     // (Keeps the checkboxCol shape compatible with DataTable's
     // ColumnDef header generation.)
     void allSelected;
-    return [checkboxCol, ...baseColumns];
-  }, [tasks, selectedIds]);
+    // Override the Status column's render so a pending row whose
+    // due_date / due_miles / due_engine_hours puts it in the dueSoon
+    // bucket displays "due soon" in the badge instead of "pending".
+    // Keeps the per-row badge consistent with the Due Soon chip count;
+    // otherwise the row shows "pending" while the chip says the same
+    // task is "due soon" — two reads of the same task, confusing.
+    // Backend ``status`` column is untouched; only the display label
+    // flips based on the same urgency check the bucket uses.
+    const enrichedBase = baseColumns.map(col => {
+      if (col.key !== 'status') return col;
+      return {
+        ...col,
+        render: (v: unknown, row: Record<string, unknown>) => {
+          const t = row as unknown as MaintenanceTask;
+          const stored = String(v);
+          if (stored === 'pending' && dueSoonClassify(t) === 'due_soon') {
+            return <StatusBadge status="due_soon" />;
+          }
+          return <StatusBadge status={stored} />;
+        },
+      };
+    });
+    return [checkboxCol, ...enrichedBase];
+  }, [tasks, selectedIds, dueSoonClassify]);
 
   // Bulk action handlers — POST to the new /tasks/bulk/* routes.
   const handleBulkComplete = async () => {
@@ -1158,7 +1244,7 @@ export default function Tasks() {
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-xs font-medium text-foreground transition border border-border"
               title="Download maintenance tasks as CSV"
             >
-              <Download size={13} />
+              <Download size={14} />
               Export CSV
             </button>
             {/* DOT binder — opens a dialog so the user can pick a
@@ -1171,7 +1257,7 @@ export default function Tasks() {
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-xs font-medium text-foreground transition border border-border"
               title="Manage re-usable task templates"
             >
-              <ClipboardList size={13} />
+              <ClipboardList size={14} />
               Templates
             </button>
             {/* DOT Binder button moved to Reports module (Reports →
@@ -1179,7 +1265,7 @@ export default function Tasks() {
                 stakeholder-facing compliance PDF, not a maintenance-
                 editing surface. */}
             <button onClick={() => { setShowAdd(!showAdd); setError(''); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-md text-xs font-medium text-primary-foreground transition">
-              <Plus size={13} />
+              <Plus size={14} />
               {showAdd ? 'Cancel' : 'New task'}
             </button>
           </div>
@@ -1206,7 +1292,7 @@ export default function Tasks() {
           {templates.length > 0 && (
             <label className="col-span-full block">
               <span className="block text-xs text-muted-foreground mb-1 inline-flex items-center gap-1">
-                <ClipboardList size={11} />
+                <ClipboardList size={12} />
                 Apply template (optional)
               </span>
               <select
@@ -1267,7 +1353,7 @@ export default function Tasks() {
                           return next;
                         });
                       }}
-                      className={`px-2 py-0.5 rounded-full border text-xs font-mono transition ${
+                      className={`px-2 py-0.5 rounded-full border text-xs transition ${
                         on
                           ? 'bg-primary text-primary-foreground border-primary'
                           : 'bg-card border-border hover:bg-muted'
@@ -1282,7 +1368,7 @@ export default function Tasks() {
                 <button
                   type="button"
                   onClick={() => setFMultiVehicles(new Set())}
-                  className="mt-1 text-[11px] text-muted-foreground hover:text-foreground"
+                  className="mt-1 text-2xs text-muted-foreground hover:text-foreground"
                 >
                   Clear selection
                 </button>
@@ -1379,7 +1465,7 @@ export default function Tasks() {
             </div>
             {fTriggerMode === 'date' && (
               <label className="block">
-                <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
+                <div className="flex items-center justify-between gap-2 text-2xs text-muted-foreground mb-1">
                   <span title="Today's date — the period below is added to this">Today: {_todayLabel()}</span>
                   <span className="text-primary">
                     Due: {fDueDate ? _formatDate(_periodDaysToDueDate(fDueDate)) : '—'}
@@ -1390,7 +1476,7 @@ export default function Tasks() {
             )}
             {fTriggerMode === 'miles' && (
               <label className="block">
-                <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
+                <div className="flex items-center justify-between gap-2 text-2xs text-muted-foreground mb-1">
                   <span>
                     Current:{' '}
                     {fOdometerLoading
@@ -1416,7 +1502,7 @@ export default function Tasks() {
             {fTriggerMode === 'hours' && (
               <label className="block">
                 {fEngineHours != null ? (
-                  <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
+                  <div className="flex items-center justify-between gap-2 text-2xs text-muted-foreground mb-1">
                     <span>Current: {Math.round(fEngineHours).toLocaleString()} h</span>
                     <span className="text-primary">
                       Due:{' '}
@@ -1426,7 +1512,7 @@ export default function Tasks() {
                     </span>
                   </div>
                 ) : (
-                  <p className="text-[11px] text-muted-foreground mb-1">
+                  <p className="text-2xs text-muted-foreground mb-1">
                     {fOdometerLoading
                       ? 'fetching telemetry…'
                       : fVehicle
@@ -1495,19 +1581,74 @@ export default function Tasks() {
         </form>
       )}
 
+      {/* Filter chips live HERE, above the conditional, so they stay
+          visible in every state — table view, empty state, calendar
+          view, loading skeleton.  Putting them inside DataTable's
+          ``headerToolbar`` slot worked when there were rows but
+          disappeared the moment a chip resolved to 0 results (the
+          EmptyState branch replaced the whole DataTable, taking the
+          chips with it — leaving the user stranded with no way to
+          click back to "All"). */}
+      <div className="flex flex-wrap items-center gap-1.5 mb-3">
+        {([
+          // "All" counts OPEN work only — same as what the default
+          // view renders.  Completed/cancelled rows live behind their
+          // own chip + the per-vehicle History button on the drawer.
+          { key: '',          label: 'All',       count: buckets.overdue.length + buckets.dueSoon.length + buckets.pending.length, dot: 'bg-muted-foreground/40' },
+          { key: 'overdue',   label: 'Overdue',   count: buckets.overdue.length,   dot: 'bg-danger' },
+          { key: 'due_soon',  label: 'Due Soon',  count: buckets.dueSoon.length,   dot: 'bg-warn'   },
+          { key: 'pending',   label: 'Pending',   count: buckets.pending.length,   dot: 'bg-info'   },
+          { key: 'completed', label: 'Completed', count: buckets.completed.length, dot: 'bg-ok'     },
+        ] as const).map(chip => {
+          const active = statusFilter === chip.key;
+          return (
+            <button
+              key={chip.key || 'all'}
+              type="button"
+              onClick={() => setStatusFilter(active ? '' : chip.key)}
+              aria-pressed={active}
+              aria-label={`${chip.label}, ${chip.count} ${chip.count === 1 ? 'task' : 'tasks'}${active ? ', selected' : ''}`}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition border ${
+                active
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-card hover:bg-muted text-foreground border-border'
+              }`}
+            >
+              <span aria-hidden className={`w-2 h-2 rounded-full ${chip.dot}`} />
+              {chip.label}
+              <span className={`tabular-nums ${active ? 'opacity-80' : 'text-muted-foreground'}`}>
+                {chip.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {loading && tasks.length === 0 ? (
         <TableSkeleton rows={6} cols={7} />
       ) : tasks.length === 0 ? (
         <EmptyState
           icon={Wrench}
           title={statusFilter ? `No ${statusFilter.replace(/_/g, ' ')} tasks` : 'No maintenance tasks yet'}
-          description="Create your first task — set a due date, due miles, or both, and we'll alert you as it approaches."
-          action={
-            <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition">
-              <Plus size={13} />
-              New task
-            </button>
-          }
+          description={statusFilter
+            ? "Pick another chip above to see other states, or clear the filter to come back to the default list."
+            : "Create your first task — set a due date, due miles, or both, and we'll alert you as it approaches."}
+          action={statusFilter
+            ? (
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 text-foreground rounded-md text-xs font-medium border border-border transition"
+                >
+                  Clear filter
+                </button>
+              )
+            : (
+                <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition">
+                  <Plus size={14} />
+                  New task
+                </button>
+              )}
         />
       ) : viewMode === 'calendar' ? (
         // Calendar view — same dataset, different visualisation.  Click
@@ -1525,39 +1666,6 @@ export default function Tasks() {
             searchKey={['vehicle_name', 'company_code', 'description', 'task_type']}
             searchPlaceholder="Filter this list…"
             onRowClick={(row) => openTaskForEdit(row as unknown as MaintenanceTask)}
-            headerToolbar={
-              <div className="flex flex-wrap items-center gap-1.5">
-                {([
-                  { key: '',          label: 'All',       count: allTasks.length,          dot: 'bg-muted-foreground/40' },
-                  { key: 'overdue',   label: 'Overdue',   count: buckets.overdue.length,   dot: 'bg-red-500'    },
-                  { key: 'due_soon',  label: 'Due Soon',  count: buckets.dueSoon.length,   dot: 'bg-orange-500' },
-                  { key: 'pending',   label: 'Pending',   count: buckets.pending.length,   dot: 'bg-blue-500'   },
-                  { key: 'completed', label: 'Completed', count: buckets.completed.length, dot: 'bg-green-500'  },
-                ] as const).map(chip => {
-                  const active = statusFilter === chip.key;
-                  return (
-                    <button
-                      key={chip.key || 'all'}
-                      type="button"
-                      onClick={() => setStatusFilter(active ? '' : chip.key)}
-                      aria-pressed={active}
-                      aria-label={`${chip.label}, ${chip.count} ${chip.count === 1 ? 'task' : 'tasks'}${active ? ', selected' : ''}`}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition border ${
-                        active
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-card hover:bg-muted text-foreground border-border'
-                      }`}
-                    >
-                      <span aria-hidden className={`w-2 h-2 rounded-full ${chip.dot}`} />
-                      {chip.label}
-                      <span className={`tabular-nums ${active ? 'opacity-80' : 'text-muted-foreground'}`}>
-                        {chip.count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            }
           />
           {/* Result count footer.  Always shows the filtered count
               followed by what's hidden, so the user understands they're
@@ -1567,6 +1675,24 @@ export default function Tasks() {
             {statusFilter && allTasks.length !== tasks.length
               ? ` · ${allTasks.length - tasks.length} hidden by filter`
               : ''}
+            {/* On the default (no-filter) view we explicitly tell the
+                user that closed tickets aren't included.  Otherwise
+                the count looks lower than what the "Completed" chip
+                shows and people wonder where their finished tasks
+                went.  Clickable hint takes them to the Completed
+                chip in one step. */}
+            {!statusFilter && (buckets.completed.length + buckets.cancelled.length) > 0 && (
+              <>
+                {' · '}
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('completed')}
+                  className="text-muted-foreground underline decoration-dotted hover:text-foreground"
+                >
+                  {buckets.completed.length + buckets.cancelled.length} completed/cancelled hidden
+                </button>
+              </>
+            )}
             {!statusFilter && buckets.overdue.length > 0
               ? ` · ${buckets.overdue.length} overdue`
               : ''}
@@ -1588,15 +1714,15 @@ export default function Tasks() {
           <button
             type="button"
             onClick={handleBulkComplete}
-            className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded-full text-xs font-medium transition"
+            className="inline-flex items-center gap-1.5 px-3 py-1 bg-ok text-white rounded-full text-xs font-medium transition"
           >
-            <CheckSquare size={13} />
+            <CheckSquare size={14} />
             Mark complete
           </button>
           <button
             type="button"
             onClick={handleBulkInProgress}
-            className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-xs font-medium transition"
+            className="inline-flex items-center gap-1.5 px-3 py-1 bg-info text-white rounded-full text-xs font-medium transition"
           >
             In progress
           </button>
@@ -1605,7 +1731,7 @@ export default function Tasks() {
             onClick={handleBulkDelete}
             className="inline-flex items-center gap-1.5 px-3 py-1 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full text-xs font-medium transition"
           >
-            <Trash2 size={13} />
+            <Trash2 size={14} />
             Delete
           </button>
           <button
@@ -1632,7 +1758,7 @@ export default function Tasks() {
                   {selected.company_code && (
                     <span
                       title="Company this truck belongs to — disambiguates when two companies share a vehicle name"
-                      className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-[10px] font-mono align-middle"
+                      className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-3xs align-middle"
                     >
                       {selected.company_code}
                     </span>
@@ -1662,7 +1788,7 @@ export default function Tasks() {
                 ``spawned_from_id`` is set (legacy or user-created tasks
                 show nothing here). */}
             {selected.spawned_from_id && (
-              <div className="mb-4 px-3 py-2 bg-blue-500/10 border border-blue-500/30 rounded text-xs text-blue-700 dark:text-blue-400 inline-flex items-center gap-1.5">
+              <div className={`mb-4 px-3 py-2 rounded text-xs inline-flex items-center gap-1.5 ${toneClasses('info')}`}>
                 <span aria-hidden>↻</span>
                 Auto-renewed from task #{selected.spawned_from_id}
               </div>
@@ -1676,7 +1802,7 @@ export default function Tasks() {
             {selected.work_order_id && (
               <a
                 href={`/work-orders/${selected.work_order_id}`}
-                className="mb-4 px-3 py-2 bg-green-500/10 border border-green-500/30 rounded text-xs text-green-700 dark:text-green-400 inline-flex items-center gap-1.5 hover:bg-green-500/20"
+                className={`mb-4 px-3 py-2 rounded text-xs inline-flex items-center gap-1.5 ${toneClasses('ok')}`}
               >
                 <span aria-hidden>📄</span>
                 Closed by Work Order #{selected.work_order_id}
@@ -1688,17 +1814,17 @@ export default function Tasks() {
                 stop generating alerts.  One-click Resume clears it. */}
             {selected.snoozed_until
               && new Date(selected.snoozed_until).getTime() > Date.now() && (
-              <div className="mb-4 px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded text-xs text-amber-700 dark:text-amber-400 flex items-center gap-2">
-                <BellOff size={13} className="shrink-0" />
+              <div className={`mb-4 px-3 py-2 rounded text-xs flex items-center gap-2 ${toneClasses('warn')}`}>
+                <BellOff size={14} className="shrink-0" />
                 <span className="flex-1">
                   Snoozed until {new Date(selected.snoozed_until).toLocaleString()}
                 </span>
                 <button
                   type="button"
                   onClick={() => handleSnooze(null)}
-                  className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-500/20 hover:bg-amber-500/30 rounded text-amber-800 dark:text-amber-300"
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-warn-bg hover:bg-warn-bg rounded text-warn"
                 >
-                  <Bell size={11} />
+                  <Bell size={12} />
                   Resume
                 </button>
               </div>
@@ -1736,9 +1862,9 @@ export default function Tasks() {
                   task metadata.  Multi-line because the name+date can
                   wrap on narrow sidebars. */}
               {selected.attested_at && (
-                <div className="pt-2 border-t border-border/50">
+                <div className="pt-2 border-t border-border">
                   <dt className="text-muted-foreground text-xs mb-1">Attestation</dt>
-                  <dd className="text-xs text-green-700 dark:text-green-400">
+                  <dd className="text-xs text-ok">
                     <span aria-hidden>✓</span>{' '}
                     <span className="font-medium">
                       {selected.attested_by_name || `user ${selected.attested_by}`}
@@ -1832,7 +1958,7 @@ export default function Tasks() {
                 </div>
                 {eTriggerMode === 'date' && (
                   <label className="block">
-                    <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
+                    <div className="flex items-center justify-between gap-2 text-2xs text-muted-foreground mb-1">
                       <span title="Today's date — the period below is added to this">Today: {_todayLabel()}</span>
                       <span className="text-primary">
                         Due: {eDueDate ? _formatDate(_periodDaysToDueDate(eDueDate)) : '—'}
@@ -1843,7 +1969,7 @@ export default function Tasks() {
                 )}
                 {eTriggerMode === 'miles' && (
                   <label className="block">
-                    <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
+                    <div className="flex items-center justify-between gap-2 text-2xs text-muted-foreground mb-1">
                       <span>
                         Current: {eOdometer != null ? `${Math.round(eOdometer).toLocaleString()} mi` : '—'}
                       </span>
@@ -1864,7 +1990,7 @@ export default function Tasks() {
                 {eTriggerMode === 'hours' && (
                   <label className="block">
                     {eEngineHours != null ? (
-                      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1">
+                      <div className="flex items-center justify-between gap-2 text-2xs text-muted-foreground mb-1">
                         <span>Current: {Math.round(eEngineHours).toLocaleString()} h</span>
                         <span className="text-primary">
                           Due:{' '}
@@ -1949,7 +2075,7 @@ export default function Tasks() {
                 <div className="border-t border-border/40 pt-3 -mx-0" aria-hidden />
                 <div className="block">
                   <span className="block text-xs text-muted-foreground mb-1 inline-flex items-center gap-1">
-                    <Paperclip size={11} />
+                    <Paperclip size={12} />
                     Receipt / Photo
                   </span>
                   {selected.attachment_name ? (
@@ -1967,7 +2093,7 @@ export default function Tasks() {
                         {selected.attachment_name}
                       </a>
                       <label className="cursor-pointer text-muted-foreground hover:text-foreground" title="Replace">
-                        <Upload size={13} />
+                        <Upload size={14} />
                         <input
                           type="file"
                           accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif"
@@ -1986,12 +2112,12 @@ export default function Tasks() {
                         className="text-muted-foreground hover:text-destructive"
                         aria-label="Remove attachment"
                       >
-                        <X size={13} />
+                        <X size={14} />
                       </button>
                     </div>
                   ) : (
                     <label className="flex items-center justify-center gap-1.5 p-2 bg-muted/40 hover:bg-muted border border-dashed border-border rounded text-xs cursor-pointer text-muted-foreground hover:text-foreground">
-                      <Upload size={13} />
+                      <Upload size={14} />
                       {uploadingAttachment ? 'Uploading…' : 'Attach a receipt or photo (max 10 MB)'}
                       <input
                         type="file"
@@ -2072,7 +2198,7 @@ export default function Tasks() {
                   type="button"
                   onClick={handleMarkComplete}
                   disabled={saving}
-                  className="mt-2 w-full py-1.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 rounded text-xs font-medium text-green-700 dark:text-green-400 transition inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  className={`mt-2 w-full py-1.5 rounded text-xs font-medium transition inline-flex items-center justify-center gap-1.5 disabled:opacity-50 ${toneClasses('ok')}`}
                 >
                   <CheckSquare size={12} />
                   Mark complete
@@ -2086,8 +2212,8 @@ export default function Tasks() {
               {_isOverdueOrApproaching(selected) && (
                 snoozeOpen ? (
                   <div className="flex items-center gap-1.5 pt-2">
-                    <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1 mr-1">
-                      <BellOff size={11} />
+                    <span className="text-2xs text-muted-foreground inline-flex items-center gap-1 mr-1">
+                      <BellOff size={12} />
                       Snooze for:
                     </span>
                     <button
@@ -2117,7 +2243,7 @@ export default function Tasks() {
                       aria-label="Cancel snooze"
                       className="text-muted-foreground hover:text-foreground p-1"
                     >
-                      <X size={13} />
+                      <X size={14} />
                     </button>
                   </div>
                 ) : (
@@ -2137,7 +2263,7 @@ export default function Tasks() {
                   browser-level confirm dialog is fired. */}
               {deleteOpen ? (
                 <div className="mt-2 p-2 bg-destructive/10 border border-destructive/30 rounded">
-                  <p className="text-[11px] uppercase tracking-wide text-destructive mb-1.5">
+                  <p className="text-2xs uppercase tracking-wide text-destructive mb-1.5">
                     Danger zone — this can&apos;t be undone
                   </p>
                   <div className="flex items-center gap-1.5">

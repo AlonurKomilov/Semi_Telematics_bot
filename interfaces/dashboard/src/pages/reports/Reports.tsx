@@ -21,6 +21,7 @@ import type {
   AnyColumn,
 } from '../../types';
 import { REPORTS } from '../../data/reports';
+import { statusTone, toneClasses } from '../../lib/status';
 
 // Tabs on this page = the API-exportable reports (excludes Camera
 // Check which is bot-delivery-only).  Sourced from the canonical
@@ -53,19 +54,15 @@ const TABS_FOR_VIEW: Record<string, ReadonlyArray<TabKey>> = {
 };
 
 function SeverityBadge({ severity }: { severity: string }) {
-  const colors: Record<string, string> = {
-    critical: 'bg-red-500/15 text-red-600 dark:text-red-400',
-    warning: 'bg-orange-500/15 text-orange-600 dark:text-orange-400',
-    caution: 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400',
-    ok: 'bg-green-500/15 text-green-600 dark:text-green-400',
-  };
-  const cls = colors[severity] || 'bg-gray-500/20 text-muted-foreground';
-  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${cls}`}>{severity}</span>;
+  // ``caution`` isn't in the shared status map (it's a fault-report
+  // specific step between ok and warning); treat it as attention/warn.
+  const tone = severity === 'caution' ? 'warn' : statusTone(severity);
+  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${toneClasses(tone)}`}>{severity}</span>;
 }
 
 function FuelBadge({ pct }: { pct: number | null }) {
   if (pct === null) return <span className="text-muted-foreground">N/A</span>;
-  const cls = pct <= 15 ? 'text-destructive' : pct <= 30 ? 'text-yellow-700 dark:text-yellow-400' : 'text-green-600 dark:text-green-400';
+  const cls = pct <= 15 ? 'text-danger' : pct <= 30 ? 'text-warn' : 'text-ok';
   return <span className={cls}>{pct}%</span>;
 }
 
@@ -97,8 +94,8 @@ const healthCols: AnyColumn[] = [
     render: (v) => {
       const a = v as string[];
       return a && a.length > 0
-        ? <span className="text-destructive text-xs">{a.join(', ')}</span>
-        : <span className="text-green-600 dark:text-green-400 text-xs">OK</span>;
+        ? <span className="text-danger text-xs">{a.join(', ')}</span>
+        : <span className="text-ok text-xs">OK</span>;
     },
   },
 ];

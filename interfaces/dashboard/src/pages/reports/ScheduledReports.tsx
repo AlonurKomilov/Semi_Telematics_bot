@@ -407,7 +407,7 @@ export default function ScheduledReports() {
   return (
     <div className="max-w-xl">
       {error && <div className="mb-3"><ErrorState message={error} /></div>}
-      {success && <p className="text-green-600 dark:text-green-400 text-sm mb-3">{success}</p>}
+      {success && <p className="text-ok text-sm mb-3">{success}</p>}
 
       <div className="space-y-2 mb-4">
         {rows.length === 0 && !editor && (

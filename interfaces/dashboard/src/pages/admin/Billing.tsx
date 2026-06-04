@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { CreditCard, ExternalLink, FileText, AlertTriangle, Gift } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { PageHeader, CardSkeleton } from '../../components/shell';
+import { toneClasses } from '../../lib/status';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -220,11 +221,11 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
         </div>
         <div className="flex items-center gap-2">
           <span className={`px-2 py-0.5 rounded text-xs font-medium border ${
-            summary.status === 'active' ? 'bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/30' :
-            summary.status === 'trialing' ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-300 border-yellow-500/30' :
-            summary.status === 'past_due' ? 'bg-destructive/10 text-destructive border-destructive/30' :
-            summary.status === 'canceled' || summary.status === 'unpaid' ? 'bg-destructive/15 text-destructive border-destructive/40' :
-            'bg-muted text-muted-foreground border-border'
+            summary.status === 'active' ? toneClasses('ok') :
+            summary.status === 'trialing' ? toneClasses('warn') :
+            summary.status === 'past_due' ? toneClasses('danger') :
+            summary.status === 'canceled' || summary.status === 'unpaid' ? toneClasses('danger') :
+            toneClasses('neutral')
           }`}>{summary.status.replace('_', ' ')}</span>
           <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${tierBadge(summary.tier)}`}>
             {summary.tier.toUpperCase()}
@@ -237,11 +238,11 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
               sub={summary.inactive_vehicles > 0 ? `${summary.inactive_vehicles} parked` : 'last 3 days'} />
         <Stat label="Included" value={String(summary.base_vehicles)} sub="per plan" />
         <Stat label="Extra Trucks" value={String(summary.extra_vehicles)}
-              accent={isOverLimit ? 'text-yellow-700 dark:text-yellow-400' : 'text-foreground'} />
+              accent={isOverLimit ? 'text-warn' : 'text-foreground'} />
         <Stat
           label={summary.is_comped ? 'Total Due' : 'Est. Monthly'}
           value={usd(summary.amount_due_cents)}
-          accent={summary.is_comped ? 'text-foreground' : 'text-green-600 dark:text-green-400'}
+          accent={summary.is_comped ? 'text-foreground' : 'text-ok'}
         />
       </div>
 
@@ -270,7 +271,7 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
             {isOverLimit && (
               <div className="flex justify-between">
                 <span>{summary.extra_vehicles} extra truck{summary.extra_vehicles !== 1 ? 's' : ''} × {usd(summary.extra_vehicle_cents)} ea</span>
-                <span className="text-yellow-600 dark:text-yellow-400">+{usd(summary.extra_vehicles * summary.extra_vehicle_cents)}/mo</span>
+                <span className="text-warn">+{usd(summary.extra_vehicles * summary.extra_vehicle_cents)}/mo</span>
               </div>
             )}
           </>
@@ -298,7 +299,7 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
           <span>📅 Period ends {new Date(summary.current_period_end).toLocaleDateString()}</span>
         )}
         {summary.trial_ends_at && (
-          <span className="text-yellow-500">⚠️ Trial ends {new Date(summary.trial_ends_at).toLocaleDateString()}</span>
+          <span className="text-warn">⚠️ Trial ends {new Date(summary.trial_ends_at).toLocaleDateString()}</span>
         )}
         {summary.provider === 'stub' && (
           <span className="text-primary">🧪 Test mode — no real charges</span>
@@ -380,14 +381,14 @@ function PlanCard({ name, price, included, extraPer, features, current, onUpgrad
         </span>
       )}
       <h3 className="text-lg font-bold text-foreground mb-1 capitalize">{name}</h3>
-      <p className="text-2xl font-bold text-green-600 dark:text-green-400 mb-1">
+      <p className="text-2xl font-bold text-ok mb-1">
         {price}<span className="text-sm text-muted-foreground font-normal">/mo</span>
       </p>
       <p className="text-xs text-muted-foreground mb-3">{included} trucks included &middot; {extraPer}/extra truck</p>
       <ul className="text-sm text-foreground/80 space-y-1.5 mb-5 flex-1">
         {features.map((f) => (
           <li key={f} className="flex items-start gap-1.5">
-            <span className="text-green-600 dark:text-green-400 mt-0.5 shrink-0">✓</span> {f}
+            <span className="text-ok mt-0.5 shrink-0">✓</span> {f}
           </li>
         ))}
       </ul>
@@ -444,12 +445,12 @@ function UsageTable({ items }: { items: UsageSnapshot[] }) {
                 </td>
                 <td className="py-2.5 pr-4">
                   {row.extra_vehicles > 0
-                    ? <span className="text-yellow-700 dark:text-yellow-400">+{row.extra_vehicles}</span>
+                    ? <span className="text-warn">+{row.extra_vehicles}</span>
                     : <span className="text-muted-foreground">—</span>}
                 </td>
                 <td className="py-2.5 pr-4 text-muted-foreground">{row.user_count ?? '—'}</td>
                 <td className="py-2.5 pr-4 text-muted-foreground">{fmtNum(row.ai_queries)}</td>
-                <td className="py-2.5 text-right font-semibold text-green-600 dark:text-green-400">{usd(row.amount_due_cents)}</td>
+                <td className="py-2.5 text-right font-semibold text-ok">{usd(row.amount_due_cents)}</td>
               </tr>
             );
           })}
@@ -489,10 +490,10 @@ function InvoicesTable({ items }: { items: Invoice[] }) {
               </td>
               <td className="py-2.5 pr-4">
                 <span className={`px-2 py-0.5 rounded text-xs font-medium border ${
-                  inv.status === 'paid' ? 'bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/30' :
-                  inv.status === 'open' ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-300 border-yellow-500/30' :
-                  inv.status === 'uncollectible' || inv.status === 'void' ? 'bg-destructive/10 text-destructive border-destructive/30' :
-                  'bg-muted text-muted-foreground border-border'
+                  inv.status === 'paid' ? toneClasses('ok') :
+                  inv.status === 'open' ? toneClasses('warn') :
+                  inv.status === 'uncollectible' || inv.status === 'void' ? toneClasses('danger') :
+                  toneClasses('neutral')
                 }`}>{inv.status || '—'}</span>
               </td>
               <td className="py-2.5 pr-4 text-muted-foreground text-xs">

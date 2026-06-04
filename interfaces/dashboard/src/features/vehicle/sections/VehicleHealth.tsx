@@ -13,6 +13,7 @@ import { apiJSON } from '../../../api/client';
 import { CardSkeleton } from '../../../components/shell';
 import { usePermissions } from '../../../hooks/usePermissions';
 import type { HealthData, HealthResponse } from '../../../types';
+import { toneClasses } from '../../../lib/status';
 import { Row } from './_shared/Row';
 import type { VehicleSectionProps } from './_shared/types';
 
@@ -105,7 +106,7 @@ export default function VehicleHealth({ vehicleName }: VehicleSectionProps) {
           {healthAlerts.map((a, i) => (
             <span
               key={i}
-              className="inline-block bg-red-500/20 text-destructive text-xs rounded px-2 py-0.5 mr-1 mb-1"
+              className={`inline-block text-xs rounded px-2 py-0.5 mr-1 mb-1 ${toneClasses('danger')}`}
             >
               {a}
             </span>

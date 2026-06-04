@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Sparkles } from 'lucide-react';
 import type { PTIInspectionDetail, PTIInspectionItem } from '../../types';
+import { toneClasses } from '../../lib/status';
 import { parseVerdict, isFlagged, type AIVerdict } from './aiVerdict';
 
 /**
@@ -53,14 +54,17 @@ export function AIReviewRollup({ inspection: ins }: Props) {
     }
   }
 
+  // Banner surface only (bg + border) — the heading/body keep the
+  // default foreground, so we reach for the tone's fill/border tokens
+  // directly rather than the full text-tinting soft-pill recipe.
   const tone = flaggedCount > 0
-    ? 'border-amber-500/30 bg-amber-500/10'
-    : 'border-green-500/30 bg-green-500/10';
+    ? 'border-warn-bd bg-warn-bg'
+    : 'border-ok-bd bg-ok-bg';
 
   return (
     <div className={`mx-5 mt-4 rounded-lg border p-3 ${tone}`}>
       <div className="flex items-center gap-2 mb-1">
-        <Sparkles size={15} className="text-primary" />
+        <Sparkles size={16} className="text-primary" />
         <span className="text-sm font-semibold">{t('inspections.ai.title')}</span>
       </div>
       <p className="text-xs text-muted-foreground">
@@ -75,7 +79,7 @@ export function AIReviewRollup({ inspection: ins }: Props) {
           {disagreements.map((d, i) => (
             <div
               key={i}
-              className="text-xs rounded bg-red-500/10 text-red-700 dark:text-red-400 px-2 py-1.5"
+              className={`text-xs rounded border px-2 py-1.5 ${toneClasses('danger')}`}
             >
               <span className="font-medium">
                 {t('inspections.ai.disagreement', { item: d.label })}

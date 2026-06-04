@@ -20,9 +20,9 @@
  */
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Bell, BellOff, Loader2 } from 'lucide-react';
+import { Bell, BellOff } from 'lucide-react';
 import { apiJSON } from '../api/client';
-import { PageHeader } from '../components/shell';
+import { PageHeader, ErrorState, CardSkeleton } from '../components/shell';
 
 interface AlertPrefsResponse {
   alerts_on: boolean;
@@ -104,10 +104,7 @@ export default function MyNotifications() {
           title="My Notifications"
           description="Choose which alerts arrive in your personal Telegram chat."
         />
-        <div className="flex items-center gap-2 text-muted-foreground text-sm">
-          <Loader2 size={14} className="animate-spin" />
-          Loading…
-        </div>
+        <CardSkeleton message="Loading preferences…" />
       </div>
     );
   }
@@ -120,7 +117,10 @@ export default function MyNotifications() {
           title="My Notifications"
           description="Choose which alerts arrive in your personal Telegram chat."
         />
-        <p className="text-sm text-destructive">Couldn&apos;t load preferences.</p>
+        <ErrorState
+          title="Couldn’t load preferences"
+          message="The server didn’t respond when fetching your alert settings. Try again in a moment."
+        />
       </div>
     );
   }
@@ -211,9 +211,9 @@ export default function MyNotifications() {
             className="accent-primary cursor-pointer mt-0.5"
           />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium">🟢 Send me resolve receipts</p>
+            <p className="text-sm font-medium">🟢 Resolved-alert notifications</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              When an alert auto-resolves (e.g. a parked truck starts moving, a fault clears), send me a confirmation DM. Off by default to reduce chat noise; turn on if you want closure-loop confirmations.
+              When an alert auto-resolves (e.g. a parked truck starts moving, a fault clears), send me a DM confirming it cleared. Off by default to reduce chat noise; turn on if you want closure-loop confirmations.
             </p>
           </div>
         </label>

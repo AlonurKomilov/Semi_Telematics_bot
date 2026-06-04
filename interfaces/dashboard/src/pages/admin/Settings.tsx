@@ -14,6 +14,7 @@ import {
 import { TIMEZONE_OPTIONS, timezoneLabelWithTime } from '../../utils/timezones';
 import { useNow } from '../../hooks/useNow';
 import ForumRoutingSection from './ForumRoutingSection';
+import { toneClasses } from '../../lib/status';
 
 const ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'driver'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -203,7 +204,7 @@ export default function Settings() {
             </span>
           </p>
           {accountTzSuccess && (
-            <p className="text-green-600 dark:text-green-400 text-sm mb-3">
+            <p className="text-ok text-sm mb-3">
               {accountTzSuccess}
             </p>
           )}
@@ -258,7 +259,7 @@ export default function Settings() {
           <dl className="grid grid-cols-3 gap-4 text-sm">
             <div><dt className="text-muted-foreground">Name</dt><dd>{data.account.name || '—'}</dd></div>
             <div><dt className="text-muted-foreground">Tier</dt><dd className="capitalize">{data.account.tier || 'basic'}</dd></div>
-            <div><dt className="text-muted-foreground">Status</dt><dd>{data.account.is_active ? <span className="text-green-600 dark:text-green-400">Active</span> : <span className="text-destructive">Inactive</span>}</dd></div>
+            <div><dt className="text-muted-foreground">Status</dt><dd>{data.account.is_active ? <span className="text-ok">Active</span> : <span className="text-danger">Inactive</span>}</dd></div>
           </dl>
         </section>
       )}
@@ -267,7 +268,7 @@ export default function Settings() {
       {isOwner && (
         <section className="bg-card border border-border rounded-xl p-5">
           <h2 className="text-lg font-semibold mb-3">Telegram Bot</h2>
-          {botSuccess && <p className="text-green-600 dark:text-green-400 text-sm mb-3">{botSuccess}</p>}
+          {botSuccess && <p className="text-ok text-sm mb-3">{botSuccess}</p>}
           {botError && <p className="text-destructive text-sm mb-3">{botError}</p>}
 
           {botConfig?.has_bot ? (
@@ -275,10 +276,10 @@ export default function Settings() {
               <div className="flex items-center gap-3 mb-4">
                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
                   botConfig.is_running !== false
-                    ? 'bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30'
-                    : 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30'
+                    ? toneClasses('ok')
+                    : toneClasses('warn')
                 }`}>
-                  <span className={`w-2 h-2 rounded-full ${botConfig.is_running !== false ? 'bg-green-400 animate-pulse' : 'bg-yellow-400'}`} />
+                  <span className={`w-2 h-2 rounded-full ${botConfig.is_running !== false ? 'bg-ok animate-pulse' : 'bg-warn'}`} />
                   {botConfig.is_running !== false ? 'Running' : 'Configured'}
                 </span>
               </div>
@@ -307,8 +308,8 @@ export default function Settings() {
                   <dt className="text-xs text-muted-foreground mb-0.5">Status</dt>
                   <dd className="text-sm">
                     {botConfig.is_running !== false
-                      ? <span className="text-green-600 dark:text-green-400">Active &amp; receiving messages</span>
-                      : <span className="text-yellow-600 dark:text-yellow-400">Token saved, bot not running</span>}
+                      ? <span className="text-ok">Active &amp; receiving messages</span>
+                      : <span className="text-warn">Token saved, bot not running</span>}
                   </dd>
                 </div>
               </div>
@@ -464,7 +465,7 @@ export default function Settings() {
               </select>
             </div>
             <div className="flex items-end">
-              <button type="submit" disabled={saving} className="px-4 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded text-sm font-medium text-foreground transition">
+              <button type="submit" disabled={saving} className="px-4 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition">
                 {saving ? 'Saving...' : 'Add'}
               </button>
             </div>

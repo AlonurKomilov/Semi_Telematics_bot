@@ -150,7 +150,7 @@ export default function WorkHours() {
             onClick={openCreate}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
           >
-            <Plus size={13} />
+            <Plus size={14} />
             New schedule
           </button>
         }

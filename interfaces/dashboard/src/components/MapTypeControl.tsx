@@ -114,7 +114,7 @@ export default function MapTypeControl({
                   >
                     {/* Check badge */}
                     {active && (
-                      <span className="bg-primary text-primary-foreground rounded-full w-4 h-4 text-[9px] flex items-center justify-center leading-none">
+                      <span className="bg-primary text-primary-foreground rounded-full w-4 h-4 text-3xs flex items-center justify-center leading-none">
                         ✓
                       </span>
                     )}
@@ -122,7 +122,7 @@ export default function MapTypeControl({
                   {/* Icon + label */}
                   <span className="text-base leading-none">{icon}</span>
                   <span
-                    className={`text-[11px] leading-tight ${
+                    className={`text-2xs leading-tight ${
                       active ? 'text-primary font-medium' : 'text-muted-foreground'
                     }`}
                   >
@@ -150,7 +150,7 @@ export default function MapTypeControl({
                 onKeyDown={(e) => e.key === ' ' && setShowLabels(!showLabels)}
               >
                 {showLabels && (
-                  <span className="text-primary-foreground text-[9px] leading-none">✓</span>
+                  <span className="text-primary-foreground text-3xs leading-none">✓</span>
                 )}
               </span>
               <span className={`text-xs ${showLabels ? 'text-foreground' : 'text-muted-foreground'}`}>

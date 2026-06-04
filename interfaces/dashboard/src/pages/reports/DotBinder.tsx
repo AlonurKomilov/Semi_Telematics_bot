@@ -130,7 +130,7 @@ export default function DotBinder() {
               placeholder="Leave empty for the whole fleet"
               className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
             />
-            <p className="text-[11px] text-muted-foreground mt-1">
+            <p className="text-2xs text-muted-foreground mt-1">
               Useful when only one truck is being audited or sold to
               another carrier.
             </p>

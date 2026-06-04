@@ -24,6 +24,7 @@ import { useEffect, useRef } from 'react';
 import type L from 'leaflet';
 import { apiJSON } from '../../../api/client';
 import { usePermissions } from '../../../hooks/usePermissions';
+import { GEOFENCE } from '../../../config/mapColors';
 import type { GeofencesResponse, GeofenceFeature } from '../../../types';
 import type { LiveMapSectionProps } from './_shared/types';
 
@@ -31,9 +32,9 @@ import type { LiveMapSectionProps } from './_shared/types';
 // vehicle markers (which use the stronger persona colors).  Stroke
 // is slightly more opaque than fill so the boundary stays readable
 // on busy maps.
-const FILL_COLOR = '#3b82f6';  // tailwind blue-500
+const FILL_COLOR = GEOFENCE.fill;
 const FILL_OPACITY = 0.08;
-const STROKE_COLOR = '#2563eb';  // tailwind blue-600
+const STROKE_COLOR = GEOFENCE.stroke;
 const STROKE_OPACITY = 0.55;
 const STROKE_WIDTH = 1.5;
 

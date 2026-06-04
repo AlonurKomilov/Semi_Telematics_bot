@@ -137,7 +137,7 @@ export default function KeyboardShortcuts({ onOpenSearch }: KeyboardShortcutsPro
                 {s.keys.split(' ').map((k, i) => (
                   <kbd
                     key={i}
-                    className="text-[11px] px-1.5 py-0.5 border border-border rounded bg-muted/50 font-mono"
+                    className="text-2xs px-1.5 py-0.5 border border-border rounded bg-muted/50 font-mono"
                   >
                     {k}
                   </kbd>

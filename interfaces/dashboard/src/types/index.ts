@@ -1018,6 +1018,18 @@ export interface MaintenanceTask {
    *  recurring follow-up or compliance auto-renewal.  Drives the
    *  "↻ Auto-renewed from #N" breadcrumb. */
   spawned_from_id: number | null;
+  /** Server-computed projection for mileage-tracked tasks: when the
+   *  task is expected to come due based on the vehicle's recent
+   *  average daily miles.  ``null`` when the task has a hard
+   *  ``due_date``, no telemetry exists for the truck, or the
+   *  projection lands more than a year out.  Lets the calendar view
+   *  place mileage tasks on a date grid with a visible "projected"
+   *  marker. */
+  projected_due_date?: string | null;
+  /** Vehicle's average daily miles over the past 30 days — surfaced
+   *  alongside ``projected_due_date`` so the UI can disclose the
+   *  rate the projection assumes ("based on 120 mi/day"). */
+  velocity_avg_daily_miles?: number | null;
   created_at: string;
   /** Set when status flips to 'completed' or 'done'; drives the service
    *  history timeline ordering. */

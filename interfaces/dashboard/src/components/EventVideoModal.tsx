@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X, Download, Truck, User, MapPin, Gauge, Clock, Loader2 } from 'lucide-react';
 import { apiJSON } from '../api/client';
+import { toneClasses } from '../lib/status';
 import type { SafetyEvent } from '../types';
 
 interface VideoUrlResponse {
@@ -205,7 +206,7 @@ export default function EventVideoModal({
             {eventTitle}
           </span>
           {event.severity && (
-            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-500/15 text-orange-600 dark:text-orange-400 capitalize">
+            <span className={`px-2 py-0.5 rounded-full text-xs font-medium border capitalize ${toneClasses('warn')}`}>
               {event.severity}
             </span>
           )}
@@ -246,7 +247,7 @@ export default function EventVideoModal({
                 : 'bg-muted text-muted-foreground cursor-not-allowed'
             }`}
           >
-            <Download size={13} />
+            <Download size={14} />
             Download
           </a>
         </div>

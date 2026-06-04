@@ -157,7 +157,7 @@ export default function StorageFileTable() {
             </button>
           )}
         </div>
-        <p className="text-[11px] text-muted-foreground mt-1">
+        <p className="text-2xs text-muted-foreground mt-1">
           {t('storage.files.subtitle')}
         </p>
       </div>
@@ -225,8 +225,8 @@ export default function StorageFileTable() {
                         className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-border hover:bg-muted disabled:opacity-50"
                       >
                         {retrying.has(r.queue_id)
-                          ? <Loader2 size={11} className="animate-spin" />
-                          : <RefreshCw size={11} />}
+                          ? <Loader2 size={12} className="animate-spin" />
+                          : <RefreshCw size={12} />}
                         {t('storage.files.retry')}
                       </button>
                     ) : null}
@@ -250,7 +250,7 @@ function StatusChip({ row }: { row: StorageFile }) {
       row.error_code === 'forbidden' ? t('storage.files.status_forbidden') :
       t('storage.files.status_stuck');
     return (
-      <span className="inline-flex items-center gap-1 text-red-700 dark:text-red-400" title={row.last_error ?? undefined}>
+      <span className="inline-flex items-center gap-1 text-danger" title={row.last_error ?? undefined}>
         <AlertTriangle size={12} />
         {label}
       </span>
@@ -258,7 +258,7 @@ function StatusChip({ row }: { row: StorageFile }) {
   }
   if ((row.attempts ?? 0) > 0) {
     return (
-      <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400">
+      <span className="inline-flex items-center gap-1 text-warn">
         <Clock size={12} />
         {t('storage.files.status_retrying', { n: row.attempts + 1 })}
       </span>

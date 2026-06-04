@@ -5,6 +5,7 @@ import { setToken } from '../api/client';
 import { apiJSON } from '../api/client';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { toneClasses, toneText } from '../lib/status';
 import type { TelegramLoginData } from '../types';
 
 type Mode = 'login' | 'register';
@@ -307,7 +308,7 @@ export default function Login() {
           )}
 
           {error && (
-            <p className="text-destructive text-xs">{error}</p>
+            <p className="text-danger text-xs">{error}</p>
           )}
 
           {/* Surface the "verify your email" flow when the API tells us
@@ -324,7 +325,7 @@ export default function Login() {
               tells us the user must verify their email before signing
               in, so we replace the form-error with an actionable note. */}
           {registeredEmail && mode === 'register' && (
-            <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-md text-xs text-green-700 dark:text-green-400">
+            <div className={`p-3 border rounded-md text-xs ${toneClasses('ok')}`}>
               {t('auth.register_check_inbox', { email: registeredEmail })}
             </div>
           )}
@@ -449,8 +450,8 @@ export default function Login() {
         )}
 
         {(botLoginStatus === 'rejected' || botLoginStatus === 'expired') && (
-          <div className="p-4 bg-muted border border-destructive/30 rounded-lg space-y-3">
-            <p className="text-sm text-red-600 dark:text-red-400">
+          <div className="p-4 bg-muted border border-danger-bd rounded-lg space-y-3">
+            <p className="text-sm text-danger">
               {botLoginStatus === 'rejected' ? '❌ Login was rejected' : '⏰ Login link expired'}
             </p>
             <button
@@ -464,8 +465,8 @@ export default function Login() {
         )}
 
         {botLoginStatus === 'approved' && (
-          <div className="p-4 bg-muted border border-green-600/50 dark:border-green-800/50 rounded-lg">
-            <p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-2">
+          <div className="p-4 bg-muted border border-ok-bd rounded-lg">
+            <p className="text-sm text-ok flex items-center gap-2">
               <span>✅</span> Login approved — redirecting...
             </p>
           </div>
@@ -519,13 +520,13 @@ function UnverifiedEmailNotice({
   };
 
   return (
-    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-md text-xs text-amber-700 dark:text-amber-400 space-y-2">
+    <div className={`p-3 border rounded-md text-xs space-y-2 ${toneClasses('warn')}`}>
       <p>{t('auth.error_email_not_verified')}</p>
       <button
         type="button"
         onClick={handleResend}
         disabled={sending || sent}
-        className="text-amber-700 dark:text-amber-300 underline hover:no-underline disabled:opacity-50"
+        className={`underline hover:no-underline disabled:opacity-50 ${toneText('warn')}`}
       >
         {sent
           ? t('auth.verification_resent')

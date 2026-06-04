@@ -56,12 +56,12 @@ function TimelineNode({ reached, Icon, label, detail, subtle }: NodeProps) {
         <span className={`text-xs ${labelClass}`}>{label}</span>
       </div>
       {detail && (
-        <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+        <p className="text-2xs text-muted-foreground mt-0.5 truncate">
           {detail}
         </p>
       )}
       {subtle && (
-        <p className="text-[11px] text-muted-foreground/80 truncate">
+        <p className="text-2xs text-muted-foreground/80 truncate">
           {subtle}
         </p>
       )}

@@ -5,6 +5,7 @@ import {
   CheckCircle2, RefreshCcw,
 } from 'lucide-react';
 import { apiJSON } from '../../api/client';
+import { toneClasses, toneText, type Tone } from '../../lib/status';
 
 /**
  * Top-of-page status card.  Single source of truth for "what backend
@@ -34,10 +35,10 @@ function formatBytes(n: number): string {
   return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
-function quotaTone(pct: number): { bar: string; text: string } {
-  if (pct >= 95) return { bar: 'bg-red-500',    text: 'text-red-600 dark:text-red-400' };
-  if (pct >= 80) return { bar: 'bg-amber-500',  text: 'text-amber-600 dark:text-amber-400' };
-  return { bar: 'bg-green-500', text: 'text-green-600 dark:text-green-400' };
+function quotaTone(pct: number): Tone {
+  if (pct >= 95) return 'danger';
+  if (pct >= 80) return 'warn';
+  return 'ok';
 }
 
 export default function StorageHealthCard() {
@@ -61,6 +62,7 @@ export default function StorageHealthCard() {
 
   const { backend, drive, quota, queue, media } = data;
   const tone = quotaTone(quota.percent);
+  const quotaBar = tone === 'danger' ? 'bg-danger' : tone === 'warn' ? 'bg-warn' : 'bg-ok';
   const isHybrid = backend === 'hybrid';
   const isGDrive = backend === 'gdrive';
 
@@ -72,19 +74,19 @@ export default function StorageHealthCard() {
         <BackendPill backend={backend} />
         {drive.connected && (
           <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <CheckCircle2 size={13} className="text-green-600 dark:text-green-400" />
+            <CheckCircle2 size={14} className="text-ok" />
             {t('storage.status.drive_connected_as', { email: drive.email ?? '—' })}
           </span>
         )}
         {!drive.connected && (isGDrive || isHybrid) && (
-          <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
-            <AlertTriangle size={13} />
+          <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-warn">
+            <AlertTriangle size={14} />
             {t('storage.status.drive_token_expired')}
           </span>
         )}
         {!drive.connected && !isGDrive && !isHybrid && (
           <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <CloudOff size={13} />
+            <CloudOff size={14} />
             {t('storage.status.drive_not_connected')}
           </span>
         )}
@@ -105,16 +107,16 @@ export default function StorageHealthCard() {
           <div>
             <div className="flex items-center justify-between text-xs mb-1">
               <span className="text-muted-foreground inline-flex items-center gap-1.5">
-                <HardDrive size={13} />
+                <HardDrive size={14} />
                 {t('storage.status.local_cache')}
               </span>
-              <span className={`tabular-nums font-medium ${tone.text}`}>
+              <span className={`tabular-nums font-medium ${toneText(tone)}`}>
                 {formatBytes(quota.used_bytes)} / {formatBytes(quota.quota_bytes)} ({quota.percent.toFixed(0)} %)
               </span>
             </div>
             <div className="h-2 rounded-full bg-muted overflow-hidden">
               <div
-                className={`${tone.bar} h-full transition-all duration-500`}
+                className={`${quotaBar} h-full transition-all duration-500`}
                 style={{ width: `${Math.min(100, quota.percent)}%` }}
               />
             </div>
@@ -126,26 +128,24 @@ export default function StorageHealthCard() {
               icon={<Cloud size={16} />}
               label={t('storage.status.synced')}
               value={media.remote}
-              tone="bg-green-500/15 text-green-700 dark:text-green-400"
+              tone={toneClasses('ok')}
             />
             <CountChip
               icon={<RefreshCcw size={16} />}
               label={t('storage.status.pending')}
               value={queue.pending}
-              tone="bg-blue-500/15 text-blue-700 dark:text-blue-400"
+              tone={toneClasses('info')}
             />
             <CountChip
               icon={<AlertTriangle size={16} />}
               label={t('storage.status.stuck')}
               value={queue.stuck}
-              tone={queue.stuck > 0
-                ? 'bg-red-500/15 text-red-700 dark:text-red-400'
-                : 'bg-muted text-muted-foreground'}
+              tone={toneClasses(queue.stuck > 0 ? 'danger' : 'neutral')}
             />
           </div>
 
           {queue.stuck > 0 && drive.connected && (
-            <p className="text-[11px] text-amber-700 dark:text-amber-400 inline-flex items-center gap-1.5 pt-1">
+            <p className="text-2xs text-warn inline-flex items-center gap-1.5 pt-1">
               <AlertTriangle size={12} />
               {t('storage.status.stuck_hint')}
             </p>
@@ -160,7 +160,7 @@ function BackendPill({ backend }: { backend: string }) {
   const { t } = useTranslation();
   const palette: Record<string, { cls: string; icon: JSX.Element; label: string }> = {
     disk: {
-      cls: 'bg-muted text-muted-foreground border-border/50',
+      cls: 'bg-muted text-muted-foreground border-border',
       icon: <HardDrive size={12} />,
       label: t('storage.badge_disk'),
     },
@@ -193,7 +193,7 @@ function CountChip({ icon, label, value, tone }: {
         <span aria-hidden>{icon}</span>
         {value.toLocaleString()}
       </span>
-      <span className="text-[11px] mt-1 opacity-90">{label}</span>
+      <span className="text-2xs mt-1 opacity-90">{label}</span>
     </div>
   );
 }

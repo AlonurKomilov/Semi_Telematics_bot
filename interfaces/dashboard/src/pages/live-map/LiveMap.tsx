@@ -6,6 +6,7 @@ import { useShellConfig } from '../../hooks/useShellConfig';
 import PoiLayerPanel from '../../components/PoiLayerPanel';
 import MapTypeControl from '../../components/MapTypeControl';
 import { POI_LAYERS } from '../../config/poiLayers';
+import { MAP_STATUS } from '../../config/mapColors';
 import type { PoiFeature } from '../../hooks/usePoiLayers';
 import type { MapVehicleFeature, MapVehiclesResponse, MapVehicleProperties, LiveVehiclesResponse, LiveVehiclePosition } from '../../types';
 import type L from 'leaflet';
@@ -109,9 +110,9 @@ function vehicleStatus(f: MapVehicleFeature): VehicleStatus {
 }
 
 function statusColor(status: VehicleStatus): string {
-  if (status === 'moving') return '#22c55e';
-  if (status === 'idle')   return '#eab308';
-  return '#ef4444';
+  if (status === 'moving') return MAP_STATUS.ok;
+  if (status === 'idle')   return MAP_STATUS.warn;
+  return MAP_STATUS.danger;
 }
 
 /** Haversine distance between two points — returns miles. */
@@ -174,7 +175,7 @@ function makeIcon(
 
   // Pure circle dot for stopped / idle
   const ring = warn
-    ? `position:absolute;inset:-3px;border-radius:50%;border:2px solid #ef4444;`
+    ? `position:absolute;inset:-3px;border-radius:50%;border:2px solid ${MAP_STATUS.danger};`
     : '';
   return Leaf.divIcon({
     className: '',
@@ -473,7 +474,7 @@ export default function LiveMap() {
             isMoving: nowMoving,
             engineState: 'Off',      // will be overwritten by the next 30 s full poll
           });
-          const color = nowMoving ? '#22c55e' : '#ef4444';
+          const color = nowMoving ? MAP_STATUS.ok : MAP_STATUS.danger;
           m.setIcon(makeIcon(Leaf, color, false, pos.speed_mph, headingDeg));
           if (nowMoving) startPhysicsLoop(vid, Leaf);
           return;
@@ -512,7 +513,7 @@ export default function LiveMap() {
 
           // Only rebuild icon when transitioning stopped→moving (avoids flicker)
           if (!wasMoving) {
-            m.setIcon(makeIcon(Leaf, '#22c55e', false, pos.speed_mph, existing.headingDeg));
+            m.setIcon(makeIcon(Leaf, MAP_STATUS.ok, false, pos.speed_mph, existing.headingDeg));
             startPhysicsLoop(vid, Leaf);
           }
         } else {
@@ -535,7 +536,7 @@ export default function LiveMap() {
             //   'On' or 'Idle' → engine still running → yellow dot
             //   'Off'          → truly stopped        → red dot
             const isIdle = existing.engineState === 'On' || existing.engineState === 'Idle';
-            m.setIcon(makeIcon(Leaf, isIdle ? '#eab308' : '#ef4444', false, 0, null));
+            m.setIcon(makeIcon(Leaf, isIdle ? MAP_STATUS.warn : MAP_STATUS.danger, false, 0, null));
           }
         }
       });
@@ -739,16 +740,16 @@ export default function LiveMap() {
                 {selected.fuel_percent != null && (
                   <div>
                     <div className="flex justify-between text-xs mb-1">
-                      <span className={selected.fuel_percent < 15 ? 'text-red-500 font-semibold' : 'text-muted-foreground'}>
+                      <span className={selected.fuel_percent < 15 ? 'text-danger font-semibold' : 'text-muted-foreground'}>
                         ⛽ Fuel
                       </span>
-                      <span className={selected.fuel_percent < 15 ? 'text-red-500 font-semibold' : ''}>
+                      <span className={selected.fuel_percent < 15 ? 'text-danger font-semibold' : ''}>
                         {Math.round(selected.fuel_percent)}%{selected.fuel_percent < 15 ? ' ⚠' : ''}
                       </span>
                     </div>
                     <div className="h-2 bg-muted rounded-full overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all ${selected.fuel_percent < 15 ? 'bg-red-500' : selected.fuel_percent < 25 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                        className={`h-full rounded-full transition-all ${selected.fuel_percent < 15 ? 'bg-danger' : selected.fuel_percent < 25 ? 'bg-warn' : 'bg-ok'}`}
                         style={{ width: `${Math.max(selected.fuel_percent, 2)}%` }}
                       />
                     </div>
@@ -757,16 +758,16 @@ export default function LiveMap() {
                 {selected.def_percent != null && (
                   <div>
                     <div className="flex justify-between text-xs mb-1">
-                      <span className={selected.def_percent < 15 ? 'text-red-500 font-semibold' : 'text-muted-foreground'}>
+                      <span className={selected.def_percent < 15 ? 'text-danger font-semibold' : 'text-muted-foreground'}>
                         🧪 DEF
                       </span>
-                      <span className={selected.def_percent < 15 ? 'text-red-500 font-semibold' : ''}>
+                      <span className={selected.def_percent < 15 ? 'text-danger font-semibold' : ''}>
                         {Math.round(selected.def_percent)}%{selected.def_percent < 15 ? ' ⚠ DERATE RISK' : ''}
                       </span>
                     </div>
                     <div className="h-2 bg-muted rounded-full overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all ${selected.def_percent < 15 ? 'bg-red-500' : selected.def_percent < 25 ? 'bg-yellow-500' : 'bg-teal-500'}`}
+                        className={`h-full rounded-full transition-all ${selected.def_percent < 15 ? 'bg-danger' : selected.def_percent < 25 ? 'bg-warn' : 'bg-ok'}`}
                         style={{ width: `${Math.max(selected.def_percent, 2)}%` }}
                       />
                     </div>
@@ -778,15 +779,15 @@ export default function LiveMap() {
             {/* Nearest POI section — top 3 per enabled layer, clickable to draw route */}
             {selectedPos && (
               <div className="border-t border-border pt-2">
-                <p className="text-[10px] font-semibold text-muted-foreground tracking-wide mb-2">
+                <p className="text-3xs font-semibold text-muted-foreground tracking-wide mb-2">
                   NEAREST POI
                   {routeLoading && (
-                    <span className="ml-2 text-[9px] text-muted-foreground animate-pulse">routing…</span>
+                    <span className="ml-2 text-3xs text-muted-foreground animate-pulse">routing…</span>
                   )}
                   {activePoiKey && !routeLoading && (
                     <button
                       onClick={clearRouteLine}
-                      className="ml-2 text-[9px] text-primary hover:underline normal-case font-normal"
+                      className="ml-2 text-3xs text-primary hover:underline normal-case font-normal"
                     >
                       clear route
                     </button>
@@ -804,12 +805,12 @@ export default function LiveMap() {
                         return (
                           <div key={def.id} className="opacity-50">
                             <div className="flex items-center gap-1 mb-0.5">
-                              <span className="text-[11px]">{def.icon}</span>
-                              <span className="text-[10px] font-semibold tracking-wide" style={{ color: def.color }}>
+                              <span className="text-2xs">{def.icon}</span>
+                              <span className="text-3xs font-semibold tracking-wide" style={{ color: def.color }}>
                                 {def.label}
                               </span>
                             </div>
-                            <p className="text-[10px] text-muted-foreground italic pl-4">zoom in to load</p>
+                            <p className="text-3xs text-muted-foreground italic pl-4">zoom in to load</p>
                           </div>
                         );
                       }
@@ -832,8 +833,8 @@ export default function LiveMap() {
                         <div key={def.id}>
                           {/* Layer header */}
                           <div className="flex items-center gap-1 mb-0.5">
-                            <span className="text-[11px]">{def.icon}</span>
-                            <span className="text-[10px] font-semibold tracking-wide" style={{ color: def.color }}>
+                            <span className="text-2xs">{def.icon}</span>
+                            <span className="text-3xs font-semibold tracking-wide" style={{ color: def.color }}>
                               {def.label}
                             </span>
                           </div>
@@ -857,7 +858,7 @@ export default function LiveMap() {
                                       : 'hover:bg-muted/60'
                                   }`}
                                 >
-                                  <span className={`text-[9px] shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
+                                  <span className={`text-3xs shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
                                     {isActive ? '→' : `${i + 1}.`}
                                   </span>
                                   <span className="flex-1 truncate">{name}</span>
@@ -881,7 +882,7 @@ export default function LiveMap() {
                                     return next;
                                   })
                                 }
-                                className="w-full text-left text-[9px] text-primary hover:underline px-1.5 pt-0.5"
+                                className="w-full text-left text-3xs text-primary hover:underline px-1.5 pt-0.5"
                               >
                                 {isExpanded
                                   ? 'Show less'
@@ -898,7 +899,7 @@ export default function LiveMap() {
             )}
           </div>
         ) : (
-          <div className="divide-y divide-gray-800">
+          <div className="divide-y divide-border">
             {filtered.map((f) => {
               const p      = f.properties;
               const status = vehicleStatus(f);
@@ -919,15 +920,15 @@ export default function LiveMap() {
                 >
                   <div className="flex items-center gap-2">
                     <span
-                      className={`w-2.5 h-2.5 rounded-full shrink-0 ${warn ? 'ring-2 ring-red-500' : ''}`}
+                      className={`w-2.5 h-2.5 rounded-full shrink-0 ${warn ? 'ring-2 ring-danger' : ''}`}
                       style={{ background: statusColor(status) }}
                     />
                     <span className="font-medium truncate flex-1">{p.name}</span>
                     {p.fuel_percent != null && p.fuel_percent < 15 && (
-                      <span className="text-[10px] text-red-500">⛽⚠</span>
+                      <span className="text-3xs text-danger">⛽⚠</span>
                     )}
                     {p.def_percent != null && p.def_percent < 15 && (
-                      <span className="text-[10px] text-red-500">🧪⚠</span>
+                      <span className="text-3xs text-danger">🧪⚠</span>
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground ml-4 truncate">{p.address || '—'}</p>
@@ -936,28 +937,28 @@ export default function LiveMap() {
                     <div className="ml-4 mt-1.5 space-y-1">
                       {p.fuel_percent != null && (
                         <div className="flex items-center gap-1">
-                          <span className="text-[9px] w-5 text-muted-foreground">⛽</span>
+                          <span className="text-3xs w-5 text-muted-foreground">⛽</span>
                           <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
                             <div
-                              className={`h-full rounded-full ${p.fuel_percent < 15 ? 'bg-red-500' : p.fuel_percent < 25 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                              className={`h-full rounded-full ${p.fuel_percent < 15 ? 'bg-danger' : p.fuel_percent < 25 ? 'bg-warn' : 'bg-ok'}`}
                               style={{ width: `${Math.max(p.fuel_percent, 2)}%` }}
                             />
                           </div>
-                          <span className="text-[9px] text-muted-foreground w-7 text-right tabular-nums">
+                          <span className="text-3xs text-muted-foreground w-7 text-right tabular-nums">
                             {Math.round(p.fuel_percent)}%
                           </span>
                         </div>
                       )}
                       {p.def_percent != null && (
                         <div className="flex items-center gap-1">
-                          <span className="text-[9px] w-5 text-muted-foreground">🧪</span>
+                          <span className="text-3xs w-5 text-muted-foreground">🧪</span>
                           <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
                             <div
-                              className={`h-full rounded-full ${p.def_percent < 15 ? 'bg-red-500' : p.def_percent < 25 ? 'bg-yellow-500' : 'bg-teal-500'}`}
+                              className={`h-full rounded-full ${p.def_percent < 15 ? 'bg-danger' : p.def_percent < 25 ? 'bg-warn' : 'bg-ok'}`}
                               style={{ width: `${Math.max(p.def_percent, 2)}%` }}
                             />
                           </div>
-                          <span className="text-[9px] text-muted-foreground w-7 text-right tabular-nums">
+                          <span className="text-3xs text-muted-foreground w-7 text-right tabular-nums">
                             {Math.round(p.def_percent)}%
                           </span>
                         </div>

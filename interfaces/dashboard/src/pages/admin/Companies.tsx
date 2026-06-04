@@ -16,8 +16,8 @@ const columns: AnyColumn[] = [
   { key: 'code', label: 'Code', sortable: true },
   { key: 'display_name', label: 'Name', sortable: true },
   { key: 'active_days', label: 'Active Days', sortable: true },
-  { key: 'has_api_key', label: 'API Key', render: (v) => v ? <span className="text-green-600 dark:text-green-400">Connected</span> : <span className="text-muted-foreground">None</span> },
-  { key: 'is_active', label: 'Status', render: (v) => v ? <span className="text-green-600 dark:text-green-400">Active</span> : <span className="text-destructive">Inactive</span> },
+  { key: 'has_api_key', label: 'API Key', render: (v) => v ? <span className="text-ok">Connected</span> : <span className="text-muted-foreground">None</span> },
+  { key: 'is_active', label: 'Status', render: (v) => v ? <span className="text-ok">Active</span> : <span className="text-danger">Inactive</span> },
   { key: 'created_at', label: 'Created', render: (v) => v ? new Date(String(v)).toLocaleDateString() : '—' },
 ];
 
@@ -91,7 +91,7 @@ export default function Companies() {
             onClick={() => { setShowAdd(!showAdd); setError(''); }}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
           >
-            <Plus size={13} />
+            <Plus size={14} />
             {showAdd ? 'Cancel' : 'Add company'}
           </button>
         }
@@ -120,7 +120,7 @@ export default function Companies() {
             <input type="number" min={1} max={365} value={days} onChange={e => setDays(Number(e.target.value))} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
           </div>
           <div className="flex items-end">
-            <button type="submit" disabled={saving} className="px-4 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded text-sm font-medium text-foreground transition">
+            <button type="submit" disabled={saving} className="px-4 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition">
               {saving ? 'Saving...' : 'Add'}
             </button>
           </div>
@@ -139,7 +139,7 @@ export default function Companies() {
               onClick={() => setShowAdd(true)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
             >
-              <Plus size={13} />
+              <Plus size={14} />
               Add company
             </button>
           }

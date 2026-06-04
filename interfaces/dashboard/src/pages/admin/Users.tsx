@@ -12,6 +12,7 @@ import {
   ErrorState,
   TableSkeleton,
 } from '../../components/shell';
+import { toneClasses } from '../../lib/status';
 import type { AdminUser, AnyColumn } from '../../types';
 
 const ROLES = ['admin', 'fleet', 'safety', 'dispatcher', 'driver'] as const;
@@ -95,7 +96,7 @@ function IdentityBadges({ u }: { u: AdminUser }) {
     <span className="inline-flex items-center gap-1 ml-1">
       <span
         title={hasEmail ? `Email: ${u.email ?? ''}` : 'No email — admins can add one in the detail panel'}
-        className={`inline-flex items-center justify-center w-4 h-4 rounded text-[9px] font-bold ${
+        className={`inline-flex items-center justify-center w-4 h-4 rounded text-3xs font-bold ${
           hasEmail
             ? 'bg-primary/15 text-primary'
             : 'bg-muted text-muted-foreground/50 opacity-60'
@@ -109,7 +110,7 @@ function IdentityBadges({ u }: { u: AdminUser }) {
             ? `Telegram linked (tg:${u.telegram_id})`
             : 'Telegram not linked yet — send the bot deep-link to this user'
         }
-        className={`inline-flex items-center justify-center w-4 h-4 rounded text-[9px] font-bold ${
+        className={`inline-flex items-center justify-center w-4 h-4 rounded text-3xs font-bold ${
           hasTelegram
             ? 'bg-primary/15 text-primary'
             : 'bg-muted text-muted-foreground/50 opacity-60'
@@ -130,7 +131,7 @@ const userColumns: AnyColumn[] = [
       : (parts[0]?.[0] || '?').toUpperCase();
     return (
       <div className="flex items-center gap-2">
-        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold ${
+        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-3xs font-bold ${
           u.is_active ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
         }`}>{ini}</div>
         <span className="flex items-center">
@@ -150,7 +151,7 @@ const userColumns: AnyColumn[] = [
     return (
       <span className="text-xs" title={trucks.join(', ')}>
         {trucks[0]}{' '}
-        <span className="px-1.5 py-0.5 bg-muted rounded-full text-[10px] text-muted-foreground">+{trucks.length - 1}</span>
+        <span className="px-1.5 py-0.5 bg-muted rounded-full text-3xs text-muted-foreground">+{trucks.length - 1}</span>
       </span>
     );
   }},
@@ -390,7 +391,7 @@ export default function Users() {
       {error && (
         <div className="mb-3"><ErrorState message={error} /></div>
       )}
-      {success && <p className="text-green-600 dark:text-green-400 text-sm mb-3">{success}</p>}
+      {success && <p className="text-ok text-sm mb-3">{success}</p>}
 
       <div className="flex items-center gap-3 mb-4">
         {/* Role filter chips */}
@@ -515,15 +516,15 @@ export default function Users() {
                         <h3 className="text-sm font-semibold text-foreground/80 mb-3 flex items-center gap-2">
                           🏢 {isDriver ? 'Assigned Company' : 'Company Access'}
                           {!unrestricted && editCompanyIds.length > 0 && !isDriver && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">{editCompanyIds.length}</span>
+                            <span className="text-3xs px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">{editCompanyIds.length}</span>
                           )}
                         </h3>
 
                         {/* Driver-only callout: single-company constraint + archive behaviour */}
                         {isDriver && (
-                          <div className="mb-3 px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/10 text-xs text-amber-700 dark:text-amber-300">
+                          <div className={`mb-3 px-3 py-2 rounded-lg border text-xs ${toneClasses('warn')}`}>
                             <p className="font-medium mb-0.5">One company at a time.</p>
-                            <p>Changing this driver's company will archive their previous CDL / medical / DQF documents to <code className="font-mono text-[10px]">{'{old company}'}/drivers/_archive/{'{today}'}/</code>.</p>
+                            <p>Changing this driver's company will archive their previous CDL / medical / DQF documents to <code className="font-mono text-3xs">{'{old company}'}/drivers/_archive/{'{today}'}/</code>.</p>
                           </div>
                         )}
 
@@ -537,7 +538,7 @@ export default function Users() {
                               onClick={() => { setUnrestricted(!unrestricted); if (!unrestricted) setEditCompanyIds([]); }}
                               className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition mb-3 border ${
                                 unrestricted
-                                  ? 'bg-green-500/10 border-green-500/30'
+                                  ? toneClasses('ok')
                                   : 'bg-muted/50 border-border hover:border-border'
                               }`}
                             >
@@ -546,7 +547,7 @@ export default function Users() {
                                 <span className="text-sm font-medium">{unrestricted ? 'All Companies' : 'Selected Companies Only'}</span>
                               </div>
                               <div className="relative">
-                                <div className={`w-9 h-5 rounded-full transition ${unrestricted ? 'bg-green-600' : 'bg-muted'}`} />
+                                <div className={`w-9 h-5 rounded-full transition ${unrestricted ? 'bg-ok' : 'bg-muted'}`} />
                                 <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-background rounded-full shadow transition-transform ${unrestricted ? 'translate-x-4' : ''}`} />
                               </div>
                             </div>
@@ -570,7 +571,7 @@ export default function Users() {
                                     if (editCompanyIds.length === allCompanies.length) setEditCompanyIds([]);
                                     else setEditCompanyIds(allCompanies.map(c => c.id));
                                   }}
-                                  className="text-[10px] text-primary hover:text-primary/80 uppercase tracking-wider"
+                                  className="text-3xs text-primary hover:text-primary/80 uppercase tracking-wider"
                                 >
                                   {editCompanyIds.length === allCompanies.length ? 'Deselect All' : 'Select All'}
                                 </button>
@@ -600,7 +601,7 @@ export default function Users() {
                                       <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition ${
                                         checked ? 'bg-primary border-primary' : 'border-border'
                                       }`}>
-                                        {checked && <span className="text-foreground text-[10px]">✓</span>}
+                                        {checked && <span className="text-foreground text-3xs">✓</span>}
                                       </div>
                                     )}
                                     <div className="flex-1">
@@ -629,7 +630,7 @@ export default function Users() {
                           <Truck size={14} className="text-muted-foreground" />
                           Vehicle Assignments
                           {editVehicles.length > 0 && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-400">{editVehicles.length}</span>
+                            <span className="text-3xs px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-400">{editVehicles.length}</span>
                           )}
                         </h3>
                         <p className="text-xs text-muted-foreground mb-3">
@@ -644,7 +645,7 @@ export default function Users() {
                         {/* No companies selected warning */}
                         {!unrestricted && editCompanyIds.length === 0 && (
                           <div className="py-6 text-center bg-muted/30 rounded-lg mb-3">
-                            <p className="text-xs text-amber-600/70 dark:text-amber-400/70">⚠ Select at least one company above to assign vehicles</p>
+                            <p className="text-xs text-warn">⚠ Select at least one company above to assign vehicles</p>
                           </div>
                         )}
 
@@ -665,7 +666,7 @@ export default function Users() {
                                   if (editVehicles.length === companyFilteredVehicles.length) setEditTrucks([]);
                                   else setEditTrucks(companyFilteredVehicles.map(v => v.name));
                                 }}
-                                className="text-[10px] text-primary hover:text-primary/80 uppercase tracking-wider"
+                                className="text-3xs text-primary hover:text-primary/80 uppercase tracking-wider"
                               >
                                 {editVehicles.length === companyFilteredVehicles.length ? 'Deselect All' : 'Select All'}
                               </button>
@@ -700,14 +701,14 @@ export default function Users() {
                                       <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition ${
                                         checked ? 'bg-amber-600 border-amber-600' : 'border-border'
                                       }`}>
-                                        {checked && <span className="text-primary-foreground text-[10px]">✓</span>}
+                                        {checked && <span className="text-primary-foreground text-3xs">✓</span>}
                                       </div>
                                       <div className="flex-1">
                                         <span className="text-sm font-medium">{v.name}</span>
                                         {v.company && <span className="text-xs text-muted-foreground ml-2">{v.company}</span>}
                                       </div>
                                       {checked && editVehicles.indexOf(v.name) === 0 && selected.role === 'driver' && (
-                                        <span className="text-[10px] text-primary uppercase tracking-wider">primary</span>
+                                        <span className="text-3xs text-primary uppercase tracking-wider">primary</span>
                                       )}
                                     </div>
                                   );
@@ -750,25 +751,25 @@ export default function Users() {
                                   isCurrent
                                     ? `${ROLE_COLORS[r]} border-current`
                                     : isPending
-                                    ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-600 dark:text-yellow-400'
+                                    ? toneClasses('warn')
                                     : 'bg-muted border-border text-muted-foreground hover:border-border hover:text-foreground/80'
                                 }`}
                               >
                                 {ROLE_LABELS[r]}
-                                {isCurrent && <span className="ml-1 text-[10px] opacity-60">current</span>}
+                                {isCurrent && <span className="ml-1 text-3xs opacity-60">current</span>}
                               </button>
                             );
                           })}
                         </div>
                         {confirmAction === 'role' && pendingRole && (
-                          <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-                            <p className="text-sm text-yellow-600 dark:text-yellow-400 mb-2">
+                          <div className={`mt-3 p-3 border rounded-lg ${toneClasses('warn')}`}>
+                            <p className="text-sm text-warn mb-2">
                               Change {selected.display_name}'s role to <strong>{ROLE_LABELS[pendingRole]}</strong>?
                             </p>
                             <div className="flex gap-2">
                               <button
                                 onClick={() => handleRoleChange(selected.id, pendingRole)}
-                                className="px-4 py-1.5 bg-yellow-600 hover:bg-yellow-700 rounded text-xs font-medium transition"
+                                className="px-4 py-1.5 bg-warn hover:opacity-90 rounded text-xs font-medium transition"
                               >
                                 Confirm
                               </button>
@@ -785,33 +786,33 @@ export default function Users() {
 
                       {/* Danger zone */}
                       <div className="border-t border-border pt-5">
-                        <h3 className="text-sm font-semibold text-red-600/80 dark:text-red-400/80 mb-3">Danger Zone</h3>
+                        <h3 className="text-sm font-semibold text-danger mb-3">Danger Zone</h3>
                         {confirmAction !== 'deactivate' && confirmAction !== 'activate' ? (
                           <button
                             onClick={() => setConfirmAction(selected.is_active ? 'deactivate' : 'activate')}
                             className={`w-full py-2.5 rounded-lg text-sm font-medium transition border ${
                               selected.is_active
-                                ? 'border-destructive/40 text-red-600 dark:text-red-400 hover:bg-red-500/10'
-                                : 'border-green-600/50 dark:border-green-800 text-green-600 dark:text-green-400 hover:bg-green-500/10'
+                                ? 'border-danger-bd text-danger hover:bg-danger-bg'
+                                : 'border-ok-bd text-ok hover:bg-ok-bg'
                             }`}
                           >
                             {selected.is_active ? 'Deactivate User' : 'Activate User'}
                           </button>
                         ) : (
                           <div className={`p-3 rounded-lg border ${
-                            selected.is_active ? 'bg-red-500/10 border-red-500/30' : 'bg-green-500/10 border-green-500/30'
+                            selected.is_active ? toneClasses('danger') : toneClasses('ok')
                           }`}>
                             <p className="text-sm mb-2">
                               {selected.is_active
-                                ? <span className="text-destructive">Deactivate <strong>{selected.display_name}</strong>? They will lose access immediately.</span>
-                                : <span className="text-green-600 dark:text-green-400">Activate <strong>{selected.display_name}</strong>? They will regain access.</span>
+                                ? <span className="text-danger">Deactivate <strong>{selected.display_name}</strong>? They will lose access immediately.</span>
+                                : <span className="text-ok">Activate <strong>{selected.display_name}</strong>? They will regain access.</span>
                               }
                             </p>
                             <div className="flex gap-2">
                               <button
                                 onClick={() => handleToggleActive(selected.id, !selected.is_active)}
-                                className={`px-4 py-1.5 rounded text-xs font-medium transition ${
-                                  selected.is_active ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'
+                                className={`px-4 py-1.5 rounded text-xs font-medium transition text-white ${
+                                  selected.is_active ? 'bg-danger hover:opacity-90' : 'bg-ok hover:opacity-90'
                                 }`}
                               >
                                 {selected.is_active ? 'Deactivate' : 'Activate'}
@@ -842,7 +843,7 @@ function Row({ label, value, status }: { label: string; value: string; status?: 
   return (
     <div className="flex justify-between items-center">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className={status === 'green' ? 'text-green-600 dark:text-green-400' : status === 'red' ? 'text-destructive' : ''}>
+      <dd className={status === 'green' ? 'text-ok' : status === 'red' ? 'text-danger' : ''}>
         {value}
       </dd>
     </div>

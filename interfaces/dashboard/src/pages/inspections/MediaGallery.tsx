@@ -2,10 +2,14 @@ import { useMemo, useState } from 'react';
 import { X, Download } from 'lucide-react';
 import { apiFetch } from '../../api/client';
 import type { PTIInspectionDetail, PTIInspectionMedia } from '../../types';
-import { parseVerdict, VERDICT_EMOJI } from './aiVerdict';
+import { parseVerdict, VERDICT_EMOJI, verdictTone } from './aiVerdict';
 
-const VERDICT_DOT: Record<string, string> = {
-  ok: '#30d158', possible_issue: '#ff9f0a', likely_defect: '#ff3b30', unclear: '#8e8e93',
+// Solid-fill class for the AI verdict dot on a thumbnail.  Derives from
+// the shared verdict→tone map so the dot can't drift from the item-list
+// pill colour; ``neutral`` has no solid hue so it falls back to the
+// muted-foreground fill.
+const VERDICT_DOT_BG: Record<string, string> = {
+  ok: 'bg-ok', warn: 'bg-warn', danger: 'bg-danger', info: 'bg-info', neutral: 'bg-muted-foreground',
 };
 
 interface Props {
@@ -124,7 +128,7 @@ export function MediaGallery({ inspection }: Props) {
                   {m.media_type === 'document' && (m.content_type || '').includes('pdf') ? (
                     <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-muted-foreground p-2">
                       <span className="text-2xl">📄</span>
-                      <span className="text-[10px] text-center break-all line-clamp-2">{m.file_name}</span>
+                      <span className="text-3xs text-center break-all line-clamp-2">{m.file_name}</span>
                     </div>
                   ) : m.media_type === 'video' ? (
                     <ThumbnailVideo src={src} alt={m.file_name} />
@@ -132,18 +136,18 @@ export function MediaGallery({ inspection }: Props) {
                     <ThumbnailImage src={src} alt={m.file_name} />
                   )}
                   {m.media_type === 'video' && (
-                    <span className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+                    <span className="absolute bottom-1 right-1 bg-black/60 text-white text-3xs px-1.5 py-0.5 rounded">
                       ▶ video
                     </span>
                   )}
                   {m.media_type === 'document' && (
-                    <span className="absolute bottom-1 right-1 bg-violet-500/80 text-white text-[10px] px-1.5 py-0.5 rounded">
+                    <span className="absolute bottom-1 right-1 bg-violet-500/80 text-white text-3xs px-1.5 py-0.5 rounded">
                       doc
                     </span>
                   )}
                   {m.annotated_at && (
                     <span
-                      className="absolute top-1 right-1 bg-red-500 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                      className="absolute top-1 right-1 bg-red-500 text-white text-3xs font-semibold px-1.5 py-0.5 rounded"
                       title={`Annotated by driver · ${new Date(m.annotated_at).toLocaleString()}`}
                     >
                       ✎ Annotated
@@ -154,8 +158,7 @@ export function MediaGallery({ inspection }: Props) {
                     if (!v) return null;
                     return (
                       <span
-                        className="absolute bottom-1 left-1 text-white text-[11px] font-bold w-5 h-5 rounded-full flex items-center justify-center"
-                        style={{ background: VERDICT_DOT[v.verdict] ?? '#8e8e93' }}
+                        className={`absolute bottom-1 left-1 text-white text-2xs font-bold w-5 h-5 rounded-full flex items-center justify-center ${VERDICT_DOT_BG[verdictTone(v.verdict)]}`}
                         title={`AI: ${v.summary || v.verdict}`}
                       >
                         {VERDICT_EMOJI[v.verdict]}
@@ -172,15 +175,15 @@ export function MediaGallery({ inspection }: Props) {
                     const s = (m.storage_state || 'remote').toLowerCase();
                     if (s === 'remote') return null;
                     const ICON: Record<string, { glyph: string; bg: string; label: string }> = {
-                      local:   { glyph: '💾', bg: 'bg-slate-500',  label: 'Stored locally · sync pending' },
-                      syncing: { glyph: '🔄', bg: 'bg-blue-500',   label: 'Uploading to Google Drive…' },
-                      stuck:   { glyph: '⚠',  bg: 'bg-red-500',    label: 'Sync blocked — reconnect Drive' },
+                      local:   { glyph: '💾', bg: 'bg-muted-foreground', label: 'Stored locally · sync pending' },
+                      syncing: { glyph: '🔄', bg: 'bg-info',             label: 'Uploading to Google Drive…' },
+                      stuck:   { glyph: '⚠',  bg: 'bg-danger',           label: 'Sync blocked — reconnect Drive' },
                     };
                     const cfg = ICON[s];
                     if (!cfg) return null;
                     return (
                       <span
-                        className={`absolute top-1 left-1 ${cfg.bg} text-white text-[10px] font-semibold px-1.5 py-0.5 rounded shadow-sm`}
+                        className={`absolute top-1 left-1 ${cfg.bg} text-white text-3xs font-semibold px-1.5 py-0.5 rounded shadow-sm`}
                         title={cfg.label}
                       >
                         {cfg.glyph}

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { ElementType } from 'react';
 import { AlertTriangle, Zap, RotateCcw, MoveHorizontal, Truck, OctagonX, TrendingUp, Play } from 'lucide-react';
 import { apiJSON } from '../../api/client';
+import { toneClasses, type Tone } from '../../lib/status';
 import DataTable from '../../components/DataTable';
 import EventVideoModal from '../../components/EventVideoModal';
 import {
@@ -20,11 +21,15 @@ import type { SafetyEvent, SafetyEventsResponse, EventsSummary, AnyColumn } from
 
 const EVENT_TYPES = ['all', 'crash', 'braking', 'harshTurn', 'laneDeparture', 'followingDistance', 'rollingStop', 'acceleration'] as const;
 
-const SEVERITY_COLORS: Record<string, string> = {
-  severe: 'bg-red-500/15 text-red-700 dark:text-red-400',
-  harsh: 'bg-orange-500/15 text-orange-700 dark:text-orange-400',
-  moderate: 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400',
-  mild: 'bg-gray-500/20 text-muted-foreground',
+// Samsara's severity vocabulary (severe/harsh/moderate/mild) → semantic
+// tone.  These strings are event-grader-specific so they aren't in the
+// shared statusTone map; map them to a Tone here and let toneClasses
+// render the soft-pill.
+const SEVERITY_TONE: Record<string, Tone> = {
+  severe: 'danger',
+  harsh: 'warn',
+  moderate: 'warn',
+  mild: 'neutral',
 };
 
 type EventIconKey = 'crash' | 'braking' | 'harshTurn' | 'laneDeparture' | 'followingDistance' | 'rollingStop' | 'acceleration';
@@ -56,7 +61,7 @@ function EventIcon({ type, size = 14 }: { type: string; size?: number }) {
 }
 
 function SeverityBadge({ severity }: { severity: string }) {
-  const cls = SEVERITY_COLORS[severity] || SEVERITY_COLORS.mild;
+  const cls = toneClasses(SEVERITY_TONE[severity] ?? 'neutral');
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${cls}`}>{severity}</span>;
 }
 

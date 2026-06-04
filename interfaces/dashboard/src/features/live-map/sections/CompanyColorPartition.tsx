@@ -21,22 +21,8 @@
 import { useEffect, useRef } from 'react';
 import type L from 'leaflet';
 import { usePermissions } from '../../../hooks/usePermissions';
+import { COMPANY_PALETTE } from '../../../config/mapColors';
 import type { LiveMapSectionProps } from './_shared/types';
-
-// Palette chosen for distinguishability against the base map colors
-// (which use blue/green/red for status).  All entries are
-// mid-saturation so multiple dots don't compete with the truck
-// markers for attention.
-const COMPANY_PALETTE = [
-  '#7c3aed',  // violet
-  '#0891b2',  // cyan
-  '#16a34a',  // green (slightly different shade from moving)
-  '#ca8a04',  // amber
-  '#db2777',  // pink
-  '#0284c7',  // sky
-  '#9333ea',  // purple
-  '#65a30d',  // lime
-];
 
 /** Deterministic color hash so the SAME company name always gets the
  * SAME color across reloads.  Simple DJB2-like hash modulo palette

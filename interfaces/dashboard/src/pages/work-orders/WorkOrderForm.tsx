@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { PageHeader, ErrorState } from '../../components/shell';
+import { toneClasses } from '../../lib/status';
 import type {
   WorkOrder, WorkOrderDetail, WorkOrderPart, WorkOrderAttachment,
   MaintenanceTask,
@@ -258,7 +259,7 @@ export default function WorkOrderForm() {
               onClick={() => navigate('/work-orders')}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-xs font-medium text-foreground transition border border-border"
             >
-              <ArrowLeft size={13} />
+              <ArrowLeft size={14} />
               {t('work_orders_page.back')}
             </button>
             <button
@@ -267,7 +268,7 @@ export default function WorkOrderForm() {
               disabled={saving}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-md text-xs font-medium text-primary-foreground transition"
             >
-              <Save size={13} />
+              <Save size={14} />
               {saving ? t('work_orders_page.saving') : isEdit ? t('work_orders_page.save_changes') : t('work_orders_page.create_draft')}
             </button>
           </div>
@@ -373,7 +374,7 @@ export default function WorkOrderForm() {
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="text-sm font-semibold">{t('work_orders_page.section_parts')}</h3>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
+            <p className="text-2xs text-muted-foreground mt-0.5">
               ↻ {t('work_orders_page.parts_hint')}
             </p>
           </div>
@@ -554,11 +555,11 @@ export default function WorkOrderForm() {
           where the section would be so the user understands why the
           upload UI is missing and doesn't scroll past hunting for it. */}
       {!isEdit && (
-        <section className="mb-5 p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl text-sm text-blue-700 dark:text-blue-400 inline-flex items-start gap-2 w-full">
+        <section className={`mb-5 p-4 rounded-xl text-sm inline-flex items-start gap-2 w-full ${toneClasses('info')}`}>
           <Paperclip size={16} className="shrink-0 mt-0.5" />
           <div>
             <p className="font-medium">{t('work_orders_page.attachments_unlock_title')}</p>
-            <p className="text-xs mt-0.5 text-blue-700/80 dark:text-blue-400/80">
+            <p className="text-xs mt-0.5 text-info">
               {t('work_orders_page.attachments_unlock_desc')}
             </p>
           </div>

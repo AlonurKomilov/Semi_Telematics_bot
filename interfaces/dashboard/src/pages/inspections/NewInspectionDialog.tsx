@@ -189,7 +189,7 @@ export function NewInspectionDialog({ onCreated, onClose }: Props) {
           <span className="block text-muted-foreground mb-1">
             {t('inspections.new.driver')}
             {resolvedDriver && !driverOverridden && (
-              <span className="ml-1 text-green-600 dark:text-green-400">
+              <span className="ml-1 text-ok">
                 (auto: {resolvedDriver.display_name || `user ${resolvedDriver.user_id}`})
               </span>
             )}
@@ -214,8 +214,8 @@ export function NewInspectionDialog({ onCreated, onClose }: Props) {
             ))}
           </select>
           {vehicleName.trim() && driverId == null && !loadingDrivers && (
-            <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400">
-              <AlertTriangle size={11} />
+            <span className="mt-1 inline-flex items-center gap-1 text-2xs text-warn">
+              <AlertTriangle size={12} />
               {t('inspections.new.no_driver_for_vehicle')}
             </span>
           )}

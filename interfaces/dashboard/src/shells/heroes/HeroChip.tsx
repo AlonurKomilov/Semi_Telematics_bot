@@ -6,15 +6,16 @@
  * for critical, muted-gray for neutral counts.
  */
 import type { ReactNode } from 'react';
+import { toneClasses, type Tone } from '../../lib/status';
 
 type ChipTone = 'neutral' | 'positive' | 'warning' | 'critical' | 'info';
 
-const TONE_CLASSES: Record<ChipTone, string> = {
-  neutral:  'bg-muted/40 text-muted-foreground border-border/60',
-  positive: 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20',
-  warning:  'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/20',
-  critical: 'bg-destructive/10 text-destructive border-destructive/30',
-  info:     'bg-primary/10 text-primary border-primary/30',
+const CHIP_TONE: Record<ChipTone, Tone> = {
+  neutral:  'neutral',
+  positive: 'ok',
+  warning:  'warn',
+  critical: 'danger',
+  info:     'info',
 };
 
 interface HeroChipProps {
@@ -27,7 +28,7 @@ interface HeroChipProps {
 export default function HeroChip({ label, value, tone = 'neutral', title }: HeroChipProps) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] border rounded ${TONE_CLASSES[tone]}`}
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-2xs border rounded ${toneClasses(CHIP_TONE[tone])}`}
       title={title}
     >
       <span className="opacity-70">{label}</span>

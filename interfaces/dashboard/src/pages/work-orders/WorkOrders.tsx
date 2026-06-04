@@ -10,26 +10,30 @@ import {
   PageHeader, EmptyState, ErrorState, TableSkeleton,
 } from '../../components/shell';
 import type { WorkOrder, WorkOrdersResponse, AnyColumn } from '../../types';
+import { toneClasses, type Tone } from '../../lib/status';
 
-// Status / payment colour palette.  Matches the maintenance module's
+// Status / payment → tone.  Matches the maintenance module's
 // StatusBadge styling family so the two modules read as siblings.
-const STATUS_COLOR: Record<string, string> = {
-  draft:     'bg-slate-500/15  text-slate-600  dark:text-slate-300  border-slate-500/30',
-  submitted: 'bg-blue-500/15   text-blue-700   dark:text-blue-400   border-blue-500/30',
-  paid:      'bg-green-500/15  text-green-700  dark:text-green-400  border-green-500/30',
-  void:      'bg-red-500/15    text-red-700    dark:text-red-400    border-red-500/30',
+// These vocabularies (submitted / void / partial) aren't in the
+// shared ``statusTone`` map, so the tone is pinned here and the soft
+// pill is rendered through the shared ``toneClasses`` recipe.
+const STATUS_TONE: Record<string, Tone> = {
+  draft:     'neutral',
+  submitted: 'info',
+  paid:      'ok',
+  void:      'danger',
 };
 
-const PAYMENT_COLOR: Record<string, string> = {
-  unpaid:  'bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/30',
-  paid:    'bg-green-500/15  text-green-700  dark:text-green-400  border-green-500/30',
-  partial: 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30',
-  void:    'bg-muted text-muted-foreground border-border/50',
+const PAYMENT_TONE: Record<string, Tone> = {
+  unpaid:  'warn',
+  paid:    'ok',
+  partial: 'warn',
+  void:    'neutral',
 };
 
-function Pill({ value, palette }: { value: unknown; palette: Record<string, string> }) {
+function Pill({ value, palette }: { value: unknown; palette: Record<string, Tone> }) {
   const v = String(value || '').toLowerCase();
-  const cls = palette[v] ?? 'bg-muted text-muted-foreground border-border/50';
+  const cls = toneClasses(palette[v] ?? 'neutral');
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium capitalize ${cls}`}>
       {v || '—'}
@@ -57,8 +61,8 @@ const columns: AnyColumn[] = [
     render: (v) => v ? new Date(String(v)).toLocaleDateString() : <span className="text-muted-foreground">—</span>,
   },
   { key: 'total_cost', label: 'Total', sortable: true, render: (v) => <MoneyCell value={v} /> },
-  { key: 'status', label: 'Status', sortable: true, render: (v) => <Pill value={v} palette={STATUS_COLOR} /> },
-  { key: 'payment_status', label: 'Payment', sortable: true, render: (v) => <Pill value={v} palette={PAYMENT_COLOR} /> },
+  { key: 'status', label: 'Status', sortable: true, render: (v) => <Pill value={v} palette={STATUS_TONE} /> },
+  { key: 'payment_status', label: 'Payment', sortable: true, render: (v) => <Pill value={v} palette={PAYMENT_TONE} /> },
   // Invoice number is the operator's primary cross-reference to their
   // own bookkeeping system — surface it as a distinct column.
   { key: 'invoice_number', label: 'Invoice #', render: (v) => (v ? <span className="font-mono text-xs">{String(v)}</span> : <span className="text-muted-foreground">—</span>) },
@@ -150,7 +154,7 @@ export default function WorkOrders() {
             to="/work-orders/new"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-md text-xs font-medium text-primary-foreground transition"
           >
-            <Plus size={13} />
+            <Plus size={14} />
             {t('work_orders_page.new_button')}
           </Link>
         }
@@ -164,7 +168,7 @@ export default function WorkOrders() {
           <span className="text-muted-foreground">{t('work_orders_page.filtered_to')}</span>
           {vehicleFilter && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 border border-primary/30 rounded text-primary">
-              {t('work_orders_page.filter_vehicle')}: <span className="font-mono">{vehicleFilter}</span>
+              {t('work_orders_page.filter_vehicle')}: <span>{vehicleFilter}</span>
             </span>
           )}
           {vendorFilter && (
@@ -224,7 +228,7 @@ export default function WorkOrders() {
               to="/work-orders/new"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
             >
-              <Plus size={13} />
+              <Plus size={14} />
               {t('work_orders_page.new_button')}
             </Link>
           }
@@ -246,7 +250,7 @@ export default function WorkOrders() {
           the form / detail pages so users learn the vocabulary early. */}
       {workOrders.length > 0 && (
         <p className="text-xs text-muted-foreground mt-2 inline-flex items-center gap-1">
-          <Paperclip size={11} />
+          <Paperclip size={12} />
           {t('work_orders_page.row_click_hint')}
         </p>
       )}

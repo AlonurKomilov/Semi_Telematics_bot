@@ -23,9 +23,12 @@ export default function FleetStatusChart({ moving, idle, stopped }: Props) {
           paddingAngle={3}
           dataKey="value"
         >
-          <Cell fill="#22c55e" />
-          <Cell fill="#eab308" />
-          <Cell fill="#ef4444" />
+          {/* Moving / Idle / Stopped map to the shared status tokens
+              (ok / warn / danger) so the pie matches every status badge
+              and legend dot elsewhere — see design.md §3 & §8. */}
+          <Cell fill="var(--ok)" />
+          <Cell fill="var(--warn)" />
+          <Cell fill="var(--danger)" />
         </Pie>
         <Tooltip
           contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }}

@@ -7,6 +7,7 @@ import {
   Check, Search, Link2, Link2Off,
 } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
+import { toneClasses, toneText } from '../../lib/status';
 import DataTable from '../../components/DataTable';
 import {
   PageHeader,
@@ -54,11 +55,10 @@ function ExpirationChip({ iso }: { iso: string | null }) {
   const d = daysUntil(iso);
   if (d == null) return <span className="text-muted-foreground text-xs">{iso}</span>;
   let cls = 'bg-muted text-muted-foreground border-transparent';
-  if (d < 0) cls = 'bg-destructive/15 text-destructive border-destructive/30';
-  else if (d <= 30) cls = 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30';
-  else if (d <= 90) cls = 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30';
+  if (d <= 30) cls = toneClasses('danger');
+  else if (d <= 90) cls = toneClasses('warn');
   return (
-    <span className={`px-2 py-0.5 rounded-full text-[11px] border ${cls} tabular-nums`}>
+    <span className={`px-2 py-0.5 rounded-full text-2xs border ${cls} tabular-nums`}>
       {iso} {d < 0 ? `(${-d}d ago)` : `(${d}d)`}
     </span>
   );
@@ -67,13 +67,13 @@ function ExpirationChip({ iso }: { iso: string | null }) {
 function StorageBadge({ driveId }: { driveId: string | null }) {
   if (driveId) {
     return (
-      <span className="px-1.5 py-0.5 rounded text-[10px] bg-primary/10 text-primary border border-primary/30">
+      <span className="px-1.5 py-0.5 rounded text-3xs bg-primary/10 text-primary border border-primary/30">
         Drive
       </span>
     );
   }
   return (
-    <span className="px-1.5 py-0.5 rounded text-[10px] bg-muted text-muted-foreground border border-border">
+    <span className="px-1.5 py-0.5 rounded text-3xs bg-muted text-muted-foreground border border-border">
       Local
     </span>
   );
@@ -93,7 +93,7 @@ const driverColumns: AnyColumn[] = [
       const terminated = !!p.termination_date;
       return (
         <div className="flex items-center gap-2">
-          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold ${
+          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-3xs font-bold ${
             terminated ? 'bg-muted text-muted-foreground' : 'bg-primary/15 text-primary'
           }`}>{ini}</div>
           <span>{p.display_name}</span>
@@ -115,7 +115,7 @@ const driverColumns: AnyColumn[] = [
     render: (v) =>
       v
         ? <span className="px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground border border-border">Terminated</span>
-        : <span className="px-2 py-0.5 rounded-full text-xs bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30">Active</span>,
+        : <span className={`px-2 py-0.5 rounded-full text-xs border ${toneClasses('ok')}`}>Active</span>,
   },
 ];
 
@@ -186,11 +186,11 @@ export default function Drivers() {
       />
 
       {error && <div className="mb-3"><ErrorState message={error} /></div>}
-      {success && <p className="text-green-600 dark:text-green-400 text-sm mb-3">{success}</p>}
+      {success && <p className="text-ok text-sm mb-3">{success}</p>}
 
       {expiringCount > 0 && (
-        <div className="mb-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center gap-2 text-sm">
-          <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
+        <div className={`mb-4 p-3 rounded-lg border flex items-center gap-2 text-sm ${toneClasses('warn')}`}>
+          <AlertTriangle size={16} className={`shrink-0 ${toneText('warn')}`} />
           <span>
             <strong>{expiringCount}</strong> document{expiringCount === 1 ? '' : 's'} expiring in the next 30 days across the fleet.
           </span>
@@ -280,14 +280,14 @@ function DriverDrawer({
                 {p.telegram_id ? (
                   <span
                     title="Telegram ID — captured when this driver joined via invite link"
-                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground tabular-nums"
+                    className="inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground tabular-nums"
                   >
                     tg:{p.telegram_id}
                   </span>
                 ) : (
                   <span
                     title="No Telegram linked yet — invite the driver via Telegram or share the bot deep-link"
-                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                    className={`inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded border ${toneClasses('warn')}`}
                   >
                     Not linked
                   </span>
@@ -319,7 +319,7 @@ function DriverDrawer({
             >
               {tt.icon}{tt.label}
               {tt.soon && (
-                <span className="absolute -top-1 -right-1 px-1 py-0.5 rounded-full bg-primary/15 text-primary text-[8px] font-semibold uppercase tracking-wider">
+                <span className="absolute -top-1 -right-1 px-1 py-0.5 rounded-full bg-primary/15 text-primary text-3xs font-semibold uppercase tracking-wider">
                   soon
                 </span>
               )}
@@ -340,21 +340,21 @@ function DriverDrawer({
         )}
         {tab === 'inspections' && (
           <ComingSoonTab
-            icon={<ClipboardCheck size={28} className="text-muted-foreground" />}
+            icon={<ClipboardCheck size={24} className="text-muted-foreground" />}
             title="DOT inspections"
             description="Pre-trip, post-trip, annual, and DOT roadside inspection records — including defects, vehicle, and inspector — will be available here."
           />
         )}
         {tab === 'trainings' && (
           <ComingSoonTab
-            icon={<GraduationCap size={28} className="text-muted-foreground" />}
+            icon={<GraduationCap size={24} className="text-muted-foreground" />}
             title="Training records"
             description="Defensive driving, hazmat, cargo securement, and other certifications with expiration tracking. Certificates link back to the Documents tab."
           />
         )}
         {tab === 'hos' && (
           <ComingSoonTab
-            icon={<Clock size={28} className="text-muted-foreground" />}
+            icon={<Clock size={24} className="text-muted-foreground" />}
             title="Hours of Service"
             description="Live duty status (on duty / off duty / driving / sleeper berth) plus drive-time, on-duty time, and cycle/shift remaining — synced from Samsara HOS."
           />
@@ -551,7 +551,7 @@ function VehiclesTab({
                   <Truck size={14} className="text-muted-foreground" />
                   <span className="font-medium">{a.vehicle_name}</span>
                   {a.is_primary && (
-                    <span className="px-1.5 py-0.5 text-[10px] rounded bg-primary/15 text-primary">Primary</span>
+                    <span className="px-1.5 py-0.5 text-3xs rounded bg-primary/15 text-primary">Primary</span>
                   )}
                   <span className="text-xs text-muted-foreground tabular-nums">since {a.assigned_at.slice(0, 10)}</span>
                 </span>
@@ -740,10 +740,10 @@ function DocumentsTab({
                     </button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 mt-1 text-[11px] text-muted-foreground">
+                <div className="flex items-center gap-2 mt-1 text-2xs text-muted-foreground">
                   <span>{DOC_LABEL[d.doc_type] ?? d.doc_type}</span>
                   <span>·</span>
-                  <Calendar size={11} />
+                  <Calendar size={12} />
                   <ExpirationChip iso={d.expires_at} />
                 </div>
               </li>
@@ -835,7 +835,7 @@ function SamsaraDriverPicker({
           onChange={(e) => onChange(e.target.value || null)}
           placeholder="Samsara driver ID (autocomplete unavailable)"
         />
-        <p className="text-[10px] text-amber-600 dark:text-amber-400">
+        <p className={`text-3xs ${toneText('warn')}`}>
           Couldn't reach Samsara — type the ID manually.
         </p>
       </div>
@@ -854,14 +854,14 @@ function SamsaraDriverPicker({
             <Link2 size={12} className="text-primary shrink-0" />
             <span className="truncate font-medium">{selected.name}</span>
             {selected.username && (
-              <span className="text-[10px] text-muted-foreground tabular-nums">
+              <span className="text-3xs text-muted-foreground tabular-nums">
                 {selected.username}
               </span>
             )}
           </span>
         ) : value ? (
           <span className="flex items-center gap-2 min-w-0">
-            <AlertTriangle size={12} className="text-amber-500 shrink-0" />
+            <AlertTriangle size={12} className={`shrink-0 ${toneText('warn')}`} />
             <span className="truncate text-muted-foreground">
               ID {value} (not in fleet)
             </span>
@@ -930,14 +930,14 @@ function SamsaraDriverPicker({
                     )}
                     <span className="flex-1 min-w-0">
                       <span className="font-medium truncate block">{d.name || '—'}</span>
-                      <span className="text-[10px] text-muted-foreground tabular-nums">
+                      <span className="text-3xs text-muted-foreground tabular-nums">
                         {d.username || `id:${d.samsara_driver_id}`}
                         {d.company_code && ` · ${d.company_code}`}
                         {d.deactivated && ' · deactivated'}
                       </span>
                     </span>
                     {linkedElsewhere && (
-                      <span className="text-[10px] text-amber-600 dark:text-amber-400 shrink-0">
+                      <span className={`text-3xs shrink-0 ${toneText('warn')}`}>
                         already linked
                       </span>
                     )}
@@ -956,15 +956,15 @@ function SamsaraIdentityCard({ samsaraDriverId }: { samsaraDriverId: string | nu
   const { data, isLoading } = useSamsaraDrivers();
   if (!samsaraDriverId) {
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-        <Link2Off size={10} />
+      <span className="inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+        <Link2Off size={12} />
         Unlinked
       </span>
     );
   }
   if (isLoading) {
     return (
-      <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+      <span className="text-3xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
         samsara:{samsaraDriverId}
       </span>
     );
@@ -974,9 +974,9 @@ function SamsaraIdentityCard({ samsaraDriverId }: { samsaraDriverId: string | nu
     return (
       <span
         title="This Samsara driver ID is not in the fleet roster — possibly stale or wrong."
-        className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30"
+        className={`inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded border ${toneClasses('warn')}`}
       >
-        <AlertTriangle size={10} />
+        <AlertTriangle size={12} />
         ID {samsaraDriverId} — not in Samsara
       </span>
     );
@@ -984,12 +984,12 @@ function SamsaraIdentityCard({ samsaraDriverId }: { samsaraDriverId: string | nu
   return (
     <span
       title={`Linked to Samsara driver ${match.name} (${match.username || match.samsara_driver_id})`}
-      className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/30"
+      className="inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/30"
     >
-      <Link2 size={10} />
+      <Link2 size={12} />
       {match.name}
       {match.deactivated && (
-        <span className="ml-1 text-amber-600 dark:text-amber-400">(deactivated)</span>
+        <span className={`ml-1 ${toneText('warn')}`}>(deactivated)</span>
       )}
     </span>
   );
@@ -1007,7 +1007,7 @@ function ComingSoonTab({
       <p className="text-xs text-muted-foreground max-w-[320px] leading-relaxed">
         {description}
       </p>
-      <span className="mt-2 px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider bg-primary/15 text-primary border border-primary/30">
+      <span className="mt-2 px-2 py-0.5 rounded-full text-3xs uppercase tracking-wider bg-primary/15 text-primary border border-primary/30">
         Coming soon
       </span>
     </div>
@@ -1017,7 +1017,7 @@ function ComingSoonTab({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">{title}</h3>
+      <h3 className="text-2xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">{title}</h3>
       {children}
     </section>
   );
@@ -1026,7 +1026,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</span>
+      <span className="text-3xs text-muted-foreground uppercase tracking-wider">{label}</span>
       {children}
     </label>
   );

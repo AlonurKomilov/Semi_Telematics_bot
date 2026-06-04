@@ -420,7 +420,7 @@ export default function Chat() {
                     ];
                     return orderedMakers.map((maker) => (
                       <div key={maker}>
-                        <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground bg-muted/50 sticky top-0">
+                        <div className="px-3 py-1.5 text-3xs uppercase tracking-wider text-muted-foreground bg-muted/50 sticky top-0">
                           {maker}
                         </div>
                         {grouped[maker].map((m) => (
@@ -438,15 +438,15 @@ export default function Chat() {
                               <span className="truncate">{m.display}</span>
                               <span className="flex items-center gap-1 ml-2 flex-shrink-0">
                                 {m.name === accountDefault && isAdmin && (
-                                  <span className="text-[10px] text-yellow-500">{t('chat.model_default')}</span>
+                                  <span className="text-3xs text-yellow-500">{t('chat.model_default')}</span>
                                 )}
                                 {m.name === currentModel && (
-                                  <span className="text-[10px] text-primary">{t('chat.model_active')}</span>
+                                  <span className="text-3xs text-primary">{t('chat.model_active')}</span>
                                 )}
                               </span>
                             </div>
                             {m.description && (
-                              <span className="text-[10px] text-muted-foreground block truncate">{m.description}</span>
+                              <span className="text-3xs text-muted-foreground block truncate">{m.description}</span>
                             )}
                           </button>
                         ))}
@@ -471,7 +471,7 @@ export default function Chat() {
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors bg-muted hover:bg-muted/80 text-muted-foreground border border-border"
                 title={t('chat.export_conversation')}
               >
-                <Download size={13} />
+                <Download size={14} />
                 {t('chat.export')}
               </button>
               <button
@@ -482,7 +482,7 @@ export default function Chat() {
                     : 'bg-muted hover:bg-muted/80 text-muted-foreground border-border'
                 }`}
               >
-                <Trash2 size={13} />
+                <Trash2 size={14} />
                 {clearConfirm ? t('chat.confirm_clear') : t('chat.clear')}
               </button>
             </>
@@ -560,9 +560,9 @@ export default function Chat() {
                         className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
                         title={t('chat.edit_message')}
                       >
-                        <Pencil size={11} />
+                        <Pencil size={12} />
                       </button>
-                      <p className="text-[10px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                      <p className="text-3xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
                         {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
@@ -574,7 +574,7 @@ export default function Chat() {
                       dangerouslySetInnerHTML={{ __html: formatAIResponse(msg.text) }}
                     />
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] text-muted-foreground/60">
+                      <span className="text-3xs text-muted-foreground/60">
                         {models.find((m) => m.name === currentModel)?.display || currentModel}
                       </span>
                       <button
@@ -583,8 +583,8 @@ export default function Chat() {
                         title={t('chat.copy_response')}
                       >
                         {copiedIdx === i
-                          ? <Check size={11} className="text-green-500" />
-                          : <Copy size={11} />}
+                          ? <Check size={12} className="text-ok" />
+                          : <Copy size={12} />}
                       </button>
                     </div>
                   </div>
@@ -598,7 +598,7 @@ export default function Chat() {
                   {/* Completed steps */}
                   {toolActivity.slice(0, toolActivity.length > 0 ? toolActivity.length - 1 : 0).map((label, i) => (
                     <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground/70 mb-1.5">
-                      <Check size={11} className="text-primary/70 flex-shrink-0" />
+                      <Check size={12} className="text-primary/70 flex-shrink-0" />
                       <span>{label}</span>
                     </div>
                   ))}
@@ -627,7 +627,7 @@ export default function Chat() {
                     onClick={() => { setError(''); send(lastFailed!); }}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground border border-border transition-colors"
                   >
-                    <RotateCcw size={11} />
+                    <RotateCcw size={12} />
                     Retry
                   </button>
                 )}
@@ -639,7 +639,7 @@ export default function Chat() {
 
           {/* Follow-up suggestions */}
           {suggestions.length > 0 && !loading && (
-            <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-border/50 flex-shrink-0">
+            <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-border flex-shrink-0">
               {suggestions.map((s, i) => (
                 <button
                   key={i}

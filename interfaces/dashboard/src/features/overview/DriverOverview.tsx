@@ -27,6 +27,7 @@ import {
   EmptyState,
   Greeting,
 } from '../../components/shell';
+import { toneClasses, toneText } from '../../lib/status';
 import type { DashboardStats } from '../../types';
 
 interface DriverOverviewProps {
@@ -88,12 +89,12 @@ export default function DriverOverview({
                 </h2>
               </div>
               <span
-                className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  truck.status === 'Moving'
-                    ? 'bg-green-500/15 text-green-700 dark:text-green-400'
-                    : truck.status === 'Idle'
-                      ? 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400'
-                      : 'bg-destructive/15 text-destructive'
+                className={`px-3 py-1 rounded-full text-sm font-medium border ${
+                  toneClasses(
+                    truck.status === 'Moving' ? 'ok'
+                    : truck.status === 'Idle' ? 'warn'
+                    : 'danger',
+                  )
                 }`}
               >
                 {truck.status}
@@ -111,11 +112,11 @@ export default function DriverOverview({
                 <p
                   className={`text-xl font-bold mt-1 ${
                     fuelTone === 'critical'
-                      ? 'text-destructive'
+                      ? toneText('danger')
                       : fuelTone === 'warning'
-                        ? 'text-yellow-700 dark:text-yellow-400'
+                        ? toneText('warn')
                         : fuelTone === 'positive'
-                          ? 'text-green-600 dark:text-green-400'
+                          ? toneText('ok')
                           : 'text-foreground'
                   }`}
                 >
@@ -126,9 +127,7 @@ export default function DriverOverview({
                 <p className="text-xs text-muted-foreground">Active faults</p>
                 <p
                   className={`text-xl font-bold mt-1 ${
-                    truck.faults > 0
-                      ? 'text-orange-600 dark:text-orange-400'
-                      : 'text-green-600 dark:text-green-400'
+                    toneText(truck.faults > 0 ? 'warn' : 'ok')
                   }`}
                 >
                   {truck.faults}

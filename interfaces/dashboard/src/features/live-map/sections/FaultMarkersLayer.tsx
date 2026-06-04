@@ -13,17 +13,18 @@
  * gated by ``can_faults`` so the overlay is a no-op for personas
  * without fault access.
  *
- * The orange ring intentionally uses a different color from the
- * red warn-ring (low fuel / DEF) the base map already paints — at
- * a glance a fleet manager can distinguish "low fuel / DEF" (red)
- * from "active DTCs" (orange) without zooming in.
+ * The fault ring uses the shared ``warn`` map colour, which stays
+ * visually distinct from the ``danger`` (red) warn-ring the base map
+ * paints for low fuel / DEF — at a glance a fleet manager can tell
+ * "low fuel / DEF" (red) from "active DTCs" (amber) without zooming.
  */
 import { useEffect, useRef } from 'react';
 import type L from 'leaflet';
 import { usePermissions } from '../../../hooks/usePermissions';
+import { MAP_STATUS } from '../../../config/mapColors';
 import type { LiveMapSectionProps } from './_shared/types';
 
-const RING_COLOR = '#f97316';  // tailwind orange-500
+const RING_COLOR = MAP_STATUS.warn;
 const RING_WEIGHT = 3;
 const RING_OPACITY = 0.85;
 // Pixel radius is in map-projection meters at the marker's lat; this

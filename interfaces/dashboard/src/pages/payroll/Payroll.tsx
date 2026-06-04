@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DollarSign } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
+import { toneClasses } from '../../lib/status';
 import { useAuth } from '../../context/AuthContext';
 import { PageHeader, CardSkeleton } from '../../components/shell';
 
@@ -86,7 +87,7 @@ export default function Payroll() {
           title={t('pages.payroll_title')}
           description={t('pages.payroll_desc_short')}
         />
-        <div className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-700 dark:text-yellow-300">
+        <div className={`rounded-lg border px-4 py-3 text-sm ${toneClasses('warn')}`}>
           Payroll is not enabled for this account. Contact your administrator to activate Pay-for-Performance.
         </div>
       </div>
@@ -101,7 +102,7 @@ export default function Payroll() {
         description={t('pages.payroll_desc_long')}
       />
 
-      <div className="flex gap-2 border-b border-border/50">
+      <div className="flex gap-2 border-b border-border">
         {(['runs', 'rules', 'settings'] as Tab[]).map((t) => (
           <button
             key={t}
@@ -200,7 +201,7 @@ function RunsTab() {
         </button>
       </div>
 
-      {error && <div className="text-red-500 text-sm">{error}</div>}
+      {error && <div className="text-danger text-sm">{error}</div>}
       {loading && <div className="text-sm text-muted-foreground">Loading…</div>}
 
       <table className="w-full text-sm">
@@ -218,10 +219,12 @@ function RunsTab() {
             <tr key={r.id} className="border-b border-border/30 hover:bg-muted/30">
               <td className="p-2">{r.period_start} → {r.period_end}</td>
               <td className="p-2">
-                <span className={`px-2 py-0.5 rounded text-xs ${
-                  r.status === 'finalized' ? 'bg-green-500/20 text-green-700'
-                  : r.status === 'cancelled' ? 'bg-gray-500/20 text-gray-600'
-                  : 'bg-yellow-500/20 text-yellow-700'
+                <span className={`px-2 py-0.5 rounded text-xs border ${
+                  toneClasses(
+                    r.status === 'finalized' ? 'ok'
+                    : r.status === 'cancelled' ? 'neutral'
+                    : 'warn',
+                  )
                 }`}>{r.status}</span>
               </td>
               <td className="p-2 text-right">{fmtCents(r.total_cents)}</td>
@@ -232,10 +235,10 @@ function RunsTab() {
                 </button>
                 {r.status === 'draft' && (
                   <>
-                    <button onClick={() => finalize(r.id)} className="text-green-600 text-xs hover:underline mr-2">
+                    <button onClick={() => finalize(r.id)} className="text-ok text-xs hover:underline mr-2">
                       Finalize
                     </button>
-                    <button onClick={() => cancel(r.id)} className="text-red-500 text-xs hover:underline">
+                    <button onClick={() => cancel(r.id)} className="text-danger text-xs hover:underline">
                       Cancel
                     </button>
                   </>
@@ -348,7 +351,7 @@ function RulesTab() {
     <div className="space-y-4">
       <div className="border rounded p-3 space-y-2">
         <h3 className="font-semibold text-sm">Add Bonus Rule</h3>
-        {error && <div className="text-red-500 text-sm">{error}</div>}
+        {error && <div className="text-danger text-sm">{error}</div>}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
           <input placeholder="Name"
             value={draft.name ?? ''} onChange={(e) => setDraft({ ...draft, name: e.target.value })}
@@ -417,7 +420,7 @@ function RulesTab() {
                 <input type="checkbox" checked={!!r.active} onChange={() => toggle(r)} />
               </td>
               <td className="p-2 text-right">
-                <button onClick={() => remove(r.id)} className="text-red-500 text-xs hover:underline">
+                <button onClick={() => remove(r.id)} className="text-destructive text-xs hover:underline">
                   Delete
                 </button>
               </td>
@@ -473,7 +476,7 @@ function SettingsTab() {
     <div className="space-y-4">
       <div className="border rounded p-3 space-y-2">
         <h3 className="font-semibold text-sm">Set Driver Pay</h3>
-        {error && <div className="text-red-500 text-sm">{error}</div>}
+        {error && <div className="text-danger text-sm">{error}</div>}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
           <input placeholder="Driver ID (Samsara)" value={driverId}
             onChange={(e) => setDriverId(e.target.value)}

@@ -22,6 +22,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type L from 'leaflet';
 import { apiJSON } from '../../../api/client';
 import { usePermissions } from '../../../hooks/usePermissions';
+import { MAP_STATUS, POPUP_LINK } from '../../../config/mapColors';
 import type { LiveMapSectionProps } from './_shared/types';
 
 interface DueRow {
@@ -38,8 +39,8 @@ interface DueLocationsResponse {
 
 const POLL_INTERVAL_MS = 5 * 60_000;  // 5 minutes — maintenance is slow-moving
 
-const COLOR_OVERDUE = '#dc2626';  // tailwind red-600
-const COLOR_PENDING = '#f59e0b';  // tailwind amber-500
+const COLOR_OVERDUE = MAP_STATUS.danger;  // overdue → danger
+const COLOR_PENDING = MAP_STATUS.warn;    // pending → warn
 
 export default function MaintenanceMarkersLayer({
   leafletMap,
@@ -149,7 +150,7 @@ export default function MaintenanceMarkersLayer({
               : ''}
           </div>
           <a href="/maintenance?vehicle=${encodeURIComponent(row.vehicle_name)}"
-             style="font-size:11px;color:#2563eb;display:inline-block;margin-top:6px">
+             style="font-size:11px;color:${POPUP_LINK};display:inline-block;margin-top:6px">
             Open maintenance →
           </a>
         </div>

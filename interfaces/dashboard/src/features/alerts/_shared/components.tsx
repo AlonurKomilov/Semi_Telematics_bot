@@ -7,6 +7,7 @@
  * feature.
  */
 import { CheckCircle2 } from 'lucide-react';
+import { statusTone, toneText } from '../../../lib/status';
 import type { Alert } from '../../../types';
 
 export function TypeBadge({ type }: { type: string }) {
@@ -33,16 +34,15 @@ export function TypeBadge({ type }: { type: string }) {
  */
 export function SeverityDot({ severity }: { severity?: string }) {
   const sev = severity === 'critical' || severity === 'info' ? severity : 'warning';
-  const cfg: Record<string, { dot: string; text: string; label: string }> = {
-    critical: { dot: 'bg-red-500', text: 'text-red-600 dark:text-red-400', label: 'Critical' },
-    warning: { dot: 'bg-orange-500', text: 'text-orange-600 dark:text-orange-400', label: 'Warning' },
-    info: { dot: 'bg-blue-500', text: 'text-blue-600 dark:text-blue-400', label: 'Info' },
-  };
-  const c = cfg[sev];
+  // Severity → tone via the shared status map (critical→danger,
+  // warning→warn, info→info); one tone drives both the dot fill and
+  // the label text so they can't drift apart.
+  const tone = statusTone(sev);
+  const label = { critical: 'Critical', warning: 'Warning', info: 'Info' }[sev];
   return (
-    <span className={`inline-flex items-center gap-1 text-xs font-medium ${c.text}`}>
-      <span className={`w-2 h-2 rounded-full ${c.dot}`} aria-hidden />
-      {c.label}
+    <span className={`inline-flex items-center gap-1 text-xs font-medium ${toneText(tone)}`}>
+      <span className={`w-2 h-2 rounded-full bg-${tone}`} aria-hidden />
+      {label}
     </span>
   );
 }
@@ -63,10 +63,10 @@ export function AckMarker({ alert }: { alert: Alert }) {
     const who = alert.acknowledged_by_name || 'user';
     return (
       <span
-        className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400"
+        className="inline-flex items-center gap-1 text-xs font-medium text-ok"
         title={when ? `Acknowledged ${when}` : undefined}
       >
-        <CheckCircle2 size={13} aria-hidden />
+        <CheckCircle2 size={14} aria-hidden />
         Acknowledged by {who}
       </span>
     );
@@ -76,7 +76,7 @@ export function AckMarker({ alert }: { alert: Alert }) {
       className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground"
       title={when ? `Auto-resolved ${when}` : undefined}
     >
-      <CheckCircle2 size={13} aria-hidden />
+      <CheckCircle2 size={14} aria-hidden />
       Auto-resolved
     </span>
   );

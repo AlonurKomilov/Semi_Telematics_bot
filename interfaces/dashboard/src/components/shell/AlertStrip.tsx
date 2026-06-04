@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
+import { toneClasses, type Tone } from '../../lib/status';
 
 export interface AlertItem {
   label: string;
@@ -15,11 +16,11 @@ interface AlertStripProps {
   items: AlertItem[];
 }
 
-const TONE_CLASSES = {
-  critical: 'bg-destructive/10 border-destructive/40 text-destructive hover:bg-destructive/15',
-  warning: 'bg-yellow-500/10 border-yellow-500/40 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-500/15',
-  info: 'bg-primary/10 border-primary/40 text-primary hover:bg-primary/15',
-} as const;
+const TONE_CLASSES: Record<NonNullable<AlertItem['tone']>, Tone> = {
+  critical: 'danger',
+  warning: 'warn',
+  info: 'info',
+};
 
 export default function AlertStrip({ items }: AlertStripProps) {
   const visible = items.filter((i) => i.count > 0);
@@ -29,7 +30,7 @@ export default function AlertStrip({ items }: AlertStripProps) {
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
       {visible.map((item) => {
         const Icon = item.icon;
-        const cls = TONE_CLASSES[item.tone ?? 'info'];
+        const cls = toneClasses(TONE_CLASSES[item.tone ?? 'info']);
         return (
           <Link
             key={item.label}

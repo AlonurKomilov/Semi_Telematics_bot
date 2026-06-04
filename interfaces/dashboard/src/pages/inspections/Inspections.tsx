@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardCheck, Plus, Search, X } from 'lucide-react';
 import { apiJSON } from '../../api/client';
+import { toneClasses } from '../../lib/status';
 import DataTable from '../../components/DataTable';
 import {
   PageHeader,
@@ -54,19 +55,20 @@ function StatusChip({ row }: { row: PTIInspectionRow }) {
   // row shows "Approved" not "Reviewed".
   if (row.review_status) {
     const label = REVIEW_STATUS_LABELS[row.review_status] ?? row.review_status;
-    const cls =
-      row.review_status === 'approved'      ? 'bg-green-500/15 text-green-700 dark:text-green-400' :
-      row.review_status === 'needs_service' ? 'bg-orange-500/15 text-orange-700 dark:text-orange-400' :
-      row.review_status === 'rejected'      ? 'bg-red-500/15 text-red-700 dark:text-red-400' :
-                                              'bg-amber-500/15 text-amber-700 dark:text-amber-400';
-    return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{label}</span>;
+    const cls = toneClasses(
+      row.review_status === 'approved' ? 'ok'     :
+      row.review_status === 'rejected' ? 'danger' :
+                                         'warn'   // needs_service / revision_required
+    );
+    return <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${cls}`}>{label}</span>;
   }
   const wf = WORKFLOW_STATUS_LABELS[row.status] ?? row.status;
-  const cls =
-    row.status === 'submitted'         ? 'bg-blue-500/15 text-blue-700 dark:text-blue-400' :
-    row.status === 'revision_required' ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400' :
-                                         'bg-muted text-muted-foreground';
-  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{wf}</span>;
+  const cls = toneClasses(
+    row.status === 'submitted'         ? 'info' :
+    row.status === 'revision_required' ? 'warn' :
+                                         'neutral'
+  );
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${cls}`}>{wf}</span>;
 }
 
 
@@ -77,7 +79,7 @@ function DefectsCell({ row }: { row: PTIInspectionRow }) {
     return <span className="text-muted-foreground">0</span>;
   }
   const oosBadge = row.has_oos_defect ? (
-    <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-500/15 text-red-700 dark:text-red-400">
+    <span className={`ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded border text-3xs font-medium ${toneClasses('danger')}`}>
       OOS
     </span>
   ) : null;
@@ -275,7 +277,7 @@ export default function Inspections() {
             onClick={() => setShowNewDialog(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-md text-xs font-medium text-primary-foreground transition"
           >
-            <Plus size={13} />
+            <Plus size={14} />
             {t('inspections.new.button')}
           </button>
         }
@@ -347,12 +349,12 @@ export default function Inspections() {
       <div className="flex flex-wrap gap-2 mb-4">
         {([
           { key: '',              label: 'All',            count: counts.all,           dot: 'bg-muted-foreground/40' },
-          { key: 'not_started',   label: 'Not Started',    count: counts.not_started,   dot: 'bg-slate-400' },
-          { key: 'submitted',     label: 'Pending Review', count: counts.submitted,     dot: 'bg-blue-500' },
-          { key: 'approved',      label: 'Approved',       count: counts.approved,      dot: 'bg-green-500' },
-          { key: 'needs_service', label: 'Needs Service',  count: counts.needs_service, dot: 'bg-orange-500' },
-          { key: 'rejected',      label: 'Rejected',       count: counts.rejected,      dot: 'bg-red-500' },
-          { key: 'overdue',       label: 'Overdue',        count: counts.overdue,       dot: 'bg-amber-500' },
+          { key: 'not_started',   label: 'Not Started',    count: counts.not_started,   dot: 'bg-muted-foreground' },
+          { key: 'submitted',     label: 'Pending Review', count: counts.submitted,     dot: 'bg-info' },
+          { key: 'approved',      label: 'Approved',       count: counts.approved,      dot: 'bg-ok' },
+          { key: 'needs_service', label: 'Needs Service',  count: counts.needs_service, dot: 'bg-warn' },
+          { key: 'rejected',      label: 'Rejected',       count: counts.rejected,      dot: 'bg-danger' },
+          { key: 'overdue',       label: 'Overdue',        count: counts.overdue,       dot: 'bg-warn' },
         ] as const).map(chip => {
           const active = filter === chip.key;
           return (

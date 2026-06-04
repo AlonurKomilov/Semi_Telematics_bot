@@ -300,7 +300,7 @@ function RuleRow({
   onReset: () => void;
 }) {
   const isBonus = rule.kind === 'bonus';
-  const ptsColor = isBonus ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
+  const ptsColor = isBonus ? 'text-ok' : 'text-danger';
   const [showCurve, setShowCurve] = useState(false);
   const hasCurve = !!rule.curve_kind;
   return (
@@ -310,7 +310,7 @@ function RuleRow({
       <button
         onClick={() => onChange({ enabled: !draft.enabled })}
         className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition ${
-          draft.enabled ? 'bg-green-600' : 'bg-muted'
+          draft.enabled ? 'bg-ok' : 'bg-muted'
         }`}
         title={draft.enabled ? 'Enabled' : 'Disabled'}
       >
@@ -327,7 +327,7 @@ function RuleRow({
           {rule.label}
           {rule.pillar && (
             <span
-              className="ml-2 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-mono"
+              className="ml-2 text-3xs uppercase tracking-wide px-1.5 py-0.5 rounded font-mono"
               style={{
                 background:
                   rule.pillar === 'safety'     ? '#ef444422'
@@ -345,17 +345,17 @@ function RuleRow({
           )}
           {rule.curve_kind && (
             <span
-              className="ml-1 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-500"
+              className="ml-1 text-3xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-500"
               title={`Curve: ${rule.curve_kind}`}
             >
               curve
             </span>
           )}
           {rule.overridden && (
-            <span className="ml-2 text-[10px] text-blue-500 uppercase tracking-wide">customised</span>
+            <span className="ml-2 text-3xs text-info uppercase tracking-wide">customised</span>
           )}
         </p>
-        <p className="text-[10px] text-muted-foreground font-mono truncate">{rule.id}</p>
+        <p className="text-3xs text-muted-foreground font-mono truncate">{rule.id}</p>
       </div>
 
       {/* points input */}
@@ -413,7 +413,7 @@ function RuleRow({
     </div>
     {hasCurve && showCurve && (
       <div className="bg-muted/30 px-4 py-3 border-t border-border text-xs space-y-2">
-        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        <p className="text-3xs uppercase tracking-wide text-muted-foreground">
           Curve: <span className="font-mono">{rule.curve_kind}</span>
           <span className="ml-3 opacity-60">
             defaults — x_zero {rule.default_curve_x_zero ?? '—'} ·
@@ -450,7 +450,7 @@ function CurveInput({
   const { t } = useTranslation();
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-muted-foreground text-[10px]">{label}</span>
+      <span className="text-muted-foreground text-3xs">{label}</span>
       <input
         type="number"
         value={value ?? ''}

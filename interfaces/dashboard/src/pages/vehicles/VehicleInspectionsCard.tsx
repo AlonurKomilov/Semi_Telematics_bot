@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { ClipboardCheck, ChevronRight } from 'lucide-react';
 import { apiJSON } from '../../api/client';
+import { type Tone, toneClasses } from '../../lib/status';
 import type { PTIInspectionRow, PTIInspectionsResponse } from '../../types';
 
 /**
@@ -22,12 +23,16 @@ const STATUS_LABEL: Record<PTIInspectionRow['status'], string> = {
   revision_required:   'Revision required',
 };
 
-const STATUS_TONE: Record<PTIInspectionRow['status'], string> = {
-  scheduled:         'bg-muted text-muted-foreground',
-  in_progress:       'bg-amber-500/15 text-amber-700 dark:text-amber-400',
-  submitted:         'bg-blue-500/15 text-blue-700 dark:text-blue-400',
-  reviewed:          'bg-green-500/15 text-green-700 dark:text-green-400',
-  revision_required: 'bg-orange-500/15 text-orange-700 dark:text-orange-400',
+// PTI workflow status → tone.  This vocabulary is more specific than
+// the generic ``statusTone`` map (here ``submitted`` = pending review →
+// info, ``in_progress`` = mid-walkaround → warn), so it keeps its own
+// mapping and funnels through ``toneClasses``.
+const STATUS_TONE: Record<PTIInspectionRow['status'], Tone> = {
+  scheduled:         'neutral',
+  in_progress:       'warn',
+  submitted:         'info',
+  reviewed:          'ok',
+  revision_required: 'warn',
 };
 
 function _formatDate(iso: string | null): string {
@@ -104,7 +109,7 @@ export function VehicleInspectionsCard({ vehicleName }: Props) {
                     {r.has_oos_defect ? ' · OOS' : ''}
                   </p>
                 </div>
-                <span className={`text-[11px] font-medium px-2 py-0.5 rounded ${STATUS_TONE[r.status]} whitespace-nowrap`}>
+                <span className={`text-2xs font-medium px-2 py-0.5 rounded border whitespace-nowrap ${toneClasses(STATUS_TONE[r.status])}`}>
                   {STATUS_LABEL[r.status]}
                 </span>
               </Link>

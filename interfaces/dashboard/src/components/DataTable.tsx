@@ -183,7 +183,7 @@ export default function DataTable({
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              <Icon size={13} />
+              <Icon size={14} />
             </button>
           ))}
         </div>

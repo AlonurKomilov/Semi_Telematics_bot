@@ -62,7 +62,7 @@ export function PersonaSelector() {
   if (!canSwitch) {
     return (
       <div
-        className="inline-flex items-center px-2 py-0.5 text-[11px] text-muted-foreground/80 bg-muted/30 border border-border/60 rounded-md"
+        className="inline-flex items-center px-2 py-0.5 text-2xs text-muted-foreground/80 bg-muted/30 border border-border/60 rounded-md"
         title={`Your role: ${viewLabel}`}
       >
         {viewLabel}
@@ -87,7 +87,7 @@ export function PersonaSelector() {
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-md border transition ${
+        className={`inline-flex items-center gap-1 px-2 py-0.5 text-2xs rounded-md border transition ${
           isPreviewing
             ? 'bg-primary/10 text-primary border-primary/40 hover:bg-primary/15'
             : 'bg-muted/30 text-muted-foreground/90 border-border/60 hover:bg-muted hover:text-foreground'
@@ -100,9 +100,9 @@ export function PersonaSelector() {
             : `Dashboard view: ${viewLabel}. Picking a different role re-skins the UI; data and permissions remain yours.`
         }
       >
-        {isPreviewing && <Eye size={10} className="opacity-80" />}
+        {isPreviewing && <Eye size={12} className="opacity-80" />}
         <span>{viewLabel}</span>
-        <ChevronDown size={11} className="opacity-60" />
+        <ChevronDown size={12} className="opacity-60" />
       </button>
 
       {open && (
@@ -110,7 +110,7 @@ export function PersonaSelector() {
           role="listbox"
           className="absolute left-0 mt-1 w-60 bg-card border border-border rounded-lg shadow-xl text-sm z-50 overflow-hidden"
         >
-          <li className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground/60 border-b border-border">
+          <li className="px-3 py-1.5 text-3xs uppercase tracking-wider text-muted-foreground/60 border-b border-border">
             View dashboard as…
           </li>
           {availableViews.map(v => {
@@ -134,7 +134,7 @@ export function PersonaSelector() {
               </li>
             );
           })}
-          <li className="px-3 py-1.5 text-[10px] text-muted-foreground/60 border-t border-border bg-muted/20 leading-snug">
+          <li className="px-3 py-1.5 text-3xs text-muted-foreground/60 border-t border-border bg-muted/20 leading-snug">
             Changes the dashboard UI only — data and permissions stay yours.
           </li>
         </ul>

@@ -109,7 +109,7 @@ export default function AccountAlertSummary() {
           <BarChart3 size={16} className="text-muted-foreground" />
           {t('alerts.volume_summary.title', { n: days })}
         </h2>
-        <span className="text-[11px] text-muted-foreground tabular-nums">
+        <span className="text-2xs text-muted-foreground tabular-nums">
           {isLoading ? '…' : t('alerts.volume_summary.total_count', { n: data?.total ?? 0 })}
         </span>
       </header>

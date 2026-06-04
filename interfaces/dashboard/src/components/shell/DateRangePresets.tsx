@@ -102,7 +102,7 @@ function CalendarMonth({ monthStart, selected, hover, rangeEnd, onPick, onHover 
       <p className="text-xs font-semibold text-foreground text-center mb-2">
         {monthStart.toLocaleString(undefined, { month: 'long', year: 'numeric' })}
       </p>
-      <div className="grid grid-cols-7 gap-0.5 text-[10px] text-muted-foreground text-center mb-1">
+      <div className="grid grid-cols-7 gap-0.5 text-3xs text-muted-foreground text-center mb-1">
         {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => <div key={d}>{d}</div>)}
       </div>
       <div className="grid grid-cols-7 gap-0.5">
@@ -202,9 +202,9 @@ export default function DateRangePresets({
         aria-busy={isFetching}
       >
         {isFetching ? (
-          <Loader2 size={13} className="animate-spin text-primary" aria-label="Loading" />
+          <Loader2 size={14} className="animate-spin text-primary" aria-label="Loading" />
         ) : (
-          <Calendar size={13} className="text-muted-foreground" />
+          <Calendar size={14} className="text-muted-foreground" />
         )}
         {isCustom ? `Last ${value} days` : labelFor(value, options)}
         <ChevronDown size={12} className="text-muted-foreground" />
@@ -228,7 +228,7 @@ export default function DateRangePresets({
                   }`}
                 >
                   <span>{opt.label}</span>
-                  {active && <span className="text-[10px] text-primary">●</span>}
+                  {active && <span className="text-3xs text-primary">●</span>}
                 </button>
               </li>
             );
@@ -272,7 +272,7 @@ export default function DateRangePresets({
             onPick={setPickedStart}
             onHover={setHoverDate}
           />
-          <div className="mt-3 flex items-center justify-between text-[11px] text-muted-foreground">
+          <div className="mt-3 flex items-center justify-between text-2xs text-muted-foreground">
             <span>
               {pickedStart
                 ? `${fmtNice(pickedStart)} → ${fmtNice(today)} (${daysBetween(pickedStart, today)}d)`

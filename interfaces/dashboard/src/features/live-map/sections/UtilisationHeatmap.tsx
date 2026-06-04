@@ -18,6 +18,7 @@
 import { useEffect, useRef } from 'react';
 import type L from 'leaflet';
 import { apiJSON } from '../../../api/client';
+import { HEATMAP_GRADIENT } from '../../../config/mapColors';
 import { usePermissions } from '../../../hooks/usePermissions';
 import type { LiveMapSectionProps } from './_shared/types';
 
@@ -72,12 +73,7 @@ export default function UtilisationHeatmap({
           radius: 30,
           blur: 22,
           maxZoom: 16,
-          gradient: {
-            0.2: '#0891b2',  // cyan
-            0.5: '#0284c7',  // sky
-            0.8: '#1d4ed8',  // blue
-            1.0: '#1e40af',  // deeper blue
-          },
+          gradient: HEATMAP_GRADIENT,
         });
         layer.addTo(leafletMap.current);
         layerRef.current = layer;

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { GraduationCap } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
+import { toneClasses } from '../../lib/status';
 import { useAuth } from '../../context/AuthContext';
 import { PageHeader, CardSkeleton } from '../../components/shell';
 
@@ -82,7 +83,7 @@ export default function Coaching() {
           title={t('pages.coaching_title')}
           description={t('pages.coaching_desc_short')}
         />
-        <div className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-700 dark:text-yellow-300">
+        <div className={`rounded-lg border px-4 py-3 text-sm ${toneClasses('warn')}`}>
           Auto Coaching is not enabled for this account. Contact your administrator to activate this feature.
         </div>
       </div>

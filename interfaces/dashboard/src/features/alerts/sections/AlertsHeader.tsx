@@ -73,7 +73,7 @@ export default function AlertsHeader() {
               disabled={acking}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-md text-xs font-medium text-primary-foreground transition"
             >
-              <CheckCircle2 size={13} />
+              <CheckCircle2 size={14} />
               {acking
                 ? t('alerts.acknowledging')
                 : t('alerts.acknowledge_n', { n: selected.size })}

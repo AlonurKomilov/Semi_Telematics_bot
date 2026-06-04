@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { X, BellRing, MapPin, FileDown } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
+import { toneClasses, toneText } from '../../lib/status';
 import { ErrorState } from '../../components/shell';
 import type {
   PTIInspectionDetail,
@@ -13,7 +14,7 @@ import { MediaGallery } from './MediaGallery';
 import { StatusTimeline } from './StatusTimeline';
 import { SignaturesPanel } from './SignaturesPanel';
 import { AIReviewRollup } from './AIReviewRollup';
-import { parseVerdict, isFlagged, VERDICT_EMOJI, VERDICT_TONE } from './aiVerdict';
+import { parseVerdict, isFlagged, VERDICT_EMOJI, verdictClasses } from './aiVerdict';
 
 interface Props {
   inspectionId: number;
@@ -211,7 +212,7 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
                 <p className="text-xl font-bold tabular-nums">
                   {ins.defects_count}
                   {ins.has_oos_defect ? (
-                    <span className="ml-2 text-xs font-medium px-1.5 py-0.5 rounded bg-red-500/15 text-red-700 dark:text-red-400">
+                    <span className={`ml-2 text-xs font-medium px-1.5 py-0.5 rounded border ${toneClasses('danger')}`}>
                       OOS
                     </span>
                   ) : null}
@@ -232,7 +233,7 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
                 phone GPS fallback. */}
             {ins.location_lat != null && ins.location_lon != null && (
               <div className="px-5 py-2.5 border-b border-border flex items-center gap-2 text-xs">
-                <MapPin size={13} className="text-muted-foreground flex-shrink-0" />
+                <MapPin size={14} className="text-muted-foreground flex-shrink-0" />
                 <a
                   href={`https://www.google.com/maps/search/?api=1&query=${ins.location_lat},${ins.location_lon}`}
                   target="_blank"
@@ -296,7 +297,7 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
                           <p className="text-xs mt-2 bg-muted/40 rounded px-2 py-1.5">{it.notes}</p>
                         )}
                         {topVerdict && (
-                          <div className={`text-xs mt-2 rounded px-2 py-1.5 ${VERDICT_TONE[topVerdict.verdict]}`}>
+                          <div className={`text-xs mt-2 rounded border px-2 py-1.5 ${verdictClasses(topVerdict.verdict)}`}>
                             <span className="font-medium">
                               {VERDICT_EMOJI[topVerdict.verdict]} {t('inspections.ai.item_prefix')}
                             </span>
@@ -335,12 +336,11 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
                 <div className="text-sm">
                   <p className="font-medium">
                     Reviewed as{' '}
-                    <span className={
-                      ins.review_status === 'approved'      ? 'text-green-700 dark:text-green-400' :
-                      ins.review_status === 'needs_service' ? 'text-orange-700 dark:text-orange-400' :
-                      ins.review_status === 'rejected'      ? 'text-red-700 dark:text-red-400' :
-                                                              'text-amber-700 dark:text-amber-400'
-                    }>
+                    <span className={toneText(
+                      ins.review_status === 'approved'      ? 'ok'     :
+                      ins.review_status === 'rejected'      ? 'danger' :
+                                                              'warn'   // needs_service / revision_required
+                    )}>
                       {REVIEW_OPTIONS.find(o => o.value === ins.review_status)?.label ?? ins.review_status}
                     </span>
                   </p>

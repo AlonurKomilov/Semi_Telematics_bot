@@ -4,22 +4,21 @@ import {
   ClipboardCheck, Landmark, OctagonAlert,
 } from 'lucide-react';
 import type { MaintenanceTask } from '../../types';
+import { statusTone, toneClasses, type Tone } from '../../lib/status';
 
 export const PRIORITY_OPTIONS = ['low', 'medium', 'high', 'critical'] as const;
 export type Priority = typeof PRIORITY_OPTIONS[number];
 
-const PRIORITY_CLASSES: Record<Priority, string> = {
-  low:      'bg-slate-500/15  text-slate-600  dark:text-slate-300  border-slate-500/30',
-  medium:   'bg-blue-500/15   text-blue-700   dark:text-blue-400   border-blue-500/30',
-  high:     'bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/30',
-  critical: 'bg-red-500/15    text-red-700    dark:text-red-400    border-red-500/30',
-};
-
 export function PriorityBadge({ value }: { value: unknown }) {
-  const v = (String(value || 'medium').toLowerCase()) as Priority;
-  const cls = PRIORITY_CLASSES[v] ?? PRIORITY_CLASSES.medium;
+  const v = String(value || 'medium').toLowerCase();
+  // Colour comes from the shared status system: low→neutral,
+  // medium→info, high→warn, critical→danger (see lib/status.ts).
+  // Unknown values fall back to the medium tone, matching the old
+  // ``?? PRIORITY_CLASSES.medium`` default, while still showing the
+  // raw text.
+  const known = (PRIORITY_OPTIONS as readonly string[]).includes(v) ? v : 'medium';
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium capitalize ${cls}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium capitalize ${toneClasses(statusTone(known))}`}>
       {v}
     </span>
   );
@@ -35,6 +34,14 @@ export function EmptyDueCell() {
   );
 }
 
+// Once a task closes, the live "X hrs to go" counter is meaningless —
+// the work is done.  Show a frozen "completed at X hrs" line instead,
+// with a filled-green bar so the row reads as "this finished" at a
+// glance.  Same idea for the Mileage and DueDate cells below.
+function isClosed(status: string | undefined | null): boolean {
+  return status === 'completed' || status === 'done' || status === 'cancelled';
+}
+
 export function EngineHoursProgress({ row }: { row: MaintenanceTask }) {
   if (row.due_engine_hours == null) return <EmptyDueCell />;
   if (row.last_engine_hours == null) {
@@ -44,7 +51,36 @@ export function EngineHoursProgress({ row }: { row: MaintenanceTask }) {
       </span>
     );
   }
-  const pct = Math.max(0, Math.min(120, Math.round((row.last_engine_hours / row.due_engine_hours) * 100)));
+  // Closed tasks (completed / cancelled) freeze the readout — no live
+  // "X hrs to go" since there's no future event to count down to.
+  if (isClosed(row.status)) {
+    return (
+      <div className="flex flex-col gap-1.5 min-w-[120px]">
+        <div className="text-xs text-muted-foreground">
+          Completed at {Number(row.last_engine_hours).toLocaleString()} hrs
+        </div>
+        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+          <div className="h-full bg-ok/40" style={{ width: '100%' }} />
+        </div>
+      </div>
+    );
+  }
+  // Period-relative progress: the bar shows how much of the recur
+  // interval has been consumed, not the absolute current/due ratio.
+  // A task with due=1,000 hrs and recur=500 hrs that's at last=510
+  // should render as 2% (just past the period start) — NOT 51%
+  // (which is misleading "absolute" progress).  Falls back to
+  // absolute when no recur is set so one-time tasks still get a
+  // sensible-ish bar.
+  const period = row.recur_interval_engine_hours ?? null;
+  let pct: number;
+  if (period && period > 0) {
+    const periodStart = row.due_engine_hours - period;
+    pct = ((row.last_engine_hours - periodStart) / period) * 100;
+  } else {
+    pct = (row.last_engine_hours / row.due_engine_hours) * 100;
+  }
+  pct = Math.max(0, Math.min(120, Math.round(pct)));
   const overdue = pct >= 100;
   const remaining = Math.round(row.due_engine_hours - row.last_engine_hours);
   return (
@@ -54,11 +90,11 @@ export function EngineHoursProgress({ row }: { row: MaintenanceTask }) {
       </div>
       <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
         <div
-          className={`h-full ${overdue ? 'bg-red-500' : pct >= 90 ? 'bg-orange-500' : 'bg-purple-500'}`}
+          className={`h-full ${overdue ? 'bg-danger' : pct >= 90 ? 'bg-warn' : 'bg-ok'}`}
           style={{ width: `${Math.min(pct, 100)}%` }}
         />
       </div>
-      <div className={`text-xs ${overdue ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
+      <div className={`text-xs ${overdue ? 'text-danger font-medium' : 'text-muted-foreground'}`}>
         {overdue
           ? `${Math.abs(remaining).toLocaleString()} hrs overdue`
           : `${remaining.toLocaleString()} hrs to go`}
@@ -139,7 +175,23 @@ export function TaskTypeCell({ type }: { type: string }) {
 }
 
 // due-date urgency chip. Buckets mirror the bot's overdue-alert scheduler.
-export function DueDateChip({ value }: { value: unknown }) {
+// ``status`` (optional) lets the chip flip into a "closed ticket"
+// presentation: a "completed Mon DD" pill with no urgency suffix, so
+// the row reads as done rather than "Xd overdue" against a stale
+// target.
+// ``recurDays`` (optional) is the task's ``recur_interval_days``;
+// when present the chip gains a small inline progress bar underneath
+// showing how much of the period has elapsed — matches the period-
+// relative bars on Mileage / Engine Hours.
+export function DueDateChip({
+  value,
+  status,
+  recurDays,
+}: {
+  value: unknown;
+  status?: string;
+  recurDays?: number | null;
+}) {
   if (!value) return <EmptyDueCell />;
   // Pin bare YYYY-MM-DD to local midnight; otherwise Date() treats it
   // as UTC midnight, which renders one day early in negative timezones
@@ -150,26 +202,69 @@ export function DueDateChip({ value }: { value: unknown }) {
   if (Number.isNaN(due.getTime())) {
     return <EmptyDueCell />;
   }
+  const dateStr = due.toLocaleDateString();
+
+  // Closed ticket → frozen pill, no urgency arithmetic.
+  if (isClosed(status)) {
+    return (
+      <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${toneClasses('neutral')}`}>
+        {dateStr}
+      </span>
+    );
+  }
+
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const startOfDue   = new Date(due.getFullYear(), due.getMonth(), due.getDate());
   const days = Math.round((startOfDue.getTime() - startOfToday.getTime()) / 86_400_000);
-  const dateStr = due.toLocaleDateString();
 
-  let cls = 'bg-muted text-muted-foreground border-border/50';
+  let tone: Tone = 'neutral';
   let suffix = '';
   if (days < 0) {
-    cls = 'bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30';
+    tone = 'danger';
     suffix = ` · ${Math.abs(days)}d overdue`;
   } else if (days <= 7) {
-    cls = 'bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/30';
+    tone = 'warn';
     suffix = days === 0 ? ' · today' : ` · in ${days}d`;
   } else if (days <= 30) {
-    cls = 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30';
+    // Within-a-week (was orange) and within-a-month (was yellow) were
+    // both warn-family hues — they collapse to the single ``warn``
+    // tone; the suffix text still carries the exact day count.
+    tone = 'warn';
     suffix = ` · in ${days}d`;
   }
+
+  // Period-relative progress bar.  Mirrors the Mileage / Engine Hours
+  // cells so all three "due by" reads share the same mental model:
+  // bar = how much of the recur interval has been consumed.  No bar
+  // when recur_interval_days isn't set — the chip alone is enough
+  // for one-time date-based tasks.
+  if (recurDays && recurDays > 0) {
+    const consumed = recurDays - days;
+    const rawPct = (consumed / recurDays) * 100;
+    const pct = Math.max(0, Math.min(120, Math.round(rawPct)));
+    const overdue = pct >= 100;
+    const barTone =
+      overdue ? 'bg-danger'
+      : pct >= 90 ? 'bg-warn'
+      : 'bg-ok';
+    return (
+      <div className="flex flex-col gap-1.5 min-w-[140px]">
+        <span className={`inline-flex items-center self-start px-2 py-0.5 rounded-full border text-xs font-medium ${toneClasses(tone)}`}>
+          {dateStr}{suffix}
+        </span>
+        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+          <div
+            className={`h-full ${barTone}`}
+            style={{ width: `${Math.min(pct, 100)}%` }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${cls}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${toneClasses(tone)}`}>
       {dateStr}{suffix}
     </span>
   );
@@ -187,7 +282,35 @@ export function MileageProgress({ row }: { row: MaintenanceTask }) {
       </span>
     );
   }
-  const pct = Math.max(0, Math.min(120, Math.round((row.last_odometer / row.due_miles) * 100)));
+  // Closed tasks: freeze the readout to the completion-time odometer.
+  // The "X mi to go / overdue" arithmetic doesn't apply once the work
+  // is done — show "Completed at X mi" so the row reads as a closed
+  // ticket rather than a stale tracking metric.
+  if (isClosed(row.status)) {
+    return (
+      <div className="flex flex-col gap-1.5 min-w-[140px]">
+        <div className="text-xs text-muted-foreground">
+          Completed at {Number(row.last_odometer).toLocaleString()} mi
+        </div>
+        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+          <div className="h-full bg-ok/40" style={{ width: '100%' }} />
+        </div>
+      </div>
+    );
+  }
+  // Period-relative progress — see EngineHoursProgress for the
+  // rationale.  An oil change with due=163,289 and recur=40,000 at
+  // last=124,074 should read as 2%, not 76%.  Falls back to absolute
+  // when no recur_interval_miles is set.
+  const period = row.recur_interval_miles ?? null;
+  let pct: number;
+  if (period && period > 0) {
+    const periodStart = row.due_miles - period;
+    pct = ((row.last_odometer - periodStart) / period) * 100;
+  } else {
+    pct = (row.last_odometer / row.due_miles) * 100;
+  }
+  pct = Math.max(0, Math.min(120, Math.round(pct)));
   const overdue = pct >= 100;
   const remaining = Math.round(row.due_miles - row.last_odometer);
   return (
@@ -197,11 +320,11 @@ export function MileageProgress({ row }: { row: MaintenanceTask }) {
       </div>
       <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
         <div
-          className={`h-full ${overdue ? 'bg-red-500' : pct >= 90 ? 'bg-orange-500' : 'bg-blue-500'}`}
+          className={`h-full ${overdue ? 'bg-danger' : pct >= 90 ? 'bg-warn' : 'bg-ok'}`}
           style={{ width: `${Math.min(pct, 100)}%` }}
         />
       </div>
-      <div className={`text-xs ${overdue ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
+      <div className={`text-xs ${overdue ? 'text-danger font-medium' : 'text-muted-foreground'}`}>
         {overdue
           ? `${Math.abs(remaining).toLocaleString()} mi overdue`
           : `${remaining.toLocaleString()} mi to go`}

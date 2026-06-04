@@ -186,7 +186,7 @@ export default function StorageBackendCard() {
               </p>
             )}
             {driveConnected && (
-              <p className="text-[11px] text-muted-foreground mt-1.5">
+              <p className="text-2xs text-muted-foreground mt-1.5">
                 {t('storage.settings.drive_folder')} · {t('storage.settings.drive_scope')}
               </p>
             )}
@@ -199,7 +199,7 @@ export default function StorageBackendCard() {
                 disabled={disconnecting}
                 className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted disabled:opacity-50"
               >
-                {disconnecting ? <Loader2 size={11} className="animate-spin" /> : <Unlink size={11} />}
+                {disconnecting ? <Loader2 size={12} className="animate-spin" /> : <Unlink size={12} />}
                 {disconnecting ? t('storage.disconnecting') : t('storage.disconnect_button')}
               </button>
             ) : (
@@ -209,7 +209,7 @@ export default function StorageBackendCard() {
                 disabled={connecting}
                 className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-xs font-medium text-primary-foreground transition"
               >
-                {connecting ? <Loader2 size={11} className="animate-spin" /> : <ExternalLink size={11} />}
+                {connecting ? <Loader2 size={12} className="animate-spin" /> : <ExternalLink size={12} />}
                 {connecting ? t('storage.redirecting') : t('storage.connect_button')}
               </button>
             )}
@@ -291,7 +291,7 @@ function BackendOption({
             {title}
             {active && <CheckCircle2 size={12} className="text-primary" />}
             {recommended && !active && (
-              <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
+              <span className="text-3xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
                 ★
               </span>
             )}
@@ -302,13 +302,13 @@ function BackendOption({
         </div>
       </div>
       {active ? (
-        <span className="text-[11px] text-primary font-medium inline-flex items-center gap-1 self-start">
-          <CheckCircle2 size={11} />
+        <span className="text-2xs text-primary font-medium inline-flex items-center gap-1 self-start">
+          <CheckCircle2 size={12} />
           {t('storage.settings.active')}
         </span>
       ) : blocked ? (
-        <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1 self-start">
-          <AlertTriangle size={11} />
+        <span className="text-2xs text-muted-foreground inline-flex items-center gap-1 self-start">
+          <AlertTriangle size={12} />
           {t('storage.settings.needs_drive')}
         </span>
       ) : (
@@ -318,7 +318,7 @@ function BackendOption({
           disabled={switching}
           className="self-start inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-border hover:bg-muted disabled:opacity-50"
         >
-          {switching && <Loader2 size={11} className="animate-spin" />}
+          {switching && <Loader2 size={12} className="animate-spin" />}
           {switching ? t('storage.settings.switching') : t('storage.settings.switch_button')}
         </button>
       )}
@@ -348,10 +348,10 @@ function RoutingTable({ connectedToDrive }: { connectedToDrive: boolean }) {
               ? t('storage.settings.routing_drive_header_connected')
               : t('storage.settings.routing_drive_header_disconnected')}
           </p>
-          <ul className="text-[11px] text-muted-foreground space-y-0.5">
+          <ul className="text-2xs text-muted-foreground space-y-0.5">
             {driveItems.map(s => (
               <li key={s} className="flex items-start gap-1.5">
-                <CheckCircle2 size={10} className="text-green-600 dark:text-green-400 mt-0.5 shrink-0" />
+                <CheckCircle2 size={12} className="text-ok mt-0.5 shrink-0" />
                 {s}
               </li>
             ))}
@@ -362,7 +362,7 @@ function RoutingTable({ connectedToDrive }: { connectedToDrive: boolean }) {
             <HardDrive size={12} className="text-muted-foreground" />
             {t('storage.settings.routing_platform_header')}
           </p>
-          <ul className="text-[11px] text-muted-foreground space-y-0.5">
+          <ul className="text-2xs text-muted-foreground space-y-0.5">
             {platformItems.map(s => (
               <li key={s} className="flex items-start gap-1.5">
                 <span className="text-muted-foreground/60 mt-0.5">•</span>
@@ -390,13 +390,13 @@ function DriveQuotaBar({ usage }: { usage: StorageConfig['usage'] }) {
 
   const appBarColor = pctTotal === null
     ? 'bg-muted'
-    : pctTotal >= 90 ? 'bg-red-500'
-    : pctTotal >= 70 ? 'bg-orange-500'
+    : pctTotal >= 90 ? 'bg-danger'
+    : pctTotal >= 70 ? 'bg-warn'
     : 'bg-primary';
 
   if (pctTotal === null) {
     return (
-      <p className="text-[11px] text-muted-foreground mt-3">
+      <p className="text-2xs text-muted-foreground mt-3">
         Drive quota unavailable (unlimited plan or API hiccup).
       </p>
     );
@@ -420,7 +420,7 @@ function DriveQuotaBar({ usage }: { usage: StorageConfig['usage'] }) {
           />
         )}
       </div>
-      <div className="flex items-center justify-between text-[11px] text-muted-foreground mt-1.5">
+      <div className="flex items-center justify-between text-2xs text-muted-foreground mt-1.5">
         <span className="inline-flex items-center gap-2">
           <span className="inline-flex items-center gap-1">
             <span className={`inline-block w-2 h-2 rounded-sm ${appBarColor}`} />

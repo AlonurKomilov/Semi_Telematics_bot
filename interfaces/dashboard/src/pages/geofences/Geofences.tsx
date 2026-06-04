@@ -10,13 +10,15 @@ import PoiLayerPanel from '../../components/PoiLayerPanel';
 import { PageHeader, EmptyState } from '../../components/shell';
 import type { GeofenceFeature, GeofencesResponse } from '../../types';
 import type L from 'leaflet';
+import { GEOFENCE } from '../../config/mapColors';
+import { toneClasses } from '../../lib/status';
 
 /** @deprecated — CSS injection is now handled by useLeafletMap */
 // function ensureLeafletCSS() { ... }  — removed
 
-const PLATFORM_COLOR = '#10b981';
-const SAMSARA_COLOR  = '#3b82f6';
-const PREVIEW_COLOR  = '#f59e0b';
+const PLATFORM_COLOR = GEOFENCE.platform;
+const SAMSARA_COLOR  = GEOFENCE.samsara;
+const PREVIEW_COLOR  = GEOFENCE.preview;
 
 const ZONE_TYPE_PRESETS = [
   'maintenance_shop', 'dispatch_yard', 'fuel_station', 'customer_site',
@@ -158,7 +160,7 @@ export default function Geofences() {
     } else {
       const icon = Leaf.divIcon({
         className: '',
-        html: '<div style="width:12px;height:12px;background:#f59e0b;border:2px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',
+        html: `<div style="width:12px;height:12px;background:${PREVIEW_COLOR};border:2px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`,
         iconSize: [12, 12], iconAnchor: [6, 6],
       });
       previewMarkerRef.current = Leaf.marker([lat, lng], { icon, interactive: false })
@@ -348,13 +350,17 @@ export default function Geofences() {
               <div className="flex gap-3 text-xs text-muted-foreground">
                 {samsaraCount > 0 && (
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+                    {/* Legend swatches reference the same GEOFENCE source
+                        colours the map markers use (config/mapColors.ts) —
+                        one source of truth, so the dot can't drift from the
+                        polygon it describes. */}
+                    <span className="w-2 h-2 rounded-full inline-block" style={{ background: GEOFENCE.samsara }} />
                     {samsaraCount} Samsara
                   </span>
                 )}
                 {platformCount > 0 && (
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+                    <span className="w-2 h-2 rounded-full inline-block" style={{ background: GEOFENCE.platform }} />
                     {platformCount} Platform
                   </span>
                 )}
@@ -367,7 +373,7 @@ export default function Geofences() {
                 onClick={openAddPanel}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
               >
-                <Plus size={13} />
+                <Plus size={14} />
                 Add zone
               </button>
             ) : null
@@ -405,7 +411,7 @@ export default function Geofences() {
 
               {/* Name */}
               <div>
-                <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Zone Name <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Zone Name <span className="text-destructive">*</span></label>
                 <input
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -438,7 +444,7 @@ export default function Geofences() {
 
               {/* Location */}
               <div>
-                <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Location <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Location <span className="text-destructive">*</span></label>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
                     <input
@@ -479,14 +485,14 @@ export default function Geofences() {
                 </p>
 
                 {coordsSet ? (
-                  <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-1.5 text-xs mt-2">
-                    <span className="text-emerald-500">✓</span>
-                    <span className="font-mono text-emerald-700 dark:text-emerald-400 flex-1 truncate">
+                  <div className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs mt-2 ${toneClasses('ok')}`}>
+                    <span>✓</span>
+                    <span className="font-mono flex-1 truncate">
                       {parseFloat(form.latitude).toFixed(4)}, {parseFloat(form.longitude).toFixed(4)}
                     </span>
                     <button type="button"
                       onClick={() => setForm(f => ({ ...f, latitude: '', longitude: '', address: '' }))}
-                      className="text-red-400 hover:text-red-600 ml-1 shrink-0" title="Clear location">
+                      className="text-danger ml-1 shrink-0" title="Clear location">
                       ✕
                     </button>
                   </div>
@@ -506,7 +512,7 @@ export default function Geofences() {
 
               {/* Radius */}
               <div>
-                <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Radius (miles) <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Radius (miles) <span className="text-destructive">*</span></label>
                 <input
                   value={form.radius_miles}
                   onChange={e => setForm(f => ({ ...f, radius_miles: e.target.value }))}
@@ -542,7 +548,7 @@ export default function Geofences() {
               </div>
 
               {saveError && (
-                <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/20 rounded-lg px-3 py-2">{saveError}</p>
+                <p className={`text-xs rounded-lg px-3 py-2 ${toneClasses('danger')}`}>{saveError}</p>
               )}
 
               <div className="flex gap-2 pt-1">
@@ -605,7 +611,7 @@ export default function Geofences() {
                 <button
                   onClick={() => handleDelete(selected.properties!.id as number)}
                   disabled={deletingId === selected.properties?.id}
-                  className="mt-4 w-full text-sm text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg py-1.5 transition border border-red-200 dark:border-red-800"
+                  className="mt-4 w-full text-sm text-destructive hover:bg-destructive/10 rounded-lg py-1.5 transition border border-destructive/30"
                 >
                   {deletingId === selected.properties?.id ? 'Deleting…' : '🗑 Delete Zone'}
                 </button>
@@ -628,14 +634,14 @@ export default function Geofences() {
                           : 'text-foreground/80 hover:bg-muted'
                       }`}
                     >
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${f.properties?.source === 'platform' ? 'bg-emerald-500' : 'bg-blue-500'}`} />
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: f.properties?.source === 'platform' ? GEOFENCE.platform : GEOFENCE.samsara }} />
                       <span className="truncate">{f.properties?.name || `Zone ${i + 1}`}</span>
                     </button>
                     {canManage && f.properties?.source === 'platform' && typeof f.properties?.id === 'number' && (
                       <button
                         onClick={() => handleDelete(f.properties!.id as number)}
                         disabled={deletingId === f.properties?.id}
-                        className="text-red-400 hover:text-red-600 text-xs px-1 shrink-0"
+                        className="text-destructive/70 hover:text-destructive text-xs px-1 shrink-0"
                         title="Delete zone"
                       >
                         {deletingId === f.properties?.id ? '…' : '✕'}
@@ -663,7 +669,7 @@ export default function Geofences() {
                     onClick={openAddPanel}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
                   >
-                    <Plus size={13} />
+                    <Plus size={14} />
                     Add zone
                   </button>
                 ) : undefined

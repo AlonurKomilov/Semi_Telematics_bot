@@ -9,9 +9,9 @@ export interface FleetVehicle {
 }
 
 const STATUS_DOT: Record<string, string> = {
-  moving: 'bg-green-500',
-  idle: 'bg-yellow-400',
-  stopped: 'bg-red-500',
+  moving: 'bg-ok',
+  idle: 'bg-warn',
+  stopped: 'bg-danger',
 };
 
 export function VehiclePicker({
@@ -102,7 +102,7 @@ export function VehiclePicker({
               <span className="px-1.5 py-0.5 bg-muted rounded text-xs text-muted-foreground flex-shrink-0">{v.company}</span>
               <span className="text-xs text-muted-foreground capitalize flex-shrink-0">{v.status}</span>
               {v.fuel_percent != null && (
-                <span className={`ml-auto text-xs flex-shrink-0 ${v.fuel_percent < 20 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                <span className={`ml-auto text-xs flex-shrink-0 ${v.fuel_percent < 20 ? 'text-danger' : 'text-ok'}`}>
                   ⛽ {Math.round(v.fuel_percent)}%
                 </span>
               )}
@@ -173,7 +173,7 @@ export function MilesPicker({
         className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
       />
       {mode === 'absolute' && (
-        <p className="text-[11px] text-muted-foreground mt-1">
+        <p className="text-2xs text-muted-foreground mt-1">
           No odometer telemetry — value is the absolute target.
         </p>
       )}
@@ -221,7 +221,7 @@ export function HoursPicker({
         className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
       />
       {mode === 'absolute' && (
-        <p className="text-[11px] text-muted-foreground mt-1">
+        <p className="text-2xs text-muted-foreground mt-1">
           No engine-hours telemetry — value is the absolute target.
         </p>
       )}

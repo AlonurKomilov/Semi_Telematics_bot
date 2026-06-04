@@ -351,9 +351,9 @@ function ItemRow({
 
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium truncate flex items-center gap-1.5">
-          {itemType === 'photo' && <Camera size={13} className="text-blue-500 flex-shrink-0" />}
-          {itemType === 'document' && <FileText size={13} className="text-violet-500 flex-shrink-0" />}
-          {itemType === 'check' && <CheckSquare size={13} className="text-muted-foreground flex-shrink-0" />}
+          {itemType === 'photo' && <Camera size={14} className="text-blue-500 flex-shrink-0" />}
+          {itemType === 'document' && <FileText size={14} className="text-violet-500 flex-shrink-0" />}
+          {itemType === 'check' && <CheckSquare size={14} className="text-muted-foreground flex-shrink-0" />}
           <span className="truncate">{item.label}</span>
         </div>
         <div className="text-xs text-muted-foreground flex items-center gap-2">
@@ -400,7 +400,7 @@ function ItemRow({
           onClick={() => fileRef.current?.click()}
           disabled={saving}
           title={t('inspections.ref_image_add')}
-          className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 text-[11px] border border-border rounded-md hover:bg-muted text-muted-foreground"
+          className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 text-2xs border border-border rounded-md hover:bg-muted text-muted-foreground"
         >
           <ImageIcon size={12} />
           {t('inspections.ref_image_add')}

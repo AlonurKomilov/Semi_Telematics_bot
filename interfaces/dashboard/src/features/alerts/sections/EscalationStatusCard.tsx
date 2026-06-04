@@ -70,7 +70,7 @@ export default function EscalationStatusCard() {
           <Bell size={16} className="text-muted-foreground" />
           {t('alerts.escalations.title')}
         </h2>
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-2xs text-muted-foreground">
           {isLoading ? '…' : t('alerts.escalations.older_than_n_min', { n: ageMin })}
         </span>
       </header>
@@ -79,7 +79,7 @@ export default function EscalationStatusCard() {
         <div>
           <div className="flex items-baseline gap-2">
             <span className={`text-3xl font-bold tabular-nums ${
-              pastDue > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'
+              pastDue > 0 ? 'text-warn' : 'text-foreground'
             }`}>
               {isLoading ? '…' : pastDue}
             </span>
@@ -87,14 +87,14 @@ export default function EscalationStatusCard() {
               {t('alerts.escalations.past_due')}
             </span>
           </div>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
+          <p className="text-2xs text-muted-foreground mt-0.5">
             {t('alerts.escalations.past_due_hint', { n: ageMin })}
           </p>
         </div>
         <div>
           <div className="flex items-baseline gap-2">
             <span className={`text-3xl font-bold tabular-nums ${
-              breached > 0 ? 'text-destructive' : 'text-foreground'
+              breached > 0 ? 'text-danger' : 'text-foreground'
             }`}>
               {isLoading ? '…' : breached}
             </span>
@@ -102,8 +102,8 @@ export default function EscalationStatusCard() {
               {t('alerts.escalations.breached')}
             </span>
           </div>
-          <p className="text-[11px] text-muted-foreground mt-0.5 inline-flex items-center gap-1">
-            <Clock size={11} />
+          <p className="text-2xs text-muted-foreground mt-0.5 inline-flex items-center gap-1">
+            <Clock size={12} />
             {t('alerts.escalations.breached_hint')}
           </p>
         </div>
@@ -111,7 +111,7 @@ export default function EscalationStatusCard() {
 
       {personaRows.length > 0 && (
         <div className="mt-4 pt-3 border-t border-border">
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-2">
+          <p className="text-3xs uppercase tracking-wide text-muted-foreground mb-2">
             {t('alerts.escalations.past_due_by_persona')}
           </p>
           <div className="flex flex-wrap gap-2">

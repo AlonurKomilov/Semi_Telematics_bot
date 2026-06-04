@@ -22,14 +22,12 @@ import { createPortal } from 'react-dom';
 import type L from 'leaflet';
 import { apiFetch, apiJSON } from '../api/client';
 import type { PoiLayerDef } from '../config/poiLayers';
+import { CUSTOM_LAYER_SWATCHES } from '../config/mapColors';
 
 /** Curated emoji list shown in the icon picker — kept short on purpose. */
 const ICON_CHOICES = ['📍', '⛽', '🅿️', '🛒', '🍔', '🔧', '🛏️', '🚿', '🏪', '🚛', '⚖️', '🛣️', '🗂️'];
 /** Curated swatch palette covering the primary POI brand families. */
-const COLOR_CHOICES = [
-  '#7c3aed', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444',
-  '#ec4899', '#6366f1', '#14b8a6', '#84cc16', '#64748b',
-];
+const COLOR_CHOICES = CUSTOM_LAYER_SWATCHES;
 
 type Tab = 'pin' | 'overpass' | 'csv';
 
@@ -458,10 +456,10 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
                     className="w-full px-2 py-1.5 text-sm bg-background border border-border rounded"
                   />
                   {brandLoading && (
-                    <p className="text-[11px] text-muted-foreground">Searching…</p>
+                    <p className="text-2xs text-muted-foreground">Searching…</p>
                   )}
                   {!brandLoading && brandQuery.trim().length >= 2 && brandResults.length === 0 && (
-                    <p className="text-[11px] text-muted-foreground">No matching brands found.</p>
+                    <p className="text-2xs text-muted-foreground">No matching brands found.</p>
                   )}
                   {brandResults.length > 0 && (
                     <ul className="max-h-44 overflow-y-auto border border-border rounded divide-y divide-border">
@@ -486,7 +484,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
                                   <span className="ml-1 text-muted-foreground">· {r.amenity}</span>
                                 )}
                               </span>
-                              <span className="shrink-0 text-[11px] font-mono px-1.5 py-0.5 rounded bg-background border border-border text-muted-foreground">
+                              <span className="shrink-0 text-2xs font-mono px-1.5 py-0.5 rounded bg-background border border-border text-muted-foreground">
                                 {r.count.toLocaleString()} locations
                               </span>
                             </button>
@@ -517,7 +515,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
               <button
                 type="button"
                 onClick={() => setShowAdvancedOverpass((v) => !v)}
-                className="text-[11px] text-muted-foreground hover:text-foreground underline"
+                className="text-2xs text-muted-foreground hover:text-foreground underline"
               >
                 {showAdvancedOverpass ? '← Back to brand search' : 'Advanced: write raw Overpass query →'}
               </button>
@@ -540,7 +538,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
                 className="block w-full text-xs text-muted-foreground"
               />
               {csvFileName && (
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   Loaded: <span className="font-mono">{csvFileName}</span> ({csvText.length.toLocaleString()} chars)
                 </p>
               )}
@@ -549,7 +547,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
 
           {/* Common: label */}
           <div>
-            <label className="block text-[11px] font-medium text-muted-foreground mb-1">
+            <label className="block text-2xs font-medium text-muted-foreground mb-1">
               Label {mode === 'create' && tab === 'pin' && '(auto-filled if blank)'}
             </label>
             <input
@@ -564,7 +562,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
 
           {/* Common: color picker */}
           <div>
-            <label className="block text-[11px] font-medium text-muted-foreground mb-1">Color</label>
+            <label className="block text-2xs font-medium text-muted-foreground mb-1">Color</label>
             <div className="flex flex-wrap gap-1.5">
               {COLOR_CHOICES.map((c) => (
                 <button
@@ -583,7 +581,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
 
           {/* Common: icon picker */}
           <div>
-            <label className="block text-[11px] font-medium text-muted-foreground mb-1">Icon</label>
+            <label className="block text-2xs font-medium text-muted-foreground mb-1">Icon</label>
             <div className="flex flex-wrap gap-1">
               {ICON_CHOICES.map((i) => (
                 <button
@@ -612,7 +610,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
 
           {/* Status messages */}
           {error && <p className="text-xs text-destructive">{error}</p>}
-          {info  && <p className="text-xs text-emerald-600">{info}</p>}
+          {info  && <p className="text-xs text-ok">{info}</p>}
         </div>
 
         {/* Footer */}
@@ -655,7 +653,7 @@ function BrandPreviewCard({
             {preview.brand}
           </p>
           {preview.amenity && (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               Category: <span className="font-mono">{preview.amenity}</span>
             </p>
           )}
@@ -666,10 +664,10 @@ function BrandPreviewCard({
       </div>
       {preview.sample.length > 0 && (
         <div>
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+          <p className="text-3xs uppercase tracking-wide text-muted-foreground mb-1">
             Sample locations
           </p>
-          <ul className="text-[11px] text-muted-foreground space-y-0.5 max-h-24 overflow-y-auto">
+          <ul className="text-2xs text-muted-foreground space-y-0.5 max-h-24 overflow-y-auto">
             {preview.sample.map((s, i) => (
               <li key={i} className="truncate">
                 • {s.name || preview.brand}
@@ -679,7 +677,7 @@ function BrandPreviewCard({
           </ul>
         </div>
       )}
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Saving will create a layer covering <strong>all {preview.count.toLocaleString()}</strong>{' '}
         matching locations across the United States.
       </p>

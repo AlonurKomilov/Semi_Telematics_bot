@@ -10,24 +10,24 @@ const TONE_CLASSES: Record<Tone, { value: string; iconBg: string; iconFg: string
     iconFg: 'text-muted-foreground',
   },
   positive: {
-    value: 'text-green-600 dark:text-green-400',
-    iconBg: 'bg-green-500/10',
-    iconFg: 'text-green-600 dark:text-green-400',
+    value: 'text-ok',
+    iconBg: 'bg-ok-bg',
+    iconFg: 'text-ok',
   },
   warning: {
-    value: 'text-yellow-700 dark:text-yellow-400',
-    iconBg: 'bg-yellow-500/10',
-    iconFg: 'text-yellow-700 dark:text-yellow-400',
+    value: 'text-warn',
+    iconBg: 'bg-warn-bg',
+    iconFg: 'text-warn',
   },
   critical: {
-    value: 'text-destructive',
-    iconBg: 'bg-destructive/10',
-    iconFg: 'text-destructive',
+    value: 'text-danger',
+    iconBg: 'bg-danger-bg',
+    iconFg: 'text-danger',
   },
   info: {
-    value: 'text-primary',
-    iconBg: 'bg-primary/10',
-    iconFg: 'text-primary',
+    value: 'text-info',
+    iconBg: 'bg-info-bg',
+    iconFg: 'text-info',
   },
 };
 

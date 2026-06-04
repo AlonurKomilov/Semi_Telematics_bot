@@ -60,7 +60,7 @@ export default function ForgotPassword() {
               to="/login"
               className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
             >
-              <ArrowLeft size={13} />
+              <ArrowLeft size={14} />
               {t('auth.back_to_login')}
             </Link>
           </div>
@@ -91,7 +91,7 @@ export default function ForgotPassword() {
                 to="/login"
                 className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
               >
-                <ArrowLeft size={11} />
+                <ArrowLeft size={12} />
                 {t('auth.back_to_login')}
               </Link>
             </div>

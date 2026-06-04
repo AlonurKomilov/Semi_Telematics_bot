@@ -72,7 +72,7 @@ export function LocationRows({
               aria-label={copied ? 'Coordinates copied' : 'Copy coordinates'}
             >
               {copied ? (
-                <Check size={14} className="text-green-500" />
+                <Check size={14} className="text-ok" />
               ) : (
                 <Copy size={14} />
               )}

@@ -1,4 +1,5 @@
 import type { PTIInspectionMedia } from '../../types';
+import { type Tone, toneClasses, toneText } from '../../lib/status';
 
 /**
  * Shared helpers for reading the per-photo AI vision verdict stored on
@@ -32,12 +33,31 @@ export function isFlagged(v: AIVerdict | null): boolean {
   return v?.verdict === 'possible_issue' || v?.verdict === 'likely_defect';
 }
 
-export const VERDICT_TONE: Record<Verdict, string> = {
-  ok:             'bg-green-500/15 text-green-700 dark:text-green-400',
-  possible_issue: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
-  likely_defect:  'bg-red-500/15 text-red-700 dark:text-red-400',
-  unclear:        'bg-muted text-muted-foreground',
+/**
+ * AI verdict → semantic tone.  Owns the verdict→colour mapping in one
+ * place (like ``statusTone`` does for domain statuses) so a verdict
+ * can't render amber in the item list and red in the gallery dot.
+ */
+const VERDICT_TONE_MAP: Record<Verdict, Tone> = {
+  ok:             'ok',
+  possible_issue: 'warn',
+  likely_defect:  'danger',
+  unclear:        'neutral',
 };
+
+export function verdictTone(verdict: Verdict): Tone {
+  return VERDICT_TONE_MAP[verdict];
+}
+
+/** Soft-pill classes for a verdict (tinted fill + solid text + border). */
+export function verdictClasses(verdict: Verdict): string {
+  return toneClasses(verdictTone(verdict));
+}
+
+/** Solid foreground colour class for a verdict — icons, dots. */
+export function verdictText(verdict: Verdict): string {
+  return toneText(verdictTone(verdict));
+}
 
 export const VERDICT_EMOJI: Record<Verdict, string> = {
   ok: '✓', possible_issue: '⚠', likely_defect: '✕', unclear: '?',

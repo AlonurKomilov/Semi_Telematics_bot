@@ -79,9 +79,9 @@ export default function VehicleTimeline({ vehicleName }: VehicleSectionProps) {
                   fontSize: 12,
                 }}
               />
-              <Line type="monotone" dataKey="miles" stroke="#0a84ff" strokeWidth={2} dot={false} name="Miles" />
-              <Line type="monotone" dataKey="max_speed_mph" stroke="#34c759" strokeWidth={2} dot={false} name="Max mph" />
-              <Line type="monotone" dataKey="harsh_event_count" stroke="#ff453a" strokeWidth={2} dot={false} name="Harsh" />
+              <Line type="monotone" dataKey="miles" stroke="var(--info)" strokeWidth={2} dot={false} name="Miles" />
+              <Line type="monotone" dataKey="max_speed_mph" stroke="var(--ok)" strokeWidth={2} dot={false} name="Max mph" />
+              <Line type="monotone" dataKey="harsh_event_count" stroke="var(--danger)" strokeWidth={2} dot={false} name="Harsh" />
             </LineChart>
           </ResponsiveContainer>
         </div>

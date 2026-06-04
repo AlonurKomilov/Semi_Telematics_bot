@@ -20,6 +20,7 @@ import { useEffect, useRef } from 'react';
 import type L from 'leaflet';
 import { apiJSON } from '../../../api/client';
 import { usePermissions } from '../../../hooks/usePermissions';
+import { MAP_STATUS, POPUP_LINK } from '../../../config/mapColors';
 import type { ParkingEventsResponse } from '../../../types';
 import type { LiveMapSectionProps } from './_shared/types';
 
@@ -53,7 +54,7 @@ export default function UnsafeParkingMarkers({
       // base map's vehicle markers in render cost.  Unsafe is a
       // saturated red; unknown is amber so a dispatcher can
       // visually distinguish "definitely bad" vs. "needs review."
-      const color = severity === 'unsafe' ? '#dc2626' : '#f59e0b';
+      const color = severity === 'unsafe' ? MAP_STATUS.danger : MAP_STATUS.warn;
       const svg = `
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22">
           <path d="M12 2 L21 20 L3 20 Z" fill="${color}" stroke="#fff" stroke-width="1.5"/>
@@ -94,7 +95,7 @@ export default function UnsafeParkingMarkers({
               <div style="font-weight:600">${escapeHTML(e.vehicle_name)}</div>
               <div style="font-size:11px;color:#666">Parked ${hours} · ${escapeHTML(cls)}</div>
               ${e.address ? `<div style="font-size:11px;margin-top:4px">${escapeHTML(e.address)}</div>` : ''}
-              <a href="/parking" style="font-size:11px;color:#2563eb;display:inline-block;margin-top:6px">Triage →</a>
+              <a href="/parking" style="font-size:11px;color:${POPUP_LINK};display:inline-block;margin-top:6px">Triage →</a>
             </div>
           `);
           group.addLayer(marker);

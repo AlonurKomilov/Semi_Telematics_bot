@@ -15,9 +15,14 @@ export default function StatusBadge({ status }: { status: string }) {
   // badge corners onto the ``--radius`` CSS variable so the Status
   // badge matches the rest of the themed surface — sharp goes sharp,
   // pill goes pill.
+  // Snake-case statuses (``in_progress``, ``due_soon``) become two
+  // words when rendered — otherwise the badge reads as a slug rather
+  // than English ("due_soon" → "due soon").  Case is preserved as the
+  // caller passed it so the existing lowercase styling carries through.
+  const label = status.replace(/_/g, ' ');
   return (
     <Badge variant="outline" className={cn('text-xs font-medium rounded-md', classes)}>
-      {status}
+      {label}
     </Badge>
   );
 }

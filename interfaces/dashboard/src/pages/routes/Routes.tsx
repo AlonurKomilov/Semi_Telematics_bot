@@ -8,12 +8,13 @@ import PoiLayerPanel from '../../components/PoiLayerPanel';
 import { PageHeader } from '../../components/shell';
 import type { RouteReplayResponse, DispatchVehicle, DispatchVehiclesResponse, RoutePoint } from '../../types';
 import type L from 'leaflet';
+import { MAP_STATUS } from '../../config/mapColors';
 
 function speedColor(mph: number): string {
-  if (mph > 70) return '#ef4444';   // red – over 70
-  if (mph > 50) return '#eab308';   // yellow
-  if (mph > 10) return '#22c55e';   // green – cruising
-  return '#6b7280';                 // gray – stopped/crawling
+  if (mph > 70) return MAP_STATUS.danger;  // over 70
+  if (mph > 50) return MAP_STATUS.warn;    // 50–70
+  if (mph > 10) return MAP_STATUS.ok;      // cruising
+  return MAP_STATUS.neutral;               // stopped/crawling
 }
 
 function today(): string {
@@ -69,7 +70,7 @@ export default function Routes() {
     // Start marker
     const first = points[0];
     Leaf.circleMarker([first.lat, first.lng], {
-      radius: 7, color: '#22c55e', fillColor: '#22c55e', fillOpacity: 1,
+      radius: 7, color: MAP_STATUS.ok, fillColor: MAP_STATUS.ok, fillOpacity: 1,
     })
       .bindPopup(`<b>Start</b><br>${new Date(first.time).toLocaleTimeString()}`)
       .addTo(layerRef.current);
@@ -77,7 +78,7 @@ export default function Routes() {
     // End marker
     const last = points[points.length - 1];
     Leaf.circleMarker([last.lat, last.lng], {
-      radius: 7, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 1,
+      radius: 7, color: MAP_STATUS.danger, fillColor: MAP_STATUS.danger, fillOpacity: 1,
     })
       .bindPopup(`<b>End</b><br>${new Date(last.time).toLocaleTimeString()}`)
       .addTo(layerRef.current);
@@ -175,9 +176,12 @@ export default function Routes() {
       {/* Speed legend */}
       <div className="flex items-center gap-4 mb-2 text-xs text-muted-foreground">
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-gray-500 inline-block" /> &lt;10 mph</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-green-500 inline-block" /> 10-50 mph</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-yellow-500 inline-block" /> 50-70 mph</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-red-500 inline-block" /> &gt;70 mph</span>
+        {/* Legend swatches reference the same MAP_STATUS colours the
+            speed-coloured polyline uses (config/mapColors.ts) so the key
+            can't drift from the route it describes. */}
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full inline-block" style={{ background: MAP_STATUS.ok }} /> 10-50 mph</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full inline-block" style={{ background: MAP_STATUS.warn }} /> 50-70 mph</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full inline-block" style={{ background: MAP_STATUS.danger }} /> &gt;70 mph</span>
       </div>
 
       {/* Map */}

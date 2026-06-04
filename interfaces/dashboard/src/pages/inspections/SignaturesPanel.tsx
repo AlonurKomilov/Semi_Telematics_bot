@@ -59,7 +59,7 @@ function SignatureBox({
               className="w-full h-24 object-contain"
             />
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {signerName ? `${signerName} · ` : ''}{_formatTs(signedAt)}
           </p>
         </>

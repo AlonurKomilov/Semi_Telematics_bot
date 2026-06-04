@@ -128,7 +128,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
         <div className="border-t border-border px-3 py-1.5">
           <button
             onClick={() => exportCsv(effectiveLayers, allFeatures, enabled)}
-            className="w-full text-[10px] text-muted-foreground hover:text-foreground transition text-left flex items-center gap-1"
+            className="w-full text-3xs text-muted-foreground hover:text-foreground transition text-left flex items-center gap-1"
           >
             <span>⬇</span><span>Export all POIs in current area (CSV)</span>
           </button>
@@ -150,7 +150,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
             return (
               <div key={grp.id} className="space-y-1.5">
                 {/* Group header — display only, NOT toggleable */}
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground pt-0.5">
+                <div className="flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-wider text-muted-foreground pt-0.5">
                   {grp.icon && <span className="text-xs leading-none">{grp.icon}</span>}
                   <span>{grp.label}</span>
                   <span className="flex-1 border-t border-border ml-1" />
@@ -160,7 +160,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                       type="button"
                       onClick={() => setEditorState({ mode: 'create' })}
                       title="Create new POI layer"
-                      className="text-[10px] font-bold text-primary hover:underline normal-case tracking-normal"
+                      className="text-3xs font-bold text-primary hover:underline normal-case tracking-normal"
                     >
                       + New
                     </button>
@@ -172,7 +172,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                 </div>
                 {/* Empty-state hint for admins so they know how to start */}
                 {grp.id === 'custom' && groupLayers.length === 0 && canManage && (
-                  <p className="text-[10px] text-muted-foreground italic pl-1">
+                  <p className="text-3xs text-muted-foreground italic pl-1">
                     No custom layers yet. Click “+ New” to add one.
                   </p>
                 )}
@@ -229,7 +229,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                     tabIndex={0}
                     onKeyDown={(e) => e.key === ' ' && toggle(def.id)}
                   >
-                    {isOn && <span className="text-white text-[9px] leading-none">✓</span>}
+                    {isOn && <span className="text-white text-3xs leading-none">✓</span>}
                   </span>
 
                   {/* Icon */}
@@ -248,7 +248,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                   {/* Count badge */}
                   {isOn && !isBusy && count > 0 && (
                     <span
-                      className="text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white leading-none"
+                      className="text-3xs font-bold px-1.5 py-0.5 rounded-full text-white leading-none"
                       style={{ background: def.color }}
                     >
                       {count > 999 ? '999+' : count}
@@ -271,7 +271,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                           e.stopPropagation();
                           setEditorState({ mode: 'edit', layerId: customDbId! });
                         }}
-                        className="text-[10px] text-muted-foreground hover:text-foreground leading-none px-0.5"
+                        className="text-3xs text-muted-foreground hover:text-foreground leading-none px-0.5"
                       >✏</button>
                       <button
                         type="button"
@@ -281,7 +281,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                           e.stopPropagation();
                           handleDeleteCustom(customDbId!, def.label);
                         }}
-                        className="text-[10px] text-muted-foreground hover:text-destructive leading-none px-0.5"
+                        className="text-3xs text-muted-foreground hover:text-destructive leading-none px-0.5"
                       >🗑</button>
                     </>
                   )}
@@ -289,7 +289,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
 
                 {/* Error */}
                 {errMsg && (
-                  <p className="text-[10px] text-destructive leading-tight pl-7 pb-0.5">⚠ {errMsg}</p>
+                  <p className="text-3xs text-destructive leading-tight pl-7 pb-0.5">⚠ {errMsg}</p>
                 )}
 
                 {/* ── Brand filter section ── */}
@@ -300,14 +300,14 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                       onClick={() =>
                         setChipsOpen((prev) => ({ ...prev, [def.id]: !prev[def.id] }))
                       }
-                      className="flex items-center gap-1 pl-7 text-[10px] text-muted-foreground hover:text-foreground transition py-0.5"
+                      className="flex items-center gap-1 pl-7 text-3xs text-muted-foreground hover:text-foreground transition py-0.5"
                     >
                       <span style={{ fontSize: '8px' }}>{isChipsOpen ? '▲' : '▼'}</span>
                       <span>Filter brands</span>
                       {/* Active-filter count badge (visible even when chips are collapsed) */}
                       {activeBrands.size > 0 && (
                         <span
-                          className="px-1.5 py-0.5 rounded-full text-white text-[9px] font-bold leading-none"
+                          className="px-1.5 py-0.5 rounded-full text-white text-3xs font-bold leading-none"
                           style={{ background: def.color }}
                         >
                           {activeBrands.size} active
@@ -325,7 +325,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                               key={bf.value}
                               onClick={() => toggleBrand(def.id, bf.value)}
                               title={bf.label}
-                              className={`text-[10px] px-1.5 py-0.5 rounded-full border transition leading-none
+                              className={`text-3xs px-1.5 py-0.5 rounded-full border transition leading-none
                                 ${active
                                   ? 'text-white border-transparent'
                                   : 'text-muted-foreground border-border hover:border-ring hover:text-foreground'

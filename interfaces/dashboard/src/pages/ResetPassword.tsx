@@ -79,8 +79,8 @@ export default function ResetPassword() {
       <div className="bg-card rounded-xl p-8 shadow-lg border border-border w-full max-w-sm">
         {done ? (
           <div className="space-y-4 text-center">
-            <div className="mx-auto w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
-              <CheckCircle2 className="text-green-600 dark:text-green-400" size={22} />
+            <div className="mx-auto w-12 h-12 rounded-full bg-ok-bg flex items-center justify-center">
+              <CheckCircle2 className="text-ok" size={20} />
             </div>
             <h2 className="text-lg font-semibold">{t('auth.reset_success_title')}</h2>
             <p className="text-sm text-muted-foreground">
@@ -125,12 +125,12 @@ export default function ResetPassword() {
               </ul>
             )}
             {mismatched && (
-              <p className="text-xs text-destructive">
+              <p className="text-xs text-danger">
                 {t('auth.pwd_mismatch')}
               </p>
             )}
             {error && (
-              <p className="text-xs text-destructive inline-flex items-center gap-1">
+              <p className="text-xs text-danger inline-flex items-center gap-1">
                 <AlertTriangle size={12} />
                 {error}
               </p>

@@ -103,7 +103,7 @@ function DrawerHeader({ alert, onClose }: {
           <p className="text-xs text-muted-foreground mt-0.5">
             last seen {new Date(alert.last_seen).toLocaleString()}
             {(alert.occurrence_count ?? 1) > 1 && (
-              <span className="ml-2 text-orange-500">
+              <span className="ml-2 text-warn">
                 × {alert.occurrence_count}
               </span>
             )}
@@ -142,7 +142,7 @@ function DrawerBody({ alert }: { alert: Alert }) {
     <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
       {description && (
         <section>
-          <h3 className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">
+          <h3 className="text-3xs uppercase tracking-wide text-muted-foreground font-medium mb-1.5">
             {t('alerts.drillin.description_label')}
           </h3>
           <p className="text-sm text-foreground leading-relaxed">{description}</p>
@@ -154,7 +154,7 @@ function DrawerBody({ alert }: { alert: Alert }) {
       )}
 
       <section>
-        <h3 className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-2">
+        <h3 className="text-3xs uppercase tracking-wide text-muted-foreground font-medium mb-2">
           {t('alerts.drillin.quick_links')}
         </h3>
         <div className="grid gap-2">
@@ -209,7 +209,7 @@ function DrawerLink({ icon: Icon, label, hint, to }: {
       </span>
       <span className="flex-1 min-w-0">
         <span className="block text-sm font-medium text-foreground">{label}</span>
-        <span className="block text-[11px] text-muted-foreground">{hint}</span>
+        <span className="block text-2xs text-muted-foreground">{hint}</span>
       </span>
       <ExternalLink size={14} className="text-muted-foreground/60" />
     </Link>
@@ -266,7 +266,7 @@ function VideoBlock({ alert }: { alert: Alert }) {
 
   return (
     <section>
-      <h3 className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-2 inline-flex items-center gap-1.5">
+      <h3 className="text-3xs uppercase tracking-wide text-muted-foreground font-medium mb-2 inline-flex items-center gap-1.5">
         <Video size={12} />
         {t('alerts.drillin.forward_camera')}
       </h3>
@@ -276,7 +276,7 @@ function VideoBlock({ alert }: { alert: Alert }) {
         </div>
       )}
       {!loading && error && (
-        <div className="text-[11px] text-muted-foreground py-3 px-3 bg-muted/50 rounded">
+        <div className="text-2xs text-muted-foreground py-3 px-3 bg-muted/50 rounded">
           {error}
         </div>
       )}

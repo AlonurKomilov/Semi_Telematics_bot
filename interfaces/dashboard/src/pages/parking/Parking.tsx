@@ -15,29 +15,33 @@ import {
   DateRangePresets,
 } from '../../components/shell';
 import type { ParkingEvent, ParkingEventsResponse, AnyColumn } from '../../types';
+import { toneClasses, type Tone } from '../../lib/status';
 
 /* ── Badge helpers ─────────────────────────────────────────── */
 
+// Parking classification → tone: safe/geofence read as good (ok),
+// unsafe is the danger signal, unknown carries no signal (neutral).
+const CLASS_TONE: Record<string, Tone> = {
+  safe:     'ok',
+  geofence: 'ok',
+  unsafe:   'danger',
+  unknown:  'neutral',
+};
+
 function ClassBadge({ cls }: { cls: string }) {
-  const colors: Record<string, string> = {
-    safe:     'bg-green-500/15 text-green-700 dark:text-green-400',
-    geofence: 'bg-green-500/15 text-green-700 dark:text-green-400',
-    unsafe:   'bg-red-500/15 text-red-700 dark:text-red-400',
-    unknown:  'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400',
-  };
-  const c = colors[cls] || 'bg-gray-500/20 text-muted-foreground';
+  const c = toneClasses(CLASS_TONE[cls] ?? 'neutral');
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium uppercase ${c}`}>{cls}</span>;
 }
 
+// Alert level → tone.  ``breakdown`` is a distinct categorical state
+// (mechanical failure, not a severity step) so it keeps its own
+// purple hue; the rest map onto the severity tones.
 function AlertBadge({ level }: { level: string }) {
-  const colors: Record<string, string> = {
-    critical:  'bg-red-500/15 text-red-700 dark:text-red-400',
-    warning:   'bg-orange-500/15 text-orange-700 dark:text-orange-400',
-    breakdown: 'bg-purple-500/15 text-purple-700 dark:text-purple-400',
-    none:      'bg-gray-500/20 text-muted-foreground',
-  };
-  const c = colors[level] || 'bg-gray-500/20 text-muted-foreground';
-  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium uppercase ${c}`}>{level}</span>;
+  if (level === 'breakdown') {
+    return <span className="px-2 py-0.5 rounded-full text-xs font-medium uppercase bg-purple-500/15 text-purple-700 dark:text-purple-400">{level}</span>;
+  }
+  const tone: Tone = level === 'critical' ? 'danger' : level === 'warning' ? 'warn' : 'neutral';
+  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium uppercase ${toneClasses(tone)}`}>{level}</span>;
 }
 
 function formatDuration(hours: number): string {
@@ -273,7 +277,7 @@ export default function Parking() {
                       </p>
                       <p>
                         <span className="text-muted-foreground">Duration:</span>{' '}
-                        <span className={ev.duration_hours >= 8 ? 'text-red-600 dark:text-red-400 font-medium' : ev.duration_hours >= 2 ? 'text-orange-600 dark:text-orange-400' : ''}>
+                        <span className={ev.duration_hours >= 8 ? 'text-danger font-medium' : ev.duration_hours >= 2 ? 'text-warn' : ''}>
                           {formatDuration(ev.duration_hours)}
                         </span>
                         <span className="text-muted-foreground ml-2">
@@ -321,7 +325,7 @@ export default function Parking() {
                     <button
                       onClick={() => resolveEvent(ev)}
                       disabled={resolving === ev.id}
-                      className="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded-lg text-xs font-medium text-foreground transition"
+                      className="px-3 py-1.5 bg-ok hover:bg-ok/90 disabled:opacity-50 rounded-lg text-xs font-medium text-foreground transition"
                     >
                       {resolving === ev.id ? 'Resolving...' : 'Resolve'}
                     </button>

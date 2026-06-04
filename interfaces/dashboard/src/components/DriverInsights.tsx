@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { AlertTriangle, Sparkles, Lightbulb } from 'lucide-react';
+import { toneClasses, toneText, type Tone } from '../lib/status';
 import type { CompositeScorecard, ScoreEventBreakdown } from '../types';
 
 // ── Risk band ─────────────────────────────────────────────────
@@ -212,10 +213,13 @@ function buildInsights(
 
 type PillarKey = 'safety' | 'compliance' | 'efficiency';
 
-const PILLAR_META: Record<PillarKey, { label: string; cls: string; bar: string }> = {
-  safety:     { label: 'Safety',     cls: 'text-red-600 dark:text-red-400',     bar: 'bg-red-500' },
-  compliance: { label: 'Compliance', cls: 'text-blue-600 dark:text-blue-400',   bar: 'bg-blue-500' },
-  efficiency: { label: 'Efficiency', cls: 'text-green-600 dark:text-green-400', bar: 'bg-green-500' },
+// Pillar identity colours — a fixed per-pillar category palette (Safety /
+// Compliance / Efficiency), NOT a value-driven status signal, so they stay
+// on the categorical palette rather than the ok/warn/danger tones.
+const PILLAR_META: Record<PillarKey, { label: string; cls: string }> = {
+  safety:     { label: 'Safety',     cls: 'text-red-600 dark:text-red-400' },
+  compliance: { label: 'Compliance', cls: 'text-blue-600 dark:text-blue-400' },
+  efficiency: { label: 'Efficiency', cls: 'text-green-600 dark:text-green-400' },
 };
 
 // Hardware / vehicle-state rules that aren't a driver-behavior habit
@@ -232,15 +236,14 @@ const NON_BEHAVIOR_RULE_IDS = new Set<string>([
   'efficiency.fuel_anomaly',
 ]);
 
-// Score-bar fill colour graded by attainment % (subtotal ÷ cap).
-// Mirrors the same green→amber→red ramp the gauge uses so the row
-// reads consistently with the score gauge above.
-function pillarFillColor(pct: number): string {
-  if (pct >= 85) return 'bg-green-500';
-  if (pct >= 70) return 'bg-lime-500';
-  if (pct >= 55) return 'bg-yellow-500';
-  if (pct >= 40) return 'bg-orange-500';
-  return 'bg-red-500';
+// Score-bar fill tone graded by attainment % (subtotal ÷ cap).
+// Mirrors the same good→attention→bad ramp the gauge uses so the row
+// reads consistently with the score gauge above: ok ≥ 70, warn ≥ 40,
+// danger below.
+function scoreTone(pct: number): Tone {
+  if (pct >= 70) return 'ok';
+  if (pct >= 40) return 'warn';
+  return 'danger';
 }
 
 // ── Component ─────────────────────────────────────────────────
@@ -304,7 +307,7 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
       {top && (
         <div className="bg-muted/30 border border-border rounded-md px-2.5 py-1.5">
           <div className="flex items-baseline gap-2">
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold shrink-0">
+            <p className="text-3xs uppercase tracking-wide text-muted-foreground font-semibold shrink-0">
               Top Issue
             </p>
             <p className="text-sm font-medium text-foreground truncate">
@@ -324,11 +327,11 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
       {(insights.headline || insights.bullets.length > 0 || insights.coaching) && (
         <div className="bg-gradient-to-br from-primary/5 via-card to-card border border-primary/20 rounded-lg p-2.5">
           <div className="flex items-center gap-1.5 mb-1.5">
-            <Sparkles size={13} className="text-primary" />
+            <Sparkles size={14} className="text-primary" />
             <p className="text-xs font-semibold text-foreground">AI Insights</p>
           </div>
           {insights.headline && (
-            <p className="text-[13px] text-foreground/90 mb-1.5">{insights.headline}</p>
+            <p className="text-sm text-foreground/90 mb-1.5">{insights.headline}</p>
           )}
           {insights.bullets.length > 0 && (
             <ul className="space-y-0.5">
@@ -344,8 +347,8 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
           {insights.coaching && (
             <div className="mt-2 bg-background/60 border border-primary/30 rounded-md px-2 py-1.5">
               <div className="flex items-center gap-1.5 mb-0.5">
-                <Lightbulb size={11} className="text-primary" />
-                <p className="text-[10px] uppercase tracking-wide text-primary font-bold">
+                <Lightbulb size={12} className="text-primary" />
+                <p className="text-3xs uppercase tracking-wide text-primary font-bold">
                   {top && top.rule_id && HARDWARE_ACTION_BY_RULE[top.rule_id]
                     ? 'Fleet / Ops Action'
                     : 'Coaching Action'}
@@ -367,10 +370,10 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
            coaching matter. */}
       <div className="bg-card border border-border rounded-lg overflow-hidden">
         <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+          <p className="text-3xs uppercase tracking-wide text-muted-foreground font-semibold">
             Pillars · Your Events
           </p>
-          <p className="text-[10px] text-muted-foreground tabular-nums">
+          <p className="text-3xs text-muted-foreground tabular-nums">
             {totalEvents} event{totalEvents === 1 ? '' : 's'}
           </p>
         </div>
@@ -382,7 +385,8 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
             const subtotal = hasScore ? p!.subtotal : 0;
             const cap = hasScore ? p!.cap : 0;
             const pct = hasScore && cap ? Math.round((subtotal / cap) * 100) : 0;
-            const fill = pillarFillColor(pct);
+            // Solid bg token for the fill bar: bg-ok / bg-warn / bg-danger.
+            const fill = `bg-${scoreTone(pct)}`;
             return (
               <div key={pillar} className="px-3 py-2">
                 <div className="flex items-center justify-between gap-2">
@@ -390,17 +394,17 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
                     <span className={`text-xs font-semibold ${meta.cls}`}>{meta.label}</span>
                     {hasScore ? (
                       <span
-                        className="text-[10px] tabular-nums text-muted-foreground"
+                        className="text-3xs tabular-nums text-muted-foreground"
                         title={`${subtotal} of ${cap} points earned in this pillar`}
                       >
                         {subtotal}/{cap} pts
                       </span>
                     ) : (
-                      <span className="text-[10px] italic text-muted-foreground">n/a</span>
+                      <span className="text-3xs italic text-muted-foreground">n/a</span>
                     )}
                   </span>
                   {events.length > 0 && (
-                    <span className="text-[10px] text-muted-foreground tabular-nums">
+                    <span className="text-3xs text-muted-foreground tabular-nums">
                       {events.length} event{events.length === 1 ? '' : 's'}
                     </span>
                   )}
@@ -414,21 +418,19 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
                   </div>
                 )}
                 {events.length === 0 ? (
-                  <p className="text-[11px] italic text-muted-foreground">
+                  <p className="text-2xs italic text-muted-foreground">
                     No events this window — full credit.
                   </p>
                 ) : (
                   <ul className="space-y-1 mt-1">
                     {events.map((e) => {
                       const isBonus = e.kind === 'bonus';
-                      const pointsColor = isBonus
-                        ? 'text-green-600 dark:text-green-400'
-                        : 'text-red-600 dark:text-red-400';
+                      const pointsColor = toneText(isBonus ? 'ok' : 'danger');
                       const hardwareAction = e.rule_id ? HARDWARE_ACTION_BY_RULE[e.rule_id] : undefined;
                       return (
-                        <li key={`${e.rule_id || e.label}-${e.kind}`} className="text-[11px]">
+                        <li key={`${e.rule_id || e.label}-${e.kind}`} className="text-2xs">
                           <div className="flex items-baseline gap-2">
-                            <span className={`shrink-0 ${pointsColor} text-[10px]`} aria-hidden>
+                            <span className={`shrink-0 ${pointsColor} text-3xs`} aria-hidden>
                               {isBonus ? '✓' : '✗'}
                             </span>
                             <span className="flex-1 truncate text-foreground">
@@ -444,7 +446,7 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
                             </span>
                           </div>
                           {hardwareAction && (
-                            <p className="text-[10px] text-muted-foreground italic mt-0.5 pl-4 leading-snug">
+                            <p className="text-3xs text-muted-foreground italic mt-0.5 pl-4 leading-snug">
                               ↳ {hardwareAction}
                             </p>
                           )}
@@ -460,7 +462,7 @@ export default function DriverInsights({ card, days }: DriverInsightsProps) {
       </div>
 
       {card.insufficient_data && (
-        <div className="flex items-start gap-2 text-[11px] text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2.5 py-1.5">
+        <div className={`flex items-start gap-2 text-2xs border rounded-lg px-2.5 py-1.5 ${toneClasses('warn')}`}>
           <AlertTriangle size={12} className="mt-0.5 shrink-0" />
           <span>Insufficient drive time this window — excluded from rankings.</span>
         </div>

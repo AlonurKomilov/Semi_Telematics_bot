@@ -97,7 +97,7 @@ export function ThemeToggle() {
 
           {/* Color theme */}
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Color</p>
+            <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Color</p>
             <div className="flex flex-wrap gap-1">
               {COLOR_OPTIONS.map((o) => (
                 <Chip key={o.value} value={o.value} current={theme.color} label={o.label} dot={o.dot}
@@ -110,7 +110,7 @@ export function ThemeToggle() {
 
           {/* Density */}
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Density</p>
+            <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Density</p>
             <div className="flex gap-1">
               {DENSITY_OPTIONS.map((o) => (
                 <Chip key={o.value} value={o.value} current={theme.density} label={o.label}
@@ -123,7 +123,7 @@ export function ThemeToggle() {
 
           {/* Radius */}
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Corners</p>
+            <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Corners</p>
             <div className="flex gap-1">
               {RADIUS_OPTIONS.map((o) => (
                 <Chip key={o.value} value={o.value} current={theme.radius} label={o.label}

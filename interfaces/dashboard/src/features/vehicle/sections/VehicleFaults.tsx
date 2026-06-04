@@ -92,7 +92,7 @@ export default function VehicleFaults({ vehicleName }: VehicleSectionProps) {
     return (
       <div className="bg-card border border-border rounded-xl p-5">
         <h2 className="text-lg font-semibold mb-3">Fault Codes</h2>
-        <p className="text-green-600 dark:text-green-400 text-sm">
+        <p className="text-ok text-sm">
           No active fault codes
         </p>
       </div>
@@ -137,7 +137,7 @@ export default function VehicleFaults({ vehicleName }: VehicleSectionProps) {
           return (
             <div key={i} className="bg-muted rounded-lg p-3 text-sm">
               <div className="flex items-center gap-2">
-                <span className="font-mono text-orange-600 dark:text-orange-400">
+                <span className="font-mono text-warn">
                   {spn}
                 </span>
                 {fmi && (

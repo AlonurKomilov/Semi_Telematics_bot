@@ -7,6 +7,7 @@ import {
   LineChart, Line, CartesianGrid, ReferenceLine,
 } from 'recharts';
 import { apiJSON, apiJSONSlow } from '../../api/client';
+import { toneClasses, toneText, chartColor, type Tone } from '../../lib/status';
 import DataTable from '../../components/DataTable';
 import DriverInsights from '../../components/DriverInsights';
 import {
@@ -35,31 +36,41 @@ import type {
 // ``tierKey`` is an i18n key suffix; UI components render via
 // ``t('tier.' + tierKey)``.
 const SCORE_BUCKETS = [
-  { min: 85, tierKey: 'platinum', color: '#22c55e' },  // green
-  { min: 70, tierKey: 'gold',     color: '#84cc16' },  // lime
-  { min: 55, tierKey: 'silver',   color: '#eab308' },  // yellow
-  { min: 40, tierKey: 'bronze',   color: '#f97316' },  // orange
-  { min: 0,  tierKey: 'red',      color: '#ef4444' },  // red
+  { min: 85, tierKey: 'platinum' },
+  { min: 70, tierKey: 'gold'     },
+  { min: 55, tierKey: 'silver'   },
+  { min: 40, tierKey: 'bronze'   },
+  { min: 0,  tierKey: 'red'      },
 ] as const;
 
 function scoreBucket(score: number) {
   return SCORE_BUCKETS.find((b) => score >= b.min) ?? SCORE_BUCKETS[SCORE_BUCKETS.length - 1];
 }
 
-function scoreColor(score: number): string {
-  return scoreBucket(score).color;
-}
-
 function scoreTierKey(score: number): string {
   return scoreBucket(score).tierKey;
 }
 
+// Score is a health signal, so its colour funnels through the semantic
+// tones: ok ≥ 70 (good / low-risk), warn ≥ 40 (attention), danger below
+// (poor).  Boundaries sit on the existing bucket thresholds so no card
+// changes tone band on rollout.
+function scoreTone(score: number): Tone {
+  if (score >= 70) return 'ok';
+  if (score >= 40) return 'warn';
+  return 'danger';
+}
+
+// CSS-var form of the score tone — for inline ``style`` on charts /
+// gauges / KPI figures that can't take Tailwind classes.
+function scoreVar(score: number): string {
+  return `var(--${scoreTone(score)})`;
+}
+
 function ScoreBadge({ score, tierLabel }: { score: number; tierLabel: string }) {
-  const c = scoreColor(score);
   return (
     <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold"
-      style={{ background: `${c}22`, color: c }}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${toneClasses(scoreTone(score))}`}
     >
       <span>{score}</span>
       <span className="opacity-70">·</span>
@@ -76,7 +87,7 @@ function ScoreGauge({ score, tierLabel }: { score: number; tierLabel: string }) 
   const norm   = radius - stroke / 2;
   const circ   = 2 * Math.PI * norm;
   const offset = circ - (Math.max(0, Math.min(100, score)) / 100) * circ;
-  const c = scoreColor(score);
+  const c = scoreVar(score);
   return (
     <div className="relative w-32 h-32 shrink-0">
       <svg width="128" height="128" viewBox="0 0 128 128">
@@ -100,12 +111,15 @@ function ScoreGauge({ score, tierLabel }: { score: number; tierLabel: string }) 
 // ── Score-distribution histogram ─────────────────────────────────────
 
 function ScoreDistribution({ cards }: { cards: CompositeScorecard[] }) {
+  // Band fill follows the score tone (ok ≥ 70, warn ≥ 40, danger below)
+  // so the histogram reads with the same good/attention/bad language as
+  // the gauge and badges.
   const buckets = [
-    { label: '0-39',   min: 0,  max: 39,  color: '#ef4444' },
-    { label: '40-54',  min: 40, max: 54,  color: '#f97316' },
-    { label: '55-69',  min: 55, max: 69,  color: '#eab308' },
-    { label: '70-84',  min: 70, max: 84,  color: '#84cc16' },
-    { label: '85-100', min: 85, max: 100, color: '#22c55e' },
+    { label: '0-39',   min: 0,  max: 39,  color: scoreVar(0)  },
+    { label: '40-54',  min: 40, max: 54,  color: scoreVar(40) },
+    { label: '55-69',  min: 55, max: 69,  color: scoreVar(55) },
+    { label: '70-84',  min: 70, max: 84,  color: scoreVar(70) },
+    { label: '85-100', min: 85, max: 100, color: scoreVar(85) },
   ].map((b) => ({
     ...b,
     count: cards.filter((c) => c.score >= b.min && c.score <= b.max).length,
@@ -113,15 +127,15 @@ function ScoreDistribution({ cards }: { cards: CompositeScorecard[] }) {
   return (
     <ResponsiveContainer width="100%" height={150}>
       <BarChart data={buckets} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
-        <XAxis dataKey="label" tick={{ fill: '#9ca3af', fontSize: 11 }} />
-        <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} allowDecimals={false} />
+        <XAxis dataKey="label" tick={{ fill: 'var(--muted-foreground)', fontSize: 11 }} />
+        <YAxis tick={{ fill: 'var(--muted-foreground)', fontSize: 11 }} allowDecimals={false} />
         <Tooltip
           formatter={(v, _name, props) => {
             const pct = cards.length > 0 ? Math.round((props.payload.count / cards.length) * 100) : 0;
             return [`${v} trucks (${pct}%)`, 'Count'];
           }}
           contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }} />
-        <Bar dataKey="count" radius={[6, 6, 0, 0]} label={{ position: 'top', fontSize: 10, fill: '#9ca3af', formatter: (v: unknown) => Number(v) > 0 ? Number(v) : '' }}>
+        <Bar dataKey="count" radius={[6, 6, 0, 0]} label={{ position: 'top', fontSize: 10, fill: 'var(--muted-foreground)', formatter: (v: unknown) => Number(v) > 0 ? Number(v) : '' }}>
           {buckets.map((b) => <Cell key={b.label} fill={b.color} />)}
         </Bar>
       </BarChart>
@@ -143,17 +157,17 @@ function TopBottomChart({ cards }: { cards: CompositeScorecard[] }) {
 
   const renderGroup = (items: typeof top, label: string, color: string) => (
     <div>
-      <p className="text-[10px] font-semibold tracking-wide mb-1" style={{ color }}>{label}</p>
+      <p className="text-3xs font-semibold tracking-wide mb-1" style={{ color }}>{label}</p>
       <ResponsiveContainer width="100%" height={items.length * 28 + 8}>
         <BarChart layout="vertical" data={items} margin={{ top: 0, right: 36, left: 0, bottom: 0 }}>
           <XAxis type="number" domain={[0, 100]} hide />
-          <YAxis type="category" dataKey="name" width={56} tick={{ fill: '#9ca3af', fontSize: 12 }} />
+          <YAxis type="category" dataKey="name" width={56} tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} />
           <Tooltip
             formatter={(v) => [`${v}`, 'Score']}
             contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }} />
-          <ReferenceLine x={70} stroke="#6b7280" strokeDasharray="3 3" />
-          <Bar dataKey="score" radius={[0, 4, 4, 0]} label={{ position: 'right', fontSize: 11, fill: '#9ca3af' }}>
-            {items.map((d, i) => <Cell key={i} fill={scoreColor(d.score)} />)}
+          <ReferenceLine x={70} stroke="var(--muted-foreground)" strokeDasharray="3 3" />
+          <Bar dataKey="score" radius={[0, 4, 4, 0]} label={{ position: 'right', fontSize: 11, fill: 'var(--muted-foreground)' }}>
+            {items.map((d, i) => <Cell key={i} fill={scoreVar(d.score)} />)}
           </Bar>
         </BarChart>
       </ResponsiveContainer>
@@ -162,9 +176,9 @@ function TopBottomChart({ cards }: { cards: CompositeScorecard[] }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {renderGroup(top,    'TOP 5',    '#22c55e')}
-      <div className="border-t border-border/40" />
-      {renderGroup(bottom, 'BOTTOM 5', '#ef4444')}
+      {renderGroup(top,    'TOP 5',    'var(--ok)')}
+      <div className="border-t border-border" />
+      {renderGroup(bottom, 'BOTTOM 5', 'var(--danger)')}
     </div>
   );
 }
@@ -234,31 +248,32 @@ function HistoryChart({ driverId, days }: { driverId: string; days: number }) {
   return (
     <ResponsiveContainer width="100%" height={160}>
       <LineChart data={points} margin={{ top: 6, right: 8, left: -10, bottom: 0 }}>
-        <CartesianGrid stroke="#374151" strokeDasharray="3 3" />
-        <XAxis dataKey="date" tick={{ fill: '#9ca3af', fontSize: 10 }}
+        <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
+        <XAxis dataKey="date" tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }}
                tickFormatter={(d: string) => d.slice(5)} />
-        <YAxis domain={[0, 100]} tick={{ fill: '#9ca3af', fontSize: 10 }} />
+        <YAxis domain={[0, 100]} tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }} />
         <Tooltip
           contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }} />
-        {/* Faded pillar lines underneath the bold total */}
+        {/* Faded pillar lines underneath the bold total — categorical
+            series, so they ride the chart-token palette. */}
         <Line type="monotone" dataKey="safety"     name="🛡 Safety"
-              stroke="#ef4444" strokeWidth={1.25} strokeOpacity={0.55}
+              stroke={chartColor(1)} strokeWidth={1.25} strokeOpacity={0.55}
               dot={false} connectNulls={false} isAnimationActive={false} />
         <Line type="monotone" dataKey="efficiency" name="⚡ Efficiency"
-              stroke="#22c55e" strokeWidth={1.25} strokeOpacity={0.55}
+              stroke={chartColor(2)} strokeWidth={1.25} strokeOpacity={0.55}
               dot={false} connectNulls={false} isAnimationActive={false} />
         <Line type="monotone" dataKey="compliance" name="🛠 Compliance"
-              stroke="#3b82f6" strokeWidth={1.25} strokeOpacity={0.55}
+              stroke={chartColor(3)} strokeWidth={1.25} strokeOpacity={0.55}
               dot={false} connectNulls={false} isAnimationActive={false} />
         {/* Bold composite total on top */}
         <Line type="monotone" dataKey="total" name="Total"
-              stroke="#f9fafb" strokeWidth={2.25} dot={{ r: 2 }}
+              stroke="var(--foreground)" strokeWidth={2.25} dot={{ r: 2 }}
               isAnimationActive={false} />
-        <ReferenceLine y={70} stroke="#6b7280" strokeDasharray="3 3" />
+        <ReferenceLine y={70} stroke="var(--muted-foreground)" strokeDasharray="3 3" />
         {showPillarMarker && pillarStartDate && (
-          <ReferenceLine x={pillarStartDate} stroke="#a78bfa"
+          <ReferenceLine x={pillarStartDate} stroke={chartColor(4)}
             strokeDasharray="2 4"
-            label={{ value: 'pillars', position: 'top', fontSize: 9, fill: '#a78bfa' }}
+            label={{ value: 'pillars', position: 'top', fontSize: 9, fill: chartColor(4) }}
           />
         )}
       </LineChart>
@@ -310,7 +325,7 @@ function ScoreExplanationCard({
   const anyContent = sections.some((s) => s.events.length > 0);
   const delta = data.score_delta ?? 0;
   const deltaColor =
-    delta > 0 ? '#22c55e' : delta < 0 ? '#ef4444' : '#9ca3af';
+    delta > 0 ? 'var(--ok)' : delta < 0 ? 'var(--danger)' : 'var(--muted-foreground)';
 
   return (
     <div className="text-xs">
@@ -335,8 +350,8 @@ function ScoreExplanationCard({
           {sections.map((s, idx) => s.events.length > 0 && (
             <div key={idx}>
               <p
-                className="text-[10px] font-semibold tracking-wide mb-1"
-                style={{ color: s.tone === 'good' ? '#22c55e' : '#ef4444' }}
+                className="text-3xs font-semibold tracking-wide mb-1"
+                style={{ color: s.tone === 'good' ? 'var(--ok)' : 'var(--danger)' }}
               >
                 {s.tone === 'good' ? '✓' : '✗'} {t(s.titleKey)}
               </p>
@@ -346,14 +361,14 @@ function ScoreExplanationCard({
                     <span className="truncate">
                       {e.label}
                       {e.occurrences > 1 && (
-                        <span className="text-[10px] text-muted-foreground ml-1">
+                        <span className="text-3xs text-muted-foreground ml-1">
                           {t('scorecards.explanation_event_occurred', { count: e.occurrences })}
                         </span>
                       )}
                     </span>
                     <span
                       className="font-medium tabular-nums shrink-0"
-                      style={{ color: s.tone === 'good' ? '#22c55e' : '#ef4444' }}
+                      style={{ color: s.tone === 'good' ? 'var(--ok)' : 'var(--danger)' }}
                     >
                       {e.points > 0 ? '+' : ''}{e.points}
                     </span>
@@ -377,7 +392,7 @@ function Sparkline({ values, width = 80, height = 24 }: {
   values: number[]; width?: number; height?: number;
 }) {
   if (!values || values.length < 2) {
-    return <span className="text-[10px] text-muted-foreground">—</span>;
+    return <span className="text-3xs text-muted-foreground">—</span>;
   }
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -388,7 +403,7 @@ function Sparkline({ values, width = 80, height = 24 }: {
     .join(' ');
   const last = values[values.length - 1];
   const first = values[0];
-  const trendColor = last >= first ? '#22c55e' : '#ef4444';
+  const trendColor = last >= first ? 'var(--ok)' : 'var(--danger)';
   return (
     <svg
       width={width}
@@ -438,12 +453,12 @@ function makeColumns(
         <div className="flex flex-col leading-tight">
           <span className="font-medium">{r.subject_name || r.driver_name}</span>
           {isVehicle && inlineDriver && (
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               {r.paired_driver_name ? '👤' : '🪪'} {inlineDriver}
             </span>
           )}
           {isVehicle && !inlineDriver && anyDriverPaired && (
-            <span className="text-[10px] italic text-muted-foreground">no driver paired</span>
+            <span className="text-3xs italic text-muted-foreground">no driver paired</span>
           )}
         </div>
       );
@@ -463,7 +478,7 @@ function makeColumns(
           <ScoreBadge score={score} tierLabel={t(`tier.${scoreTierKey(score)}`)} />
           {r.probationary && (
             <span
-              className="text-[10px] text-amber-600 dark:text-amber-400"
+              className={`text-3xs ${toneText('warn')}`}
               title={t('scorecards.probationary_banner_desc')}
             >
               ⏳
@@ -471,7 +486,7 @@ function makeColumns(
           )}
           {r.insufficient_data && !r.probationary && (
             <span
-              className="text-[10px] text-amber-600 dark:text-amber-400"
+              className={`text-3xs ${toneText('warn')}`}
               title={t('scorecards.insufficient_drive_time')}
             >
               ⚠
@@ -495,8 +510,7 @@ function makeColumns(
           <Sparkline values={values} />
           {delta !== null && (
             <span
-              className="text-[10px] font-semibold tabular-nums"
-              style={{ color: delta >= 0 ? '#22c55e' : '#ef4444' }}
+              className={`text-3xs font-semibold tabular-nums ${toneText(delta >= 0 ? 'ok' : 'danger')}`}
             >
               {delta >= 0 ? '▲' : '▼'} {Math.abs(delta)}
             </span>
@@ -531,7 +545,7 @@ function makeColumns(
                 <span
                   key={k}
                   data-state="unavailable"
-                  className="text-[10px] font-mono tabular-nums px-1.5 py-0.5 rounded border border-dashed border-muted-foreground/40 text-muted-foreground italic"
+                  className="text-3xs font-mono tabular-nums px-1.5 py-0.5 rounded border border-dashed border-muted-foreground/40 text-muted-foreground italic"
                   title={`${k}: ${t('scorecards.no_data_window')}`}
                 >
                   {abbr} {t('common.na')}
@@ -539,18 +553,16 @@ function makeColumns(
               );
             }
             const pct = p.cap ? Math.round((p.subtotal / p.cap) * 100) : 0;
-            const perfColor = scoreColor(pct);
             return (
               <span key={k}
-                className="text-[10px] font-mono tabular-nums px-1.5 py-0.5 rounded"
-                style={{ background: `${perfColor}22`, color: perfColor }}
+                className={`text-3xs font-mono tabular-nums px-1.5 py-0.5 rounded border ${toneClasses(scoreTone(pct))}`}
                 title={`${k}: ${p.subtotal}/${p.cap} (${pct}%)`}>
                 {abbr} {pct}
               </span>
             );
           })}
           {r.insufficient_data && (
-            <span className="text-[10px] text-amber-600 dark:text-amber-400" title={t('scorecards.insufficient_drive_time')}>⚠</span>
+            <span className={`text-3xs ${toneText('warn')}`} title={t('scorecards.insufficient_drive_time')}>⚠</span>
           )}
         </div>
       );
@@ -558,11 +570,11 @@ function makeColumns(
   },
   {
     key: 'bonus_total', label: 'Bonuses', sortable: true,
-    render: (v) => <span className="text-green-600 dark:text-green-400 font-medium">+{v as number}</span>,
+    render: (v) => <span className={`font-medium ${toneText('ok')}`}>+{v as number}</span>,
   },
   {
     key: 'penalty_total', label: 'Penalties', sortable: true,
-    render: (v) => <span className="text-red-600 dark:text-red-400 font-medium">{v as number}</span>,
+    render: (v) => <span className={`font-medium ${toneText('danger')}`}>{v as number}</span>,
   },
   ];
 }
@@ -758,14 +770,14 @@ export default function Scorecards() {
           <div className="flex items-center gap-2">
             {relativeUpdated && (
               <span
-                className="text-[10px] text-muted-foreground"
+                className="text-3xs text-muted-foreground"
                 title={generatedAt ? new Date(generatedAt).toLocaleString() : undefined}
               >
                 {t('common.updated_prefix')} {relativeUpdated}
               </span>
             )}
             {loading && cards.length > 0 && (
-              <span className="text-[10px] text-muted-foreground animate-pulse">{t('common.refreshing')}</span>
+              <span className="text-3xs text-muted-foreground animate-pulse">{t('common.refreshing')}</span>
             )}
             <button
               type="button"
@@ -794,17 +806,17 @@ export default function Scorecards() {
             label={t('scorecards.kpi_avg_score')}
             value={stats.avgScore.toString()}
             sub={t(`tier.${scoreTierKey(stats.avgScore)}`)}
-            color={scoreColor(stats.avgScore)}
+            color={scoreVar(stats.avgScore)}
           />
           <KpiCard
             label={t('scorecards.kpi_top_performers')}
             value={stats.topPerformers.toString()}
-            color="#22c55e"
+            color="var(--ok)"
           />
           <KpiCard
             label={t('scorecards.kpi_at_risk')}
             value={stats.atRisk.toString()}
-            color={stats.atRisk > 0 ? '#ef4444' : '#6b7280'}
+            color={stats.atRisk > 0 ? 'var(--danger)' : 'var(--muted-foreground)'}
           />
         </div>
       )}
@@ -848,11 +860,14 @@ export default function Scorecards() {
           {cards.length > 0 && cards.some((c) => c.pillars) && (
             <div className="flex items-center gap-2 mb-3 flex-wrap">
               <span className="text-xs text-muted-foreground mr-1">{t('scorecards.filter_by_pillar')}</span>
+              {/* Pillar identity is categorical (not a value status), so the
+                  active-chip hue rides the chart-token palette — the same
+                  hues the pillar lines use in the history chart. */}
               {([
-                { k: 'all',        labelKey: 'scorecards.filter_all',        color: '#6b7280' },
-                { k: 'safety',     labelKey: 'scorecards.pillar_safety',     color: '#ef4444' },
-                { k: 'efficiency', labelKey: 'scorecards.pillar_efficiency', color: '#22c55e' },
-                { k: 'compliance', labelKey: 'scorecards.pillar_compliance', color: '#3b82f6' },
+                { k: 'all',        labelKey: 'scorecards.filter_all',        color: 'var(--muted-foreground)' },
+                { k: 'safety',     labelKey: 'scorecards.pillar_safety',     color: chartColor(1) },
+                { k: 'efficiency', labelKey: 'scorecards.pillar_efficiency', color: chartColor(2) },
+                { k: 'compliance', labelKey: 'scorecards.pillar_compliance', color: chartColor(3) },
               ] as { k: PillarFilter; labelKey: string; color: string }[]).map((c) => {
                 const active = pillarFilter === c.k;
                 const label = t(c.labelKey);
@@ -875,7 +890,7 @@ export default function Scorecards() {
                 );
               })}
               {pillarFilter !== 'all' && (
-                <span className="text-[10px] text-muted-foreground ml-2">
+                <span className="text-3xs text-muted-foreground ml-2">
                   {t('scorecards.worst_first_hint', { count: displayCards.length })}
                 </span>
               )}
@@ -1000,8 +1015,8 @@ function DetailDrawer({ card, rank, total, fleetAvg, days, onClose }: {
               <span className="text-muted-foreground">Fleet avg</span>
               <span className="font-semibold tabular-nums">{fleetAvg}</span>
               <span
-                className="text-[11px] font-bold tabular-nums"
-                style={{ color: delta >= 0 ? '#22c55e' : '#ef4444' }}
+                className="text-2xs font-bold tabular-nums"
+                style={{ color: delta >= 0 ? 'var(--ok)' : 'var(--danger)' }}
                 title={`${delta >= 0 ? '+' : ''}${delta} vs fleet average`}
               >
                 {delta >= 0 ? '+' : ''}{delta} vs fleet
@@ -1031,7 +1046,7 @@ function DetailDrawer({ card, rank, total, fleetAvg, days, onClose }: {
             })}
             <div className="border-t border-border pt-1 mt-1 flex justify-between font-semibold">
               <span>Total</span>
-              <span style={{ color: scoreColor(card.score) }}>{card.score}/100</span>
+              <span style={{ color: scoreVar(card.score) }}>{card.score}/100</span>
             </div>
           </div>
         ) : (
@@ -1041,13 +1056,13 @@ function DetailDrawer({ card, rank, total, fleetAvg, days, onClose }: {
             <ScoreMath label={t('detail_drawer.score_math_penalties')} value={`${card.penalty_total}`} negative />
             <div className="border-t border-border pt-1 mt-1 flex justify-between font-semibold">
               <span>Total</span>
-              <span style={{ color: scoreColor(card.score) }}>{card.score}</span>
+              <span style={{ color: scoreVar(card.score) }}>{card.score}</span>
             </div>
           </div>
         )}
 
         {card.probationary && (
-          <div className="mb-4 flex items-start gap-2 text-[11px] text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2.5 py-2">
+          <div className={`mb-4 flex items-start gap-2 text-2xs border rounded-lg px-2.5 py-2 ${toneClasses('warn')}`}>
             <span className="text-base leading-none">⏳</span>
             <div>
               <p className="font-semibold">{t('scorecards.probationary_banner_title')}</p>
@@ -1057,14 +1072,14 @@ function DetailDrawer({ card, rank, total, fleetAvg, days, onClose }: {
         )}
 
         {card.insufficient_data && (
-          <p className="mb-4 text-[11px] italic text-amber-600 dark:text-amber-400">
+          <p className={`mb-4 text-2xs italic ${toneText('warn')}`}>
             {t('scorecards.insufficient_window')}
           </p>
         )}
 
         {/* History trend */}
         <div className="mb-6">
-          <p className="text-[10px] font-semibold text-muted-foreground tracking-wide mb-1">
+          <p className="text-3xs font-semibold text-muted-foreground tracking-wide mb-1">
             {`${Math.max(7, Math.min(days, 180))}-DAY TREND`}
           </p>
           <HistoryChart driverId={card.driver_id || card.driver_name} days={days} />
@@ -1075,7 +1090,7 @@ function DetailDrawer({ card, rank, total, fleetAvg, days, onClose }: {
              /scorecards/{subject_id}/explanation endpoint; renders an
              empty state for drivers with <2 snapshots. */}
         <div className="mb-6">
-          <p className="text-[10px] font-semibold text-muted-foreground tracking-wide mb-1">
+          <p className="text-3xs font-semibold text-muted-foreground tracking-wide mb-1">
             {t('scorecards.explanation_title').toUpperCase()}
           </p>
           <ScoreExplanationCard
@@ -1098,7 +1113,7 @@ function DetailDrawer({ card, rank, total, fleetAvg, days, onClose }: {
              driver actually had perfect behavior, so we collapse them
              all to "—" once the warning fires. */}
         <div className="border-t border-border pt-3">
-          <p className="text-[10px] font-semibold text-muted-foreground tracking-wide mb-2">
+          <p className="text-3xs font-semibold text-muted-foreground tracking-wide mb-2">
             INPUTS {card.inputs._source && <span className="opacity-60">{card.inputs._source}</span>}
           </p>
           {(() => {
@@ -1107,7 +1122,7 @@ function DetailDrawer({ card, rank, total, fleetAvg, days, onClose }: {
             return (
               <>
                 {odometerMissing && (
-                  <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-2">
+                  <p className={`text-2xs mb-2 ${toneText('warn')}`}>
                     ⚠ Odometer / Driver-Stats data missing — miles, MPG and behavior metrics are not reliable for this window
                   </p>
                 )}
@@ -1143,8 +1158,8 @@ function Stat({ label, value }: { label: string; value: string }) {
 function ScoreMath({ label, value, positive, negative }: {
   label: string; value: string; positive?: boolean; negative?: boolean;
 }) {
-  const cls = positive ? 'text-green-600 dark:text-green-400'
-            : negative ? 'text-red-600 dark:text-red-400'
+  const cls = positive ? toneText('ok')
+            : negative ? toneText('danger')
             : 'text-foreground';
   return (
     <div className="flex justify-between">

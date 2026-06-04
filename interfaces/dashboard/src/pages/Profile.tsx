@@ -36,6 +36,7 @@ import {
 
 import { apiJSON, apiFetch } from '../api/client';
 import { PageHeader, ErrorState } from '../components/shell';
+import { toneClasses } from '../lib/status';
 import type { User } from '../types';
 import { LANGUAGE_OPTIONS } from '../utils/languages';
 import { TIMEZONE_OPTIONS, timezoneLabelWithTime } from '../utils/timezones';
@@ -133,7 +134,7 @@ export default function Profile() {
           report deliveries. They don't affect anyone else on the account.
         </p>
         {success && (
-          <p className="text-green-600 dark:text-green-400 text-sm mb-3">{success}</p>
+          <p className="text-ok text-sm mb-3">{success}</p>
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -169,7 +170,7 @@ export default function Profile() {
           <div className="md:col-span-2">
             <label className="block text-xs text-muted-foreground mb-1">
               Timezone override
-              <span className="ml-1 text-[10px] opacity-70">
+              <span className="ml-1 text-3xs opacity-70">
                 (leave on "Use account default" to follow the company timezone)
               </span>
             </label>
@@ -193,7 +194,7 @@ export default function Profile() {
                   </option>
                 ))}
             </select>
-            <p className="text-[10px] text-muted-foreground mt-1 opacity-75">
+            <p className="text-3xs text-muted-foreground mt-1 opacity-75">
               Pick a specific timezone if you work in a different one from the
               company default.
             </p>
@@ -208,7 +209,7 @@ export default function Profile() {
               dndSource === 'user_override'
                 ? 'border-primary/40 bg-primary/5'
                 : dndSource === 'work_hours'
-                ? 'border-green-500/40 bg-green-500/5 text-green-700 dark:text-green-400'
+                ? toneClasses('ok')
                 : 'border-border bg-muted/30 text-muted-foreground'
             }`}>
               {dndSource === 'user_override' && (
@@ -235,7 +236,7 @@ export default function Profile() {
                       </li>
                     ))}
                   </ul>
-                  <p className="mt-1 text-[11px]">
+                  <p className="mt-1 text-2xs">
                     Set custom hours below to override these defaults for yourself only.
                   </p>
                 </>
@@ -493,7 +494,7 @@ function SignInMethods() {
 
       {err && <ErrorState message={err} />}
       {credsOk && (
-        <p className="text-green-600 dark:text-green-400 text-sm mb-3">{credsOk}</p>
+        <p className="text-ok text-sm mb-3">{credsOk}</p>
       )}
 
       <ul className="divide-y divide-border">
@@ -511,7 +512,7 @@ function SignInMethods() {
                     'profile.signin_verify_hint',
                     "We sent a verification link.  Until you click it, this email can't be used to sign in.",
                   )}
-                  className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 font-semibold"
+                  className={`text-3xs uppercase tracking-wider px-1.5 py-0.5 rounded border font-semibold ${toneClasses('warn')}`}
                 >
                   {t('profile.signin_unverified_chip', 'Unverified')}
                 </span>
@@ -604,7 +605,7 @@ function SignInMethods() {
                   />
                 </div>
               </div>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 {t(
                   'profile.signin_pw_hint',
                   'At least 8 characters · must include a letter and a digit.',
@@ -655,7 +656,7 @@ function SignInMethods() {
               ) : linkStatus === 'pending' ? (
                 t('profile.signin_telegram_waiting', 'Waiting for confirmation in Telegram…')
               ) : linkStatus === 'rejected' ? (
-                <span className="text-destructive">
+                <span className="text-danger">
                   {linkReason || t('profile.signin_telegram_refused', 'Link was refused — try again.')}
                 </span>
               ) : (
@@ -690,7 +691,7 @@ function SignInMethods() {
       </ul>
 
       {!me?.email && !me?.telegram_id && (
-        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2">
+        <p className="text-2xs text-warn mt-2">
           {t(
             'profile.signin_warn_no_methods',
             'No sign-in method is attached to this account — contact an admin to fix this before your session expires.',
@@ -772,7 +773,7 @@ function RecentActivity() {
           const ok = r.success === true || r.success === 1;
           return (
             <li key={idx} className="flex items-center gap-3 py-2.5 text-sm">
-              <div className={`shrink-0 ${ok ? 'text-green-600 dark:text-green-400' : 'text-destructive'}`}>
+              <div className={`shrink-0 ${ok ? 'text-ok' : 'text-danger'}`}>
                 {ok ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
               </div>
               <div className="min-w-0 flex-1">
@@ -1004,7 +1005,7 @@ function ActiveSessions() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium">{s.device_label || 'Unknown device'}</span>
                   {isCurrent && (
-                    <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary/15 text-primary font-semibold">
+                    <span className="text-3xs uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary/15 text-primary font-semibold">
                       This device
                     </span>
                   )}
@@ -1043,7 +1044,7 @@ function ActiveSessions() {
         </div>
       )}
 
-      <p className="text-[11px] text-muted-foreground mt-3">
+      <p className="text-2xs text-muted-foreground mt-3">
         Activity updates roughly once a minute. Revoked sessions are
         blocked within a few seconds — the other device sees a sign-in
         prompt on its next request.

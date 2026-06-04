@@ -6,6 +6,7 @@ import { apiJSON } from '../../api/client';
 import { useRoleView } from '../../context/RoleViewContext';
 import { useAuth } from '../../context/AuthContext';
 import { PageHeader, CardSkeleton } from '../../components/shell';
+import { toneClasses } from '../../lib/status';
 
 // Order mirrors the persona-selector dropdown so the column layout
 // matches what an Owner already sees there.  HR + Accounting were
@@ -467,7 +468,7 @@ export default function RolePermissions() {
           </button>
         ) : (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-red-600 dark:text-red-400">Reset all to defaults?</span>
+            <span className="text-xs text-destructive">Reset all to defaults?</span>
             <button
               onClick={handleResetAll}
               disabled={saving}
@@ -487,7 +488,7 @@ export default function RolePermissions() {
       />
 
       {(error || fetchError) && <p className="text-destructive text-sm">{error || fetchError}</p>}
-      {success && <p className="text-green-600 dark:text-green-400 text-sm">{success}</p>}
+      {success && <p className="text-ok text-sm">{success}</p>}
 
       {/* Company selector */}
       {hasCompanies && (
@@ -512,10 +513,10 @@ export default function RolePermissions() {
             })}
           </select>
           {selectedCompany !== null && (
-            <span className={`text-xs px-2 py-0.5 rounded ${
+            <span className={`text-xs px-2 py-0.5 rounded border ${
               hasCompanyOverride
-                ? 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400'
-                : 'bg-muted/50 text-muted-foreground'
+                ? toneClasses('warn')
+                : toneClasses('neutral')
             }`}>
               {hasCompanyOverride ? 'Company Override' : 'Inherited'}
             </span>
@@ -539,7 +540,7 @@ export default function RolePermissions() {
             >
               {ROLE_LABELS[role]}
               {oc > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 text-background text-[10px] rounded-full flex items-center justify-center font-bold">
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-warn text-background text-3xs rounded-full flex items-center justify-center font-bold">
                   {oc}
                 </span>
               )}
@@ -578,14 +579,14 @@ export default function RolePermissions() {
                         <span className="text-sm flex items-center gap-2">
                           {flag.label}
                           {selectedCompany === null && scope !== defScope && !isChanged && (
-                            <span className="text-[10px] text-yellow-500/70 uppercase tracking-wider">custom</span>
+                            <span className="text-3xs text-warn uppercase tracking-wider">custom</span>
                           )}
                           {selectedCompany !== null && scope !== acctScope && !isChanged && (
-                            <span className="text-[10px] text-primary/70 uppercase tracking-wider">override</span>
+                            <span className="text-3xs text-info uppercase tracking-wider">override</span>
                           )}
                         </span>
                         {flag.description && (
-                          <span className="text-[11px] text-muted-foreground mt-0.5">
+                          <span className="text-2xs text-muted-foreground mt-0.5">
                             {flag.description}
                           </span>
                         )}
@@ -622,14 +623,14 @@ export default function RolePermissions() {
                       <span className="text-sm flex items-center gap-2">
                         {flag.label}
                         {selectedCompany === null && enabled !== isDefault && !isChanged && (
-                          <span className="text-[10px] text-yellow-500/70 uppercase tracking-wider">custom</span>
+                          <span className="text-3xs text-warn uppercase tracking-wider">custom</span>
                         )}
                         {selectedCompany !== null && differsFromAccountWide && !isChanged && (
-                          <span className="text-[10px] text-primary/70 uppercase tracking-wider">override</span>
+                          <span className="text-3xs text-info uppercase tracking-wider">override</span>
                         )}
                       </span>
                       {flag.description && (
-                        <span className="text-[11px] text-muted-foreground mt-0.5">
+                        <span className="text-2xs text-muted-foreground mt-0.5">
                           {flag.description}
                         </span>
                       )}
@@ -669,13 +670,13 @@ export default function RolePermissions() {
               <button
                 onClick={() => setDeleteOverrideConfirm(true)}
                 disabled={saving}
-                className="px-4 py-2 text-sm text-destructive hover:text-destructive/80 border border-destructive/40 hover:border-red-600 rounded-lg transition disabled:opacity-50"
+                className="px-4 py-2 text-sm text-destructive hover:text-destructive/80 border border-destructive/40 hover:border-destructive rounded-lg transition disabled:opacity-50"
               >
                 Remove Override
               </button>
             ) : (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-red-600 dark:text-red-400">Remove company override?</span>
+                <span className="text-xs text-destructive">Remove company override?</span>
                 <button
                   onClick={handleDeleteOverride}
                   disabled={saving}

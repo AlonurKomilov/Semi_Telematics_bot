@@ -129,7 +129,7 @@ export default function FuelCosts() {
             onClick={() => setShowForm(!showForm)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
           >
-            <Plus size={13} />
+            <Plus size={14} />
             {showForm ? 'Cancel' : 'Add entry'}
           </button>
         }
@@ -176,7 +176,7 @@ export default function FuelCosts() {
             </div>
             <button
               type="submit" disabled={saving}
-              className="px-4 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded text-sm font-medium text-foreground transition whitespace-nowrap"
+              className="px-4 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition whitespace-nowrap"
             >
               {saving ? 'Saving...' : 'Save'}
             </button>
@@ -234,7 +234,7 @@ export default function FuelCosts() {
                 onClick={() => setShowForm(true)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
               >
-                <Plus size={13} />
+                <Plus size={14} />
                 Add entry
               </button>
             ) : undefined

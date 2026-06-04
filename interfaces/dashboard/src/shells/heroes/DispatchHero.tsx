@@ -20,7 +20,7 @@ export default function DispatchHero() {
   if (isLoading || !data) {
     return (
       <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5">
-        <span className="text-[11px] text-muted-foreground/60">Loading dispatch status…</span>
+        <span className="text-2xs text-muted-foreground/60">Loading dispatch status…</span>
       </div>
     );
   }

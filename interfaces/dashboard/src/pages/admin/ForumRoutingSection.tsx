@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { apiJSON } from '../../api/client';
+import { toneClasses } from '../../lib/status';
 import { ChevronDown, ChevronRight, Check, X } from 'lucide-react';
 
 interface CatalogRow {
@@ -155,90 +156,62 @@ export default function ForumRoutingSection() {
 
       {!loading && state && (
         <div className="space-y-4">
-          {/* DM mode (current state when no group is connected) */}
-          <div className={`flex items-start gap-3 p-3 rounded-lg border ${
-            !state.connected ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/30 opacity-70'
-          }`}>
-            <input
-              type="radio"
-              checked={!state.connected}
-              readOnly
-              className="mt-0.5 accent-primary cursor-default"
-              aria-label="DM mode"
-            />
-            <div className="flex-1">
-              <p className="text-sm font-medium">
-                {t('forum_routing.mode_dm_title')}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {t('forum_routing.mode_dm_desc')}
-              </p>
-            </div>
-          </div>
+          {/* Single mode now: Forum group with topics.  Personal DMs
+              are a per-user opt-in (Avatar → My Notifications) and
+              always fire on top of group routing, so there's no
+              admin-level "DM mode" toggle — connecting a group only
+              adds the topic-channel surface, it never replaces DMs. */}
+          <div className="p-3 rounded-lg border border-border bg-card">
+            <p className="text-sm font-medium">{t('forum_routing.mode_group_title')}</p>
 
-          {/* Group mode */}
-          <div className={`flex items-start gap-3 p-3 rounded-lg border ${
-            state.connected ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/30'
-          }`}>
-            <input
-              type="radio"
-              checked={state.connected}
-              readOnly
-              className="mt-0.5 accent-primary cursor-default"
-              aria-label="Forum group mode"
-            />
-            <div className="flex-1">
-              <p className="text-sm font-medium">{t('forum_routing.mode_group_title')}</p>
+            {!state.connected && (
+              <div className="mt-3 space-y-2">
+                <p className="text-xs font-semibold text-foreground">
+                  {t('forum_routing.setup_wizard_title')}
+                </p>
+                <ol className="text-xs text-muted-foreground space-y-1.5 list-decimal list-inside">
+                  <li>{t('forum_routing.setup_step_1')}</li>
+                  <li>{t('forum_routing.setup_step_2')}</li>
+                  <li>
+                    {t('forum_routing.setup_step_3')
+                      .split('/setupforum')
+                      .map((part, i, arr) => (
+                        <span key={i}>
+                          {part}
+                          {i < arr.length - 1 && (
+                            <code className="px-1 py-0.5 bg-muted rounded text-foreground font-mono">/setupforum</code>
+                          )}
+                        </span>
+                      ))}
+                  </li>
+                </ol>
+              </div>
+            )}
 
-              {!state.connected && (
-                <div className="mt-3 space-y-2">
-                  <p className="text-xs font-semibold text-foreground">
-                    {t('forum_routing.setup_wizard_title')}
-                  </p>
-                  <ol className="text-xs text-muted-foreground space-y-1.5 list-decimal list-inside">
-                    <li>{t('forum_routing.setup_step_1')}</li>
-                    <li>{t('forum_routing.setup_step_2')}</li>
-                    <li>
-                      {t('forum_routing.setup_step_3')
-                        .split('/setupforum')
-                        .map((part, i, arr) => (
-                          <span key={i}>
-                            {part}
-                            {i < arr.length - 1 && (
-                              <code className="px-1 py-0.5 bg-muted rounded text-foreground font-mono">/setupforum</code>
-                            )}
-                          </span>
-                        ))}
-                    </li>
-                  </ol>
-                </div>
-              )}
-
-              {state.connected && (
-                <div className="mt-1 space-y-0.5">
-                  <p className="text-xs text-muted-foreground">
-                    ✓ {t('forum_routing.mode_group_connected', { title: state.chat_title })}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {t('forum_routing.mode_group_setup_status', { status: state.setup_status })}
-                    {state.last_setup_at && (
-                      ' · ' + t('forum_routing.mode_group_last_setup', {
-                        when: new Date(state.last_setup_at).toLocaleString(),
-                      })
-                    )}
-                  </p>
-                  <p className="text-xs text-muted-foreground font-mono">
-                    {t('forum_routing.mode_group_chat_id', { id: state.chat_id })}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {t('forum_routing.topics_mapped', {
-                      mapped: state.routes.filter(r => r.is_mapped && r.is_active).length,
-                      total: state.routes.length,
-                    })}
-                  </p>
-                </div>
-              )}
-            </div>
+            {state.connected && (
+              <div className="mt-1 space-y-0.5">
+                <p className="text-xs text-muted-foreground">
+                  ✓ {t('forum_routing.mode_group_connected', { title: state.chat_title })}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t('forum_routing.mode_group_setup_status', { status: state.setup_status })}
+                  {state.last_setup_at && (
+                    ' · ' + t('forum_routing.mode_group_last_setup', {
+                      when: new Date(state.last_setup_at).toLocaleString(),
+                    })
+                  )}
+                </p>
+                <p className="text-xs text-muted-foreground font-mono">
+                  {t('forum_routing.mode_group_chat_id', { id: state.chat_id })}
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {t('forum_routing.topics_mapped', {
+                    mapped: state.routes.filter(r => r.is_mapped && r.is_active).length,
+                    total: state.routes.length,
+                  })}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Per-topic mapping + disconnect (connected only) */}
@@ -271,12 +244,12 @@ export default function ForumRoutingSection() {
                             <p className="font-medium">{r.name}</p>
                             <p className="text-xs text-muted-foreground">{r.description}</p>
                             {!r.is_mapped && (
-                              <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                              <p className="text-xs text-warn mt-1">
                                 {t('forum_routing.topic_status_missing')}
                               </p>
                             )}
                             {r.is_mapped && !r.is_active && (
-                              <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
+                              <p className="text-xs text-warn mt-1">
                                 {t('forum_routing.topic_status_inactive')}
                               </p>
                             )}
@@ -294,7 +267,7 @@ export default function ForumRoutingSection() {
                                   : t('forum_routing.ai_status_off')}
                                 className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition ${
                                   aiEnabled
-                                    ? 'bg-blue-500/15 text-blue-700 dark:text-blue-400 hover:bg-blue-500/25'
+                                    ? toneClasses('info')
                                     : 'bg-muted text-muted-foreground hover:bg-muted/80'
                                 }`}
                               >
@@ -302,25 +275,25 @@ export default function ForumRoutingSection() {
                               </button>
                             )}
                           </td>
-                          {/* "🟢 Receipt" admin toggle — group-side resolve
-                              receipts.  Independent from each user's
-                              personal alert_resolve_receipts DM preference
-                              (set under Avatar → My Notifications). */}
-                          <td className="px-3 py-2 align-top w-32 text-right whitespace-nowrap">
+                          {/* Group-side resolved-notification toggle.
+                              Independent from each user's personal
+                              alert_resolve_receipts DM preference (set
+                              under Avatar → My Notifications). */}
+                          <td className="px-3 py-2 align-top w-40 text-right whitespace-nowrap">
                             {r.is_mapped && (
                               <button
                                 disabled={busyKey === `__rr_${r.alert_type}__`}
                                 onClick={() => handleToggleReceipt(r.alert_type, !r.send_resolve_receipt)}
                                 title={r.send_resolve_receipt
                                   ? 'Group receives a 🟢 RESOLVED message when this alert auto-clears'
-                                  : 'Group does NOT receive resolve receipts for this alert type'}
+                                  : 'Group does NOT receive a resolved-notification for this alert type'}
                                 className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition ${
                                   r.send_resolve_receipt
-                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/25'
+                                    ? toneClasses('ok')
                                     : 'bg-muted text-muted-foreground hover:bg-muted/80'
                                 }`}
                               >
-                                🟢 {r.send_resolve_receipt ? 'Receipt' : 'No receipt'}
+                                🟢 {r.send_resolve_receipt ? 'Resolved notif.' : 'No notif.'}
                               </button>
                             )}
                           </td>
@@ -331,7 +304,7 @@ export default function ForumRoutingSection() {
                                 onClick={() => handleToggle(r.alert_type, !r.is_active)}
                                 className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition ${
                                   r.is_active
-                                    ? 'bg-green-500/15 text-green-700 dark:text-green-400 hover:bg-green-500/25'
+                                    ? toneClasses('ok')
                                     : 'bg-muted text-muted-foreground hover:bg-muted/80'
                                 }`}
                               >
@@ -349,7 +322,7 @@ export default function ForumRoutingSection() {
                   </table>
                   <p className="text-xs text-muted-foreground px-3 py-2 border-t border-border/40 bg-muted/20">
                     🤖 = toggle AI Analysis inclusion for that topic.
-                    🟢 Receipt = send the group a confirmation message when an alert auto-resolves.
+                    🟢 Resolved notif. = post a confirmation message to the group when an alert auto-resolves.
                     ✓ Disable = stop routing this alert type to the group (falls back to per-user DMs).
                   </p>
                 </div>

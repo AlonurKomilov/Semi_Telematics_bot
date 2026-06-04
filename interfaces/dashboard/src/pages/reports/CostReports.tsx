@@ -254,7 +254,7 @@ export default function Reports() {
           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-xs font-medium text-foreground transition border border-border"
           title={t('cost_reports.export_csv_title')}
         >
-          <Download size={13} />
+          <Download size={14} />
           {t('cost_reports.export_csv')}
         </button>
       </div>,
@@ -536,7 +536,7 @@ function DeltaChip({
   // card layout stays consistent (otherwise rows would jump heights).
   if (pct === null || pct === undefined) {
     return (
-      <p className="text-[11px] text-muted-foreground/70 mt-1.5">
+      <p className="text-2xs text-muted-foreground/70 mt-1.5">
         {t('cost_reports.no_prior_period')}
       </p>
     );
@@ -554,18 +554,16 @@ function DeltaChip({
     color = 'text-muted-foreground';
     Icon = Minus;
   } else if (higherIsBad) {
-    color = pct > 0
-      ? 'text-red-600 dark:text-red-400'
-      : 'text-green-600 dark:text-green-400';
+    color = pct > 0 ? 'text-danger' : 'text-ok';
     Icon = pct > 0 ? TrendingUp : TrendingDown;
   } else {
-    color = 'text-blue-600 dark:text-blue-400';
+    color = 'text-info';
     Icon = pct > 0 ? TrendingUp : TrendingDown;
   }
   const arrow = pct > 0 ? '+' : '';
   return (
-    <p className={`text-[11px] inline-flex items-center gap-1 mt-1.5 ${color}`}>
-      <Icon size={11} />
+    <p className={`text-2xs inline-flex items-center gap-1 mt-1.5 ${color}`}>
+      <Icon size={12} />
       <span className="font-medium tabular-nums">
         {arrow}{pct.toFixed(1)}%
       </span>
@@ -584,7 +582,7 @@ function ChartCard({
   return (
     <div className="bg-card border border-border rounded-xl p-4">
       <h3 className="text-sm font-semibold mb-1">{title}</h3>
-      {hint && <p className="text-[11px] text-muted-foreground mb-3">{hint}</p>}
+      {hint && <p className="text-2xs text-muted-foreground mb-3">{hint}</p>}
       {children}
     </div>
   );

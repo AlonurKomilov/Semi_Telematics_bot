@@ -44,7 +44,7 @@ const ALL_COLUMNS: AnyColumn[] = [
   {
     key: 'fault_count',
     label: 'Faults',
-    render: (v) => (v as number) > 0 ? <span className="text-orange-600 dark:text-orange-400 font-medium">{v as number}</span> : '0',
+    render: (v) => (v as number) > 0 ? <span className="text-warn font-medium">{v as number}</span> : '0',
   },
   {
     key: 'odometer_miles',

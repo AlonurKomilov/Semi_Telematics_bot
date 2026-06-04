@@ -11,6 +11,7 @@ import {
   TableSkeleton,
 } from '../../components/shell';
 import type { AnyColumn } from '../../types';
+import { toneClasses } from '../../lib/status';
 
 const ROLE_BADGES: Record<string, string> = {
   admin: 'bg-red-500/15 text-red-700 dark:text-red-400',
@@ -29,8 +30,8 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 function StatusBadge({ invite }: { invite: InviteInfo }) {
-  if (invite.is_used) return <span className="px-2 py-0.5 rounded-full text-xs bg-green-500/15 text-green-700 dark:text-green-400">Used</span>;
-  if (invite.is_expired) return <span className="px-2 py-0.5 rounded-full text-xs bg-gray-500/20 text-muted-foreground">Expired</span>;
+  if (invite.is_used) return <span className={`px-2 py-0.5 rounded-full text-xs ${toneClasses('ok')}`}>Used</span>;
+  if (invite.is_expired) return <span className={`px-2 py-0.5 rounded-full text-xs ${toneClasses('neutral')}`}>Expired</span>;
   return <span className="px-2 py-0.5 rounded-full text-xs bg-primary/15 text-primary">Pending</span>;
 }
 
@@ -160,7 +161,7 @@ export default function Invites() {
               onClick={() => setShowForm(true)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
             >
-              <Plus size={13} />
+              <Plus size={14} />
               New invite
             </button>
           </div>
@@ -183,7 +184,7 @@ export default function Invites() {
               onClick={() => setShowForm(true)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
             >
-              <Plus size={13} />
+              <Plus size={14} />
               New invite
             </button>
           }

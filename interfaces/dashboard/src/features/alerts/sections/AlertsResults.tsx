@@ -33,6 +33,7 @@ import type {
   VehiclesAlertsResponse,
 } from '../../../types';
 import { formatAlertDescription } from '../../../utils/alertDescription';
+import { statusClasses, toneClasses } from '../../../lib/status';
 import { useAlertsFilters } from '../_shared/useAlertsFilters';
 import { useAlertsSelection } from '../_shared/AlertsSelectionContext';
 import { useAlertsQuery } from '../_shared/useAlertsQuery';
@@ -333,21 +334,21 @@ export default function AlertsResults() {
                   <div className="flex gap-1.5 flex-wrap">
                     {g.counts.critical > 0 && (
                       <span
-                        className={`${sevBadgeBase} bg-red-500/15 text-red-700 dark:text-red-400`}
+                        className={`${sevBadgeBase} ${statusClasses('critical')}`}
                       >
                         {g.counts.critical} critical
                       </span>
                     )}
                     {g.counts.warning > 0 && (
                       <span
-                        className={`${sevBadgeBase} bg-orange-500/15 text-orange-700 dark:text-orange-400`}
+                        className={`${sevBadgeBase} ${statusClasses('warning')}`}
                       >
                         {g.counts.warning} warning
                       </span>
                     )}
                     {g.counts.info > 0 && (
                       <span
-                        className={`${sevBadgeBase} bg-blue-500/15 text-blue-700 dark:text-blue-400`}
+                        className={`${sevBadgeBase} ${statusClasses('info')}`}
                       >
                         {g.counts.info} info
                       </span>
@@ -522,7 +523,7 @@ export default function AlertsResults() {
                     being cleared.  Hidden for first-time alerts. */}
                 {(a.occurrence_count ?? 1) > 1 && (
                   <span
-                    className="ml-2 inline-block px-2 py-0.5 rounded-full text-xs font-bold bg-orange-500/15 text-orange-500"
+                    className={`ml-2 inline-block px-2 py-0.5 rounded-full text-xs font-bold ${toneClasses('warn')}`}
                     title={t('alerts.total_occurrences')}
                   >
                     × {a.occurrence_count}

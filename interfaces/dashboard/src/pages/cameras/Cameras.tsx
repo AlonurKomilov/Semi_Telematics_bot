@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Camera, Filter } from 'lucide-react';
 import { apiFetch, apiJSON } from '../../api/client';
+import { toneClasses, toneText, type Tone } from '../../lib/status';
 import DataTable from '../../components/DataTable';
 import {
   PageHeader,
@@ -11,20 +12,22 @@ import {
 } from '../../components/shell';
 import type { CameraCheck, CameraChecksResponse, AnyColumn } from '../../types';
 
-const STATUS_COLORS: Record<string, string> = {
-  OK: 'bg-green-500/15 text-green-700 dark:text-green-400',
-  WARNING: 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400',
-  PROBLEM: 'bg-red-500/15 text-red-700 dark:text-red-400',
+// Camera health vocabulary → semantic tone.  Camera-check specific
+// strings (not in the shared statusTone map), mapped here once.
+const STATUS_TONE: Record<string, Tone> = {
+  OK: 'ok',
+  WARNING: 'warn',
+  PROBLEM: 'danger',
 };
 
-const OBSTRUCTION_COLORS: Record<string, string> = {
-  none: 'text-green-600 dark:text-green-400',
-  partial: 'text-yellow-600 dark:text-yellow-400',
-  full: 'text-destructive',
+const OBSTRUCTION_TONE: Record<string, Tone> = {
+  none: 'ok',
+  partial: 'warn',
+  full: 'danger',
 };
 
 function StatusBadge({ status }: { status: string }) {
-  const cls = STATUS_COLORS[status] || 'bg-gray-500/20 text-muted-foreground';
+  const cls = toneClasses(STATUS_TONE[status] ?? 'neutral');
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{status}</span>;
 }
 
@@ -45,7 +48,7 @@ const columns: AnyColumn[] = [
     label: 'Obstruction',
     render: (v) => {
       const s = v as string;
-      const cls = OBSTRUCTION_COLORS[s] || 'text-muted-foreground';
+      const cls = toneText(OBSTRUCTION_TONE[s] ?? 'neutral');
       return <span className={`capitalize ${cls}`}>{s}</span>;
     },
   },
@@ -160,21 +163,21 @@ export default function Cameras() {
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-green-500 inline-block" />
+            <span className="w-3 h-3 rounded-full bg-ok inline-block" />
             <p className="text-xs text-muted-foreground">OK</p>
           </div>
           <p className="text-xl font-bold mt-1">{statusCounts.OK}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-yellow-500 inline-block" />
+            <span className="w-3 h-3 rounded-full bg-warn inline-block" />
             <p className="text-xs text-muted-foreground">Warning</p>
           </div>
           <p className="text-xl font-bold mt-1">{statusCounts.WARNING}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-red-500 inline-block" />
+            <span className="w-3 h-3 rounded-full bg-danger inline-block" />
             <p className="text-xs text-muted-foreground">Problem</p>
           </div>
           <p className="text-xl font-bold mt-1">{statusCounts.PROBLEM}</p>
@@ -241,7 +244,7 @@ export default function Cameras() {
               </div>
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">Obstruction</dt>
-                <dd className={`capitalize ${OBSTRUCTION_COLORS[detail.obstruction] || ''}`}>{detail.obstruction}</dd>
+                <dd className={`capitalize ${OBSTRUCTION_TONE[detail.obstruction] ? toneText(OBSTRUCTION_TONE[detail.obstruction]) : ''}`}>{detail.obstruction}</dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">Alignment</dt>

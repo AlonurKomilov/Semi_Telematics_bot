@@ -218,7 +218,7 @@ export function ServiceHistoryModal({
                         )}
                       </p>
                       {task.attested_at && (
-                        <p className="text-xs mt-1 inline-flex items-center gap-1 text-green-700 dark:text-green-400">
+                        <p className="text-xs mt-1 inline-flex items-center gap-1 text-ok">
                           <span aria-hidden>✓</span>
                           Attested by{' '}
                           <span className="font-medium">

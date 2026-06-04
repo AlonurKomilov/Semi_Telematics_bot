@@ -34,6 +34,7 @@ function CategoryIcon({ category, size = 13, className = '' }: { category: strin
   return <Icon size={size} className={`shrink-0 ${className}`} />;
 }
 import { apiFetch, apiJSON } from '../../api/client';
+import { toneClasses } from '../../lib/status';
 import { useAuth } from '../../context/AuthContext';
 import {
   PageHeader,
@@ -385,7 +386,7 @@ export default function KnowledgeBase() {
               onClick={() => { resetForm(); setShowForm(true); }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
             >
-              <Plus size={13} />
+              <Plus size={14} />
               {t('knowledge.new_article')}
             </button>
           ) : undefined
@@ -593,7 +594,7 @@ export default function KnowledgeBase() {
                 list without affecting anyone else in the company. */}
 
             {fVisibility === 'public' && (
-              <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-sm text-yellow-700 dark:text-yellow-400 inline-flex items-start gap-2">
+              <div className={`p-3 rounded-lg text-sm inline-flex items-start gap-2 ${toneClasses('warn')}`}>
                 <AlertTriangle size={14} className="shrink-0 mt-0.5" />
                 <span>{t('knowledge.public_approval_warning')}</span>
               </div>
@@ -649,7 +650,7 @@ export default function KnowledgeBase() {
                 onClick={() => { resetForm(); setShowForm(true); }}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
               >
-                <Plus size={13} />
+                <Plus size={14} />
                 {t('knowledge.new_article')}
               </button>
             ) : undefined
@@ -853,11 +854,11 @@ function ArticleCard({
             </span>
             {a.visibility === 'public' ? (
               a.approved ? (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-500/10 border border-green-500/30 rounded text-green-700 dark:text-green-400">
+                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded ${toneClasses('ok')}`}>
                   {t('knowledge.chip_public')}{a.target_role && a.target_role !== 'all' ? ` · ${a.target_role}` : ''}
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-yellow-500/10 border border-yellow-500/30 rounded text-yellow-700 dark:text-yellow-400">
+                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded ${toneClasses('warn')}`}>
                   {t('knowledge.chip_pending')}
                 </span>
               )
@@ -1008,7 +1009,7 @@ function ExpandedArticleBody({
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/15 border border-primary/30 rounded-lg text-sm text-primary hover:bg-primary/25 transition-colors"
         >
-          <MediaIcon type={a.media_type} size={13} />
+          <MediaIcon type={a.media_type} size={14} />
           {mediaLinkLabel(a.media_type)}
         </a>
       )}
@@ -1028,36 +1029,36 @@ function ExpandedArticleBody({
             onClick={() => onEdit(a)}
             className="inline-flex items-center gap-1 px-3 py-1 bg-muted hover:bg-muted/80 text-foreground/80 text-xs rounded transition-colors"
           >
-            <Pencil size={11} />
+            <Pencil size={12} />
             {t('knowledge.btn_edit')}
           </button>
           <button
             onClick={() => onDelete(a.id)}
             className="inline-flex items-center gap-1 px-3 py-1 bg-destructive/10 hover:bg-destructive/20 border border-destructive/30 text-destructive text-xs rounded transition-colors"
           >
-            <Trash2 size={11} />
+            <Trash2 size={12} />
             {t('knowledge.btn_delete')}
           </button>
         </div>
       )}
       {canApprove && a.visibility === 'public' && !a.approved && (
         <div className="flex gap-2 pt-2 border-t border-border mt-2 flex-wrap items-center">
-          <span className="text-xs text-yellow-600 dark:text-yellow-400 self-center mr-2 inline-flex items-center gap-1">
-            <AlertTriangle size={11} />
+          <span className="text-xs text-warn self-center mr-2 inline-flex items-center gap-1">
+            <AlertTriangle size={12} />
             {t('knowledge.needs_approval_label')}
           </span>
           <button
             onClick={() => onApprove(a.id)}
-            className="inline-flex items-center gap-1 px-3 py-1 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-700 dark:text-green-400 text-xs rounded transition-colors"
+            className={`inline-flex items-center gap-1 px-3 py-1 text-xs rounded transition-colors ${toneClasses('ok')}`}
           >
-            <Check size={11} />
+            <Check size={12} />
             {t('knowledge.btn_approve')}
           </button>
           <button
             onClick={() => onReject(a.id)}
             className="inline-flex items-center gap-1 px-3 py-1 bg-destructive/10 hover:bg-destructive/20 border border-destructive/30 text-destructive text-xs rounded transition-colors"
           >
-            <X size={11} />
+            <X size={12} />
             {t('knowledge.btn_reject')}
           </button>
         </div>
@@ -1151,7 +1152,7 @@ function ArticleEngagement({
         title={t('knowledge.helpful_title', 'Mark this article helpful')}
         className={`inline-flex items-center gap-1 px-2 py-1 rounded border transition-colors disabled:opacity-50 ${
           vote === 1
-            ? 'bg-green-500/10 border-green-500/40 text-green-700 dark:text-green-400'
+            ? toneClasses('ok')
             : 'border-border hover:bg-muted'
         }`}
       >
@@ -1292,9 +1293,9 @@ function MediaInput({
               : t('knowledge.upload_pick_image', 'Choose an image file')}
           </span>
         </label>
-        <p className="text-[11px] text-muted-foreground mt-1">{hint}</p>
+        <p className="text-2xs text-muted-foreground mt-1">{hint}</p>
         <div className="mt-3">
-          <label className="block text-[11px] text-muted-foreground mb-1">
+          <label className="block text-2xs text-muted-foreground mb-1">
             {t('knowledge.upload_or_url', 'Or paste a hosted URL')}
           </label>
           <input

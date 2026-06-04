@@ -168,10 +168,10 @@ export default function LiveAckPanel() {
         value={isLoading ? '…' : String(pending)}
       />
       <Chip
-        icon={<Activity size={14} className={delta > 0 ? 'text-amber-500' : 'text-muted-foreground'} />}
+        icon={<Activity size={14} className={delta > 0 ? 'text-warn' : 'text-muted-foreground'} />}
         label={t('alerts.live_ack.new_since_last_look')}
         value={delta > 0 ? `+${delta}` : '0'}
-        accent={delta > 0 ? 'text-amber-600 dark:text-amber-400' : undefined}
+        accent={delta > 0 ? 'text-warn' : undefined}
       />
       <Chip
         icon={<Clock size={14} className="text-muted-foreground" />}
@@ -191,9 +191,9 @@ export default function LiveAckPanel() {
         {soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />}
         {t(soundOn ? 'alerts.live_ack.sound_on' : 'alerts.live_ack.enable_sound')}
       </button>
-      <span className="ml-auto self-center text-[11px] text-muted-foreground">
+      <span className="ml-auto self-center text-2xs text-muted-foreground">
         {t('alerts.live_ack.hotkey_hint')}{' '}
-        <kbd className="px-1 py-px rounded bg-muted text-foreground/80 text-[10px]">
+        <kbd className="px-1 py-px rounded bg-muted text-foreground/80 text-3xs">
           {t('alerts.live_ack.hotkey_action')}
         </kbd>{' '}
         {t('alerts.live_ack.hotkey_tail')}
@@ -212,7 +212,7 @@ function Chip({ icon, label, value, accent }: {
   return (
     <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border bg-card">
       {icon}
-      <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+      <span className="text-3xs uppercase tracking-wide text-muted-foreground font-medium">
         {label}
       </span>
       <span className={`text-sm font-semibold tabular-nums ${accent ?? 'text-foreground'}`}>

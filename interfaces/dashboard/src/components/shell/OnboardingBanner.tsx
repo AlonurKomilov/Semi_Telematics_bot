@@ -10,6 +10,7 @@ import {
   MapPin,
   Sparkles,
 } from 'lucide-react';
+import { toneClasses, toneText } from '../../lib/status';
 
 interface OnboardingStep {
   id: string;
@@ -130,12 +131,12 @@ export default function OnboardingBanner({
               to={s.href}
               className={`flex items-start gap-2 p-3 rounded-lg border transition group ${
                 s.done
-                  ? 'bg-green-500/5 border-green-500/30 text-muted-foreground'
+                  ? `${toneClasses('ok')} text-muted-foreground`
                   : 'bg-card border-border hover:border-primary/40 hover:bg-card/80'
               }`}
             >
               <span
-                className={`shrink-0 mt-0.5 ${s.done ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground group-hover:text-primary'}`}
+                className={`shrink-0 mt-0.5 ${s.done ? toneText('ok') : 'text-muted-foreground group-hover:text-primary'}`}
               >
                 {s.done ? (
                   <CheckCircle2 size={16} />

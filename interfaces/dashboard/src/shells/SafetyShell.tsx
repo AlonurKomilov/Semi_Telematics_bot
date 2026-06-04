@@ -79,9 +79,9 @@ export default function SafetyShell() {
               className="hidden md:inline-flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground bg-muted/40 border border-border rounded-md hover:bg-muted hover:text-foreground transition w-[220px] lg:w-[280px]"
               aria-label="Open command palette"
             >
-              <Search size={13} />
+              <Search size={14} />
               <span>Search…</span>
-              <kbd className="ml-auto px-1.5 py-0.5 text-[10px] border border-border rounded bg-card">
+              <kbd className="ml-auto px-1.5 py-0.5 text-3xs border border-border rounded bg-card">
                 ⌘K
               </kbd>
             </button>

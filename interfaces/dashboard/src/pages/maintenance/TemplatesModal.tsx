@@ -170,7 +170,7 @@ export function TemplatesModal({ onClose, onChange }: Props) {
                       {t.description}
                     </p>
                   )}
-                  <p className="text-[11px] text-muted-foreground mt-1">
+                  <p className="text-2xs text-muted-foreground mt-1">
                     {[
                       t.due_in_days   ? `due in ${t.due_in_days} days` : null,
                       t.due_in_miles  ? `${Number(t.due_in_miles).toLocaleString()} mi` : null,
@@ -200,7 +200,7 @@ export function TemplatesModal({ onClose, onChange }: Props) {
             onClick={() => setShowCreate(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-xs font-medium transition"
           >
-            <Plus size={13} />
+            <Plus size={14} />
             New template
           </button>
         ) : (

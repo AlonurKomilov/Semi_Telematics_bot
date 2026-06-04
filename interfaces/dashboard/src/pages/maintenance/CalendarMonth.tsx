@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import type { MaintenanceTask } from '../../types';
+import { toneClasses } from '../../lib/status';
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -42,11 +43,15 @@ function buildMonthCells(viewDate: Date): Date[] {
   return cells;
 }
 
+// Priority → dot fill, via the shared status tones (low→neutral,
+// medium→info, high→warn, critical→danger — see lib/status.ts).
+// Neutral has no dedicated hue, so the "no signal" low dot uses the
+// muted-foreground fill that ``toneText('neutral')`` resolves to.
 const PRIORITY_DOT: Record<string, string> = {
-  low:      'bg-slate-400',
-  medium:   'bg-blue-500',
-  high:     'bg-orange-500',
-  critical: 'bg-red-500',
+  low:      'bg-muted-foreground',
+  medium:   'bg-info',
+  high:     'bg-warn',
+  critical: 'bg-danger',
 };
 
 export function CalendarMonth({
@@ -77,10 +82,17 @@ export function CalendarMonth({
   }, [dayDetail]);
 
   const tasksByDay = useMemo(() => {
+    // Hard date pinned by the operator wins.  Mileage-only tasks fall
+    // back to ``projected_due_date`` (server-computed from the
+    // vehicle's recent average daily miles) so they land on the day
+    // they're actually expected to come due.  The render below
+    // dashes the dot for projected entries so the operator can tell
+    // them apart from hard-scheduled tasks.
     const m = new Map<string, MaintenanceTask[]>();
     for (const t of tasks) {
-      if (!t.due_date) continue;
-      const d = parseDueDate(t.due_date);
+      const dateStr = t.due_date || t.projected_due_date;
+      if (!dateStr) continue;
+      const d = parseDueDate(dateStr);
       if (Number.isNaN(d.getTime())) continue;
       const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
       const existing = m.get(key);
@@ -90,15 +102,14 @@ export function CalendarMonth({
     return m;
   }, [tasks]);
 
-  // Mileage-only and engine-hours-only tasks — these have no calendar
-  // slot but the operator still needs to see them when planning the
-  // month.  We surface them in a footer panel below the grid with a
-  // "remaining" counter computed from the warehouse-merged
-  // last_odometer / last_engine_hours.  Honest about not projecting a
-  // date: that would need an odometer time-series the warehouse
-  // doesn't store today.  Sorted so the closest-to-due bubble up.
+  // Footer panel: tasks with NO date at all (neither hard nor
+  // projected).  Usually means we don't have enough recent telemetry
+  // to project a date — newly-onboarded trucks, or trucks that
+  // haven't moved in 30 days.  Honest about it: surface them so
+  // they're not lost, but make it clear the calendar can't place
+  // them yet.  Sorted so closest-to-due bubble up.
   const noDateTasks = useMemo(() => {
-    const items = tasks.filter(t => !t.due_date
+    const items = tasks.filter(t => !t.due_date && !t.projected_due_date
       && (t.due_miles != null || t.due_engine_hours != null));
     const remaining = (t: MaintenanceTask): number => {
       if (t.due_miles != null && t.last_odometer != null) {
@@ -182,16 +193,29 @@ export function CalendarMonth({
               <div className="flex flex-col gap-0.5">
                 {visible.map(task => {
                   const dotCls = PRIORITY_DOT[task.priority || 'medium'] ?? PRIORITY_DOT.medium;
+                  // Projected (mileage-derived) entries get a dashed
+                  // outline + italic vehicle name so the operator can
+                  // tell "I scheduled this" from "the system guessed
+                  // when it'll come due".  Tooltip discloses the
+                  // velocity assumption that drove the projection.
+                  const isProjected = !task.due_date && Boolean(task.projected_due_date);
+                  const projTitle = isProjected && task.velocity_avg_daily_miles
+                    ? ` (projected from ${task.velocity_avg_daily_miles.toLocaleString()} mi/day avg)`
+                    : '';
                   return (
                     <button
                       key={task.id}
                       type="button"
                       onClick={() => onTaskClick(task)}
-                      className="flex items-center gap-1 text-left px-1.5 py-0.5 text-[10px] rounded bg-muted/60 hover:bg-muted truncate"
-                      title={`#${task.vehicle_name} · ${task.task_type} · ${task.description || 'no description'}`}
+                      className={`flex items-center gap-1 text-left px-1.5 py-0.5 text-3xs rounded truncate ${
+                        isProjected
+                          ? 'bg-card hover:bg-muted border border-dashed border-border'
+                          : 'bg-muted/60 hover:bg-muted'
+                      }`}
+                      title={`#${task.vehicle_name} · ${task.task_type} · ${task.description || 'no description'}${projTitle}`}
                     >
                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotCls}`} />
-                      <span className="font-mono shrink-0">{task.vehicle_name}</span>
+                      <span className={`shrink-0 ${isProjected ? 'italic' : ''}`}>{task.vehicle_name}</span>
                       <span className="text-muted-foreground truncate">{task.task_type}</span>
                     </button>
                   );
@@ -200,7 +224,7 @@ export function CalendarMonth({
                   <button
                     type="button"
                     onClick={() => setDayDetail({ date: cell, tasks: dayTasks })}
-                    className="text-[10px] text-muted-foreground hover:text-foreground text-left px-1.5"
+                    className="text-3xs text-muted-foreground hover:text-foreground text-left px-1.5"
                   >
                     + {overflow} more
                   </button>
@@ -235,18 +259,18 @@ export function CalendarMonth({
                   key={task.id}
                   type="button"
                   onClick={() => onTaskClick(task)}
-                  className="inline-flex items-center gap-1.5 px-2 py-1 text-[11px] rounded bg-card hover:bg-muted border border-border"
+                  className="inline-flex items-center gap-1.5 px-2 py-1 text-2xs rounded bg-card hover:bg-muted border border-border"
                   title={`#${task.vehicle_name} · ${task.task_type} · ${task.description || 'no description'}`}
                 >
                   <span aria-hidden className={`w-1.5 h-1.5 rounded-full ${dotCls}`} />
-                  <span className="font-mono">{task.vehicle_name}</span>
+                  <span>{task.vehicle_name}</span>
                   <span className="text-muted-foreground">·</span>
                   <span className="text-muted-foreground">{remaining}</span>
                 </button>
               );
             })}
             {noDateTasks.length > 12 && (
-              <span className="self-center text-[11px] text-muted-foreground">
+              <span className="self-center text-2xs text-muted-foreground">
                 + {noDateTasks.length - 12} more (visible in list view)
               </span>
             )}
@@ -299,12 +323,12 @@ export function CalendarMonth({
                       <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${dotCls}`} />
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium flex items-center gap-2">
-                          <span className="font-mono">#{task.vehicle_name}</span>
+                          <span>#{task.vehicle_name}</span>
                           <span className="text-muted-foreground capitalize">
                             {(task.task_type || '').replace(/_/g, ' ')}
                           </span>
                           {task.status === 'overdue' && (
-                            <span className="text-[10px] uppercase tracking-wide bg-red-500/15 text-red-700 dark:text-red-400 px-1.5 py-0.5 rounded">
+                            <span className={`text-3xs uppercase tracking-wide px-1.5 py-0.5 rounded ${toneClasses('danger')}`}>
                               Overdue
                             </span>
                           )}

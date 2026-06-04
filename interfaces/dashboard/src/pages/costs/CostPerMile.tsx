@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DollarSign } from 'lucide-react';
 import { apiJSON } from '../../api/client';
+import { toneText, type Tone } from '../../lib/status';
 import DataTable from '../../components/DataTable';
 import {
   PageHeader,
@@ -32,16 +33,18 @@ const cols: AnyColumn[] = [
     key: 'cpm', label: 'Cost per Mile', sortable: true,
     render: (v) => {
       const n = v as number;
-      const color = n > 0.6 ? 'text-destructive' : n > 0.4 ? 'text-yellow-700 dark:text-yellow-400' : 'text-green-600 dark:text-green-400';
-      return <span className={color}>${n.toFixed(3)}</span>;
+      // Higher cost-per-mile is worse: danger above $0.60, warn above $0.40.
+      const tone: Tone = n > 0.6 ? 'danger' : n > 0.4 ? 'warn' : 'ok';
+      return <span className={toneText(tone)}>${n.toFixed(3)}</span>;
     },
   },
   {
     key: 'mpg', label: 'MPG', sortable: true,
     render: (v) => {
       const n = v as number;
-      const color = n < 5 ? 'text-destructive' : n < 7 ? 'text-yellow-700 dark:text-yellow-400' : 'text-green-600 dark:text-green-400';
-      return <span className={color}>{n.toFixed(1)}</span>;
+      // Lower fuel economy is worse: danger below 5 MPG, warn below 7.
+      const tone: Tone = n < 5 ? 'danger' : n < 7 ? 'warn' : 'ok';
+      return <span className={toneText(tone)}>{n.toFixed(1)}</span>;
     },
   },
 ];
