@@ -246,7 +246,7 @@ export function PhotoAnnotator({ inspectionId, media, onSaved, onCancel }: Props
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        fontSize: 14,
+        fontSize: 'var(--st-text-base)',
         flex: '0 0 auto',
       }}>
         <span style={{ fontWeight: 600 }}>{t('pti.annotate_title')}</span>
@@ -258,7 +258,7 @@ export function PhotoAnnotator({ inspectionId, media, onSaved, onCancel }: Props
             background: 'transparent',
             border: 'none',
             color: '#fff',
-            fontSize: 22,
+            fontSize: 'var(--st-text-xl)',
             cursor: 'pointer',
             opacity: saving ? 0.4 : 1,
           }}
@@ -280,10 +280,10 @@ export function PhotoAnnotator({ inspectionId, media, onSaved, onCancel }: Props
         position: 'relative',
       }}>
         {!photoUrl && !photoError && (
-          <p style={{ color: '#fff', fontSize: 13 }}>{t('pti.annotate_loading')}</p>
+          <p style={{ color: '#fff', fontSize: 'var(--st-text-md)' }}>{t('pti.annotate_loading')}</p>
         )}
         {photoError && (
-          <p style={{ color: '#ff8a8a', fontSize: 13 }}>{t('pti.annotate_load_failed')}</p>
+          <p style={{ color: 'var(--st-red)', fontSize: 'var(--st-text-md)' }}>{t('pti.annotate_load_failed')}</p>
         )}
         {photoUrl && (
           <div style={{ position: 'relative', maxWidth: '100%', maxHeight: '100%' }}>
@@ -329,7 +329,7 @@ export function PhotoAnnotator({ inspectionId, media, onSaved, onCancel }: Props
         flex: '0 0 auto',
       }}>
         {saveError && (
-          <p role="alert" style={{ color: '#ff8a8a', fontSize: 12, margin: 0 }}>{saveError}</p>
+          <p role="alert" style={{ color: 'var(--st-red)', fontSize: 'var(--st-text-sm)', margin: 0 }}>{saveError}</p>
         )}
         <div style={{ display: 'flex', gap: 8 }}>
           <button
@@ -361,7 +361,7 @@ export function PhotoAnnotator({ inspectionId, media, onSaved, onCancel }: Props
                 ? 'rgba(255,255,255,0.25)'
                 : 'var(--tg-theme-button-color, #0a84ff)',
               color: 'var(--tg-theme-button-text-color, #fff)',
-              fontSize: 14,
+              fontSize: 'var(--st-text-base)',
               fontWeight: 600,
             }}
           >
@@ -382,7 +382,7 @@ function toolbarBtnStyle(disabled: boolean): React.CSSProperties {
     border: '1px solid rgba(255,255,255,0.3)',
     background: 'transparent',
     color: '#fff',
-    fontSize: 13,
+    fontSize: 'var(--st-text-md)',
     opacity: disabled ? 0.45 : 1,
   };
 }

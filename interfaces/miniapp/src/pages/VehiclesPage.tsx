@@ -204,7 +204,7 @@ export function VehiclesPage({ active, onGoToMap, timezone }: Props) {
         <span style={{ flex: 1 }}>
           <strong>{maintenanceTasks.length}</strong> pending maintenance task{maintenanceTasks.length !== 1 ? 's' : ''}
         </span>
-        <span style={{ color: 'var(--st-blue, #2990ff)', fontSize: 13 }}>View →</span>
+        <span style={{ color: 'var(--st-blue, #2990ff)', fontSize: 'var(--st-text-md)' }}>View →</span>
       </div>
       <BottomSheet
         open={maintSheetOpen}

@@ -202,7 +202,7 @@ export const AIChatPage = memo(function AIChatPage({ active, userRole }: Props) 
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         flexShrink: 0,
       }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>AI Assistant</h2>
+        <h2 style={{ margin: 0, fontSize: 'var(--st-text-lg)', fontWeight: 600 }}>AI Assistant</h2>
         {messages.length > 0 && (
           <button
             type="button"
@@ -231,7 +231,7 @@ export const AIChatPage = memo(function AIChatPage({ active, userRole }: Props) 
 
         {!loadingHistory && messages.length === 0 && (
           <div style={{ textAlign: 'center', padding: '24px 8px', color: 'var(--tgui--hint_color, #888)' }}>
-            <p style={{ marginBottom: 12, fontSize: 14 }}>
+            <p style={{ marginBottom: 12, fontSize: 'var(--st-text-base)' }}>
               Ask me anything about your fleet — I can read live truck data, alerts, scorecards, and routes.
             </p>
           </div>
@@ -256,7 +256,7 @@ export const AIChatPage = memo(function AIChatPage({ active, userRole }: Props) 
               : 'var(--tgui--text_color, #fff)',
             whiteSpace: isUser ? ('pre-wrap' as const) : ('normal' as const),
             wordBreak: 'break-word' as const,
-            fontSize: 14,
+            fontSize: 'var(--st-text-base)',
             lineHeight: 1.4,
           };
           return (
@@ -287,7 +287,7 @@ export const AIChatPage = memo(function AIChatPage({ active, userRole }: Props) 
               style={{
                 padding: '8px 12px', borderRadius: 14,
                 background: 'var(--tgui--secondary_bg_color, #2a2a2a)',
-                color: 'var(--tgui--hint_color, #999)', fontSize: 14, fontStyle: 'italic',
+                color: 'var(--tgui--hint_color, #999)', fontSize: 'var(--st-text-base)', fontStyle: 'italic',
               }}
             >
               Thinking…
@@ -304,7 +304,7 @@ export const AIChatPage = memo(function AIChatPage({ active, userRole }: Props) 
                 type="button"
                 onClick={() => send(q)}
                 style={{
-                  padding: '6px 10px', borderRadius: 12, border: 0, fontSize: 12,
+                  padding: '6px 10px', borderRadius: 12, border: 0, fontSize: 'var(--st-text-sm)',
                   background: 'var(--tgui--secondary_bg_color, #2a2a2a)',
                   color: 'var(--tgui--text_color, #fff)', cursor: 'pointer',
                 }}
@@ -343,7 +343,7 @@ export const AIChatPage = memo(function AIChatPage({ active, userRole }: Props) 
             flex: 1, minHeight: 36, maxHeight: 120, padding: '8px 12px',
             borderRadius: 18, border: '1px solid var(--tgui--divider, #444)',
             background: 'var(--tgui--secondary_bg_color, #1a1a1a)',
-            color: 'var(--tgui--text_color, #fff)', fontSize: 15,
+            color: 'var(--tgui--text_color, #fff)', fontSize: 'var(--st-text-lg)',
             resize: 'none', fontFamily: 'inherit', outline: 'none',
           }}
         />

@@ -53,14 +53,14 @@ function daysUntil(iso: string | null): number | null {
 }
 
 function chipFor(iso: string | null): { text: string; color: string } {
-  if (!iso) return { text: 'No expiry', color: 'var(--st-muted, #8a8a8e)' };
+  if (!iso) return { text: 'No expiry', color: 'var(--st-grey)' };
   const d = daysUntil(iso);
-  if (d == null) return { text: iso, color: 'var(--st-muted, #8a8a8e)' };
-  if (d < 0)    return { text: `Expired ${-d}d ago`, color: 'var(--st-red, #ff453a)' };
-  if (d === 0)  return { text: 'Expires today',      color: 'var(--st-red, #ff453a)' };
-  if (d <= 30)  return { text: `${d}d left`,         color: 'var(--st-red, #ff453a)' };
-  if (d <= 90)  return { text: `${d}d left`,         color: 'var(--st-orange, #ff9f0a)' };
-  return { text: iso, color: 'var(--st-muted, #8a8a8e)' };
+  if (d == null) return { text: iso, color: 'var(--st-grey)' };
+  if (d < 0)    return { text: `Expired ${-d}d ago`, color: 'var(--st-red)' };
+  if (d === 0)  return { text: 'Expires today',      color: 'var(--st-red)' };
+  if (d <= 30)  return { text: `${d}d left`,         color: 'var(--st-red)' };
+  if (d <= 90)  return { text: `${d}d left`,         color: 'var(--st-orange)' };
+  return { text: iso, color: 'var(--st-grey)' };
 }
 
 export function MyDriverInfo({ onToast }: { onToast?: (text: string, kind?: 'success' | 'error' | 'info') => void }) {
@@ -133,8 +133,8 @@ export function MyDriverInfo({ onToast }: { onToast?: (text: string, kind?: 'suc
                 marginLeft: 8,
                 padding: '2px 6px',
                 borderRadius: 4,
-                fontSize: 10,
-                background: 'var(--tg-theme-button-color, #0a84ff)',
+                fontSize: 'var(--st-text-2xs)',
+                background: 'var(--tg-theme-button-color, var(--st-blue))',
                 color: 'var(--tg-theme-button-text-color, #fff)',
               }}>
                 Primary
@@ -170,8 +170,8 @@ export function MyDriverInfo({ onToast }: { onToast?: (text: string, kind?: 'suc
                   style={{
                     background: 'transparent',
                     border: 'none',
-                    color: 'var(--tg-theme-link-color, #0a84ff)',
-                    fontSize: 13,
+                    color: 'var(--tg-theme-link-color, var(--st-blue))',
+                    fontSize: 'var(--st-text-md)',
                     cursor: 'pointer',
                     padding: '4px 6px',
                   }}
@@ -184,7 +184,7 @@ export function MyDriverInfo({ onToast }: { onToast?: (text: string, kind?: 'suc
                 <span>{DOC_LABEL[d.doc_type] ?? d.doc_type}</span>
                 <span
                   style={{
-                    fontSize: 11,
+                    fontSize: 'var(--st-text-xs)',
                     padding: '2px 6px',
                     borderRadius: 4,
                     border: `1px solid ${chip.color}`,

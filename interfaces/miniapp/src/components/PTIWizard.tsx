@@ -56,10 +56,10 @@ function parseVerdict(m: PTIMedia): AIVerdict | null {
 
 /** Visual treatment per verdict: emoji + colour for the badge. */
 const VERDICT_STYLE: Record<AIVerdict['verdict'], { emoji: string; bg: string }> = {
-  ok:             { emoji: '✓', bg: '#30d158' },
-  possible_issue: { emoji: '⚠', bg: '#ff9f0a' },
-  likely_defect:  { emoji: '✕', bg: '#ff3b30' },
-  unclear:        { emoji: '?', bg: '#8e8e93' },
+  ok:             { emoji: '✓', bg: 'var(--st-green)' },
+  possible_issue: { emoji: '⚠', bg: 'var(--st-orange)' },
+  likely_defect:  { emoji: '✕', bg: 'var(--st-red)' },
+  unclear:        { emoji: '?', bg: 'var(--st-grey)' },
 };
 
 interface Props {
@@ -398,8 +398,8 @@ export function PTIWizard({ inspection, onUpdated, onSubmitted }: Props) {
                         width: 76,
                         height: 76,
                         borderRadius: 8,
-                        border: '1px solid var(--tg-theme-hint-color, #c7c7c7)',
-                        background: 'var(--tg-theme-secondary-bg-color, #f0f0f0)',
+                        border: '1px solid var(--tg-theme-hint-color, var(--st-grey))',
+                        background: 'var(--tg-theme-secondary-bg-color)',
                         padding: 0,
                         overflow: 'hidden',
                         cursor: 'pointer',
@@ -421,9 +421,9 @@ export function PTIWizard({ inspection, onUpdated, onSubmitted }: Props) {
                           position: 'absolute',
                           top: 3,
                           right: 3,
-                          background: '#ff3b30',
+                          background: 'var(--st-red)',
                           color: '#fff',
-                          fontSize: 9,
+                          fontSize: 'var(--st-text-2xs)',
                           fontWeight: 700,
                           padding: '1px 4px',
                           borderRadius: 4,
@@ -441,9 +441,9 @@ export function PTIWizard({ inspection, onUpdated, onSubmitted }: Props) {
                         const s = (m.storage_state || 'remote').toLowerCase();
                         if (s === 'remote') return null;
                         const cfg: Record<string, { glyph: string; bg: string }> = {
-                          local:   { glyph: '💾', bg: '#64748b' },
-                          syncing: { glyph: '🔄', bg: '#2990ff' },
-                          stuck:   { glyph: '⚠',  bg: '#ff3b30' },
+                          local:   { glyph: '💾', bg: 'var(--st-grey)' },
+                          syncing: { glyph: '🔄', bg: 'var(--st-blue)' },
+                          stuck:   { glyph: '⚠',  bg: 'var(--st-red)' },
                         };
                         const c = cfg[s];
                         if (!c) return null;
@@ -452,7 +452,7 @@ export function PTIWizard({ inspection, onUpdated, onSubmitted }: Props) {
                             position: 'absolute',
                             top: 3, left: 3,
                             background: c.bg, color: '#fff',
-                            fontSize: 9, fontWeight: 700,
+                            fontSize: 'var(--st-text-2xs)', fontWeight: 700,
                             padding: '1px 4px',
                             borderRadius: 4,
                             letterSpacing: 0.3,
@@ -465,7 +465,7 @@ export function PTIWizard({ inspection, onUpdated, onSubmitted }: Props) {
                           spinner-ish dot while the check is in flight,
                           then the verdict emoji once it lands. */}
                       {aiChecking.has(m.id) ? (
-                        <span style={aiBadgeStyle('#0a84ff')}>🔍</span>
+                        <span style={aiBadgeStyle('var(--st-blue)')}>🔍</span>
                       ) : (() => {
                         const v = parseVerdict(m);
                         if (!v) return null;
@@ -483,7 +483,7 @@ export function PTIWizard({ inspection, onUpdated, onSubmitted }: Props) {
             {(() => {
               if (aiChecking.size > 0) {
                 return (
-                  <p className="pti-wizard__ai-note" style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
+                  <p className="pti-wizard__ai-note" style={{ marginTop: 6, fontSize: 'var(--st-text-sm)', opacity: 0.8 }}>
                     🔍 {t('pti.ai_checking')}
                   </p>
                 );
@@ -495,14 +495,14 @@ export function PTIWizard({ inspection, onUpdated, onSubmitted }: Props) {
               const flagged = checked.find(v => v.verdict === 'possible_issue' || v.verdict === 'likely_defect');
               if (flagged) {
                 return (
-                  <p className="pti-wizard__ai-note" style={{ marginTop: 6, fontSize: 12, color: '#ff9f0a' }}>
+                  <p className="pti-wizard__ai-note" style={{ marginTop: 6, fontSize: 'var(--st-text-sm)', color: 'var(--st-orange)' }}>
                     ⚠ {flagged.summary || t('pti.ai_possible_issue')}
                   </p>
                 );
               }
               if (checked.length > 0 && checked.every(v => v.verdict === 'ok')) {
                 return (
-                  <p className="pti-wizard__ai-note" style={{ marginTop: 6, fontSize: 12, color: '#30d158' }}>
+                  <p className="pti-wizard__ai-note" style={{ marginTop: 6, fontSize: 'var(--st-text-sm)', color: 'var(--st-green)' }}>
                     ✓ {t('pti.ai_looks_ok')}
                   </p>
                 );
@@ -614,7 +614,7 @@ function aiBadgeStyle(bg: string): React.CSSProperties {
     left: 3,
     background: bg,
     color: '#fff',
-    fontSize: 10,
+    fontSize: 'var(--st-text-2xs)',
     fontWeight: 700,
     width: 18,
     height: 18,

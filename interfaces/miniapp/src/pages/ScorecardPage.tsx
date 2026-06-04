@@ -783,7 +783,7 @@ function RiskSummaryDownload({ days }: { days: Range }) {
           border: '1px solid var(--tgui--button_color, #2481cc)',
           background: 'transparent',
           color: 'var(--tgui--button_color, #2481cc)',
-          fontSize: 13, fontWeight: 500,
+          fontSize: 'var(--st-text-md)', fontWeight: 500,
         }}
       >
         {busy ? t('scorecard.generating') : t('scorecard.risk_summary')}
@@ -797,12 +797,12 @@ function RiskSummaryDownload({ days }: { days: Range }) {
           border: '1px solid var(--tgui--hint_color, #8d8e90)',
           background: 'transparent',
           color: 'var(--tgui--hint_color, #8d8e90)',
-          fontSize: 13,
+          fontSize: 'var(--st-text-md)',
         }}
       >
         CSV
       </button>
-      {err && <span style={{ fontSize: 11, color: 'var(--st-red, #f04747)' }}>{err}</span>}
+      {err && <span style={{ fontSize: 'var(--st-text-xs)', color: 'var(--st-red, #f04747)' }}>{err}</span>}
     </div>
   );
 }

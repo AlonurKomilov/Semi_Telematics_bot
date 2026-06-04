@@ -96,22 +96,22 @@ export function PillarRing({
 
   const labelStyle: CSSProperties = {
     fill: 'var(--tg-theme-text-color, currentColor)',
-    fontSize: 14,
+    fontSize: 'var(--st-text-base)',
     fontWeight: 500,
     textAnchor: 'middle',
   };
   const totalStyle: CSSProperties = {
     fill: tierColor ?? 'var(--tg-theme-text-color, currentColor)',
-    fontSize: 44,
+    fontSize: 'var(--st-text-display)',
     fontWeight: 700,
     textAnchor: 'middle',
   };
 
   // Pillar arc colours match the dashboard's PILLAR_META so the
   // same driver sees consistent colour cues on web and phone.
-  const SAFETY_COLOR     = '#ef4444';  // red
-  const EFFICIENCY_COLOR = '#22c55e';  // green
-  const COMPLIANCE_COLOR = '#3b82f6';  // blue
+  const SAFETY_COLOR     = 'var(--st-red)';     // red
+  const EFFICIENCY_COLOR = 'var(--st-green)';   // green
+  const COMPLIANCE_COLOR = 'var(--st-blue)';    // blue
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>

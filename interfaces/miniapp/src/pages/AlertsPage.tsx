@@ -793,7 +793,7 @@ export function AlertsPage({ active, onCountChange, refreshKey, timezone }: Prop
         onClose={() => setConfirmBulkAck(false)}
         title="Acknowledge all alerts?"
       >
-        <p style={{ color: 'var(--tgui--hint_color)', fontSize: 14, marginTop: 0 }}>
+        <p style={{ color: 'var(--tgui--hint_color)', fontSize: 'var(--st-text-base)', marginTop: 0 }}>
           {`This will mark ${alerts.length === 1 ? 'this' : 'all'} ${pluralize(alerts.length, 'pending alert')} as acknowledged. You can review them in History.`}
         </p>
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>

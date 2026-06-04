@@ -131,8 +131,8 @@ function HealthRow({ label, value, warn }: { label: string; value: string; warn?
       borderBottom: '1px solid rgba(128,128,128,0.1)',
       gap: 12,
     }}>
-      <span style={{ fontSize: 14, color: 'var(--tgui--hint_color)', flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: 14, fontWeight: warn ? 700 : 400, color: warn ? 'var(--st-red, #ff3b30)' : 'inherit', textAlign: 'right' }}>
+      <span style={{ fontSize: 'var(--st-text-base)', color: 'var(--tgui--hint_color)', flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: 'var(--st-text-base)', fontWeight: warn ? 700 : 400, color: warn ? 'var(--st-red)' : 'inherit', textAlign: 'right' }}>
         {value}
       </span>
     </div>
@@ -214,16 +214,16 @@ export function VehicleDetailSheet({ name, onClose }: Props) {
       {!loading && !error && health && (
         <>
           {/* ── Health metrics ────────────────────────────────── */}
-          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4, marginTop: 4 }}>
+          <div style={{ fontWeight: 700, fontSize: 'var(--st-text-lg)', marginBottom: 4, marginTop: 4 }}>
             🩺 Health
           </div>
           {health.alerts && health.alerts.length > 0 && (
             <div style={{
-              background: 'var(--st-red-tint, rgba(255,59,48,0.1))',
+              background: 'var(--st-red-tint)',
               borderRadius: 8, padding: '8px 12px', marginBottom: 8,
             }}>
               {health.alerts.map((a, i) => (
-                <div key={i} style={{ fontSize: 13, color: 'var(--st-red, #ff3b30)', lineHeight: 1.5 }}>
+                <div key={i} style={{ fontSize: 'var(--st-text-md)', color: 'var(--st-red)', lineHeight: 1.5 }}>
                   ⚠ {formatAlert(a)}
                 </div>
               ))}
@@ -276,11 +276,11 @@ export function VehicleDetailSheet({ name, onClose }: Props) {
           {/* ── Active fault codes ─────────────────────────────── */}
           {faults && (
             <div style={{ marginTop: 20 }}>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
+              <div style={{ fontWeight: 700, fontSize: 'var(--st-text-lg)', marginBottom: 4 }}>
                 ⚠️ Faults ({faults.fault_count})
               </div>
               {faults.fault_count === 0 ? (
-                <div style={{ fontSize: 14, color: 'var(--tgui--hint_color)', padding: '12px 0' }}>
+                <div style={{ fontSize: 'var(--st-text-base)', color: 'var(--tgui--hint_color)', padding: '12px 0' }}>
                   ✅ No active fault codes
                 </div>
               ) : (
@@ -296,17 +296,17 @@ export function VehicleDetailSheet({ name, onClose }: Props) {
                       borderBottom: '1px solid rgba(128,128,128,0.1)',
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                        <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--st-red, #ff3b30)', fontFamily: 'monospace' }}>
+                        <div style={{ fontWeight: 600, fontSize: 'var(--st-text-md)', color: 'var(--st-red)', fontFamily: 'monospace' }}>
                           {codeLabel}
                         </div>
                         {f.occurrenceCount != null && f.occurrenceCount > 1 && (
-                          <div style={{ fontSize: 11, color: 'var(--tgui--hint_color)', flexShrink: 0 }}>
+                          <div style={{ fontSize: 'var(--st-text-xs)', color: 'var(--tgui--hint_color)', flexShrink: 0 }}>
                             ×{f.occurrenceCount}
                           </div>
                         )}
                       </div>
                       {f.spnDescription && (
-                        <div style={{ fontSize: 13, color: 'var(--tgui--text_color)', marginTop: 3, lineHeight: 1.4 }}>
+                        <div style={{ fontSize: 'var(--st-text-md)', color: 'var(--tgui--text_color)', marginTop: 3, lineHeight: 1.4 }}>
                           {f.spnDescription}
                         </div>
                       )}
@@ -360,7 +360,7 @@ function TelemetrySparkline({ points }: SparklineProps) {
 
   return (
     <div style={{ marginTop: 24 }}>
-      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>📈 Last 7 days</div>
+      <div style={{ fontWeight: 700, fontSize: 'var(--st-text-lg)', marginBottom: 8 }}>📈 Last 7 days</div>
       <svg
         width={totalW}
         height={chartH + 24}
@@ -381,12 +381,12 @@ function TelemetrySparkline({ points }: SparklineProps) {
                 width={barW}
                 height={barH}
                 rx={4}
-                fill={harsh > 0 ? 'var(--st-orange, #ff9f0a)' : 'var(--st-blue, #0a84ff)'}
+                fill={harsh > 0 ? 'var(--st-orange)' : 'var(--st-blue)'}
                 opacity={0.85}
               />
               {harsh > 0 && (
                 <text x={x + barW / 2} y={y - 4} textAnchor="middle" fontSize={9}
-                  fill="var(--st-orange, #ff9f0a)">{harsh}⚡</text>
+                  fill="var(--st-orange)">{harsh}⚡</text>
               )}
               <text x={x + barW / 2} y={chartH + 14} textAnchor="middle" fontSize={10}
                 fill="var(--tgui--hint_color)">{label}</text>
@@ -394,7 +394,7 @@ function TelemetrySparkline({ points }: SparklineProps) {
           );
         })}
       </svg>
-      <div style={{ fontSize: 11, color: 'var(--tgui--hint_color)', marginTop: 4 }}>
+      <div style={{ fontSize: 'var(--st-text-xs)', color: 'var(--tgui--hint_color)', marginTop: 4 }}>
         Miles driven per day · orange = harsh events · max {Math.round(maxMiles)} mi
       </div>
     </div>

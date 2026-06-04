@@ -33,6 +33,19 @@
   --st-tabbar-h:  56px;
   --st-safe-bottom: env(safe-area-inset-bottom, 0px);
 
+  /* Type scale — referenced inline, e.g.
+     ``style={{ fontSize: 'var(--st-text-sm)' }}``.  ~50 inline pixel
+     fontSizes (9/10/11/12/13/14/15/17/22/44) were drifting; these named
+     steps absorb them so the dense Telegram type stays consistent. */
+  --st-text-2xs:     10px;
+  --st-text-xs:      11px;
+  --st-text-sm:      12px;
+  --st-text-md:      13px;
+  --st-text-base:    14px;
+  --st-text-lg:      15px;
+  --st-text-xl:      22px;
+  --st-text-display: 44px;
+
   /* Status colours — pre-computed for AA-contrast on both light + dark. */
   --st-green:   #30d158;
   --st-orange:  #ff9f0a;

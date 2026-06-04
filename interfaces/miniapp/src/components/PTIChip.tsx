@@ -79,9 +79,9 @@ export function PTIChip({ userPerms, onTap }: Props) {
   // Tone → background colour (uses existing CSS vars).  Default is
   // brand-blue, overdue is red, revision is orange.
   const bg =
-    tone === 'overdue'  ? 'var(--st-red, #ff453a)'
-    : tone === 'revision' ? 'var(--st-orange, #ff9f0a)'
-    :                       'var(--tg-theme-button-color, #0a84ff)';
+    tone === 'overdue'  ? 'var(--st-red)'
+    : tone === 'revision' ? 'var(--st-orange)'
+    :                       'var(--tg-theme-button-color, var(--st-blue))';
 
   return (
     <button
@@ -105,7 +105,7 @@ export function PTIChip({ userPerms, onTap }: Props) {
         border: 'none',
         background: bg,
         color: '#fff',
-        fontSize: 13,
+        fontSize: 'var(--st-text-md)',
         fontWeight: 600,
         boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
         cursor: 'pointer',

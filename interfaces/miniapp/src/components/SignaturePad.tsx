@@ -167,7 +167,7 @@ export function SignaturePad({ prompt, onConfirm, onCancel, saving = false }: Pr
           boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
         }}
       >
-        <p style={{ fontSize: 14, fontWeight: 600, margin: '0 0 10px' }}>
+        <p style={{ fontSize: 'var(--st-text-base)', fontWeight: 600, margin: '0 0 10px' }}>
           {prompt}
         </p>
         <div
@@ -195,7 +195,7 @@ export function SignaturePad({ prompt, onConfirm, onCancel, saving = false }: Pr
             }}
           />
         </div>
-        <p style={{ fontSize: 11, color: 'var(--tg-theme-hint-color, #888)', margin: '8px 0 12px' }}>
+        <p style={{ fontSize: 'var(--st-text-xs)', color: 'var(--tg-theme-hint-color, #888)', margin: '8px 0 12px' }}>
           {t('pti.signature_hint')}
         </p>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -210,7 +210,7 @@ export function SignaturePad({ prompt, onConfirm, onCancel, saving = false }: Pr
               border: '1px solid var(--tg-theme-hint-color, #c7c7c7)',
               background: 'transparent',
               color: 'inherit',
-              fontSize: 14,
+              fontSize: 'var(--st-text-base)',
               cursor: didDraw ? 'pointer' : 'not-allowed',
               opacity: didDraw ? 1 : 0.5,
             }}
@@ -228,7 +228,7 @@ export function SignaturePad({ prompt, onConfirm, onCancel, saving = false }: Pr
               border: '1px solid var(--tg-theme-hint-color, #c7c7c7)',
               background: 'transparent',
               color: 'inherit',
-              fontSize: 14,
+              fontSize: 'var(--st-text-base)',
             }}
           >
             {t('pti.signature_cancel')}
@@ -246,7 +246,7 @@ export function SignaturePad({ prompt, onConfirm, onCancel, saving = false }: Pr
                 ? 'var(--tg-theme-button-color, #0a84ff)'
                 : 'var(--tg-theme-hint-color, #c7c7c7)',
               color: 'var(--tg-theme-button-text-color, #fff)',
-              fontSize: 14,
+              fontSize: 'var(--st-text-base)',
               fontWeight: 600,
               cursor: didDraw && !submitting ? 'pointer' : 'not-allowed',
             }}
