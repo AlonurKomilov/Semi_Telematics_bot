@@ -226,21 +226,177 @@ class SettingsMixin:
         request_type: str, prompt_tokens: int = 0,
         reply_tokens: int = 0, total_tokens: int = 0,
         thinking_tokens: int = 0,
+        *,
+        latency_ms: int | None = None,
+        error_type: str | None = None,
+        tool_success_count: int | None = None,
+        role: str | None = None,
     ) -> int:
-        """Log an AI API call with token counts."""
+        """Log an AI API call with token counts and router telemetry.
+
+        Failure rows (no usage data) are logged too, with token counts
+        zeroed and ``error_type`` set — the model router needs both
+        sides of the ratio (successes / failures per model) to compute
+        an error rate that isn't always 0 %.
+
+        ``role`` is the caller's effective role at request time
+        ('owner', 'dispatcher', 'driver', …).  Different roles ask
+        different question shapes; the router scores per (model x role)
+        so a model great for drivers but weak for owner briefings
+        doesn't get promoted across the board.
+        """
         now = self._now()
         cur = await self._db.execute(
             """INSERT INTO ai_usage
                (account_id, user_id, model, request_type,
                 prompt_tokens, reply_tokens, thinking_tokens,
-                total_tokens, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                total_tokens, latency_ms, error_type,
+                tool_success_count, role, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, user_id, model, request_type,
              prompt_tokens, reply_tokens, thinking_tokens,
-             total_tokens, now),
+             total_tokens, latency_ms, error_type,
+             tool_success_count, role, now),
         )
         await self._db.commit()
         return cur.lastrowid
+
+    async def get_ai_model_scores(
+        self,
+        account_id: int,
+        *,
+        role: str | None = None,
+        request_type: str | None = None,
+        since_days: int = 7,
+        candidates: list[str] | None = None,
+    ) -> dict[str, dict]:
+        """Score each model by rolling availability + speed + tool success.
+
+        Returns ``{model: {score, samples, error_rate, p50_latency_ms,
+        tool_success_rate}}``.  Score is in [0, 1]; higher is better.
+        The router picks the highest-scored model from the candidate
+        set (typically a tier's fallback chain) with an ε-greedy
+        explore step.
+
+        Filters:
+        - ``role``: score per (model x role) so the router can pick
+          per-role winners.  Pass None to score across roles.
+        - ``request_type``: same idea for action ('question', 'summary',
+          'diagnosis', 'chat', …).
+        - ``candidates``: restrict to this set of model names; absent
+          ones are returned with ``samples=0`` so the router can spot
+          unobserved candidates and explore them.
+        """
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=since_days)).isoformat()
+        where = ["account_id = ?", "created_at >= ?"]
+        params: list = [account_id, cutoff]
+        if role:
+            where.append("role = ?")
+            params.append(role)
+        if request_type:
+            where.append("request_type = ?")
+            params.append(request_type)
+
+        sql = (
+            "SELECT model, "
+            "       COUNT(*) AS samples, "
+            "       SUM(CASE WHEN COALESCE(error_type, 'ok') = 'ok' "
+            "                THEN 0 ELSE 1 END) AS errors, "
+            # AVG over only non-null latencies — errors that happened
+            # before we even started the call have no latency.
+            "       AVG(CASE WHEN latency_ms IS NOT NULL "
+            "                THEN latency_ms END) AS avg_latency_ms, "
+            "       SUM(COALESCE(tool_success_count, 0)) AS tool_successes, "
+            "       SUM(CASE WHEN tool_success_count IS NOT NULL "
+            "                THEN 1 ELSE 0 END) AS tool_turns "
+            f"FROM ai_usage WHERE {' AND '.join(where)} "
+            "GROUP BY model"
+        )
+        cur = await self._db.execute(sql, params)
+        rows = await cur.fetchall()
+
+        scored: dict[str, dict] = {}
+        for r in rows:
+            m = r["model"]
+            samples = int(r["samples"] or 0)
+            errors = int(r["errors"] or 0)
+            avg_lat = float(r["avg_latency_ms"] or 0)
+            tool_successes = int(r["tool_successes"] or 0)
+            tool_turns = int(r["tool_turns"] or 0)
+            scored[m] = _compute_score(
+                samples=samples, errors=errors,
+                avg_latency_ms=avg_lat,
+                tool_successes=tool_successes,
+                tool_turns=tool_turns,
+            )
+
+        # Surface unobserved candidates so the router knows to explore them.
+        if candidates:
+            for m in candidates:
+                if m not in scored:
+                    scored[m] = _compute_score(
+                        samples=0, errors=0,
+                        avg_latency_ms=0.0,
+                        tool_successes=0, tool_turns=0,
+                    )
+        return scored
+
+
+def _compute_score(
+    *,
+    samples: int,
+    errors: int,
+    avg_latency_ms: float,
+    tool_successes: int,
+    tool_turns: int,
+) -> dict:
+    """Combine availability + speed + tool success into one [0, 1] score.
+
+    Score weights:
+    - 60 % availability (1 - error_rate).  An unreachable model is useless.
+    - 25 % speed (normalized — sub-2s = full credit, 20s+ = zero).
+    - 15 % tool success rate (only for turns that actually called tools).
+
+    Tiny sample sets (n < 5) get a default mid-score so the router
+    doesn't lock onto a model with one lucky data point.  ε-greedy
+    explore handles the genuine cold start.
+    """
+    if samples < 5:
+        # Not enough data — return a neutral score that lets static
+        # ordering win, but include the sample count so the caller can
+        # see it's cold-start data.
+        return {
+            "score": 0.5,
+            "samples": samples,
+            "error_rate": 0.0 if samples == 0 else errors / samples,
+            "p50_latency_ms": int(avg_latency_ms),
+            "tool_success_rate": (
+                tool_successes / tool_turns if tool_turns else 0.0
+            ),
+            "is_cold_start": True,
+        }
+
+    error_rate = errors / samples
+    availability = 1.0 - error_rate
+    # Linear decay from full credit at <=2s to zero at >=20s.
+    if avg_latency_ms <= 2000:
+        speed = 1.0
+    elif avg_latency_ms >= 20000:
+        speed = 0.0
+    else:
+        speed = 1.0 - (avg_latency_ms - 2000) / 18000.0
+    tool_success_rate = (
+        tool_successes / tool_turns if tool_turns else 1.0
+    )
+    score = 0.60 * availability + 0.25 * speed + 0.15 * tool_success_rate
+    return {
+        "score": round(score, 4),
+        "samples": samples,
+        "error_rate": round(error_rate, 4),
+        "p50_latency_ms": int(avg_latency_ms),
+        "tool_success_rate": round(tool_success_rate, 4),
+        "is_cold_start": False,
+    }
 
     async def get_ai_usage_stats(self, account_id: int, days: int = 30) -> dict:
         """Get AI usage stats for an account over the past N days.

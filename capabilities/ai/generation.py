@@ -419,64 +419,90 @@ async def _generate_with_model(
     location: str,
     system: str,
     user_content: str,
+    *,
+    account_id: int | None = None,
+    user_id: int | None = None,
+    role: str | None = None,
+    action: str | None = None,
 ) -> tuple[str, dict | None]:
     """Run a single generation attempt with a specific model (no retries).
 
     Returns ``(text, usage)`` — usage is the token-count dict or ``None``
-    if the backend didn't report it.
+    if the backend didn't report it.  Times the call and writes a row
+    to ``ai_usage`` for the router's per-model scoring (success +
+    failure both logged so error_rate is computable).
     """
     import asyncio
     import re
+    import time as _t
+
+    from capabilities.ai.usage import record_call_attempt, classify_error
 
     info = MODEL_REGISTRY.get(model_name)
     if not info:
         raise ValueError(f"Unknown model: {model_name}")
 
-    if _is_openai_compat(model_name):
-        api_type = info.get("api_type", "openai_compat")
-        loc = location or info["locations"][0]
-        max_tokens = min(info.get("max_output_tokens", 4096), 8192)
+    started = _t.monotonic()
+    try:
+        if _is_openai_compat(model_name):
+            api_type = info.get("api_type", "openai_compat")
+            loc = location or info["locations"][0]
+            max_tokens = min(info.get("max_output_tokens", 4096), 8192)
 
-        if api_type == "anthropic":
-            text, usage = await _generate_anthropic(
-                info["anthropic_model_id"], loc,
-                system, user_content, max_tokens,
-            )
-        elif api_type == "mistral_raw":
-            text, usage = await _generate_mistral_raw(
-                info["mistral_model_id"],
-                info.get("mistral_publisher", "mistralai"),
-                loc, system, user_content, max_tokens,
-            )
+            if api_type == "anthropic":
+                text, usage = await _generate_anthropic(
+                    info["anthropic_model_id"], loc,
+                    system, user_content, max_tokens,
+                )
+            elif api_type == "mistral_raw":
+                text, usage = await _generate_mistral_raw(
+                    info["mistral_model_id"],
+                    info.get("mistral_publisher", "mistralai"),
+                    loc, system, user_content, max_tokens,
+                )
+            else:
+                text, usage = await _generate_openai_compat(
+                    info["maas_model_id"], loc,
+                    system, user_content, max_tokens,
+                )
         else:
-            text, usage = await _generate_openai_compat(
-                info["maas_model_id"], loc,
-                system, user_content, max_tokens,
+            loc = location or info["locations"][0]
+            model_obj = _build_model(model_name, loc, info)
+            full_prompt = system + "\n\n" + user_content
+            response = await asyncio.to_thread(
+                model_obj.generate_content, full_prompt
             )
-    else:
-        loc = location or info["locations"][0]
-        model_obj = _build_model(model_name, loc, info)
-        full_prompt = system + "\n\n" + user_content
-        response = await asyncio.to_thread(
-            model_obj.generate_content, full_prompt
-        )
-        if not response.candidates:
-            raise RuntimeError("Gemini response blocked")
-        candidate = response.candidates[0]
-        if candidate.finish_reason and candidate.finish_reason.name == "SAFETY":
-            raise RuntimeError("Gemini safety filter blocked")
-        try:
-            text = response.text.strip()
-        except ValueError:
-            parts = getattr(getattr(candidate, 'content', None), 'parts', [])
-            text = ''.join(getattr(p, 'text', '') for p in parts).strip()
-        usage = _capture_usage(response)
+            if not response.candidates:
+                raise RuntimeError("Gemini response blocked")
+            candidate = response.candidates[0]
+            if candidate.finish_reason and candidate.finish_reason.name == "SAFETY":
+                raise RuntimeError("Gemini safety filter blocked")
+            try:
+                text = response.text.strip()
+            except ValueError:
+                parts = getattr(getattr(candidate, 'content', None), 'parts', [])
+                text = ''.join(getattr(p, 'text', '') for p in parts).strip()
+            usage = _capture_usage(response)
 
-    if not text:
-        raise RuntimeError("Empty response from model")
+        if not text:
+            raise RuntimeError("Empty response from model")
+    except Exception as e:
+        latency_ms = int((_t.monotonic() - started) * 1000)
+        await record_call_attempt(
+            account_id=account_id, user_id=user_id, role=role, action=action,
+            model=model_name, latency_ms=latency_ms,
+            error_type=classify_error(e), usage=None,
+        )
+        raise
 
     text = text.replace("**", "").replace("##", "").replace("# ", "")
     text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
+    latency_ms = int((_t.monotonic() - started) * 1000)
+    await record_call_attempt(
+        account_id=account_id, user_id=user_id, role=role, action=action,
+        model=model_name, latency_ms=latency_ms,
+        error_type="ok", usage=usage,
+    )
     return text, usage
 
 
@@ -488,14 +514,27 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                          user_id: int | None = None,
                          account_id: int | None = None,
                          language: str = "en",
-                         user_context: dict | None = None) -> tuple[str, dict | None]:
+                         user_context: dict | None = None,
+                         *,
+                         action: str | None = None) -> tuple[str, dict | None]:
     """Core generate implementation (before fallback wrapper).
 
     Returns ``(text, usage)`` — usage may be ``None`` on cache hits or
     when the backend didn't report token counts.
+
+    ``action`` is a label like ``"question"`` / ``"summary"`` /
+    ``"diagnosis"`` that gets written to the ai_usage telemetry row so
+    the router can score per (model x role x action) — different
+    actions favour different models (briefings benefit from Thinking,
+    quick lookups don't).
     """
     import asyncio
     import re
+    import time as _t
+
+    from capabilities.ai.usage import record_call_attempt, classify_error
+
+    user_role = (user_context or {}).get("role")
 
     if language and language != "en":
         from capabilities.localization.i18n import LANGUAGE_NAMES
@@ -578,6 +617,7 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
         max_retries = 2
         last_exc = None
         for attempt in range(max_retries + 1):
+            started = _t.monotonic()
             try:
                 if api_type == "anthropic":
                     text, usage = await _generate_anthropic(
@@ -595,6 +635,13 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                         info["maas_model_id"], location,
                         system, user_content, max_tokens,
                     )
+                latency_ms = int((_t.monotonic() - started) * 1000)
+                await record_call_attempt(
+                    account_id=account_id, user_id=user_id,
+                    role=user_role, action=action,
+                    model=cur_model_name, latency_ms=latency_ms,
+                    error_type="ok", usage=usage,
+                )
                 if not text:
                     return (
                         "The AI generated an empty response. "
@@ -608,6 +655,13 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                     _cache_put(ck, text)
                 return text, usage
             except Exception as e:
+                latency_ms = int((_t.monotonic() - started) * 1000)
+                await record_call_attempt(
+                    account_id=account_id, user_id=user_id,
+                    role=user_role, action=action,
+                    model=cur_model_name, latency_ms=latency_ms,
+                    error_type=classify_error(e), usage=None,
+                )
                 last_exc = e
                 err_str = str(e).lower()
                 if ('429' in err_str or 'resource exhausted' in err_str) and attempt < max_retries:
@@ -627,6 +681,7 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
     max_retries = 2
     last_exc = None
     for attempt in range(max_retries + 1):
+        started = _t.monotonic()
         try:
             response = await asyncio.to_thread(
                 model_obj.generate_content, full_prompt
@@ -637,6 +692,13 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                 if response.prompt_feedback and response.prompt_feedback.block_reason:
                     block_reason = str(response.prompt_feedback.block_reason)
                 logger.warning(f"Gemini response blocked: {block_reason}")
+                latency_ms = int((_t.monotonic() - started) * 1000)
+                await record_call_attempt(
+                    account_id=account_id, user_id=user_id,
+                    role=user_role, action=action,
+                    model=cur_model_name, latency_ms=latency_ms,
+                    error_type="empty", usage=None,
+                )
                 return (
                     "I couldn't generate a response for that question. "
                     "Please try rephrasing it."
@@ -645,6 +707,13 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
             candidate = response.candidates[0]
             if candidate.finish_reason and candidate.finish_reason.name == "SAFETY":
                 logger.warning("Gemini response blocked by safety filter")
+                latency_ms = int((_t.monotonic() - started) * 1000)
+                await record_call_attempt(
+                    account_id=account_id, user_id=user_id,
+                    role=user_role, action=action,
+                    model=cur_model_name, latency_ms=latency_ms,
+                    error_type="content_filter", usage=None,
+                )
                 return (
                     "I couldn't generate a response due to content filters. "
                     "Please try rephrasing your question."
@@ -673,6 +742,13 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                     ), _capture_usage(response)
 
             usage = _capture_usage(response)
+            latency_ms = int((_t.monotonic() - started) * 1000)
+            await record_call_attempt(
+                account_id=account_id, user_id=user_id,
+                role=user_role, action=action,
+                model=cur_model_name, latency_ms=latency_ms,
+                error_type="ok", usage=usage,
+            )
             if not text:
                 return (
                     "The AI generated an empty response. "
@@ -685,6 +761,13 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                 _cache_put(ck, text)
             return text, usage
         except Exception as e:
+            latency_ms = int((_t.monotonic() - started) * 1000)
+            await record_call_attempt(
+                account_id=account_id, user_id=user_id,
+                role=user_role, action=action,
+                model=cur_model_name, latency_ms=latency_ms,
+                error_type=classify_error(e), usage=None,
+            )
             last_exc = e
             err_str = str(e).lower()
             if ('429' in err_str or 'resource exhausted' in err_str) and attempt < max_retries:
@@ -705,13 +788,22 @@ async def generate(prompt: str, system: str = ASSISTANT_SYSTEM,
                    user_id: int | None = None,
                    account_id: int | None = None,
                    language: str = "en",
-                   user_context: dict | None = None) -> tuple[str, dict | None]:
+                   user_context: dict | None = None,
+                   *,
+                   action: str | None = None) -> tuple[str, dict | None]:
     """Generate a response with automatic fallback on 429.
 
     Returns ``(text, usage)`` — usage is the token-count dict or
     ``None`` on cache hits / when the backend doesn't report it.
     Forward the usage to ``log_ai_usage(... usage=...)``.
+
+    ``action`` (e.g. ``"question"`` / ``"summary"`` / ``"diagnosis"``)
+    enables router telemetry — each model attempt writes a row to
+    ai_usage so the next call's fallback can prefer the historically
+    fastest + most-reliable model for this account+role+action.
     """
+
+    user_role = (user_context or {}).get("role")
 
     _saved_exc: Exception | None = None
     try:
@@ -719,6 +811,7 @@ async def generate(prompt: str, system: str = ASSISTANT_SYSTEM,
             prompt, system=system, context_data=context_data,
             user_id=user_id, account_id=account_id,
             language=language, user_context=user_context,
+            action=action,
         )
     except Exception as primary_exc:
         if not _is_rate_limit_error(primary_exc):
@@ -748,18 +841,25 @@ async def generate(prompt: str, system: str = ASSISTANT_SYSTEM,
     user_parts.append(f"User question: {prompt}")
     user_content = "".join(user_parts)
 
+    # Build ordered candidate list.  Start from the static chain
+    # (excludes the failed primary), then re-rank by router score so
+    # the historically-best fallback gets tried first instead of
+    # walking down the static list.
+    candidates = [m for m in _FALLBACK_CHAIN if m != failed_model and m in MODEL_REGISTRY]
+    candidates = await _order_candidates_by_score(
+        candidates, account_id=account_id, role=user_role, action=action,
+    )
+
     last_exc = _saved_exc
-    for fb_model in _FALLBACK_CHAIN:
-        if fb_model == failed_model:
-            continue
-        info = MODEL_REGISTRY.get(fb_model)
-        if not info:
-            continue
+    for fb_model in candidates:
+        info = MODEL_REGISTRY[fb_model]
         fb_location = info["locations"][0]
         try:
             logger.info(f"Fallback: trying {fb_model} after {failed_model} quota exceeded")
             text, usage = await _generate_with_model(
                 fb_model, fb_location, system, user_content,
+                account_id=account_id, user_id=user_id,
+                role=user_role, action=action,
             )
             if user_id is not None:
                 _store_history(user_id, prompt, text, account_id=account_id or 0)
@@ -774,5 +874,58 @@ async def generate(prompt: str, system: str = ASSISTANT_SYSTEM,
                 logger.error(f"Fallback {fb_model} failed (non-429): {fb_exc}")
                 continue
 
+    # Every fallback exhausted — surface the last exception so the caller
+    # can map it to a real HTTP error instead of seeing a silent ``None``.
     logger.error(f"All fallback models exhausted after {failed_model} failed")
-    raise last_exc
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError(f"All fallback models exhausted after {failed_model} failed")
+
+
+async def _order_candidates_by_score(
+    candidates: list[str],
+    *,
+    account_id: int | None,
+    role: str | None,
+    action: str | None,
+    epsilon: float = 0.10,
+) -> list[str]:
+    """Reorder ``candidates`` by rolling router score, ε-greedy.
+
+    90 % of calls get the highest-scored model first (deterministic
+    exploit).  10 % swap the top with a random other candidate so the
+    router keeps gathering data on alternatives — without this an
+    initially-bad model would never get retried after its scores
+    decayed.
+
+    Cold-start (no telemetry yet for this account): returns the input
+    order unchanged.  The router only fires when there's enough data
+    to be meaningful.
+    """
+    if account_id is None or not candidates or len(candidates) == 1:
+        return candidates
+    try:
+        from infra.platform import get_platform_db
+        pdb = get_platform_db()
+        scores = await pdb.get_ai_model_scores(
+            account_id, role=role, candidates=candidates,
+        )
+    except Exception as e:
+        logger.debug("Score lookup failed; using static order: %s", e)
+        return candidates
+
+    # ε-greedy: most of the time pick the top by score and put the
+    # rest in score order; sometimes promote a random non-top.
+    import random as _random
+    ranked = sorted(
+        candidates,
+        key=lambda m: scores.get(m, {}).get("score", 0.5),
+        reverse=True,
+    )
+    if _random.random() < epsilon and len(ranked) > 1:
+        # Swap top with a random other slot so an "untried" or "stale"
+        # model occasionally gets primary placement.
+        i = _random.randint(1, len(ranked) - 1)
+        ranked[0], ranked[i] = ranked[i], ranked[0]
+        logger.debug("ε-greedy explore: promoted %s", ranked[0])
+    return ranked

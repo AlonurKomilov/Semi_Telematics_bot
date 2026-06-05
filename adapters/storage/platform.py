@@ -133,15 +133,25 @@ class PlatformDB(
         request_type: str, prompt_tokens: int = 0,
         reply_tokens: int = 0, total_tokens: int = 0,
         thinking_tokens: int = 0,
+        *,
+        latency_ms: int | None = None,
+        error_type: str | None = None,
+        tool_success_count: int | None = None,
+        role: str | None = None,
     ) -> int:
+        """Failure rows (no usage) are logged too so the model router
+        can compute a real error rate; ``role`` keys per-role scoring.
+        Mirrors ``SettingsMixin.log_ai_usage`` so either class works."""
         now = self._now()
         cur = await self._db.execute(
             """INSERT INTO ai_usage
                (account_id, user_id, model, request_type,
-                prompt_tokens, reply_tokens, thinking_tokens, total_tokens, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                prompt_tokens, reply_tokens, thinking_tokens, total_tokens,
+                latency_ms, error_type, tool_success_count, role, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, user_id, model, request_type,
-             prompt_tokens, reply_tokens, thinking_tokens, total_tokens, now),
+             prompt_tokens, reply_tokens, thinking_tokens, total_tokens,
+             latency_ms, error_type, tool_success_count, role, now),
         )
         await self._db.commit()
         return cur.lastrowid

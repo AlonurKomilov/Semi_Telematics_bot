@@ -26,6 +26,7 @@ async def run_all(conn) -> None:
     await migrate_add_error_log(conn)
     await migrate_add_payroll_enabled_flag(conn)
     await migrate_add_coaching_enabled_flag(conn)
+    await migrate_add_disabled_modules(conn)
     await migrate_add_users_samsara_driver_id(conn)
     await migrate_create_payroll_tables(conn)
     # Driver Module migrations
@@ -118,6 +119,12 @@ async def run_all(conn) -> None:
     # Idempotent: fast no-op once every row already references a
     # users.id (re-runs touch zero rows).
     await migrate_backfill_user_id_ownership(conn)
+
+    # Adds latency / error_type / tool_success_count / role to
+    # ai_usage so the model router can score availability + speed +
+    # tool success per (account, model, role).  All columns nullable;
+    # historical rows stay valid.
+    await migrate_ai_usage_routing_columns(conn)
 
 
 async def migrate_ai_chat_history(conn) -> None:
@@ -606,6 +613,30 @@ async def migrate_add_coaching_enabled_flag(conn) -> None:
             logger.info("Migration: added accounts.coaching_enabled column")
     except Exception as e:
         logger.error("coaching_enabled flag migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_add_disabled_modules(conn) -> None:
+    """Add accounts.disabled_modules (CSV of disabled department modules).
+
+    Default ``''`` (empty) = every module enabled, so existing accounts
+    keep all features with no backfill — the "all free, default all-on"
+    rollout.  See capabilities/iam/modules.py.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(accounts)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "disabled_modules" not in cols:
+            await conn.execute(
+                "ALTER TABLE accounts ADD COLUMN disabled_modules TEXT NOT NULL DEFAULT ''"
+            )
+            await conn.commit()
+            logger.info("Migration: added accounts.disabled_modules column")
+    except Exception as e:
+        logger.error("disabled_modules migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:
@@ -2592,3 +2623,57 @@ async def migrate_create_kb_bookmarks_table(conn) -> None:
         await conn.commit()
     except Exception as e:
         logger.debug("knowledge_bookmarks CREATE skipped (%s)", e)
+
+
+# ── AI usage telemetry columns for per-model quality routing ──────
+
+
+async def migrate_ai_usage_routing_columns(conn) -> None:
+    """Extend ``ai_usage`` with the columns the model router needs.
+
+    The router scores each model on rolling availability + speed +
+    tool success to pick the best one for a given (account × role)
+    instead of always using a static fallback chain.  All columns are
+    nullable so historical rows stay valid; new rows populate them.
+
+    Columns:
+    - ``latency_ms``         wall-clock time of the AI call
+    - ``error_type``         'ok' / '429' / '5xx' / 'empty' / 'content_filter'
+                             / 'timeout' / 'other'.  Failure rows now also
+                             log here (previously usage logging early-exited
+                             on no-tokens — that path made error_rate
+                             uncomputable from this table).
+    - ``tool_success_count`` count of successful tool calls in the
+                             turn (agent mode only; null for plain chat).
+    - ``role``               caller's role at request time ('owner',
+                             'dispatcher', 'driver', …) — lets the
+                             router score per-role since different
+                             roles ask different question shapes.
+
+    Index on (account_id, model, error_type, created_at) supports the
+    scoring query without a sequential scan as the table grows.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE ai_usage "
+            "ADD COLUMN IF NOT EXISTS latency_ms INTEGER"
+        )
+        await conn.execute(
+            "ALTER TABLE ai_usage "
+            "ADD COLUMN IF NOT EXISTS error_type TEXT"
+        )
+        await conn.execute(
+            "ALTER TABLE ai_usage "
+            "ADD COLUMN IF NOT EXISTS tool_success_count INTEGER"
+        )
+        await conn.execute(
+            "ALTER TABLE ai_usage "
+            "ADD COLUMN IF NOT EXISTS role TEXT"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ai_usage_router "
+            "ON ai_usage(account_id, model, created_at)"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.debug("ai_usage routing columns ADD skipped (%s)", e)

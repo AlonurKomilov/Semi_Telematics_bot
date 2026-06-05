@@ -82,16 +82,25 @@ class ModelSwitchRequest(BaseModel):
 
 
 async def _log_usage(account_id: int, user_id: int, action: str,
-                     usage: dict | None):
+                     usage: dict | None,
+                     *,
+                     role: str | None = None,
+                     latency_ms: int | None = None,
+                     tool_success_count: int | None = None):
     """Delegates to the shared logger in capabilities.ai.usage.
 
     ``usage`` is the dict returned alongside each AI call's text
-    result (the old ``ai.get_last_usage()`` global went away because
-    it raced across concurrent users).
+    result.  ``role`` + ``latency_ms`` + ``tool_success_count`` feed
+    the router scorer so it can prefer the historically-best-for-role
+    model on the next call's fallback chain.
     """
     from infra.services import get_platform_db as _gpdb
     pdb = _gpdb()  # synchronous — returns PlatformDB directly
-    await _log_ai_usage_fn(ai, pdb, account_id, user_id, action, usage)
+    await _log_ai_usage_fn(
+        ai, pdb, account_id, user_id, action, usage,
+        role=role, latency_ms=latency_ms,
+        tool_success_count=tool_success_count,
+    )
 
 
 async def _get_user_info(user: dict, platform_db) -> tuple[dict | None, list[str] | None, str]:
@@ -125,7 +134,7 @@ async def ai_chat(
     body: ChatRequest,
     request: Request,
     user: dict = Depends(
-        require_permission_any("can_faults", "can_vehicle_all", "can_vehicle_own")
+        require_permission_any("can_ai_chat")
     ),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
@@ -144,12 +153,14 @@ async def ai_chat(
     user_context, vehicle_filter, language = await _get_user_info(user, platform_db)
 
     try:
+        import time as _t
         snapshot = await ai.build_context(
             account_id, vehicle_nums=vehicle_filter,
         )
         from infra.services import get_client
         samsara = await get_client(account_id)
 
+        _started = _t.monotonic()
         result = await ai.ask_agent(
             body.message, snapshot,
             samsara_client=samsara,
@@ -159,9 +170,22 @@ async def ai_chat(
             language=language,
             user_context=user_context,
         )
+        latency_ms = int((_t.monotonic() - _started) * 1000)
         answer = result["text"]
         usage = result.get("usage")
-        await _log_usage(user["account_id"], int(user["sub"]), "question", usage)
+        # Count successful tool calls — feeds the router's tool_success_rate
+        # signal so models that misuse tools get downranked for this role.
+        tool_results = result.get("tool_results") or []
+        tool_success_count = sum(
+            1 for tr in tool_results
+            if not (isinstance(tr.get("data"), dict) and tr["data"].get("error"))
+        )
+        await _log_usage(
+            user["account_id"], int(user["sub"]), "question", usage,
+            role=(user_context or {}).get("role"),
+            latency_ms=latency_ms,
+            tool_success_count=tool_success_count,
+        )
 
         clean, suggestions = _parse_suggestions(answer)
 
@@ -187,7 +211,7 @@ async def ai_chat_stream(
     body: ChatRequest,
     request: Request,
     user: dict = Depends(
-        require_permission_any("can_faults", "can_vehicle_all", "can_vehicle_own")
+        require_permission_any("can_ai_chat")
     ),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
@@ -245,11 +269,22 @@ async def ai_chat_stream(
                         await platform_db.save_chat_messages(account_id, uid, body.message, reply)
                     except Exception:
                         pass
-                    # Log usage — read it off the ``done`` event (set by
-                    # ask_agent_stream from the agent's return value).
+                    # Log usage + router telemetry — read it off the
+                    # ``done`` event (set by ask_agent_stream from the
+                    # agent's return value).
                     try:
-                        await _log_usage(account_id, uid, "question",
-                                         event.get("usage"))
+                        tool_results = event.get("tool_results") or []
+                        tool_success_count = sum(
+                            1 for tr in tool_results
+                            if not (isinstance(tr.get("data"), dict)
+                                    and tr["data"].get("error"))
+                        )
+                        await _log_usage(
+                            account_id, uid, "question",
+                            event.get("usage"),
+                            role=(user_context or {}).get("role"),
+                            tool_success_count=tool_success_count,
+                        )
                     except Exception:
                         pass
         except Exception as exc:
@@ -276,7 +311,7 @@ async def ai_chat_stream(
 async def ai_summary(
     request: Request,
     user: dict = Depends(
-        require_permission_any("can_faults", "can_vehicle_all", "can_vehicle_own")
+        require_permission_any("can_ai_chat")
     ),
     platform_db=Depends(get_platform_db),
 ):
@@ -292,11 +327,13 @@ async def ai_summary(
         snapshot = await ai.build_context(
             account_id, vehicle_nums=vehicle_filter,
         )
+        # ``generate_summary`` passes action="summary" into generate() which
+        # writes router telemetry per model attempt — no external log call
+        # needed (it would double-log the same row).
         summary, usage = await ai.generate_summary(
             snapshot, account_id=account_id,
             language=language, user_context=user_context,
         )
-        await _log_usage(account_id, int(user["sub"]), "summary", usage)
 
         clean, suggestions = _parse_suggestions(summary)
         return {"summary": clean, "suggestions": suggestions, "usage": usage}
@@ -324,7 +361,10 @@ async def ai_diagnose(
     user_context, _, language = await _get_user_info(user, platform_db)
 
     try:
-        diagnosis, usage = await ai.diagnose_faults(
+        # ``diagnose_faults`` passes action="diagnosis" into generate()
+        # which writes router telemetry per attempt — no external log
+        # call here (would duplicate the row).
+        diagnosis, _usage = await ai.diagnose_faults(
             body.vehicle_name,
             body.dtcs,
             lights=body.lights or None,
@@ -332,7 +372,6 @@ async def ai_diagnose(
             language=language,
             user_context=user_context,
         )
-        await _log_usage(account_id, int(user["sub"]), "diagnosis", usage)
         return {"diagnosis": diagnosis, "vehicle": body.vehicle_name}
 
     except Exception as e:

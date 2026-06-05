@@ -88,15 +88,23 @@ def _build_user_context(user) -> dict:
     return build_user_ai_context(user)
 
 async def _log_ai_usage(account_id: int, telegram_user_id: int, action: str,
-                        usage: dict | None):
+                        usage: dict | None,
+                        *,
+                        role: str | None = None,
+                        latency_ms: int | None = None,
+                        tool_success_count: int | None = None):
     """Delegates to the shared logger in capabilities.ai.usage.
 
-    ``usage`` comes from the AI call's return value — the old
-    ``ai.get_last_usage()`` global went away because it raced across
-    concurrent users in the bot's APScheduler-driven background jobs.
+    Passes router telemetry (``role`` / ``latency_ms`` /
+    ``tool_success_count``) when the caller has it so the bot's
+    per-account chat history feeds the same scorer as the dashboard.
     """
     platform_db = get_platform_db()  # synchronous — returns PlatformDB directly
-    await _log_ai_usage_fn(ai, platform_db, account_id, telegram_user_id, action, usage)
+    await _log_ai_usage_fn(
+        ai, platform_db, account_id, telegram_user_id, action, usage,
+        role=role, latency_ms=latency_ms,
+        tool_success_count=tool_success_count,
+    )
 
 
 async def _dtcs_from_ack(account_id: int, ack_id: int) -> list[dict]:
@@ -305,6 +313,8 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
         samsara = await get_client(user.account_id)
         tenant_db = await get_tenant_db(user.account_id)
 
+        import time as _t
+        _started = _t.monotonic()
         result = await ai.ask_agent(
             question, snapshot,
             samsara_client=samsara,
@@ -314,9 +324,20 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
             language=lang,
             user_context=user_ctx,
         )
+        latency_ms = int((_t.monotonic() - _started) * 1000)
         answer = result["text"]
-        await _log_ai_usage(user.account_id, update.effective_user.id, "question",
-                            result.get("usage"))
+        tool_results = result.get("tool_results") or []
+        tool_success_count = sum(
+            1 for tr in tool_results
+            if not (isinstance(tr.get("data"), dict) and tr["data"].get("error"))
+        )
+        await _log_ai_usage(
+            user.account_id, update.effective_user.id, "question",
+            result.get("usage"),
+            role=(user_ctx or {}).get("role"),
+            latency_ms=latency_ms,
+            tool_success_count=tool_success_count,
+        )
 
         # Extract suggestion lines and remove them from the answer text
         clean_answer, suggestions = _parse_suggestions(answer)
@@ -367,11 +388,13 @@ async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         snapshot = await _gather_fleet_snapshot(
             user.account_id, vehicle_num=vehicle_filter,
         )
-        summary, usage = await ai.generate_summary(
+        # generate_summary() passes action="summary" through generate(),
+        # which writes a router telemetry row per model attempt — no
+        # external log call needed (would duplicate the row).
+        summary, _usage = await ai.generate_summary(
             snapshot, account_id=user.account_id,
             language=lang, user_context=user_ctx,
         )
-        await _log_ai_usage(user.account_id, update.effective_user.id, "summary", usage)
 
         clean_summary, suggestions = _parse_suggestions(summary)
 
@@ -574,15 +597,17 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
         prompt = " ".join(prompt_parts)
         lang = getattr(user, "language", "en") or "en"
         user_ctx = _build_user_context(user)
-        diagnosis, usage = await ai.generate(
+        # action="bot_diagnosis" — router telemetry fires inside
+        # generate(); skipping external log to avoid double-counting.
+        diagnosis, _usage = await ai.generate(
             prompt,
             system=ai.FAULT_DIAGNOSIS_SYSTEM,
             context_data=context_data,
             account_id=user.account_id,
             language=lang,
             user_context=user_ctx,
+            action="bot_diagnosis",
         )
-        await _log_ai_usage(user.account_id, update.effective_user.id, "chat", usage)
 
         header_info = "\n".join(header_lines)
         text = (

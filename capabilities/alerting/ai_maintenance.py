@@ -174,26 +174,17 @@ async def _get_ai_diagnosis_note(vehicle: dict, dtcs: list[dict]) -> str:
             + ". What's the likely cause and should the driver stop?"
         )
 
-        response, usage = await ai.generate(
+        # ``action="proactive_diagnosis"`` enables router telemetry inside
+        # ai.generate() — one ai_usage row is written for every model
+        # attempt (success or failure), so no separate log call here.
+        response, _usage = await ai.generate(
             prompt,
             system=ai.FAULT_DIAGNOSIS_SYSTEM,
+            account_id=SYSTEM_USER_ID,
+            user_id=SYSTEM_USER_ID,
+            user_context={"role": "system"},
+            action="proactive_diagnosis",
         )
-
-        # Track proactive AI usage
-        if usage:
-            try:
-                # system-triggered usage
-                await get_platform_db().log_ai_usage(
-                    account_id=SYSTEM_USER_ID,
-                    user_id=SYSTEM_USER_ID,
-                    model=ai.get_current_model_name(),
-                    request_type="proactive_diagnosis",
-                    prompt_tokens=usage.get("prompt_tokens", 0),
-                    reply_tokens=usage.get("reply_tokens", 0),
-                    total_tokens=usage.get("total_tokens", 0),
-                )
-            except Exception as e:
-                logger.debug("AI usage logging failed (proactive_diagnosis): %s", e)
 
         if _is_valid_ai_response(response):
             text = _truncate_at_sentence(response, 800)
@@ -238,24 +229,17 @@ async def _get_ai_health_note(
             + ". What should the driver do immediately?"
         )
 
-        response, usage = await ai.generate(
+        # Router telemetry handled inside ai.generate() via action= param.
+        response, _usage = await ai.generate(
             prompt,
             system=ai.FAULT_DIAGNOSIS_SYSTEM,
+            account_id=SYSTEM_USER_ID,
+            user_id=SYSTEM_USER_ID,
+            user_context={"role": "system"},
+            action="proactive_health_diagnosis",
         )
 
-        if usage:
-            try:
-                await get_platform_db().log_ai_usage(
-                    account_id=SYSTEM_USER_ID,
-                    user_id=SYSTEM_USER_ID,
-                    model=ai.get_current_model_name(),
-                    request_type="proactive_health_diagnosis",
-                    prompt_tokens=usage.get("prompt_tokens", 0),
-                    reply_tokens=usage.get("reply_tokens", 0),
-                    total_tokens=usage.get("total_tokens", 0),
-                )
-            except Exception as e:
-                logger.debug("Failed to log AI usage for health diagnosis: %s", e)
+        if _is_valid_ai_response(response):
             text = _truncate_at_sentence(response, 800)
             return f"\n\n🤖 <b>AI Assessment:</b>\n{escape_html(text)}"
     except Exception as e:

@@ -70,6 +70,9 @@ async def _get_ai_parking_analysis(
                 "REASON: 1-2 sentences describing what you see."
             )
 
+            # Vision path doesn't yet route through the router-aware
+            # ai.generate(); usage will be logged via the legacy path
+            # below.  TODO: thread account_id/action into generate_with_vision.
             response, usage = await ai.generate_with_vision(
                 prompt,
                 map_bytes,
@@ -79,6 +82,21 @@ async def _get_ai_parking_analysis(
                     "whether a parking location is safe for an extended stop."
                 ),
             )
+            # Vision tokens aren't currently captured by the router; keep
+            # the legacy logging path for them.
+            if usage:
+                try:
+                    await get_platform_db().log_ai_usage(
+                        account_id=SYSTEM_USER_ID,
+                        user_id=SYSTEM_USER_ID,
+                        model=ai.get_current_model_name(),
+                        request_type="parking_analysis",
+                        prompt_tokens=usage.get("prompt_tokens", 0),
+                        reply_tokens=usage.get("reply_tokens", 0),
+                        total_tokens=usage.get("total_tokens", 0),
+                    )
+                except Exception as e:
+                    logger.debug("Failed to log AI usage for parking analysis: %s", e)
         else:
             # ── Fallback: text-only analysis (map render failed) ──
             prompt = (
@@ -93,25 +111,15 @@ async def _get_ai_parking_analysis(
                 "Reply in 2-3 sentences: classify as SAFE or UNSAFE and explain."
             )
 
-            response, usage = await ai.generate(
+            # Router telemetry handled inside ai.generate() via action=.
+            response, _usage = await ai.generate(
                 prompt,
                 system="You are a fleet safety analyst. Be concise and factual.",
+                account_id=SYSTEM_USER_ID,
+                user_id=SYSTEM_USER_ID,
+                user_context={"role": "system"},
+                action="parking_analysis",
             )
-
-        # Track usage
-        if usage:
-            try:
-                await get_platform_db().log_ai_usage(
-                    account_id=SYSTEM_USER_ID,
-                    user_id=SYSTEM_USER_ID,
-                    model=ai.get_current_model_name(),
-                    request_type="parking_analysis",
-                    prompt_tokens=usage.get("prompt_tokens", 0),
-                    reply_tokens=usage.get("reply_tokens", 0),
-                    total_tokens=usage.get("total_tokens", 0),
-                )
-            except Exception as e:
-                logger.debug("Failed to log AI usage for parking analysis: %s", e)
         from capabilities.alerting.ai_maintenance import _truncate_at_sentence, _is_valid_ai_response
         if _is_valid_ai_response(response):
             return escape_html(_truncate_at_sentence(response, 800))

@@ -321,7 +321,8 @@ async def diagnose_faults(vehicle_name: str,
     )
     return await generate(prompt, system=FAULT_DIAGNOSIS_SYSTEM,
                           context_data=context, account_id=account_id,
-                          language=language, user_context=user_context)
+                          language=language, user_context=user_context,
+                          action="diagnosis")
 
 
 async def generate_summary(fleet_data: dict,
@@ -336,7 +337,8 @@ async def generate_summary(fleet_data: dict,
     prompt = "Generate a morning fleet status briefing from this data."
     return await generate(prompt, system=SUMMARY_SYSTEM,
                           context_data=fleet_data, account_id=account_id,
-                          language=language, user_context=user_context)
+                          language=language, user_context=user_context,
+                          action="summary")
 
 
 async def ask_ai(question: str, fleet_context: dict,
@@ -352,7 +354,8 @@ async def ask_ai(question: str, fleet_context: dict,
     return await generate(question, system=ASSISTANT_SYSTEM,
                           context_data=fleet_context, user_id=user_id,
                           account_id=account_id, language=language,
-                          user_context=user_context)
+                          user_context=user_context,
+                          action="question")
 
 
 # ── Function-Calling Agent ───────────────────────────────────────

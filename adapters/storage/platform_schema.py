@@ -91,16 +91,21 @@ async def create_tables(conn) -> None:
         );
 
         CREATE TABLE IF NOT EXISTS ai_usage (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            account_id      INTEGER NOT NULL REFERENCES accounts(id),
-            user_id         BIGINT  NOT NULL DEFAULT 0,
-            model           TEXT    NOT NULL DEFAULT '',
-            request_type    TEXT    NOT NULL DEFAULT '',
-            prompt_tokens   INTEGER NOT NULL DEFAULT 0,
-            reply_tokens    INTEGER NOT NULL DEFAULT 0,
-            thinking_tokens INTEGER NOT NULL DEFAULT 0,
-            total_tokens    INTEGER NOT NULL DEFAULT 0,
-            created_at      TEXT    NOT NULL
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id         INTEGER NOT NULL REFERENCES accounts(id),
+            user_id            BIGINT  NOT NULL DEFAULT 0,
+            model              TEXT    NOT NULL DEFAULT '',
+            request_type       TEXT    NOT NULL DEFAULT '',
+            prompt_tokens      INTEGER NOT NULL DEFAULT 0,
+            reply_tokens       INTEGER NOT NULL DEFAULT 0,
+            thinking_tokens    INTEGER NOT NULL DEFAULT 0,
+            total_tokens       INTEGER NOT NULL DEFAULT 0,
+            -- Router telemetry — nullable so legacy rows stay valid.
+            latency_ms         INTEGER,
+            error_type         TEXT,
+            tool_success_count INTEGER,
+            role               TEXT,
+            created_at         TEXT    NOT NULL
         );
 
         CREATE INDEX IF NOT EXISTS idx_users_telegram_id
@@ -111,6 +116,8 @@ async def create_tables(conn) -> None:
             ON authorized_chats(chat_id);
         CREATE INDEX IF NOT EXISTS idx_ai_usage_account
             ON ai_usage(account_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_ai_usage_router
+            ON ai_usage(account_id, model, created_at);
 
         CREATE TABLE IF NOT EXISTS ai_chat_history (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
