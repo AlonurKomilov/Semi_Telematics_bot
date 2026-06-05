@@ -47,8 +47,15 @@ async def report_faults(
     client = await get_client(user["account_id"])
 
     async def _live():
-        rows = await client.get_fault_codes(company=company)
-        return rows, len(rows), {}
+        # MultiCompanyClient.get_vehicles_with_faults already returns
+        # the (faulted_list, total_active, company_breakdown) 3-tuple
+        # the warehouse-reader fallback expects.  The earlier shape
+        # here called a non-existent ``client.get_fault_codes`` and
+        # re-wrapped its result with a stub ``{}`` breakdown — both
+        # wrong: it 500'd on the AttributeError, and even if the
+        # method had existed the per-company breakdown would have
+        # been lost.
+        return await client.get_vehicles_with_faults(company=company)
 
     faulted, total, _bd = await _wh.get_vehicles_with_faults(
         user["account_id"], company=company, samsara_fallback=_live,
@@ -79,7 +86,13 @@ async def report_fuel_levels(
     client = await get_client(user["account_id"])
 
     async def _live():
-        return await client.get_fuel_levels(company=company)
+        # MultiCompanyClient doesn't expose the raw ``get_fuel_levels``
+        # endpoint (that's a single-tenant SamsaraClient method).  The
+        # warehouse fallback wants the same enriched vehicle list shape
+        # that ``get_current_vehicles`` would have returned — which is
+        # exactly what ``get_fleet_overview`` produces (vehicles +
+        # _fuel/_def/_faults/_location attached per vehicle).
+        return await client.get_fleet_overview(company=company)
 
     vehicles = await _wh.get_current_vehicles(
         user["account_id"], company=company, samsara_fallback=_live,
