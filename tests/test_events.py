@@ -34,8 +34,8 @@ def _sample_event(**overrides):
         "driver_name": "John Smith",
         "vehicle_id": "veh_1",
         # Real Samsara vehicle names are bare ("208", "101"); the
-        # formatter prepends "Truck #" itself, so a fixture name of
-        # "Truck 101" would render as "Truck #Truck 101".
+        # formatter prepends "Vehicle #" itself, so a fixture name of
+        # "Vehicle 101" would render as "Vehicle #Vehicle 101".
         "vehicle_name": "101",
         "vehicle_vin": "1HGBH41JXMN109186",
         "time": "2026-03-15T10:30:00Z",
@@ -180,10 +180,17 @@ class TestEventFormatters:
         event = _sample_event()
         result = format_event_alert(event)
         assert "Harsh Brake" in result
-        assert "Truck #101" in result
+        # Vehicle label was "Truck #N" historically; renamed to "Vehicle #N"
+        # so it matches the unified label used across dashboard, mini-app
+        # and bot copy (the underlying entity is a tractor, but the user-
+        # facing word stays the more general "Vehicle").
+        assert "Vehicle #101" in result
         assert "John Smith" in result
         assert "0.55g" in result
-        assert "40.7128" in result
+        # Raw lat/lng coordinates were dropped from the alert body —
+        # they were noise on small screens and a tappable map button is
+        # the better surface anyway.  Location presence is exercised by
+        # test_format_event_alert_no_location below ("—" sentinel).
 
     def test_format_event_alert_crash_emoji(self):
         event = _sample_event(event_type="crash", event_name="Crash")
@@ -306,12 +313,13 @@ class TestEventFormatters:
         assert "Location:" not in result
         assert "Time:" not in result
 
-    def test_format_event_alert_uses_truck_hash_prefix(self):
-        # Match the fault/fuel/health alert style — "Truck #208" not
-        # bare "208" — for cross-alert consistency.
+    def test_format_event_alert_uses_vehicle_hash_prefix(self):
+        # Match the fault/fuel/health alert style — "Vehicle #208" not
+        # bare "208" — for cross-alert consistency.  ("Truck #" was the
+        # old label; renamed to "Vehicle #" — see basic test above.)
         event = _sample_event(vehicle_name="208")
         result = format_event_alert(event)
-        assert "Truck #208" in result
+        assert "Vehicle #208" in result
 
     def test_format_events_dashboard_returns_list(self):
         events = _sample_events()

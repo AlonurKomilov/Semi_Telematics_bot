@@ -224,13 +224,18 @@ class TestHandlerRegistration:
             elif isinstance(h, MessageHandler):
                 has_text = True
 
+        # System-owner commands ({admin, accounts, sysaccount, broadcast,
+        # sysdisable}) live on the SYSTEM bot only — registered by
+        # ``register_system_handlers``, not the per-tenant
+        # ``register_handlers`` we're exercising here.  See
+        # interfaces/bot/handler_setup.py:269 for the split.  This test
+        # validates the tenant-bot handler surface only.
         expected_commands = {
             "start", "help", "register", "join", "faults", "vehicle",
             "fuel", "alerts", "health", "efficiency", "events",
             "invite", "account", "users", "setrole", "remove",
             "addorg", "removeorg", "addgroup", "removegroup", "groups",
-            "chatid", "settings", "audit", "admin", "accounts",
-            "sysaccount", "broadcast", "sysdisable",
+            "chatid", "settings", "audit",
         }
 
         missing = expected_commands - cmd_names

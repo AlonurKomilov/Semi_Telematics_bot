@@ -74,6 +74,10 @@ class FeatureSet:
     # Alerts
     can_alerts_all: bool = False     # new fault alerts (all trucks)
     can_alerts_own: bool = False     # alerts for own truck only
+    # Parking — own feature (NOT part of Alerts).  Defaults mirror the old
+    # alerts/vehicle gate: everyone sees all, drivers see their own truck.
+    can_parking_all: bool = True     # unsafe-parking events (all trucks)
+    can_parking_own: bool = False    # unsafe-parking events (own truck)
 
     # Management
     can_invite: bool = False         # /invite
@@ -138,6 +142,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_geofence_all=True, can_geofence_own=True,
         can_digest=True,
         can_maintenance_all=True, can_maintenance_own=True,
+        can_parking_all=True, can_parking_own=True,
         can_cost_reports=True,
         can_scorecard_all=True, can_scorecard_own=True,
         can_location_map=True, can_location_own=True,

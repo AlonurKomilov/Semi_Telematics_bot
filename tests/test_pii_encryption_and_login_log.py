@@ -22,6 +22,30 @@ from infra.crypto import init_encryption as _init_encryption
 _init_encryption()
 
 
+@pytest.fixture(autouse=True)
+def _ensure_encryption_key_set():
+    """Re-establish the test encryption key + rebuild the Fernet
+    singleton before every test in this file.
+
+    Under xdist with parallel workers, other test files imported on
+    the same worker process can call ``init_encryption()`` after this
+    module's import-time setup ran, rebuilding the singleton against
+    whichever ``ENCRYPTION_KEY`` value happened to be in os.environ
+    at that moment (commonly ``""`` set by the many conftest /
+    test-module ``os.environ.setdefault("ENCRYPTION_KEY", "")``
+    statements).  That left the Fernet cipher inert and broke our
+    round-trip / ciphertext-at-rest assertions non-deterministically
+    depending on worker assignment.
+
+    This fixture is autouse + function-scoped so every test starts
+    from the same known good encryption state regardless of what
+    happened on the worker before us.
+    """
+    os.environ["ENCRYPTION_KEY"] = "test-key-for-pii-roundtrip-tests-please-rotate"
+    _init_encryption()
+    yield
+
+
 @pytest.fixture
 async def db(pg_db):
     yield pg_db

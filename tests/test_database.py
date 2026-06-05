@@ -568,13 +568,20 @@ class TestAutoReportsSubscriptions:
 
     @pytest.mark.asyncio
     async def test_resubscribe_updates(self, seeded_db):
+        # subscribe_digest_ext upserts on (user_id, report_type) since
+        # the 2026-06 multi-schedule model — a user can stack Faults
+        # Daily + Fuel Weekly + Health Monthly as three independent
+        # rows.  So "resubscribe" semantics only update when the same
+        # report_type is replayed; a different report_type would create
+        # a second row, not overwrite the first.  This test guards the
+        # same-key update path.
         db, _, _, owner = seeded_db
         await db.subscribe_digest_ext(owner.id, "daily", 7, "UTC", "faults")
-        await db.subscribe_digest_ext(owner.id, "weekly", 12, "America/Chicago", "health")
+        await db.subscribe_digest_ext(owner.id, "weekly", 12, "America/Chicago", "faults")
         sub = await db.get_digest_subscription(owner.id)
         assert sub["frequency"] == "weekly"
         assert sub["send_hour"] == 12
-        assert sub["report_type"] == "health"
+        assert sub["report_type"] == "faults"
 
 
 # ══════════════════════════════════════════════════════════════════
