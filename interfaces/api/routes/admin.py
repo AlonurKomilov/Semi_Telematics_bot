@@ -1040,11 +1040,16 @@ async def get_bot_config(
         "bot_username": account.bot_username or "",
     }
 
-    # Check if bot is running in the registry
+    # Cross-process liveness check.  In split-service deployments the
+    # API process never starts bots (ENABLE_BOT=0 on the API systemd
+    # unit), so its in-memory registry is permanently empty.  The bot
+    # service writes a short-TTL Redis key on start + refreshes it
+    # every 30 s; we read that key here.  Local/dev runs (where API +
+    # bot share a process) also honour this — the same key gets
+    # written from the same process.  See infra/bot_registry.py.
     try:
-        from infra.bot_registry import get_registry
-        registry = get_registry()
-        result["is_running"] = bool(registry and registry.get(user["account_id"]))
+        from infra.bot_registry import is_bot_alive
+        result["is_running"] = await is_bot_alive(user["account_id"])
     except Exception:
         result["is_running"] = False
 

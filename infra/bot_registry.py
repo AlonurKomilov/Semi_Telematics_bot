@@ -15,6 +15,7 @@ Usage::
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Callable, Optional
 
@@ -24,6 +25,36 @@ from telegram.ext import Application
 from infra.crypto import decrypt
 
 logger = logging.getLogger(__name__)
+
+# ── Cross-process liveness heartbeat ──────────────────────────────
+# The bot service writes ``bot:alive:<account_id>`` to Redis with a
+# short TTL while ``start_bot`` keeps a refresher task alive.  The
+# API process (which has its own empty in-memory registry because
+# ENABLE_BOT=0 on that systemd unit) checks Redis instead of its own
+# dict to answer "is this account's bot actually polling Telegram?".
+#
+# Refresh every HEARTBEAT_REFRESH_SECS, TTL HEARTBEAT_TTL_SECS.  TTL
+# is ~3× the refresh interval so a single missed tick doesn't flap
+# the dashboard badge — only a sustained outage (~90 s) shows as
+# "not running."
+HEARTBEAT_KEY_PREFIX = "bot:alive:"
+HEARTBEAT_TTL_SECS = 90
+HEARTBEAT_REFRESH_SECS = 30
+
+
+def heartbeat_key(account_id: int) -> str:
+    """Redis key that signals 'bot for account N is currently polling'."""
+    return f"{HEARTBEAT_KEY_PREFIX}{account_id}"
+
+
+async def is_bot_alive(account_id: int) -> bool:
+    """Cross-process liveness probe — used by the API to answer
+    /admin/bot-config without needing the bot process's in-memory
+    registry.  Returns False when Redis is unavailable so a Redis
+    outage degrades the badge to 'Configured' rather than incorrectly
+    claiming 'Running'."""
+    from adapters.cache.redis import exists
+    return await exists(heartbeat_key(account_id))
 
 # ── Handler setup injection ───────────────────────────────────────
 # Set via set_handler_setup() at startup (called from interfaces/bot/).
@@ -138,6 +169,30 @@ class BotRegistry:
 
     def __init__(self):
         self._bots: dict[int, Application] = {}
+        # Per-account heartbeat refresher tasks.  One asyncio.Task per
+        # running bot; cancelled in stop_bot so we don't keep refreshing
+        # a key after the underlying Application has been torn down.
+        self._heartbeat_tasks: dict[int, asyncio.Task] = {}
+
+    async def _heartbeat_loop(self, account_id: int) -> None:
+        """Refresh the Redis liveness key on a fixed interval.
+
+        Runs inside the bot process for as long as the corresponding
+        bot Application is up.  Cancelled by ``stop_bot``.  A Redis
+        outage is logged at debug level only — the next successful
+        refresh re-establishes the key.
+        """
+        from adapters.cache.redis import setex_flag
+        key = heartbeat_key(account_id)
+        try:
+            while True:
+                try:
+                    await setex_flag(key, HEARTBEAT_TTL_SECS)
+                except Exception:
+                    logger.debug("Heartbeat write failed for account %d", account_id)
+                await asyncio.sleep(HEARTBEAT_REFRESH_SECS)
+        except asyncio.CancelledError:
+            raise
 
     async def start_bot(
         self,
@@ -169,6 +224,20 @@ class BotRegistry:
             webhook_secret=webhook_secret,
         )
         self._bots[account_id] = app
+
+        # Write the heartbeat key immediately so a dashboard reader
+        # in the next ~30 s sees "Running" without waiting for the
+        # refresher's first tick.  Then spawn the refresher.
+        from adapters.cache.redis import setex_flag
+        try:
+            await setex_flag(heartbeat_key(account_id), HEARTBEAT_TTL_SECS)
+        except Exception:
+            logger.debug("Initial heartbeat write failed for account %d", account_id)
+        self._heartbeat_tasks[account_id] = asyncio.create_task(
+            self._heartbeat_loop(account_id),
+            name=f"bot-heartbeat-{account_id}",
+        )
+
         logger.info(
             "Bot started for account %d (@%s)",
             account_id,
@@ -178,6 +247,22 @@ class BotRegistry:
 
     async def stop_bot(self, account_id: int) -> None:
         """Stop and remove a bot for one account."""
+        # Cancel the heartbeat refresher first so it can't race with
+        # the key deletion below (would otherwise be possible for the
+        # loop to write the key back after we DELETE it).
+        task = self._heartbeat_tasks.pop(account_id, None)
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+        try:
+            from adapters.cache.redis import delete
+            await delete(heartbeat_key(account_id))
+        except Exception:
+            logger.debug("Heartbeat delete failed for account %d", account_id)
+
         app = self._bots.pop(account_id, None)
         if not app:
             return

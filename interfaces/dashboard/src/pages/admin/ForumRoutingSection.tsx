@@ -3,7 +3,37 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { apiJSON } from '../../api/client';
 import { toneClasses } from '../../lib/status';
-import { ChevronDown, ChevronRight, Check, X } from 'lucide-react';
+import {
+  ChevronDown, ChevronRight, Check, X,
+  // Per-alert-type row icons.  The backend still ships `icon_emoji`
+  // (used inside Telegram message bodies, where emoji is data not
+  // UI), but the dashboard renders these lucide equivalents so the
+  // table reads as a professional admin tool.
+  AlertTriangle, HeartPulse, Fuel, ShieldAlert, Camera, ParkingSquare,
+  MapPin, BarChart3, Wrench, FileText, RefreshCw,
+  // Button glyphs (replaced 🤖 and 🟢 emoji per design.md "no emoji
+  // as UI icons" — section.7 / hard-rules).
+  Sparkles, CheckCircle2, BellOff,
+  type LucideIcon,
+} from 'lucide-react';
+
+// alert_type → lucide icon.  Keep in sync with FORUM_TOPIC_SPEC in
+// capabilities/alerting/forum_topics.py.  An unknown key falls back
+// to a neutral marker so a newly-added catalog entry can't crash the
+// table while the dashboard catches up.
+const TYPE_ICON: Record<string, LucideIcon> = {
+  faults:      AlertTriangle,
+  health:      HeartPulse,
+  fuel:        Fuel,
+  events:      ShieldAlert,
+  camera:      Camera,
+  parking:     ParkingSquare,
+  geofence:    MapPin,
+  scorecard:   BarChart3,
+  maintenance: Wrench,
+  documents:   FileText,
+  system:      RefreshCw,
+};
 
 interface CatalogRow {
   alert_type: string;
@@ -190,8 +220,9 @@ export default function ForumRoutingSection() {
 
             {state.connected && (
               <div className="mt-1 space-y-0.5">
-                <p className="text-xs text-muted-foreground">
-                  ✓ {t('forum_routing.mode_group_connected', { title: state.chat_title })}
+                <p className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                  <Check size={12} className="text-ok" />
+                  {t('forum_routing.mode_group_connected', { title: state.chat_title })}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {t('forum_routing.mode_group_setup_status', { status: state.setup_status })}
@@ -237,9 +268,12 @@ export default function ForumRoutingSection() {
                         const isAICapable = (AI_CAPABLE_TYPES as readonly string[]).includes(r.alert_type);
                         const aiEnabled = state.settings?.ai_per_type?.[r.alert_type] ?? true;
                         const aiBusy = busyKey === `__ai_${r.alert_type}__`;
+                        const TypeIcon = TYPE_ICON[r.alert_type] ?? AlertTriangle;
                         return (
                         <tr key={r.alert_type} className="border-b border-border/40 last:border-0">
-                          <td className="px-3 py-2 align-top w-12 text-lg">{r.icon_emoji}</td>
+                          <td className="px-3 py-2 align-top w-10">
+                            <TypeIcon size={16} className="text-muted-foreground" />
+                          </td>
                           <td className="px-3 py-2 align-top">
                             <p className="font-medium">{r.name}</p>
                             <p className="text-xs text-muted-foreground">{r.description}</p>
@@ -271,7 +305,8 @@ export default function ForumRoutingSection() {
                                     : 'bg-muted text-muted-foreground hover:bg-muted/80'
                                 }`}
                               >
-                                🤖 {aiEnabled ? t('forum_routing.ai_on') : t('forum_routing.ai_off')}
+                                <Sparkles size={12} />
+                                {aiEnabled ? t('forum_routing.ai_on') : t('forum_routing.ai_off')}
                               </button>
                             )}
                           </td>
@@ -285,7 +320,7 @@ export default function ForumRoutingSection() {
                                 disabled={busyKey === `__rr_${r.alert_type}__`}
                                 onClick={() => handleToggleReceipt(r.alert_type, !r.send_resolve_receipt)}
                                 title={r.send_resolve_receipt
-                                  ? 'Group receives a 🟢 RESOLVED message when this alert auto-clears'
+                                  ? 'Group receives a RESOLVED message when this alert auto-clears'
                                   : 'Group does NOT receive a resolved-notification for this alert type'}
                                 className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition ${
                                   r.send_resolve_receipt
@@ -293,7 +328,10 @@ export default function ForumRoutingSection() {
                                     : 'bg-muted text-muted-foreground hover:bg-muted/80'
                                 }`}
                               >
-                                🟢 {r.send_resolve_receipt ? 'Resolved notif.' : 'No notif.'}
+                                {r.send_resolve_receipt
+                                  ? <CheckCircle2 size={12} />
+                                  : <BellOff size={12} />}
+                                {r.send_resolve_receipt ? 'Resolved notif.' : 'No notif.'}
                               </button>
                             )}
                           </td>
@@ -321,9 +359,11 @@ export default function ForumRoutingSection() {
                     </tbody>
                   </table>
                   <p className="text-xs text-muted-foreground px-3 py-2 border-t border-border/40 bg-muted/20">
-                    🤖 = toggle AI Analysis inclusion for that topic.
-                    🟢 Resolved notif. = post a confirmation message to the group when an alert auto-resolves.
-                    ✓ Disable = stop routing this alert type to the group (falls back to per-user DMs).
+                    <strong className="font-medium text-foreground">AI</strong> = toggle AI Analysis inclusion for that topic.
+                    <span className="mx-1">·</span>
+                    <strong className="font-medium text-foreground">Resolved notif.</strong> = post a confirmation message to the group when an alert auto-resolves.
+                    <span className="mx-1">·</span>
+                    <strong className="font-medium text-foreground">Disable</strong> = stop routing this alert type to the group (per-user DMs still fire based on each user’s preferences).
                   </p>
                 </div>
               )}

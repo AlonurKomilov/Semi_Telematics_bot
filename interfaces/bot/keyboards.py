@@ -659,8 +659,9 @@ def alert_settings_kb(user) -> InlineKeyboardMarkup:
     the same filter so a stale "on" toggle for an irrelevant type
     can't leak alerts the user shouldn't get.
 
-    The "🟢 Resolve receipts" toggle is always shown (every role can
-    opt in to receive resolve-confirmation DMs).  Defaults to OFF.
+    The "🟢 Resolved notifications" toggle is always shown (every role
+    can opt in to receive resolved-alert confirmation DMs).  Defaults
+    to OFF.
     """
     from capabilities.alerting.relevance import alert_types_for_role
 
@@ -691,12 +692,12 @@ def alert_settings_kb(user) -> InlineKeyboardMarkup:
             callback_data=callback,
         )])
 
-    # Resolve-receipts toggle (per-user DM opt-in).  Always shown
-    # regardless of role — every role can choose whether they want
-    # the 🟢 RESOLVED follow-up in their personal chat.
+    # Resolved-alert notification toggle (per-user DM opt-in).
+    # Always shown regardless of role — every role can choose whether
+    # they want the 🟢 RESOLVED follow-up in their personal chat.
     rows.append([InlineKeyboardButton(
         f"{_icon(getattr(user, 'alert_resolve_receipts', False))} "
-        "🟢 Resolve receipts",
+        "🟢 Resolved notifications",
         callback_data="alert_toggle_resolve_receipts",
     )])
 

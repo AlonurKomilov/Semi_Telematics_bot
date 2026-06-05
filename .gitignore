@@ -6,8 +6,11 @@ __pycache__/
 *.db-shm
 *.db-wal
 *.sqlite3
-data/
-backups/
+# Repo-root /data only — matches the dev fixtures dir at the project
+# root, not nested source folders like
+# interfaces/dashboard/src/data/ which legitimately ships TS code.
+/data/
+/backups/
 .venv/
 venv/
 env/
