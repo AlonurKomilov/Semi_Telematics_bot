@@ -814,6 +814,12 @@ TOOL_PERMISSIONS: dict[str, list[str] | None] = {
     "get_drivers_list":         ["can_vehicle_all"],                           # all except driver
     "search_vehicles":          ["can_vehicle_all"],                           # all except driver
     "search_knowledge_base":    None,                                        # all roles
+    "get_idle_vehicles":        ["can_vehicle_all"],                           # owner/admin/dispatcher/fleet/safety — not driver (fleet-wide)
+    "get_driver_hos_status":    ["can_vehicle_all"],                           # owner/admin/dispatcher/fleet/safety — HR concern, not driver-facing
+    "get_alert_history":        ["can_alerts_all", "can_alerts_own"],         # owner/admin/fleet/safety/driver(own)
+    "get_recent_work_orders":   ["can_maintenance_all", "can_maintenance_own"],  # owner/admin/fleet/safety/driver(own)
+    "get_recent_inspections":   ["can_maintenance_all", "can_maintenance_own"],  # owner/admin/fleet/safety/driver(own)
+    "get_vehicle_history":      ["can_vehicle_all", "can_vehicle_own"],       # all roles — vehicle-specific tool, isolation enforced below
 }
 
 # Tools that are account-wide — driver must NOT call these even if permitted
@@ -824,6 +830,8 @@ ACCOUNT_WIDE_TOOLS: frozenset[str] = frozenset({
     "get_events_summary", "get_maintenance_summary",
     "get_fuel_cost_summary", "get_rolling_stopped",
     "get_drivers_list", "search_vehicles",
+    "get_idle_vehicles", "get_driver_hos_status",
+    "get_alert_history",
 })
 
 # Tools that accept a vehicle_name param and must enforce driver vehicle isolation.
@@ -831,6 +839,7 @@ VEHICLE_SPECIFIC_TOOLS: frozenset[str] = frozenset({
     "get_vehicle_faults", "get_vehicle_detail", "get_vehicle_location",
     "get_vehicle_events", "get_vehicle_maintenance", "get_vehicle_fuel_costs",
     "check_vehicle_camera", "get_vehicle_odometer",
+    "get_recent_work_orders", "get_recent_inspections", "get_vehicle_history",
 })
 
 # Legacy alias — keeps any external code that imports TRUCK_SPECIFIC_TOOLS working.

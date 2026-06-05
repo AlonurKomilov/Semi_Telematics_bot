@@ -924,7 +924,67 @@ class DriverTrainingsMixin:
 
 
 class DriverHosStatusMixin:
-    """HOS / duty-status cache adapter — empty stub.
+    """HOS / duty-status cache adapter.
 
-    Schema available: ``driver_hos_status`` (one row per driver).
+    Reads from ``driver_hos_status`` (one row per driver, refreshed by
+    the HOS sync job from Samsara).  Used by the AI agent's
+    ``get_driver_hos_status`` tool to answer "how many hours does X
+    have left", "who's out of hours", etc.  All writes still flow
+    through the sync job, not these read methods.
     """
+
+    async def get_driver_hos_status(
+        self,
+        account_id: int,
+        user_id: int | None = None,
+    ) -> list[dict]:
+        """Return cached HOS rows for an account.
+
+        With ``user_id`` set, returns just that driver's row (still as
+        a list so the caller's shape is consistent).  Joins ``users``
+        on user_id so the caller gets ``display_name`` / ``truck_num``
+        in one query rather than two round-trips per driver.
+        """
+        if user_id is not None:
+            sql = (
+                "SELECT h.user_id, h.samsara_driver_id, h.duty_status, "
+                "       h.drive_seconds_today, h.on_duty_seconds_today, "
+                "       h.cycle_seconds_remaining, h.shift_seconds_remaining, "
+                "       h.last_status_change, h.updated_at, "
+                "       u.display_name, u.truck_num "
+                "FROM driver_hos_status h "
+                "LEFT JOIN users u ON u.id = h.user_id "
+                "WHERE h.account_id = ? AND h.user_id = ?"
+            )
+            params: tuple = (account_id, user_id)
+        else:
+            sql = (
+                "SELECT h.user_id, h.samsara_driver_id, h.duty_status, "
+                "       h.drive_seconds_today, h.on_duty_seconds_today, "
+                "       h.cycle_seconds_remaining, h.shift_seconds_remaining, "
+                "       h.last_status_change, h.updated_at, "
+                "       u.display_name, u.truck_num "
+                "FROM driver_hos_status h "
+                "LEFT JOIN users u ON u.id = h.user_id "
+                "WHERE h.account_id = ? "
+                "ORDER BY u.display_name"
+            )
+            params = (account_id,)
+        cur = await self._db.execute(sql, params)
+        rows = await cur.fetchall()
+        out: list[dict] = []
+        for r in rows:
+            out.append({
+                "user_id": r[0],
+                "samsara_driver_id": r[1] or "",
+                "duty_status": r[2] or "unknown",
+                "drive_seconds_today": r[3] or 0,
+                "on_duty_seconds_today": r[4] or 0,
+                "cycle_seconds_remaining": r[5],
+                "shift_seconds_remaining": r[6],
+                "last_status_change": r[7] or "",
+                "updated_at": r[8] or "",
+                "display_name": r[9] or "",
+                "truck_num": r[10] or "",
+            })
+        return out
