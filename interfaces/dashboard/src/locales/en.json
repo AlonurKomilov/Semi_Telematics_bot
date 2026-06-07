@@ -160,10 +160,15 @@
     "fleet_group": "Fleet",
     "dispatching_group": "Dispatching",
     "safety_group": "Safety",
+    "operations_group": "Operations",
+    "monitoring_group": "Monitoring",
     "reports_group": "Reports",
     "costs_group": "Costs",
     "workforce_group": "Workforce",
     "admin_group": "Admin",
+    "people_group": "People",
+    "account_group": "Account",
+    "governance_group": "Governance",
     "live_map": "Live Map",
     "vehicles": "Vehicles",
     "routes": "Routes",
@@ -192,6 +197,8 @@
     "team_management": "Team Management",
     "invites": "Invites",
     "companies": "Companies",
+    "integrations": "Integrations",
+    "modules": "Modules",
     "role_permissions": "Role Permissions",
     "scorecard_rules": "Scorecard Rules",
     "billing": "Billing & Plan",
@@ -504,7 +511,9 @@
     "invite_revoked": "Invite revoked",
     "invite_already_revoked": "Invite already revoked",
     "invite_created_copied": "Invite created — link copied to clipboard",
-    "invite_copy_failed": "Invite created — copy manually: {{url}}"
+    "invite_copy_failed": "Invite created — copy manually: {{url}}",
+    "invite_extended": "Invite extended by 24 hours",
+    "invite_extend_not_available": "Invite is no longer available to extend"
   },
   "actions": {
     "revoke": "Revoke",
@@ -512,7 +521,20 @@
     "creating": "Creating…",
     "create_and_copy": "Create & Copy Link",
     "copy": "Copy",
-    "copied": "Copied"
+    "copied": "Copied",
+    "extend": "Extend",
+    "extending": "Extending…",
+    "extend_invite_24h": "Extend this invite by 24 hours (same code)"
+  },
+  "invites": {
+    "status": {
+      "pending": "Pending",
+      "used": "Used",
+      "revoked": "Revoked",
+      "expired": "Expired"
+    },
+    "empty_filtered_title": "No invites match your filters",
+    "empty_filtered_desc": "Adjust the role / status chips or clear the search box above."
   },
   "chat": {
     "title": "AI Assistant",
@@ -858,7 +880,7 @@
   },
   "storage": {
     "page_title": "Attachment Storage",
-    "page_desc": "Where your fleet's attachments and per-account captures are saved. Bring your own Google Drive to keep these bytes in your account and cut platform storage costs.",
+    "page_desc": "Where your company's documents and captures are saved — driver records, work-order invoices, dashcam frames, parking maps. Bring your own Google Drive to keep these bytes in your account and cut platform storage costs.",
     "badge_gdrive": "Google Drive",
     "badge_disk": "Local storage",
     "badge_hybrid": "Hybrid (Disk → Drive)",

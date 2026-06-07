@@ -20,6 +20,7 @@ import type { AuditLogEntry, AnyColumn } from '../../types';
 const ACTION_LABEL: Record<string, string> = {
   invite_create: 'Invite created',
   invite_revoke: 'Invite revoked',
+  invite_extend: 'Invite extended',
 };
 
 const columns: AnyColumn[] = [

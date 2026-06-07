@@ -516,7 +516,7 @@
   },
   "storage": {
     "page_title": "Almacenamiento de adjuntos",
-    "page_desc": "Dónde se guardan los adjuntos y capturas de su flota. Use su propio Google Drive para mantener los bytes en su cuenta y reducir el costo de almacenamiento de la plataforma.",
+    "page_desc": "Dónde se guardan los documentos y capturas de su empresa: registros de conductores, facturas de órdenes de trabajo, fotogramas de dashcam y mapas de estacionamiento. Use su propio Google Drive para mantener los bytes en su cuenta y reducir el costo de almacenamiento de la plataforma.",
     "badge_gdrive": "Google Drive",
     "badge_disk": "Almacenamiento local",
     "loading": "Cargando configuración de almacenamiento…",
@@ -802,10 +802,25 @@
   },
   "toasts": {
     "invite_revoked": "Invitación revocada",
-    "invite_already_revoked": "Invitación ya revocada"
+    "invite_already_revoked": "Invitación ya revocada",
+    "invite_extended": "Invitación extendida 24 horas",
+    "invite_extend_not_available": "La invitación ya no se puede extender"
   },
   "actions": {
     "revoke": "Revocar",
-    "revoking": "Revocando…"
+    "revoking": "Revocando…",
+    "extend": "Extender",
+    "extending": "Extendiendo…",
+    "extend_invite_24h": "Extender esta invitación 24 horas (mismo código)"
+  },
+  "invites": {
+    "status": {
+      "pending": "Pendiente",
+      "used": "Usada",
+      "revoked": "Revocada",
+      "expired": "Expirada"
+    },
+    "empty_filtered_title": "Ninguna invitación coincide con tus filtros",
+    "empty_filtered_desc": "Ajusta las pastillas de rol/estado o borra el cuadro de búsqueda."
   }
 }

@@ -539,6 +539,156 @@ class TestInvitesRevoke:
         pending_with_revoked_ids = {i.id for i in pending_with_revoked}
         assert {a.id, b.id} == pending_with_revoked_ids
 
+    # ── extend_invite ───────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_extend_invite_pushes_expiry_forward(self, seeded_db):
+        """Happy path: extend bumps ``expires_at`` to ``now + hours``
+        and returns the row.  Tests both the anchor-to-now semantic
+        (not anchor-to-old-expiry) and the same-code preservation
+        promise (any chat-history copy of the link remains valid)."""
+        db, acct, _, owner = seeded_db
+        from datetime import datetime, timezone
+        invite = await db.create_invite(acct.id, owner.id, Role.FLEET, hours=1)
+        original_code = invite.code
+        original_expires = datetime.fromisoformat(invite.expires_at)
+
+        extended = await db.extend_invite(acct.id, invite.id, hours=24)
+        assert extended is not None
+        # Code unchanged — the chat-history-copy contract
+        assert extended.code == original_code
+        # New expiry is at least 23h in the future from now (loose
+        # lower bound to absorb test-execution drift on a slow CI box)
+        new_expires = datetime.fromisoformat(extended.expires_at)
+        delta_from_now = new_expires - datetime.now(timezone.utc)
+        assert delta_from_now.total_seconds() > 23 * 3600
+        # And strictly later than the original — never goes backwards
+        assert new_expires > original_expires
+
+    @pytest.mark.asyncio
+    async def test_extend_invite_anchors_to_now_not_existing_expiry(
+        self, seeded_db,
+    ):
+        """The common operator flow: "this expired yesterday, give it
+        another day".  ``now + 24h`` must produce a future timestamp
+        even when the existing ``expires_at`` is far in the past;
+        ``expires_at + 24h`` would still leave the invite expired."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(acct.id, owner.id, Role.FLEET)
+        # Backdate to a week ago
+        from datetime import datetime, timezone
+        await db._db.execute(
+            "UPDATE invites SET expires_at = '2020-01-01T00:00:00+00:00' "
+            "WHERE id = ?",
+            (invite.id,),
+        )
+        await db._db.commit()
+
+        extended = await db.extend_invite(acct.id, invite.id, hours=24)
+        assert extended is not None
+        # New expiry is in the future, not 2020+24h
+        assert datetime.fromisoformat(extended.expires_at) > datetime.now(timezone.utc)
+        # Sanity: an extended invite is no longer expired
+        assert extended.is_expired is False
+
+    @pytest.mark.asyncio
+    async def test_extend_invite_returns_none_for_used(self, seeded_db):
+        """Used invites must NOT be extendable — the user already
+        joined, so an extend would be a no-op AND would write a
+        confusing audit-log entry."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(acct.id, owner.id, Role.FLEET)
+        user = await db.redeem_invite(invite.code, 902_001)
+        assert user is not None
+
+        result = await db.extend_invite(acct.id, invite.id, hours=24)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_extend_invite_returns_none_for_revoked(self, seeded_db):
+        """Revoked invites must NOT be extendable — extending would
+        silently un-revoke an operator's prior kill decision.  Force
+        them to create a new code if they really want to re-onboard."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(acct.id, owner.id, Role.FLEET)
+        await db.revoke_invite(acct.id, invite.id)
+
+        result = await db.extend_invite(acct.id, invite.id, hours=24)
+        assert result is None
+        # And the row is still marked revoked — extend didn't clobber
+        admin_view = await db.get_invite_by_id(acct.id, invite.id)
+        assert admin_view is not None
+        assert admin_view.is_revoked is True
+
+    @pytest.mark.asyncio
+    async def test_extend_invite_returns_none_for_unknown_id(self, seeded_db):
+        """Symmetric to revoke's 'unknown id' branch."""
+        db, acct, _, _ = seeded_db
+        assert await db.extend_invite(acct.id, 99999, hours=24) is None
+
+    @pytest.mark.asyncio
+    async def test_extend_invite_is_monotonic_forward(self, seeded_db):
+        """Extending by a SHORTER window than what's already left
+        must NOT pull the deadline back.  Operator clicks Extend → 1h
+        on a 100h-remaining invite → the deadline stays at the
+        original (later) value, not now+1h.  Defends against the
+        stealth-revoke that anchor-to-now alone would allow."""
+        db, acct, _, owner = seeded_db
+        from datetime import datetime, timezone
+        invite = await db.create_invite(acct.id, owner.id, Role.FLEET, hours=100)
+        original_expires = datetime.fromisoformat(invite.expires_at)
+
+        extended = await db.extend_invite(acct.id, invite.id, hours=1)
+        assert extended is not None
+        new_expires = datetime.fromisoformat(extended.expires_at)
+        # The 100h existing window dominates the 1h request — the
+        # deadline stayed where it was (might shift by a few seconds
+        # depending on test-execution drift, but never EARLIER).
+        assert new_expires >= original_expires
+        # Specifically, new_expires must NOT be ~1h from now — that
+        # would mean we pulled the deadline back by ~99h.
+        delta_from_now = (new_expires - datetime.now(timezone.utc)).total_seconds()
+        assert delta_from_now > 90 * 3600, (
+            "Expected ~100h remaining; got "
+            f"{delta_from_now / 3600:.1f}h — anchor-to-now silently "
+            "pulled the deadline backwards"
+        )
+
+    @pytest.mark.asyncio
+    async def test_extend_invite_validates_hours_bound(self, seeded_db):
+        """Storage method defends against ``hours < 1`` and
+        ``hours > 720`` even when a future caller bypasses the
+        Pydantic route guard (CLI, ARQ job, bot wizard).  hours=0
+        would silently stealth-revoke the invite; negative hours
+        would create a backwards-time deadline.  Both raise."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(acct.id, owner.id, Role.FLEET)
+        with pytest.raises(ValueError, match="hours must be"):
+            await db.extend_invite(acct.id, invite.id, hours=0)
+        with pytest.raises(ValueError, match="hours must be"):
+            await db.extend_invite(acct.id, invite.id, hours=-5)
+        with pytest.raises(ValueError, match="hours must be"):
+            await db.extend_invite(acct.id, invite.id, hours=10_000)
+
+    @pytest.mark.asyncio
+    async def test_extend_invite_rejects_cross_account(self, db):
+        """Tenant isolation: account B cannot extend account A's invite
+        by guessing a numeric id.  Mirrors revoke's cross-account test
+        — both the SELECT and the UPDATE carry account_id as defense-
+        in-depth against an RLS rollback."""
+        acct_a = await db.create_account("A Co")
+        acct_b = await db.create_account("B Co")
+        owner_a = await db.create_user(
+            telegram_id=910_001, account_id=acct_a.id, role=Role.OWNER,
+        )
+        invite = await db.create_invite(acct_a.id, owner_a.id, Role.FLEET)
+        # Account B tries to extend it
+        assert await db.extend_invite(acct_b.id, invite.id, hours=24) is None
+        # Account A succeeds — proves the row exists, B was the
+        # thing the storage layer rejected
+        extended = await db.extend_invite(acct_a.id, invite.id, hours=24)
+        assert extended is not None
+
 
 # ══════════════════════════════════════════════════════════════════
 # MULTI-TENANT ISOLATION

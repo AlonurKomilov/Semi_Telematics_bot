@@ -460,10 +460,25 @@
   },
   "toasts": {
     "invite_revoked": "Taklifnoma bekor qilindi",
-    "invite_already_revoked": "Taklifnoma allaqachon bekor qilingan"
+    "invite_already_revoked": "Taklifnoma allaqachon bekor qilingan",
+    "invite_extended": "Taklifnoma 24 soatga uzaytirildi",
+    "invite_extend_not_available": "Taklifnomani uzaytirib bo'lmaydi"
   },
   "actions": {
     "revoke": "Bekor qilish",
-    "revoking": "Bekor qilinmoqda…"
+    "revoking": "Bekor qilinmoqda…",
+    "extend": "Uzaytirish",
+    "extending": "Uzaytirilmoqda…",
+    "extend_invite_24h": "Ushbu taklifnomani 24 soatga uzaytirish (xuddi shu kod)"
+  },
+  "invites": {
+    "status": {
+      "pending": "Kutilmoqda",
+      "used": "Ishlatilgan",
+      "revoked": "Bekor qilingan",
+      "expired": "Muddati o'tgan"
+    },
+    "empty_filtered_title": "Filtrlaringizga mos taklifnoma topilmadi",
+    "empty_filtered_desc": "Rol/holat tugmalarini sozlang yoki qidiruv maydonini tozalang."
   }
 }

@@ -593,10 +593,25 @@
   },
   "toasts": {
     "invite_revoked": "Invite revoked",
-    "invite_already_revoked": "Invite already revoked"
+    "invite_already_revoked": "Invite already revoked",
+    "invite_extended": "Invite extended by 24 hours",
+    "invite_extend_not_available": "Invite is no longer available to extend"
   },
   "actions": {
     "revoke": "Revoke",
-    "revoking": "Revoking…"
+    "revoking": "Revoking…",
+    "extend": "Extend",
+    "extending": "Extending…",
+    "extend_invite_24h": "Extend this invite by 24 hours (same code)"
+  },
+  "invites": {
+    "status": {
+      "pending": "Pending",
+      "used": "Used",
+      "revoked": "Revoked",
+      "expired": "Expired"
+    },
+    "empty_filtered_title": "No invites match your filters",
+    "empty_filtered_desc": "Adjust the role / status chips or clear the search box above."
   }
 }

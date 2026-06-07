@@ -629,13 +629,18 @@ async def revoke_invite_endpoint(
     """
     # Rate limit first — cheap reject for any flood.  Keyed by
     # (account_id, actor_telegram_id) so two different admins on the
-    # same account get their own budget.
+    # same account get their own budget.  Revoke + extend SHARE the
+    # bucket (key prefix ``invite_mutate``) because they're sibling
+    # write-paths against the same row set, and the audit-log-
+    # amplification cap that motivated the rate limit applies to
+    # both endpoints equally — keeping disjoint keys would silently
+    # double the cap a compromised admin token can flood with.
     from adapters.cache.redis import rate_limit_check
-    rl_key = f"invite_revoke:{user['account_id']}:{user['sub']}"
+    rl_key = f"invite_mutate:{user['account_id']}:{user['sub']}"
     if not await rate_limit_check(rl_key, window_secs=60, max_requests=30):
         raise HTTPException(
             status_code=429,
-            detail="Too many revokes — wait a moment and try again",
+            detail="Too many invite changes — wait a moment and try again",
         )
 
     # Fetch the row before the UPDATE so we have role/department/
@@ -675,6 +680,77 @@ async def revoke_invite_endpoint(
         details=f"Role: {revoked.role}, dept: {revoked.department}, created_by: {revoked.created_by}",
     )
     return {"ok": True, "revoked_at": revoked.revoked_at}
+
+
+class InviteExtend(BaseModel):
+    hours: int = Field(24, ge=1, le=720)
+
+
+@router.post("/invites/{invite_id}/extend")
+async def extend_invite_endpoint(
+    invite_id: int,
+    body: InviteExtend,
+    user: dict = Depends(require_permission("can_invite")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Push an unused invite's expiry forward without changing the
+    code.  Operator flow this serves: "the invite I sent last week
+    expired before they clicked — give it another 24 hours."
+
+    Sibling of revoke, same guards (can_invite gate + rank check +
+    rate limit + 404 uniformity).  Keeping the SAME code is the
+    whole point — any copy of the original link in chat history
+    works again, no re-share needed.
+
+    Refuses to extend revoked invites: that would silently un-revoke
+    an operator's prior kill decision.  If the operator really wants
+    to bring a revoked code back, they create a new one (and reading
+    the audit log makes the intent explicit).
+    """
+    from adapters.cache.redis import rate_limit_check
+    # Shared bucket with revoke — see ``revoke_invite_endpoint``
+    # rate-limit docstring for the audit-log-amplification rationale.
+    rl_key = f"invite_mutate:{user['account_id']}:{user['sub']}"
+    if not await rate_limit_check(rl_key, window_secs=60, max_requests=30):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many invite changes — wait a moment and try again",
+        )
+
+    invite = await platform_db.get_invite_by_id(user["account_id"], invite_id)
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite not found")
+
+    # Same rank gate as revoke — HR (rank 0, can_invite=True) must
+    # not be able to keep an Admin-tier invite alive past the deadline
+    # the Owner set when issuing it.
+    caller_rank = role_rank(user["role"])
+    invite_rank = role_rank(invite.role)
+    if invite_rank >= caller_rank:
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot extend an invite for a role equal to or above your own",
+        )
+
+    extended = await platform_db.extend_invite(
+        user["account_id"], invite_id, hours=body.hours,
+    )
+    if not extended:
+        # Used / revoked / race-lost — uniform 404 like revoke, no
+        # side-channel for which branch.
+        raise HTTPException(status_code=404, detail="Invite not found")
+
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "invite_extend",
+        target_type="invite", target_id=str(invite_id),
+        # created_by mirrors revoke's audit details — keeps the
+        # forensic question "who created this and who keeps extending
+        # it?" answerable from the audit log alone.
+        details=f"Role: {extended.role}, dept: {extended.department}, created_by: {extended.created_by}, hours: {body.hours}, new_expires_at: {extended.expires_at}",
+    )
+    return {"ok": True, "expires_at": extended.expires_at}
 
 
 # ── Companies ─────────────────────────────────────────────────

@@ -516,7 +516,7 @@
   },
   "storage": {
     "page_title": "Stockage des pièces jointes",
-    "page_desc": "Où sont enregistrées les pièces jointes et captures de votre flotte. Utilisez votre propre Google Drive pour garder ces octets dans votre compte et réduire les coûts de stockage de la plateforme.",
+    "page_desc": "Où sont enregistrés les documents et captures de votre entreprise — dossiers conducteurs, factures de bons de travail, images de dashcam et plans de stationnement. Utilisez votre propre Google Drive pour garder ces octets dans votre compte et réduire les coûts de stockage de la plateforme.",
     "badge_gdrive": "Google Drive",
     "badge_disk": "Stockage local",
     "loading": "Chargement des paramètres de stockage…",
@@ -802,10 +802,25 @@
   },
   "toasts": {
     "invite_revoked": "Invitation révoquée",
-    "invite_already_revoked": "Invitation déjà révoquée"
+    "invite_already_revoked": "Invitation déjà révoquée",
+    "invite_extended": "Invitation prolongée de 24 heures",
+    "invite_extend_not_available": "Cette invitation ne peut plus être prolongée"
   },
   "actions": {
     "revoke": "Révoquer",
-    "revoking": "Révocation…"
+    "revoking": "Révocation…",
+    "extend": "Prolonger",
+    "extending": "Prolongation…",
+    "extend_invite_24h": "Prolonger cette invitation de 24 heures (même code)"
+  },
+  "invites": {
+    "status": {
+      "pending": "En attente",
+      "used": "Utilisée",
+      "revoked": "Révoquée",
+      "expired": "Expirée"
+    },
+    "empty_filtered_title": "Aucune invitation ne correspond à vos filtres",
+    "empty_filtered_desc": "Ajustez les filtres de rôle/statut ou videz le champ de recherche."
   }
 }

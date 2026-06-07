@@ -235,3 +235,98 @@ class InvitesMixin:
                 return None
             invite.revoked_at = now_iso
             return invite
+
+    async def extend_invite(
+        self, account_id: int, invite_id: int, hours: int = 24,
+    ) -> Optional[Invite]:
+        """Push an unused invite's ``expires_at`` MONOTONICALLY forward
+        by ``hours`` from NOW.  Guarantees the new deadline is never
+        earlier than what was already set.
+
+        Returns the freshly-extended Invite row so the caller can
+        write a forensic audit log entry with the new deadline.
+        Returns ``None`` when no row was flipped:
+          - invite_id not found in this account (cross-account or
+            truly-missing — uniform branch as revoke_invite)
+          - already used (extend a redeemed invite is meaningless;
+            the user already joined)
+          - already revoked (extend an operator-killed invite would
+            silently un-revoke it; refuse and force the operator to
+            create a new code if they really want to re-onboard)
+
+        Anchoring semantics (the tricky bit):
+          new_expires = max(existing.expires_at,  now + hours)
+          ──────────────────────────────────────────────────────
+          - Common operator flow ("this expired yesterday, give it
+            another 24h"): existing is in the past, ``now + 24h``
+            wins.  Anchored to the present so the link is valid for
+            the next 24h, not 24h after a deadline that's already
+            past.
+          - Adversarial / mis-click flow ("extend a fresh 100h invite
+            by 1h"): existing > now+1h, existing wins.  Otherwise
+            extend could PULL THE EXPIRY BACK and stealth-revoke a
+            link the operator believed they were lengthening.  The
+            ``max`` makes the operation provably monotonic — the
+            invite's reachable lifetime cannot shrink.
+
+        Crucially: the invite ``code`` is unchanged.  Any chat-history
+        copy of the old link is reactivated rather than orphaned, which
+        is the entire point of extend-over-recreate (see the design
+        notes in interfaces/api/routes/admin.py for the revoke flow's
+        sibling rationale).
+
+        Mirrors revoke_invite's SELECT-then-UPDATE-with-guard shape so
+        a concurrent redeem that wins the race can't be silently
+        un-redeemed.  Transaction wrap pins both statements to the
+        same connection.
+
+        Storage-layer hours validation: the route's Pydantic Field has
+        ``ge=1, le=720``, but this is a public mixin method that any
+        future caller (CLI, ARQ job, bot wizard) inherits — so we
+        re-check here as defence-in-depth.  ``hours <= 0`` would
+        produce a no-op or backwards-time deadline depending on the
+        max() branch and would silently stealth-revoke without an
+        ``revoked_at`` audit trail.
+        """
+        if hours < 1 or hours > 720:
+            raise ValueError(f"hours must be between 1 and 720, got {hours}")
+        async with self.transaction():
+            cur = await self._db.execute(
+                """SELECT * FROM invites
+                    WHERE id = ?
+                      AND account_id = ?
+                      AND used_by IS NULL
+                      AND revoked_at IS NULL
+                    LIMIT 1""",
+                (invite_id, account_id),
+            )
+            row = await cur.fetchone()
+            if not row:
+                return None
+            invite = self._row_to_invite(row)
+            now = datetime.now(timezone.utc)
+            candidate = now + timedelta(hours=hours)
+            # Monotonic-forward guarantee: never pull the deadline
+            # backwards.  Parsing existing.expires_at can fail on a
+            # malformed legacy row — treat that as "no defence
+            # needed, just use candidate" (the surrounding storage
+            # contract requires ISO-8601, but the mixin shouldn't
+            # crash a revive op on garbage).
+            try:
+                existing = datetime.fromisoformat(invite.expires_at)
+                new_expires_dt = max(existing, candidate)
+            except (TypeError, ValueError):
+                new_expires_dt = candidate
+            new_expires = new_expires_dt.isoformat()
+            upd = await self._db.execute(
+                "UPDATE invites SET expires_at = ? "
+                "WHERE id = ? AND account_id = ? "
+                "  AND used_by IS NULL AND revoked_at IS NULL",
+                (new_expires, invite.id, account_id),
+            )
+            if upd.rowcount != 1:
+                # Race-lost — same uniform 'Invite not found' shape
+                # as revoke.  Don't write an audit log for a no-op.
+                return None
+            invite.expires_at = new_expires
+            return invite

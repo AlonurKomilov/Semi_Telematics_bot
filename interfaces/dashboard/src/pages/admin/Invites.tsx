@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Link as LinkIcon, Plus, Trash2, Copy, Check, Loader2 } from 'lucide-react';
+import { Link as LinkIcon, Plus, Trash2, Copy, Check, Loader2, TimerReset, Search } from 'lucide-react';
 import { apiJSON, ApiError } from '../../api/client';
 import type { InviteInfo, InvitesResponse } from '../../types';
 import DataTable from '../../components/DataTable';
@@ -22,13 +22,35 @@ import {
 } from '../../components/ui/dialog';
 import { Button } from '../../components/ui/button';
 import type { AnyColumn } from '../../types';
-import { toneClasses, toneText } from '../../lib/status';
+import { toneClasses, toneText, statusClasses } from '../../lib/status';
 
 // Role choices for the create-invite form.  Owner is intentionally
 // excluded — the rank-check on the server already forbids inviting
 // peers / superiors; this just keeps the dropdown tidy.  Reads
 // labels from the canonical ROLE_LABEL map in components/RoleBadge.tsx.
 const INVITABLE_ROLES = ['admin', 'fleet', 'safety', 'dispatcher', 'driver'] as const;
+
+// Default extension delta.  Surfaced as a single constant so the
+// request body, optimistic timestamp, toast text, and button tooltip
+// can't drift apart if a future "choose hours" affordance lands.
+const EXTEND_HOURS = 24;
+const EXTEND_HOURS_MS = EXTEND_HOURS * 60 * 60 * 1000;
+
+type StatusKey = 'pending' | 'used' | 'revoked' | 'expired';
+
+/** Canonical lifecycle-status derivation for an invite row.  Single
+ *  source of truth shared by StatusBadge, the status-chip counts,
+ *  and the filteredInvites selector — eliminates the previously
+ *  duplicated ternary chains and the future-drift risk that comes
+ *  with them.  Priority: used > revoked > expired > pending (the
+ *  affirmative outcome wins, then operator action, then time, then
+ *  the default).  See StatusBadge docstring for the rationale. */
+function inviteStatus(i: { is_used: boolean; is_revoked?: boolean; is_expired: boolean }): StatusKey {
+  if (i.is_used) return 'used';
+  if (i.is_revoked) return 'revoked';
+  if (i.is_expired) return 'expired';
+  return 'pending';
+}
 
 /**
  * Pill that summarises an invite's lifecycle state.
@@ -42,11 +64,24 @@ const INVITABLE_ROLES = ['admin', 'fleet', 'safety', 'dispatcher', 'driver'] as 
  * onboarded someone, so the affirmative outcome wins.
  */
 function StatusBadge({ invite }: { invite: InviteInfo }) {
-  const cls = 'px-2 py-0.5 rounded-full text-xs';
-  if (invite.is_used) return <span className={`${cls} ${toneClasses('ok')}`}>Used</span>;
-  if (invite.is_revoked) return <span className={`${cls} ${toneClasses('danger')}`}>Revoked</span>;
-  if (invite.is_expired) return <span className={`${cls} ${toneClasses('neutral')}`}>Expired</span>;
-  return <span className={`${cls} bg-primary/15 text-primary`}>Pending</span>;
+  // All four statuses go through the design-system token helpers —
+  // 'pending' uses ``statusClasses('pending')`` which the STATUS_TONE
+  // map at lib/status.ts already maps to 'info', so the pill stays
+  // info-blue across the dashboard's theme picker rather than
+  // re-colouring with the primary brand colour.
+  const cls = 'px-2 py-0.5 rounded-full text-xs border';
+  const status = inviteStatus(invite);
+  const tone =
+    status === 'used' ? toneClasses('ok')
+    : status === 'revoked' ? toneClasses('danger')
+    : status === 'expired' ? toneClasses('neutral')
+    : statusClasses('pending');
+  const label =
+    status === 'used' ? 'Used'
+    : status === 'revoked' ? 'Revoked'
+    : status === 'expired' ? 'Expired'
+    : 'Pending';
+  return <span className={`${cls} ${tone}`}>{label}</span>;
 }
 
 /**
@@ -81,6 +116,22 @@ export function InvitesPanel() {
   // label flips to "Revoking…", and only THEN we close + reload.
   const [confirming, setConfirming] = useState<InviteInfo | null>(null);
   const [revoking, setRevoking] = useState<number | null>(null);
+
+  // Extend flow.  Same shape as revoke: per-button in-flight state
+  // by id (drives the per-row Clock button's "Extending…" label and
+  // disables the button while the round-trip is pending).  No
+  // confirmation dialog — extend is non-destructive and the operator
+  // can always extend again or revoke.  Single-click → default 24h.
+  const [extending, setExtending] = useState<number | null>(null);
+
+  // Filters (client-side, applied on top of the fetched data).  Search
+  // matches department / truck / code (the three free-text columns
+  // operators search for).  Role + status chips are exclusive
+  // single-select; null = no filter.
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string | null>(null);
+  type StatusKey = 'pending' | 'used' | 'revoked' | 'expired';
+  const [statusFilter, setStatusFilter] = useState<StatusKey | null>(null);
 
   // Stable focus anchor for the revoke flow.  base-ui restores focus to
   // the dialog's trigger when it closes, but the optimistic update in
@@ -292,6 +343,136 @@ export function InvitesPanel() {
     }
   }
 
+  /**
+   * Extend an expired-or-soon-to-expire invite by 24 hours.
+   *
+   * No confirmation dialog — extend is non-destructive (the operator
+   * can always extend again or revoke if they change their mind).
+   * Single-click → POST → toast.  Default 24h is the most common
+   * "the user clicked too late" recovery; a power-user case for
+   * longer extensions would be its own future PR.
+   *
+   * Optimistic update bumps ``expires_at`` locally so the row's
+   * "Expired" pill flips to "Pending" instantly; silent reconcile
+   * picks up the authoritative timestamp.  On error we reconcile
+   * via load() rather than maintain a snapshot — same rationale as
+   * confirmRevoke.
+   */
+  async function extendInvite(invite: InviteInfo) {
+    setExtending(invite.id);
+    // Optimistic: bump expires_at by EXTEND_HOURS from now so the
+    // StatusBadge immediately flips Expired → Pending.  Server is
+    // the source of truth — silent reconcile after.
+    // Capture priorExpiry BEFORE the mutation so we can roll back
+    // on non-404 errors.  Without the rollback an error path that
+    // ALSO fails to reconcile (load() blip) would leave the
+    // operator looking at an "Pending" row that is actually
+    // server-side still expired — failing open in the worst
+    // direction (operator hands a dead link to a recruit).
+    const priorExpiry = invite.expires_at;
+    const optimisticExpiry = new Date(Date.now() + EXTEND_HOURS_MS).toISOString();
+    setInvites(prev =>
+      prev.map(i =>
+        i.id === invite.id ? { ...i, expires_at: optimisticExpiry } : i,
+      ),
+    );
+    try {
+      await apiJSON(`/admin/invites/${invite.id}/extend`, {
+        method: 'POST',
+        body: { hours: EXTEND_HOURS },
+      });
+      toast.success(t('toasts.invite_extended', {
+        defaultValue: `Invite extended by ${EXTEND_HOURS} hours`,
+        hours: EXTEND_HOURS,
+      }));
+      try { await load({ silent: true }); } catch { /* surfaced via setError */ }
+    } catch (e) {
+      // 404 is the uniform "not found / used / revoked / race-lost"
+      // shape from the endpoint — keep the OLD expiry visible
+      // (which says Expired/Used/whatever the row really is) and
+      // surface as info, not error.
+      const isGone = e instanceof ApiError && e.status === 404;
+      if (isGone) {
+        // Roll back so the row shows its true server-side state.
+        setInvites(prev =>
+          prev.map(i =>
+            i.id === invite.id ? { ...i, expires_at: priorExpiry } : i,
+          ),
+        );
+        toast.info(t('toasts.invite_extend_not_available', {
+          defaultValue: 'Invite is no longer available to extend',
+        }));
+      } else {
+        // Generic failure (network 500/429) — roll back the
+        // optimistic bump so the UI is correct even if the silent
+        // reconcile below ALSO fails.  Failing closed on extend is
+        // the right direction: better to underclaim runway than
+        // hand out a link that's already dead server-side.
+        setInvites(prev =>
+          prev.map(i =>
+            i.id === invite.id ? { ...i, expires_at: priorExpiry } : i,
+          ),
+        );
+        toast.error(e instanceof Error ? e.message : String(e));
+      }
+      try { await load({ silent: true }); } catch { /* surfaced via setError */ }
+    } finally {
+      setExtending(null);
+    }
+  }
+
+  // Apply client-side filters on top of the fetched data.  Server
+  // already handles the coarse cut (pending_only / include_revoked
+  // via the Show-all toggle); this narrows further for operator
+  // search.  Memoised so DataTable doesn't re-render unnecessarily.
+  // Search haystack includes role (both raw key and label) so the
+  // operator's natural "find me the admin invite" mental model
+  // works — role chips remain available for click-once filtering.
+  const filteredInvites = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return invites.filter(i => {
+      if (roleFilter && i.role !== roleFilter) return false;
+      if (statusFilter && inviteStatus(i) !== statusFilter) return false;
+      if (term) {
+        const haystack = [
+          i.code,
+          i.department,
+          i.truck_num,
+          i.role,
+          ROLE_LABEL[i.role.toLowerCase()],
+        ].filter(Boolean).join(' ').toLowerCase();
+        if (!haystack.includes(term)) return false;
+      }
+      return true;
+    });
+  }, [invites, search, roleFilter, statusFilter]);
+
+  // Per-filter counts for the chip labels.  Derived from the FULL
+  // fetched set (not the filtered subset) so the chip totals stay
+  // stable while the operator narrows — clicking a chip should
+  // never make its OWN count change.  The "no rows match" feedback
+  // belongs to the empty-state copy, not to chip counts dropping
+  // to zero mid-interaction.
+  const roleCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const i of invites) counts[i.role] = (counts[i.role] || 0) + 1;
+    return counts;
+  }, [invites]);
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<StatusKey, number> = {
+      pending: 0, used: 0, revoked: 0, expired: 0,
+    };
+    for (const i of invites) counts[inviteStatus(i)]++;
+    return counts;
+  }, [invites]);
+
+  // Any filter active?  Drives whether the filter strip stays
+  // visible when the fetch returns empty — without this, the strip
+  // unmounts and the operator's search/chip selections become
+  // invisible-but-still-applied ghost state.
+  const anyFilterActive = search !== '' || roleFilter !== null || statusFilter !== null;
+
   const columns: AnyColumn[] = [
     {
       key: 'role',
@@ -334,45 +515,69 @@ export function InvitesPanel() {
         const inv = row as unknown as InviteInfo;
         const canCopy = !inv.is_used && !inv.is_revoked && !inv.is_expired;
         const canRevoke = !inv.is_used && !inv.is_revoked;
-        if (!canCopy && !canRevoke) {
+        // Extend is offered on EXPIRED-but-unused rows only.  The
+        // dominant Pending case (link still works, link gets copied
+        // again, link gets used) shouldn't see a third button —
+        // visual noise and mobile-overflow risk.  Operators who want
+        // to extend a still-live invite can revoke + create instead;
+        // the rarer path doesn't earn a permanent row affordance.
+        // Gate also ensures the per-row strip stays at max 2 buttons
+        // (Pending: Copy+Revoke; Expired: Extend+Revoke; Used/Revoked: —).
+        const canExtend = !inv.is_used && !inv.is_revoked && inv.is_expired;
+        if (!canCopy && !canRevoke && !canExtend) {
           return <span className="text-xs text-muted-foreground">—</span>;
         }
         const code = String(inv.code);
-        // Per-row Revoke disables when ANY revoke is in-flight (not
-        // just the one for this row).  Closes off the path where the
-        // operator clicks Trash on row B while A is in-flight,
-        // opening a second confirmation dialog whose Revoke button is
-        // disabled-but-displayed-as-"Revoking…" for what looks like B
-        // but is actually A.  The dialog-button gate (revoking !==
-        // null) was the last line of defence; this is the first.
-        const anyRevokeInFlight = revoking !== null;
+        // Per-row destructive buttons disable when ANY revoke OR
+        // extend is in-flight (not just the one for this row).
+        // Closes off the path where the operator clicks Trash on
+        // row B while A is in-flight, opening a second confirmation
+        // dialog whose Revoke button is disabled-but-displayed-as-
+        // "Revoking…" for what looks like B but is actually A.
+        const anyMutationInFlight = revoking !== null || extending !== null;
         const isThisRowRevoking = revoking === inv.id;
+        const isThisRowExtending = extending === inv.id;
         const isJustCopied = copied === code;
         return (
-          <div className="inline-flex items-center gap-2">
+          <div className="inline-flex items-center gap-2 flex-wrap">
             {canCopy && (
-              <>
-                <button
-                  onClick={() => copyLink(code)}
-                  className={`inline-flex items-center gap-1 text-xs hover:opacity-80 transition-colors ${
-                    isJustCopied ? toneText('ok') : 'text-primary'
-                  }`}
-                  title="Copy invite link"
-                >
-                  {isJustCopied ? <Check size={12} /> : <Copy size={12} />}
-                  <span>
-                    {isJustCopied
-                      ? t('actions.copied', { defaultValue: 'Copied' })
-                      : t('actions.copy', { defaultValue: 'Copy' })}
-                  </span>
-                </button>
-                {canRevoke && <span className="text-muted-foreground/40">·</span>}
-              </>
+              <button
+                onClick={() => copyLink(code)}
+                className={`inline-flex items-center gap-1 text-xs hover:opacity-80 transition-colors ${
+                  isJustCopied ? toneText('ok') : 'text-primary'
+                }`}
+                title="Copy invite link"
+              >
+                {isJustCopied ? <Check size={12} /> : <Copy size={12} />}
+                <span>
+                  {isJustCopied
+                    ? t('actions.copied', { defaultValue: 'Copied' })
+                    : t('actions.copy', { defaultValue: 'Copy' })}
+                </span>
+              </button>
+            )}
+            {canExtend && (
+              <button
+                onClick={() => extendInvite(inv)}
+                disabled={anyMutationInFlight}
+                aria-busy={isThisRowExtending}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary disabled:opacity-50 disabled:cursor-wait transition-colors"
+                title={t('actions.extend_invite_24h', { defaultValue: 'Extend this invite by 24 hours (same code)' })}
+              >
+                {isThisRowExtending
+                  ? <Loader2 size={12} className="animate-spin" />
+                  : <TimerReset size={12} />}
+                <span>
+                  {isThisRowExtending
+                    ? t('actions.extending', { defaultValue: 'Extending…' })
+                    : t('actions.extend', { defaultValue: 'Extend' })}
+                </span>
+              </button>
             )}
             {canRevoke && (
               <button
                 onClick={() => setConfirming(inv)}
-                disabled={anyRevokeInFlight}
+                disabled={anyMutationInFlight}
                 aria-busy={isThisRowRevoking}
                 className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive disabled:opacity-50 disabled:cursor-wait transition-colors"
                 title={t('actions.revoke', { defaultValue: 'Revoke invite' })}
@@ -420,6 +625,94 @@ export function InvitesPanel() {
         <div className="mb-3"><ErrorState message={error} /></div>
       )}
 
+      {/* Filter strip — visible when there's data to filter OR when
+          any filter is currently active (defends against the "fetch
+          returned empty, strip vanished, filter state became
+          invisible-but-still-applied ghost state" trap that the
+          earlier code had).  Search + role chips + status chips
+          together cover ~95% of "find one row in 50" cases. */}
+      {!loading && (invites.length > 0 || anyFilterActive) && (
+        <div className="mb-3 flex flex-col gap-2">
+          <div className="relative max-w-sm">
+            <Search
+              size={14}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+            />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t('forms.search_invites', { defaultValue: 'Search code, department, truck, or role…' })}
+              className="w-full bg-muted rounded pl-8 pr-3 py-1.5 text-xs text-foreground border border-border focus:outline-none focus:border-ring"
+            />
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Role chips — same pattern as TeamManagement Members tab.
+                Hides any role with zero matching invites so the chip
+                strip doesn't carry dead weight on small accounts. */}
+            <div className="flex gap-1.5 flex-wrap">
+              <button
+                onClick={() => setRoleFilter(null)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
+                  !roleFilter ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground/80'
+                }`}
+              >
+                {t('common.all', { defaultValue: 'All roles' })}
+              </button>
+              {Object.entries(ROLE_LABEL).map(([key, label]) => {
+                const count = roleCounts[key] || 0;
+                if (!count) return null;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setRoleFilter(roleFilter === key ? null : key)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition border ${
+                      roleFilter === key ? 'bg-primary/15 text-primary border-primary/30' : 'border-transparent text-muted-foreground hover:text-foreground/80'
+                    }`}
+                  >
+                    {label} <span className="opacity-60">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {/* Status chips — separate row group, separated from role
+                chips by a small gap so the operator reads them as two
+                axes (role × status) rather than one mixed bag. */}
+            <div className="flex gap-1.5 flex-wrap">
+              {(['pending', 'used', 'revoked', 'expired'] as const).map((key) => {
+                const count = statusCounts[key] || 0;
+                if (!count) return null;
+                const label =
+                  key === 'pending' ? t('invites.status.pending', { defaultValue: 'Pending' })
+                  : key === 'used' ? t('invites.status.used', { defaultValue: 'Used' })
+                  : key === 'revoked' ? t('invites.status.revoked', { defaultValue: 'Revoked' })
+                  : t('invites.status.expired', { defaultValue: 'Expired' });
+                // All four chips go through the design-system token
+                // helpers — 'pending' maps to 'info' via the
+                // STATUS_TONE map in lib/status.ts, keeping the chip
+                // and the StatusBadge pill identical and theme-safe.
+                const toneCls =
+                  key === 'pending' ? statusClasses('pending')
+                  : key === 'used' ? toneClasses('ok')
+                  : key === 'revoked' ? toneClasses('danger')
+                  : toneClasses('neutral');
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setStatusFilter(statusFilter === key ? null : key)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition border ${
+                      statusFilter === key ? toneCls : 'border-transparent text-muted-foreground hover:text-foreground/80'
+                    }`}
+                  >
+                    {label} <span className="opacity-60">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <TableSkeleton rows={6} cols={6} />
       ) : invites.length === 0 ? (
@@ -437,8 +730,37 @@ export function InvitesPanel() {
             </button>
           }
         />
+      ) : filteredInvites.length === 0 ? (
+        // Empty-state copy diverges from the "no invites at all" case
+        // — the operator HAS invites, the filter just didn't match.
+        // Surface the filter as the thing to undo, not the create
+        // CTA (which would be misleading).
+        <EmptyState
+          icon={Search}
+          title={t('invites.empty_filtered_title', { defaultValue: 'No invites match your filters' })}
+          description={t('invites.empty_filtered_desc', { defaultValue: 'Adjust the role / status chips or clear the search box above.' })}
+          action={
+            <button
+              onClick={() => {
+                setSearch('');
+                setRoleFilter(null);
+                setStatusFilter(null);
+                // Show-all toggle is a SERVER-SIDE filter
+                // (pending_only / include_revoked), not client-
+                // side narrowing — it's intentionally NOT reset
+                // here because the operator turned it on for a
+                // reason (audit-trail view).  The toggle sits
+                // right above the filter strip so re-toggling
+                // is one click away if they wanted a full reset.
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-xs font-medium transition"
+            >
+              {t('common.clear_filters', { defaultValue: 'Clear filters' })}
+            </button>
+          }
+        />
       ) : (
-        <DataTable columns={columns} data={invites as unknown as Record<string, unknown>[]} />
+        <DataTable columns={columns} data={filteredInvites as unknown as Record<string, unknown>[]} />
       )}
 
       {/* Create modal — uses ui/dialog primitive (base-ui).
