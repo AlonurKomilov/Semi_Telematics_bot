@@ -408,6 +408,13 @@ class SettingsMixin:
 
         Returns dict with total_requests, total_tokens, by_type breakdown,
         and by_model breakdown.
+
+        Excludes ``*_turn`` action labels — those are per-turn
+        observability summaries (e.g. ``question_turn`` from 324998e)
+        whose tokens are already double-counted in the per-attempt
+        rows (``question``) the model scorer reads.  Surfacing them
+        to the billing UI would inflate the "Total Tokens" headline
+        by whatever the cumulative-turn rows summed.
         """
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         cur = await self._db.execute(
@@ -419,6 +426,7 @@ class SettingsMixin:
                       SUM(total_tokens) as sum_total
                FROM ai_usage
                WHERE account_id = ? AND created_at >= ?
+                 AND request_type NOT LIKE '%_turn'
                GROUP BY request_type, model""",
             (account_id, cutoff),
         )
@@ -458,7 +466,12 @@ class SettingsMixin:
         }
 
     async def get_ai_usage_daily(self, account_id: int, days: int = 7) -> list[dict]:
-        """Get daily AI usage breakdown for the past N days."""
+        """Get daily AI usage breakdown for the past N days.
+
+        Excludes ``*_turn`` rows for the same reason as
+        ``get_ai_usage_stats`` — they double-count tokens already in
+        per-attempt rows.
+        """
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         cur = await self._db.execute(
             """SELECT DATE(created_at) as day,
@@ -466,6 +479,7 @@ class SettingsMixin:
                       SUM(total_tokens) as tokens
                FROM ai_usage
                WHERE account_id = ? AND created_at >= ?
+                 AND request_type NOT LIKE '%_turn'
                GROUP BY DATE(created_at)
                ORDER BY day""",
             (account_id, cutoff),
@@ -478,6 +492,9 @@ class SettingsMixin:
 
         Returns dict with totals, per-account breakdown, per-model breakdown,
         per-type breakdown, and daily aggregates.
+
+        Excludes ``*_turn`` rows so the operator console sees the same
+        non-duplicated totals customers see on their Billing page.
         """
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
@@ -493,6 +510,7 @@ class SettingsMixin:
                FROM ai_usage u
                LEFT JOIN accounts a ON a.id = u.account_id
                WHERE u.created_at >= ?
+                 AND u.request_type NOT LIKE '%_turn'
                GROUP BY u.account_id, u.request_type, u.model
                ORDER BY sum_total DESC""",
             (cutoff,),
@@ -554,7 +572,9 @@ class SettingsMixin:
             by_type[rt]["requests"] += cnt
             by_type[rt]["tokens"] += tok
 
-        # Daily totals (last 30 days max for display)
+        # Daily totals (last 30 days max for display).  Same
+        # NOT LIKE '%_turn' filter as the aggregate query above so the
+        # daily chart's bars match the headline totals exactly.
         daily_cutoff = (datetime.now(timezone.utc) - timedelta(
             days=min(days, 30))).isoformat()
         cur = await self._db.execute(
@@ -565,6 +585,7 @@ class SettingsMixin:
                       SUM(reply_tokens) as reply
                FROM ai_usage
                WHERE created_at >= ?
+                 AND request_type NOT LIKE '%_turn'
                GROUP BY DATE(created_at)
                ORDER BY day""",
             (daily_cutoff,),

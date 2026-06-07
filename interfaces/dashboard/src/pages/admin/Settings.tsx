@@ -13,6 +13,7 @@ import {
 } from '../../components/shell';
 import { TIMEZONE_OPTIONS, timezoneLabelWithTime } from '../../utils/timezones';
 import { useNow } from '../../hooks/useNow';
+import { rollupByDisplayLabel } from '../../lib/aiUsage';
 import ForumRoutingSection from './ForumRoutingSection';
 import { toneClasses } from '../../lib/status';
 
@@ -400,15 +401,16 @@ export default function Settings() {
               </div>
             ))}
           </dl>
-          {/* By Type breakdown */}
+          {/* By Type breakdown — uses shared label rollup so this page
+              and the Billing page show identical strings. */}
           {(data.ai_usage as any).by_type && Object.keys((data.ai_usage as any).by_type).length > 0 && (
             <div className="mb-4">
               <h3 className="text-sm font-medium text-muted-foreground mb-2">By Type</h3>
               <div className="grid grid-cols-3 gap-3 text-sm">
-                {Object.entries((data.ai_usage as any).by_type as Record<string, {requests: number; tokens: number}>).map(([typ, stats]) => (
-                  <div key={typ} className="bg-muted rounded-lg p-3">
-                    <div className="text-foreground/80 capitalize font-medium">{typ}</div>
-                    <div className="text-muted-foreground text-xs mt-1">{(stats as any).requests?.toLocaleString() ?? 0} requests &middot; {(stats as any).tokens?.toLocaleString() ?? 0} tokens</div>
+                {rollupByDisplayLabel((data.ai_usage as any).by_type as Record<string, {requests: number; tokens: number}>).map(([label, stats]) => (
+                  <div key={label} className="bg-muted rounded-lg p-3">
+                    <div className="text-foreground/80 font-medium">{label}</div>
+                    <div className="text-muted-foreground text-xs mt-1">{stats.requests.toLocaleString()} requests &middot; {stats.tokens.toLocaleString()} tokens</div>
                   </div>
                 ))}
               </div>

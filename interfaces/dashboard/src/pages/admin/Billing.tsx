@@ -4,6 +4,7 @@ import { CreditCard, ExternalLink, FileText, AlertTriangle, Gift } from 'lucide-
 import { apiJSON } from '../../api/client';
 import { PageHeader, CardSkeleton } from '../../components/shell';
 import { toneClasses } from '../../lib/status';
+import { rollupByDisplayLabel } from '../../lib/aiUsage';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -310,8 +311,13 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
 }
 
 // ── AI Usage card ─────────────────────────────────────────────────
+//
+// Friendly action-label mapping + rollup live in src/lib/aiUsage.ts
+// so both this Billing panel and the admin Settings panel render the
+// same display names without diverging.
 
 function AiUsageCard({ ai }: { ai: AiUsage }) {
+  const typeRows = rollupByDisplayLabel(ai.by_type);
   return (
     <div className="bg-card border border-border rounded-xl p-6 mb-4">
       <div className="flex items-center justify-between mb-4">
@@ -324,20 +330,18 @@ function AiUsageCard({ ai }: { ai: AiUsage }) {
               sub="included in plan" />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {Object.keys(ai.by_type).length > 0 && (
+        {typeRows.length > 0 && (
           <div>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">By Type</p>
             <div className="space-y-1.5">
-              {Object.entries(ai.by_type)
-                .sort((a, b) => b[1].requests - a[1].requests)
-                .map(([type, s]) => (
-                  <div key={type} className="flex justify-between text-sm">
-                    <span className="text-foreground/80 capitalize">{type.replace('_', ' ')}</span>
-                    <span className="text-muted-foreground tabular-nums text-xs">
-                      {fmtNum(s.requests)} req · {fmtNum(s.tokens)} tok
-                    </span>
-                  </div>
-                ))}
+              {typeRows.map(([label, s]) => (
+                <div key={label} className="flex justify-between text-sm">
+                  <span className="text-foreground/80">{label}</span>
+                  <span className="text-muted-foreground tabular-nums text-xs">
+                    {fmtNum(s.requests)} req · {fmtNum(s.tokens)} tok
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         )}
