@@ -519,28 +519,40 @@
     "invite_extended": "Invite extended by 24 hours",
     "invite_extend_not_available": "Invite is no longer available to extend",
     "invite_emailed_copied": "Invite emailed — link also copied to clipboard",
-    "invite_email_failed": "Invite created but email failed — link copied as fallback",
+    "invite_emailed_url_copied": "Invite emailed — signup URL also copied to clipboard",
+    "invite_email_failed": "Invite created but email failed — signup URL copied as fallback",
     "invite_email_invalid": "Enter a valid recipient email",
     "invite_email_one_recipient": "One recipient per invite — create separate invites for each person",
     "invite_email_resent": "Invite resent",
-    "invite_email_not_available": "Invite is no longer available"
+    "invite_email_not_available": "Invite is no longer available",
+    "invite_created_telegram_copied": "Invite created — Telegram link copied to clipboard",
+    "invite_created_url_copied": "Invite created — signup URL copied to clipboard"
   },
   "actions": {
     "revoke": "Revoke",
     "revoking": "Revoking…",
     "creating": "Creating…",
     "create_and_copy": "Create & Copy Link",
+    "create_and_copy_telegram": "Create & Copy Telegram",
+    "create_and_copy_url": "Create & Copy URL",
     "create_and_email": "Create & Send Email",
     "copy": "Copy",
+    "copy_invite_link": "Copy invite link",
+    "copy_telegram": "Copy Telegram link",
+    "copy_url": "Copy URL",
     "copied": "Copied",
     "extend": "Extend",
     "extending": "Extending…",
     "extend_invite_24h": "Extend this invite by 24 hours (same code)",
     "link": "Link",
+    "telegram": "Telegram",
+    "url": "URL link",
     "email": "Email",
     "resend": "Resend",
     "resending": "Resending…",
-    "resend_email": "Resend the invite email to the same recipient"
+    "resend_email": "Resend the invite email to the same recipient",
+    "revoke_and_recreate": "Revoke & recreate",
+    "revoke_and_recreate_hint": "Resending to a bounced address bounces again — revoke this invite and create a new one with the corrected address."
   },
   "invites": {
     "status": {
@@ -550,7 +562,10 @@
       "expired": "Expired"
     },
     "empty_filtered_title": "No invites match your filters",
-    "empty_filtered_desc": "Adjust the role / status chips or clear the search box above."
+    "empty_filtered_desc": "Adjust the role / status chips or clear the search box above.",
+    "badge_bounced": "Bounced",
+    "badge_complained": "Reported as spam",
+    "badge_soft_delivery": "Delivery issues"
   },
   "chat": {
     "title": "AI Assistant",

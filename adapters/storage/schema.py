@@ -41,13 +41,19 @@ async def create_tables(conn) -> None:
 
     await conn.executescript("""
         CREATE TABLE IF NOT EXISTS accounts (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            name        TEXT    NOT NULL,
-            slug        TEXT    NOT NULL UNIQUE,
-            tier        TEXT    NOT NULL DEFAULT 'free',
-            is_active   INTEGER NOT NULL DEFAULT 1,
-            timezone    TEXT    NOT NULL DEFAULT 'America/New_York',
-            created_at  TEXT    NOT NULL
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            name                 TEXT    NOT NULL,
+            slug                 TEXT    NOT NULL UNIQUE,
+            tier                 TEXT    NOT NULL DEFAULT 'free',
+            is_active            INTEGER NOT NULL DEFAULT 1,
+            timezone             TEXT    NOT NULL DEFAULT 'America/New_York',
+            suspended_at         TEXT,
+            suspended_reason     TEXT,
+            suspended_by         BIGINT,
+            deleted_at           TEXT,
+            delete_requested_by  BIGINT,
+            purge_at             TEXT,
+            created_at           TEXT    NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS companies (
@@ -100,7 +106,28 @@ async def create_tables(conn) -> None:
             --     when ENCRYPTION_KEY is set.
             sent_to_email     TEXT,
             email_sent_at     TEXT,
-            email_send_count  INTEGER NOT NULL DEFAULT 0
+            email_send_count  INTEGER NOT NULL DEFAULT 0,
+            -- Bounce / complaint state (migration 097).
+            -- ``resend_email_id``: Resend HTTP API per-send identifier
+            --   used as primary lookup key in the bounce-webhook
+            --   handler; refusing recipient-fallback closes cross-
+            --   account hijack.
+            -- ``email_bounced_at`` flips on hard bounce, soft-cap
+            --   reached, OR set+cleared by a subsequent delivered.
+            -- ``email_bounce_reason`` is encrypted-at-rest (relays
+            --   echo recipient address verbatim in failure text).
+            -- ``email_bounce_type`` 'hard' | 'soft' | 'complaint'.
+            -- ``email_soft_bounce_count`` defers the badge until
+            --   >=3 soft bounces — most clear self in hours.
+            -- ``email_complained_at`` distinct from bounce: operator
+            --   UX flags but doesn't auto-revoke (recipient one-
+            --   click is silent + destructive).
+            resend_email_id          TEXT,
+            email_bounced_at         TEXT,
+            email_bounce_reason      TEXT,
+            email_bounce_type        TEXT,
+            email_soft_bounce_count  INTEGER NOT NULL DEFAULT 0,
+            email_complained_at      TEXT
         );
 
         CREATE TABLE IF NOT EXISTS authorized_chats (
@@ -209,6 +236,15 @@ async def create_tables(conn) -> None:
             acknowledged_at TEXT,
             status          TEXT    NOT NULL DEFAULT 'active',
             created_at      TEXT    NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS account_deletion_codes (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id   INTEGER NOT NULL UNIQUE REFERENCES accounts(id),
+            user_id      INTEGER NOT NULL,
+            code_hash    TEXT    NOT NULL,
+            expires_at   TEXT    NOT NULL,
+            created_at   TEXT    NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS audit_log (

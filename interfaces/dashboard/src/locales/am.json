@@ -605,7 +605,10 @@
     "invite_email_invalid": "Enter a valid recipient email",
     "invite_email_one_recipient": "One recipient per invite — create separate invites for each person",
     "invite_email_resent": "Invite resent",
-    "invite_email_not_available": "Invite is no longer available"
+    "invite_email_not_available": "Invite is no longer available",
+    "invite_emailed_url_copied": "Invite emailed — signup URL also copied to clipboard",
+    "invite_created_telegram_copied": "Invite created — Telegram link copied to clipboard",
+    "invite_created_url_copied": "Invite created — signup URL copied to clipboard"
   },
   "actions": {
     "revoke": "Revoke",
@@ -618,7 +621,16 @@
     "email": "Email",
     "resend": "Resend",
     "resending": "Resending…",
-    "resend_email": "Resend the invite email to the same recipient"
+    "resend_email": "Resend the invite email to the same recipient",
+    "create_and_copy_telegram": "Create & Copy Telegram",
+    "create_and_copy_url": "Create & Copy URL",
+    "copy_invite_link": "Copy invite link",
+    "copy_telegram": "Copy Telegram link",
+    "copy_url": "Copy URL",
+    "telegram": "Telegram",
+    "url": "URL link",
+    "revoke_and_recreate": "Revoke & recreate",
+    "revoke_and_recreate_hint": "Resending to a bounced address bounces again — revoke this invite and create a new one with the corrected address."
   },
   "invites": {
     "status": {
@@ -628,6 +640,9 @@
       "expired": "Expired"
     },
     "empty_filtered_title": "No invites match your filters",
-    "empty_filtered_desc": "Adjust the role / status chips or clear the search box above."
+    "empty_filtered_desc": "Adjust the role / status chips or clear the search box above.",
+    "badge_bounced": "Bounced",
+    "badge_complained": "Reported as spam",
+    "badge_soft_delivery": "Delivery issues"
   }
 }

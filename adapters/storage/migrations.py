@@ -3860,3 +3860,92 @@ async def migrate_invites_email_channel(conn) -> None:
         except Exception:
             pass
         raise
+
+
+@_register("097_invites_bounce_channel")
+async def migrate_invites_bounce_channel(conn) -> None:
+    """Bounce/complaint state for the invite-email channel.
+
+    Five additions on ``invites``:
+      resend_email_id     — Resend HTTP API's per-send identifier.
+                            Populated when MAIL_PROVIDER=resend so the
+                            bounce-webhook handler can match an event
+                            to an invite without trusting recipient
+                            address (which can collide cross-account).
+                            NULL for SMTP-channel sends.
+      email_bounced_at    — ISO-8601 stamp of hard bounce / soft-cap
+                            reached / spam complaint (with subtype
+                            captured separately).  NULL = no bounce.
+      email_bounce_reason — encrypted-at-rest free-text from the relay
+                            (e.g. SES 'recipient rejected') because
+                            providers routinely echo the recipient
+                            address verbatim in the failure message.
+                            Reuses infra.crypto same as sent_to_email.
+      email_bounce_type   — 'hard' | 'soft' | 'complaint' — kept
+                            plaintext + indexed-friendly for
+                            'show all hard bounces' style queries.
+      email_soft_bounce_count — incremented on each soft-bounce event.
+                            Bounced state flips permanent at >=3 soft
+                            bounces (operator can act earlier).
+
+    Plus a sibling table ``email_webhook_events`` providing svix-id
+    idempotency so Resend's at-least-once retry schedule (5s, 5min,
+    30min, 2h, 5h, 10h) doesn't re-fire the handler.  Mirrors the
+    Stripe ``mark_stripe_event_processed`` pattern.
+
+    Partial index ``idx_invites_email_lookup`` accelerates the two hot
+    paths: bounce-webhook resend_email_id lookup, and the dashboard's
+    "show me email-channel invites for this account" query.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(invites)")
+        cols = {r[1] for r in await cur.fetchall()}
+        for col_name, col_def in (
+            ("resend_email_id",      "TEXT"),
+            ("email_bounced_at",     "TEXT"),
+            ("email_bounce_reason",  "TEXT"),
+            ("email_bounce_type",    "TEXT"),
+            ("email_soft_bounce_count", "INTEGER NOT NULL DEFAULT 0"),
+            # Complaint is conceptually distinct from bounce — both
+            # can be set on the same invite (recipient bounces, then
+            # later somehow complains).  Operator UX renders different
+            # badges per state.
+            ("email_complained_at",  "TEXT"),
+        ):
+            if col_name not in cols:
+                await conn.execute(
+                    f"ALTER TABLE invites ADD COLUMN {col_name} {col_def}"
+                )
+        # Partial index — only the (typically small) email-channel
+        # subset gets indexed.  Speeds up resend_email_id lookups
+        # AND the orphan-detection scan if we ever need it.
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_invites_resend_email_id "
+            "ON invites(resend_email_id) WHERE resend_email_id IS NOT NULL"
+        )
+        # svix-id idempotency table — INSERT-OR-IGNORE primary key
+        # gives us the dedup gate.  account_id is nullable because
+        # not every event maps to an invite (we still record the
+        # svix-id to drop the duplicate fast on retry).
+        await conn.execute(
+            """CREATE TABLE IF NOT EXISTS email_webhook_events (
+                svix_id     TEXT    PRIMARY KEY,
+                event_type  TEXT    NOT NULL,
+                account_id  INTEGER,
+                invite_id   INTEGER,
+                created_at  TEXT    NOT NULL
+            )"""
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_email_webhook_events_created "
+            "ON email_webhook_events(created_at)"
+        )
+        await conn.commit()
+        logger.info("Migration 097: invites bounce/complaint columns + idempotency table ready")
+    except Exception as e:
+        logger.error("Migration 097 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise

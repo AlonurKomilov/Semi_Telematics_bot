@@ -468,7 +468,10 @@
     "invite_email_invalid": "To'g'ri qabul qiluvchi emailini kiriting",
     "invite_email_one_recipient": "Bir taklifnomaga bir qabul qiluvchi — har bir kishi uchun alohida taklifnoma yarating",
     "invite_email_resent": "Taklifnoma qayta yuborildi",
-    "invite_email_not_available": "Taklifnoma endi mavjud emas"
+    "invite_email_not_available": "Taklifnoma endi mavjud emas",
+    "invite_emailed_url_copied": "Taklifnoma yuborildi — ro'yxatdan o'tish URL'i ham buferga nusxalandi",
+    "invite_created_telegram_copied": "Taklifnoma yaratildi — Telegram havolasi buferga nusxalandi",
+    "invite_created_url_copied": "Taklifnoma yaratildi — ro'yxatdan o'tish URL'i buferga nusxalandi"
   },
   "actions": {
     "revoke": "Bekor qilish",
@@ -481,7 +484,16 @@
     "email": "Email",
     "resend": "Qayta yuborish",
     "resending": "Yuborilmoqda…",
-    "resend_email": "Taklifnoma emailini xuddi shu qabul qiluvchiga qayta yuborish"
+    "resend_email": "Taklifnoma emailini xuddi shu qabul qiluvchiga qayta yuborish",
+    "create_and_copy_telegram": "Yaratish va Telegram nusxalash",
+    "create_and_copy_url": "Yaratish va URL nusxalash",
+    "copy_invite_link": "Taklifnoma havolasini nusxalash",
+    "copy_telegram": "Telegram havolasini nusxalash",
+    "copy_url": "URL nusxalash",
+    "telegram": "Telegram",
+    "url": "URL havola",
+    "revoke_and_recreate": "Bekor qilish va qayta yaratish",
+    "revoke_and_recreate_hint": "Rad etilgan manzilga qayta yuborish yana rad etiladi — ushbu taklifnomani bekor qiling va to'g'ri manzil bilan yangisini yarating."
   },
   "invites": {
     "status": {
@@ -491,7 +503,10 @@
       "expired": "Muddati o'tgan"
     },
     "empty_filtered_title": "Filtrlaringizga mos taklifnoma topilmadi",
-    "empty_filtered_desc": "Rol/holat tugmalarini sozlang yoki qidiruv maydonini tozalang."
+    "empty_filtered_desc": "Rol/holat tugmalarini sozlang yoki qidiruv maydonini tozalang.",
+    "badge_bounced": "Rad etilgan",
+    "badge_complained": "Spam deb belgilangan",
+    "badge_soft_delivery": "Yetkazib berish muammolari"
   },
   "forms": {
     "send_via": "Yuborish usuli",

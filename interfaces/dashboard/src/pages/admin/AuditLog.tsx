@@ -23,6 +23,8 @@ const ACTION_LABEL: Record<string, string> = {
   invite_extend: 'Invite extended',
   invite_email_resent: 'Invite email resent',
   invite_declined: 'Invite declined by recipient',
+  invite_email_bounced: 'Invite email bounced',
+  invite_email_complained: 'Invite reported as spam',
 };
 
 const columns: AnyColumn[] = [

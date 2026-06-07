@@ -511,11 +511,156 @@ async def _archive_driver_folders(
 
 # ── Invites ───────────────────────────────────────────────────
 
+# Plain RFC-5321-shaped regex — sufficient for transactional email
+# validation without dragging the ``email-validator`` package into
+# requirements.txt.  Matches the existing convention at
+# interfaces/api/auth.py:_EMAIL_RE (single source of truth would be
+# nice; deferred to a tidy-up pass).
+_INVITE_EMAIL_RE = __import__("re").compile(
+    r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$"
+)
+
+
 class InviteCreate(BaseModel):
     role: str = Field("fleet", pattern=r"^(admin|fleet|safety|dispatcher|driver)$")
     department: str = "general"
     truck_num: Optional[str] = None
     hours: int = Field(24, ge=1, le=720)
+    # Email-channel: when present, the server generates the invite
+    # AND attempts to send it via SMTP in the same request.  When
+    # absent, behaviour is unchanged (link-channel only).  Plain
+    # string with regex validation in the route handler (not pydantic
+    # EmailStr — that would require the email-validator package which
+    # is NOT in requirements.txt and would crash app boot).
+    recipient_email: Optional[str] = None
+
+
+async def _invite_email_rate_check(
+    account_id: int, actor_sub: str,
+    recipient: Optional[str] = None,
+) -> bool:
+    """Outbound-email rate limit, SEPARATE from invite_mutate.
+
+    Four buckets, ordered so the most-likely-to-fire CHEAPEST check
+    runs first.  Recipient-level is the most protective (one bad
+    address can't be hammered) — checked early.
+
+      1. PER-RECIPIENT, per-account (3/24h):
+         invite_email_recipient:{account_id}:{sha256(recipient)[:16]}
+         Stops an operator from re-mailing the same address inside one
+         account.  Hashed (no plaintext PII in Redis) + lowercase-
+         normalized (case-insensitive bucket).
+      2. PER-RECIPIENT, global (8/24h):
+         invite_email_recipient_global:{sha256(recipient)[:16]}
+         Caps cross-account abuse — a leaked admin token at one account
+         can't use 4truck's relay reputation to harass an external
+         mailbox once another account already mailed them today.
+      3. PER-ACTOR per-minute (5/min):
+         invite_email_send:{account_id}:{actor_sub}
+         Burst protection for one compromised admin token.
+      4. PER-ACCOUNT per-day (50/day):
+         invite_email_send_daily:{account_id}
+         Damage cap if buckets 1-3 are bypassed somehow.
+
+    Fail CLOSED on Redis outage — the default ``rate_limit_check``
+    fails open which is correct for read-mostly endpoints but
+    disastrously wrong for outbound mail (a Redis blip would lift
+    the cap entirely and let a compromised admin token blast).
+
+    Fixed-window cliff acknowledged: a recipient hit 3 times at 23:59
+    can take 3 more at 00:00.  Sliding window would need a sorted-
+    set redesign in infra/cache.py — deferred.  The cliff is
+    bounded by the per-actor cap (5/min) so the worst-case scenario
+    is ~7-8 sends crossing midnight to the same recipient, which is
+    still inside the global 8/24h ceiling.
+    """
+    from adapters.cache.redis import rate_limit_check, is_available as _redis_ok
+    if not _redis_ok():
+        return False
+    if recipient:
+        import hashlib as _hashlib
+        rcp_hash = _hashlib.sha256(
+            recipient.strip().lower().encode("utf-8"),
+        ).hexdigest()[:16]
+        # Per-(account, recipient) — protects against intra-account
+        # spam to one address.
+        if not await rate_limit_check(
+            f"invite_email_recipient:{account_id}:{rcp_hash}",
+            window_secs=24 * 60 * 60, max_requests=3,
+        ):
+            return False
+        # Global per-recipient — cross-account abuse cap.
+        if not await rate_limit_check(
+            f"invite_email_recipient_global:{rcp_hash}",
+            window_secs=24 * 60 * 60, max_requests=8,
+        ):
+            return False
+    # Per-actor burst cap.
+    per_actor_ok = await rate_limit_check(
+        f"invite_email_send:{account_id}:{actor_sub}",
+        window_secs=60, max_requests=5,
+    )
+    if not per_actor_ok:
+        return False
+    # Per-account daily cap.
+    per_account_ok = await rate_limit_check(
+        f"invite_email_send_daily:{account_id}",
+        window_secs=24 * 60 * 60, max_requests=50,
+    )
+    return per_account_ok
+
+
+@router.get("/invite/check-recipient")
+async def check_invite_recipient(
+    email: str,
+    user: dict = Depends(require_permission("can_invite")),
+    platform_db=Depends(get_platform_db),
+):
+    """Pre-create duplicate-recipient check.
+
+    The dashboard calls this (debounced) as the operator types in
+    the Email-channel recipient input.  When the email matches an
+    active user in the SAME account, returns the matched user's
+    display name + role so the operator gets an inline warning
+    before submitting ("alice@example.com is already a member —
+    Alice Smith, Driver").
+
+    Scoped strictly to the operator's account — does NOT reveal
+    cross-account existence (tenant isolation: the existence of
+    alice@example.com at a competing fleet is not the operator's
+    business to know).
+
+    Rate-limited modestly (10/min per actor) to prevent the
+    endpoint from becoming an in-account email-existence oracle
+    via brute-force enumeration.  The recipient_email path of
+    invite-create already runs ``_invite_email_rate_check`` at
+    5/min so even a successful enumeration is capped at the same
+    rate.
+    """
+    from adapters.cache.redis import rate_limit_check, is_available as _redis_ok
+    if _redis_ok():
+        ok = await rate_limit_check(
+            f"check_recipient:{user['account_id']}:{user['sub']}",
+            window_secs=60, max_requests=10,
+        )
+        if not ok:
+            raise HTTPException(status_code=429, detail="Too many lookups")
+    norm = (email or "").strip().lower()
+    if not norm or not _INVITE_EMAIL_RE.match(norm):
+        # Don't validate format here — the dashboard input has its
+        # own format check.  Just return "no match" for anything
+        # that wouldn't pass the create-time validator either.
+        return {"exists": False}
+    matched = await platform_db.get_user_by_email_in_account(
+        norm, user["account_id"],
+    )
+    if not matched:
+        return {"exists": False}
+    return {
+        "exists": True,
+        "display_name": matched.display_name or "",
+        "role": matched.role.value if hasattr(matched.role, "value") else str(matched.role),
+    }
 
 
 @router.post("/invite")
@@ -555,13 +700,25 @@ async def create_invite(
         #    we don't ship "sent_to_email NOT NULL + email_sent_at
         #    NULL" rows that lie about being email-channel.
         from capabilities.notifications.email import is_email_configured
-        if not is_email_configured():
+        from capabilities.notifications.resend_transport import is_resend_api_enabled
+        # Either provider satisfies the gate.  Resend-only deploys
+        # (no SMTP relay) used to hit a misleading 503 about SMTP
+        # being unconfigured; the OR honours both providers and the
+        # error message names both paths so the operator can
+        # self-diagnose.
+        if not is_email_configured() and not is_resend_api_enabled():
             raise HTTPException(
                 status_code=503,
-                detail="Email channel not configured on this deployment",
+                detail=(
+                    "Email channel not configured — set MAIL_PROVIDER=resend + "
+                    "RESEND_API_KEY (preferred, bounce-tracked) or SMTP_HOST + SMTP_FROM"
+                ),
             )
-        # 3. Rate limit — fail CLOSED on Redis outage.
-        if not await _invite_email_rate_check(user["account_id"], user["sub"]):
+        # 3. Rate limit — fail CLOSED on Redis outage.  Passes
+        #    recipient so the per-recipient buckets engage.
+        if not await _invite_email_rate_check(
+            user["account_id"], user["sub"], recipient=recipient,
+        ):
             raise HTTPException(
                 status_code=429,
                 detail="Too many invite emails — wait a moment and try again",
@@ -586,12 +743,14 @@ async def create_invite(
     email_status = None
     if recipient:
         try:
-            from capabilities.notifications.auth_emails import send_invite_email
+            from capabilities.notifications.auth_emails import send_invite_email_async
             account = await platform_db.get_account(user["account_id"])
             account_name = (account.name if account else "your team") or "your team"
-            sent = send_invite_email(
+            sent, resend_email_id = await send_invite_email_async(
                 to=recipient,
                 code=invite.code,
+                account_id=user["account_id"],
+                invite_id=invite.id,
                 account_name=account_name,
                 role_label=body.role.capitalize(),
                 inviter_display_name=db_user.display_name or "Your inviter",
@@ -601,12 +760,24 @@ async def create_invite(
         except Exception as e:
             logger.warning("send_invite_email raised: %s", e, exc_info=True)
             sent = False
+            resend_email_id = None
         if sent:
             updated = await platform_db.mark_invite_email_sent(
                 user["account_id"], invite.id,
             )
             if updated is not None:
                 invite = updated
+            # Persist the Resend per-send identifier so the bounce
+            # webhook handler can match events back to this invite
+            # without trusting recipient-address (cross-account
+            # hijack vector — see design vet).  SMTP-routed sends
+            # have resend_email_id=None; bounce webhooks for SMTP
+            # sends never reach us anyway.
+            if resend_email_id:
+                await platform_db.set_invite_resend_email_id(
+                    user["account_id"], invite.id, resend_email_id,
+                )
+                invite.resend_email_id = resend_email_id
             email_status = "sent"
         else:
             email_status = "queued_failed"  # invite exists, email didn't
@@ -685,17 +856,16 @@ async def resend_invite_email_endpoint(
     recipient — no new-recipient flow in v1 because that changes
     who can redeem and needs its own audit shape.
     """
-    # Pre-flight: SMTP + rate limit, same shape as create's email branch.
+    # Pre-flight order: SMTP check is cheap; load invite next so the
+    # recipient address is known BEFORE the rate-check (per-recipient
+    # bucket needs it).  This re-orders from the earlier shape where
+    # rate-check ran first — the design vet flagged this so the
+    # per-recipient bucket can engage on resend too.
     from capabilities.notifications.email import is_email_configured
     if not is_email_configured():
         raise HTTPException(
             status_code=503,
             detail="Email channel not configured on this deployment",
-        )
-    if not await _invite_email_rate_check(user["account_id"], user["sub"]):
-        raise HTTPException(
-            status_code=429,
-            detail="Too many invite emails — wait a moment and try again",
         )
 
     invite = await platform_db.get_invite_by_id(user["account_id"], invite_id)
@@ -722,6 +892,24 @@ async def resend_invite_email_endpoint(
             status_code=409,
             detail="This invite was not issued via email — revoke and recreate with the email channel",
         )
+    if invite.is_bounced:
+        # Resending to a bounced address just bounces again.  The
+        # operator must revoke + recreate with a corrected address —
+        # the dashboard surfaces a "Revoke & recreate" affordance.
+        raise HTTPException(
+            status_code=409,
+            detail="Recipient bounced — revoke and recreate with a corrected address",
+        )
+
+    # Per-recipient rate-check fires AFTER the invite load so the
+    # recipient hash is available.
+    if not await _invite_email_rate_check(
+        user["account_id"], user["sub"], recipient=invite.sent_to_email,
+    ):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many invite emails — wait a moment and try again",
+        )
 
     # Rank check mirrors revoke/extend — HR can't keep an
     # Admin-tier invite alive past the Owner's intent.
@@ -737,10 +925,12 @@ async def resend_invite_email_endpoint(
     account = await platform_db.get_account(user["account_id"])
     account_name = (account.name if account else "your team") or "your team"
     try:
-        from capabilities.notifications.auth_emails import send_invite_email
-        sent = send_invite_email(
+        from capabilities.notifications.auth_emails import send_invite_email_async
+        sent, resend_email_id = await send_invite_email_async(
             to=invite.sent_to_email,
             code=invite.code,
+            account_id=user["account_id"],
+            invite_id=invite.id,
             account_name=account_name,
             role_label=invite.role.capitalize(),
             inviter_display_name=(
@@ -753,6 +943,7 @@ async def resend_invite_email_endpoint(
     except Exception as e:
         logger.warning("send_invite_email raised on resend: %s", e, exc_info=True)
         sent = False
+        resend_email_id = None
 
     if sent:
         updated = await platform_db.mark_invite_email_sent(
@@ -760,6 +951,14 @@ async def resend_invite_email_endpoint(
         )
         if updated is not None:
             invite = updated
+        # Each resend gets a fresh Resend email_id (it's per-send,
+        # not per-invite).  Overwrite — the most recent send is the
+        # one the operator wants tracked for bounce events.
+        if resend_email_id:
+            await platform_db.set_invite_resend_email_id(
+                user["account_id"], invite_id, resend_email_id,
+            )
+            invite.resend_email_id = resend_email_id
         outcome = "sent"
     else:
         outcome = "queued_failed"
@@ -827,12 +1026,18 @@ async def list_invites(
                 "is_revoked": inv.is_revoked,
                 "revoked_at": inv.revoked_at,
                 "created_by": inv.created_by,
-                # Email-channel fields (migration 088).  Optional in
+                # Email-channel fields (migration 090).  Optional in
                 # the InviteInfo TS type for deploy-lag tolerance.
                 "channel": inv.channel,
                 "sent_to_email": inv.sent_to_email,
                 "email_sent_at": inv.email_sent_at,
                 "email_send_count": inv.email_send_count,
+                # Bounce / complaint fields (migration 097).
+                "email_bounced_at": inv.email_bounced_at,
+                "email_bounce_type": inv.email_bounce_type,
+                "email_bounce_reason": inv.email_bounce_reason,
+                "email_soft_bounce_count": inv.email_soft_bounce_count,
+                "email_complained_at": inv.email_complained_at,
             }
             for inv in invites
         ],

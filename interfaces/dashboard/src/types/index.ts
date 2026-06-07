@@ -918,6 +918,21 @@ export interface InviteInfo {
   sent_to_email?: string | null;
   email_sent_at?: string | null;
   email_send_count?: number;
+  /** Bounce / complaint state (migration 097).  Deploy-lag tolerant
+   *  optionals — UIs that key off these treat missing as 'not bounced'.
+   *  ``email_bounce_type`` distinguishes three operator-actionable states:
+   *    'hard'      — undeliverable, dashboard shows Revoke & recreate
+   *    'soft'      — transient, dashboard shows amber 'Delivery issues'
+   *                  (count<3 keeps the soft state; >=3 promotes to
+   *                  permanent bounce)
+   *    'complaint' — recipient hit Report Spam; flagged but NOT
+   *                  auto-revoked (silent destruction is worse than
+   *                  an unactioned flag) */
+  email_bounced_at?: string | null;
+  email_bounce_type?: 'hard' | 'soft' | 'complaint' | null;
+  email_bounce_reason?: string | null;
+  email_soft_bounce_count?: number;
+  email_complained_at?: string | null;
   created_by: number;
 }
 

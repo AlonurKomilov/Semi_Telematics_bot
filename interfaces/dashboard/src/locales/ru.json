@@ -814,7 +814,10 @@
     "invite_email_invalid": "Введите действительный email получателя",
     "invite_email_one_recipient": "Один получатель на приглашение — создайте отдельные приглашения для каждого",
     "invite_email_resent": "Приглашение отправлено повторно",
-    "invite_email_not_available": "Приглашение больше недоступно"
+    "invite_email_not_available": "Приглашение больше недоступно",
+    "invite_emailed_url_copied": "Приглашение отправлено — URL регистрации скопирован в буфер",
+    "invite_created_telegram_copied": "Приглашение создано — ссылка Telegram скопирована в буфер",
+    "invite_created_url_copied": "Приглашение создано — URL регистрации скопирован в буфер"
   },
   "actions": {
     "revoke": "Отозвать",
@@ -827,7 +830,16 @@
     "email": "Email",
     "resend": "Переотправить",
     "resending": "Отправка…",
-    "resend_email": "Переотправить письмо тому же получателю"
+    "resend_email": "Переотправить письмо тому же получателю",
+    "create_and_copy_telegram": "Создать и копировать Telegram",
+    "create_and_copy_url": "Создать и копировать URL",
+    "copy_invite_link": "Скопировать ссылку приглашения",
+    "copy_telegram": "Копировать ссылку Telegram",
+    "copy_url": "Копировать URL",
+    "telegram": "Telegram",
+    "url": "URL",
+    "revoke_and_recreate": "Отозвать и создать заново",
+    "revoke_and_recreate_hint": "Повторная отправка на отклонённый адрес снова не пройдёт — отзовите это приглашение и создайте новое с правильным адресом."
   },
   "invites": {
     "status": {
@@ -837,6 +849,9 @@
       "expired": "Просрочено"
     },
     "empty_filtered_title": "Ни одно приглашение не соответствует фильтрам",
-    "empty_filtered_desc": "Измените чипы роли/статуса или очистите поле поиска."
+    "empty_filtered_desc": "Измените чипы роли/статуса или очистите поле поиска.",
+    "badge_bounced": "Отклонено",
+    "badge_complained": "Помечено как спам",
+    "badge_soft_delivery": "Проблемы доставки"
   }
 }

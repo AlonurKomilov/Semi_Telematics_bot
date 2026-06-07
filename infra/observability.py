@@ -89,6 +89,9 @@ BILLING_WEBHOOK_EVENTS: Any = _STUB
 BILLING_SYNC_QTY: Any = _STUB
 BILLING_NOTIFICATIONS: Any = _STUB
 BILLING_COMP_SWEEP: Any = _STUB
+# Resend invite-email webhook events — sibling to BILLING_WEBHOOK_EVENTS
+# so the Stripe and Resend webhooks share a dashboarding pattern.
+EMAIL_WEBHOOK_EVENTS: Any = _STUB
 
 
 def _build_metrics() -> bool:
@@ -101,6 +104,7 @@ def _build_metrics() -> bool:
     global SINGLE_FLIGHT_COLLAPSE, SCORECARD_STAGE, ARQ_JOB, ARQ_QUEUE_DEPTH
     global BILLING_WEBHOOK_EVENTS, BILLING_SYNC_QTY
     global BILLING_NOTIFICATIONS, BILLING_COMP_SWEEP
+    global EMAIL_WEBHOOK_EVENTS
 
     if not isinstance(SAMSARA_LATENCY, _StubMetric):
         return True  # already built
@@ -171,6 +175,16 @@ def _build_metrics() -> bool:
     BILLING_WEBHOOK_EVENTS = Counter(
         "billing_webhook_events_total",
         "Stripe webhook events received and the outcome of dispatch",
+        labelnames=("event_type", "result"),
+    )
+
+    # Resend invite-email webhook dispatch outcomes.  Same shape as
+    # Stripe — cardinality is ~4 event types (bounced / delivery_delayed
+    # / complained / delivered) × ~6 results (processed / duplicate /
+    # unmatched / invalid_signature / unset_secret / malformed).
+    EMAIL_WEBHOOK_EVENTS = Counter(
+        "email_webhook_events_total",
+        "Resend webhook events received and the outcome of dispatch",
         labelnames=("event_type", "result"),
     )
 
@@ -246,6 +260,20 @@ def record_billing_webhook(event_type: str, result: str) -> None:
     we don't handle yet.
     """
     BILLING_WEBHOOK_EVENTS.labels(
+        event_type=(event_type or "unknown"),
+        result=result,
+    ).inc()
+
+
+def record_email_webhook(event_type: str, result: str) -> None:
+    """One Resend invite-email webhook event dispatched.
+
+    ``result`` ∈ {``processed``, ``duplicate``, ``unmatched``,
+    ``invalid_signature``, ``unset_secret``, ``malformed``}.  Mirrors
+    Stripe's pattern so the ops dashboard has the same shape for both.
+    Missing event_type normalises to ``unknown`` to bound cardinality.
+    """
+    EMAIL_WEBHOOK_EVENTS.labels(
         event_type=(event_type or "unknown"),
         result=result,
     ).inc()

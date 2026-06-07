@@ -221,14 +221,28 @@ def send_invite_email(
     *,
     to: str,
     code: str,
+    account_id: int,
+    invite_id: int,
     account_name: str,
     role_label: str,
     inviter_display_name: str,
     expires_at: str,
     truck_num: Optional[str] = None,
     recipient_name: str = "",
-) -> bool:
+) -> tuple[bool, Optional[str]]:
     """Send the operator-driven invite email.
+
+    Returns ``(success, resend_email_id)``.  ``resend_email_id`` is
+    Resend's per-send identifier when the Resend HTTP API was used
+    (set in the caller via ``set_invite_resend_email_id`` for webhook
+    lookup); ``None`` when we fell back to SMTP — bounce events for
+    SMTP-routed sends won't reach our webhook regardless, so the
+    None means "don't bother persisting an ID."
+
+    ``account_id`` + ``invite_id`` are passed through to the Resend
+    tags so the webhook handler has a redundant lookup path when
+    ``data.email_id`` is unavailable (race between webhook arrival
+    and our row-update).
 
     Uses the dedicated ``invites@`` sender (env ``SMTP_FROM_INVITES``)
     with a fallback to the shared ``SMTP_FROM`` so the feature ships
@@ -395,7 +409,22 @@ def send_invite_email(
         "Auto-Submitted": "auto-generated",
         "X-Entity-Ref-ID": f"invite-{code}",
     }
-    return send_email(
+
+    # Transport dispatch.  Resend HTTP API when MAIL_PROVIDER=resend
+    # AND RESEND_API_KEY is set — gives us bounce/complaint webhook
+    # visibility.  Otherwise the existing SMTP path (zero behaviour
+    # change for deploys that haven't migrated).  Auth emails keep
+    # using SMTP unconditionally (they go through send_email
+    # directly, not this dispatcher).
+    #
+    # Sync entry-point always uses SMTP — the previous asyncio.run
+    # / get_event_loop().is_running() dance was fragile (Python 3.12+
+    # deprecation + silent fallback on RuntimeError = invisible
+    # degradation that defeated the whole bounce-webhook feature).
+    # Callers that need Resend's bounce visibility MUST use
+    # ``send_invite_email_async`` from an async context.  The two
+    # FastAPI route handlers and the ARQ workers already do.
+    ok = send_email(
         to=to,
         subject=subject,
         body=text_body,
@@ -404,3 +433,156 @@ def send_invite_email(
         from_name=f"{brand} Invites" if invites_from else None,
         extra_headers=headers,
     )
+    return (ok, None)
+
+
+async def send_invite_email_async(
+    *,
+    to: str,
+    code: str,
+    account_id: int,
+    invite_id: int,
+    account_name: str,
+    role_label: str,
+    inviter_display_name: str,
+    expires_at: str,
+    truck_num: Optional[str] = None,
+    recipient_name: str = "",
+) -> tuple[bool, Optional[str]]:
+    """Async-native variant that does the Resend HTTP API call
+    cooperatively (no asyncio.run / event-loop juggling).  Use this
+    from FastAPI handlers + ARQ workers (anywhere there's already an
+    event loop running).  Returns the same ``(success, email_id)``
+    tuple shape as the sync variant.
+
+    The sync ``send_invite_email`` exists for callers in non-async
+    contexts (legacy scheduler hooks, CLI scripts) — but it has to
+    fall back to SMTP when an event loop is already running,
+    because spawning a nested loop is unsafe.  Prefer this async
+    variant for any new caller.
+    """
+    brand = _company_name()
+    base = _auth_base()
+
+    def _sanitize_inline(s: str, *, max_len: int = 64) -> str:
+        if not s:
+            return ""
+        cleaned = "".join(
+            ch for ch in s if ch == " " or (ord(ch) >= 0x20 and ch not in "\r\n\t")
+        ).strip()
+        if len(cleaned) > max_len:
+            cleaned = cleaned[: max_len - 1] + "…"
+        return cleaned
+
+    safe_account = _sanitize_inline(account_name) or "your new team"
+    safe_inviter = _sanitize_inline(inviter_display_name) or "your inviter"
+    safe_role = _sanitize_inline(role_label, max_len=32) or "member"
+    safe_recipient = _sanitize_inline(recipient_name, max_len=64)
+    safe_truck = _sanitize_inline(truck_num or "", max_len=24) or None
+    signup_url = f"{base}/signup/{code}"
+    api_base = (os.getenv("API_BASE_URL") or _auth_base()).rstrip("/")
+    decline_url = f"{api_base}/api/v1/auth/invite/decline?token={code}"
+    greeting = f"Hi {safe_recipient}," if safe_recipient else "Hi,"
+    truck_line = f"\nTruck assignment: #{safe_truck}\n" if safe_truck else ""
+    subject = f"You're invited to {safe_account} on {brand}"
+    text_body = (
+        f"{greeting}\n\n"
+        f"{safe_inviter} has invited you to join {safe_account} "
+        f"on {brand} as a {safe_role}.{truck_line}\n"
+        f"Open this link to set up your account:\n"
+        f"  {signup_url}\n\n"
+        f"The link is valid until {expires_at}.\n\n"
+        f"Questions about this invite?  Contact your administrator at "
+        f"{safe_account} directly — we can't forward replies to "
+        f"individual senders.\n\n"
+        f"If you weren't expecting this, ignore it or use the "
+        f"unsubscribe link below to decline.\n\n"
+        f"— The {brand} team"
+    )
+    truck_html = (
+        f"<p style=\"font-size:14px;color:#374151\">"
+        f"Truck assignment: <strong>#{html.escape(safe_truck)}</strong></p>"
+        if safe_truck else ""
+    )
+    safe_signup = html.escape(signup_url, quote=True)
+    safe_decline = html.escape(decline_url, quote=True)
+    cta_button = f"""\
+<!--[if mso]>
+<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{safe_signup}" style="height:44px;v-text-anchor:middle;width:220px;" arcsize="14%" stroke="f" fillcolor="#0066ff">
+  <w:anchorlock/>
+  <center style="color:#ffffff;font-family:sans-serif;font-size:15px;font-weight:600;">Set up my account</center>
+</v:roundrect>
+<![endif]-->
+<!--[if !mso]><!-- -->
+<a href="{safe_signup}" style="display:inline-block;background:#0066ff;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600">Set up my account</a>
+<!--<![endif]-->"""
+    preheader = (
+        f"{html.escape(safe_inviter)} invited you to {html.escape(safe_account)} "
+        f"on {html.escape(brand)} — set up your account in one click."
+    )
+    html_body = f"""\
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="color-scheme" content="light"><title>{html.escape(brand)} invite</title></head><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:24px auto;color:#1f2937">
+<span style="display:none;max-height:0;overflow:hidden;color:transparent">{preheader}</span>
+<p style="font-size:15px">{html.escape(greeting)}</p>
+<p style="font-size:15px"><strong>{html.escape(safe_inviter)}</strong> has invited you to join
+<strong>{html.escape(safe_account)}</strong> on {html.escape(brand)} as a <strong>{html.escape(safe_role)}</strong>.</p>
+{truck_html}
+<p style="font-size:15px;margin-top:24px">{cta_button}</p>
+<p style="font-size:13px;color:#6b7280">Or paste this link into your browser: <a href="{safe_signup}" style="color:#0066ff">{safe_signup}</a></p>
+<p style="font-size:13px;color:#6b7280">The link is valid until {html.escape(expires_at)}.</p>
+<p style="font-size:14px;color:#374151;margin-top:24px">Questions about this invite?  Contact your administrator at {html.escape(safe_account)} directly — we can't forward replies to individual senders.</p>
+<p style="font-size:12px;color:#6b7280;margin-top:32px">— The {html.escape(brand)} team</p>
+<p style="font-size:11px;color:#6b7280">Wasn't expecting this?  <a href="{safe_decline}" style="color:#6b7280">Click here to decline this invite.</a></p>
+</body></html>"""
+
+    invites_from = os.getenv("SMTP_FROM_INVITES")
+    headers = {
+        "List-Unsubscribe": f"<{decline_url}>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        "Auto-Submitted": "auto-generated",
+        "X-Entity-Ref-ID": f"invite-{code}",
+    }
+
+    from capabilities.notifications.resend_transport import (
+        is_resend_api_enabled, send_invite_via_resend,
+    )
+    if is_resend_api_enabled() and invites_from:
+        tags = {
+            "invite_code": code,
+            "account_id": str(account_id),
+            "invite_id": str(invite_id),
+        }
+        email_id = await send_invite_via_resend(
+            to=to,
+            subject=subject,
+            text_body=text_body,
+            html_body=html_body,
+            from_address=invites_from,
+            from_name=f"{brand} Invites",
+            reply_to=os.getenv("SMTP_REPLY_TO"),
+            headers=headers,
+            tags=tags,
+        )
+        if email_id:
+            return (True, email_id)
+        logger.info("Resend API failed for invite %s; falling back to SMTP", code)
+
+    # SMTP fallback in a thread — send_email is blocking stdlib
+    # smtplib and would otherwise stall the event loop for up to
+    # 30s on a slow relay.  ``asyncio.to_thread`` (3.9+) is the
+    # supported idiom; ``get_event_loop().run_in_executor`` is
+    # being phased out and emits DeprecationWarning in 3.12+.
+    import asyncio as _asyncio
+    ok = await _asyncio.to_thread(
+        lambda: send_email(
+            to=to,
+            subject=subject,
+            body=text_body,
+            html_body=html_body,
+            from_address=invites_from,
+            from_name=f"{brand} Invites" if invites_from else None,
+            extra_headers=headers,
+        ),
+    )
+    return (ok, None)

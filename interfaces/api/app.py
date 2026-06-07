@@ -36,6 +36,8 @@ from interfaces.api.routes import billing as billing_routes
 from interfaces.api.routes import payroll as payroll_routes
 from interfaces.api.routes import coaching as coaching_routes
 from interfaces.api.routes import drivers as drivers_routes
+from interfaces.api.routes import integrations as integrations_routes
+from interfaces.api.routes import webhooks as webhooks_routes
 from interfaces.api.auth import router as auth_router
 from interfaces.api.rate_limit import limiter
 
@@ -147,6 +149,11 @@ _ENFORCEMENT_BYPASS_SUFFIXES = (
     "/billing/summary", "/billing/usage", "/billing/invoices",
     "/billing/portal", "/billing/webhook",
     "/auth/login", "/auth/refresh", "/auth/logout",
+    # Inbound provider webhooks — signature-verified, no JWT.  The
+    # Resend bounce/complaint events must reach the handler even
+    # for accounts in billing enforcement (a past-due account's
+    # bounce state still matters).
+    "/webhooks/resend",
     "/health", "/version",
 )
 
@@ -381,6 +388,8 @@ def create_api() -> FastAPI:
         app.include_router(payroll_routes.router, prefix=prefix)
         app.include_router(coaching_routes.router, prefix=prefix)
         app.include_router(drivers_routes.router, prefix=prefix)
+        app.include_router(integrations_routes.router, prefix=prefix)
+        app.include_router(webhooks_routes.router, prefix=prefix)
 
     # ── observability ─────────────────────────────
     # Wire /metrics + OTel auto-instrumentation BEFORE the static

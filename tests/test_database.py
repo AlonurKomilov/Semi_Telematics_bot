@@ -758,6 +758,205 @@ class TestInvitesRevoke:
         result = await db.mark_invite_email_sent(acct.id, invite.id)
         assert result is None
 
+    # ── bounce / complaint (migration 097) ─────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_mark_bounced_hard_flips_immediately(self, seeded_db):
+        """Hard bounce stamps email_bounced_at + type='hard' on the
+        first event — no soft-bounce counter waiting period."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(
+            acct.id, owner.id, Role.FLEET,
+            recipient_email="hard@example.com",
+        )
+        updated = await db.mark_invite_email_bounced(
+            acct.id, invite.id,
+            bounce_type="hard",
+            reason="550 5.1.1 mailbox unknown",
+        )
+        assert updated is not None
+        assert updated.is_bounced
+        assert updated.email_bounce_type == "hard"
+        assert updated.email_bounce_reason == "550 5.1.1 mailbox unknown"
+        assert updated.email_soft_bounce_count == 0
+
+    @pytest.mark.asyncio
+    async def test_mark_bounced_soft_increments_below_threshold(self, seeded_db):
+        """First two soft bounces increment the counter without
+        flipping the permanent bounce flag — most soft bounces
+        self-clear (greylisting, mailbox full) and we don't want
+        to render a permanent 'Bounced' badge prematurely."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(
+            acct.id, owner.id, Role.FLEET,
+            recipient_email="soft@example.com",
+        )
+        for n in (1, 2):
+            updated = await db.mark_invite_email_bounced(
+                acct.id, invite.id,
+                bounce_type="soft", reason="421 try later",
+            )
+            assert updated is not None
+            assert updated.email_soft_bounce_count == n
+            assert not updated.is_bounced, f"flipped at count={n}; should wait until 3"
+        # Third soft bounce flips the permanent flag
+        third = await db.mark_invite_email_bounced(
+            acct.id, invite.id,
+            bounce_type="soft", reason="421 still failing",
+        )
+        assert third.email_soft_bounce_count == 3
+        assert third.is_bounced
+        assert third.email_bounce_type == "soft"
+
+    @pytest.mark.asyncio
+    async def test_mark_complained_flags_without_revoking(self, seeded_db):
+        """Spam complaint flags the row (email_complained_at) but
+        does NOT revoke it — silent destruction confuses operators.
+        Operator chooses revoke vs ignore in the dashboard."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(
+            acct.id, owner.id, Role.FLEET,
+            recipient_email="complainer@example.com",
+        )
+        updated = await db.mark_invite_email_bounced(
+            acct.id, invite.id,
+            bounce_type="complaint",
+            reason="reported as spam",
+        )
+        assert updated is not None
+        assert updated.is_complained
+        assert updated.email_bounce_type == "complaint"
+        # Crucially: NOT revoked.  Operator gets to decide.
+        assert not updated.is_revoked
+
+    @pytest.mark.asyncio
+    async def test_clear_soft_bounce_on_delivered(self, seeded_db):
+        """email.delivered after a soft bounce clears the bounced
+        state (race recovery — Resend doesn't guarantee ordering,
+        so a soft bounce followed by a successful retry's delivered
+        event must let the row recover).  Hard bounces stay sticky."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(
+            acct.id, owner.id, Role.FLEET,
+            recipient_email="recovered@example.com",
+        )
+        # Push 3 soft bounces to trip the permanent flag
+        for _ in range(3):
+            await db.mark_invite_email_bounced(
+                acct.id, invite.id,
+                bounce_type="soft", reason="421 transient",
+            )
+        bounced = await db.get_invite_by_id(acct.id, invite.id)
+        assert bounced.is_bounced
+        # Now delivered arrives — soft state clears
+        cleared = await db.clear_invite_soft_bounce(acct.id, invite.id)
+        assert cleared is not None
+        assert not cleared.is_bounced
+        assert cleared.email_soft_bounce_count == 0
+        assert cleared.email_bounce_type is None
+
+    @pytest.mark.asyncio
+    async def test_delivered_clears_intermediate_soft_count(self, seeded_db):
+        """REGRESSION: clear_invite_soft_bounce must reset the counter
+        even when bounce_type is NULL (intermediate state with 1-2
+        strikes that hadn't crossed the 3-strike threshold yet).
+        Pre-fix, the row's count stayed at 2 forever; the next
+        failure would promote to 3 and immediately flip 'bounced',
+        misleading the operator into thinking the address had bounced
+        3 times when really only 1 actually failed after a successful
+        delivery in between."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(
+            acct.id, owner.id, Role.FLEET,
+            recipient_email="intermediate@example.com",
+        )
+        # Two soft strikes — under the threshold, so type stays NULL
+        for _ in range(2):
+            await db.mark_invite_email_bounced(
+                acct.id, invite.id,
+                bounce_type="soft", reason="421 transient",
+            )
+        pre = await db.get_invite_by_id(acct.id, invite.id)
+        assert pre.email_soft_bounce_count == 2
+        assert pre.email_bounce_type is None  # not yet flipped
+        # Delivered arrives — counter resets
+        cleared = await db.clear_invite_soft_bounce(acct.id, invite.id)
+        assert cleared is not None
+        assert cleared.email_soft_bounce_count == 0
+        assert cleared.email_bounce_type is None
+        assert not cleared.is_bounced
+
+    @pytest.mark.asyncio
+    async def test_clear_soft_bounce_does_not_clear_hard(self, seeded_db):
+        """Hard bounces stay sticky after a delivered event —
+        a hard-then-delivered sequence is a relay anomaly we
+        shouldn't paper over."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(
+            acct.id, owner.id, Role.FLEET,
+            recipient_email="hardstuck@example.com",
+        )
+        await db.mark_invite_email_bounced(
+            acct.id, invite.id,
+            bounce_type="hard", reason="550 unknown",
+        )
+        unchanged = await db.clear_invite_soft_bounce(acct.id, invite.id)
+        # Returns the row but DID NOT clear (type was hard not soft)
+        assert unchanged is not None
+        assert unchanged.is_bounced
+        assert unchanged.email_bounce_type == "hard"
+
+    @pytest.mark.asyncio
+    async def test_mark_bounced_refuses_used_invite(self, seeded_db):
+        """A bounce webhook arriving AFTER the recipient successfully
+        signed up via a different channel must NOT flip the row to
+        bounced — that would mislead the operator into thinking the
+        active user's invite failed."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(
+            acct.id, owner.id, Role.FLEET,
+            recipient_email="usedup@example.com",
+        )
+        await db.redeem_invite(invite.code, 990_001)
+        updated = await db.mark_invite_email_bounced(
+            acct.id, invite.id,
+            bounce_type="hard", reason="too late",
+        )
+        assert updated is None
+
+    @pytest.mark.asyncio
+    async def test_webhook_idempotency_gate(self, db):
+        """svix-id idempotency: first INSERT returns True (process me),
+        retries with the same id return False (drop fast).  Mirrors
+        Stripe's mark_stripe_event_processed pattern."""
+        first = await db.mark_email_webhook_event_seen(
+            "msg_test_abc", "email.bounced", account_id=1, invite_id=42,
+        )
+        assert first is True
+        # Resend's retry storm replays the same svix_id
+        retry = await db.mark_email_webhook_event_seen(
+            "msg_test_abc", "email.bounced", account_id=1, invite_id=42,
+        )
+        assert retry is False
+
+    @pytest.mark.asyncio
+    async def test_find_by_resend_email_id(self, seeded_db):
+        """Webhook handler's primary invite lookup path."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(
+            acct.id, owner.id, Role.FLEET,
+            recipient_email="lookup@example.com",
+        )
+        await db.set_invite_resend_email_id(acct.id, invite.id, "re_abc123")
+        found = await db.find_invite_by_resend_email_id("re_abc123")
+        assert found is not None
+        assert found.id == invite.id
+        # Unknown id returns None — webhook handler treats as no-op
+        assert await db.find_invite_by_resend_email_id("re_unknown") is None
+        # Empty string short-circuits to None (defends against bad
+        # webhook payloads sending email_id="")
+        assert await db.find_invite_by_resend_email_id("") is None
+
     @pytest.mark.asyncio
     async def test_create_invite_recipient_email_encrypted_at_rest(self, seeded_db):
         """recipient_email lands ENCRYPTED in the invites.sent_to_email

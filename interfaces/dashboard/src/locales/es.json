@@ -814,7 +814,10 @@
     "invite_email_invalid": "Introduce un correo de destinatario válido",
     "invite_email_one_recipient": "Un destinatario por invitación — crea invitaciones separadas para cada persona",
     "invite_email_resent": "Invitación reenviada",
-    "invite_email_not_available": "La invitación ya no está disponible"
+    "invite_email_not_available": "La invitación ya no está disponible",
+    "invite_emailed_url_copied": "Invitación enviada — URL de registro también copiada al portapapeles",
+    "invite_created_telegram_copied": "Invitación creada — enlace de Telegram copiado al portapapeles",
+    "invite_created_url_copied": "Invitación creada — URL de registro copiada al portapapeles"
   },
   "actions": {
     "revoke": "Revocar",
@@ -827,7 +830,16 @@
     "email": "Correo",
     "resend": "Reenviar",
     "resending": "Reenviando…",
-    "resend_email": "Reenviar el correo de invitación al mismo destinatario"
+    "resend_email": "Reenviar el correo de invitación al mismo destinatario",
+    "create_and_copy_telegram": "Crear y copiar Telegram",
+    "create_and_copy_url": "Crear y copiar URL",
+    "copy_invite_link": "Copiar enlace de invitación",
+    "copy_telegram": "Copiar enlace de Telegram",
+    "copy_url": "Copiar URL",
+    "telegram": "Telegram",
+    "url": "Enlace URL",
+    "revoke_and_recreate": "Revocar y recrear",
+    "revoke_and_recreate_hint": "Reenviar a una dirección rechazada vuelve a rechazar — revoca esta invitación y crea una nueva con la dirección correcta."
   },
   "invites": {
     "status": {
@@ -837,6 +849,9 @@
       "expired": "Expirada"
     },
     "empty_filtered_title": "Ninguna invitación coincide con tus filtros",
-    "empty_filtered_desc": "Ajusta las pastillas de rol/estado o borra el cuadro de búsqueda."
+    "empty_filtered_desc": "Ajusta las pastillas de rol/estado o borra el cuadro de búsqueda.",
+    "badge_bounced": "Rechazada",
+    "badge_complained": "Marcada como spam",
+    "badge_soft_delivery": "Problemas de entrega"
   }
 }

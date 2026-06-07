@@ -322,6 +322,16 @@ class Invite:
     sent_to_email: Optional[str] = None
     email_sent_at: Optional[str] = None
     email_send_count: int = 0
+    # Bounce / complaint state (migration 097).  All optional defaults
+    # so a row that pre-dates 097 hydrates cleanly.  ``email_bounce_reason``
+    # arrives decrypted via _row_to_invite (relay text routinely echoes
+    # recipient address).
+    resend_email_id: Optional[str] = None
+    email_bounced_at: Optional[str] = None
+    email_bounce_reason: Optional[str] = None
+    email_bounce_type: Optional[str] = None
+    email_soft_bounce_count: int = 0
+    email_complained_at: Optional[str] = None
 
     @property
     def is_expired(self) -> bool:
@@ -345,3 +355,23 @@ class Invite:
         even if the SMTP send failed (email_sent_at IS NULL) —
         operator's intent was email, not link."""
         return "email" if self.sent_to_email else "link"
+
+    @property
+    def is_bounced(self) -> bool:
+        """True when the email send hit a permanent bounce (hard
+        bounce, soft-bounce-cap reached, or — set separately — a
+        spam complaint).  Operator UX renders a 'Bounced' badge
+        alongside the recipient address and replaces Resend with
+        a 'Revoke & recreate' affordance.  Soft bounces below the
+        cap (count<3) do NOT flip this — they self-clear or escalate
+        on the next event."""
+        return self.email_bounced_at is not None
+
+    @property
+    def is_complained(self) -> bool:
+        """True when the recipient hit 'Report Spam'.  Distinct from
+        ``is_bounced`` because the operator-facing remedy differs:
+        bounced → likely typo, ask for corrected address; complained
+        → recipient didn't want the invite, don't auto-revoke (silent
+        destruction confuses operators) but flag prominently."""
+        return self.email_complained_at is not None

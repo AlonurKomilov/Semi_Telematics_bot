@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Link as LinkIcon, Plus, Trash2, Copy, Check, Loader2, TimerReset, Search, Mail, Send } from 'lucide-react';
+import { Link as LinkIcon, Plus, Trash2, Copy, Check, Loader2, TimerReset, Search, Mail, Send, ChevronDown, AlertCircle, ShieldAlert } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '../../components/ui/dropdown-menu';
 import { apiJSON, ApiError } from '../../api/client';
 import type { InviteInfo, InvitesResponse } from '../../types';
 import DataTable from '../../components/DataTable';
@@ -107,13 +113,77 @@ export function InvitesPanel() {
   const [truckNum, setTruckNum] = useState('');
   const [hours, setHours] = useState(24);
   const [creating, setCreating] = useState(false);
-  // Send-via channel for the create form.  'link' = current Telegram
-  // deep-link behaviour (zero-cost for users who don't care about
-  // email).  'email' = stamp recipient_email and ship via SMTP.
-  // ALWAYS resets to 'link' on every dialog open per the UX review:
-  // the choice is too high-blast-radius to persist across opens.
-  const [channel, setChannel] = useState<'link' | 'email'>('link');
+  // Send-via channel for the create form.  Three options:
+  //   'telegram' — copies https://t.me/<bot>?start=join_<code>
+  //   'url'      — copies https://<dashboard>/signup/<code>
+  //   'email'    — stamps recipient_email + ships via SMTP/Resend API
+  // Default is the operator's LAST CHOICE (persisted in localStorage),
+  // with first-open default 'telegram' — preserves the muscle memory
+  // of every existing operator who has been creating Telegram invites
+  // before the 3-channel split landed.  A first-time operator at a
+  // non-Telegram shop will see "Telegram" pre-selected but the
+  // segmented control is right there and one click switches them.
+  // A first-time operator at a Telegram shop gets exactly what they
+  // expect.  Operators who pick URL or Email get it persisted as
+  // their personal default going forward.
+  type Channel = 'telegram' | 'url' | 'email';
+  const CHANNEL_STORAGE_KEY = 'invites.lastChannel';
+  const readStoredChannel = (): Channel => {
+    try {
+      const v = localStorage.getItem(CHANNEL_STORAGE_KEY);
+      if (v === 'telegram' || v === 'url' || v === 'email') return v;
+    } catch { /* localStorage disabled — fall through */ }
+    return 'telegram';
+  };
+  const [channel, setChannel] = useState<Channel>(readStoredChannel);
   const [recipientEmail, setRecipientEmail] = useState('');
+  const persistChannel = (c: Channel) => {
+    setChannel(c);
+    try { localStorage.setItem(CHANNEL_STORAGE_KEY, c); } catch { /* ignore */ }
+  };
+
+  // Duplicate-recipient check.  When the operator types in the
+  // Email-channel recipient input, debounce-fetch
+  // /admin/invite/check-recipient.  If the email already belongs to
+  // an active user in this account, show an inline warning so the
+  // operator can either confirm (existing member needs re-onboarding
+  // for some reason) or cancel before the round-trip.  Same-account
+  // only — does NOT reveal cross-account existence.
+  const [duplicateMember, setDuplicateMember] = useState<{
+    display_name: string;
+    role: string;
+  } | null>(null);
+  useEffect(() => {
+    if (channel !== 'email') { setDuplicateMember(null); return; }
+    const addr = recipientEmail.trim().toLowerCase();
+    if (!addr.includes('@') || addr.length < 5) {
+      setDuplicateMember(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await apiJSON<{
+          exists: boolean;
+          display_name?: string;
+          role?: string;
+        }>(`/admin/invite/check-recipient?email=${encodeURIComponent(addr)}`);
+        if (cancelled) return;
+        if (res.exists) {
+          setDuplicateMember({
+            display_name: res.display_name || '',
+            role: res.role || '',
+          });
+        } else {
+          setDuplicateMember(null);
+        }
+      } catch {
+        // 429 or network blip — silent, don't block the operator
+        if (!cancelled) setDuplicateMember(null);
+      }
+    }, 300);  // debounce
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [channel, recipientEmail]);
 
   // Resend-email per-button in-flight gate.  Mirrors the revoking/
   // extending pattern so anyMutationInFlight covers all three.
@@ -239,38 +309,41 @@ export function InvitesPanel() {
         channel?: 'link' | 'email';
         email_status?: 'sent' | 'queued_failed' | null;
       }>('/admin/invite', { method: 'POST', body });
-      // ALWAYS auto-copy the link to clipboard regardless of
-      // channel — when email is the primary path it's the fallback
-      // ("they didn't get the email — paste this directly to
-      // them"), and when link is the primary path it's the primary
-      // action.  The UX review explicitly called out that
-      // operators need a recovery path even when email "succeeds".
-      const url = `https://t.me/${botUsername}?start=join_${inv.code}`;
+      // Channel-aware clipboard URL:
+      //   telegram → Telegram deep-link
+      //   url      → web signup URL (path-segment, kept out of
+      //              Referer + CDN query logs)
+      //   email    → web signup URL as FALLBACK (Telegram link
+      //              would be useless to an email recipient who
+      //              isn't on the bot)
+      // The previous implementation always copied the Telegram link
+      // regardless of channel — wrong for email-channel operators
+      // whose recipient is web-only.
+      const url = buildInviteUrl(channel, inv.code);
       try {
         await navigator.clipboard.writeText(url);
         setCopied(inv.code);
         setTimeout(() => setCopied(null), 2000);
         if (channel === 'email') {
           if (inv.email_status === 'sent') {
-            toast.success(t('toasts.invite_emailed_copied', {
-              defaultValue: 'Invite emailed — link also copied to clipboard',
+            toast.success(t('toasts.invite_emailed_url_copied', {
+              defaultValue: 'Invite emailed — signup URL also copied to clipboard',
             }));
           } else {
-            // SMTP refused or the backend returned queued_failed —
-            // surface as warning so the operator knows the email
-            // didn't ship.  The link IS in their clipboard as fallback.
             toast.error(t('toasts.invite_email_failed', {
-              defaultValue: 'Invite created but email failed — link copied as fallback',
+              defaultValue: 'Invite created but email failed — signup URL copied as fallback',
             }));
           }
+        } else if (channel === 'telegram') {
+          toast.success(t('toasts.invite_created_telegram_copied', {
+            defaultValue: 'Invite created — Telegram link copied to clipboard',
+          }));
         } else {
-          toast.success(t('toasts.invite_created_copied', {
-            defaultValue: 'Invite created — link copied to clipboard',
+          toast.success(t('toasts.invite_created_url_copied', {
+            defaultValue: 'Invite created — signup URL copied to clipboard',
           }));
         }
       } catch {
-        // Clipboard failed but the invite IS created.  Show the
-        // URL so the operator can copy by hand.
         toast.error(t('toasts.invite_copy_failed', {
           defaultValue: `Invite created — copy manually: ${url}`,
           url,
@@ -344,8 +417,35 @@ export function InvitesPanel() {
     }
   }
 
-  function copyLink(code: string) {
-    const url = `https://t.me/${botUsername}?start=join_${code}`;
+  /**
+   * Build the recipient-facing URL for an invite code.  Single
+   * source of truth — three channels, three URL shapes:
+   *   telegram → ``https://t.me/<bot>?start=join_<code>``
+   *   url      → ``<origin>/signup/<code>`` (path-segment, keeps
+   *              code out of Referer + CDN query logs)
+   *   email    → same as url (the operator's clipboard fallback
+   *              when SMTP succeeds OR fails — the recipient is
+   *              web-only, NOT on Telegram)
+   * window.location.origin works on apex (dash.4truck.us) and on
+   * tenant subdomains alike; for cross-domain operators the URL
+   * still routes to /signup/<code> handled by App.tsx.
+   */
+  function buildInviteUrl(c: Channel, code: string): string {
+    if (c === 'telegram') {
+      return `https://t.me/${botUsername}?start=join_${code}`;
+    }
+    // Both 'url' and 'email' channels use the path-segment signup URL.
+    return `${window.location.origin}/signup/${code}`;
+  }
+
+  /**
+   * Per-row clipboard helper — copies whichever URL the operator
+   * picks from the per-row split-button (Copy Telegram / Copy URL).
+   * The ``which`` arg lets the same handler serve both DropdownMenu
+   * items without duplicating the writeText/timeout/error scaffolding.
+   */
+  function copyLink(code: string, which: 'telegram' | 'url' = 'telegram') {
+    const url = buildInviteUrl(which, code);
     navigator.clipboard.writeText(url)
       .then(() => {
         setCopied(code);
@@ -612,21 +712,35 @@ export function InvitesPanel() {
         // Copy stays hidden on expired rows because the link itself
         // is dead — no point handing out a dead link.
         const inv = row as unknown as InviteInfo;
-        const canCopy = !inv.is_used && !inv.is_revoked && !inv.is_expired;
-        const canRevoke = !inv.is_used && !inv.is_revoked;
-        const canExtend = !inv.is_used && !inv.is_revoked && inv.is_expired;
-        // Resend is offered when:
-        //   - the invite was originally sent via email (sent_to_email
-        //     is populated)
-        //   - the invite is still active (not used, not revoked, not
-        //     expired — the resend endpoint refuses expired with 409)
-        // Operators who want to "switch to email" on a link-channel
-        // invite revoke + recreate; resend in v1 reuses the original
-        // recipient and doesn't accept a new address (would change
-        // who can redeem and needs its own audit shape).
         const isEmailChannel = inv.channel === 'email' || !!inv.sent_to_email;
-        const canResend = isEmailChannel && !inv.is_used && !inv.is_revoked && !inv.is_expired;
-        if (!canCopy && !canRevoke && !canExtend && !canResend) {
+        const isBounced = !!inv.email_bounced_at && inv.email_bounce_type === 'hard';
+        const isSoftDelivery = !!inv.email_bounced_at && inv.email_bounce_type === 'soft';
+        const isComplained = !!inv.email_complained_at;
+        const canCopy = !inv.is_used && !inv.is_revoked && !inv.is_expired;
+        // Resend is offered when the invite is email-channel, still
+        // redeemable, AND not in a permanent failure state.  Both
+        // bounce and complaint disable resend: resending to a hard-
+        // bounced address bounces again; resending to a complainer
+        // burns sender reputation harder + may trip Resend's account
+        // suspension.  Operator gets the "Revoke this dead invite"
+        // affordance instead, then chooses whether to create a new one.
+        const canResend = isEmailChannel && !inv.is_used && !inv.is_revoked && !inv.is_expired && !isBounced && !isComplained;
+        // The "dead invite" Revoke button replaces both the regular
+        // Revoke and the Resend buttons on bounced/complained rows.
+        // Dropped the "& recreate" promise from the previous label —
+        // the button just revokes; the operator can hit "New invite"
+        // afterwards.  Promising a chained flow we don't deliver
+        // would be worse than naming the button accurately.
+        const isDeadEmailChannel = isEmailChannel && (isBounced || isComplained) && !inv.is_used && !inv.is_revoked;
+        // canRevoke is the plain "delete this invite" button.  When
+        // isDeadEmailChannel fires, we hide the plain Revoke so the
+        // operator doesn't see two visually-distinct buttons that do
+        // the same thing.  isDeadEmailChannel's button uses danger
+        // tone with explicit copy explaining why; that's the right
+        // affordance for these rows.
+        const canRevoke = !inv.is_used && !inv.is_revoked && !isDeadEmailChannel;
+        const canExtend = !inv.is_used && !inv.is_revoked && inv.is_expired;
+        if (!canCopy && !canRevoke && !canExtend && !canResend && !isDeadEmailChannel) {
           return <span className="text-xs text-muted-foreground">—</span>;
         }
         const code = String(inv.code);
@@ -635,40 +749,74 @@ export function InvitesPanel() {
         const isThisRowExtending = extending === inv.id;
         const isThisRowResending = resending === inv.id;
         const isJustCopied = copied === code;
+        // Bounced/complained/soft-delivery badges go ALONGSIDE the
+        // recipient address, not instead of it — the operator needs
+        // to see WHICH address bounced to know what to recreate with.
+        // Reason text lives in the title attribute on hover.
+        const badgeFor = isBounced
+          ? { tone: 'danger' as const, label: t('invites.badge_bounced',  { defaultValue: 'Bounced' }),  icon: AlertCircle }
+          : isComplained
+            ? { tone: 'danger' as const, label: t('invites.badge_complained', { defaultValue: 'Reported as spam' }), icon: ShieldAlert }
+            : isSoftDelivery
+              ? { tone: 'warn' as const,  label: t('invites.badge_soft_delivery', { defaultValue: 'Delivery issues' }), icon: AlertCircle }
+              : null;
         return (
           <div className="inline-flex items-center gap-2 flex-wrap">
-            {/* Email-channel marker — small envelope + truncated
-                recipient address.  Renders on ANY email-channel
-                row regardless of lifecycle (used/revoked/expired
-                rows still show "we emailed alice@…" so the
-                operator can reconstruct what they did). */}
+            {/* Email-channel marker — envelope icon + truncated
+                recipient address.  Bounce/complaint badge renders
+                NEXT TO the address, not replacing it (operator
+                needs the recipient to act). */}
             {isEmailChannel && inv.sent_to_email && (
               <span
                 className="inline-flex items-center gap-1 text-2xs text-muted-foreground"
-                title={`Sent to ${inv.sent_to_email}${inv.email_send_count && inv.email_send_count > 1 ? ` (${inv.email_send_count} attempts)` : ''}`}
+                title={`Sent to ${inv.sent_to_email}${inv.email_send_count && inv.email_send_count > 1 ? ` (${inv.email_send_count} attempts)` : ''}${inv.email_bounce_reason ? ' — ' + inv.email_bounce_reason : ''}`}
               >
-                <Mail size={12} />
-                <span className="truncate max-w-[140px]">{inv.sent_to_email}</span>
+                <Mail size={12} className={isBounced || isComplained ? toneText('danger') : undefined} />
+                <span className="truncate max-w-[160px]">{inv.sent_to_email}</span>
                 {inv.email_send_count != null && inv.email_send_count > 1 && (
                   <span className="opacity-60">×{inv.email_send_count}</span>
                 )}
               </span>
             )}
-            {canCopy && (
-              <button
-                onClick={() => copyLink(code)}
-                className={`inline-flex items-center gap-1 text-xs hover:opacity-80 transition-colors ${
-                  isJustCopied ? toneText('ok') : 'text-primary'
-                }`}
-                title="Copy invite link"
+            {badgeFor && (
+              <span
+                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-medium ${toneClasses(badgeFor.tone)}`}
+                title={inv.email_bounce_reason || badgeFor.label}
               >
-                {isJustCopied ? <Check size={12} /> : <Copy size={12} />}
-                <span>
-                  {isJustCopied
-                    ? t('actions.copied', { defaultValue: 'Copied' })
-                    : t('actions.copy', { defaultValue: 'Copy' })}
-                </span>
-              </button>
+                <badgeFor.icon size={10} />
+                {badgeFor.label}
+              </span>
+            )}
+            {canCopy && (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className={`inline-flex items-center gap-1 text-xs hover:opacity-80 transition-colors ${
+                    isJustCopied ? toneText('ok') : 'text-primary'
+                  }`}
+                  title={t('actions.copy_invite_link', { defaultValue: 'Copy invite link' })}
+                  render={(props) => (
+                    <button type="button" {...props}>
+                      {isJustCopied ? <Check size={12} /> : <Copy size={12} />}
+                      <span className="ml-1">
+                        {isJustCopied
+                          ? t('actions.copied', { defaultValue: 'Copied' })
+                          : t('actions.copy', { defaultValue: 'Copy' })}
+                      </span>
+                      <ChevronDown size={10} className="ml-0.5 opacity-60" aria-hidden="true" />
+                    </button>
+                  )}
+                />
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onClick={() => copyLink(code, 'telegram')}>
+                    <Send size={12} className="mr-2" />
+                    {t('actions.copy_telegram', { defaultValue: 'Copy Telegram link' })}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => copyLink(code, 'url')}>
+                    <LinkIcon size={12} className="mr-2" />
+                    {t('actions.copy_url', { defaultValue: 'Copy URL' })}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
             {canResend && (
               <button
@@ -685,6 +833,28 @@ export function InvitesPanel() {
                   {isThisRowResending
                     ? t('actions.resending', { defaultValue: 'Resending…' })
                     : t('actions.resend', { defaultValue: 'Resend' })}
+                </span>
+              </button>
+            )}
+            {isDeadEmailChannel && (
+              <button
+                onClick={() => setConfirming(inv)}
+                disabled={anyMutationInFlight}
+                aria-busy={isThisRowRevoking}
+                className={`inline-flex items-center gap-1 text-xs ${toneText('danger')} hover:opacity-80 disabled:opacity-50 disabled:cursor-wait transition-colors`}
+                title={isBounced
+                  ? t('actions.revoke_bounced_hint', {
+                      defaultValue: 'Resending to a bounced address bounces again — revoke this invite, then create a new one with the corrected address.',
+                    })
+                  : t('actions.revoke_complained_hint', {
+                      defaultValue: 'Recipient reported this as spam — revoke the invite. Sending again would damage your sender reputation.',
+                    })}
+              >
+                <Trash2 size={12} />
+                <span>
+                  {isThisRowRevoking
+                    ? t('actions.revoking', { defaultValue: 'Revoking…' })
+                    : t('actions.revoke', { defaultValue: 'Revoke' })}
                 </span>
               </button>
             )}
@@ -745,7 +915,7 @@ export function InvitesPanel() {
         </label>
         <button
           ref={newInviteBtnRef}
-          onClick={() => { setChannel('link'); setRecipientEmail(''); setShowForm(true); }}
+          onClick={() => { setRecipientEmail(''); setShowForm(true); }}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
         >
           <Plus size={14} />
@@ -854,7 +1024,7 @@ export function InvitesPanel() {
           description="Create an invite to add a new teammate — pick the role and how long the link should be valid."
           action={
             <button
-              onClick={() => { setChannel('link'); setRecipientEmail(''); setShowForm(true); }}
+              onClick={() => { setRecipientEmail(''); setShowForm(true); }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
             >
               <Plus size={14} />
@@ -945,25 +1115,35 @@ export function InvitesPanel() {
                   channels (SMS?) aren't on the roadmap yet — a single
                   checkbox "also send by email" would be ambiguous if
                   a third channel ever lands. */}
+              {/* Three-channel segmented control.  Two-line layout
+                  on narrow viewports avoids the i18n overflow concern
+                  (Russian "Электронная почта" = 16 chars would clip
+                  in grid-cols-3 at the dialog's 512px width).  The
+                  ``flex-wrap`` lets each button shrink to its content
+                  while preserving the rounded-pill segmented look. */}
               <div>
                 <label className="block text-sm text-muted-foreground mb-1">
                   {t('forms.send_via', { defaultValue: 'Send via' })}
                 </label>
-                <div className="grid grid-cols-2 gap-1 bg-muted rounded p-0.5 border border-border">
-                  {(['link', 'email'] as const).map((opt) => (
+                <div className="flex flex-wrap gap-1 bg-muted rounded p-0.5 border border-border">
+                  {([
+                    { key: 'telegram' as const, icon: Send,    label: t('actions.telegram', { defaultValue: 'Telegram' }) },
+                    { key: 'url'      as const, icon: LinkIcon, label: t('actions.url',      { defaultValue: 'URL link' }) },
+                    { key: 'email'    as const, icon: Mail,    label: t('actions.email',    { defaultValue: 'Email' }) },
+                  ]).map(({ key, icon: Icon, label }) => (
                     <button
-                      key={opt}
+                      key={key}
                       type="button"
-                      onClick={() => setChannel(opt)}
-                      className={`px-3 py-1.5 text-xs font-medium rounded transition ${
-                        channel === opt
+                      onClick={() => persistChannel(key)}
+                      className={`flex-1 min-w-20 px-3 py-1.5 text-xs font-medium rounded transition ${
+                        channel === key
                           ? 'bg-primary text-primary-foreground'
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      {opt === 'link'
-                        ? <span className="inline-flex items-center gap-1.5"><LinkIcon size={12} />{t('actions.link', { defaultValue: 'Link' })}</span>
-                        : <span className="inline-flex items-center gap-1.5"><Mail size={12} />{t('actions.email', { defaultValue: 'Email' })}</span>}
+                      <span className="inline-flex items-center justify-center gap-1.5">
+                        <Icon size={12} />{label}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -988,6 +1168,22 @@ export function InvitesPanel() {
                       defaultValue: 'One recipient per invite. The link is also copied to your clipboard as a fallback.',
                     })}
                   </p>
+                  {duplicateMember && (
+                    <div className={`mt-2 rounded border px-2 py-1.5 text-2xs ${toneClasses('warn')}`}>
+                      <div className="font-medium">
+                        {t('forms.recipient_email_duplicate_title', {
+                          defaultValue: 'Already a member: {{name}} ({{role}})',
+                          name: duplicateMember.display_name || '—',
+                          role: ROLE_LABEL[duplicateMember.role.toLowerCase()] || duplicateMember.role,
+                        })}
+                      </div>
+                      <div className="opacity-80 mt-0.5">
+                        {t('forms.recipient_email_duplicate_desc', {
+                          defaultValue: 'This email belongs to a user in your account. Sending will generate an invite they can use to switch roles or restore access — but it won\'t replace their existing membership.',
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1059,7 +1255,9 @@ export function InvitesPanel() {
                   ? t('actions.creating', { defaultValue: 'Creating…' })
                   : channel === 'email'
                     ? t('actions.create_and_email', { defaultValue: 'Create & Send Email' })
-                    : t('actions.create_and_copy', { defaultValue: 'Create & Copy Link' })}
+                    : channel === 'telegram'
+                      ? t('actions.create_and_copy_telegram', { defaultValue: 'Create & Copy Telegram' })
+                      : t('actions.create_and_copy_url', { defaultValue: 'Create & Copy URL' })}
               </Button>
             </DialogFooter>
           </form>

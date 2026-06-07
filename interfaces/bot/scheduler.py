@@ -215,6 +215,26 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         hour=3, minute=15, args=[app], id="nightly_stale_close",
         max_instances=1, coalesce=True,
     )
+
+    # Resend invite-email webhook idempotency-table cleanup.
+    # 14-day retention is well past Resend's 10h retry ceiling.
+    # Without this the table grows unbounded over months — at
+    # 10k sends/month with healthy delivery + occasional bounces
+    # that's ~50k rows/year per deploy.  Run at 03:20 UTC so it
+    # doesn't collide with the alerting cleanup at 03:15.
+    async def _prune_email_webhook_events(_app):
+        from infra.platform import get_platform_db
+        try:
+            db = await get_platform_db()
+            n = await db.prune_email_webhook_events(days=14)
+            logger.info("prune_email_webhook_events: deleted %d row(s)", n)
+        except Exception:
+            logger.exception("prune_email_webhook_events failed")
+    scheduler.add_job(
+        _prune_email_webhook_events, "cron",
+        hour=3, minute=20, args=[app], id="prune_email_webhook_events",
+        max_instances=1, coalesce=True,
+    )
     # Nightly scorecard snapshot. Tick hourly; the per-account body
     # gates on local 02:00 so each account snapshots "yesterday" at a
     # consistent local cadence.

@@ -369,6 +369,23 @@ class _DatabaseCore:
                 sent_email = None
         else:
             sent_email = None
+        # Bounce-reason follows the same encrypt-at-rest pattern as
+        # sent_to_email because relays routinely echo the recipient
+        # address verbatim in failure text ("550 5.1.1 <alice@…>:
+        # recipient rejected").  Decrypt failure (rotated key) returns
+        # None — operator sees no reason rather than crashing hydration.
+        bounce_reason_raw = (
+            row["email_bounce_reason"]
+            if "email_bounce_reason" in row.keys() else None
+        )
+        if bounce_reason_raw:
+            from infra.crypto import decrypt as _decrypt
+            try:
+                bounce_reason = _decrypt(bounce_reason_raw)
+            except Exception:
+                bounce_reason = None
+        else:
+            bounce_reason = None
         return Invite(
             id=row["id"], code=row["code"],
             account_id=row["account_id"],
@@ -381,9 +398,9 @@ class _DatabaseCore:
             # Defensive read — a deployment that hits this before
             # migration 087 lands (very narrow window) still hydrates.
             revoked_at=row["revoked_at"] if "revoked_at" in row.keys() else None,
-            # Email-channel fields land in migration 088 — same
-            # defensive read pattern so the brief deploy-lag window
-            # doesn't crash hydration.
+            # Email-channel fields land in migration 090 — defensive
+            # read pattern so the brief deploy-lag window doesn't
+            # crash hydration.
             sent_to_email=sent_email,
             email_sent_at=(
                 row["email_sent_at"]
@@ -394,6 +411,32 @@ class _DatabaseCore:
                 if "email_send_count" in row.keys()
                 and row["email_send_count"] is not None
                 else 0
+            ),
+            # Bounce / complaint state (migration 097).  Same deploy-
+            # lag-safe shape — None defaults preserve link-channel
+            # behaviour for any row hydrated before column-add.
+            resend_email_id=(
+                row["resend_email_id"]
+                if "resend_email_id" in row.keys() else None
+            ),
+            email_bounced_at=(
+                row["email_bounced_at"]
+                if "email_bounced_at" in row.keys() else None
+            ),
+            email_bounce_reason=bounce_reason,
+            email_bounce_type=(
+                row["email_bounce_type"]
+                if "email_bounce_type" in row.keys() else None
+            ),
+            email_soft_bounce_count=(
+                row["email_soft_bounce_count"]
+                if "email_soft_bounce_count" in row.keys()
+                and row["email_soft_bounce_count"] is not None
+                else 0
+            ),
+            email_complained_at=(
+                row["email_complained_at"]
+                if "email_complained_at" in row.keys() else None
             ),
         )
 

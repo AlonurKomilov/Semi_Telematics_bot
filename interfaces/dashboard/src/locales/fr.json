@@ -814,7 +814,10 @@
     "invite_email_invalid": "Saisissez un email de destinataire valide",
     "invite_email_one_recipient": "Un destinataire par invitation — créez des invitations séparées pour chaque personne",
     "invite_email_resent": "Invitation renvoyée",
-    "invite_email_not_available": "L'invitation n'est plus disponible"
+    "invite_email_not_available": "L'invitation n'est plus disponible",
+    "invite_emailed_url_copied": "Invitation envoyée — URL d'inscription aussi copiée dans le presse-papiers",
+    "invite_created_telegram_copied": "Invitation créée — lien Telegram copié dans le presse-papiers",
+    "invite_created_url_copied": "Invitation créée — URL d'inscription copiée dans le presse-papiers"
   },
   "actions": {
     "revoke": "Révoquer",
@@ -827,7 +830,16 @@
     "email": "Email",
     "resend": "Renvoyer",
     "resending": "Envoi…",
-    "resend_email": "Renvoyer l'email d'invitation au même destinataire"
+    "resend_email": "Renvoyer l'email d'invitation au même destinataire",
+    "create_and_copy_telegram": "Créer et copier Telegram",
+    "create_and_copy_url": "Créer et copier URL",
+    "copy_invite_link": "Copier le lien d'invitation",
+    "copy_telegram": "Copier le lien Telegram",
+    "copy_url": "Copier l'URL",
+    "telegram": "Telegram",
+    "url": "Lien URL",
+    "revoke_and_recreate": "Révoquer et recréer",
+    "revoke_and_recreate_hint": "Renvoyer à une adresse rejetée échoue à nouveau — révoquez cette invitation et créez-en une nouvelle avec l'adresse corrigée."
   },
   "invites": {
     "status": {
@@ -837,6 +849,9 @@
       "expired": "Expirée"
     },
     "empty_filtered_title": "Aucune invitation ne correspond à vos filtres",
-    "empty_filtered_desc": "Ajustez les filtres de rôle/statut ou videz le champ de recherche."
+    "empty_filtered_desc": "Ajustez les filtres de rôle/statut ou videz le champ de recherche.",
+    "badge_bounced": "Rejetée",
+    "badge_complained": "Signalée comme spam",
+    "badge_soft_delivery": "Problèmes de livraison"
   }
 }
