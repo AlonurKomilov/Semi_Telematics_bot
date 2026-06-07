@@ -314,10 +314,19 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
         tenant_db = await get_tenant_db(user.account_id)
 
         import time as _t
-        # Implicit-satisfaction marker — re-ask within 30 s of the
-        # prior AI response flips ``had_reask`` on that row so the
-        # router downweights the model that produced it.
+        # Implicit-satisfaction markers — re-ask within 30 s (timing)
+        # AND dissatisfaction-phrase prefix in the user's question
+        # ("no, that's not what I asked", localised).  Both flip
+        # ``had_reask`` on the prior turn's row so the router
+        # downweights the model that produced an unsatisfying answer.
+        # Telegram users especially benefit from the phrase signal —
+        # the bot UI has no regenerate button, so phrase detection is
+        # the only explicit dissatisfaction signal available there.
         await ai.detect_reask_and_mark(user.account_id, update.effective_user.id)
+        await ai.detect_phrase_dissatisfaction_and_mark(
+            user.account_id, update.effective_user.id, question,
+            language=lang,
+        )
 
         # Auto-mode tier resolution — when this user's stored tier is
         # "auto" we classify the question and switch to the right tier

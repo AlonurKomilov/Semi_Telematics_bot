@@ -154,13 +154,17 @@ async def ai_chat(
 
     try:
         import time as _t
-        # Implicit-satisfaction signal: if this message arrives within
-        # 30 s of the previous AI response, the previous answer didn't
-        # land — flip ``had_reask`` on the ai_usage row that produced
-        # it so the scorer downweights that model on future picks.
-        # Fires before tier resolution so the marker targets the
-        # *previous* turn, not the one we're about to start.
+        # Implicit-satisfaction signals: re-ask within 30 s (timing)
+        # + dissatisfaction phrase at message start ("no, that's not
+        # what I asked", localised).  Both flip ``had_reask`` on the
+        # *prior* turn's row so the scorer downweights that model on
+        # future picks.  Run before tier resolution so the marker
+        # targets the previous turn, not the one we're about to start.
         await ai.detect_reask_and_mark(account_id, int(user["sub"]))
+        await ai.detect_phrase_dissatisfaction_and_mark(
+            account_id, int(user["sub"]), body.message,
+            language=language,
+        )
 
         # Auto-mode tier resolution.  When the user's stored choice is
         # "auto" this classifies the prompt and hot-swaps the per-user
@@ -255,10 +259,14 @@ async def ai_chat_stream(
     user_context, vehicle_filter, language = await _get_user_info(user, platform_db)
 
     try:
-        # Implicit-satisfaction marker (re-ask within 30 s).  Same as
-        # the non-streaming /chat path — has to fire before tier
-        # resolution so it targets the prior turn's row.
+        # Implicit-satisfaction markers (timing + phrase).  Same as
+        # the non-streaming /chat path — both fire before tier
+        # resolution so they target the prior turn's row.
         await ai.detect_reask_and_mark(account_id, int(user["sub"]))
+        await ai.detect_phrase_dissatisfaction_and_mark(
+            account_id, int(user["sub"]), body.message,
+            language=language,
+        )
 
         # Auto-mode tier resolution — same as the non-streaming /chat
         # path.  Has to fire before build_context so the model is
@@ -694,3 +702,37 @@ async def clear_history(
     except Exception:
         pass
     return {"ok": True}
+
+
+# ── Feedback signals ─────────────────────────────────────────────
+
+@router.post("/feedback/regenerate")
+@limiter.limit("30/minute")
+async def feedback_regenerate(
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
+    """Flag the user's most recent AI response as unsatisfying.
+
+    Powers the Regenerate button on the chat UI — the click itself is
+    an explicit dissatisfaction signal, complementary to the timing-
+    based ``detect_reask_and_mark`` and the phrase-based
+    ``detect_phrase_dissatisfaction_and_mark``.  All three converge
+    on the same ``had_reask`` column and the same scorer slice, so
+    the router penalises the bad model regardless of *how* the
+    user told us the answer was bad.
+
+    Rate-limited (30/min) to prevent abuse — no caller-supplied id
+    or row reference, so this is purely "this user, latest answer".
+    Returns ``{ok: true, marked: bool}`` — ``marked: false`` when
+    there's no eligible row yet (first turn of the conversation),
+    not an error.
+
+    The actual re-running of the prompt is done client-side by
+    calling /ai/chat or /ai/chat/stream with the prior user message
+    — the backend doesn't need to know it's a regenerate.
+    """
+    account_id = user["account_id"]
+    user_id = int(user["sub"])
+    marked = await ai.flip_last_response_as_reask(account_id, user_id)
+    return {"ok": True, "marked": marked}

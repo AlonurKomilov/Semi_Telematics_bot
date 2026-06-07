@@ -90,6 +90,13 @@ export default function Chat() {
   const [error, setError] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  // Regenerate button only operates on the LATEST AI bubble — older
+  // bubbles can't be correlated with a specific ai_usage row from the
+  // frontend (no row id flows through), so we'd risk flipping
+  // had_reask on the wrong row.  Disabling the button on non-latest
+  // bubbles is the conservative fix; threading usage_id end-to-end
+  // is a follow-up if users ever ask to regenerate older answers.
+  const [regeneratingIdx, setRegeneratingIdx] = useState<number | null>(null);
   const [clearConfirm, setClearConfirm] = useState(false);
   const clearConfirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -355,6 +362,47 @@ export default function Chat() {
     }
   }
 
+  /** Regenerate the AI response at messages[aiIdx].
+   *
+   *  Two-step flow:
+   *  1. POST /ai/feedback/regenerate — flips ``had_reask=true`` on
+   *     the prior response's ai_usage row so the router penalises
+   *     the model that produced the unsatisfying answer.  Best-
+   *     effort: a transient network error doesn't block the re-fire.
+   *  2. Find the user message immediately preceding the AI bubble
+   *     (walking ``messages`` backward) and call ``send()`` with
+   *     that exact text — same prompt, fresh chance for the router
+   *     to land on a better model (especially under Auto tier).
+   *
+   *  Intentionally limited to the latest AI bubble: the dashboard
+   *  doesn't currently thread ai_usage row ids through to the
+   *  client, so flipping had_reask on a non-latest bubble would
+   *  target the wrong row.  See the regeneratingIdx comment for
+   *  the follow-up path.
+   */
+  async function regenerateMessage(aiIdx: number) {
+    if (regeneratingIdx !== null) return;
+    // Walk back to find the user prompt that produced this answer.
+    let priorUserText = '';
+    for (let i = aiIdx - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        priorUserText = messages[i].text;
+        break;
+      }
+    }
+    if (!priorUserText) return;
+    setRegeneratingIdx(aiIdx);
+    try {
+      // Fire-and-forget the dissatisfaction signal — if it fails,
+      // the regenerate still proceeds; we just lose this one
+      // telemetry row.
+      apiJSON('/ai/feedback/regenerate', { method: 'POST', body: {} }).catch(() => {});
+      await send(priorUserText);
+    } finally {
+      setRegeneratingIdx(null);
+    }
+  }
+
   function editMessage(text: string) {
     setInput(text);
     setTimeout(() => {
@@ -405,6 +453,17 @@ export default function Chat() {
 
 
   const suggestedQuestions = getSuggestedQuestions(activeView);
+
+  // Index of the most recent AI message in ``messages``.  The
+  // Regenerate button is only shown on that bubble (see the
+  // regeneratingIdx comment for why) — older AI bubbles can't be
+  // safely re-flagged from the client today.
+  const lastAiIdx = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'model') return i;
+    }
+    return -1;
+  })();
 
   return (
     <div className="flex flex-col h-[calc(100vh-6rem)]">
@@ -606,9 +665,28 @@ export default function Chat() {
                       <span className="text-3xs text-muted-foreground/60">
                         {models.find((m) => m.name === currentModel)?.display || currentModel}
                       </span>
+                      {/* Regenerate — only on the latest AI bubble.
+                          Click flips had_reask on the prior ai_usage
+                          row + re-fires the same prompt with a fresh
+                          model pick (ε-greedy router on the same
+                          tier).  Disabled while a regen is in flight
+                          or while any chat request is loading. */}
+                      {i === lastAiIdx && (
+                        <button
+                          onClick={() => regenerateMessage(i)}
+                          disabled={regeneratingIdx !== null || loading}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground ml-auto disabled:opacity-30 disabled:cursor-not-allowed"
+                          title={t('chat.regenerate')}
+                        >
+                          <RefreshCw
+                            size={12}
+                            className={regeneratingIdx === i ? 'animate-spin' : ''}
+                          />
+                        </button>
+                      )}
                       <button
                         onClick={() => copyMessage(msg.text, i)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground ml-auto"
+                        className={`opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground ${i === lastAiIdx ? '' : 'ml-auto'}`}
                         title={t('chat.copy_response')}
                       >
                         {copiedIdx === i

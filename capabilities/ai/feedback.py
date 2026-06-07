@@ -25,6 +25,8 @@ column — they just need their own ``mark_…`` storage method.
 from __future__ import annotations
 
 import logging
+import re
+import unicodedata
 from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger("bot.ai")
@@ -33,6 +35,95 @@ logger = logging.getLogger("bot.ai")
 # A real reading-then-following-up flow is usually 30s+; anything
 # faster signals "the previous answer didn't land".
 _REASK_THRESHOLD_SEC = 30
+
+# Phrase prefixes that signal explicit dissatisfaction with the
+# previous AI answer.  Anchored to the *start* of the user's
+# message (after small connectors like "no, "/"hey, ") so bare
+# matches inside a sentence ("there are no faults") don't trigger.
+#
+# Patterns are case-insensitive and accent-stripped before matching
+# (see ``_normalize_for_match``) so "No, yo pregunté…" and "no, yo
+# pregunte..." both fire.  Languages without phrase lists (am / fr /
+# pa / so / uz) return False — silent no-op, never a KeyError.
+#
+# Adding a locale: drop a list under its 2-letter key.  Each entry is
+# a raw substring (we anchor + boundary it at match time, not in
+# the data, so phrases stay readable).
+#
+# False-positive guard: only match dissatisfaction-flavoured phrases
+# ("you didn't answer", "not what I asked", "I asked about X"), NOT
+# bare correction words like "actually" alone — "actually I want
+# the 2023 model" is a legitimate refinement, not a complaint.
+_DISSAT_PHRASES: dict[str, tuple[str, ...]] = {
+    "en": (
+        "no, that's not",
+        "no thats not",
+        "that's not what i",
+        "thats not what i",
+        "you didn't answer",
+        "you didnt answer",
+        "you did not answer",
+        "i asked about",
+        "i was asking about",
+        "no i meant",
+        "no, i meant",
+        "no i mean",
+        "wrong answer",
+        "that's wrong",
+        "thats wrong",
+        "not what i asked",
+        "you missed",
+        "you didn't get",
+        "you didnt get",
+    ),
+    "es": (
+        "no, no es eso",
+        "no es lo que",
+        "no respondiste",
+        "no contestaste",
+        "te pregunte sobre",
+        "te pregunte por",
+        "no me respondes",
+        "respuesta incorrecta",
+        "eso esta mal",
+    ),
+    "ru": (
+        "нет, я спрашивал",
+        "нет я спрашивал",
+        "ты не ответил",
+        "вы не ответили",
+        "я имел в виду",
+        "я не об этом",
+        "не то спросил",
+        "это не ответ",
+        "неправильный ответ",
+    ),
+    "uk": (
+        "ні, я питав",
+        "ні я питав",
+        "ти не відповів",
+        "ви не відповіли",
+        "я мав на увазі",
+        "я не про це",
+        "неправильна відповідь",
+    ),
+}
+
+# How many leading chars of the user's message to search.  Enough
+# to allow short prefixes ("hey, no I meant…") without scanning the
+# whole message — phrase-style dissatisfaction lands at the very
+# start of the reply in real conversation.
+_PHRASE_PREFIX_CHARS = 80
+
+
+def _normalize_for_match(text: str) -> str:
+    """Casefold + strip accents so Unicode variants match the ASCII
+    phrase table.  ``casefold()`` is stricter than ``.lower()`` (it
+    handles German ß, Turkish dotless i, etc.) and ``NFD`` decomposes
+    e.g. 'é' into 'e' + combining accent which we then strip."""
+    decomposed = unicodedata.normalize("NFD", text)
+    stripped = "".join(c for c in decomposed if not unicodedata.combining(c))
+    return stripped.casefold()
 
 
 async def detect_reask_and_mark(
@@ -106,4 +197,99 @@ async def detect_reask_and_mark(
         return bool(updated)
     except Exception as e:
         logger.debug("Re-ask detection skipped: %s", e)
+        return False
+
+
+# Compile the boundary-anchored phrase regexes once at import.
+# Each entry becomes ``(?:^|[\\s,.;:!?])phrase`` — phrase preceded by
+# the start of the prefix window or a word boundary character — so
+# bare "no" inside a sentence doesn't trigger but "no, that's not…"
+# at the start, "hey, no I meant…" after a comma, etc. all do.
+_DISSAT_PATTERNS: dict[str, re.Pattern] = {
+    lang: re.compile(
+        r"(?:^|[\s,.;:!?])(?:" + "|".join(re.escape(p) for p in phrases) + r")",
+    )
+    for lang, phrases in _DISSAT_PHRASES.items()
+}
+
+
+async def detect_phrase_dissatisfaction_and_mark(
+    account_id: int,
+    user_id: int,
+    message: str,
+    *,
+    language: str = "en",
+) -> bool:
+    """When the user's new chat message opens with a dissatisfaction
+    phrase ("no, that's not what I asked", "you didn't answer", "I
+    asked about…", localised equivalents), flip ``had_reask`` on the
+    previous response's ai_usage row — explicit content-based signal
+    that complements the timing-based ``detect_reask_and_mark``.
+
+    Returns True when a phrase fired and a row was marked.  Best-
+    effort: a DB hiccup logs at debug and returns False rather than
+    blocking the chat call.  Idempotent against the same prior row.
+
+    Designed to be called at the *start* of the chat request (sibling
+    to ``detect_reask_and_mark``), so the marked row is the prior
+    turn's answer the user is complaining about — not the one we're
+    about to produce.
+
+    Languages without a phrase list silently return False — this
+    matters for am / fr / pa / so / uz users whose dissatisfaction
+    will only be captured via the timing signal until phrase tables
+    are translated.
+    """
+    if not message:
+        return False
+    pattern = _DISSAT_PATTERNS.get(language)
+    if pattern is None:
+        # No phrase list for this locale yet — graceful no-op.
+        return False
+    normalized = _normalize_for_match(message[:_PHRASE_PREFIX_CHARS])
+    if not pattern.search(normalized):
+        return False
+    try:
+        from infra.platform import get_platform_db
+        pdb = get_platform_db()
+        updated = await pdb.mark_last_ai_usage_reask(account_id, user_id)
+        if updated:
+            logger.info(
+                "Phrase dissatisfaction detected for user=%d (lang=%s); "
+                "marked 1 ai_usage row",
+                user_id, language,
+            )
+        return bool(updated)
+    except Exception as e:
+        logger.debug("Phrase dissatisfaction marking skipped: %s", e)
+        return False
+
+
+async def flip_last_response_as_reask(
+    account_id: int,
+    user_id: int,
+) -> bool:
+    """Mark the user's most recent successful response as ``had_reask=TRUE``.
+
+    Powers the dashboard's "Regenerate" button: the click itself is
+    the dissatisfaction signal — no timing check, no phrase parsing.
+    The user explicitly told us "this answer wasn't good", we trust
+    it directly.
+
+    Same target row as ``detect_reask_and_mark`` (latest
+    ``request_type='question'`` + ``error_type='ok'`` row), so the
+    scorer's math stays consistent across all three signals.
+    """
+    try:
+        from infra.platform import get_platform_db
+        pdb = get_platform_db()
+        updated = await pdb.mark_last_ai_usage_reask(account_id, user_id)
+        if updated:
+            logger.info(
+                "Regenerate click for user=%d; marked 1 ai_usage row",
+                user_id,
+            )
+        return bool(updated)
+    except Exception as e:
+        logger.debug("Regenerate-flip skipped: %s", e)
         return False
