@@ -114,6 +114,10 @@ async def create_tables(conn) -> None:
             -- within ~30 s of seeing this row's response.  Scorer
             -- treats (1 - reask_rate) as a satisfaction component.
             had_reask          BOOLEAN NOT NULL DEFAULT FALSE,
+            -- Explicit positive: TRUE when the user clicked the
+            -- thumbs-up icon on this response.  The only upweighting
+            -- signal in the scoring stack.
+            had_thumbs_up      BOOLEAN NOT NULL DEFAULT FALSE,
             created_at         TEXT    NOT NULL
         );
 

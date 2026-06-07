@@ -302,6 +302,36 @@ class SettingsMixin:
         await self._db.commit()
         return getattr(cur, "rowcount", 0) or 0
 
+    async def mark_last_ai_usage_thumbs_up(
+        self, account_id: int, user_id: int,
+    ) -> int:
+        """Flip ``had_thumbs_up`` on the row that produced this user's
+        most recent successful response.
+
+        Targets the same row shape as ``mark_last_ai_usage_reask`` —
+        ``request_type='question' AND error_type='ok'`` — so the row
+        the user thumbs-up'd is the same row the scorer queries.
+        Symmetric inverse of the reask path: same SELECT, different
+        UPDATE column.
+
+        Returns the number of rows updated (0 or 1).
+        """
+        cur = await self._db.execute(
+            """
+            UPDATE ai_usage SET had_thumbs_up = TRUE
+            WHERE id = (
+                SELECT id FROM ai_usage
+                WHERE account_id = ? AND user_id = ?
+                  AND request_type = 'question'
+                  AND error_type = 'ok'
+                ORDER BY id DESC LIMIT 1
+            )
+            """,
+            (account_id, user_id),
+        )
+        await self._db.commit()
+        return getattr(cur, "rowcount", 0) or 0
+
     async def get_ai_model_scores(
         self,
         account_id: int,
@@ -367,7 +397,12 @@ class SettingsMixin:
             # so the reask_rate denominator below is success-samples
             # rather than total samples — a model that 429'd a lot
             # doesn't get unfairly counted as "unsatisfying" too.
-            "       SUM(CASE WHEN had_reask THEN 1 ELSE 0 END) AS reasks "
+            "       SUM(CASE WHEN had_reask THEN 1 ELSE 0 END) AS reasks, "
+            # Explicit positive: how many rows the user thumbs-up'd.
+            # Same success-only filter applies (see above).  Unlike
+            # reasks, this signal pushes satisfaction UP toward 1.0
+            # rather than DOWN — see _compute_score for the math.
+            "       SUM(CASE WHEN had_thumbs_up THEN 1 ELSE 0 END) AS thumbs_ups "
             f"FROM ai_usage WHERE {' AND '.join(where)} "
             "GROUP BY model"
         )
@@ -383,12 +418,14 @@ class SettingsMixin:
             tool_successes = int(r["tool_successes"] or 0)
             tool_turns = int(r["tool_turns"] or 0)
             reasks = int(r["reasks"] or 0)
+            thumbs_ups = int(r["thumbs_ups"] or 0)
             scored[m] = _compute_score(
                 samples=samples, errors=errors,
                 avg_latency_ms=avg_lat,
                 tool_successes=tool_successes,
                 tool_turns=tool_turns,
                 reasks=reasks,
+                thumbs_ups=thumbs_ups,
             )
 
         # Surface unobserved candidates so the router knows to explore them.
@@ -400,6 +437,7 @@ class SettingsMixin:
                         avg_latency_ms=0.0,
                         tool_successes=0, tool_turns=0,
                         reasks=0,
+                        thumbs_ups=0,
                     )
         return scored
 
@@ -610,31 +648,47 @@ def _compute_score(
     tool_successes: int,
     tool_turns: int,
     reasks: int = 0,
+    thumbs_ups: int = 0,
 ) -> dict:
     """Combine availability + speed + tool success + satisfaction into a
     single [0, 1] score.
 
-    Score weights (rebalanced from the original 60/25/15 split when
-    the satisfaction signal landed):
+    Score weights (rebalanced from the original 60/25/15 when the
+    satisfaction signal landed):
     - 50 % availability (1 - error_rate).  Unreachable model = useless.
     - 20 % speed (normalized — sub-2s = full credit, 20s+ = zero).
-    - 15 % satisfaction (1 - reask_rate).  Strong quality signal —
-      "user came back within 30 s" is closer to a real thumbs-down
-      than tool_success_rate ever was.
+    - 15 % satisfaction.  See below.
     - 15 % tool success rate (only for turns that actually called tools).
+
+    Satisfaction is the combination of one negative signal (reasks
+    — fired by 30 s timer, dissatisfaction phrases, regenerate
+    click, or thumbs-down click; all map to had_reask) and one
+    positive signal (thumbs_ups — fired by thumbs-up click only):
+
+        satisfaction = min((1 - reask_rate) + 0.5 * thumbs_up_rate, 1.0)
+
+    Reasks subtract from the baseline 1.0; thumbs-ups add back up
+    to +0.5x the rate, capped at 1.0.  A model with no feedback at
+    all stays at satisfaction=1.0 (backward-compatible with the
+    pre-thumbs-up era).  A model with 50 % thumbs-up rate fully
+    cancels out a 25 % reask rate.  The 0.5x weight reflects the
+    asymmetric click-rate reality: people are far more likely to
+    click thumbs-up on a great answer than to type a complaint, so
+    weighting thumbs-up symmetrically would over-reward models that
+    just happen to handle requests that feel chat-worthy.
 
     Tiny sample sets (n < 5) get a default mid-score so the router
     doesn't lock onto a model with one lucky data point.  ε-greedy
     explore handles the genuine cold start.
 
-    ``reasks`` denominator is *success samples* (samples - errors),
-    not total samples: only successful responses can be re-asked, so
-    counting failures in the denominator would unfairly dilute the
-    signal for unreliable models.
+    Both denominators are *success samples* (samples - errors), not
+    total samples: only successful responses can be re-asked or
+    thumbed; counting failures would dilute both rates.
     """
     success_samples = max(samples - errors, 0)
     reask_rate = (reasks / success_samples) if success_samples > 0 else 0.0
-    satisfaction = 1.0 - reask_rate
+    thumbs_up_rate = (thumbs_ups / success_samples) if success_samples > 0 else 0.0
+    satisfaction = min((1.0 - reask_rate) + 0.5 * thumbs_up_rate, 1.0)
 
     if samples < 5:
         # Not enough data — return a neutral score that lets static
@@ -649,6 +703,7 @@ def _compute_score(
                 tool_successes / tool_turns if tool_turns else 0.0
             ),
             "reask_rate": round(reask_rate, 4),
+            "thumbs_up_rate": round(thumbs_up_rate, 4),
             "satisfaction": round(satisfaction, 4),
             "is_cold_start": True,
         }
@@ -678,6 +733,7 @@ def _compute_score(
         "p50_latency_ms": int(avg_latency_ms),
         "tool_success_rate": round(tool_success_rate, 4),
         "reask_rate": round(reask_rate, 4),
+        "thumbs_up_rate": round(thumbs_up_rate, 4),
         "satisfaction": round(satisfaction, 4),
         "is_cold_start": False,
     }

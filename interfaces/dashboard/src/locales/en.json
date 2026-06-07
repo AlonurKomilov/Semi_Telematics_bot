@@ -563,6 +563,8 @@
     "edit_message": "Edit message",
     "copy_response": "Copy response",
     "regenerate": "Regenerate",
+    "feedback_good": "Good answer",
+    "feedback_bad": "Bad answer",
     "ask_driver": "Ask anything about your assigned truck.",
     "model_default": "default",
     "model_active": "active",

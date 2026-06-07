@@ -137,6 +137,11 @@ async def run_all(conn) -> None:
     # signal by the model scorer.
     await migrate_ai_usage_had_reask(conn)
 
+    # Adds had_thumbs_up BOOLEAN to ai_usage — explicit positive
+    # signal flipped TRUE when the user clicks the thumbs-up icon.
+    # The only upweighting signal in the scoring stack.
+    await migrate_ai_usage_had_thumbs_up(conn)
+
 
 async def migrate_ai_chat_history(conn) -> None:
     """Create ai_chat_history table if it doesn't exist yet.
@@ -2662,6 +2667,31 @@ async def migrate_ai_usage_had_reask(conn) -> None:
         await conn.commit()
     except Exception as e:
         logger.debug("ai_usage had_reask ADD skipped (%s)", e)
+
+
+async def migrate_ai_usage_had_thumbs_up(conn) -> None:
+    """Adds ``had_thumbs_up`` to ``ai_usage``.
+
+    Explicit POSITIVE signal flipped to TRUE when the user clicks
+    the thumbs-up icon on this row's response.  Every other signal
+    in the stack — had_reask (timing + phrase + regenerate) — is
+    negative; without a positive lever the satisfaction term can
+    only stay flat or go down.  Models with consistently great
+    answers earn upweighting via this column rather than only
+    avoiding downweighting.
+
+    NOT NULL DEFAULT FALSE so old rows backfill to "user didn't
+    explicitly like this" — neutral assumption, mirrors the
+    had_reask migration's reasoning.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE ai_usage "
+            "ADD COLUMN IF NOT EXISTS had_thumbs_up BOOLEAN NOT NULL DEFAULT FALSE"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.debug("ai_usage had_thumbs_up ADD skipped (%s)", e)
 
 
 async def migrate_ai_usage_prompt_category(conn) -> None:

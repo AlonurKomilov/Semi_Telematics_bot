@@ -293,3 +293,67 @@ async def flip_last_response_as_reask(
     except Exception as e:
         logger.debug("Regenerate-flip skipped: %s", e)
         return False
+
+
+async def flip_last_response_as_thumbs_down(
+    account_id: int,
+    user_id: int,
+) -> bool:
+    """Mark the user's most recent successful response as ``had_reask=TRUE``.
+
+    Powers the dashboard's "thumbs-down" icon — semantically same
+    as the regenerate click (explicit dissatisfaction), but doesn't
+    re-fire the prompt.  Some users prefer this: they want to log
+    "this was bad" and move on, rather than wait for a regenerate.
+
+    Shares the ``had_reask`` column with the timing / phrase /
+    regenerate signals — all four converge on the idempotent
+    ``mark_last_ai_usage_reask`` helper, so a user who does multiple
+    of them on the same row still ends up with one ``had_reask=TRUE``
+    flag (no double-counting in the scorer).
+    """
+    try:
+        from infra.platform import get_platform_db
+        pdb = get_platform_db()
+        updated = await pdb.mark_last_ai_usage_reask(account_id, user_id)
+        if updated:
+            logger.info(
+                "Thumbs-down click for user=%d; marked 1 ai_usage row",
+                user_id,
+            )
+        return bool(updated)
+    except Exception as e:
+        logger.debug("Thumbs-down-flip skipped: %s", e)
+        return False
+
+
+async def flip_last_response_as_thumbs_up(
+    account_id: int,
+    user_id: int,
+) -> bool:
+    """Mark the user's most recent successful response as
+    ``had_thumbs_up=TRUE``.
+
+    Powers the dashboard's "thumbs-up" icon — the only EXPLICIT
+    POSITIVE signal in the scoring stack.  Every other signal in
+    the satisfaction term is negative; this one pushes satisfaction
+    *up* (capped at 1.0 in ``_compute_score``).
+
+    Same target row shape as the reask helpers (latest
+    ``request_type='question'`` + ``error_type='ok'``), so positive
+    and negative signals key on the same per-attempt rows the
+    router scores.
+    """
+    try:
+        from infra.platform import get_platform_db
+        pdb = get_platform_db()
+        updated = await pdb.mark_last_ai_usage_thumbs_up(account_id, user_id)
+        if updated:
+            logger.info(
+                "Thumbs-up click for user=%d; marked 1 ai_usage row",
+                user_id,
+            )
+        return bool(updated)
+    except Exception as e:
+        logger.debug("Thumbs-up-flip skipped: %s", e)
+        return False

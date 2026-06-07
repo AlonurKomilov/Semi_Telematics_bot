@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bot, Send, Trash2, Copy, Check, RefreshCw, Sparkles, MessageSquare, Pencil, Download, RotateCcw, ChevronDown, Zap, Brain, Microscope, type LucideIcon } from 'lucide-react';
+import { Bot, Send, Trash2, Copy, Check, RefreshCw, Sparkles, MessageSquare, Pencil, Download, RotateCcw, ChevronDown, Zap, Brain, Microscope, ThumbsUp, ThumbsDown, type LucideIcon } from 'lucide-react';
 import { apiJSON, apiJSONAI, apiStreamChat } from '../../api/client';
 import { useShellConfig } from '../../hooks/useShellConfig';
 import type { AIChatMessage, AIChatResponse, AIHistoryResponse, AISummaryResponse, AIModel, AIModelsResponse, AIUsage, AITierChoice, AITierOption, AITierResponse } from '../../types';
@@ -90,13 +90,19 @@ export default function Chat() {
   const [error, setError] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
-  // Regenerate button only operates on the LATEST AI bubble — older
-  // bubbles can't be correlated with a specific ai_usage row from the
-  // frontend (no row id flows through), so we'd risk flipping
-  // had_reask on the wrong row.  Disabling the button on non-latest
-  // bubbles is the conservative fix; threading usage_id end-to-end
-  // is a follow-up if users ever ask to regenerate older answers.
+  // Regenerate / thumbs buttons only operate on the LATEST AI bubble
+  // — older bubbles can't be correlated with a specific ai_usage row
+  // from the frontend (no row id flows through), so we'd risk
+  // flipping had_reask / had_thumbs_up on the wrong row.  Disabling
+  // on non-latest bubbles is the conservative fix; threading
+  // usage_id end-to-end is a follow-up if users ever ask to give
+  // feedback on older answers.
   const [regeneratingIdx, setRegeneratingIdx] = useState<number | null>(null);
+  /** Tracks which feedback action the user clicked on each AI bubble,
+   *  by index → 'up' | 'down'.  Keeps the icon filled after click so
+   *  the user has visual confirmation their feedback registered, and
+   *  prevents a second click from triggering a duplicate POST. */
+  const [feedbackByIdx, setFeedbackByIdx] = useState<Record<number, 'up' | 'down'>>({});
   const [clearConfirm, setClearConfirm] = useState(false);
   const clearConfirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -403,6 +409,27 @@ export default function Chat() {
     }
   }
 
+  /** Record a thumbs-up or thumbs-down vote on the AI bubble at aiIdx.
+   *
+   *  Two distinct endpoints (``/feedback/thumbs-up`` flips
+   *  ``had_thumbs_up``, ``/feedback/thumbs-down`` flips ``had_reask``
+   *  via a different code path) so the scorer can distinguish
+   *  positive from negative signals.  Fire-and-forget — a failed
+   *  POST silently drops the vote rather than nagging the user.
+   *
+   *  Local state ``feedbackByIdx`` records the click so the icon
+   *  stays filled afterwards and a second click on the same vote is
+   *  a no-op.  Clicking the OPPOSITE vote after one is registered
+   *  *does* fire a fresh POST and overwrite the local marker — users
+   *  changing their mind is a real flow.
+   */
+  function voteOnMessage(aiIdx: number, kind: 'up' | 'down') {
+    if (feedbackByIdx[aiIdx] === kind) return;  // already voted this way
+    setFeedbackByIdx((s) => ({ ...s, [aiIdx]: kind }));
+    const endpoint = kind === 'up' ? '/ai/feedback/thumbs-up' : '/ai/feedback/thumbs-down';
+    apiJSON(endpoint, { method: 'POST', body: {} }).catch(() => {});
+  }
+
   function editMessage(text: string) {
     setInput(text);
     setTimeout(() => {
@@ -665,24 +692,61 @@ export default function Chat() {
                       <span className="text-3xs text-muted-foreground/60">
                         {models.find((m) => m.name === currentModel)?.display || currentModel}
                       </span>
-                      {/* Regenerate — only on the latest AI bubble.
-                          Click flips had_reask on the prior ai_usage
-                          row + re-fires the same prompt with a fresh
-                          model pick (ε-greedy router on the same
-                          tier).  Disabled while a regen is in flight
-                          or while any chat request is loading. */}
+                      {/* Feedback row — only on the latest AI bubble.
+                          Thumbs up = explicit positive (flips
+                          had_thumbs_up).  Thumbs down = explicit
+                          negative without retry (flips had_reask).
+                          Regenerate = explicit negative WITH retry
+                          (flips had_reask + re-fires the same prompt
+                          via the existing send() dispatcher).  Once
+                          the user votes, the icon stays filled so
+                          they have visual confirmation. */}
                       {i === lastAiIdx && (
-                        <button
-                          onClick={() => regenerateMessage(i)}
-                          disabled={regeneratingIdx !== null || loading}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground ml-auto disabled:opacity-30 disabled:cursor-not-allowed"
-                          title={t('chat.regenerate')}
-                        >
-                          <RefreshCw
-                            size={12}
-                            className={regeneratingIdx === i ? 'animate-spin' : ''}
-                          />
-                        </button>
+                        <>
+                          <button
+                            onClick={() => voteOnMessage(i, 'up')}
+                            disabled={loading}
+                            className={`opacity-0 group-hover:opacity-100 transition-opacity ml-auto disabled:cursor-not-allowed ${
+                              feedbackByIdx[i] === 'up'
+                                ? 'opacity-100 text-primary'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                            title={t('chat.feedback_good')}
+                            aria-pressed={feedbackByIdx[i] === 'up'}
+                          >
+                            <ThumbsUp
+                              size={12}
+                              className={feedbackByIdx[i] === 'up' ? 'fill-current' : ''}
+                            />
+                          </button>
+                          <button
+                            onClick={() => voteOnMessage(i, 'down')}
+                            disabled={loading}
+                            className={`opacity-0 group-hover:opacity-100 transition-opacity disabled:cursor-not-allowed ${
+                              feedbackByIdx[i] === 'down'
+                                ? 'opacity-100 text-warn'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                            title={t('chat.feedback_bad')}
+                            aria-pressed={feedbackByIdx[i] === 'down'}
+                          >
+                            <ThumbsDown
+                              size={12}
+                              className={feedbackByIdx[i] === 'down' ? 'fill-current' : ''}
+                            />
+                          </button>
+                          <button
+                            onClick={() => regenerateMessage(i)}
+                            disabled={regeneratingIdx !== null || loading}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                            title={t('chat.regenerate')}
+                          >
+                            <RefreshCw
+                              size={12}
+                              className={regeneratingIdx === i ? 'animate-spin' : ''}
+                            />
+                          </button>
+                        </>
                       )}
                       <button
                         onClick={() => copyMessage(msg.text, i)}

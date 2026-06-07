@@ -736,3 +736,48 @@ async def feedback_regenerate(
     user_id = int(user["sub"])
     marked = await ai.flip_last_response_as_reask(account_id, user_id)
     return {"ok": True, "marked": marked}
+
+
+@router.post("/feedback/thumbs-down")
+@limiter.limit("30/minute")
+async def feedback_thumbs_down(
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
+    """Flag the user's most recent AI response as unsatisfying — no retry.
+
+    Semantically same as ``/feedback/regenerate`` (both flip
+    ``had_reask=TRUE`` on the latest ok question row) but doesn't
+    re-fire the prompt.  For users who want to log "this was bad"
+    and move on.  Shares the scorer slice with all the other
+    negative signals — no double-counting on the same row thanks to
+    idempotent flipping.
+    """
+    account_id = user["account_id"]
+    user_id = int(user["sub"])
+    marked = await ai.flip_last_response_as_thumbs_down(account_id, user_id)
+    return {"ok": True, "marked": marked}
+
+
+@router.post("/feedback/thumbs-up")
+@limiter.limit("30/minute")
+async def feedback_thumbs_up(
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
+    """Flag the user's most recent AI response as great.
+
+    The ONLY explicit positive signal in the satisfaction stack.
+    Flips ``had_thumbs_up=TRUE`` on the latest ok question row;
+    the scorer adds 0.5x the thumbs-up rate to satisfaction (capped
+    at 1.0), so models with consistently great answers can earn
+    upweighting that pure no-feedback can't deliver.
+
+    Same rate limit (30/min) and same "latest row for this user"
+    targeting semantics as the negative endpoints, so positive and
+    negative signals key on the same per-attempt rows.
+    """
+    account_id = user["account_id"]
+    user_id = int(user["sub"])
+    marked = await ai.flip_last_response_as_thumbs_up(account_id, user_id)
+    return {"ok": True, "marked": marked}

@@ -195,6 +195,8 @@ from capabilities.ai.feedback import (                                    # noqa
     detect_reask_and_mark,
     detect_phrase_dissatisfaction_and_mark,
     flip_last_response_as_reask,
+    flip_last_response_as_thumbs_down,
+    flip_last_response_as_thumbs_up,
 )
 
 # ── tools registry ───────────────────────────────────────────────
