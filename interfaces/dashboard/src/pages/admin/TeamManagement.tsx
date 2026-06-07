@@ -5,6 +5,7 @@ import { Users as UsersIcon, X, Truck } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
+import RoleBadge, { ROLE_LABEL, roleTone } from '../../components/RoleBadge';
 import { useAuth } from '../../context/AuthContext';
 import {
   PageHeader,
@@ -13,36 +14,16 @@ import {
   TableSkeleton,
 } from '../../components/shell';
 import { toneClasses } from '../../lib/status';
+import { usePermissions } from '../../hooks/usePermissions';
+import { InvitesPanel } from './Invites';
 import type { AdminUser, AnyColumn } from '../../types';
 
+// Roles the Owner/Admin can re-assign existing members to.  Excludes
+// 'owner' (only an Owner can transfer ownership and that's a separate
+// flow) and the personnel back-office roles 'hr'/'accounting' (not yet
+// exposed in this UI).  Display labels come from the canonical
+// ROLE_LABEL map in components/RoleBadge.tsx.
 const ROLES = ['admin', 'fleet', 'safety', 'dispatcher', 'driver'] as const;
-
-const ROLE_LABELS: Record<string, string> = {
-  owner: 'Owner',
-  admin: 'Admin',
-  fleet: 'Fleet',
-  safety: 'Safety',
-  dispatcher: 'Dispatcher',
-  driver: 'Driver',
-};
-
-const ROLE_COLORS: Record<string, string> = {
-  owner: 'bg-purple-500/20 text-purple-700 dark:text-purple-400 border-purple-500/30',
-  admin: 'bg-primary/15 text-primary border-primary/30',
-  fleet: 'bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30',
-  safety: 'bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30',
-  dispatcher: 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-400 border-cyan-500/30',
-  driver: 'bg-gray-500/20 text-muted-foreground border-gray-500/30',
-};
-
-function RoleBadge({ role }: { role: string }) {
-  const cls = ROLE_COLORS[role] || ROLE_COLORS.driver;
-  return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${cls}`}>
-      {ROLE_LABELS[role] || role}
-    </span>
-  );
-}
 
 function UserAvatar({ userId, name, size = 48, active = true }: { userId: number; name: string; size?: number; active?: boolean }) {
   const [src, setSrc] = useState<string | null>(null);
@@ -166,7 +147,7 @@ const userColumns: AnyColumn[] = [
 
 type DetailTab = 'profile' | 'access' | 'settings';
 
-export default function Users() {
+export default function TeamManagement() {
   const { t } = useTranslation();
   const { user: me } = useAuth();
   const qc = useQueryClient();
@@ -175,6 +156,12 @@ export default function Users() {
   const [selected, setSelected] = useState<AdminUser | null>(null);
   const [detailTab, setDetailTab] = useState<DetailTab>('profile');
   const [roleFilter, setRoleFilter] = useState<string | null>(null);
+  // Page-level tab: the member list vs the Invites panel (folded in from
+  // the old standalone /admin/invites page).  The Invites tab only shows
+  // for users who can actually invite.
+  const [pageTab, setPageTab] = useState<'members' | 'invites'>('members');
+  const { has } = usePermissions();
+  const canInvite = has('can_invite');
 
   // Truck assignment
   const [editVehicles, setEditTrucks] = useState<string[]>([]);
@@ -388,6 +375,32 @@ export default function Users() {
         }
       />
 
+      {/* Page-level tabs: the member list vs the Invites panel.  Inviting
+          is part of managing the team, so it lives here as a tab instead
+          of a separate sidebar entry.  Only shown for users who can invite. */}
+      {canInvite && (
+        <div className="flex gap-1 mb-4 border-b border-border">
+          {(['members', 'invites'] as const).map((key) => (
+            <button
+              key={key}
+              onClick={() => setPageTab(key)}
+              className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px capitalize transition ${
+                pageTab === key
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {key}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {pageTab === 'invites' ? (
+        <InvitesPanel />
+      ) : (
+        <>
+
       {error && (
         <div className="mb-3"><ErrorState message={error} /></div>
       )}
@@ -404,7 +417,7 @@ export default function Users() {
           >
             All
           </button>
-          {Object.entries(ROLE_LABELS).map(([key, label]) => {
+          {Object.entries(ROLE_LABEL).map(([key, label]) => {
             const count = roleCounts[key] || 0;
             if (!count) return null;
             return (
@@ -412,7 +425,7 @@ export default function Users() {
                 key={key}
                 onClick={() => setRoleFilter(roleFilter === key ? null : key)}
                 className={`px-2.5 py-1 rounded-full text-xs font-medium transition border ${
-                  roleFilter === key ? ROLE_COLORS[key] : 'border-transparent text-muted-foreground hover:text-foreground/80'
+                  roleFilter === key ? toneClasses(roleTone(key)) : 'border-transparent text-muted-foreground hover:text-foreground/80'
                 }`}
               >
                 {label} <span className="opacity-60">{count}</span>
@@ -425,7 +438,7 @@ export default function Users() {
       {loading && users.length === 0 ? <TableSkeleton rows={6} cols={5} /> : filteredUsers.length === 0 ? (
         <EmptyState
           icon={UsersIcon}
-          title={roleFilter ? `No ${ROLE_LABELS[roleFilter]} users` : 'No team members yet'}
+          title={roleFilter ? `No ${ROLE_LABEL[roleFilter]} users` : 'No team members yet'}
           description={
             roleFilter
               ? 'Try a different role filter.'
@@ -749,13 +762,13 @@ export default function Users() {
                                 onClick={() => { if (!isCurrent) { setPendingRole(r); setConfirmAction('role'); } }}
                                 className={`px-3 py-2 rounded-lg text-sm font-medium transition border ${
                                   isCurrent
-                                    ? `${ROLE_COLORS[r]} border-current`
+                                    ? `${toneClasses(roleTone(r))} border-current`
                                     : isPending
                                     ? toneClasses('warn')
                                     : 'bg-muted border-border text-muted-foreground hover:border-border hover:text-foreground/80'
                                 }`}
                               >
-                                {ROLE_LABELS[r]}
+                                {ROLE_LABEL[r]}
                                 {isCurrent && <span className="ml-1 text-3xs opacity-60">current</span>}
                               </button>
                             );
@@ -764,7 +777,7 @@ export default function Users() {
                         {confirmAction === 'role' && pendingRole && (
                           <div className={`mt-3 p-3 border rounded-lg ${toneClasses('warn')}`}>
                             <p className="text-sm text-warn mb-2">
-                              Change {selected.display_name}'s role to <strong>{ROLE_LABELS[pendingRole]}</strong>?
+                              Change {selected.display_name}'s role to <strong>{ROLE_LABEL[pendingRole]}</strong>?
                             </p>
                             <div className="flex gap-2">
                               <button
@@ -833,6 +846,8 @@ export default function Users() {
               </div>
             </div>
           )}
+        </>
+      )}
         </>
       )}
     </div>

@@ -4,6 +4,7 @@ import { Link as LinkIcon, Plus } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import type { InviteInfo, InvitesResponse } from '../../types';
 import DataTable from '../../components/DataTable';
+import RoleBadge, { ROLE_LABEL } from '../../components/RoleBadge';
 import {
   PageHeader,
   EmptyState,
@@ -13,21 +14,11 @@ import {
 import type { AnyColumn } from '../../types';
 import { toneClasses } from '../../lib/status';
 
-const ROLE_BADGES: Record<string, string> = {
-  admin: 'bg-red-500/15 text-red-700 dark:text-red-400',
-  fleet: 'bg-green-500/15 text-green-700 dark:text-green-400',
-  safety: 'bg-orange-500/15 text-orange-700 dark:text-orange-400',
-  dispatcher: 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400',
-  driver: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-400',
-};
-
-const ROLE_LABELS: Record<string, string> = {
-  admin: 'Admin',
-  fleet: 'Fleet',
-  safety: 'Safety',
-  dispatcher: 'Dispatcher',
-  driver: 'Driver',
-};
+// Role choices for the create-invite form.  Owner is intentionally
+// excluded — the rank-check on the server already forbids inviting
+// peers / superiors; this just keeps the dropdown tidy.  Reads
+// labels from the canonical ROLE_LABEL map in components/RoleBadge.tsx.
+const INVITABLE_ROLES = ['admin', 'fleet', 'safety', 'dispatcher', 'driver'] as const;
 
 function StatusBadge({ invite }: { invite: InviteInfo }) {
   if (invite.is_used) return <span className={`px-2 py-0.5 rounded-full text-xs ${toneClasses('ok')}`}>Used</span>;
@@ -35,7 +26,14 @@ function StatusBadge({ invite }: { invite: InviteInfo }) {
   return <span className="px-2 py-0.5 rounded-full text-xs bg-primary/15 text-primary">Pending</span>;
 }
 
-export default function Invites() {
+/**
+ * Invites body — toolbar + table + create modal, WITHOUT a PageHeader.
+ * Rendered two ways: as a tab inside the Team Management page (the
+ * canonical home — inviting is part of managing the team), and as the
+ * standalone /admin/invites page (kept for HR's onboarding sidebar and
+ * direct links) via the thin ``Invites`` wrapper below.
+ */
+export function InvitesPanel() {
   const { t } = useTranslation();
   const [invites, setInvites] = useState<InviteInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,8 +104,7 @@ export default function Invites() {
       key: 'role',
       label: 'Role',
       render: (v) => {
-        const cls = ROLE_BADGES[v as string] || 'bg-gray-500/20 text-muted-foreground';
-        return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{ROLE_LABELS[v as string] || String(v)}</span>;
+        return <RoleBadge role={String(v)} />;
       },
     },
     { key: 'department', label: 'Department' },
@@ -142,31 +139,27 @@ export default function Invites() {
 
   return (
     <div>
-      <PageHeader
-        icon={LinkIcon}
-        title={t('pages.invites_title')}
-        description={t('pages.invites_desc')}
-        actions={
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={showAll}
-                onChange={(e) => setShowAll(e.target.checked)}
-                className="rounded bg-muted border-border"
-              />
-              Show all
-            </label>
-            <button
-              onClick={() => setShowForm(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
-            >
-              <Plus size={14} />
-              New invite
-            </button>
-          </div>
-        }
-      />
+      {/* Toolbar — was the PageHeader's actions slot; lives in the panel
+          now so it travels with both the Team Management tab and the
+          standalone page. */}
+      <div className="mb-4 flex items-center justify-end gap-2">
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={showAll}
+            onChange={(e) => setShowAll(e.target.checked)}
+            className="rounded bg-muted border-border"
+          />
+          Show all
+        </label>
+        <button
+          onClick={() => setShowForm(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
+        >
+          <Plus size={14} />
+          New invite
+        </button>
+      </div>
 
       {error && (
         <div className="mb-3"><ErrorState message={error} /></div>
@@ -201,7 +194,7 @@ export default function Invites() {
 
             <label className="block text-sm text-muted-foreground mb-1">Role</label>
             <select value={role} onChange={(e) => setRole(e.target.value)} className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border mb-3">
-              {Object.entries(ROLE_LABELS).map(([val, lbl]) => <option key={val} value={val}>{lbl}</option>)}
+              {INVITABLE_ROLES.map((val) => <option key={val} value={val}>{ROLE_LABEL[val]}</option>)}
             </select>
 
             <label className="block text-sm text-muted-foreground mb-1">Department</label>
@@ -242,6 +235,25 @@ export default function Invites() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Standalone /admin/invites page — PageHeader + the shared panel.  Kept
+ * for HR's onboarding sidebar entry and any direct links; Owner/Admin
+ * now reach invites via the Team Management → Invites tab.
+ */
+export default function Invites() {
+  const { t } = useTranslation();
+  return (
+    <div>
+      <PageHeader
+        icon={LinkIcon}
+        title={t('pages.invites_title')}
+        description={t('pages.invites_desc')}
+      />
+      <InvitesPanel />
     </div>
   );
 }
