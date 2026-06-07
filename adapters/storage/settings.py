@@ -403,87 +403,6 @@ class SettingsMixin:
                     )
         return scored
 
-
-def _compute_score(
-    *,
-    samples: int,
-    errors: int,
-    avg_latency_ms: float,
-    tool_successes: int,
-    tool_turns: int,
-    reasks: int = 0,
-) -> dict:
-    """Combine availability + speed + tool success + satisfaction into a
-    single [0, 1] score.
-
-    Score weights (rebalanced from the original 60/25/15 split when
-    the satisfaction signal landed):
-    - 50 % availability (1 - error_rate).  Unreachable model = useless.
-    - 20 % speed (normalized — sub-2s = full credit, 20s+ = zero).
-    - 15 % satisfaction (1 - reask_rate).  Strong quality signal —
-      "user came back within 30 s" is closer to a real thumbs-down
-      than tool_success_rate ever was.
-    - 15 % tool success rate (only for turns that actually called tools).
-
-    Tiny sample sets (n < 5) get a default mid-score so the router
-    doesn't lock onto a model with one lucky data point.  ε-greedy
-    explore handles the genuine cold start.
-
-    ``reasks`` denominator is *success samples* (samples - errors),
-    not total samples: only successful responses can be re-asked, so
-    counting failures in the denominator would unfairly dilute the
-    signal for unreliable models.
-    """
-    success_samples = max(samples - errors, 0)
-    reask_rate = (reasks / success_samples) if success_samples > 0 else 0.0
-    satisfaction = 1.0 - reask_rate
-
-    if samples < 5:
-        # Not enough data — return a neutral score that lets static
-        # ordering win, but include the sample count so the caller can
-        # see it's cold-start data.
-        return {
-            "score": 0.5,
-            "samples": samples,
-            "error_rate": 0.0 if samples == 0 else errors / samples,
-            "p50_latency_ms": int(avg_latency_ms),
-            "tool_success_rate": (
-                tool_successes / tool_turns if tool_turns else 0.0
-            ),
-            "reask_rate": round(reask_rate, 4),
-            "satisfaction": round(satisfaction, 4),
-            "is_cold_start": True,
-        }
-
-    error_rate = errors / samples
-    availability = 1.0 - error_rate
-    # Linear decay from full credit at <=2s to zero at >=20s.
-    if avg_latency_ms <= 2000:
-        speed = 1.0
-    elif avg_latency_ms >= 20000:
-        speed = 0.0
-    else:
-        speed = 1.0 - (avg_latency_ms - 2000) / 18000.0
-    tool_success_rate = (
-        tool_successes / tool_turns if tool_turns else 1.0
-    )
-    score = (
-        0.50 * availability
-        + 0.20 * speed
-        + 0.15 * satisfaction
-        + 0.15 * tool_success_rate
-    )
-    return {
-        "score": round(score, 4),
-        "samples": samples,
-        "error_rate": round(error_rate, 4),
-        "p50_latency_ms": int(avg_latency_ms),
-        "tool_success_rate": round(tool_success_rate, 4),
-        "reask_rate": round(reask_rate, 4),
-        "satisfaction": round(satisfaction, 4),
-        "is_cold_start": False,
-    }
-
     async def get_ai_usage_stats(self, account_id: int, days: int = 30) -> dict:
         """Get AI usage stats for an account over the past N days.
 
@@ -660,3 +579,84 @@ def _compute_score(
             "by_type": by_type,
             "daily": daily,
         }
+
+
+def _compute_score(
+    *,
+    samples: int,
+    errors: int,
+    avg_latency_ms: float,
+    tool_successes: int,
+    tool_turns: int,
+    reasks: int = 0,
+) -> dict:
+    """Combine availability + speed + tool success + satisfaction into a
+    single [0, 1] score.
+
+    Score weights (rebalanced from the original 60/25/15 split when
+    the satisfaction signal landed):
+    - 50 % availability (1 - error_rate).  Unreachable model = useless.
+    - 20 % speed (normalized — sub-2s = full credit, 20s+ = zero).
+    - 15 % satisfaction (1 - reask_rate).  Strong quality signal —
+      "user came back within 30 s" is closer to a real thumbs-down
+      than tool_success_rate ever was.
+    - 15 % tool success rate (only for turns that actually called tools).
+
+    Tiny sample sets (n < 5) get a default mid-score so the router
+    doesn't lock onto a model with one lucky data point.  ε-greedy
+    explore handles the genuine cold start.
+
+    ``reasks`` denominator is *success samples* (samples - errors),
+    not total samples: only successful responses can be re-asked, so
+    counting failures in the denominator would unfairly dilute the
+    signal for unreliable models.
+    """
+    success_samples = max(samples - errors, 0)
+    reask_rate = (reasks / success_samples) if success_samples > 0 else 0.0
+    satisfaction = 1.0 - reask_rate
+
+    if samples < 5:
+        # Not enough data — return a neutral score that lets static
+        # ordering win, but include the sample count so the caller can
+        # see it's cold-start data.
+        return {
+            "score": 0.5,
+            "samples": samples,
+            "error_rate": 0.0 if samples == 0 else errors / samples,
+            "p50_latency_ms": int(avg_latency_ms),
+            "tool_success_rate": (
+                tool_successes / tool_turns if tool_turns else 0.0
+            ),
+            "reask_rate": round(reask_rate, 4),
+            "satisfaction": round(satisfaction, 4),
+            "is_cold_start": True,
+        }
+
+    error_rate = errors / samples
+    availability = 1.0 - error_rate
+    # Linear decay from full credit at <=2s to zero at >=20s.
+    if avg_latency_ms <= 2000:
+        speed = 1.0
+    elif avg_latency_ms >= 20000:
+        speed = 0.0
+    else:
+        speed = 1.0 - (avg_latency_ms - 2000) / 18000.0
+    tool_success_rate = (
+        tool_successes / tool_turns if tool_turns else 1.0
+    )
+    score = (
+        0.50 * availability
+        + 0.20 * speed
+        + 0.15 * satisfaction
+        + 0.15 * tool_success_rate
+    )
+    return {
+        "score": round(score, 4),
+        "samples": samples,
+        "error_rate": round(error_rate, 4),
+        "p50_latency_ms": int(avg_latency_ms),
+        "tool_success_rate": round(tool_success_rate, 4),
+        "reask_rate": round(reask_rate, 4),
+        "satisfaction": round(satisfaction, 4),
+        "is_cold_start": False,
+    }

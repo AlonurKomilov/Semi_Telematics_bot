@@ -738,10 +738,15 @@ async def ask_agent(question: str, fleet_context: dict,
     try:
         from google.genai import types as _gtypes
     except ImportError:
-        text = await ask_ai(question, fleet_context, user_id=user_id,
+        # ``ask_ai`` returns ``(text, usage)`` since 60e6577; unpack
+        # both so the response dict carries the same shape every
+        # other ask_agent return path produces.  Previously dropped
+        # the tuple straight into the response, which JSON-serialised
+        # the usage dict alongside the text and broke clients.
+        text, usage = await ask_ai(question, fleet_context, user_id=user_id,
                                account_id=account_id, language=language,
                                user_context=user_context)
-        return {"text": text, "tool_results": []}
+        return {"text": text, "tool_results": [], "usage": usage}
     Part = _gtypes.Part
     Content = _gtypes.Content
 
@@ -769,10 +774,10 @@ async def ask_agent(question: str, fleet_context: dict,
 
     # openai_compat / mistral_raw → no FC support; degrade to chat-only.
     if _api_type != "gemini":
-        text = await ask_ai(question, fleet_context, user_id=user_id,
+        text, usage = await ask_ai(question, fleet_context, user_id=user_id,
                                account_id=account_id, language=language,
                                user_context=user_context)
-        return {"text": text, "tool_results": []}
+        return {"text": text, "tool_results": [], "usage": usage}
 
     model, cur_model_name, _ = get_model_for_user(user_id, account_id)
 
