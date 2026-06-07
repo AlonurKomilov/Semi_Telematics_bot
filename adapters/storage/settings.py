@@ -231,6 +231,7 @@ class SettingsMixin:
         error_type: str | None = None,
         tool_success_count: int | None = None,
         role: str | None = None,
+        prompt_category: str | None = None,
     ) -> int:
         """Log an AI API call with token counts and router telemetry.
 
@@ -244,6 +245,13 @@ class SettingsMixin:
         different question shapes; the router scores per (model x role)
         so a model great for drivers but weak for owner briefings
         doesn't get promoted across the board.
+
+        ``prompt_category`` sub-classifies free-form questions
+        (lookup / analysis / comparison / summary / troubleshooting /
+        other) so the router can pick the model that's historically
+        best for *this kind* of question.  Null for non-question
+        actions (summary / diagnosis already carry their shape in
+        request_type).
         """
         now = self._now()
         cur = await self._db.execute(
@@ -251,12 +259,12 @@ class SettingsMixin:
                (account_id, user_id, model, request_type,
                 prompt_tokens, reply_tokens, thinking_tokens,
                 total_tokens, latency_ms, error_type,
-                tool_success_count, role, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                tool_success_count, role, prompt_category, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, user_id, model, request_type,
              prompt_tokens, reply_tokens, thinking_tokens,
              total_tokens, latency_ms, error_type,
-             tool_success_count, role, now),
+             tool_success_count, role, prompt_category, now),
         )
         await self._db.commit()
         return cur.lastrowid
@@ -267,6 +275,7 @@ class SettingsMixin:
         *,
         role: str | None = None,
         request_type: str | None = None,
+        prompt_category: str | None = None,
         since_days: int = 7,
         candidates: list[str] | None = None,
     ) -> dict[str, dict]:
@@ -283,6 +292,12 @@ class SettingsMixin:
           per-role winners.  Pass None to score across roles.
         - ``request_type``: same idea for action ('question', 'summary',
           'diagnosis', 'chat', …).
+        - ``prompt_category``: sub-classification of free-form
+          questions ('lookup', 'analysis', 'comparison', 'summary',
+          'troubleshooting', 'other').  Lets the router pick the model
+          best for *this kind* of question — e.g. a Fast-tier model
+          that wins at lookups but loses at analysis stays the lookup
+          winner without being misranked overall.
         - ``candidates``: restrict to this set of model names; absent
           ones are returned with ``samples=0`` so the router can spot
           unobserved candidates and explore them.
@@ -296,6 +311,9 @@ class SettingsMixin:
         if request_type:
             where.append("request_type = ?")
             params.append(request_type)
+        if prompt_category:
+            where.append("prompt_category = ?")
+            params.append(prompt_category)
 
         sql = (
             "SELECT model, "

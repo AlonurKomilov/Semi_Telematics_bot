@@ -58,14 +58,20 @@ async def record_call_attempt(
     error_type: str,
     usage: dict | None = None,
     tool_success_count: int | None = None,
+    prompt_category: str | None = None,
 ) -> None:
     """Write one ai_usage row for a single model attempt.
 
     Called from inside the AI module after each model call (success or
     failure) so the router can compute real per-model error_rate /
-    latency / tool_success_rate per (account, role).  Skips when the
-    caller didn't pass account_id + action — that's the legacy entry
-    path that has no router context.
+    latency / tool_success_rate per (account, role, prompt_category).
+    Skips when the caller didn't pass account_id + action — that's
+    the legacy entry path that has no router context.
+
+    ``prompt_category`` sub-classifies free-form questions (lookup /
+    analysis / comparison / summary / troubleshooting / other) so the
+    router can prefer the model that's historically been best at
+    *this kind* of question, not just any question on this role.
 
     Lazy-imports platform_db so this module stays import-safe at
     package load time (capabilities.ai is imported before infra is
@@ -86,6 +92,7 @@ async def record_call_attempt(
             error_type=error_type,
             tool_success_count=tool_success_count,
             role=role,
+            prompt_category=prompt_category,
         )
     except Exception as e:
         logger.debug("AI attempt telemetry failed: %s", e)
@@ -107,6 +114,93 @@ def classify_error(exc: Exception) -> str:
     return "other"
 
 
+# ── Prompt category classifier ───────────────────────────────────
+#
+# Heuristic regex classifier — no LLM call, ~50µs per prompt.  Used
+# by the router to score models per (account, role, prompt_category)
+# so a model that wins at lookups doesn't have to also win at
+# multi-step analysis to get picked.  Six buckets, more specific
+# patterns checked first so "compare X vs Y" wins over "show me X
+# vs Y".  Buckets and their telltale signals:
+#
+#   comparison      "compare", "vs", "versus", "difference between",
+#                   "which is better", "X or Y"
+#   troubleshooting "diagnose", "troubleshoot", "fault", "problem",
+#                   "issue", "broken", "not working", "error"
+#   summary         "briefing", "summary", "overview", "status report",
+#                   "morning report", "give me a recap"
+#   analysis        "why", "analyze", "explain", "reason", "trend",
+#                   "predict", "root cause", "what's happening"
+#   lookup          "show", "list", "where", "who", "what is", "which",
+#                   "find", "tell me about"
+#   other           anything that doesn't match above
+#
+# Tuned to fleet-domain phrasing — adjust patterns when the model
+# starts misrouting questions in production.
+
+_CATEGORY_PATTERNS: tuple[tuple[str, re.Pattern], ...] = (
+    ("comparison", re.compile(
+        r"\bcompar(?:e|ing|ison)\b|"
+        r"\bvs\.?\b|\bversus\b|"
+        r"\bdifference between\b|"
+        r"\bwhich is (?:better|best|faster|cheaper|safer|worse)\b|"
+        r"\b\w+ or \w+\?",
+        re.IGNORECASE,
+    )),
+    ("troubleshooting", re.compile(
+        r"\bdiagnos(?:e|is|tic)\b|"
+        r"\btroubleshoot\b|"
+        r"\bfault\b|\bproblem\b|\bissue\b|\bbroken\b|\bnot working\b|"
+        r"\berror code\b|\bdtc\b|\bspn\b",
+        re.IGNORECASE,
+    )),
+    ("summary", re.compile(
+        r"\bbriefing\b|\bsummary\b|\boverview\b|"
+        r"\bstatus report\b|\bmorning report\b|"
+        r"\b(?:give|show) me (?:a |the )?(?:recap|summary|briefing|status)\b|"
+        r"\bsum it up\b|\btl;dr\b",
+        re.IGNORECASE,
+    )),
+    ("analysis", re.compile(
+        r"\bwhy\b|"
+        r"\banaly(?:s|z)e\b|\banalysis\b|"
+        r"\bexplain\b|\breason\b|"
+        r"\btrend\b|\bpattern\b|"
+        r"\bpredict\b|\bforecast\b|"
+        r"\broot cause\b|"
+        r"\bwhat'?s? happening\b|"
+        r"\bhow come\b",
+        re.IGNORECASE,
+    )),
+    ("lookup", re.compile(
+        r"\bshow\b|\blist\b|\bwhere\b|\bwho\b|"
+        r"\bwhat (?:is|are)\b|\bwhich\b|"
+        r"\bfind\b|\btell me about\b|"
+        r"\bhow many\b|\bhow much\b",
+        re.IGNORECASE,
+    )),
+)
+
+
+def classify_prompt(text: str) -> str:
+    """Bucket *text* into one of the prompt-category labels.
+
+    Returns ``"other"`` when no pattern matches — that's the "I
+    couldn't tell" bucket; the router uses it as its own scoring key
+    so unmatched prompts still get their own slice of telemetry
+    rather than polluting the lookup bucket with non-lookups.
+    """
+    if not text:
+        return "other"
+    # Truncate to keep the regex pass cheap on huge prompts (rare for
+    # chat, but defensive against pathological inputs).
+    sample = text[:500]
+    for label, pat in _CATEGORY_PATTERNS:
+        if pat.search(sample):
+            return label
+    return "other"
+
+
 async def log_ai_usage(
     ai_module,
     platform_db,
@@ -120,6 +214,7 @@ async def log_ai_usage(
     tool_success_count: int | None = None,
     role: str | None = None,
     model: str | None = None,
+    prompt_category: str | None = None,
 ) -> None:
     """Log AI token usage + router telemetry for an AI call.
 
@@ -163,6 +258,7 @@ async def log_ai_usage(
             error_type=error_type or ("ok" if has_usage else None),
             tool_success_count=tool_success_count,
             role=role,
+            prompt_category=prompt_category,
         )
     except Exception as e:
         logger.debug("AI usage logging failed: %s", e)

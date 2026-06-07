@@ -126,6 +126,12 @@ async def run_all(conn) -> None:
     # historical rows stay valid.
     await migrate_ai_usage_routing_columns(conn)
 
+    # Adds prompt_category to ai_usage so the router can sub-classify
+    # free-form questions (lookup vs analysis vs comparison vs …) and
+    # pick the model that's historically best for *this shape* of
+    # question on this account+role.
+    await migrate_ai_usage_prompt_category(conn)
+
 
 async def migrate_ai_chat_history(conn) -> None:
     """Create ai_chat_history table if it doesn't exist yet.
@@ -2626,6 +2632,38 @@ async def migrate_create_kb_bookmarks_table(conn) -> None:
 
 
 # ── AI usage telemetry columns for per-model quality routing ──────
+
+
+async def migrate_ai_usage_prompt_category(conn) -> None:
+    """Adds ``prompt_category`` to ``ai_usage``.
+
+    Sub-classifies free-form ``request_type='question'`` prompts into
+    'lookup' / 'analysis' / 'comparison' / 'summary' /
+    'troubleshooting' / 'other' so the router can prefer the model
+    that's historically been best for *this kind of question* on this
+    account+role.
+
+    "Show me Truck 231" and "Why is Truck 231 burning so much fuel?"
+    are both ``action="question"`` but reward very different model
+    strengths — a Fast-tier model that nails lookups might give weak
+    answers on analysis, and vice-versa.
+
+    Nullable so legacy rows stay valid; new rows populate it.  Index
+    on (account_id, model, prompt_category, created_at) so the
+    per-category scoring query stays cheap as the table grows.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE ai_usage "
+            "ADD COLUMN IF NOT EXISTS prompt_category TEXT"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ai_usage_category "
+            "ON ai_usage(account_id, model, prompt_category, created_at)"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.debug("ai_usage prompt_category ADD skipped (%s)", e)
 
 
 async def migrate_ai_usage_routing_columns(conn) -> None:

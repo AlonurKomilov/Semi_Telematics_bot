@@ -105,6 +105,11 @@ async def create_tables(conn) -> None:
             error_type         TEXT,
             tool_success_count INTEGER,
             role               TEXT,
+            -- Heuristic sub-class of free-form ``question`` prompts:
+            -- lookup / analysis / comparison / summary /
+            -- troubleshooting / other.  Lets the router pick the
+            -- model that's best for *this kind* of question.
+            prompt_category    TEXT,
             created_at         TEXT    NOT NULL
         );
 
@@ -118,6 +123,10 @@ async def create_tables(conn) -> None:
             ON ai_usage(account_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_ai_usage_router
             ON ai_usage(account_id, model, created_at);
+        -- idx_ai_usage_category lives in the migration only — on
+        -- existing installs the prompt_category column doesn't exist
+        -- until the ALTER TABLE runs, so creating the index here would
+        -- fail before the migration has a chance to add the column.
 
         CREATE TABLE IF NOT EXISTS ai_chat_history (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,

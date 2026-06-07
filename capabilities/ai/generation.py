@@ -424,6 +424,7 @@ async def _generate_with_model(
     user_id: int | None = None,
     role: str | None = None,
     action: str | None = None,
+    prompt_category: str | None = None,
 ) -> tuple[str, dict | None]:
     """Run a single generation attempt with a specific model (no retries).
 
@@ -431,6 +432,11 @@ async def _generate_with_model(
     if the backend didn't report it.  Times the call and writes a row
     to ``ai_usage`` for the router's per-model scoring (success +
     failure both logged so error_rate is computable).
+
+    ``prompt_category`` is stamped onto every telemetry row so the
+    scorer can pick the model best for *this kind* of question on
+    this account+role; ``None`` is allowed for callers that don't
+    classify (legacy paths).
     """
     import asyncio
     import re
@@ -492,6 +498,7 @@ async def _generate_with_model(
             account_id=account_id, user_id=user_id, role=role, action=action,
             model=model_name, latency_ms=latency_ms,
             error_type=classify_error(e), usage=None,
+            prompt_category=prompt_category,
         )
         raise
 
@@ -502,6 +509,7 @@ async def _generate_with_model(
         account_id=account_id, user_id=user_id, role=role, action=action,
         model=model_name, latency_ms=latency_ms,
         error_type="ok", usage=usage,
+        prompt_category=prompt_category,
     )
     return text, usage
 
@@ -516,7 +524,9 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                          language: str = "en",
                          user_context: dict | None = None,
                          *,
-                         action: str | None = None) -> tuple[str, dict | None]:
+                         action: str | None = None,
+                         prompt_category: str | None = None,
+                         ) -> tuple[str, dict | None]:
     """Core generate implementation (before fallback wrapper).
 
     Returns ``(text, usage)`` — usage may be ``None`` on cache hits or
@@ -527,6 +537,12 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
     the router can score per (model x role x action) — different
     actions favour different models (briefings benefit from Thinking,
     quick lookups don't).
+
+    ``prompt_category`` is the sub-classification ('lookup' /
+    'analysis' / 'comparison' / 'summary' / 'troubleshooting' /
+    'other') of free-form questions.  Caller (``generate()``)
+    classifies once via ``classify_prompt(prompt)`` and forwards;
+    this function just stamps it on telemetry rows.
     """
     import asyncio
     import re
@@ -640,6 +656,7 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                     account_id=account_id, user_id=user_id,
                     role=user_role, action=action,
                     model=cur_model_name, latency_ms=latency_ms,
+                    prompt_category=prompt_category,
                     error_type="ok", usage=usage,
                 )
                 if not text:
@@ -660,6 +677,7 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                     account_id=account_id, user_id=user_id,
                     role=user_role, action=action,
                     model=cur_model_name, latency_ms=latency_ms,
+                    prompt_category=prompt_category,
                     error_type=classify_error(e), usage=None,
                 )
                 last_exc = e
@@ -697,6 +715,7 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                     account_id=account_id, user_id=user_id,
                     role=user_role, action=action,
                     model=cur_model_name, latency_ms=latency_ms,
+                    prompt_category=prompt_category,
                     error_type="empty", usage=None,
                 )
                 return (
@@ -712,6 +731,7 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                     account_id=account_id, user_id=user_id,
                     role=user_role, action=action,
                     model=cur_model_name, latency_ms=latency_ms,
+                    prompt_category=prompt_category,
                     error_type="content_filter", usage=None,
                 )
                 return (
@@ -747,6 +767,7 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                 account_id=account_id, user_id=user_id,
                 role=user_role, action=action,
                 model=cur_model_name, latency_ms=latency_ms,
+                prompt_category=prompt_category,
                 error_type="ok", usage=usage,
             )
             if not text:
@@ -766,6 +787,7 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                 account_id=account_id, user_id=user_id,
                 role=user_role, action=action,
                 model=cur_model_name, latency_ms=latency_ms,
+                prompt_category=prompt_category,
                 error_type=classify_error(e), usage=None,
             )
             last_exc = e
@@ -801,9 +823,22 @@ async def generate(prompt: str, system: str = ASSISTANT_SYSTEM,
     enables router telemetry — each model attempt writes a row to
     ai_usage so the next call's fallback can prefer the historically
     fastest + most-reliable model for this account+role+action.
+
+    Free-form question prompts are heuristically sub-classified into
+    'lookup' / 'analysis' / 'comparison' / 'summary' /
+    'troubleshooting' / 'other' (see ``classify_prompt``) and the
+    category gets stamped on every telemetry row.  Lets the router
+    pick the model best for *this kind* of question — e.g. a Fast
+    model great at lookups but weak at analysis stays the lookup
+    winner without dragging down the analysis pick.
     """
+    from capabilities.ai.usage import classify_prompt
 
     user_role = (user_context or {}).get("role")
+    # Sub-classify only for free-form questions; non-question actions
+    # (summary / diagnosis / parking_analysis / etc) already encode
+    # their shape in ``action`` so they don't need a second axis.
+    prompt_category = classify_prompt(prompt) if action == "question" else None
 
     _saved_exc: Exception | None = None
     try:
@@ -812,6 +847,7 @@ async def generate(prompt: str, system: str = ASSISTANT_SYSTEM,
             user_id=user_id, account_id=account_id,
             language=language, user_context=user_context,
             action=action,
+            prompt_category=prompt_category,
         )
     except Exception as primary_exc:
         if not _is_rate_limit_error(primary_exc):
@@ -844,10 +880,13 @@ async def generate(prompt: str, system: str = ASSISTANT_SYSTEM,
     # Build ordered candidate list.  Start from the static chain
     # (excludes the failed primary), then re-rank by router score so
     # the historically-best fallback gets tried first instead of
-    # walking down the static list.
+    # walking down the static list.  ``prompt_category`` narrows the
+    # score lookup to "models good at this kind of question for this
+    # role" — the score table has its own scoring slice per category.
     candidates = [m for m in _FALLBACK_CHAIN if m != failed_model and m in MODEL_REGISTRY]
     candidates = await _order_candidates_by_score(
         candidates, account_id=account_id, role=user_role, action=action,
+        prompt_category=prompt_category,
     )
 
     last_exc = _saved_exc
@@ -860,6 +899,7 @@ async def generate(prompt: str, system: str = ASSISTANT_SYSTEM,
                 fb_model, fb_location, system, user_content,
                 account_id=account_id, user_id=user_id,
                 role=user_role, action=action,
+                prompt_category=prompt_category,
             )
             if user_id is not None:
                 _store_history(user_id, prompt, text, account_id=account_id or 0)
@@ -888,6 +928,7 @@ async def _order_candidates_by_score(
     account_id: int | None,
     role: str | None,
     action: str | None,
+    prompt_category: str | None = None,
     epsilon: float = 0.10,
 ) -> list[str]:
     """Reorder ``candidates`` by rolling router score, ε-greedy.
@@ -898,9 +939,16 @@ async def _order_candidates_by_score(
     initially-bad model would never get retried after its scores
     decayed.
 
-    Cold-start (no telemetry yet for this account): returns the input
-    order unchanged.  The router only fires when there's enough data
-    to be meaningful.
+    ``prompt_category`` narrows the scoring slice to "models good at
+    this kind of question on this role".  When set and the
+    category-specific score table is non-empty, that's what the
+    ordering uses.  If the category slice has no telemetry yet (cold
+    start for a new question shape), this falls back to the
+    role-only scores so the router still has signal to work with.
+
+    Cold-start (no telemetry at all for this account): returns the
+    input order unchanged.  Static ordering wins until there's enough
+    data to be meaningful.
     """
     if account_id is None or not candidates or len(candidates) == 1:
         return candidates
@@ -908,8 +956,21 @@ async def _order_candidates_by_score(
         from infra.platform import get_platform_db
         pdb = get_platform_db()
         scores = await pdb.get_ai_model_scores(
-            account_id, role=role, candidates=candidates,
+            account_id, role=role,
+            prompt_category=prompt_category,
+            candidates=candidates,
         )
+        # Two-stage cold-start handling.  If every candidate is cold
+        # in the category slice (or nobody's asked this question shape
+        # before for this role), broaden to role-only scores so the
+        # router doesn't fall back to static ordering when it could
+        # use a less specific but real signal.
+        if prompt_category and all(
+            s.get("is_cold_start", True) for s in scores.values()
+        ):
+            scores = await pdb.get_ai_model_scores(
+                account_id, role=role, candidates=candidates,
+            )
     except Exception as e:
         logger.debug("Score lookup failed; using static order: %s", e)
         return candidates
