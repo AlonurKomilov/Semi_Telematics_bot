@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bot, Send, Trash2, Copy, Check, RefreshCw, Sparkles, MessageSquare, Pencil, Download, RotateCcw } from 'lucide-react';
+import { Bot, Send, Trash2, Copy, Check, RefreshCw, Sparkles, MessageSquare, Pencil, Download, RotateCcw, ChevronDown, Zap, Brain, Microscope, type LucideIcon } from 'lucide-react';
 import { apiJSON, apiJSONAI, apiStreamChat } from '../../api/client';
 import { useShellConfig } from '../../hooks/useShellConfig';
 import type { AIChatMessage, AIChatResponse, AIHistoryResponse, AISummaryResponse, AIModel, AIModelsResponse, AIUsage, AITier, AITierOption, AITierResponse } from '../../types';
@@ -14,6 +14,16 @@ interface LocalMessage extends AIChatMessage {
 }
 
 // No hardcoded loading messages — we show real tool activity from the stream
+
+// Tier name → lucide icon component.  Backend's ``icon`` field on the
+// tier response is intentionally ignored here: design.md §7 mandates
+// lucide-react with no emoji as UI icons, so the icon choice is a
+// pure frontend concern.  Three tiers → three semantic glyphs.
+const TIER_ICONS: Record<AITier, LucideIcon> = {
+  fast: Zap,             // ⚡ — quick, snappy
+  thinking: Brain,       // 🧠 — balanced reasoning
+  reasoning: Microscope, // 🔬 — deep analysis
+};
 
 // Suggestion list is keyed by the active persona view — Owner previewing
 // as Safety should see safety-flavored prompts.  The briefingLabel and
@@ -91,17 +101,18 @@ export default function Chat() {
   const [thinkIdx, setThinkIdx] = useState(0);
 
   // ── Model state ──────────────────────────────────────────────
-  // Kept for the "currently using: X" subtitle under the tier chip and
-  // for the AI response cards that show which model produced each reply.
-  // The user-facing knob is the tier, not the model — the picker UI
-  // landed in 2a87885 (maker-grouped per-model dropdown) is replaced by
-  // 3 tier chips below.
+  // ``currentModel`` resolves the tier into a model name so per-reply
+  // bubbles ("Gemini 2.5 Flash") under each AI message can show what
+  // actually produced the answer.  The user-facing knob is the tier;
+  // the per-model picker was retired in 73894ed.  The picker itself is
+  // a single-button dropdown — see the design pass that flagged the
+  // emoji icons and always-visible-3-chip layout for revision.
   const [models, setModels] = useState<AIModel[]>([]);
   const [currentModel, setCurrentModel] = useState('');
-  const [currentModelDisplay, setCurrentModelDisplay] = useState('');
   const [tiers, setTiers] = useState<AITierOption[]>([]);
   const [currentTier, setCurrentTier] = useState<AITier>('fast');
   const [tierSwitching, setTierSwitching] = useState(false);
+  const [tierOpen, setTierOpen] = useState(false);
 
   // ── Briefing state ───────────────────────────────────────────
   const [briefing, setBriefing] = useState('');
@@ -141,7 +152,6 @@ export default function Chat() {
         setTiers(d.tiers || []);
         setCurrentTier(d.current_tier);
         setCurrentModel(d.current_model || '');
-        setCurrentModelDisplay(d.current_model_display || d.current_model || '');
       })
       .catch(() => {});
   }, []);
@@ -189,6 +199,18 @@ export default function Chat() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
+
+  // Close tier dropdown when clicking anywhere outside it.
+  useEffect(() => {
+    if (!tierOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (modelRef.current && !modelRef.current.contains(e.target as Node)) {
+        setTierOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [tierOpen]);
 
   // Cleanup clear-confirm timeout on unmount
   useEffect(() => {
@@ -255,7 +277,10 @@ export default function Chat() {
   }
 
   async function switchTier(tier: AITier) {
-    if (tierSwitching || tier === currentTier) return;
+    if (tierSwitching || tier === currentTier) {
+      setTierOpen(false);
+      return;
+    }
     setTierSwitching(true);
     try {
       const r = await apiJSON<{
@@ -269,11 +294,11 @@ export default function Chat() {
       });
       setCurrentTier(r.tier);
       setCurrentModel(r.resolved_model);
-      setCurrentModelDisplay(r.resolved_model_display);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to switch tier');
     } finally {
       setTierSwitching(false);
+      setTierOpen(false);
     }
   }
 
@@ -387,38 +412,73 @@ export default function Chat() {
 
         {/* Right-side controls: tier picker + export + clear */}
         <div className="flex items-center gap-2">
-          {/* Tier picker — 3 chips (Fast / Thinking / Reasoning).
-              Resolved model is shown as a small subtitle below so power
-              users still know which model the system landed on without
-              putting a per-model knob in front of casual users. */}
-          {tiers.length > 0 && (
-            <div className="flex flex-col items-end gap-0.5" ref={modelRef}>
-              <div className="flex items-center gap-1 p-0.5 rounded-lg border border-border bg-muted">
-                {tiers.map((tier) => (
-                  <button
-                    key={tier.name}
-                    onClick={() => switchTier(tier.name)}
-                    disabled={tierSwitching}
-                    title={tier.description}
-                    aria-pressed={tier.name === currentTier}
-                    className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-md transition-colors disabled:opacity-50 ${
-                      tier.name === currentTier
-                        ? 'bg-card text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
+          {/* Tier picker — single button collapsing to a dropdown that
+              shows the three tiers (Fast / Thinking / Reasoning).
+              Icons come from lucide-react (design.md §7), sized to
+              the standard 14px step that pairs with text-sm body.
+              The resolved model name is intentionally NOT shown here —
+              it appears under each AI response bubble instead, where
+              it's tied to the message that produced it. */}
+          {tiers.length > 0 && (() => {
+            const active = tiers.find((t) => t.name === currentTier) ?? tiers[0];
+            const ActiveIcon = TIER_ICONS[active.name];
+            return (
+              <div className="relative" ref={modelRef}>
+                <button
+                  onClick={() => setTierOpen(!tierOpen)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors bg-muted border-border hover:border-ring text-foreground/80 cursor-pointer"
+                  aria-haspopup="listbox"
+                  aria-expanded={tierOpen}
+                  title={active.description}
+                >
+                  <ActiveIcon size={14} aria-hidden />
+                  <span>{active.label}</span>
+                  <ChevronDown
+                    size={12}
+                    className={`transition-transform shrink-0 ${tierOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                {tierOpen && (
+                  <div
+                    role="listbox"
+                    className="absolute right-0 top-full mt-1 z-50 w-64 rounded-lg border border-border bg-card shadow-xl"
                   >
-                    <span aria-hidden>{tier.icon}</span>
-                    <span>{tier.label}</span>
-                  </button>
-                ))}
+                    {tiers.map((tier) => {
+                      const Icon = TIER_ICONS[tier.name];
+                      const isActive = tier.name === currentTier;
+                      return (
+                        <button
+                          key={tier.name}
+                          onClick={() => switchTier(tier.name)}
+                          disabled={tierSwitching || isActive}
+                          role="option"
+                          aria-selected={isActive}
+                          className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                            isActive
+                              ? 'bg-primary/15 text-primary'
+                              : 'text-foreground/80 hover:bg-muted'
+                          } disabled:cursor-default`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Icon size={16} aria-hidden className="shrink-0" />
+                            <span className="font-medium">{tier.label}</span>
+                            <span className="ml-auto text-3xs text-muted-foreground">
+                              {tier.model_count} models
+                            </span>
+                          </div>
+                          {tier.description && (
+                            <span className="text-3xs text-muted-foreground block mt-0.5 ml-6">
+                              {tier.description}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-              {currentModelDisplay && (
-                <span className="text-3xs text-muted-foreground pr-1">
-                  using {currentModelDisplay}
-                </span>
-              )}
-            </div>
-          )}
+            );
+          })()}
 
           {/* Separator */}
           {activeTab === 'chat' && messages.length > 0 && (
