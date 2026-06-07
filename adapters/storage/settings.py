@@ -269,6 +269,39 @@ class SettingsMixin:
         await self._db.commit()
         return cur.lastrowid
 
+    async def mark_last_ai_usage_reask(
+        self, account_id: int, user_id: int,
+    ) -> int:
+        """Flip ``had_reask`` on the row that produced this user's most
+        recent successful response.
+
+        Targets only ``error_type='ok'`` rows with
+        ``request_type='question'`` because those are the per-attempt
+        rows that produced an answer the user actually saw.  Failed
+        attempts in the same turn shouldn't carry the dissatisfaction
+        signal — they didn't get shown.  Per-turn observability rows
+        (``question_turn``) stay clean too; the scorer doesn't query
+        them.
+
+        Returns the number of rows updated (0 or 1) — best-effort and
+        idempotent.  Callers shouldn't depend on the count.
+        """
+        cur = await self._db.execute(
+            """
+            UPDATE ai_usage SET had_reask = TRUE
+            WHERE id = (
+                SELECT id FROM ai_usage
+                WHERE account_id = ? AND user_id = ?
+                  AND request_type = 'question'
+                  AND error_type = 'ok'
+                ORDER BY id DESC LIMIT 1
+            )
+            """,
+            (account_id, user_id),
+        )
+        await self._db.commit()
+        return getattr(cur, "rowcount", 0) or 0
+
     async def get_ai_model_scores(
         self,
         account_id: int,
@@ -279,13 +312,14 @@ class SettingsMixin:
         since_days: int = 7,
         candidates: list[str] | None = None,
     ) -> dict[str, dict]:
-        """Score each model by rolling availability + speed + tool success.
+        """Score each model by rolling availability + speed + tool
+        success + implicit satisfaction.
 
         Returns ``{model: {score, samples, error_rate, p50_latency_ms,
-        tool_success_rate}}``.  Score is in [0, 1]; higher is better.
-        The router picks the highest-scored model from the candidate
-        set (typically a tier's fallback chain) with an ε-greedy
-        explore step.
+        tool_success_rate, reask_rate, satisfaction, is_cold_start}}``.
+        Score is in [0, 1]; higher is better.  The router picks the
+        highest-scored model from the candidate set (typically a
+        tier's fallback chain) with an ε-greedy explore step.
 
         Filters:
         - ``role``: score per (model x role) so the router can pick
@@ -326,7 +360,14 @@ class SettingsMixin:
             "                THEN latency_ms END) AS avg_latency_ms, "
             "       SUM(COALESCE(tool_success_count, 0)) AS tool_successes, "
             "       SUM(CASE WHEN tool_success_count IS NOT NULL "
-            "                THEN 1 ELSE 0 END) AS tool_turns "
+            "                THEN 1 ELSE 0 END) AS tool_turns, "
+            # Implicit dissatisfaction: how many of this model's rows
+            # got re-asked within 30 s.  Reask flag only ever flips
+            # on error_type='ok' rows (see mark_last_ai_usage_reask),
+            # so the reask_rate denominator below is success-samples
+            # rather than total samples — a model that 429'd a lot
+            # doesn't get unfairly counted as "unsatisfying" too.
+            "       SUM(CASE WHEN had_reask THEN 1 ELSE 0 END) AS reasks "
             f"FROM ai_usage WHERE {' AND '.join(where)} "
             "GROUP BY model"
         )
@@ -341,11 +382,13 @@ class SettingsMixin:
             avg_lat = float(r["avg_latency_ms"] or 0)
             tool_successes = int(r["tool_successes"] or 0)
             tool_turns = int(r["tool_turns"] or 0)
+            reasks = int(r["reasks"] or 0)
             scored[m] = _compute_score(
                 samples=samples, errors=errors,
                 avg_latency_ms=avg_lat,
                 tool_successes=tool_successes,
                 tool_turns=tool_turns,
+                reasks=reasks,
             )
 
         # Surface unobserved candidates so the router knows to explore them.
@@ -356,6 +399,7 @@ class SettingsMixin:
                         samples=0, errors=0,
                         avg_latency_ms=0.0,
                         tool_successes=0, tool_turns=0,
+                        reasks=0,
                     )
         return scored
 
@@ -367,18 +411,33 @@ def _compute_score(
     avg_latency_ms: float,
     tool_successes: int,
     tool_turns: int,
+    reasks: int = 0,
 ) -> dict:
-    """Combine availability + speed + tool success into one [0, 1] score.
+    """Combine availability + speed + tool success + satisfaction into a
+    single [0, 1] score.
 
-    Score weights:
-    - 60 % availability (1 - error_rate).  An unreachable model is useless.
-    - 25 % speed (normalized — sub-2s = full credit, 20s+ = zero).
+    Score weights (rebalanced from the original 60/25/15 split when
+    the satisfaction signal landed):
+    - 50 % availability (1 - error_rate).  Unreachable model = useless.
+    - 20 % speed (normalized — sub-2s = full credit, 20s+ = zero).
+    - 15 % satisfaction (1 - reask_rate).  Strong quality signal —
+      "user came back within 30 s" is closer to a real thumbs-down
+      than tool_success_rate ever was.
     - 15 % tool success rate (only for turns that actually called tools).
 
     Tiny sample sets (n < 5) get a default mid-score so the router
     doesn't lock onto a model with one lucky data point.  ε-greedy
     explore handles the genuine cold start.
+
+    ``reasks`` denominator is *success samples* (samples - errors),
+    not total samples: only successful responses can be re-asked, so
+    counting failures in the denominator would unfairly dilute the
+    signal for unreliable models.
     """
+    success_samples = max(samples - errors, 0)
+    reask_rate = (reasks / success_samples) if success_samples > 0 else 0.0
+    satisfaction = 1.0 - reask_rate
+
     if samples < 5:
         # Not enough data — return a neutral score that lets static
         # ordering win, but include the sample count so the caller can
@@ -391,6 +450,8 @@ def _compute_score(
             "tool_success_rate": (
                 tool_successes / tool_turns if tool_turns else 0.0
             ),
+            "reask_rate": round(reask_rate, 4),
+            "satisfaction": round(satisfaction, 4),
             "is_cold_start": True,
         }
 
@@ -406,13 +467,20 @@ def _compute_score(
     tool_success_rate = (
         tool_successes / tool_turns if tool_turns else 1.0
     )
-    score = 0.60 * availability + 0.25 * speed + 0.15 * tool_success_rate
+    score = (
+        0.50 * availability
+        + 0.20 * speed
+        + 0.15 * satisfaction
+        + 0.15 * tool_success_rate
+    )
     return {
         "score": round(score, 4),
         "samples": samples,
         "error_rate": round(error_rate, 4),
         "p50_latency_ms": int(avg_latency_ms),
         "tool_success_rate": round(tool_success_rate, 4),
+        "reask_rate": round(reask_rate, 4),
+        "satisfaction": round(satisfaction, 4),
         "is_cold_start": False,
     }
 

@@ -154,6 +154,14 @@ async def ai_chat(
 
     try:
         import time as _t
+        # Implicit-satisfaction signal: if this message arrives within
+        # 30 s of the previous AI response, the previous answer didn't
+        # land — flip ``had_reask`` on the ai_usage row that produced
+        # it so the scorer downweights that model on future picks.
+        # Fires before tier resolution so the marker targets the
+        # *previous* turn, not the one we're about to start.
+        await ai.detect_reask_and_mark(account_id, int(user["sub"]))
+
         # Auto-mode tier resolution.  When the user's stored choice is
         # "auto" this classifies the prompt and hot-swaps the per-user
         # model cache to the right tier before ask_agent runs.  No-op
@@ -247,6 +255,11 @@ async def ai_chat_stream(
     user_context, vehicle_filter, language = await _get_user_info(user, platform_db)
 
     try:
+        # Implicit-satisfaction marker (re-ask within 30 s).  Same as
+        # the non-streaming /chat path — has to fire before tier
+        # resolution so it targets the prior turn's row.
+        await ai.detect_reask_and_mark(account_id, int(user["sub"]))
+
         # Auto-mode tier resolution — same as the non-streaming /chat
         # path.  Has to fire before build_context so the model is
         # already staged when ask_agent_stream picks it up.

@@ -132,6 +132,11 @@ async def run_all(conn) -> None:
     # question on this account+role.
     await migrate_ai_usage_prompt_category(conn)
 
+    # Adds had_reask BOOLEAN to ai_usage — flipped to TRUE when the
+    # user re-asks within 30 s, used as an implicit dissatisfaction
+    # signal by the model scorer.
+    await migrate_ai_usage_had_reask(conn)
+
 
 async def migrate_ai_chat_history(conn) -> None:
     """Create ai_chat_history table if it doesn't exist yet.
@@ -2632,6 +2637,31 @@ async def migrate_create_kb_bookmarks_table(conn) -> None:
 
 
 # ── AI usage telemetry columns for per-model quality routing ──────
+
+
+async def migrate_ai_usage_had_reask(conn) -> None:
+    """Adds ``had_reask`` to ``ai_usage``.
+
+    Boolean flag flipped to TRUE when the user re-asks within
+    ``_REASK_THRESHOLD_SEC`` of receiving this row's response —
+    implicit signal that the answer didn't satisfy them.  Folded
+    into the scorer as a satisfaction component (1 - reask_rate)
+    so the router downweights models whose answers people keep
+    re-asking after.
+
+    NOT NULL DEFAULT FALSE so old rows backfill to "user was
+    satisfied" — neutral assumption is the conservative one
+    (overcounting dissatisfaction would skew scoring more than
+    undercounting it).
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE ai_usage "
+            "ADD COLUMN IF NOT EXISTS had_reask BOOLEAN NOT NULL DEFAULT FALSE"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.debug("ai_usage had_reask ADD skipped (%s)", e)
 
 
 async def migrate_ai_usage_prompt_category(conn) -> None:

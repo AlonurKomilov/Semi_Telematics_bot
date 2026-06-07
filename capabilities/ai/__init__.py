@@ -191,6 +191,11 @@ from capabilities.ai.intelligence import (                               # noqa:
     build_context,
 )
 
+# ── feedback / implicit-satisfaction signals ─────────────────────
+from capabilities.ai.feedback import (                                    # noqa: F401
+    detect_reask_and_mark,
+)
+
 # ── tools registry ───────────────────────────────────────────────
 from capabilities.ai.tools import AI_TOOLS                               # noqa: F401
 

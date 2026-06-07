@@ -110,6 +110,10 @@ async def create_tables(conn) -> None:
             -- troubleshooting / other.  Lets the router pick the
             -- model that's best for *this kind* of question.
             prompt_category    TEXT,
+            -- Implicit dissatisfaction: TRUE when the user re-asked
+            -- within ~30 s of seeing this row's response.  Scorer
+            -- treats (1 - reask_rate) as a satisfaction component.
+            had_reask          BOOLEAN NOT NULL DEFAULT FALSE,
             created_at         TEXT    NOT NULL
         );
 

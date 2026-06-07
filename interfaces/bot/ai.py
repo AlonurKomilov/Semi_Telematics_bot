@@ -314,6 +314,11 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
         tenant_db = await get_tenant_db(user.account_id)
 
         import time as _t
+        # Implicit-satisfaction marker — re-ask within 30 s of the
+        # prior AI response flips ``had_reask`` on that row so the
+        # router downweights the model that produced it.
+        await ai.detect_reask_and_mark(user.account_id, update.effective_user.id)
+
         # Auto-mode tier resolution — when this user's stored tier is
         # "auto" we classify the question and switch to the right tier
         # before ask_agent runs.  No-op for explicit-tier users.
