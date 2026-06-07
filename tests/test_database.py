@@ -320,6 +320,227 @@ class TestInvites:
 
 
 # ══════════════════════════════════════════════════════════════════
+# INVITE REVOKE (soft-delete via revoked_at, migration 087)
+# ══════════════════════════════════════════════════════════════════
+
+class TestInvitesRevoke:
+    """Covers revoke_invite + the redeem-side TOCTOU guard + the
+    orthogonal list_invites filters.  These tests are the regression
+    contract for migration 087 — touching any of the WHERE clauses on
+    invites without re-running them risks silently re-introducing the
+    revoke→redeem race the design vet flagged."""
+
+    @pytest.mark.asyncio
+    async def test_new_invite_is_not_revoked(self, seeded_db):
+        """Sanity check: fresh invites have revoked_at=None and
+        ``is_revoked`` reads False.  Locks the dataclass default."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(acct.id, owner.id, Role.FLEET)
+        assert invite.revoked_at is None
+        assert invite.is_revoked is False
+
+    @pytest.mark.asyncio
+    async def test_revoke_invite_returns_row_and_sets_timestamp(self, seeded_db):
+        """Successful revoke returns the row (so the route can write
+        forensic audit details) and sets revoked_at to an ISO-8601
+        timestamp."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(acct.id, owner.id, Role.DRIVER, "ops")
+        revoked = await db.revoke_invite(acct.id, invite.id)
+        assert revoked is not None
+        assert revoked.id == invite.id
+        assert revoked.role == "driver"
+        assert revoked.department == "ops"
+        assert revoked.revoked_at is not None
+        # Round-trips through ISO-8601 parser without raising
+        from datetime import datetime
+        datetime.fromisoformat(revoked.revoked_at)
+
+    @pytest.mark.asyncio
+    async def test_get_invite_returns_none_for_revoked(self, seeded_db):
+        """Email-signup + bot /join + cmd_start deep-link all flow
+        through ``get_invite``; the revoke_at filter hiding revoked
+        rows there is the single choke-point that protects every
+        redemption surface.  Regressing the WHERE clause would silently
+        re-admit revoked codes."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(acct.id, owner.id, Role.FLEET)
+        await db.revoke_invite(acct.id, invite.id)
+        assert await db.get_invite(invite.code) is None
+        # The admin-side getter MUST still surface the row — the
+        # asymmetry between the two getters is intentional and the
+        # revoke endpoint needs it for the audit-log capture.
+        admin_view = await db.get_invite_by_id(acct.id, invite.id)
+        assert admin_view is not None
+        assert admin_view.is_revoked is True
+
+    @pytest.mark.asyncio
+    async def test_redeem_after_revoke_returns_none(self, seeded_db):
+        """End-to-end: revoke first, redeem second, no user created.
+        Covers the get_invite filter path (the fast reject).  See the
+        race-window test below for the TOCTOU path."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(acct.id, owner.id, Role.FLEET)
+        await db.revoke_invite(acct.id, invite.id)
+        result = await db.redeem_invite(invite.code, 888001)
+        assert result is None
+        # And no user landed in the table
+        assert await db.get_user_by_telegram_id(888001) is None
+
+    @pytest.mark.asyncio
+    async def test_redeem_invite_loses_revoke_race_raises_and_rolls_back(self, seeded_db):
+        """TOCTOU regression: simulate the race where the operator's
+        revoke commits AFTER redeem snapshots the invite (via
+        get_invite) but BEFORE redeem's guarded UPDATE.
+
+        Mechanism: monkey-patch ``get_invite`` to return the
+        pre-revoke snapshot, then revoke the row underneath, then
+        let redeem proceed.  The UPDATE-with-guard matches 0 rows,
+        raises ``RuntimeError``, and the surrounding transaction
+        rolls the user creation back.  If anyone drops the rowcount
+        check or the WHERE-clause guard, this test breaks loudly.
+        """
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(acct.id, owner.id, Role.FLEET)
+
+        # Hand-roll the race: capture the pre-revoke snapshot, then
+        # commit the revoke, then patch get_invite to keep returning
+        # the stale snapshot so redeem progresses past its own
+        # early-return guards.
+        snapshot = await db.get_invite(invite.code)
+        await db.revoke_invite(acct.id, invite.id)
+        original_get_invite = db.get_invite
+        async def _stale_get_invite(code: str):
+            return snapshot
+        db.get_invite = _stale_get_invite  # type: ignore[assignment]
+        try:
+            with pytest.raises(RuntimeError, match="race lost"):
+                await db.redeem_invite(invite.code, 888002)
+        finally:
+            db.get_invite = original_get_invite  # type: ignore[assignment]
+
+        # User creation rolled back
+        assert await db.get_user_by_telegram_id(888002) is None
+        # And the invite's used_by stayed NULL
+        admin_view = await db.get_invite_by_id(acct.id, invite.id)
+        assert admin_view is not None
+        assert admin_view.used_by is None
+
+    @pytest.mark.asyncio
+    async def test_revoke_invite_returns_none_for_already_revoked(self, seeded_db):
+        """Idempotency: a second revoke against the same id returns
+        None (the route surfaces this as 404 without writing a
+        duplicate audit-log entry), and the original revoked_at
+        timestamp is preserved — we don't overwrite it on retry."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(acct.id, owner.id, Role.FLEET)
+        first = await db.revoke_invite(acct.id, invite.id)
+        assert first is not None
+        first_ts = first.revoked_at
+
+        second = await db.revoke_invite(acct.id, invite.id)
+        assert second is None
+
+        # Original timestamp preserved
+        admin_view = await db.get_invite_by_id(acct.id, invite.id)
+        assert admin_view is not None
+        assert admin_view.revoked_at == first_ts
+
+    @pytest.mark.asyncio
+    async def test_revoke_invite_returns_none_for_already_used(self, seeded_db):
+        """Once a user has redeemed an invite, the operator must NOT
+        be able to flip it to revoked — the audit trail and the
+        ``is_revoked`` UI badge would lie about why the row is dead.
+        revoke_invite's ``used_by IS NULL`` clause defends this."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(acct.id, owner.id, Role.FLEET)
+        user = await db.redeem_invite(invite.code, 888003)
+        assert user is not None
+
+        result = await db.revoke_invite(acct.id, invite.id)
+        assert result is None
+
+        # used_by intact, revoked_at still null
+        admin_view = await db.get_invite_by_id(acct.id, invite.id)
+        assert admin_view is not None
+        assert admin_view.used_by == user.id
+        assert admin_view.revoked_at is None
+
+    @pytest.mark.asyncio
+    async def test_revoke_invite_returns_none_for_unknown_id(self, seeded_db):
+        """Unknown id → None.  Covers the same not-found branch as
+        cross-account isolation but via a different code path (id
+        simply doesn't exist anywhere)."""
+        db, acct, _, _ = seeded_db
+        assert await db.revoke_invite(acct.id, 99999) is None
+
+    @pytest.mark.asyncio
+    async def test_revoke_invite_rejects_cross_account(self, db):
+        """Tenant isolation: account B cannot revoke account A's
+        invite by guessing its numeric id.  Both the SELECT and the
+        UPDATE carry ``AND account_id = ?`` — defense-in-depth so a
+        future RLS rollback doesn't silently expose this."""
+        acct_a = await db.create_account("A Co")
+        acct_b = await db.create_account("B Co")
+        owner_a = await db.create_user(
+            telegram_id=900_001, account_id=acct_a.id, role=Role.OWNER,
+        )
+        invite = await db.create_invite(acct_a.id, owner_a.id, Role.FLEET)
+        # Account B tries to revoke it
+        assert await db.revoke_invite(acct_b.id, invite.id) is None
+        # Now account A can — proves the row exists and the cross-
+        # account guard is the thing that rejected B
+        revoked = await db.revoke_invite(acct_a.id, invite.id)
+        assert revoked is not None
+        assert revoked.revoked_at is not None
+
+    @pytest.mark.asyncio
+    async def test_list_invites_orthogonal_filters(self, seeded_db):
+        """``pending_only`` (hide used) and ``include_revoked``
+        (surface revoked) are orthogonal flags.  The dashboard's
+        single "Show all" toggle flips BOTH; ensuring they compose
+        correctly here is the regression contract for that toggle."""
+        db, acct, _, owner = seeded_db
+        # A: live (pending, not revoked), B: revoked, C: used
+        a = await db.create_invite(acct.id, owner.id, Role.FLEET)
+        b = await db.create_invite(acct.id, owner.id, Role.DRIVER)
+        await db.revoke_invite(acct.id, b.id)
+        c = await db.create_invite(acct.id, owner.id, Role.DISPATCHER)
+        await db.redeem_invite(c.code, 901_001)
+
+        # Default (admin "live invites" view): only A
+        default = await db.list_invites(acct.id)
+        default_ids = {i.id for i in default}
+        assert a.id in default_ids
+        assert b.id not in default_ids
+        assert c.id not in default_ids
+
+        # pending_only=False, include_revoked=False: A + C (used
+        # surfaced; revoked still hidden — proves the AND, not OR)
+        no_pending = await db.list_invites(
+            acct.id, pending_only=False, include_revoked=False,
+        )
+        no_pending_ids = {i.id for i in no_pending}
+        assert {a.id, c.id} == no_pending_ids
+
+        # Full sweep — operator "Show all": A + B + C
+        all_three = await db.list_invites(
+            acct.id, pending_only=False, include_revoked=True,
+        )
+        assert {a.id, b.id, c.id} == {i.id for i in all_three}
+
+        # pending_only=True, include_revoked=True: A only (used hidden
+        # by pending_only, revoked surfaced but used_by still null on
+        # A so it stays); B has used_by NULL too so include_revoked=True
+        # surfaces it.  → {A, B}
+        pending_with_revoked = await db.list_invites(
+            acct.id, pending_only=True, include_revoked=True,
+        )
+        pending_with_revoked_ids = {i.id for i in pending_with_revoked}
+        assert {a.id, b.id} == pending_with_revoked_ids
+
+
+# ══════════════════════════════════════════════════════════════════
 # MULTI-TENANT ISOLATION
 # ══════════════════════════════════════════════════════════════════
 

@@ -563,11 +563,23 @@ async def create_invite(
 @router.get("/invites")
 async def list_invites(
     pending_only: bool = Query(True),
+    include_revoked: bool = Query(False),
     user: dict = Depends(require_permission("can_invite")),
     platform_db=Depends(get_platform_db),
 ):
-    """List invite codes for the account."""
-    invites = await platform_db.list_invites(user["account_id"], pending_only=pending_only)
+    """List invite codes for the account.
+
+    Two orthogonal filters:
+      - ``pending_only`` (default True) — hide USED rows.
+      - ``include_revoked`` (default False) — keep revoked rows hidden
+        unless the operator explicitly asks ("Show all" toggle on the
+        dashboard drives both flags).
+    """
+    invites = await platform_db.list_invites(
+        user["account_id"],
+        pending_only=pending_only,
+        include_revoked=include_revoked,
+    )
     return {
         "invites": [
             {
@@ -580,12 +592,89 @@ async def list_invites(
                 "used_by": inv.used_by,
                 "is_used": inv.is_used,
                 "is_expired": inv.is_expired,
+                "is_revoked": inv.is_revoked,
+                "revoked_at": inv.revoked_at,
                 "created_by": inv.created_by,
             }
             for inv in invites
         ],
         "count": len(invites),
     }
+
+
+@router.delete("/invites/{invite_id}")
+async def revoke_invite_endpoint(
+    invite_id: int,
+    user: dict = Depends(require_permission("can_invite")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Revoke (soft-delete) an unused invite.
+
+    Same permission gate as create (``can_invite``); the caller-vs-
+    invite rank check mirrors the rule on ``create_invite`` so an HR
+    user (rank 0, can_invite=True) can't undo an Owner's onboarding of
+    an Admin by revoking it.  Caller's rank MUST be strictly greater
+    than the invited role's rank.
+
+    Rate-limited at 30 revokes per actor per minute — generous for
+    legitimate flush-out flows (e.g. an Owner deletes all old test
+    invites), tight enough to cap an attacker's audit-log amplification
+    if a token is ever leaked.
+
+    Audit log captures role/department/created_by from the row BEFORE
+    the UPDATE so an auditor reading the log after a revoke can
+    reconstruct what was killed even when the operator's default view
+    (revoked rows hidden) doesn't show it.
+    """
+    # Rate limit first — cheap reject for any flood.  Keyed by
+    # (account_id, actor_telegram_id) so two different admins on the
+    # same account get their own budget.
+    from adapters.cache.redis import rate_limit_check
+    rl_key = f"invite_revoke:{user['account_id']}:{user['sub']}"
+    if not await rate_limit_check(rl_key, window_secs=60, max_requests=30):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many revokes — wait a moment and try again",
+        )
+
+    # Fetch the row before the UPDATE so we have role/department/
+    # created_by available for the audit log details — and so we can
+    # rank-check the invite's role against the caller's role.  Returns
+    # None if the row doesn't exist OR belongs to a different account
+    # (cross-account scoping is enforced inside the SELECT WHERE).
+    invite = await platform_db.get_invite_by_id(user["account_id"], invite_id)
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite not found")
+
+    # Rank check — mirror create_invite (admin.py around line 529-532).
+    # An HR / lower-ranked actor must not be able to revoke an invite
+    # whose role outranks them.  Same comparison as create.
+    caller_rank = role_rank(user["role"])
+    invite_rank = role_rank(invite.role)
+    if invite_rank >= caller_rank:
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot revoke an invite for a role equal to or above your own",
+        )
+
+    revoked = await platform_db.revoke_invite(user["account_id"], invite_id)
+    if not revoked:
+        # The row existed at the SELECT above but the UPDATE matched 0
+        # rows — either a concurrent redeem won the race, or the row
+        # was already revoked by another tab.  Either way, treat as
+        # "nothing to revoke" with the same 404 so we don't leak which
+        # branch (the side-channel that would distinguish them is
+        # operationally useless and confusing in the audit log).
+        raise HTTPException(status_code=404, detail="Invite not found")
+
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "invite_revoke",
+        target_type="invite", target_id=str(invite_id),
+        details=f"Role: {revoked.role}, dept: {revoked.department}, created_by: {revoked.created_by}",
+    )
+    return {"ok": True, "revoked_at": revoked.revoked_at}
 
 
 # ── Companies ─────────────────────────────────────────────────

@@ -294,6 +294,7 @@ class _DatabaseCore:
                 if "alert_routing_mode" in row.keys() and row["alert_routing_mode"]
                 else "single_group"
             ),
+            disabled_modules=row["disabled_modules"] if "disabled_modules" in row.keys() else "",
         )
 
     def _row_to_company(self, row) -> Company:
@@ -355,6 +356,9 @@ class _DatabaseCore:
             expires_at=row["expires_at"],
             used_by=row["used_by"],
             created_at=row["created_at"],
+            # Defensive read — a deployment that hits this before
+            # migration 087 lands (very narrow window) still hydrates.
+            revoked_at=row["revoked_at"] if "revoked_at" in row.keys() else None,
         )
 
     def _row_to_authorized_chat(self, row) -> AuthorizedChat:

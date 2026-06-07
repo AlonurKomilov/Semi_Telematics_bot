@@ -12,9 +12,27 @@ import {
 } from '../../components/shell';
 import type { AuditLogEntry, AnyColumn } from '../../types';
 
+// Human-readable labels for the audit-log ``action`` enum.  Unknown
+// actions fall through to the raw snake_case string so a newly-added
+// action surfaces as e.g. ``invoice_void`` rather than ``[object
+// Object]`` until someone adds the matching label here.  Extend this
+// map whenever a new audit_log action ships on the backend.
+const ACTION_LABEL: Record<string, string> = {
+  invite_create: 'Invite created',
+  invite_revoke: 'Invite revoked',
+};
+
 const columns: AnyColumn[] = [
   { key: 'created_at', label: 'Time', sortable: true, render: (v) => v ? new Date(String(v)).toLocaleString() : '—' },
-  { key: 'action', label: 'Action', sortable: true },
+  {
+    key: 'action',
+    label: 'Action',
+    sortable: true,
+    render: (v) => {
+      const s = String(v ?? '');
+      return ACTION_LABEL[s] ?? s;
+    },
+  },
   { key: 'user_id', label: 'User ID', sortable: true },
   { key: 'target_type', label: 'Target', sortable: true },
   { key: 'target_id', label: 'Target ID' },

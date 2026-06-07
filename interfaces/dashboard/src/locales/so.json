@@ -295,7 +295,9 @@
   "modals": {
     "create_invite": "Abuur Casuumad",
     "edit_schedule": "Wax ka beddel jadwalka",
-    "new_schedule": "Jadwal cusub"
+    "new_schedule": "Jadwal cusub",
+    "revoke_invite_title": "Revoke this invite?",
+    "revoke_invite_body": "The link will stop working immediately. If someone has already copied it, they will no longer be able to join."
   },
   "chat": {
     "title": "Caawiyaha AI",
@@ -588,5 +590,13 @@
     "toast_delete_failed": "Delete failed",
     "toast_approve_failed": "Approve failed",
     "toast_reject_failed": "Reject failed"
+  },
+  "toasts": {
+    "invite_revoked": "Invite revoked",
+    "invite_already_revoked": "Invite already revoked"
+  },
+  "actions": {
+    "revoke": "Revoke",
+    "revoking": "Revoking…"
   }
 }

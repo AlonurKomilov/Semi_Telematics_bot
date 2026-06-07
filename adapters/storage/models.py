@@ -58,6 +58,9 @@ class Account:
     coaching_enabled: bool = False
     timezone: str = "America/New_York"
     alert_routing_mode: str = "single_group"
+    # CSV of disabled module ids (Fleet/Dispatch/Safety/HR/Accounting);
+    # empty = all modules on.  See capabilities/iam/modules.py.
+    disabled_modules: str = ""
 
 @dataclass
 class Company:
@@ -307,6 +310,11 @@ class Invite:
     expires_at: str
     used_by: Optional[int]   # user.id who redeemed
     created_at: str
+    # NULL on active invites; ISO-8601 UTC timestamp once revoked.
+    # Mirrors the user_sessions.revoked_at pattern.  Default ``None``
+    # so hydrating from a row that pre-dates migration 087 doesn't
+    # AttributeError — defaults to active.
+    revoked_at: Optional[str] = None
 
     @property
     def is_expired(self) -> bool:
@@ -316,3 +324,7 @@ class Invite:
     @property
     def is_used(self) -> bool:
         return self.used_by is not None
+
+    @property
+    def is_revoked(self) -> bool:
+        return self.revoked_at is not None

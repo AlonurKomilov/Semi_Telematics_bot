@@ -3754,3 +3754,45 @@ async def migrate_users_alert_resolve_receipts(conn) -> None:
         except Exception:
             pass
         raise
+
+
+@_register("087_invites_revoked_at")
+async def migrate_invites_revoked_at(conn) -> None:
+    """Add per-row ``revoked_at`` timestamp to ``invites``.
+
+    Mirrors the canonical "revoke" template established by
+    ``users.revoke_user_session`` (adapters/storage/users.py:300-348):
+    a nullable timestamp column where ``NULL`` means active and a
+    populated value means revoked-at-this-instant.  Chose this over an
+    ``is_active`` boolean because it preserves the revoke instant for
+    forensic audit reads and gives ``WHERE revoked_at IS NULL`` as a
+    natural idempotency guard on retries.
+
+    Default behaviour on upgrade: every existing invite row has
+    ``revoked_at = NULL`` (= active).  ``get_invite`` /
+    ``redeem_invite`` / ``list_invites`` all filter ``revoked_at IS
+    NULL`` by default, so the column landing on a deployed DB before
+    any code reads it is a no-op.
+
+    Surfaces this lights up: the dashboard's Team Management → Invites
+    tab grows a "Revoke" inline action; the bot's ``/join`` path and
+    the email-signup endpoint both refuse revoked codes (the check
+    lives in ``get_invite`` so every redemption surface inherits it).
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(invites)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "revoked_at" in cols:
+            return
+        await conn.execute(
+            "ALTER TABLE invites ADD COLUMN revoked_at TEXT"
+        )
+        await conn.commit()
+        logger.info("Migration 087: added invites.revoked_at")
+    except Exception as e:
+        logger.error("Migration 087 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise

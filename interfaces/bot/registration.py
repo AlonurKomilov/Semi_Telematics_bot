@@ -149,7 +149,17 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not user and code:
             tg_name = getattr(update.effective_user, "full_name", "") or ""
             platform = get_platform_db()
-            new_user = await platform.redeem_invite(code, tid, display_name=tg_name)
+            # RuntimeError comes from redeem_invite's race-lost path:
+            # an operator revoke (or a parallel redeem) won the race
+            # between our get_invite snapshot and the guarded UPDATE.
+            # Treat it identically to a None return so the bot UX is
+            # uniform — invitee sees "invalid code", no operator
+            # action is leaked via timing or message divergence.
+            try:
+                new_user = await platform.redeem_invite(code, tid, display_name=tg_name)
+            except RuntimeError as e:
+                logger.info("Deep-link join race lost: %s", e)
+                new_user = None
             if new_user:
                 account = await platform.get_account(new_user.account_id)
                 r_display = role_display(new_user.role)
@@ -315,7 +325,13 @@ async def cmd_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     code = context.args[0].strip().upper()
     tg_name = getattr(update.effective_user, "full_name", "") or ""
-    new_user = await platform.redeem_invite(code, tid, display_name=tg_name)
+    # See comment in cmd_start above — race-lost RuntimeError maps to
+    # the same UX as a None return (invalid code).
+    try:
+        new_user = await platform.redeem_invite(code, tid, display_name=tg_name)
+    except RuntimeError as e:
+        logger.info("/join race lost: %s", e)
+        new_user = None
 
     if not new_user:
         await _show(update, context, [

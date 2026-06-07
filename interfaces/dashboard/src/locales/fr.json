@@ -295,7 +295,9 @@
   "modals": {
     "create_invite": "Créer une invitation",
     "edit_schedule": "Modifier l’horaire",
-    "new_schedule": "Nouvel horaire"
+    "new_schedule": "Nouvel horaire",
+    "revoke_invite_title": "Révoquer cette invitation ?",
+    "revoke_invite_body": "Le lien cessera de fonctionner immédiatement. Si quelqu'un l'a déjà copié, il ne pourra plus rejoindre."
   },
   "chat": {
     "title": "Assistant IA",
@@ -797,5 +799,13 @@
     "just_now": "à l'instant",
     "ago": "il y a",
     "yesterday": "hier"
+  },
+  "toasts": {
+    "invite_revoked": "Invitation révoquée",
+    "invite_already_revoked": "Invitation déjà révoquée"
+  },
+  "actions": {
+    "revoke": "Révoquer",
+    "revoking": "Révocation…"
   }
 }

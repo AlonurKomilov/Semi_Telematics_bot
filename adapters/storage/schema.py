@@ -84,7 +84,12 @@ async def create_tables(conn) -> None:
             created_by  INTEGER NOT NULL REFERENCES users(id),
             expires_at  TEXT    NOT NULL,
             used_by     INTEGER REFERENCES users(id),
-            created_at  TEXT    NOT NULL
+            created_at  TEXT    NOT NULL,
+            -- NULL = active, populated = revoked-at this instant.
+            -- See migration 087.  Filter ``WHERE revoked_at IS NULL``
+            -- in get_invite / list_invites / redeem_invite to keep
+            -- revoked codes out of every redemption surface.
+            revoked_at  TEXT
         );
 
         CREATE TABLE IF NOT EXISTS authorized_chats (

@@ -1378,7 +1378,10 @@ async def auth_email_register(request: Request, response: Response, body: EmailR
 
         pw_hash = _hash_password(body.password)
         async with db.transaction():
-            # Re-check inside transaction to prevent race conditions
+            # Re-check inside transaction.  get_invite already filters
+            # revoked_at IS NULL (see adapters/storage/invites.py:55-60),
+            # so a code revoked by the operator AFTER the outer check
+            # but BEFORE this re-check is correctly rejected with 410.
             invite = await db.get_invite(body.invite_code.strip())
             if not invite or invite.is_used:
                 raise HTTPException(status_code=410, detail="Invite code already used")
@@ -1393,11 +1396,24 @@ async def auth_email_register(request: Request, response: Response, body: EmailR
                 department=invite.department,
                 display_name=body.display_name or body.email.split("@")[0],
             )
-            # Mark invite as used
-            await db._db.execute(
-                "UPDATE invites SET used_by = ? WHERE id = ?",
+            # Mark invite as used.  TOCTOU defence (mirrors
+            # ``redeem_invite`` in adapters/storage/invites.py:120-134):
+            # an operator revoke that commits between the re-check
+            # above and this UPDATE must NOT silently admit the user.
+            # The WHERE clause guards both used_by IS NULL (a parallel
+            # redeem won the race) AND revoked_at IS NULL (an admin
+            # revoke won).  rowcount != 1 → raise to roll the whole
+            # transaction back (including create_user_with_email).
+            cur = await db._db.execute(
+                "UPDATE invites SET used_by = ? "
+                "WHERE id = ? AND used_by IS NULL AND revoked_at IS NULL",
                 (user.id, invite.id),
             )
+            if cur.rowcount != 1:
+                raise HTTPException(
+                    status_code=410,
+                    detail="Invite code already used",
+                )
     else:
         raise HTTPException(
             status_code=422,

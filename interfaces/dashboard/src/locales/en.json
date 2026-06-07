@@ -495,7 +495,17 @@
   "modals": {
     "create_invite": "Create Invite",
     "edit_schedule": "Edit Schedule",
-    "new_schedule": "New Schedule"
+    "new_schedule": "New Schedule",
+    "revoke_invite_title": "Revoke this invite?",
+    "revoke_invite_body": "The link will stop working immediately. If someone has already copied it, they will no longer be able to join."
+  },
+  "toasts": {
+    "invite_revoked": "Invite revoked",
+    "invite_already_revoked": "Invite already revoked"
+  },
+  "actions": {
+    "revoke": "Revoke",
+    "revoking": "Revoking…"
   },
   "chat": {
     "title": "AI Assistant",

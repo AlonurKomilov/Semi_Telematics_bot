@@ -453,5 +453,17 @@
     "toast_delete_failed": "Delete failed",
     "toast_approve_failed": "Approve failed",
     "toast_reject_failed": "Reject failed"
+  },
+  "modals": {
+    "revoke_invite_title": "Ushbu taklifnomani bekor qilasizmi?",
+    "revoke_invite_body": "Havola darhol ishlashni to'xtatadi. Agar kimdir uni allaqachon nusxa olgan bo'lsa, qo'shila olmaydi."
+  },
+  "toasts": {
+    "invite_revoked": "Taklifnoma bekor qilindi",
+    "invite_already_revoked": "Taklifnoma allaqachon bekor qilingan"
+  },
+  "actions": {
+    "revoke": "Bekor qilish",
+    "revoking": "Bekor qilinmoqda…"
   }
 }
