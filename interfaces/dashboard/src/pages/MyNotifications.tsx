@@ -20,7 +20,7 @@
  */
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Bell, BellOff } from 'lucide-react';
+import { Bell, BellOff, CheckCircle2 } from 'lucide-react';
 import { apiJSON } from '../api/client';
 import { PageHeader, ErrorState, CardSkeleton } from '../components/shell';
 
@@ -148,8 +148,10 @@ export default function MyNotifications() {
             className="accent-primary cursor-pointer mt-0.5"
           />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium inline-flex items-center gap-2">
-              {prefs.alerts_on ? <Bell size={14} /> : <BellOff size={14} />}
+            <p className="text-base font-semibold inline-flex items-center gap-2">
+              {prefs.alerts_on
+                ? <Bell size={16} />
+                : <BellOff size={16} />}
               Personal alerts enabled
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -161,7 +163,7 @@ export default function MyNotifications() {
 
       {/* Per-type toggles (role-tailored by the server) */}
       <section className="bg-card border border-border rounded-xl p-4 mb-4">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground mb-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">
           Alert categories
         </p>
         {prefs.relevant_types.length === 0 ? (
@@ -211,7 +213,10 @@ export default function MyNotifications() {
             className="accent-primary cursor-pointer mt-0.5"
           />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium">🟢 Resolved-alert notifications</p>
+            <p className="text-base font-semibold inline-flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-ok" />
+              Resolved-alert notifications
+            </p>
             <p className="text-xs text-muted-foreground mt-0.5">
               When an alert auto-resolves (e.g. a parked truck starts moving, a fault clears), send me a DM confirming it cleared. Off by default to reduce chat noise; turn on if you want closure-loop confirmations.
             </p>
