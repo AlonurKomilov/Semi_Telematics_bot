@@ -212,3 +212,195 @@ and temporarily locked it for <strong>{lock_minutes} minutes</strong>.{ip_note}<
 <p style="font-size:13px;color:#9ca3af;margin-top:32px">— The {html.escape(brand)} team</p>
 </body></html>"""
     return send_email(to=to, subject=subject, body=text_body, html_body=html_body)
+
+
+# ── Invite (new-teammate join link) ────────────────────────────────
+
+
+def send_invite_email(
+    *,
+    to: str,
+    code: str,
+    account_name: str,
+    role_label: str,
+    inviter_display_name: str,
+    expires_at: str,
+    truck_num: Optional[str] = None,
+    recipient_name: str = "",
+) -> bool:
+    """Send the operator-driven invite email.
+
+    Uses the dedicated ``invites@`` sender (env ``SMTP_FROM_INVITES``)
+    with a fallback to the shared ``SMTP_FROM`` so the feature ships
+    even when the new env var hasn't been set yet — invite emails
+    just route through ``noreply@`` until the operator updates the
+    deploy.  See the design notes in interfaces/api/routes/admin.py.
+
+    Adversarial-hardening choices (all surfaced by the design-vet
+    workflow before any code was written):
+      - PINNED Subject line.  No operator-supplied text reaches the
+        Subject, Preheader, or From — prevents header injection and
+        phishing-laundering of the 4truck brand.
+      - NO operator free-text message field.  Body is fully templated;
+        any future "personal note" addition must be plain-text-only,
+        length-capped, html.escape()'d, and visually marked as a
+        quoted note from the inviter (not as 4truck-authored copy).
+      - LIST-UNSUBSCRIBE header per RFC 8058.  Required by
+        Gmail/Yahoo for senders >5k/day; absence is a spam-score
+        signal at any volume.  Points at a decline URL that revokes
+        the invite — "unsubscribe" semantically maps to
+        "don't onboard me" for a transactional invite.
+      - AUTO-SUBMITTED: auto-generated tells autoresponders not to
+        bounce-loop and keeps Exchange's filter quieter.
+      - Path-segment signup URL (``/signup/<CODE>``) instead of
+        ``?invite=`` query param — keeps the code out of Referer
+        headers, browser history middle-segment logs, and CDN access
+        logs.
+      - PLAIN-TEXT fallback alongside HTML so Outlook desktop
+        renders cleanly even when remote images are blocked.
+    """
+    brand = _company_name()
+    base = _auth_base()
+    # _sanitize_inline: strip control chars + cap length so an
+    # operator-named account ("Acme; phishing victim", or an
+    # account_name containing CRLF that would inject MIME headers
+    # via base body wrap) can't laundering the 4truck brand for
+    # social engineering.  Applies to anything operator-controlled
+    # that reaches the Subject OR the plain-text body.
+    def _sanitize_inline(s: str, *, max_len: int = 64) -> str:
+        if not s:
+            return ""
+        # Strip CR/LF/TAB and any other control chars; collapse
+        # internal whitespace; clip.  ASCII-only is overkill —
+        # legitimate account names contain accents.
+        cleaned = "".join(
+            ch for ch in s if ch == " " or (ord(ch) >= 0x20 and ch not in "\r\n\t")
+        ).strip()
+        if len(cleaned) > max_len:
+            cleaned = cleaned[: max_len - 1] + "…"
+        return cleaned
+
+    safe_account = _sanitize_inline(account_name) or "your new team"
+    safe_inviter = _sanitize_inline(inviter_display_name) or "your inviter"
+    safe_role = _sanitize_inline(role_label, max_len=32) or "member"
+    safe_recipient = _sanitize_inline(recipient_name, max_len=64)
+    safe_truck = _sanitize_inline(truck_num or "", max_len=24) or None
+    # Path-segment URL preserves the invite code out of Referer +
+    # CDN query logs.  The new /signup/<code> route at the SPA layer
+    # is the matching read side.
+    signup_url = f"{base}/signup/{code}"
+    # Decline link MUST point at the actual API route (which lives
+    # under /api/v1/auth/invite/decline — the SPA at the apex would
+    # 404 if we sent recipients there).  Read from env so a deploy
+    # split (api.4truck.us vs dash.4truck.us) can override the
+    # default.  Honors APEX-routed deploys where dash.4truck.us
+    # proxies /api/* to api.4truck.us via reverse proxy.
+    api_base = (
+        os.getenv("API_BASE_URL")
+        or _auth_base()  # apex serves /api/v1 via reverse proxy on default deploys
+    ).rstrip("/")
+    decline_url = f"{api_base}/api/v1/auth/invite/decline?token={code}"
+
+    greeting = (
+        f"Hi {safe_recipient}," if safe_recipient else "Hi,"
+    )
+    truck_line = (
+        f"\nTruck assignment: #{safe_truck}\n" if safe_truck else ""
+    )
+    # SUBJECT — the design pin was "no operator-supplied text reaches
+    # Subject".  account_name IS operator-controlled (self-serve
+    # signup names the account).  _sanitize_inline removes CRLF and
+    # caps length so a hostile account name can't break MIME or
+    # brand-launder via 64+ chars of phishing copy.  Brand stays in
+    # the Subject so the recipient sees the vendor name they trust.
+    subject = f"You're invited to {safe_account} on {brand}"
+    text_body = (
+        f"{greeting}\n\n"
+        f"{safe_inviter} has invited you to join {safe_account} "
+        f"on {brand} as a {safe_role}.{truck_line}\n"
+        f"Open this link to set up your account:\n"
+        f"  {signup_url}\n\n"
+        f"The link is valid until {expires_at}.\n\n"
+        f"Questions about this invite?  Contact your administrator at "
+        f"{safe_account} directly — we can't forward replies to "
+        f"individual senders.\n\n"
+        f"If you weren't expecting this, ignore it or use the "
+        f"unsubscribe link below to decline.\n\n"
+        f"— The {brand} team"
+    )
+    truck_html = (
+        f"<p style=\"font-size:14px;color:#374151\">"
+        f"Truck assignment: <strong>#{html.escape(safe_truck)}</strong></p>"
+        if safe_truck else ""
+    )
+    # All URL interpolations into HTML attributes go through
+    # html.escape — defence-in-depth even though ``code`` is a
+    # server-generated XXXX-XXXX hex string today.  If a future
+    # refactor lets operator text reach the code format, the escape
+    # is the only thing standing between a quote in the URL and a
+    # href-attribute breakout.
+    safe_signup = html.escape(signup_url, quote=True)
+    safe_decline = html.escape(decline_url, quote=True)
+    # Bulletproof CTA button — table+VML wrapper renders the
+    # primary action as a real button in Outlook desktop O365
+    # (Word renderer drops border-radius/padding on <a>).  The MSO
+    # conditional comment only fires in Outlook; every other client
+    # sees the inline-styled <a> fallback below.  Pattern: Campaign
+    # Monitor's "bulletproof button".
+    cta_button = f"""\
+<!--[if mso]>
+<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{safe_signup}" style="height:44px;v-text-anchor:middle;width:220px;" arcsize="14%" stroke="f" fillcolor="#0066ff">
+  <w:anchorlock/>
+  <center style="color:#ffffff;font-family:sans-serif;font-size:15px;font-weight:600;">Set up my account</center>
+</v:roundrect>
+<![endif]-->
+<!--[if !mso]><!-- -->
+<a href="{safe_signup}" style="display:inline-block;background:#0066ff;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600">Set up my account</a>
+<!--<![endif]-->"""
+    # Preheader span — Gmail iOS uses the first ~90 chars of body
+    # as the inbox preview line.  Hidden span overrides that with
+    # intentional copy.  color:transparent + max-height:0 is the
+    # cross-client recipe.
+    preheader = (
+        f"{html.escape(safe_inviter)} invited you to {html.escape(safe_account)} "
+        f"on {html.escape(brand)} — set up your account in one click."
+    )
+    html_body = f"""\
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="color-scheme" content="light"><title>{html.escape(brand)} invite</title></head><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:24px auto;color:#1f2937">
+<span style="display:none;max-height:0;overflow:hidden;color:transparent">{preheader}</span>
+<p style="font-size:15px">{html.escape(greeting)}</p>
+<p style="font-size:15px"><strong>{html.escape(safe_inviter)}</strong> has invited you to join
+<strong>{html.escape(safe_account)}</strong> on {html.escape(brand)} as a <strong>{html.escape(safe_role)}</strong>.</p>
+{truck_html}
+<p style="font-size:15px;margin-top:24px">{cta_button}</p>
+<p style="font-size:13px;color:#6b7280">Or paste this link into your browser: <a href="{safe_signup}" style="color:#0066ff">{safe_signup}</a></p>
+<p style="font-size:13px;color:#6b7280">The link is valid until {html.escape(expires_at)}.</p>
+<p style="font-size:14px;color:#374151;margin-top:24px">Questions about this invite?  Contact your administrator at {html.escape(safe_account)} directly — we can't forward replies to individual senders.</p>
+<p style="font-size:12px;color:#6b7280;margin-top:32px">— The {html.escape(brand)} team</p>
+<p style="font-size:11px;color:#6b7280">Wasn't expecting this?  <a href="{safe_decline}" style="color:#6b7280">Click here to decline this invite.</a></p>
+</body></html>"""
+
+    invites_from = os.getenv("SMTP_FROM_INVITES")
+    # List-Unsubscribe per RFC 8058.  HTTPS-only — the mailto: leg
+    # was removed because unsubscribe@<domain> is rarely a real
+    # monitored mailbox and bounces back from it hurt sender
+    # reputation more than the legacy-client coverage helps.
+    # Gmail/Yahoo's One-Click POST + Outlook 2019+/Apple Mail all
+    # honour the HTTPS form.  Add a real mailbox + autoresponder
+    # in a follow-up if Outlook < 2019 turnout is measured to need it.
+    headers = {
+        "List-Unsubscribe": f"<{decline_url}>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        "Auto-Submitted": "auto-generated",
+        "X-Entity-Ref-ID": f"invite-{code}",
+    }
+    return send_email(
+        to=to,
+        subject=subject,
+        body=text_body,
+        html_body=html_body,
+        from_address=invites_from,                # falls back to SMTP_FROM in send_email
+        from_name=f"{brand} Invites" if invites_from else None,
+        extra_headers=headers,
+    )

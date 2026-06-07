@@ -290,7 +290,11 @@
     "filter_by_driver_id": "фильтр по id водителя",
     "search_rules_placeholder": "Поиск правил…",
     "event_type_example": "hard_brake",
-    "default_placeholder": "по умолчанию"
+    "default_placeholder": "по умолчанию",
+    "send_via": "Отправить через",
+    "recipient_email": "Email получателя",
+    "recipient_email_placeholder": "driver@company.com",
+    "recipient_email_hint": "Один получатель на приглашение. Ссылка также копируется в буфер обмена как резерв."
   },
   "modals": {
     "create_invite": "Создать приглашение",
@@ -804,14 +808,26 @@
     "invite_revoked": "Приглашение отозвано",
     "invite_already_revoked": "Приглашение уже отозвано",
     "invite_extended": "Приглашение продлено на 24 часа",
-    "invite_extend_not_available": "Приглашение больше нельзя продлить"
+    "invite_extend_not_available": "Приглашение больше нельзя продлить",
+    "invite_emailed_copied": "Приглашение отправлено — ссылка также скопирована в буфер",
+    "invite_email_failed": "Приглашение создано, но отправка не удалась — ссылка скопирована как резерв",
+    "invite_email_invalid": "Введите действительный email получателя",
+    "invite_email_one_recipient": "Один получатель на приглашение — создайте отдельные приглашения для каждого",
+    "invite_email_resent": "Приглашение отправлено повторно",
+    "invite_email_not_available": "Приглашение больше недоступно"
   },
   "actions": {
     "revoke": "Отозвать",
     "revoking": "Отзыв…",
     "extend": "Продлить",
     "extending": "Продление…",
-    "extend_invite_24h": "Продлить это приглашение на 24 часа (тот же код)"
+    "extend_invite_24h": "Продлить это приглашение на 24 часа (тот же код)",
+    "create_and_email": "Создать и отправить",
+    "link": "Ссылка",
+    "email": "Email",
+    "resend": "Переотправить",
+    "resending": "Отправка…",
+    "resend_email": "Переотправить письмо тому же получателю"
   },
   "invites": {
     "status": {

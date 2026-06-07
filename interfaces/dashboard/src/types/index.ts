@@ -909,6 +909,15 @@ export interface InviteInfo {
   is_revoked?: boolean;
   /** ISO-8601 UTC timestamp the operator pressed Revoke at, or null. */
   revoked_at?: string | null;
+  /** Email-channel fields (migration 088 + admin.py email channel).
+   *  All optional for deploy-lag tolerance — treat missing as link-
+   *  channel.  ``channel`` is a derived classifier from the server
+   *  (link | email); the raw fields below let the dashboard show
+   *  who-was-emailed + last-send timestamp + resend attempt count. */
+  channel?: 'link' | 'email';
+  sent_to_email?: string | null;
+  email_sent_at?: string | null;
+  email_send_count?: number;
   created_by: number;
 }
 

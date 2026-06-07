@@ -315,6 +315,13 @@ class Invite:
     # so hydrating from a row that pre-dates migration 087 doesn't
     # AttributeError — defaults to active.
     revoked_at: Optional[str] = None
+    # Email-channel state (migration 088).  ``sent_to_email`` arrives
+    # decrypted via _row_to_invite; the storage layer is responsible
+    # for round-tripping through infra.crypto.  All three default to
+    # None / 0 so hydrating from a pre-migration row works.
+    sent_to_email: Optional[str] = None
+    email_sent_at: Optional[str] = None
+    email_send_count: int = 0
 
     @property
     def is_expired(self) -> bool:
@@ -328,3 +335,13 @@ class Invite:
     @property
     def is_revoked(self) -> bool:
         return self.revoked_at is not None
+
+    @property
+    def channel(self) -> str:
+        """Derived 'link' | 'email' classifier — the canonical way to
+        ask "how was this invite delivered to its recipient" without
+        callers re-reading ``sent_to_email`` directly.  An invite is
+        email-channel as soon as it's been TARGETED at a recipient,
+        even if the SMTP send failed (email_sent_at IS NULL) —
+        operator's intent was email, not link."""
+        return "email" if self.sent_to_email else "link"

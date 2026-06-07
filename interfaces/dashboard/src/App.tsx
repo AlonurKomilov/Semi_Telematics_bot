@@ -3,6 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { isSafeReturnTo, APEX_DOMAIN } from './lib/safeReturnTo';
 import AppRouter from './router';
+import PendingInviteBanner from './components/PendingInviteBanner';
 import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
@@ -210,7 +211,43 @@ export default function App() {
     return user ? <Navigate to="/" replace /> : <Login />;
   }
 
+  // ``/signup/<code>`` is the path-segment URL embedded in invite
+  // emails — the segment form keeps the code out of Referer headers
+  // and CDN query-string access logs, which a ``?invite=`` query
+  // param wouldn't.  Login.tsx itself reads the code from the path
+  // in its useEffect (alongside the ?invite= legacy form) and
+  // pre-fills the registration form.
+  //
+  // Authenticated case: a 4truck user with an existing session
+  // clicks an invite emailed to them for a DIFFERENT account
+  // (legitimate scenario: fleet owner invited to a customer's
+  // account; accountant invited across multiple client accounts).
+  // We forward to / with the code as ?pending_invite= so the
+  // dashboard's PendingInviteBanner can surface "You're signed in
+  // to X — sign out to accept this invite for Y" rather than
+  // silently dropping the link.  PendingInviteBanner reads the
+  // query param, fetches /auth/invite-preview, and renders the
+  // affordance.
+  if (location.pathname.startsWith('/signup/')) {
+    if (user) {
+      const m = location.pathname.match(/^\/signup\/([A-Za-z0-9-]+)$/);
+      const code = m ? m[1] : null;
+      return (
+        <Navigate
+          to={code ? `/?pending_invite=${encodeURIComponent(code)}` : '/'}
+          replace
+        />
+      );
+    }
+    return <Login />;
+  }
+
   if (!user) return <Login />;
 
-  return <AppRouter />;
+  return (
+    <>
+      <PendingInviteBanner />
+      <AppRouter />
+    </>
+  );
 }

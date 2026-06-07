@@ -1783,3 +1783,146 @@ async def auth_register_account(request: Request, response: Response, body: Regi
     except Exception as e:
         logging.getLogger("api.auth").error("Account registration failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Registration failed. Please try again.")
+
+
+# ══════════════════════════════════════════════════════════════════
+# Invite preview + decline (public, unauthenticated)
+# ══════════════════════════════════════════════════════════════════
+#
+# Two endpoints supporting the email-channel invite flow:
+#
+# 1.  GET /auth/invite-preview?code=XXXX
+#       Returns the safe-to-show metadata of an invite WITHOUT
+#       consuming it.  The Login page renders this as a "you're being
+#       invited to ACME as Driver by Alice" callout above the password
+#       field, so a phishing-aware recipient can verify the invite
+#       looks legitimate BEFORE burning the single-use code.  Returns
+#       uniform 404 for missing/expired/used/revoked so the endpoint
+#       can't be used as a code-enumeration oracle.
+#
+# 2.  POST /auth/invite/decline?token=XXXX
+#       Backs the List-Unsubscribe header.  An invitee who hits
+#       "Unsubscribe" in Gmail's inbox toolbar (or follows the
+#       footer link) ends up here; we revoke the invite without
+#       needing any authentication.  Rate-limited per IP because the
+#       token IS the auth — guessing a valid token is the only
+#       attack vector.
+
+@router.get("/invite-preview")
+@limiter.limit("10/minute")
+async def auth_invite_preview(request: Request, code: str):
+    """Preview the invite without consuming it (public, unauth).
+
+    Returns minimal trust-affirming metadata.  Uniform 404 for
+    every not-available branch so this endpoint isn't a code-
+    enumeration oracle.  Rate-limited per IP to cap brute-force.
+    """
+    if not code:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    # Cleanup the same way redeem_invite normalises it
+    norm = code.upper().strip()
+    db = database._db
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database unavailable")
+    invite = await db.get_invite(norm)
+    # get_invite already filters revoked + missing.  Used / expired
+    # need explicit checks so we don't preview a dead invite.
+    if not invite or invite.is_used or invite.is_expired:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    # Resolve human-readable account + inviter names so the recipient
+    # sees "ACME Trucking" not "account_id=42".  Tolerate missing
+    # rows gracefully — if the inviter user was deleted between
+    # invite-create and now, return a generic label rather than 500.
+    account = await db.get_account(invite.account_id)
+    inviter = None
+    try:
+        inviter = await db.get_user_by_id(invite.created_by)
+    except Exception:
+        pass
+    return {
+        "account_name": (account.name if account else "") or "your new team",
+        "role_label": invite.role.capitalize(),
+        "truck_num": invite.truck_num,
+        "expires_at": invite.expires_at,
+        "inviter_display_name": (
+            (inviter.display_name if inviter else "")
+            or "your inviter"
+        ),
+    }
+
+
+async def _decline_invite_impl(request: Request, token: str) -> None:
+    """Shared revocation logic for the POST (List-Unsubscribe
+    One-Click, RFC 8058) and GET (footer link / human click) handlers.
+
+    Writes a tenant-scoped audit row with NULL actor so the operator
+    can distinguish "recipient declined via email" from "operator
+    revoked in dashboard" — and so distributed-scan / DoS-via-token-
+    guessing has a forensic trail.  Source IP captured in details.
+    Uniform no-op for missing/used/expired/revoked codes — no
+    enumeration oracle, no info leak.
+    """
+    if not token:
+        return
+    norm = token.upper().strip()
+    db = database._db
+    if db is None:
+        return
+    invite = await db.get_invite(norm)
+    if not invite or invite.is_used or invite.is_expired:
+        return
+    await db.revoke_invite(invite.account_id, invite.id)
+    # Tenant-scoped audit row.  Actor is None — system-driven decline,
+    # no JWT context.  AuditLog.tsx ACTION_LABEL renders this as
+    # "Invite declined by recipient" so the operator sees the cause.
+    try:
+        from infra.platform import get_tenant_db as _get_tenant_db
+        tenant = await _get_tenant_db(invite.account_id)
+        source_ip = (
+            request.client.host if request.client else "unknown"
+        )
+        details = (
+            f"Role: {invite.role}, dept: {invite.department}, "
+            f"channel: {invite.channel}, source_ip: {source_ip}"
+        )[:500]
+        await tenant.add_audit_log(
+            invite.account_id, None,
+            "invite_declined",
+            target_type="invite", target_id=str(invite.id),
+            details=details,
+        )
+    except Exception as e:
+        logging.getLogger("api.auth").warning(
+            "audit_log on invite_declined failed: %s", e,
+        )
+
+
+@router.post("/invite/decline")
+@limiter.limit("10/minute")
+async def auth_invite_decline_post(request: Request, token: str):
+    """Revoke an invite from Gmail/Yahoo's One-Click List-Unsubscribe
+    POST (RFC 8058).  The token IS the authorisation — inboxes can't
+    authenticate the recipient.  Per-IP rate limit caps brute-force;
+    tenant audit row gives the operator visibility on declines."""
+    await _decline_invite_impl(request, token)
+    return {"ok": True}
+
+
+@router.get("/invite/decline")
+@limiter.limit("10/minute")
+async def auth_invite_decline_get(request: Request, token: str):
+    """Human-click decline handler — the in-body 'Click here to decline'
+    link in the invite email issues a GET.  Returns a small confirmation
+    page rather than 405-ing the recipient.  Same revocation + audit
+    logic as the POST handler."""
+    from fastapi.responses import HTMLResponse
+    await _decline_invite_impl(request, token)
+    return HTMLResponse(
+        """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Invite declined</title></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:480px;margin:48px auto;padding:24px;color:#1f2937">
+<h1 style="font-size:18px">Invite declined</h1>
+<p style="font-size:14px;color:#6b7280">Thanks — we've removed your invite.  You can close this window.</p>
+<p style="font-size:13px;color:#6b7280;margin-top:32px">If this was a mistake, contact the person who invited you and ask for a new invite.</p>
+</body></html>""",
+    )

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from .models import Role, Invite, User
+
+logger = logging.getLogger(__name__)
 
 
 class InvitesMixin:
@@ -16,8 +19,19 @@ class InvitesMixin:
         department: str = "general",
         truck_num: Optional[str] = None,
         hours: int = 24,
+        recipient_email: Optional[str] = None,
     ) -> Invite:
-        """Generate a one-time invite code."""
+        """Generate a one-time invite code.
+
+        ``recipient_email`` is the email-channel marker.  When set:
+          - stamps ``sent_to_email`` on the row (encrypted via
+            infra.crypto when ENCRYPTION_KEY is set)
+          - the row's ``channel`` property returns 'email'
+          - the caller (route handler) is expected to call
+            ``send_invite_email`` immediately AFTER create_invite
+            returns, then ``mark_invite_email_sent`` on success
+        When unset, behaviour is unchanged — link-channel invite.
+        """
         now = datetime.now(timezone.utc)
         expires = now + timedelta(hours=hours)
 
@@ -25,13 +39,37 @@ class InvitesMixin:
         now_str = now.isoformat()
         exp_str = expires.isoformat()
 
+        # Encrypt the recipient email at rest — infra.crypto.encrypt
+        # is a no-op when ENCRYPTION_KEY is unset (dev mode), and
+        # transparently prepends an ``enc::`` marker when it is, so
+        # _row_to_invite can detect + decrypt on read.
+        stored_email: Optional[str] = None
+        if recipient_email:
+            from infra.crypto import encrypt as _encrypt
+            try:
+                stored_email = _encrypt(recipient_email)
+            except Exception as e:
+                # ENCRYPTION_KEY misconfigured in this env — store
+                # plaintext rather than blocking the invite create.
+                # The audit trail captures the recipient regardless.
+                # Warn-log loudly because silent plaintext storage is
+                # the worst kind of degradation: the "encrypted at
+                # rest" claim becomes un-falsifiable from the
+                # operator's perspective.
+                logger.warning(
+                    "create_invite: failed to encrypt recipient_email "
+                    "for account_id=%s (storing plaintext): %s",
+                    account_id, e, exc_info=True,
+                )
+                stored_email = recipient_email
+
         cur = await self._db.execute(
             """INSERT INTO invites
                (code, account_id, role, department, truck_num,
-                created_by, expires_at, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                created_by, expires_at, created_at, sent_to_email)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (code, account_id, role.value, department, truck_num,
-             created_by, exp_str, now_str),
+             created_by, exp_str, now_str, stored_email),
         )
         await self._db.commit()
         return Invite(
@@ -40,7 +78,84 @@ class InvitesMixin:
             created_by=created_by, expires_at=exp_str,
             used_by=None, created_at=now_str,
             revoked_at=None,
+            # Return the PLAINTEXT email in the dataclass — the
+            # encryption is for at-rest storage only.  Callers that
+            # need the recipient (route audit log, mailer) get it
+            # without an extra decrypt round-trip.
+            sent_to_email=recipient_email,
+            email_sent_at=None,
+            email_send_count=0,
         )
+
+    async def mark_invite_email_sent(
+        self, account_id: int, invite_id: int,
+        recipient: Optional[str] = None,
+    ) -> Optional[Invite]:
+        """Stamp ``email_sent_at`` + increment ``email_send_count``
+        after a successful SMTP handoff.
+
+        ``recipient`` is optional.  Pass it on resend operations
+        where the operator may have changed the recipient
+        (currently NOT exposed — resend reuses the original — but
+        the parameter is there for future "resend to a different
+        address" flows so this storage API doesn't churn).
+
+        Returns the updated Invite or None for not-found /
+        cross-account / used / revoked (uniform with the other
+        invite-mutation methods).  Same SELECT-then-UPDATE-with-
+        guard shape and transaction wrap.
+        """
+        async with self.transaction():
+            cur = await self._db.execute(
+                """SELECT * FROM invites
+                    WHERE id = ?
+                      AND account_id = ?
+                      AND used_by IS NULL
+                      AND revoked_at IS NULL
+                    LIMIT 1""",
+                (invite_id, account_id),
+            )
+            row = await cur.fetchone()
+            if not row:
+                return None
+            invite = self._row_to_invite(row)
+            now_iso = datetime.now(timezone.utc).isoformat()
+            new_count = (invite.email_send_count or 0) + 1
+            # Update recipient when the caller passed a new one;
+            # otherwise leave the existing ciphertext alone.
+            if recipient is not None and recipient != invite.sent_to_email:
+                from infra.crypto import encrypt as _encrypt
+                try:
+                    stored = _encrypt(recipient)
+                except Exception as e:
+                    logger.warning(
+                        "mark_invite_email_sent: failed to encrypt "
+                        "recipient for invite_id=%s (storing plaintext): %s",
+                        invite_id, e, exc_info=True,
+                    )
+                    stored = recipient
+                upd = await self._db.execute(
+                    "UPDATE invites SET email_sent_at = ?, "
+                    "  email_send_count = ?, sent_to_email = ? "
+                    "WHERE id = ? AND account_id = ? "
+                    "  AND used_by IS NULL AND revoked_at IS NULL",
+                    (now_iso, new_count, stored, invite.id, account_id),
+                )
+                invite.sent_to_email = recipient
+            else:
+                upd = await self._db.execute(
+                    "UPDATE invites SET email_sent_at = ?, "
+                    "  email_send_count = ? "
+                    "WHERE id = ? AND account_id = ? "
+                    "  AND used_by IS NULL AND revoked_at IS NULL",
+                    (now_iso, new_count, invite.id, account_id),
+                )
+            if upd.rowcount != 1:
+                # Race-lost — uniform None return.
+                return None
+            invite.email_sent_at = now_iso
+            invite.email_send_count = new_count
+            return invite
 
     async def get_invite(self, code: str) -> Optional[Invite]:
         """Look up an invite by code.

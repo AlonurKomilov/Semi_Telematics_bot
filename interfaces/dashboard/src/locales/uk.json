@@ -670,14 +670,26 @@
     "invite_revoked": "Запрошення скасовано",
     "invite_already_revoked": "Запрошення вже скасовано",
     "invite_extended": "Запрошення продовжено на 24 години",
-    "invite_extend_not_available": "Запрошення більше не можна продовжити"
+    "invite_extend_not_available": "Запрошення більше не можна продовжити",
+    "invite_emailed_copied": "Запрошення надіслано — посилання також скопійовано в буфер",
+    "invite_email_failed": "Запрошення створено, але email не надіслано — посилання скопійовано як резерв",
+    "invite_email_invalid": "Введіть дійсний email отримувача",
+    "invite_email_one_recipient": "Один отримувач на запрошення — створіть окремі запрошення для кожного",
+    "invite_email_resent": "Запрошення надіслано повторно",
+    "invite_email_not_available": "Запрошення більше недоступне"
   },
   "actions": {
     "revoke": "Скасувати",
     "revoking": "Скасування…",
     "extend": "Продовжити",
     "extending": "Продовження…",
-    "extend_invite_24h": "Продовжити це запрошення на 24 години (той самий код)"
+    "extend_invite_24h": "Продовжити це запрошення на 24 години (той самий код)",
+    "create_and_email": "Створити та надіслати",
+    "link": "Посилання",
+    "email": "Email",
+    "resend": "Надіслати знову",
+    "resending": "Надсилання…",
+    "resend_email": "Надіслати email знову тому самому отримувачу"
   },
   "invites": {
     "status": {
@@ -688,5 +700,11 @@
     },
     "empty_filtered_title": "Жодне запрошення не відповідає фільтрам",
     "empty_filtered_desc": "Змініть чіпи ролі/статусу або очистіть поле пошуку."
+  },
+  "forms": {
+    "send_via": "Надіслати через",
+    "recipient_email": "Email отримувача",
+    "recipient_email_placeholder": "driver@company.com",
+    "recipient_email_hint": "Один отримувач на запрошення. Посилання також копіюється в буфер як резерв."
   }
 }

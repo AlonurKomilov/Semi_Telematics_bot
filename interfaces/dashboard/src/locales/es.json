@@ -290,7 +290,11 @@
     "filter_by_driver_id": "filtrar por id de conductor",
     "search_rules_placeholder": "Buscar reglas…",
     "event_type_example": "hard_brake",
-    "default_placeholder": "por defecto"
+    "default_placeholder": "por defecto",
+    "send_via": "Enviar por",
+    "recipient_email": "Correo del destinatario",
+    "recipient_email_placeholder": "conductor@empresa.com",
+    "recipient_email_hint": "Un destinatario por invitación. El enlace también se copia al portapapeles como respaldo."
   },
   "modals": {
     "create_invite": "Crear invitación",
@@ -804,14 +808,26 @@
     "invite_revoked": "Invitación revocada",
     "invite_already_revoked": "Invitación ya revocada",
     "invite_extended": "Invitación extendida 24 horas",
-    "invite_extend_not_available": "La invitación ya no se puede extender"
+    "invite_extend_not_available": "La invitación ya no se puede extender",
+    "invite_emailed_copied": "Invitación enviada por correo — enlace también copiado al portapapeles",
+    "invite_email_failed": "Invitación creada pero el correo falló — enlace copiado como respaldo",
+    "invite_email_invalid": "Introduce un correo de destinatario válido",
+    "invite_email_one_recipient": "Un destinatario por invitación — crea invitaciones separadas para cada persona",
+    "invite_email_resent": "Invitación reenviada",
+    "invite_email_not_available": "La invitación ya no está disponible"
   },
   "actions": {
     "revoke": "Revocar",
     "revoking": "Revocando…",
     "extend": "Extender",
     "extending": "Extendiendo…",
-    "extend_invite_24h": "Extender esta invitación 24 horas (mismo código)"
+    "extend_invite_24h": "Extender esta invitación 24 horas (mismo código)",
+    "create_and_email": "Crear y enviar correo",
+    "link": "Enlace",
+    "email": "Correo",
+    "resend": "Reenviar",
+    "resending": "Reenviando…",
+    "resend_email": "Reenviar el correo de invitación al mismo destinatario"
   },
   "invites": {
     "status": {

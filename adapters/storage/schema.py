@@ -89,7 +89,18 @@ async def create_tables(conn) -> None:
             -- See migration 087.  Filter ``WHERE revoked_at IS NULL``
             -- in get_invite / list_invites / redeem_invite to keep
             -- revoked codes out of every redemption surface.
-            revoked_at  TEXT
+            revoked_at  TEXT,
+            -- Email-channel columns (migration 088).  See the
+            -- migration docstring for the lifecycle invariants:
+            --   sent_to_email NULL → link-channel invite.
+            --   sent_to_email NOT NULL + email_sent_at IS NULL → SMTP
+            --     accepted but the relay refused (operator sees
+            --     "Created but email failed").
+            --   sent_to_email is encrypted at rest via infra.crypto
+            --     when ENCRYPTION_KEY is set.
+            sent_to_email     TEXT,
+            email_sent_at     TEXT,
+            email_send_count  INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS authorized_chats (

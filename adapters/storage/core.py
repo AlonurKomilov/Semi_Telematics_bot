@@ -347,6 +347,28 @@ class _DatabaseCore:
         )
 
     def _row_to_invite(self, row) -> Invite:
+        # ``sent_to_email`` is stored encrypted via infra.crypto when
+        # ENCRYPTION_KEY is set.  We decrypt at hydration so callers
+        # (the admin /invites serializer, the audit-log composer)
+        # never see ciphertext.  decrypt() is a no-op on plaintext
+        # when encryption is disabled in this environment, AND on the
+        # ``enc::``-prefixed legacy detection — see infra/crypto.py.
+        sent_email_raw = (
+            row["sent_to_email"]
+            if "sent_to_email" in row.keys() else None
+        )
+        if sent_email_raw:
+            from infra.crypto import decrypt as _decrypt
+            try:
+                sent_email = _decrypt(sent_email_raw)
+            except Exception:
+                # Malformed ciphertext (e.g. ENCRYPTION_KEY rotated
+                # without re-encrypting) — log-and-skip rather than
+                # crash the whole invite-row read.  The operator
+                # sees no recipient until the row is re-stamped.
+                sent_email = None
+        else:
+            sent_email = None
         return Invite(
             id=row["id"], code=row["code"],
             account_id=row["account_id"],
@@ -359,6 +381,20 @@ class _DatabaseCore:
             # Defensive read — a deployment that hits this before
             # migration 087 lands (very narrow window) still hydrates.
             revoked_at=row["revoked_at"] if "revoked_at" in row.keys() else None,
+            # Email-channel fields land in migration 088 — same
+            # defensive read pattern so the brief deploy-lag window
+            # doesn't crash hydration.
+            sent_to_email=sent_email,
+            email_sent_at=(
+                row["email_sent_at"]
+                if "email_sent_at" in row.keys() else None
+            ),
+            email_send_count=(
+                row["email_send_count"]
+                if "email_send_count" in row.keys()
+                and row["email_send_count"] is not None
+                else 0
+            ),
         )
 
     def _row_to_authorized_chat(self, row) -> AuthorizedChat:

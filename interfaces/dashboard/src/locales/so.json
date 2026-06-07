@@ -290,7 +290,11 @@
     "filter_by_driver_id": "shaandhee id-ga darawalka",
     "search_rules_placeholder": "Raadi sharciyo…",
     "event_type_example": "hard_brake",
-    "default_placeholder": "default"
+    "default_placeholder": "default",
+    "send_via": "Send via",
+    "recipient_email": "Recipient email",
+    "recipient_email_placeholder": "driver@company.com",
+    "recipient_email_hint": "One recipient per invite. The link is also copied to your clipboard as a fallback."
   },
   "modals": {
     "create_invite": "Abuur Casuumad",
@@ -595,14 +599,26 @@
     "invite_revoked": "Invite revoked",
     "invite_already_revoked": "Invite already revoked",
     "invite_extended": "Invite extended by 24 hours",
-    "invite_extend_not_available": "Invite is no longer available to extend"
+    "invite_extend_not_available": "Invite is no longer available to extend",
+    "invite_emailed_copied": "Invite emailed — link also copied to clipboard",
+    "invite_email_failed": "Invite created but email failed — link copied as fallback",
+    "invite_email_invalid": "Enter a valid recipient email",
+    "invite_email_one_recipient": "One recipient per invite — create separate invites for each person",
+    "invite_email_resent": "Invite resent",
+    "invite_email_not_available": "Invite is no longer available"
   },
   "actions": {
     "revoke": "Revoke",
     "revoking": "Revoking…",
     "extend": "Extend",
     "extending": "Extending…",
-    "extend_invite_24h": "Extend this invite by 24 hours (same code)"
+    "extend_invite_24h": "Extend this invite by 24 hours (same code)",
+    "create_and_email": "Create & Send Email",
+    "link": "Link",
+    "email": "Email",
+    "resend": "Resend",
+    "resending": "Resending…",
+    "resend_email": "Resend the invite email to the same recipient"
   },
   "invites": {
     "status": {

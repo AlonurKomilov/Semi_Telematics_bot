@@ -3796,3 +3796,67 @@ async def migrate_invites_revoked_at(conn) -> None:
         except Exception:
             pass
         raise
+
+
+@_register("090_invites_email_channel")
+async def migrate_invites_email_channel(conn) -> None:
+    """Add per-invite email-channel columns to ``invites``.
+
+    The invite-email channel lets the create-invite dialog send the
+    link via SMTP (through Resend) instead of relying on the operator
+    to copy + paste a Telegram deep-link manually.  Three new columns:
+
+      sent_to_email TEXT
+        - NULL on link-channel invites (the default; preserves the
+          current zero-impact behaviour for any invite issued before
+          this column landed).
+        - Populated on email-channel invites with the recipient address.
+          Encrypted at rest via infra.crypto when ENCRYPTION_KEY is set
+          (mirrors the Samsara API key handling) — recipient PII on a
+          row anyone with can_invite can read shouldn't sit there in
+          plaintext, especially after the invite is revoked.
+
+      email_sent_at TEXT
+        - NULL = the SMTP send never happened (failure, or this is a
+          link-channel invite).
+        - ISO-8601 UTC = the moment send_email() returned True.
+        - The pair (sent_to_email NOT NULL AND email_sent_at IS NULL)
+          is the "we tried but the relay refused" state — surfaced as
+          "Created but email failed" in the dialog.
+
+      email_send_count INTEGER NOT NULL DEFAULT 0
+        - Incremented on every successful send (initial + each resend).
+          Surfaced in audit-log details so an auditor can spot abuse
+          ("HR resent 10 invites to alice@evil.com in an hour") without
+          joining log rows.
+
+    Default behaviour on upgrade: every existing invite row has
+    ``sent_to_email = NULL, email_sent_at = NULL, email_send_count = 0``
+    — column landing on a deployed DB before any code reads it is a
+    no-op for the link-channel.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(invites)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "sent_to_email" not in cols:
+            await conn.execute(
+                "ALTER TABLE invites ADD COLUMN sent_to_email TEXT"
+            )
+        if "email_sent_at" not in cols:
+            await conn.execute(
+                "ALTER TABLE invites ADD COLUMN email_sent_at TEXT"
+            )
+        if "email_send_count" not in cols:
+            await conn.execute(
+                "ALTER TABLE invites "
+                "ADD COLUMN email_send_count INTEGER NOT NULL DEFAULT 0"
+            )
+        await conn.commit()
+        logger.info("Migration 090: added invites email-channel columns")
+    except Exception as e:
+        logger.error("Migration 090 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise

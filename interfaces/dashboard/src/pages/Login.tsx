@@ -99,15 +99,65 @@ export default function Login() {
     setError('');
   }, []);
 
-  // Pre-fill invite code from URL ?invite=XXXX
+  // Pre-fill invite code from EITHER:
+  //   ?invite=XXXX  (legacy / link-channel deep-link)
+  //   /signup/XXXX  (path-segment URL the new email-channel uses —
+  //                  keeps the code out of Referer headers and
+  //                  query-string-bearing CDN access logs)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const code = params.get('invite');
+    let code = params.get('invite');
+    if (!code) {
+      // Match a /signup/<code> path; the trailing segment is the
+      // invite code, normalised to upper-case.  Backend get_invite
+      // already upper-strips on read, but we normalise here too so
+      // the preview-fetch URL stays canonical.
+      const m = window.location.pathname.match(/^\/signup\/([A-Za-z0-9-]+)$/);
+      if (m) code = m[1];
+    }
     if (code) {
       setInviteCode(code);
       setMode('register');
     }
   }, []);
+
+  // Invite preview — when an invite code is present, fetch the safe-
+  // to-show metadata so the recipient sees "you're being invited to
+  // ACME as Driver by Alice" BEFORE they submit (and consume) the
+  // single-use code.  Closes the trust gap a phishing-aware recipient
+  // would otherwise have to take on faith — they can't validate the
+  // invite is legitimate without burning it.
+  //
+  // Uniform 404 from the backend covers missing/expired/used/revoked
+  // — we treat any non-200 the same way: don't render the callout.
+  const [invitePreview, setInvitePreview] = useState<{
+    account_name: string;
+    role_label: string;
+    truck_num: string | null;
+    expires_at: string;
+    inviter_display_name: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!inviteCode) { setInvitePreview(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiJSON<{
+          account_name: string;
+          role_label: string;
+          truck_num: string | null;
+          expires_at: string;
+          inviter_display_name: string;
+        }>(`/auth/invite-preview?code=${encodeURIComponent(inviteCode)}`);
+        if (!cancelled) setInvitePreview(data);
+      } catch {
+        // 404 (uniform "not available") or any network error → hide
+        // the callout; the form still works the same.
+        if (!cancelled) setInvitePreview(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [inviteCode]);
 
   useEffect(() => {
     // Telegram Login Widget callback
@@ -269,6 +319,29 @@ export default function Login() {
                 onChange={(e) => setInviteCode(e.target.value)}
                 required
               />
+              {/* Invite preview callout — only renders when the
+                  /auth/invite-preview probe succeeds.  Gives the
+                  recipient a trust anchor ("you're being invited to
+                  ACME as Driver by Alice") BEFORE they submit and
+                  burn the single-use code.  If they expected a
+                  different account/role, they can stop here and ask
+                  out-of-band without consuming the invite. */}
+              {invitePreview && (
+                <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">
+                  <p className="font-medium text-foreground">
+                    {invitePreview.inviter_display_name} invited you to{' '}
+                    <strong>{invitePreview.account_name}</strong> as a{' '}
+                    <strong>{invitePreview.role_label}</strong>
+                    {invitePreview.truck_num && (
+                      <> — Truck #{invitePreview.truck_num}</>
+                    )}
+                  </p>
+                  <p className="text-muted-foreground mt-1">
+                    Not what you expected? Stop here and ask the
+                    sender — submitting will consume the invite.
+                  </p>
+                </div>
+              )}
             </>
           )}
           <Input

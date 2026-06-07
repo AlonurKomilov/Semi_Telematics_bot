@@ -462,14 +462,26 @@
     "invite_revoked": "Taklifnoma bekor qilindi",
     "invite_already_revoked": "Taklifnoma allaqachon bekor qilingan",
     "invite_extended": "Taklifnoma 24 soatga uzaytirildi",
-    "invite_extend_not_available": "Taklifnomani uzaytirib bo'lmaydi"
+    "invite_extend_not_available": "Taklifnomani uzaytirib bo'lmaydi",
+    "invite_emailed_copied": "Taklifnoma yuborildi — havola buferga ham nusxalandi",
+    "invite_email_failed": "Taklifnoma yaratildi lekin email yuborilmadi — havola zaxira sifatida nusxalandi",
+    "invite_email_invalid": "To'g'ri qabul qiluvchi emailini kiriting",
+    "invite_email_one_recipient": "Bir taklifnomaga bir qabul qiluvchi — har bir kishi uchun alohida taklifnoma yarating",
+    "invite_email_resent": "Taklifnoma qayta yuborildi",
+    "invite_email_not_available": "Taklifnoma endi mavjud emas"
   },
   "actions": {
     "revoke": "Bekor qilish",
     "revoking": "Bekor qilinmoqda…",
     "extend": "Uzaytirish",
     "extending": "Uzaytirilmoqda…",
-    "extend_invite_24h": "Ushbu taklifnomani 24 soatga uzaytirish (xuddi shu kod)"
+    "extend_invite_24h": "Ushbu taklifnomani 24 soatga uzaytirish (xuddi shu kod)",
+    "create_and_email": "Yaratish va yuborish",
+    "link": "Havola",
+    "email": "Email",
+    "resend": "Qayta yuborish",
+    "resending": "Yuborilmoqda…",
+    "resend_email": "Taklifnoma emailini xuddi shu qabul qiluvchiga qayta yuborish"
   },
   "invites": {
     "status": {
@@ -480,5 +492,11 @@
     },
     "empty_filtered_title": "Filtrlaringizga mos taklifnoma topilmadi",
     "empty_filtered_desc": "Rol/holat tugmalarini sozlang yoki qidiruv maydonini tozalang."
+  },
+  "forms": {
+    "send_via": "Yuborish usuli",
+    "recipient_email": "Qabul qiluvchi email",
+    "recipient_email_placeholder": "driver@company.com",
+    "recipient_email_hint": "Bir taklifnomaga bir qabul qiluvchi. Havola zaxira sifatida buferga ham nusxalanadi."
   }
 }

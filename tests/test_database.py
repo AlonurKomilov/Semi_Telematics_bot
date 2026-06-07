@@ -670,6 +670,151 @@ class TestInvitesRevoke:
         with pytest.raises(ValueError, match="hours must be"):
             await db.extend_invite(acct.id, invite.id, hours=10_000)
 
+    # ── email channel (migration 088) ───────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_create_invite_email_channel_stamps_recipient(self, seeded_db):
+        """create_invite(recipient_email=...) stamps sent_to_email on
+        the row (encrypted at rest when ENCRYPTION_KEY is set) and
+        derives channel='email'.  Round-trips cleanly through
+        get_invite + get_invite_by_id."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(
+            acct.id, owner.id, Role.DRIVER, "ops",
+            recipient_email="alice@example.com",
+        )
+        assert invite.sent_to_email == "alice@example.com"
+        assert invite.channel == "email"
+        assert invite.email_sent_at is None
+        assert invite.email_send_count == 0
+        # Round-trip through get_invite (recipient-side surface)
+        fetched = await db.get_invite(invite.code)
+        assert fetched is not None
+        assert fetched.sent_to_email == "alice@example.com"
+        assert fetched.channel == "email"
+        # And through get_invite_by_id (admin surface)
+        admin_view = await db.get_invite_by_id(acct.id, invite.id)
+        assert admin_view is not None
+        assert admin_view.sent_to_email == "alice@example.com"
+
+    @pytest.mark.asyncio
+    async def test_create_invite_link_channel_defaults(self, seeded_db):
+        """Default behaviour unchanged: link-channel invites have
+        sent_to_email=NULL and channel='link'.  Defends against the
+        email-channel migration silently flipping every existing
+        invite into the email path."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(acct.id, owner.id, Role.FLEET)
+        assert invite.sent_to_email is None
+        assert invite.channel == "link"
+        assert invite.email_sent_at is None
+        assert invite.email_send_count == 0
+
+    @pytest.mark.asyncio
+    async def test_mark_invite_email_sent_stamps_and_increments(self, seeded_db):
+        """First successful send stamps email_sent_at and bumps
+        email_send_count to 1; a second call (resend) increments to
+        2 and refreshes the timestamp."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(
+            acct.id, owner.id, Role.FLEET,
+            recipient_email="bob@example.com",
+        )
+        first = await db.mark_invite_email_sent(acct.id, invite.id)
+        assert first is not None
+        assert first.email_sent_at is not None
+        assert first.email_send_count == 1
+        first_ts = first.email_sent_at
+
+        second = await db.mark_invite_email_sent(acct.id, invite.id)
+        assert second is not None
+        assert second.email_send_count == 2
+        # Timestamp moved forward (or is at least not earlier)
+        assert second.email_sent_at >= first_ts
+
+    @pytest.mark.asyncio
+    async def test_mark_invite_email_sent_returns_none_for_used(self, seeded_db):
+        """Used invites must NOT accept mark-email-sent (the user
+        already joined; no resend possible)."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(
+            acct.id, owner.id, Role.FLEET,
+            recipient_email="carol@example.com",
+        )
+        await db.redeem_invite(invite.code, 920_001)
+        result = await db.mark_invite_email_sent(acct.id, invite.id)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_mark_invite_email_sent_returns_none_for_revoked(self, seeded_db):
+        """Revoked invites must NOT accept mark-email-sent —
+        symmetric with the used-row guard."""
+        db, acct, _, owner = seeded_db
+        invite = await db.create_invite(
+            acct.id, owner.id, Role.FLEET,
+            recipient_email="dave@example.com",
+        )
+        await db.revoke_invite(acct.id, invite.id)
+        result = await db.mark_invite_email_sent(acct.id, invite.id)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_create_invite_recipient_email_encrypted_at_rest(self, seeded_db):
+        """recipient_email lands ENCRYPTED in the invites.sent_to_email
+        column when ENCRYPTION_KEY is set, and round-trips back to
+        plaintext via _row_to_invite.  Defends the "PII encrypted at
+        rest" claim that the schema migration docstring makes."""
+        import infra.crypto as encryption
+        from unittest.mock import patch as _patch
+        db, acct, _, owner = seeded_db
+        encryption._fernet = None
+        with _patch.dict(os.environ, {"ENCRYPTION_KEY": "invite-test-key"}):
+            encryption.init_encryption()
+            invite = await db.create_invite(
+                acct.id, owner.id, Role.FLEET,
+                recipient_email="frank@example.com",
+            )
+            # Returned dataclass holds PLAINTEXT (callers shouldn't
+            # see ciphertext)
+            assert invite.sent_to_email == "frank@example.com"
+            # But the raw row in the DB has ciphertext.  Read it
+            # directly via the storage layer's internal connection so
+            # we bypass _row_to_invite's decrypt.
+            cur = await db._db.execute(
+                "SELECT sent_to_email FROM invites WHERE id = ?",
+                (invite.id,),
+            )
+            row = await cur.fetchone()
+            stored = row[0]
+            assert stored is not None
+            assert stored != "frank@example.com", (
+                "sent_to_email should be encrypted at rest, got plaintext"
+            )
+            assert stored.startswith("enc::"), (
+                "infra.crypto.encrypt prefixes 'enc::'; got %r" % stored
+            )
+            # Hydration via get_invite_by_id decrypts back to plaintext.
+            hydrated = await db.get_invite_by_id(acct.id, invite.id)
+            assert hydrated is not None
+            assert hydrated.sent_to_email == "frank@example.com"
+        encryption._fernet = None
+
+    @pytest.mark.asyncio
+    async def test_mark_invite_email_sent_rejects_cross_account(self, db):
+        """Tenant isolation symmetric with revoke/extend tests."""
+        acct_a = await db.create_account("A Co")
+        acct_b = await db.create_account("B Co")
+        owner_a = await db.create_user(
+            telegram_id=921_001, account_id=acct_a.id, role=Role.OWNER,
+        )
+        invite = await db.create_invite(
+            acct_a.id, owner_a.id, Role.FLEET,
+            recipient_email="eve@example.com",
+        )
+        assert await db.mark_invite_email_sent(acct_b.id, invite.id) is None
+        ok = await db.mark_invite_email_sent(acct_a.id, invite.id)
+        assert ok is not None
+
     @pytest.mark.asyncio
     async def test_extend_invite_rejects_cross_account(self, db):
         """Tenant isolation: account B cannot extend account A's invite

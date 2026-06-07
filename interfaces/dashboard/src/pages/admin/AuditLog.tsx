@@ -21,6 +21,8 @@ const ACTION_LABEL: Record<string, string> = {
   invite_create: 'Invite created',
   invite_revoke: 'Invite revoked',
   invite_extend: 'Invite extended',
+  invite_email_resent: 'Invite email resent',
+  invite_declined: 'Invite declined by recipient',
 };
 
 const columns: AnyColumn[] = [

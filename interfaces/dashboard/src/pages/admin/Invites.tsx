@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Link as LinkIcon, Plus, Trash2, Copy, Check, Loader2, TimerReset, Search } from 'lucide-react';
+import { Link as LinkIcon, Plus, Trash2, Copy, Check, Loader2, TimerReset, Search, Mail, Send } from 'lucide-react';
 import { apiJSON, ApiError } from '../../api/client';
 import type { InviteInfo, InvitesResponse } from '../../types';
 import DataTable from '../../components/DataTable';
@@ -107,6 +107,17 @@ export function InvitesPanel() {
   const [truckNum, setTruckNum] = useState('');
   const [hours, setHours] = useState(24);
   const [creating, setCreating] = useState(false);
+  // Send-via channel for the create form.  'link' = current Telegram
+  // deep-link behaviour (zero-cost for users who don't care about
+  // email).  'email' = stamp recipient_email and ship via SMTP.
+  // ALWAYS resets to 'link' on every dialog open per the UX review:
+  // the choice is too high-blast-radius to persist across opens.
+  const [channel, setChannel] = useState<'link' | 'email'>('link');
+  const [recipientEmail, setRecipientEmail] = useState('');
+
+  // Resend-email per-button in-flight gate.  Mirrors the revoking/
+  // extending pattern so anyMutationInFlight covers all three.
+  const [resending, setResending] = useState<number | null>(null);
 
   // Revoke flow.  ``confirming`` holds the invite the operator clicked
   // Revoke on (drives the Dialog open state); ``revoking`` is the id
@@ -201,21 +212,62 @@ export function InvitesPanel() {
       if (role === 'driver' && truckNum.trim()) {
         body.truck_num = truckNum.trim();
       }
-      const inv = await apiJSON<InviteInfo>('/admin/invite', { method: 'POST', body });
-      // Await the clipboard write BEFORE closing the dialog so a
-      // clipboard rejection (HTTP origin, focus loss, permission
-      // denied) surfaces while the operator is still in the dialog
-      // context — they can hit Create again or copy the URL the
-      // toast surfaces.  copyLink itself is fire-and-forget; this
-      // shape gives us per-call control over the close timing.
+      // Email channel: include recipient_email when the operator
+      // explicitly chose the Email segment AND typed an address.
+      // Backend re-validates format and refuses 422 on garbage; we
+      // do a coarse client-side check here so the operator sees the
+      // problem before the round-trip.
+      if (channel === 'email') {
+        const addr = recipientEmail.trim().toLowerCase();
+        if (!addr || !addr.includes('@')) {
+          toast.error(t('toasts.invite_email_invalid', {
+            defaultValue: 'Enter a valid recipient email',
+          }));
+          setCreating(false);
+          return;
+        }
+        if (addr.includes(',') || addr.includes(';')) {
+          toast.error(t('toasts.invite_email_one_recipient', {
+            defaultValue: 'One recipient per invite — create separate invites for each person',
+          }));
+          setCreating(false);
+          return;
+        }
+        body.recipient_email = addr;
+      }
+      const inv = await apiJSON<InviteInfo & {
+        channel?: 'link' | 'email';
+        email_status?: 'sent' | 'queued_failed' | null;
+      }>('/admin/invite', { method: 'POST', body });
+      // ALWAYS auto-copy the link to clipboard regardless of
+      // channel — when email is the primary path it's the fallback
+      // ("they didn't get the email — paste this directly to
+      // them"), and when link is the primary path it's the primary
+      // action.  The UX review explicitly called out that
+      // operators need a recovery path even when email "succeeds".
       const url = `https://t.me/${botUsername}?start=join_${inv.code}`;
       try {
         await navigator.clipboard.writeText(url);
         setCopied(inv.code);
         setTimeout(() => setCopied(null), 2000);
-        toast.success(t('toasts.invite_created_copied', {
-          defaultValue: 'Invite created — link copied to clipboard',
-        }));
+        if (channel === 'email') {
+          if (inv.email_status === 'sent') {
+            toast.success(t('toasts.invite_emailed_copied', {
+              defaultValue: 'Invite emailed — link also copied to clipboard',
+            }));
+          } else {
+            // SMTP refused or the backend returned queued_failed —
+            // surface as warning so the operator knows the email
+            // didn't ship.  The link IS in their clipboard as fallback.
+            toast.error(t('toasts.invite_email_failed', {
+              defaultValue: 'Invite created but email failed — link copied as fallback',
+            }));
+          }
+        } else {
+          toast.success(t('toasts.invite_created_copied', {
+            defaultValue: 'Invite created — link copied to clipboard',
+          }));
+        }
       } catch {
         // Clipboard failed but the invite IS created.  Show the
         // URL so the operator can copy by hand.
@@ -225,14 +277,13 @@ export function InvitesPanel() {
         }));
       }
       setShowForm(false);
-      // Reset per-driver field on success; leave role/department/
-      // hours so bulk-onboarding flows ("invite three drivers")
-      // don't have to re-fill the same form three times.  This is
-      // intentional UX, not a forgotten reset — see panel-state
-      // note near useState block.
+      // Reset per-driver field + per-recipient address on success;
+      // leave role/department/hours so bulk-onboarding flows
+      // ("invite three drivers") don't have to re-fill the same
+      // form three times.  Channel is reset on every dialog open
+      // (see open useEffect) — high-blast-radius choice, not sticky.
       setTruckNum('');
-      // Silent background reconcile picks up the new row in the
-      // table.  No skeleton flash thanks to the silent flag.
+      setRecipientEmail('');
       try { await load({ silent: true }); } catch { /* surfaced */ }
     } catch (e) {
       // Surface the error as a toast so it renders ABOVE the open
@@ -242,6 +293,54 @@ export function InvitesPanel() {
       toast.error(e instanceof Error ? e.message : 'Create failed');
     } finally {
       setCreating(false);
+    }
+  }
+
+  /**
+   * Resend an email-channel invite to its original recipient.
+   * Single-click, no confirmation — the audit-log captures every
+   * resend (incl. attempt count), so an operator who panic-clicks
+   * 3× produces 3 audit rows but the per-button 3 s cooldown after
+   * success prevents the dominant accidental-double-click case.
+   *
+   * Refuses on used/revoked (404 from server) and on expired (409 —
+   * the operator has to extend first; we surface the message so
+   * they know what to do).
+   */
+  async function resendInviteEmail(invite: InviteInfo) {
+    setResending(invite.id);
+    try {
+      await apiJSON(`/admin/invites/${invite.id}/resend-email`, {
+        method: 'POST',
+        body: {},
+      });
+      toast.success(t('toasts.invite_email_resent', {
+        defaultValue: 'Invite resent',
+      }));
+      try { await load({ silent: true }); } catch { /* surfaced */ }
+    } catch (e) {
+      const isGone = e instanceof ApiError && e.status === 404;
+      const isConflict = e instanceof ApiError && e.status === 409;
+      if (isGone) {
+        toast.info(t('toasts.invite_email_not_available', {
+          defaultValue: 'Invite is no longer available',
+        }));
+        try { await load({ silent: true }); } catch { /* surfaced */ }
+      } else if (isConflict) {
+        // 409 covers BOTH "invite expired — extend first" AND
+        // "this invite was not issued via email".  The server
+        // detail string is the authoritative copy; surface it.
+        toast.error(e instanceof Error ? e.message : 'Cannot resend this invite');
+      } else {
+        toast.error(e instanceof Error ? e.message : 'Resend failed');
+      }
+    } finally {
+      // 3 s post-success cooldown is handled by the disabled
+      // state going off when ``resending`` clears — we clear it
+      // immediately; the operator's natural reading time is the
+      // gate.  A heavier cooldown would belong here if real abuse
+      // signal shows up.
+      setResending(null);
     }
   }
 
@@ -515,31 +614,46 @@ export function InvitesPanel() {
         const inv = row as unknown as InviteInfo;
         const canCopy = !inv.is_used && !inv.is_revoked && !inv.is_expired;
         const canRevoke = !inv.is_used && !inv.is_revoked;
-        // Extend is offered on EXPIRED-but-unused rows only.  The
-        // dominant Pending case (link still works, link gets copied
-        // again, link gets used) shouldn't see a third button —
-        // visual noise and mobile-overflow risk.  Operators who want
-        // to extend a still-live invite can revoke + create instead;
-        // the rarer path doesn't earn a permanent row affordance.
-        // Gate also ensures the per-row strip stays at max 2 buttons
-        // (Pending: Copy+Revoke; Expired: Extend+Revoke; Used/Revoked: —).
         const canExtend = !inv.is_used && !inv.is_revoked && inv.is_expired;
-        if (!canCopy && !canRevoke && !canExtend) {
+        // Resend is offered when:
+        //   - the invite was originally sent via email (sent_to_email
+        //     is populated)
+        //   - the invite is still active (not used, not revoked, not
+        //     expired — the resend endpoint refuses expired with 409)
+        // Operators who want to "switch to email" on a link-channel
+        // invite revoke + recreate; resend in v1 reuses the original
+        // recipient and doesn't accept a new address (would change
+        // who can redeem and needs its own audit shape).
+        const isEmailChannel = inv.channel === 'email' || !!inv.sent_to_email;
+        const canResend = isEmailChannel && !inv.is_used && !inv.is_revoked && !inv.is_expired;
+        if (!canCopy && !canRevoke && !canExtend && !canResend) {
           return <span className="text-xs text-muted-foreground">—</span>;
         }
         const code = String(inv.code);
-        // Per-row destructive buttons disable when ANY revoke OR
-        // extend is in-flight (not just the one for this row).
-        // Closes off the path where the operator clicks Trash on
-        // row B while A is in-flight, opening a second confirmation
-        // dialog whose Revoke button is disabled-but-displayed-as-
-        // "Revoking…" for what looks like B but is actually A.
-        const anyMutationInFlight = revoking !== null || extending !== null;
+        const anyMutationInFlight = revoking !== null || extending !== null || resending !== null;
         const isThisRowRevoking = revoking === inv.id;
         const isThisRowExtending = extending === inv.id;
+        const isThisRowResending = resending === inv.id;
         const isJustCopied = copied === code;
         return (
           <div className="inline-flex items-center gap-2 flex-wrap">
+            {/* Email-channel marker — small envelope + truncated
+                recipient address.  Renders on ANY email-channel
+                row regardless of lifecycle (used/revoked/expired
+                rows still show "we emailed alice@…" so the
+                operator can reconstruct what they did). */}
+            {isEmailChannel && inv.sent_to_email && (
+              <span
+                className="inline-flex items-center gap-1 text-2xs text-muted-foreground"
+                title={`Sent to ${inv.sent_to_email}${inv.email_send_count && inv.email_send_count > 1 ? ` (${inv.email_send_count} attempts)` : ''}`}
+              >
+                <Mail size={12} />
+                <span className="truncate max-w-[140px]">{inv.sent_to_email}</span>
+                {inv.email_send_count != null && inv.email_send_count > 1 && (
+                  <span className="opacity-60">×{inv.email_send_count}</span>
+                )}
+              </span>
+            )}
             {canCopy && (
               <button
                 onClick={() => copyLink(code)}
@@ -553,6 +667,24 @@ export function InvitesPanel() {
                   {isJustCopied
                     ? t('actions.copied', { defaultValue: 'Copied' })
                     : t('actions.copy', { defaultValue: 'Copy' })}
+                </span>
+              </button>
+            )}
+            {canResend && (
+              <button
+                onClick={() => resendInviteEmail(inv)}
+                disabled={anyMutationInFlight}
+                aria-busy={isThisRowResending}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary disabled:opacity-50 disabled:cursor-wait transition-colors"
+                title={t('actions.resend_email', { defaultValue: 'Resend the invite email to the same recipient' })}
+              >
+                {isThisRowResending
+                  ? <Loader2 size={12} className="animate-spin" />
+                  : <Send size={12} />}
+                <span>
+                  {isThisRowResending
+                    ? t('actions.resending', { defaultValue: 'Resending…' })
+                    : t('actions.resend', { defaultValue: 'Resend' })}
                 </span>
               </button>
             )}
@@ -613,7 +745,7 @@ export function InvitesPanel() {
         </label>
         <button
           ref={newInviteBtnRef}
-          onClick={() => setShowForm(true)}
+          onClick={() => { setChannel('link'); setRecipientEmail(''); setShowForm(true); }}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
         >
           <Plus size={14} />
@@ -722,7 +854,7 @@ export function InvitesPanel() {
           description="Create an invite to add a new teammate — pick the role and how long the link should be valid."
           action={
             <button
-              onClick={() => setShowForm(true)}
+              onClick={() => { setChannel('link'); setRecipientEmail(''); setShowForm(true); }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
             >
               <Plus size={14} />
@@ -806,6 +938,59 @@ export function InvitesPanel() {
             </DialogHeader>
 
             <div className="grid gap-3">
+              {/* Send-via segmented control.  Link = current zero-cost
+                  flow (default — never sticky from a prior open).
+                  Email = stamps recipient_email on the row and ships
+                  the link via SMTP.  Two-option control because more
+                  channels (SMS?) aren't on the roadmap yet — a single
+                  checkbox "also send by email" would be ambiguous if
+                  a third channel ever lands. */}
+              <div>
+                <label className="block text-sm text-muted-foreground mb-1">
+                  {t('forms.send_via', { defaultValue: 'Send via' })}
+                </label>
+                <div className="grid grid-cols-2 gap-1 bg-muted rounded p-0.5 border border-border">
+                  {(['link', 'email'] as const).map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setChannel(opt)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded transition ${
+                        channel === opt
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {opt === 'link'
+                        ? <span className="inline-flex items-center gap-1.5"><LinkIcon size={12} />{t('actions.link', { defaultValue: 'Link' })}</span>
+                        : <span className="inline-flex items-center gap-1.5"><Mail size={12} />{t('actions.email', { defaultValue: 'Email' })}</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {channel === 'email' && (
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1">
+                    {t('forms.recipient_email', { defaultValue: 'Recipient email' })}
+                  </label>
+                  <input
+                    type="email"
+                    value={recipientEmail}
+                    onChange={(e) => setRecipientEmail(e.target.value)}
+                    className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border"
+                    placeholder={t('forms.recipient_email_placeholder', { defaultValue: 'driver@company.com' })}
+                    required
+                    autoComplete="off"
+                  />
+                  <p className="text-2xs text-muted-foreground mt-1">
+                    {t('forms.recipient_email_hint', {
+                      defaultValue: 'One recipient per invite. The link is also copied to your clipboard as a fallback.',
+                    })}
+                  </p>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm text-muted-foreground mb-1">Role</label>
                 <select
@@ -872,7 +1057,9 @@ export function InvitesPanel() {
                 {creating && <Loader2 size={14} className="animate-spin" />}
                 {creating
                   ? t('actions.creating', { defaultValue: 'Creating…' })
-                  : t('actions.create_and_copy', { defaultValue: 'Create & Copy Link' })}
+                  : channel === 'email'
+                    ? t('actions.create_and_email', { defaultValue: 'Create & Send Email' })
+                    : t('actions.create_and_copy', { defaultValue: 'Create & Copy Link' })}
               </Button>
             </DialogFooter>
           </form>

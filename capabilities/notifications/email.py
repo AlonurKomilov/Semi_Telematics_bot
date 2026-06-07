@@ -18,12 +18,27 @@ without touching callers — the ``send_email`` signature stays.
 
 from __future__ import annotations
 
+import email.utils
 import logging
 import os
 import smtplib
 from email.message import EmailMessage
 from email.utils import formataddr, parseaddr
-from typing import Iterable, Optional, Tuple
+from typing import Iterable, Mapping, Optional, Tuple
+
+
+def _strip_crlf(value: Optional[str]) -> Optional[str]:
+    """Defensive header sanitization — refuse CR/LF in any value that
+    will land in an SMTP header.  Python's ``email.message`` already
+    refuses raw CRLF when serialising, but a hostile env var
+    (``SMTP_FROM_NAME='Acme\\r\\nBcc: attacker@…'``) or a future caller
+    that passes operator-supplied text into ``from_name`` / ``reply_to``
+    would otherwise raise ValueError at send time.  Stripping here
+    fails open (we send without the malicious header) instead of
+    crashing the whole send."""
+    if value is None:
+        return None
+    return value.replace("\r", "").replace("\n", "").strip() or None
 
 # Resend's per-message limit is 40 MB; SES is 10 MB; SendGrid is 30 MB.
 # Cap below the lowest common ceiling so a Scheduled-Reports PDF
@@ -58,6 +73,10 @@ def send_email(
     body: str,
     html_body: Optional[str] = None,
     attachments: Optional[Iterable[Tuple[str, bytes, str]]] = None,
+    from_address: Optional[str] = None,
+    from_name: Optional[str] = None,
+    reply_to: Optional[str] = None,
+    extra_headers: Optional[Mapping[str, str]] = None,
 ) -> bool:
     """Send a single email via SMTP.
 
@@ -65,6 +84,28 @@ def send_email(
     ``False`` when configuration is missing or the send raised.
     Never propagates SMTP errors — alert paths must continue even if
     the relay is down.
+
+    Per-call overrides (introduced for the invite-email channel so
+    invite emails ship from ``invites@4truck.us`` while auth emails
+    keep using ``noreply@4truck.us``):
+
+      from_address  — overrides SMTP_FROM for THIS send only.
+                      Fall back: SMTP_FROM (existing behaviour).
+      from_name     — overrides the SMTP_FROM_NAME display name.
+                      Fall back: SMTP_FROM_NAME (existing default).
+      reply_to      — overrides SMTP_REPLY_TO for THIS send only.
+                      Fall back: SMTP_REPLY_TO (existing default).
+      extra_headers — additional headers like ``List-Unsubscribe``
+                      or ``Auto-Submitted``.  Sanitized for CRLF; an
+                      injected newline in a value drops just that
+                      header rather than crashing the send.
+
+    All three string-typed overrides are CRLF-stripped via
+    ``_strip_crlf`` — defence-in-depth against header injection from
+    operator-supplied or env-var inputs (the env vars themselves are
+    already validated by the deploy, but the new ``from_name``
+    parameter accepts code-supplied display names that a future
+    refactor might pipe through from caller input).
 
     ``body`` is plain text (required); ``html_body`` is optional and
     becomes the alternative ``text/html`` part when set.
@@ -89,7 +130,10 @@ def send_email(
     port = int(_env("SMTP_PORT", "587") or "587")
     user = _env("SMTP_USER")
     password = _env("SMTP_PASS")
-    sender = _env("SMTP_FROM") or user or ""
+    # Per-call from_address wins over the env default.  Both go
+    # through the same display-name wrap below so the inbox column
+    # always shows a friendly name.
+    sender = _strip_crlf(from_address) or _env("SMTP_FROM") or user or ""
     use_tls = (_env("SMTP_USE_TLS", "1") or "1") not in ("0", "false", "False")
 
     # Wrap the From header with a display name so recipients see
@@ -97,24 +141,51 @@ def send_email(
     # Operators with a non-default brand override via SMTP_FROM_NAME.
     # If SMTP_FROM already contains a display-name component
     # (``"Brand" <addr>``), respect that and skip the wrap.
+    # Per-call ``from_name`` wins over the env default — lets the
+    # invite-email send identify itself as "4truck Invites" without
+    # affecting "4truck" on auth emails sharing the same process.
     parsed_name, parsed_addr = parseaddr(sender)
     if parsed_name:
         from_header = sender
     else:
-        from_name = _env("SMTP_FROM_NAME", "4truck") or ""
+        effective_name = (
+            _strip_crlf(from_name) or _env("SMTP_FROM_NAME", "4truck") or ""
+        )
         addr = parsed_addr or sender
-        from_header = formataddr((from_name, addr)) if from_name else addr
+        from_header = formataddr((effective_name, addr)) if effective_name else addr
 
     msg = EmailMessage()
     msg["From"] = from_header
     msg["To"] = to
-    msg["Subject"] = subject
+    msg["Subject"] = _strip_crlf(subject) or subject
+    # Message-ID gives Outlook / Exchange Online a stable identity to
+    # group retries by and avoids 'missing Message-ID' as a soft
+    # spam-score signal.  Date is auto-added by EmailMessage but we
+    # set it explicitly so the timestamp is deterministic UTC, not
+    # whatever localtime the relay happens to live in.
+    # Derive the domain strictly from parsed_addr (parseaddr-stripped
+    # bare address); rpartitioning the raw sender string would catch
+    # a trailing '>' from a `"Brand" <addr@host>` form and produce a
+    # syntactically invalid Message-ID that strict ESPs reject.
+    sender_domain = parsed_addr.rpartition("@")[-1] if parsed_addr else "localhost"
+    msg["Message-ID"] = email.utils.make_msgid(domain=sender_domain)
+    msg["Date"] = email.utils.formatdate(localtime=False)
     # Reply-To lets recipients reach a real mailbox even when the From
     # address is a no-reply alias.  Without it, Gmail/Outlook flag the
     # message as one-way and penalise sender reputation.
-    reply_to = _env("SMTP_REPLY_TO")
-    if reply_to:
-        msg["Reply-To"] = reply_to
+    effective_reply_to = _strip_crlf(reply_to) or _env("SMTP_REPLY_TO")
+    if effective_reply_to:
+        msg["Reply-To"] = effective_reply_to
+    # extra_headers — sanitize value-by-value; a CRLF-injected entry
+    # is dropped rather than crashing the send.  Used by the invite
+    # email for List-Unsubscribe / Auto-Submitted.
+    if extra_headers:
+        for hk, hv in extra_headers.items():
+            clean = _strip_crlf(hv)
+            if clean is None:
+                logger.warning("send_email: dropped extra header %r (CRLF in value)", hk)
+                continue
+            msg[hk] = clean
     msg.set_content(body)
     if html_body:
         msg.add_alternative(html_body, subtype="html")

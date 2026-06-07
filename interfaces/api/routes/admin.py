@@ -525,7 +525,7 @@ async def create_invite(
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Generate a new invite code."""
+    """Generate a new invite code; optionally send it via email."""
     caller_rank = role_rank(user["role"])
     target_rank = role_rank(body.role)
     if target_rank >= caller_rank:
@@ -536,6 +536,37 @@ async def create_invite(
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # ── Email-channel pre-flight checks ──────────────────────────
+    # All checks run BEFORE create_invite so a 503/422/429 doesn't
+    # leave an orphan link-channel row no one will use.  When the
+    # operator chose email and pre-flight refuses, the invite isn't
+    # created — they get a clean error instead of "created but..."
+    recipient = (body.recipient_email or "").strip().lower() or None
+    if recipient:
+        # 1. Format validation
+        if not _INVITE_EMAIL_RE.match(recipient):
+            raise HTTPException(status_code=422, detail="Invalid recipient email")
+        if "," in recipient or ";" in recipient:
+            raise HTTPException(
+                status_code=422,
+                detail="One recipient per invite — create separate invites for each person",
+            )
+        # 2. SMTP must be configured.  Refuse 503 BEFORE create so
+        #    we don't ship "sent_to_email NOT NULL + email_sent_at
+        #    NULL" rows that lie about being email-channel.
+        from capabilities.notifications.email import is_email_configured
+        if not is_email_configured():
+            raise HTTPException(
+                status_code=503,
+                detail="Email channel not configured on this deployment",
+            )
+        # 3. Rate limit — fail CLOSED on Redis outage.
+        if not await _invite_email_rate_check(user["account_id"], user["sub"]):
+            raise HTTPException(
+                status_code=429,
+                detail="Too many invite emails — wait a moment and try again",
+            )
+
     invite = await platform_db.create_invite(
         account_id=user["account_id"],
         created_by=db_user.id,
@@ -543,12 +574,84 @@ async def create_invite(
         department=body.department,
         truck_num=body.truck_num,
         hours=body.hours,
+        recipient_email=recipient,
     )
+
+    # Email send happens AFTER the invite row commits — if SMTP
+    # hands off successfully we mark email_sent_at; if it fails the
+    # invite still exists with sent_to_email populated + null
+    # timestamp, and the operator sees "created but email failed"
+    # in the response.  The link in their clipboard works either
+    # way (fallback path).
+    email_status = None
+    if recipient:
+        try:
+            from capabilities.notifications.auth_emails import send_invite_email
+            account = await platform_db.get_account(user["account_id"])
+            account_name = (account.name if account else "your team") or "your team"
+            sent = send_invite_email(
+                to=recipient,
+                code=invite.code,
+                account_name=account_name,
+                role_label=body.role.capitalize(),
+                inviter_display_name=db_user.display_name or "Your inviter",
+                expires_at=invite.expires_at,
+                truck_num=body.truck_num,
+            )
+        except Exception as e:
+            logger.warning("send_invite_email raised: %s", e, exc_info=True)
+            sent = False
+        if sent:
+            updated = await platform_db.mark_invite_email_sent(
+                user["account_id"], invite.id,
+            )
+            if updated is not None:
+                invite = updated
+            email_status = "sent"
+        else:
+            email_status = "queued_failed"  # invite exists, email didn't
+
+    # Audit log — single row per create.  Recipient stays out of
+    # the free-text ``details`` field (the audit-log details column
+    # has no length cap and recipient emails can be 254 chars +
+    # operator-supplied wrapper text); we use a short marker and
+    # rely on the invite row's sent_to_email for the actual address.
+    detail_extras = ""
+    if recipient:
+        # Cross-domain heuristic: flag (warn-but-allow) when the
+        # recipient's domain doesn't match the inviter's own email
+        # domain.  Doesn't BLOCK — fleet onboarding legitimately
+        # sends to drivers at various employer / personal addresses
+        # — but does flag in the audit log so an operator (or an
+        # ops sweep query) can spot a HR-tier user blasting
+        # 4truck-branded mail to unrelated external domains.  This
+        # is the cheap version of the design's full recipient-
+        # domain allowlist (deferred — needs per-account config).
+        recipient_domain = recipient.rpartition("@")[-1]
+        inviter_email_domain = (
+            (db_user.email or "").lower().rpartition("@")[-1]
+            if getattr(db_user, "email", None)
+            else ""
+        )
+        cross_domain_marker = ""
+        if (
+            recipient_domain
+            and inviter_email_domain
+            and recipient_domain != inviter_email_domain
+        ):
+            cross_domain_marker = ", cross_domain: true"
+        detail_extras = (
+            f", channel: email"
+            f", email_status: {email_status}"
+            f"{cross_domain_marker}"
+        )
     await tenant_db.add_audit_log(
         user["account_id"], int(user["sub"]),
         "invite_create",
         target_type="invite", target_id=str(invite.id),
-        details=f"Role: {body.role}, dept: {body.department}",
+        details=(
+            f"Role: {body.role}, dept: {body.department}{detail_extras}"
+        )[:500],  # hard-cap defends against future operator-supplied text
     )
     return {
         "id": invite.id,
@@ -557,6 +660,135 @@ async def create_invite(
         "department": invite.department,
         "truck_num": invite.truck_num,
         "expires_at": invite.expires_at,
+        "channel": invite.channel,
+        "email_status": email_status,
+        "sent_to_email": invite.sent_to_email,
+    }
+
+
+class InviteResendEmail(BaseModel):
+    pass  # body intentionally empty for v1 — resend reuses original recipient
+
+
+@router.post("/invites/{invite_id}/resend-email")
+async def resend_invite_email_endpoint(
+    invite_id: int,
+    _body: InviteResendEmail,
+    user: dict = Depends(require_permission("can_invite")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Resend the invite-email to the same recipient.
+
+    Refuses on used / revoked (uniform 404) and on expired
+    (409 — extend it first, then resend).  Reuses the original
+    recipient — no new-recipient flow in v1 because that changes
+    who can redeem and needs its own audit shape.
+    """
+    # Pre-flight: SMTP + rate limit, same shape as create's email branch.
+    from capabilities.notifications.email import is_email_configured
+    if not is_email_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Email channel not configured on this deployment",
+        )
+    if not await _invite_email_rate_check(user["account_id"], user["sub"]):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many invite emails — wait a moment and try again",
+        )
+
+    invite = await platform_db.get_invite_by_id(user["account_id"], invite_id)
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    if invite.is_used or invite.is_revoked:
+        # Uniform 404 — same response as truly-missing, no
+        # side-channel for which branch.
+        raise HTTPException(status_code=404, detail="Invite not found")
+    if invite.is_expired:
+        # 409: the operator needs to extend first.  Distinguished
+        # status code lets the dashboard render a one-button
+        # "Extend + resend" flow.
+        raise HTTPException(
+            status_code=409,
+            detail="Invite expired — extend it first, then resend",
+        )
+    if not invite.sent_to_email:
+        # The invite was issued as link-channel.  No address on file.
+        # v1 doesn't support upgrading link → email after the fact
+        # (would need a new-recipient input + its own audit shape);
+        # operator can revoke + recreate with email channel.
+        raise HTTPException(
+            status_code=409,
+            detail="This invite was not issued via email — revoke and recreate with the email channel",
+        )
+
+    # Rank check mirrors revoke/extend — HR can't keep an
+    # Admin-tier invite alive past the Owner's intent.
+    caller_rank = role_rank(user["role"])
+    invite_rank = role_rank(invite.role)
+    if invite_rank >= caller_rank:
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot resend an invite for a role equal to or above your own",
+        )
+
+    db_user = await get_current_db_user(user, platform_db)
+    account = await platform_db.get_account(user["account_id"])
+    account_name = (account.name if account else "your team") or "your team"
+    try:
+        from capabilities.notifications.auth_emails import send_invite_email
+        sent = send_invite_email(
+            to=invite.sent_to_email,
+            code=invite.code,
+            account_name=account_name,
+            role_label=invite.role.capitalize(),
+            inviter_display_name=(
+                (db_user.display_name if db_user else "Your inviter")
+                or "Your inviter"
+            ),
+            expires_at=invite.expires_at,
+            truck_num=invite.truck_num,
+        )
+    except Exception as e:
+        logger.warning("send_invite_email raised on resend: %s", e, exc_info=True)
+        sent = False
+
+    if sent:
+        updated = await platform_db.mark_invite_email_sent(
+            user["account_id"], invite_id,
+        )
+        if updated is not None:
+            invite = updated
+        outcome = "sent"
+    else:
+        outcome = "queued_failed"
+
+    # Audit row uses ``invite_email_resent`` action so the audit-log
+    # viewer renders "Invite email resent" (label added below).
+    # ``attempt`` counter = the new email_send_count value, useful
+    # forensic signal ("they resent this 4 times").
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "invite_email_resent",
+        target_type="invite", target_id=str(invite_id),
+        details=(
+            f"Role: {invite.role}, dept: {invite.department}, "
+            f"attempt: {invite.email_send_count}, outcome: {outcome}"
+        )[:500],
+    )
+    if not sent:
+        # The send failed but the audit row is written so the
+        # operator can see WHY.  Surface a 502 so the dashboard
+        # toasts an error, not a green success.
+        raise HTTPException(
+            status_code=502,
+            detail="Email send failed — link is still valid; try again later",
+        )
+    return {
+        "ok": True,
+        "email_send_count": invite.email_send_count,
+        "email_sent_at": invite.email_sent_at,
     }
 
 
@@ -595,6 +827,12 @@ async def list_invites(
                 "is_revoked": inv.is_revoked,
                 "revoked_at": inv.revoked_at,
                 "created_by": inv.created_by,
+                # Email-channel fields (migration 088).  Optional in
+                # the InviteInfo TS type for deploy-lag tolerance.
+                "channel": inv.channel,
+                "sent_to_email": inv.sent_to_email,
+                "email_sent_at": inv.email_sent_at,
+                "email_send_count": inv.email_send_count,
             }
             for inv in invites
         ],
