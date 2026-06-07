@@ -467,25 +467,6 @@ TIER_FALLBACK_CHAINS: dict[str, list[str]] = {
 DEFAULT_TIER: str = TIER_FAST
 
 
-# ── Fallback Chain (legacy global — kept as backup) ──────────────
-#
-# The router-driven tier walk above is the primary fallback path.
-# This flat list survives only as the safety net for legacy callers
-# that don't set a tier (some bot background jobs, the proactive
-# alert digest, etc.).  When every codepath threads a tier through,
-# this can go.
-
-_FALLBACK_CHAIN: list[str] = [
-    "gemini-2.5-flash",
-    "gemini-2.5-pro",
-    "deepseek-v3.2",
-    "llama-4-maverick",
-    "qwen3-next",
-    "llama-3.3",
-    "glm-4.7",
-    "gemini-3.1-flash-lite-preview",
-]
-
 # ── Query helpers ────────────────────────────────────────────────
 
 

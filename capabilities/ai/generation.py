@@ -7,7 +7,6 @@ import logging
 
 from capabilities.ai.registry import (
     MODEL_REGISTRY,
-    _FALLBACK_CHAIN,
     _is_openai_compat,
     _maas_base_url,
     _anthropic_url,
@@ -877,20 +876,21 @@ async def generate(prompt: str, system: str = ASSISTANT_SYSTEM,
     user_parts.append(f"User question: {prompt}")
     user_content = "".join(user_parts)
 
-    # Build ordered candidate list.  Walk the failed model's tier
-    # chain first (Reasoning fails → try other Reasoning models, not
-    # silently drop to Fast — quality cliffs are worse than retries).
-    # Falls back to the legacy global ``_FALLBACK_CHAIN`` when the
-    # failed model isn't tiered (DeepSeek OCR, unknown legacy entries,
-    # background jobs that never set a tier).  The router then
-    # reorders the candidates by score with ε-greedy on top.
+    # Build ordered candidate list by walking the failed model's tier
+    # chain — Reasoning fails → try other Reasoning models, not
+    # silently drop to Fast (quality cliffs are worse than retries).
+    # Untiered models (only ``deepseek-ocr`` today, which is vision-
+    # only and never hits this path) get no fallback — the original
+    # exception propagates.  When a new text model is added to
+    # MODEL_REGISTRY, slot it into TIER_FALLBACK_CHAINS too; that's
+    # how it joins the fallback graph.
     from capabilities.ai.registry import get_model_tier, get_tier_chain
     failed_tier = get_model_tier(failed_model)
     if failed_tier:
         tier_chain = get_tier_chain(failed_tier)
         candidates = [m for m in tier_chain if m != failed_model]
     else:
-        candidates = [m for m in _FALLBACK_CHAIN if m != failed_model]
+        candidates = []
     candidates = [m for m in candidates if m in MODEL_REGISTRY]
     candidates = await _order_candidates_by_score(
         candidates, account_id=account_id, role=user_role, action=action,
