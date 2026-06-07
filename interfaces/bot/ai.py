@@ -331,8 +331,11 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
             1 for tr in tool_results
             if not (isinstance(tr.get("data"), dict) and tr["data"].get("error"))
         )
+        # Per-turn observability row.  ask_agent emits per-attempt
+        # rows with action="question" internally; this row uses
+        # "question_turn" so the two slices don't pollute each other.
         await _log_ai_usage(
-            user.account_id, update.effective_user.id, "question",
+            user.account_id, update.effective_user.id, "question_turn",
             result.get("usage"),
             role=(user_ctx or {}).get("role"),
             latency_ms=latency_ms,

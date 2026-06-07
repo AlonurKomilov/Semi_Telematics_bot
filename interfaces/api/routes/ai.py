@@ -180,8 +180,15 @@ async def ai_chat(
             1 for tr in tool_results
             if not (isinstance(tr.get("data"), dict) and tr["data"].get("error"))
         )
+        # ask_agent now emits per-attempt rows with action="question"
+        # (one per model.generate_content() call inside the agent loop).
+        # This external log uses a distinct ``"question_turn"`` action
+        # so the per-attempt and per-turn signals stay in separate
+        # scoring slices — preserves tool_success_count + cumulative
+        # latency for observability without polluting the per-attempt
+        # rows the router scores on.
         await _log_usage(
-            user["account_id"], int(user["sub"]), "question", usage,
+            user["account_id"], int(user["sub"]), "question_turn", usage,
             role=(user_context or {}).get("role"),
             latency_ms=latency_ms,
             tool_success_count=tool_success_count,
@@ -269,9 +276,10 @@ async def ai_chat_stream(
                         await platform_db.save_chat_messages(account_id, uid, body.message, reply)
                     except Exception:
                         pass
-                    # Log usage + router telemetry — read it off the
-                    # ``done`` event (set by ask_agent_stream from the
-                    # agent's return value).
+                    # Log per-turn observability row.  Per-attempt rows
+                    # (action="question") are emitted inside ask_agent's
+                    # model loop; this row uses ``"question_turn"`` so
+                    # the two streams stay in separate scoring slices.
                     try:
                         tool_results = event.get("tool_results") or []
                         tool_success_count = sum(
@@ -280,7 +288,7 @@ async def ai_chat_stream(
                                     and tr["data"].get("error"))
                         )
                         await _log_usage(
-                            account_id, uid, "question",
+                            account_id, uid, "question_turn",
                             event.get("usage"),
                             role=(user_context or {}).get("role"),
                             tool_success_count=tool_success_count,

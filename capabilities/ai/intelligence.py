@@ -566,6 +566,18 @@ async def _run_anthropic_agent(
     tool_results: list[dict] = []
     usage_total = {"prompt_tokens": 0, "reply_tokens": 0, "thinking_tokens": 0, "total_tokens": 0}
 
+    # Per-attempt telemetry — one ai_usage row per Claude rawPredict
+    # call (initial + each tool_use re-call) so the router sees the
+    # Anthropic-side latency / 429 / quota signal at the same resolution
+    # as the Gemini path.  prompt_category is classified once per turn.
+    from capabilities.ai.usage import (
+        record_call_attempt as _record_call,
+        classify_error as _classify_err,
+        classify_prompt as _classify_prompt,
+    )
+    import time as _t
+    _prompt_category = _classify_prompt(question)
+
     def _post(body: dict) -> dict:
         r = requests.post(
             url,
@@ -590,9 +602,19 @@ async def _run_anthropic_agent(
             "temperature": 0.3,
             "top_p": 0.8,
         }
+        _started = _t.monotonic()
         try:
             data = await asyncio.to_thread(_post, body)
         except Exception as e:
+            latency_ms = int((_t.monotonic() - _started) * 1000)
+            await _record_call(
+                account_id=account_id, user_id=user_id,
+                role=user_role, action="question",
+                model=model_name, latency_ms=latency_ms,
+                error_type=_classify_err(e),
+                usage=None,
+                prompt_category=_prompt_category,
+            )
             logger.warning("Anthropic agent call failed, falling back: %s", e)
             text, usage = await ask_ai(
                 question, fleet_context, user_id=user_id,
@@ -601,10 +623,30 @@ async def _run_anthropic_agent(
             )
             return {"text": text, "tool_results": tool_results, "usage": usage}
 
+        latency_ms = int((_t.monotonic() - _started) * 1000)
         u = data.get("usage", {})
         usage_total["prompt_tokens"] += u.get("input_tokens", 0) or 0
         usage_total["reply_tokens"] += u.get("output_tokens", 0) or 0
         usage_total["total_tokens"] += (u.get("input_tokens", 0) or 0) + (u.get("output_tokens", 0) or 0)
+
+        # Record the success row per attempt — usage carries this
+        # round's tokens only, not the cumulative ``usage_total`` (the
+        # router scores per attempt, not per turn).
+        per_round_usage = {
+            "prompt_tokens": u.get("input_tokens", 0) or 0,
+            "reply_tokens": u.get("output_tokens", 0) or 0,
+            "thinking_tokens": 0,
+            "total_tokens": (u.get("input_tokens", 0) or 0)
+                            + (u.get("output_tokens", 0) or 0),
+        }
+        await _record_call(
+            account_id=account_id, user_id=user_id,
+            role=user_role, action="question",
+            model=model_name, latency_ms=latency_ms,
+            error_type="ok",
+            usage=per_round_usage,
+            prompt_category=_prompt_category,
+        )
 
         content_blocks = data.get("content", []) or []
         # Collect text + tool_use blocks
@@ -753,6 +795,49 @@ async def ask_agent(question: str, fleet_context: dict,
     user_role = user_context.get("role") if user_context else None
     tools = _get_cached_tools(role=user_role)
 
+    # Per-attempt telemetry — write one ai_usage row per model call
+    # (initial + each post-tool re-call) so the router sees this
+    # high-volume path at the same resolution as the generate() paths.
+    # Previously only the route-level external log fired (one row per
+    # turn) which masked which model attempts hit 429 / content_filter
+    # / timed out inside the agent loop.
+    from capabilities.ai.usage import (
+        record_call_attempt as _record_call,
+        classify_error as _classify_err,
+        classify_prompt as _classify_prompt,
+    )
+    import time as _t
+    _prompt_category = _classify_prompt(question)
+
+    async def _call_model_with_telemetry(*args, **kwargs):
+        """Wrap model.generate_content with timing + ai_usage row."""
+        started = _t.monotonic()
+        try:
+            resp = await asyncio.to_thread(
+                model.generate_content, *args, **kwargs,
+            )
+            latency_ms = int((_t.monotonic() - started) * 1000)
+            await _record_call(
+                account_id=account_id, user_id=user_id,
+                role=user_role, action="question",
+                model=cur_model_name, latency_ms=latency_ms,
+                error_type="ok",
+                usage=_capture_usage(resp),
+                prompt_category=_prompt_category,
+            )
+            return resp
+        except Exception as e:
+            latency_ms = int((_t.monotonic() - started) * 1000)
+            await _record_call(
+                account_id=account_id, user_id=user_id,
+                role=user_role, action="question",
+                model=cur_model_name, latency_ms=latency_ms,
+                error_type=_classify_err(e),
+                usage=None,
+                prompt_category=_prompt_category,
+            )
+            raise
+
     system_prompt = ASSISTANT_SYSTEM
     if language and language != "en":
         from capabilities.localization.i18n import LANGUAGE_NAMES
@@ -838,8 +923,8 @@ async def ask_agent(question: str, fleet_context: dict,
 
     for attempt in range(max_retries + 1):
         try:
-            response = await asyncio.to_thread(
-                model.generate_content, full_prompt, tools=tools,
+            response = await _call_model_with_telemetry(
+                full_prompt, tools=tools,
             )
 
             for _round in range(3):
@@ -940,8 +1025,7 @@ async def ask_agent(question: str, fleet_context: dict,
                             name=tool_name,
                             response={"result": result},
                         )
-                        response = await asyncio.to_thread(
-                            model.generate_content,
+                        response = await _call_model_with_telemetry(
                             [
                                 Content(parts=[Part.from_text(text=full_prompt)], role="user"),
                                 candidate.content,
@@ -967,8 +1051,7 @@ async def ask_agent(question: str, fleet_context: dict,
                         name=tool_name,
                         response={"result": result},
                     )
-                    response = await asyncio.to_thread(
-                        model.generate_content,
+                    response = await _call_model_with_telemetry(
                         [
                             Content(parts=[Part.from_text(text=full_prompt)], role="user"),
                             candidate.content,
