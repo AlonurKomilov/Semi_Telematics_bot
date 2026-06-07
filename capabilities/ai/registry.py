@@ -358,7 +358,83 @@ DEFAULT_LOCATION = "us-central1"
 DEFAULT_VISION_MODEL = "gemini-2.5-flash"
 DEFAULT_VISION_LOCATION = "us-central1"
 
-# ── Fallback Chain ───────────────────────────────────────────────
+# ── Model tiers ─────────────────────────────────────────────────
+#
+# Users pick a tier (Fast / Thinking / Reasoning), not a specific
+# model — picker UX flagged the old per-model dropdown as expert-
+# unfriendly.  The router picks the best available model in the
+# chosen tier (live-probe filtered, scored per-account-role-category
+# by the e-greedy router landed in e3a8f93 + 9531c5e), and the
+# fallback cascade stays *within* the tier so a Reasoning user
+# never silently drops to a Fast model.
+#
+# Each tier's list is ordered best-to-worst — the router uses this
+# order as the cold-start ranking until per-account telemetry
+# accumulates and overrides it.
+
+TIER_FAST: str = "fast"
+TIER_THINKING: str = "thinking"
+TIER_REASONING: str = "reasoning"
+TIERS: tuple[str, ...] = (TIER_FAST, TIER_THINKING, TIER_REASONING)
+
+TIER_DISPLAY: dict[str, dict[str, str]] = {
+    TIER_FAST: {
+        "label": "Fast",
+        "icon": "⚡",
+        "description": "Quick lookups and day-to-day chat",
+    },
+    TIER_THINKING: {
+        "label": "Thinking",
+        "icon": "🧠",
+        "description": "Multi-step questions, diagnosis, briefings",
+    },
+    TIER_REASONING: {
+        "label": "Reasoning",
+        "icon": "🔬",
+        "description": "Deep analysis and root-cause investigation",
+    },
+}
+
+TIER_FALLBACK_CHAINS: dict[str, list[str]] = {
+    TIER_FAST: [
+        "gemini-2.5-flash",
+        "gemini-3.5-flash",
+        "gemini-3.1-flash-lite-preview",
+        "gpt-oss-20b",
+        "llama-4-scout",
+        "llama-3.3",
+    ],
+    TIER_THINKING: [
+        "gemini-3.1-pro-preview",
+        "gemini-2.5-pro",
+        "claude-sonnet-4.6",
+        "gpt-oss-120b",
+        "llama-4-maverick",
+        "deepseek-v3.2",
+        "deepseek-v3.1",
+        "glm-5",
+        "glm-4.7",
+        "minimax-m2",
+        "qwen3-next",
+    ],
+    TIER_REASONING: [
+        "deepseek-r1",
+        "qwen3-next-thinking",
+        "kimi-k2-thinking",
+        "grok-4.20-reasoning",
+    ],
+}
+
+DEFAULT_TIER: str = TIER_FAST
+
+
+# ── Fallback Chain (legacy global — kept as backup) ──────────────
+#
+# The router-driven tier walk above is the primary fallback path.
+# This flat list survives only as the safety net for legacy callers
+# that don't set a tier (some bot background jobs, the proactive
+# alert digest, etc.).  When every codepath threads a tier through,
+# this can go.
 
 _FALLBACK_CHAIN: list[str] = [
     "gemini-2.5-flash",
@@ -420,6 +496,31 @@ def get_model_maker(model_name: str) -> str:
         if model_name.startswith(prefix):
             return maker
     return "Other"
+
+
+# Reverse lookup: model_name → tier.  Built from TIER_FALLBACK_CHAINS so
+# the tier name lives in one place — adding a model to a chain
+# automatically registers its tier here.
+_MODEL_TIER_INDEX: dict[str, str] = {
+    model: tier
+    for tier, models in TIER_FALLBACK_CHAINS.items()
+    for model in models
+}
+
+
+def get_model_tier(model_name: str) -> str | None:
+    """Return the tier ('fast' / 'thinking' / 'reasoning') for a model.
+
+    None when the model isn't in any tier chain — e.g. vision-only
+    models (DeepSeek OCR) or models added to MODEL_REGISTRY without
+    being slotted into TIER_FALLBACK_CHAINS.
+    """
+    return _MODEL_TIER_INDEX.get(model_name)
+
+
+def get_tier_chain(tier: str) -> list[str]:
+    """Return the ordered fallback list for a tier, or empty if unknown."""
+    return list(TIER_FALLBACK_CHAINS.get(tier, []))
 
 
 def get_model_info(model_name: str) -> dict | None:

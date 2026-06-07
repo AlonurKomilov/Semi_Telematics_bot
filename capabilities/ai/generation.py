@@ -877,13 +877,21 @@ async def generate(prompt: str, system: str = ASSISTANT_SYSTEM,
     user_parts.append(f"User question: {prompt}")
     user_content = "".join(user_parts)
 
-    # Build ordered candidate list.  Start from the static chain
-    # (excludes the failed primary), then re-rank by router score so
-    # the historically-best fallback gets tried first instead of
-    # walking down the static list.  ``prompt_category`` narrows the
-    # score lookup to "models good at this kind of question for this
-    # role" — the score table has its own scoring slice per category.
-    candidates = [m for m in _FALLBACK_CHAIN if m != failed_model and m in MODEL_REGISTRY]
+    # Build ordered candidate list.  Walk the failed model's tier
+    # chain first (Reasoning fails → try other Reasoning models, not
+    # silently drop to Fast — quality cliffs are worse than retries).
+    # Falls back to the legacy global ``_FALLBACK_CHAIN`` when the
+    # failed model isn't tiered (DeepSeek OCR, unknown legacy entries,
+    # background jobs that never set a tier).  The router then
+    # reorders the candidates by score with ε-greedy on top.
+    from capabilities.ai.registry import get_model_tier, get_tier_chain
+    failed_tier = get_model_tier(failed_model)
+    if failed_tier:
+        tier_chain = get_tier_chain(failed_tier)
+        candidates = [m for m in tier_chain if m != failed_model]
+    else:
+        candidates = [m for m in _FALLBACK_CHAIN if m != failed_model]
+    candidates = [m for m in candidates if m in MODEL_REGISTRY]
     candidates = await _order_candidates_by_score(
         candidates, account_id=account_id, role=user_role, action=action,
         prompt_category=prompt_category,

@@ -407,6 +407,7 @@ async def list_models(
             "description": info.get("description", ""),
             "category": info.get("category", "unknown"),
             "maker": ai.get_model_maker(name),
+            "tier": ai.get_model_tier(name),  # 'fast' / 'thinking' / 'reasoning' / None
             "vision": ai.is_vision_capable(name),
         }
         # Only show cost to admin/owner
@@ -424,6 +425,75 @@ async def list_models(
         "account_default": account_model,
         "is_admin": is_admin,
     }
+
+
+# ── Tier Management ──────────────────────────────────────────────
+
+
+class TierSwitchRequest(BaseModel):
+    tier: str = Field(..., pattern=r"^(fast|thinking|reasoning)$")
+
+
+@router.get("/tier")
+async def get_tier(
+    user: dict = Depends(get_current_user),
+):
+    """Return the user's current tier + all available tiers + the
+    resolved model the tier currently maps to.
+
+    The dashboard renders 3 buttons (Fast / Thinking / Reasoning)
+    and shows the resolved model as a small subtitle so the user
+    knows which underlying model the system is using right now —
+    without putting that knob in front of them.
+    """
+    account_id = user["account_id"]
+    user_id = int(user["sub"])
+    await ai.ensure_user_tier(account_id, user_id)
+
+    current_tier = await ai.resolve_tier(account_id, user_id)
+    current_model = await ai.pick_model_for_tier(current_tier)
+    info = ai.MODEL_REGISTRY.get(current_model, {})
+
+    return {
+        "current_tier": current_tier,
+        "current_model": current_model,
+        "current_model_display": info.get("display", current_model),
+        "tiers": [
+            {
+                "name": t,
+                "label": ai.TIER_DISPLAY[t]["label"],
+                "icon": ai.TIER_DISPLAY[t]["icon"],
+                "description": ai.TIER_DISPLAY[t]["description"],
+                "model_count": len(ai.get_tier_chain(t)),
+            }
+            for t in ai.TIERS
+        ],
+    }
+
+
+@router.put("/tier")
+async def switch_tier(
+    body: TierSwitchRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Switch the user's tier — persisted per-(account, user)."""
+    account_id = user["account_id"]
+    user_id = int(user["sub"])
+    try:
+        model_name = await ai.switch_tier(
+            body.tier, account_id=account_id, user_id=user_id,
+        )
+        info = ai.MODEL_REGISTRY.get(model_name, {})
+        return {
+            "ok": True,
+            "tier": body.tier,
+            "resolved_model": model_name,
+            "resolved_model_display": info.get("display", model_name),
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.put("/model")

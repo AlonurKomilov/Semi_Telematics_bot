@@ -62,6 +62,10 @@ export interface User {
   account_id?: number;
   payroll_enabled?: boolean;
   coaching_enabled?: boolean;
+  /** Enabled department modules (Fleet/Dispatch/Safety/HR/Accounting);
+   *  Core + Account are always on and not listed.  Drives module-aware
+   *  sidebar filtering.  Absent → treat as all-on. */
+  enabled_modules?: string[];
   truck_num?: string;
   trucks?: string[];
   allowed_companies?: string[];
@@ -1356,6 +1360,8 @@ export interface AIDiagnoseResponse {
   vehicle: string;
 }
 
+export type AITier = 'fast' | 'thinking' | 'reasoning';
+
 export interface AIModel {
   name: string;
   display: string;
@@ -1368,6 +1374,8 @@ export interface AIModel {
    * by who built them.
    */
   maker: string;
+  /** Tier this model belongs to.  Null for vision-only models. */
+  tier: AITier | null;
   vision: boolean;
   cost_per_request: number | null;
 }
@@ -1378,6 +1386,30 @@ export interface AIModelsResponse {
   current_vision: string;
   account_default: string;
   is_admin: boolean;
+}
+
+export interface AITierOption {
+  name: AITier;
+  /** Display label ("Fast", "Thinking", "Reasoning"). */
+  label: string;
+  /** Emoji icon picked server-side so adding a tier doesn't require a frontend change. */
+  icon: string;
+  description: string;
+  model_count: number;
+}
+
+export interface AITierResponse {
+  current_tier: AITier;
+  current_model: string;
+  current_model_display: string;
+  tiers: AITierOption[];
+}
+
+export interface AITierSwitchResponse {
+  ok: boolean;
+  tier: AITier;
+  resolved_model: string;
+  resolved_model_display: string;
 }
 
 export interface AIHistoryResponse {

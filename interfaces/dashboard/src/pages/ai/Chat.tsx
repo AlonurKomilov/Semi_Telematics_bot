@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bot, ChevronDown, Send, Trash2, Copy, Check, RefreshCw, Sparkles, MessageSquare, Pencil, Download, RotateCcw } from 'lucide-react';
+import { Bot, Send, Trash2, Copy, Check, RefreshCw, Sparkles, MessageSquare, Pencil, Download, RotateCcw } from 'lucide-react';
 import { apiJSON, apiJSONAI, apiStreamChat } from '../../api/client';
 import { useShellConfig } from '../../hooks/useShellConfig';
-import type { AIChatMessage, AIChatResponse, AIHistoryResponse, AISummaryResponse, AIModel, AIModelsResponse, AIUsage } from '../../types';
+import type { AIChatMessage, AIChatResponse, AIHistoryResponse, AISummaryResponse, AIModel, AIModelsResponse, AIUsage, AITier, AITierOption, AITierResponse } from '../../types';
 import { formatAIResponse } from '../../utils/formatAI';
 
 // Extended message type with client-side timestamp
@@ -91,12 +91,17 @@ export default function Chat() {
   const [thinkIdx, setThinkIdx] = useState(0);
 
   // ── Model state ──────────────────────────────────────────────
+  // Kept for the "currently using: X" subtitle under the tier chip and
+  // for the AI response cards that show which model produced each reply.
+  // The user-facing knob is the tier, not the model — the picker UI
+  // landed in 2a87885 (maker-grouped per-model dropdown) is replaced by
+  // 3 tier chips below.
   const [models, setModels] = useState<AIModel[]>([]);
   const [currentModel, setCurrentModel] = useState('');
-  const [accountDefault, setAccountDefault] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [modelOpen, setModelOpen] = useState(false);
-  const [modelSwitching, setModelSwitching] = useState(false);
+  const [currentModelDisplay, setCurrentModelDisplay] = useState('');
+  const [tiers, setTiers] = useState<AITierOption[]>([]);
+  const [currentTier, setCurrentTier] = useState<AITier>('fast');
+  const [tierSwitching, setTierSwitching] = useState(false);
 
   // ── Briefing state ───────────────────────────────────────────
   const [briefing, setBriefing] = useState('');
@@ -125,12 +130,18 @@ export default function Chat() {
         const msg = e instanceof Error ? e.message : String(e);
         setError(`Couldn't load chat history: ${msg}`);
       });
+    // /ai/models still queried so the chat-bubble "produced by Gemini 2.5 Flash"
+    // subtitle can resolve display names from model names.  The user-facing
+    // picker is /ai/tier below.
     apiJSON<AIModelsResponse>('/ai/models')
+      .then((d) => setModels(d.models || []))
+      .catch(() => {});
+    apiJSON<AITierResponse>('/ai/tier')
       .then((d) => {
-        setModels(d.models || []);
-        setCurrentModel(d.current_text || '');
-        setAccountDefault(d.account_default || '');
-        setIsAdmin(d.is_admin ?? false);
+        setTiers(d.tiers || []);
+        setCurrentTier(d.current_tier);
+        setCurrentModel(d.current_model || '');
+        setCurrentModelDisplay(d.current_model_display || d.current_model || '');
       })
       .catch(() => {});
   }, []);
@@ -178,17 +189,6 @@ export default function Chat() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
-
-  // Close model dropdown on outside click
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (modelRef.current && !modelRef.current.contains(e.target as Node)) {
-        setModelOpen(false);
-      }
-    }
-    if (modelOpen) document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [modelOpen]);
 
   // Cleanup clear-confirm timeout on unmount
   useEffect(() => {
@@ -254,20 +254,26 @@ export default function Chat() {
     }
   }
 
-  async function switchModel(modelName: string) {
-    if (modelSwitching) return;
-    setModelSwitching(true);
+  async function switchTier(tier: AITier) {
+    if (tierSwitching || tier === currentTier) return;
+    setTierSwitching(true);
     try {
-      await apiJSON('/ai/user-model', {
+      const r = await apiJSON<{
+        ok: boolean;
+        tier: AITier;
+        resolved_model: string;
+        resolved_model_display: string;
+      }>('/ai/tier', {
         method: 'PUT',
-        body: { model_name: modelName },
+        body: { tier },
       });
-      setCurrentModel(modelName);
+      setCurrentTier(r.tier);
+      setCurrentModel(r.resolved_model);
+      setCurrentModelDisplay(r.resolved_model_display);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to switch model');
+      setError(e instanceof Error ? e.message : 'Failed to switch tier');
     } finally {
-      setModelSwitching(false);
-      setModelOpen(false);
+      setTierSwitching(false);
     }
   }
 
@@ -379,81 +385,37 @@ export default function Chat() {
           AI Assistant
         </h1>
 
-        {/* Right-side controls: model selector + export + clear */}
+        {/* Right-side controls: tier picker + export + clear */}
         <div className="flex items-center gap-2">
-          {/* Model selector */}
-          {currentModel && (
-            <div className="relative" ref={modelRef}>
-              <button
-                onClick={() => setModelOpen(!modelOpen)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors bg-muted border-border hover:border-ring text-foreground/80 cursor-pointer"
-                title={t('chat.switch_model')}
-              >
-                <span className="max-w-[140px] truncate">
-                  {models.find((m) => m.name === currentModel)?.display || currentModel}
+          {/* Tier picker — 3 chips (Fast / Thinking / Reasoning).
+              Resolved model is shown as a small subtitle below so power
+              users still know which model the system landed on without
+              putting a per-model knob in front of casual users. */}
+          {tiers.length > 0 && (
+            <div className="flex flex-col items-end gap-0.5" ref={modelRef}>
+              <div className="flex items-center gap-1 p-0.5 rounded-lg border border-border bg-muted">
+                {tiers.map((tier) => (
+                  <button
+                    key={tier.name}
+                    onClick={() => switchTier(tier.name)}
+                    disabled={tierSwitching}
+                    title={tier.description}
+                    aria-pressed={tier.name === currentTier}
+                    className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-md transition-colors disabled:opacity-50 ${
+                      tier.name === currentTier
+                        ? 'bg-card text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <span aria-hidden>{tier.icon}</span>
+                    <span>{tier.label}</span>
+                  </button>
+                ))}
+              </div>
+              {currentModelDisplay && (
+                <span className="text-3xs text-muted-foreground pr-1">
+                  using {currentModelDisplay}
                 </span>
-                <ChevronDown size={12} className={`transition-transform shrink-0 ${modelOpen ? 'rotate-180' : ''}`} />
-              </button>
-              {modelOpen && (
-                <div className="absolute right-0 top-full mt-1 z-50 w-72 max-h-80 overflow-y-auto rounded-lg border border-border bg-card shadow-xl">
-                  {(() => {
-                    // Group by upstream maker (Google, Anthropic, OpenAI, …) and
-                    // render in a stable order: flagship/frontier first, then
-                    // the rest alphabetical with "Other" at the bottom.  This
-                    // replaces the legacy gemini/maas grouping which exposed
-                    // backend API shape rather than who built each model.
-                    const MAKER_ORDER = [
-                      'Google', 'Anthropic', 'OpenAI', 'Meta',
-                      'DeepSeek', 'Alibaba', 'Moonshot', 'Mistral',
-                      'xAI', 'MiniMax', 'Zhipu',
-                    ];
-                    const grouped = models.reduce<Record<string, AIModel[]>>((acc, m) => {
-                      (acc[m.maker || 'Other'] ??= []).push(m);
-                      return acc;
-                    }, {});
-                    const orderedMakers = [
-                      ...MAKER_ORDER.filter((mk) => grouped[mk]?.length),
-                      ...Object.keys(grouped)
-                        .filter((mk) => !MAKER_ORDER.includes(mk) && mk !== 'Other')
-                        .sort(),
-                      ...(grouped['Other']?.length ? ['Other'] : []),
-                    ];
-                    return orderedMakers.map((maker) => (
-                      <div key={maker}>
-                        <div className="px-3 py-1.5 text-3xs uppercase tracking-wider text-muted-foreground bg-muted/50 sticky top-0">
-                          {maker}
-                        </div>
-                        {grouped[maker].map((m) => (
-                          <button
-                            key={m.name}
-                            onClick={() => switchModel(m.name)}
-                            disabled={modelSwitching || m.name === currentModel}
-                            className={`w-full text-left px-3 py-2 text-sm transition-colors ${
-                              m.name === currentModel
-                                ? 'bg-primary/15 text-primary'
-                                : 'text-foreground/80 hover:bg-muted'
-                            } disabled:opacity-50`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="truncate">{m.display}</span>
-                              <span className="flex items-center gap-1 ml-2 flex-shrink-0">
-                                {m.name === accountDefault && isAdmin && (
-                                  <span className="text-3xs text-yellow-500">{t('chat.model_default')}</span>
-                                )}
-                                {m.name === currentModel && (
-                                  <span className="text-3xs text-primary">{t('chat.model_active')}</span>
-                                )}
-                              </span>
-                            </div>
-                            {m.description && (
-                              <span className="text-3xs text-muted-foreground block truncate">{m.description}</span>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    ));
-                  })()}
-                </div>
               )}
             </div>
           )}

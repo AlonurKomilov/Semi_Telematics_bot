@@ -24,8 +24,11 @@ from capabilities.ai.registry import (
     DEFAULT_LOCATION,
     DEFAULT_VISION_MODEL,
     DEFAULT_VISION_LOCATION,
+    DEFAULT_TIER,
+    TIER_FALLBACK_CHAINS,
     _is_openai_compat,
     is_vision_capable,
+    get_tier_chain,
 )
 
 logger = logging.getLogger("bot.ai")
@@ -391,6 +394,178 @@ async def ensure_user_model(account_id: int, user_id: int):
             switch_user_model(user_id, model_name, location)
         except Exception as e:
             logger.warning(f"Failed to build user model for user {user_id}: {e}")
+
+
+# ── Tier persistence + resolution ────────────────────────────────
+#
+# Users pick a tier (Fast / Thinking / Reasoning) in the dashboard
+# instead of an individual model.  Resolution flow:
+#
+#   1. Read the user's stored tier (per-account_settings, keyed by
+#      user_id).  None → fall through to account default.
+#   2. Read the account default tier.  None → DEFAULT_TIER ("fast").
+#   3. Walk the tier's fallback chain.  First model the live probe
+#      reports as available wins.  No probe data yet (cold start) →
+#      first in the static chain.
+#
+# The router we already shipped (per (account, role, prompt_category)
+# scoring with ε-greedy) operates *within* the tier's candidate
+# pool — so the tier is the user-facing knob and the router is the
+# system-side smartening on top of it.
+
+_user_tiers: dict[int, str] = {}        # user_id → tier
+_account_tiers: dict[int, str] = {}     # account_id → tier
+
+
+async def save_user_tier(account_id: int, user_id: int, tier: str):
+    """Persist user's tier preference (per-account-settings)."""
+    if tier not in TIER_FALLBACK_CHAINS:
+        raise ValueError(f"Unknown tier: {tier}")
+    tenant = await _get_tenant(account_id)
+    if tenant:
+        await tenant.set_account_setting(
+            account_id, f"user:{user_id}:ai_tier", tier,
+        )
+    _user_tiers[user_id] = tier
+
+
+async def load_user_tier(account_id: int, user_id: int) -> str | None:
+    """Return the user's stored tier, or None when unset."""
+    tenant = await _get_tenant(account_id)
+    if tenant:
+        tier = await tenant.get_account_setting(
+            account_id, f"user:{user_id}:ai_tier", "",
+        )
+        if tier in TIER_FALLBACK_CHAINS:
+            return tier
+    return None
+
+
+async def save_account_tier(account_id: int, tier: str):
+    """Persist the account-default tier (used when no user pref set)."""
+    if tier not in TIER_FALLBACK_CHAINS:
+        raise ValueError(f"Unknown tier: {tier}")
+    tenant = await _get_tenant(account_id)
+    if tenant:
+        await tenant.set_account_setting(account_id, "ai_tier", tier)
+    _account_tiers[account_id] = tier
+
+
+async def load_account_tier(account_id: int) -> str | None:
+    """Return the account's default tier, or None when unset."""
+    tenant = await _get_tenant(account_id)
+    if tenant:
+        tier = await tenant.get_account_setting(account_id, "ai_tier", "")
+        if tier in TIER_FALLBACK_CHAINS:
+            return tier
+    return None
+
+
+async def resolve_tier(account_id: int | None,
+                       user_id: int | None) -> str:
+    """User pref → account default → DEFAULT_TIER (Fast).
+
+    Reads in-memory cache first; falls back to DB for cold start.
+    """
+    if user_id is not None and user_id in _user_tiers:
+        return _user_tiers[user_id]
+    if account_id is not None and account_id in _account_tiers:
+        return _account_tiers[account_id]
+    if user_id is not None and account_id is not None:
+        t = await load_user_tier(account_id, user_id)
+        if t:
+            _user_tiers[user_id] = t
+            return t
+    if account_id is not None:
+        t = await load_account_tier(account_id)
+        if t:
+            _account_tiers[account_id] = t
+            return t
+    return DEFAULT_TIER
+
+
+async def pick_model_for_tier(tier: str) -> str:
+    """Pick the first probe-available model in a tier.
+
+    Falls back to the static first entry when the live probe hasn't
+    run yet (cold start) — the probe's result is the more accurate
+    signal but isn't always present.
+    """
+    chain = get_tier_chain(tier)
+    if not chain:
+        return DEFAULT_MODEL
+    try:
+        from capabilities.ai.probing import probe_model_availability
+        availability = probe_model_availability()
+        for m in chain:
+            if availability.get(m):
+                return m
+    except Exception as e:
+        logger.debug("Probe lookup failed; using static head: %s", e)
+    return chain[0]
+
+
+async def ensure_user_tier(account_id: int, user_id: int):
+    """Warm the user's tier into the in-memory cache + resolve a model.
+
+    Called from the API ``ensure_account_model`` shim so the chat
+    endpoint sees the user's choice without an extra round-trip.
+    """
+    tier = await resolve_tier(account_id, user_id)
+    _user_tiers.setdefault(user_id, tier)
+    # Resolve the tier's current best model and switch the per-user
+    # cache so generate() picks it up.  Cheap — no network call when
+    # the model is already in the per-user cache.
+    model_name = await pick_model_for_tier(tier)
+    if model_name in MODEL_REGISTRY:
+        info = MODEL_REGISTRY[model_name]
+        loc = info["locations"][0]
+        try:
+            switch_user_model(user_id, model_name, loc)
+        except Exception as e:
+            logger.debug("Tier-resolved switch_user_model failed: %s", e)
+
+
+async def switch_tier(tier: str, account_id: int,
+                      user_id: int | None = None):
+    """Switch the tier for a user (or the account default).
+
+    Persists the choice + warms the in-memory model cache.  The
+    actual model picked is the first probe-available entry from
+    the tier's fallback chain; the router then reorders by score
+    inside that chain on each call.
+    """
+    if tier not in TIER_FALLBACK_CHAINS:
+        raise ValueError(f"Unknown tier: {tier}")
+    if user_id is not None:
+        await save_user_tier(account_id, user_id, tier)
+    else:
+        await save_account_tier(account_id, tier)
+    # Warm the model cache so the next generate() call uses it.
+    model_name = await pick_model_for_tier(tier)
+    info = MODEL_REGISTRY.get(model_name)
+    if not info:
+        return model_name
+    loc = info["locations"][0]
+    if user_id is not None:
+        switch_user_model(user_id, model_name, loc)
+    else:
+        if _is_openai_compat(model_name):
+            _account_models[account_id] = (model_name, loc, None)
+        else:
+            model_obj = _build_model(model_name, loc, info)
+            _account_models[account_id] = (model_name, loc, model_obj)
+    return model_name
+
+
+def get_user_tier(user_id: int) -> str | None:
+    """Return the cached tier for this user, or None."""
+    return _user_tiers.get(user_id)
+
+
+def get_account_tier(account_id: int) -> str | None:
+    """Return the cached account-default tier, or None."""
+    return _account_tiers.get(account_id)
 
 
 async def load_account_vision_model(account_id: int) -> tuple[str, str]:
