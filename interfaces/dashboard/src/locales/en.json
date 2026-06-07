@@ -494,6 +494,7 @@
   },
   "modals": {
     "create_invite": "Create Invite",
+    "create_invite_desc": "Pick a role and how long the join link should stay valid.",
     "edit_schedule": "Edit Schedule",
     "new_schedule": "New Schedule",
     "revoke_invite_title": "Revoke this invite?",
@@ -501,11 +502,17 @@
   },
   "toasts": {
     "invite_revoked": "Invite revoked",
-    "invite_already_revoked": "Invite already revoked"
+    "invite_already_revoked": "Invite already revoked",
+    "invite_created_copied": "Invite created — link copied to clipboard",
+    "invite_copy_failed": "Invite created — copy manually: {{url}}"
   },
   "actions": {
     "revoke": "Revoke",
-    "revoking": "Revoking…"
+    "revoking": "Revoking…",
+    "creating": "Creating…",
+    "create_and_copy": "Create & Copy Link",
+    "copy": "Copy",
+    "copied": "Copied"
   },
   "chat": {
     "title": "AI Assistant",

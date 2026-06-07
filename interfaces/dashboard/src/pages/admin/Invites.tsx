@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Link as LinkIcon, Plus, Trash2 } from 'lucide-react';
+import { Link as LinkIcon, Plus, Trash2, Copy, Check, Loader2 } from 'lucide-react';
 import { apiJSON, ApiError } from '../../api/client';
 import type { InviteInfo, InvitesResponse } from '../../types';
 import DataTable from '../../components/DataTable';
@@ -22,7 +22,7 @@ import {
 } from '../../components/ui/dialog';
 import { Button } from '../../components/ui/button';
 import type { AnyColumn } from '../../types';
-import { toneClasses } from '../../lib/status';
+import { toneClasses, toneText } from '../../lib/status';
 
 // Role choices for the create-invite form.  Owner is intentionally
 // excluded — the rank-check on the server already forbids inviting
@@ -82,8 +82,22 @@ export function InvitesPanel() {
   const [confirming, setConfirming] = useState<InviteInfo | null>(null);
   const [revoking, setRevoking] = useState<number | null>(null);
 
-  async function load() {
-    setLoading(true);
+  // Stable focus anchor for the revoke flow.  base-ui restores focus to
+  // the dialog's trigger when it closes, but the optimistic update in
+  // confirmRevoke unmounts the per-row Trash icon BEFORE the dialog
+  // animates out — base-ui's restore target becomes a detached node and
+  // focus falls back to document.body, stranding keyboard-driven
+  // operators.  Routing focus to the always-present "New invite" button
+  // gives them a stable, sensible next-action anchor.
+  const newInviteBtnRef = useRef<HTMLButtonElement>(null);
+
+  async function load({ silent = false }: { silent?: boolean } = {}) {
+    // Silent mode skips the loading=true flip so a post-action
+    // reconcile (after create / revoke) doesn't flash a 6-row
+    // TableSkeleton over the table the operator is reading.  Initial
+    // mount + manual refreshes still call load() without options so
+    // the first paint shows the skeleton correctly.
+    if (!silent) setLoading(true);
     // Clear any stale error from the previous attempt; otherwise a
     // failed load → successful retry shows the red banner ABOVE the
     // populated table (the success path overwrites ``invites`` but
@@ -103,7 +117,7 @@ export function InvitesPanel() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
@@ -121,31 +135,62 @@ export function InvitesPanel() {
 
   async function create() {
     setCreating(true);
-    let created = false;
     try {
-      const body: Record<string, unknown> = { role, department, hours };
-      if (truckNum.trim()) body.truck_num = truckNum.trim();
+      // Department falls back to 'general' if the operator cleared the
+      // input — the column default is 'general' but Pydantic accepts
+      // an explicit empty string and bypasses it.  Trimming here is
+      // the only thing standing between the operator and a row with
+      // department=''.
+      const dep = department.trim() || 'general';
+      const body: Record<string, unknown> = { role, department: dep, hours };
+      // Gate truck_num on CURRENT role, not on the state string
+      // having content — otherwise switching role=driver → role=fleet
+      // (which hides the Truck# input but preserves truckNum state)
+      // attaches the stale truck number to a non-driver invite.
+      if (role === 'driver' && truckNum.trim()) {
+        body.truck_num = truckNum.trim();
+      }
       const inv = await apiJSON<InviteInfo>('/admin/invite', { method: 'POST', body });
-      created = true;
-      copyLink(inv.code);
+      // Await the clipboard write BEFORE closing the dialog so a
+      // clipboard rejection (HTTP origin, focus loss, permission
+      // denied) surfaces while the operator is still in the dialog
+      // context — they can hit Create again or copy the URL the
+      // toast surfaces.  copyLink itself is fire-and-forget; this
+      // shape gives us per-call control over the close timing.
+      const url = `https://t.me/${botUsername}?start=join_${inv.code}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        setCopied(inv.code);
+        setTimeout(() => setCopied(null), 2000);
+        toast.success(t('toasts.invite_created_copied', {
+          defaultValue: 'Invite created — link copied to clipboard',
+        }));
+      } catch {
+        // Clipboard failed but the invite IS created.  Show the
+        // URL so the operator can copy by hand.
+        toast.error(t('toasts.invite_copy_failed', {
+          defaultValue: `Invite created — copy manually: ${url}`,
+          url,
+        }));
+      }
       setShowForm(false);
+      // Reset per-driver field on success; leave role/department/
+      // hours so bulk-onboarding flows ("invite three drivers")
+      // don't have to re-fill the same form three times.  This is
+      // intentional UX, not a forgotten reset — see panel-state
+      // note near useState block.
       setTruckNum('');
+      // Silent background reconcile picks up the new row in the
+      // table.  No skeleton flash thanks to the silent flag.
+      try { await load({ silent: true }); } catch { /* surfaced */ }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Create failed');
+      // Surface the error as a toast so it renders ABOVE the open
+      // dialog (sonner mounts at the document root with very high
+      // z-index); the panel-level ErrorState banner is hidden behind
+      // the dialog backdrop and the operator can't see it.
+      toast.error(e instanceof Error ? e.message : 'Create failed');
     } finally {
       setCreating(false);
-    }
-    // Refresh AFTER the create try/catch so a load() failure on a
-    // slow refresh doesn't blame the create (the invite was already
-    // created — surfacing "Create failed" because the list reload
-    // timed out is misleading and stops the operator from copying
-    // the link they just generated).
-    if (created) {
-      try {
-        await load();
-      } catch {
-        /* load() already toasts via its own catch; nothing to do */
-      }
     }
   }
 
@@ -178,34 +223,66 @@ export function InvitesPanel() {
    */
   async function confirmRevoke(invite: InviteInfo) {
     setRevoking(invite.id);
+    // Single-row optimistic update — flip just THIS row, never the
+    // whole array.  The prior implementation snapshotted ``invites``
+    // and restored it on error; that overwrote any concurrent state
+    // change (showAll toggle, sibling revoke, background refresh)
+    // that landed during the in-flight network call.  Operating on
+    // one row by id avoids the entire class of stale-snapshot bugs
+    // and makes rollback trivially correct: just flip the same row
+    // back to its pre-revoke shape.
+    const nowIso = new Date().toISOString();
+    setInvites(prev =>
+      showAll
+        ? prev.map(i =>
+            i.id === invite.id
+              ? { ...i, is_revoked: true, revoked_at: nowIso }
+              : i,
+          )
+        : prev.filter(i => i.id !== invite.id),
+    );
     try {
       await apiJSON(`/admin/invites/${invite.id}`, { method: 'DELETE' });
       toast.success(t('toasts.invite_revoked', { defaultValue: 'Invite revoked' }));
       setConfirming(null);
-      // Clear the in-flight flag BEFORE awaiting load() so the user
-      // can open a fresh Dialog mid-reload without it inheriting the
-      // disabled "Revoking…" state from the prior request.
+      // Move focus to a stable anchor BEFORE base-ui's restore-focus
+      // logic tries to send it to the (already-unmounted) trigger.
+      // Without this, keyboard-driven operators lose focus to
+      // document.body on the pending-only view where the row vanishes.
+      newInviteBtnRef.current?.focus();
+      // Clear in-flight flag BEFORE the silent reconcile so the user
+      // can open a fresh Dialog mid-reload without inheriting the
+      // disabled "Revoking…" state.
       setRevoking(null);
-      await load();
+      // Silent reconcile — no skeleton flash; picks up any server-
+      // side state we didn't predict (another tab revoked a sibling
+      // row, etc.).  Swallow load failures; the optimistic UI is
+      // already correct.
+      try { await load({ silent: true }); } catch { /* fine */ }
       return;
     } catch (e) {
       // Branch on the HTTP status code (ApiError carries it) rather
       // than regex-matching the human-readable detail string — the
-      // detail copy can drift (i18n / wording polish) but the 404
-      // semantics for "row is gone / never was" are stable.  Same
-      // 404 path covers both "you raced another tab" and "operator
-      // never had this id"; surfacing as success-info instead of
-      // error matches the operator's mental model ("the desired
-      // post-condition holds").
+      // detail copy can drift but the 404 semantics for "row is
+      // gone / never was" are stable.
       const isGone = e instanceof ApiError && e.status === 404;
       if (isGone) {
+        // Server agrees the row is dead — keep the optimistic mutation,
+        // don't restore.  This avoids the "row reappears, table flashes
+        // skeleton, row disappears again" sequence the previous code
+        // produced when it both restored the snapshot AND called load().
         toast.info(t('toasts.invite_already_revoked', { defaultValue: 'Invite already revoked' }));
         setConfirming(null);
+        newInviteBtnRef.current?.focus();
         setRevoking(null);
-        await load();
         return;
       }
+      // Real failure (network, 403, 429) — rollback the single-row
+      // mutation by re-fetching authoritative state.  Avoids the
+      // stale-snapshot bug entirely.  Keep the dialog open + toast
+      // so the operator can retry.
       toast.error(e instanceof Error ? e.message : String(e));
+      try { await load({ silent: true }); } catch { /* surfaced via setError */ }
     } finally {
       // Safety net: if we returned cleanly the early setRevoking(null)
       // above already fired; this re-fire is a no-op.  On the error
@@ -261,17 +338,33 @@ export function InvitesPanel() {
           return <span className="text-xs text-muted-foreground">—</span>;
         }
         const code = String(inv.code);
-        const isRevoking = revoking === inv.id;
+        // Per-row Revoke disables when ANY revoke is in-flight (not
+        // just the one for this row).  Closes off the path where the
+        // operator clicks Trash on row B while A is in-flight,
+        // opening a second confirmation dialog whose Revoke button is
+        // disabled-but-displayed-as-"Revoking…" for what looks like B
+        // but is actually A.  The dialog-button gate (revoking !==
+        // null) was the last line of defence; this is the first.
+        const anyRevokeInFlight = revoking !== null;
+        const isThisRowRevoking = revoking === inv.id;
+        const isJustCopied = copied === code;
         return (
           <div className="inline-flex items-center gap-2">
             {canCopy && (
               <>
                 <button
                   onClick={() => copyLink(code)}
-                  className="text-primary hover:text-primary/80 text-xs"
+                  className={`inline-flex items-center gap-1 text-xs hover:opacity-80 transition-colors ${
+                    isJustCopied ? toneText('ok') : 'text-primary'
+                  }`}
                   title="Copy invite link"
                 >
-                  {copied === code ? '✅ Copied' : '📋 Copy'}
+                  {isJustCopied ? <Check size={12} /> : <Copy size={12} />}
+                  <span>
+                    {isJustCopied
+                      ? t('actions.copied', { defaultValue: 'Copied' })
+                      : t('actions.copy', { defaultValue: 'Copy' })}
+                  </span>
                 </button>
                 {canRevoke && <span className="text-muted-foreground/40">·</span>}
               </>
@@ -279,14 +372,14 @@ export function InvitesPanel() {
             {canRevoke && (
               <button
                 onClick={() => setConfirming(inv)}
-                disabled={isRevoking}
-                aria-busy={isRevoking}
+                disabled={anyRevokeInFlight}
+                aria-busy={isThisRowRevoking}
                 className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive disabled:opacity-50 disabled:cursor-wait transition-colors"
                 title={t('actions.revoke', { defaultValue: 'Revoke invite' })}
               >
                 <Trash2 size={12} />
                 <span>
-                  {isRevoking
+                  {isThisRowRevoking
                     ? t('actions.revoking', { defaultValue: 'Revoking…' })
                     : t('actions.revoke', { defaultValue: 'Revoke' })}
                 </span>
@@ -314,6 +407,7 @@ export function InvitesPanel() {
           Show all
         </label>
         <button
+          ref={newInviteBtnRef}
           onClick={() => setShowForm(true)}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
         >
@@ -347,70 +441,138 @@ export function InvitesPanel() {
         <DataTable columns={columns} data={invites as unknown as Record<string, unknown>[]} />
       )}
 
-      {/* Create modal — pre-existing hand-rolled overlay.  Migration to
-          ui/dialog is intentionally deferred to a separate PR (see the
-          revoke design notes) so the dialog primitive's first dashboard
-          consumer (the revoke confirmation below) ships against a
-          minimal surface area first. */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowForm(false)}>
-          <div className="bg-card rounded-xl border border-border p-6 w-96" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-bold mb-4">{t('modals.create_invite')}</h2>
+      {/* Create modal — uses ui/dialog primitive (base-ui).
+          Migrated from a hand-rolled ``<div className="fixed inset-0
+          …">`` so the form inherits Escape-to-close, focus-trap
+          (Tab stays inside the dialog instead of escaping to the
+          page behind), outside-click dismissal, scroll-lock, and
+          ARIA labelling for screen readers.  Wrapping the body in
+          a ``<form>`` also gets Enter-to-submit for free, which the
+          old overlay didn't have — operators can now type
+          department, hit Enter, and the link is on their clipboard. */}
+      <Dialog
+        open={showForm}
+        onOpenChange={(open, eventDetails) => {
+          // base-ui still dispatches its internal "close" transition
+          // unless we call eventDetails.cancel() — otherwise the popup
+          // briefly fades out for one frame before our controlled
+          // ``open=true`` re-asserts (visible flicker on Escape /
+          // outside-click during a mid-create POST).  Cancelling here
+          // tells base-ui to leave the open state alone entirely.
+          if (!open && creating) {
+            eventDetails.cancel();
+            return;
+          }
+          if (!open) setShowForm(false);
+        }}
+      >
+        <DialogContent showCloseButton={false}>
+          <form
+            className="grid gap-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!creating) void create();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>{t('modals.create_invite')}</DialogTitle>
+              <DialogDescription>
+                {t('modals.create_invite_desc', {
+                  defaultValue: 'Pick a role and how long the join link should stay valid.',
+                })}
+              </DialogDescription>
+            </DialogHeader>
 
-            <label className="block text-sm text-muted-foreground mb-1">Role</label>
-            <select value={role} onChange={(e) => setRole(e.target.value)} className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border mb-3">
-              {INVITABLE_ROLES.map((val) => <option key={val} value={val}>{ROLE_LABEL[val]}</option>)}
-            </select>
+            <div className="grid gap-3">
+              <div>
+                <label className="block text-sm text-muted-foreground mb-1">Role</label>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border"
+                >
+                  {INVITABLE_ROLES.map((val) => <option key={val} value={val}>{ROLE_LABEL[val]}</option>)}
+                </select>
+              </div>
 
-            <label className="block text-sm text-muted-foreground mb-1">Department</label>
-            <input
-              value={department}
-              onChange={(e) => setDepartment(e.target.value)}
-              className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border mb-3"
-            />
-
-            {role === 'driver' && (
-              <>
-                <label className="block text-sm text-muted-foreground mb-1">Truck # (optional)</label>
+              <div>
+                <label className="block text-sm text-muted-foreground mb-1">Department</label>
                 <input
-                  value={truckNum}
-                  onChange={(e) => setTruckNum(e.target.value)}
-                  className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border mb-3"
-                  placeholder={t('forms.truck_example')}
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border"
                 />
-              </>
-            )}
+              </div>
 
-            <label className="block text-sm text-muted-foreground mb-1">Expires in (hours)</label>
-            <select value={hours} onChange={(e) => setHours(+e.target.value)} className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border mb-4">
-              <option value={1}>1 hour</option>
-              <option value={6}>6 hours</option>
-              <option value={24}>24 hours</option>
-              <option value={72}>3 days</option>
-              <option value={168}>7 days</option>
-              <option value={720}>30 days</option>
-            </select>
+              {role === 'driver' && (
+                <div>
+                  <label className="block text-sm text-muted-foreground mb-1">Truck # (optional)</label>
+                  <input
+                    value={truckNum}
+                    onChange={(e) => setTruckNum(e.target.value)}
+                    className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border"
+                    placeholder={t('forms.truck_example')}
+                  />
+                </div>
+              )}
 
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">{t('common.cancel')}</button>
-              <button onClick={create} disabled={creating} className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium disabled:opacity-50">
-                {creating ? 'Creating...' : 'Create & Copy Link'}
-              </button>
+              <div>
+                <label className="block text-sm text-muted-foreground mb-1">Expires in (hours)</label>
+                <select
+                  value={hours}
+                  onChange={(e) => setHours(+e.target.value)}
+                  className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border"
+                >
+                  <option value={1}>1 hour</option>
+                  <option value={6}>6 hours</option>
+                  <option value={24}>24 hours</option>
+                  <option value={72}>3 days</option>
+                  <option value={168}>7 days</option>
+                  <option value={720}>30 days</option>
+                </select>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowForm(false)}
+                disabled={creating}
+              >
+                {t('common.cancel')}
+              </Button>
+              <Button
+                type="submit"
+                disabled={creating}
+                aria-busy={creating}
+              >
+                {creating && <Loader2 size={14} className="animate-spin" />}
+                {creating
+                  ? t('actions.creating', { defaultValue: 'Creating…' })
+                  : t('actions.create_and_copy', { defaultValue: 'Create & Copy Link' })}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Revoke confirmation — first consumer of ui/dialog in the
           dashboard.  Read-only body (no form inputs) so this is the
           lowest-risk surface to introduce the primitive on. */}
       <Dialog
         open={confirming !== null}
-        onOpenChange={(open) => {
-          // Allow Escape/outside-click to close ONLY when no request is
-          // in-flight — half-completed revokes that re-render with a
-          // closed dialog leak the in-flight state otherwise.
-          if (!open && revoking === null) setConfirming(null);
+        onOpenChange={(open, eventDetails) => {
+          // Cancel base-ui's internal close transition during an
+          // in-flight revoke; otherwise the popup briefly fades on
+          // Escape / outside-click before our controlled open=true
+          // re-asserts.  See create-dialog onOpenChange for the
+          // longer rationale.
+          if (!open && revoking !== null) {
+            eventDetails.cancel();
+            return;
+          }
+          if (!open) setConfirming(null);
         }}
       >
         <DialogContent>
