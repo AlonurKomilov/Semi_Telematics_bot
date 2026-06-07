@@ -7,7 +7,6 @@ import logging
 from capabilities.alerting.pipeline import SYSTEM_USER_ID
 from capabilities.parking.maps import _render_parking_map
 from capabilities.formatting.helpers import escape_html
-from infra.services import get_platform_db
 
 logger = logging.getLogger("bot")
 
@@ -70,10 +69,10 @@ async def _get_ai_parking_analysis(
                 "REASON: 1-2 sentences describing what you see."
             )
 
-            # Vision path doesn't yet route through the router-aware
-            # ai.generate(); usage will be logged via the legacy path
-            # below.  TODO: thread account_id/action into generate_with_vision.
-            response, usage = await ai.generate_with_vision(
+            # Per-attempt router telemetry now lands inside
+            # generate_with_vision via the ``action`` kwarg — no external
+            # log call needed (it would duplicate the per-attempt row).
+            response, _usage = await ai.generate_with_vision(
                 prompt,
                 map_bytes,
                 system=(
@@ -81,22 +80,11 @@ async def _get_ai_parking_analysis(
                     "truck parking safety. Analyze map imagery to determine "
                     "whether a parking location is safe for an extended stop."
                 ),
+                account_id=SYSTEM_USER_ID,
+                user_id=SYSTEM_USER_ID,
+                role="system",
+                action="parking_analysis",
             )
-            # Vision tokens aren't currently captured by the router; keep
-            # the legacy logging path for them.
-            if usage:
-                try:
-                    await get_platform_db().log_ai_usage(
-                        account_id=SYSTEM_USER_ID,
-                        user_id=SYSTEM_USER_ID,
-                        model=ai.get_current_model_name(),
-                        request_type="parking_analysis",
-                        prompt_tokens=usage.get("prompt_tokens", 0),
-                        reply_tokens=usage.get("reply_tokens", 0),
-                        total_tokens=usage.get("total_tokens", 0),
-                    )
-                except Exception as e:
-                    logger.debug("Failed to log AI usage for parking analysis: %s", e)
         else:
             # ── Fallback: text-only analysis (map render failed) ──
             prompt = (

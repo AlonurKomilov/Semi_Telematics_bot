@@ -55,9 +55,26 @@ async def analyze_camera_image(
     image_bytes: bytes,
     vehicle_name: str = "",
     account_id: int | None = None,
+    *,
+    user_id: int | None = None,
+    role: str | None = None,
+    action: str = "vision",
 ) -> dict:
-    """Analyze a dashcam image for obstruction and alignment issues."""
+    """Analyze a dashcam image for obstruction and alignment issues.
+
+    ``user_id`` / ``role`` / ``action`` enable per-attempt router
+    telemetry — each vision model call inside the fallback loop
+    writes an ai_usage row (success or failure) so the scorer keys
+    on the same (account x role x model) dimensions chat does.
+    Default action="vision" so background jobs that don't pass an
+    action label still land in a coherent slice.
+    """
     import asyncio
+    from capabilities.ai.usage import (
+        record_call_attempt as _record_call,
+        classify_error as _classify_err,
+    )
+    import time as _t
 
     if not image_bytes:
         return {
@@ -128,6 +145,7 @@ async def analyze_camera_image(
             )
             break
         _call_timeout = min(_VISION_PER_CALL_TIMEOUT_S, _remaining)
+        _attempt_started = _t.monotonic()
         try:
             model_obj = _ensure_model(attempt_model, attempt_loc)
             response = await asyncio.wait_for(
@@ -138,6 +156,14 @@ async def analyze_camera_image(
             )
             text = response.text.strip() if response.text else ""
             usage = _capture_usage(response)
+            _latency_ms = int((_t.monotonic() - _attempt_started) * 1000)
+            await _record_call(
+                account_id=account_id, user_id=user_id,
+                role=role, action=action,
+                model=attempt_model, latency_ms=_latency_ms,
+                error_type="ok", usage=usage,
+                prompt_category=None,  # image-only — no text prompt to classify
+            )
             if attempt_model != model_name:
                 logger.info(
                     f"Vision fallback succeeded with {attempt_model} "
@@ -149,6 +175,14 @@ async def analyze_camera_image(
             # error.  Skipping straight to fallbacks here would just
             # eat more time on the same hung backend; bail out.
             last_exc = te
+            _latency_ms = int((_t.monotonic() - _attempt_started) * 1000)
+            await _record_call(
+                account_id=account_id, user_id=user_id,
+                role=role, action=action,
+                model=attempt_model, latency_ms=_latency_ms,
+                error_type="timeout", usage=None,
+                prompt_category=None,
+            )
             logger.warning(
                 "Vision %s timed out after %.0fs — giving up on this image",
                 attempt_model, _call_timeout,
@@ -156,6 +190,14 @@ async def analyze_camera_image(
             break
         except Exception as e:
             last_exc = e
+            _latency_ms = int((_t.monotonic() - _attempt_started) * 1000)
+            await _record_call(
+                account_id=account_id, user_id=user_id,
+                role=role, action=action,
+                model=attempt_model, latency_ms=_latency_ms,
+                error_type=_classify_err(e), usage=None,
+                prompt_category=None,
+            )
             if _is_rate_limit_error(e):
                 logger.warning(
                     f"Vision {attempt_model} rate-limited, trying next"
@@ -227,14 +269,31 @@ async def generate_with_vision(
     image_bytes: bytes,
     system: str = "You are a helpful assistant.",
     account_id: int | None = None,
+    *,
+    user_id: int | None = None,
+    role: str | None = None,
+    action: str = "vision_text",
 ) -> tuple[str, dict | None]:
     """Generate a text response from a prompt + image using Gemini vision.
 
     Returns ``(text, usage)`` — usage may be ``None`` if the backend
     didn't report token counts or if all vision attempts failed and we
     fell back to text-only ``generate()``.
+
+    ``user_id`` / ``role`` / ``action`` enable per-attempt router
+    telemetry parallel to the image-only ``analyze_camera_image``
+    path; default action="vision_text" keeps text+image rows in a
+    distinct scoring slice from raw camera-check rows.  Falls back
+    to ``generate()`` when ``image_bytes`` is empty — that path
+    already self-records, so no double-log.
     """
     import asyncio
+    from capabilities.ai.usage import (
+        record_call_attempt as _record_call,
+        classify_error as _classify_err,
+        classify_prompt as _classify_prompt,
+    )
+    import time as _t
 
     if not image_bytes:
         return await generate(prompt, system=system, account_id=account_id)
@@ -262,9 +321,14 @@ async def generate_with_vision(
     text_content = f"{system}\n\n{prompt}" if system else prompt
     prompt_part = _gtypes.Part.from_text(text=text_content)
 
+    # Image-with-text path carries a real prompt; classify it once so
+    # scoring slices match the chat path's prompt_category dimension.
+    _prompt_category = _classify_prompt(prompt)
+
     last_exc: Exception | None = None
 
     for attempt_model, attempt_loc in attempts:
+        _attempt_started = _t.monotonic()
         try:
             model_obj = _ensure_model(attempt_model, attempt_loc)
             response = await asyncio.to_thread(
@@ -272,6 +336,14 @@ async def generate_with_vision(
             )
             text = response.text.strip() if response.text else ""
             usage = _capture_usage(response)
+            _latency_ms = int((_t.monotonic() - _attempt_started) * 1000)
+            await _record_call(
+                account_id=account_id, user_id=user_id,
+                role=role, action=action,
+                model=attempt_model, latency_ms=_latency_ms,
+                error_type="ok", usage=usage,
+                prompt_category=_prompt_category,
+            )
             if attempt_model != model_name:
                 logger.info(
                     "Vision fallback to %s after %s failed",
@@ -281,6 +353,14 @@ async def generate_with_vision(
                 return text, usage
         except Exception as e:
             last_exc = e
+            _latency_ms = int((_t.monotonic() - _attempt_started) * 1000)
+            await _record_call(
+                account_id=account_id, user_id=user_id,
+                role=role, action=action,
+                model=attempt_model, latency_ms=_latency_ms,
+                error_type=_classify_err(e), usage=None,
+                prompt_category=_prompt_category,
+            )
             if _is_rate_limit_error(e):
                 logger.warning("Vision %s rate-limited, trying next", attempt_model)
                 continue

@@ -10,7 +10,7 @@ from adapters.samsara.client import populate_company_display
 # Per-account object store imported lazily inside save_camera_image
 # so this module stays import-cheap (the GDrive backend pulls in
 # google-api-python-client only when a tenant has opted into it).
-from infra.services import get_platform_db, get_tenant_db
+from infra.services import get_tenant_db
 
 logger = logging.getLogger("bot")
 
@@ -93,29 +93,16 @@ async def analyze_snapshot(
     """Analyze a single snapshot with AI vision, respecting concurrency."""
     async with sem:
         try:
+            # ``action="vision"`` routes per-attempt rows into ai_usage
+            # via the vision module's internal telemetry — no external
+            # log call needed (would duplicate the row).
             analysis = await ai.analyze_camera_image(
                 snap["image_bytes"],
                 vehicle_name=snap["vehicle_name"],
                 account_id=account_id,
+                role="system",
+                action="vision",
             )
-            # Log vision AI usage
-            usage = analysis.get("usage")
-            if usage:
-                try:
-                    model_name = (
-                        ai.get_account_vision_model_name(account_id)
-                        or ai.DEFAULT_VISION_MODEL
-                    )
-                    await get_platform_db().log_ai_usage(
-                        account_id, 0,
-                        model_name, "vision",
-                        usage.get("prompt_tokens", 0),
-                        usage.get("reply_tokens", 0),
-                        usage.get("total_tokens", 0),
-                        usage.get("thinking_tokens", 0),
-                    )
-                except Exception as e:
-                    logger.debug("Failed to log AI usage for media analysis: %s", e)
             return {
                 "vehicle": snap["vehicle_name"],
                 "vehicle_id": snap.get("vehicle_id", ""),
