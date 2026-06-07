@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Bot, Send, Trash2, Copy, Check, RefreshCw, Sparkles, MessageSquare, Pencil, Download, RotateCcw, ChevronDown, Zap, Brain, Microscope, type LucideIcon } from 'lucide-react';
 import { apiJSON, apiJSONAI, apiStreamChat } from '../../api/client';
 import { useShellConfig } from '../../hooks/useShellConfig';
-import type { AIChatMessage, AIChatResponse, AIHistoryResponse, AISummaryResponse, AIModel, AIModelsResponse, AIUsage, AITier, AITierOption, AITierResponse } from '../../types';
+import type { AIChatMessage, AIChatResponse, AIHistoryResponse, AISummaryResponse, AIModel, AIModelsResponse, AIUsage, AITierChoice, AITierOption, AITierResponse } from '../../types';
 import { formatAIResponse } from '../../utils/formatAI';
 
 // Extended message type with client-side timestamp
@@ -18,10 +18,12 @@ interface LocalMessage extends AIChatMessage {
 // Tier name → lucide icon component.  Backend's ``icon`` field on the
 // tier response is intentionally ignored here: design.md §7 mandates
 // lucide-react with no emoji as UI icons, so the icon choice is a
-// pure frontend concern.  Three tiers → three semantic glyphs.
-const TIER_ICONS: Record<AITier, LucideIcon> = {
-  fast: Zap,             // ⚡ — quick, snappy
-  thinking: Brain,       // 🧠 — balanced reasoning
+// pure frontend concern.  Four choices: the three real tiers plus
+// ``auto`` (which routes to one of the three per-request).
+const TIER_ICONS: Record<AITierChoice, LucideIcon> = {
+  auto:      Sparkles,   // ✨ — picks the right tier per question
+  fast:      Zap,        // ⚡ — quick, snappy
+  thinking:  Brain,      // 🧠 — balanced reasoning
   reasoning: Microscope, // 🔬 — deep analysis
 };
 
@@ -110,7 +112,7 @@ export default function Chat() {
   const [models, setModels] = useState<AIModel[]>([]);
   const [currentModel, setCurrentModel] = useState('');
   const [tiers, setTiers] = useState<AITierOption[]>([]);
-  const [currentTier, setCurrentTier] = useState<AITier>('fast');
+  const [currentTier, setCurrentTier] = useState<AITierChoice>('fast');
   const [tierSwitching, setTierSwitching] = useState(false);
   const [tierOpen, setTierOpen] = useState(false);
 
@@ -151,7 +153,7 @@ export default function Chat() {
       .then((d) => {
         setTiers(d.tiers || []);
         setCurrentTier(d.current_tier);
-        setCurrentModel(d.current_model || '');
+        setCurrentModel(d.current_model ?? '');
       })
       .catch(() => {});
   }, []);
@@ -276,7 +278,7 @@ export default function Chat() {
     }
   }
 
-  async function switchTier(tier: AITier) {
+  async function switchTier(tier: AITierChoice) {
     if (tierSwitching || tier === currentTier) {
       setTierOpen(false);
       return;
@@ -285,15 +287,18 @@ export default function Chat() {
     try {
       const r = await apiJSON<{
         ok: boolean;
-        tier: AITier;
-        resolved_model: string;
-        resolved_model_display: string;
+        tier: AITierChoice;
+        resolved_model: string | null;
+        resolved_model_display: string | null;
       }>('/ai/tier', {
         method: 'PUT',
         body: { tier },
       });
       setCurrentTier(r.tier);
-      setCurrentModel(r.resolved_model);
+      // ``"auto"`` returns null — the actual model gets picked per
+      // request from the prompt, so we clear the cached "produced by"
+      // hint until the next reply comes back.
+      setCurrentModel(r.resolved_model ?? '');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to switch tier');
     } finally {
@@ -462,9 +467,11 @@ export default function Chat() {
                           <div className="flex items-center gap-2">
                             <Icon size={16} aria-hidden className="shrink-0" />
                             <span className="font-medium">{tier.label}</span>
-                            <span className="ml-auto text-3xs text-muted-foreground">
-                              {tier.model_count} models
-                            </span>
+                            {tier.model_count > 0 && (
+                              <span className="ml-auto text-3xs text-muted-foreground">
+                                {tier.model_count} models
+                              </span>
+                            )}
                           </div>
                           {tier.description && (
                             <span className="text-3xs text-muted-foreground block mt-0.5 ml-6">

@@ -377,6 +377,15 @@ TIER_THINKING: str = "thinking"
 TIER_REASONING: str = "reasoning"
 TIERS: tuple[str, ...] = (TIER_FAST, TIER_THINKING, TIER_REASONING)
 
+# ``auto`` is a stored-preference value, NOT a real tier — it lives
+# alongside ``TIERS`` but isn't in ``TIER_FALLBACK_CHAINS`` because
+# auto-mode resolves to one of the three real tiers per-request.
+# Kept out of ``TIERS`` so existing code that iterates over real
+# tiers (probe filtering, tier-chain walks, fallback ordering) stays
+# correct without auto-resolution leaking in.
+TIER_AUTO: str = "auto"
+TIER_CHOICES: tuple[str, ...] = TIERS + (TIER_AUTO,)
+
 TIER_DISPLAY: dict[str, dict[str, str]] = {
     TIER_FAST: {
         "label": "Fast",
@@ -393,6 +402,36 @@ TIER_DISPLAY: dict[str, dict[str, str]] = {
         "icon": "🔬",
         "description": "Deep analysis and root-cause investigation",
     },
+    TIER_AUTO: {
+        "label": "Auto",
+        "icon": "✨",
+        "description": "Picks the right tier for each question",
+    },
+}
+
+# Prompt category → tier mapping for auto-mode.  The classifier in
+# capabilities/ai/usage.py (classify_prompt) returns one of six
+# buckets; this table picks the tier most likely to do that bucket
+# well.  Defaults err toward ``fast`` when the category is unclear
+# so the user pays for Thinking only when the question genuinely
+# benefits from it.
+#
+# - lookup        → fast       (just retrieve a fact)
+# - analysis      → thinking   ("why is X happening" needs depth)
+# - comparison    → thinking   (multi-entity needs structure)
+# - summary       → thinking   (briefings benefit from quality)
+# - troubleshooting → thinking (diagnosis needs reasoning chains)
+# - other         → fast       (default to cheap when unsure)
+#
+# Adding a new category to the classifier?  Add a row here too —
+# missing entries fall through to ``fast`` per the dict default.
+TIER_FOR_CATEGORY: dict[str, str] = {
+    "lookup":          TIER_FAST,
+    "analysis":        TIER_THINKING,
+    "comparison":      TIER_THINKING,
+    "summary":         TIER_THINKING,
+    "troubleshooting": TIER_THINKING,
+    "other":           TIER_FAST,
 }
 
 TIER_FALLBACK_CHAINS: dict[str, list[str]] = {

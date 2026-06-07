@@ -898,6 +898,17 @@ export interface InviteInfo {
   used_by: number | null;
   is_used: boolean;
   is_expired: boolean;
+  /** Operator soft-deleted the invite via Team Management → Invites.
+   *  Revoked rows are hidden from every redemption surface (bot /join,
+   *  email-signup, mini-app) so the dashboard doesn't need to also
+   *  hide them — but the StatusBadge MUST render a "Revoked" pill so
+   *  an operator who has Show-all on doesn't see a green Pending pill
+   *  next to a dead link.  Optional on the wire so a brief deploy-lag
+   *  window (server has migration, response shape lags) doesn't blank
+   *  out the panel — treat missing as ``false`` at every call-site. */
+  is_revoked?: boolean;
+  /** ISO-8601 UTC timestamp the operator pressed Revoke at, or null. */
+  revoked_at?: string | null;
   created_by: number;
 }
 
@@ -1030,10 +1041,31 @@ export interface MaintenanceTask {
    *  place mileage tasks on a date grid with a visible "projected"
    *  marker. */
   projected_due_date?: string | null;
-  /** Vehicle's average daily miles over the past 30 days — surfaced
-   *  alongside ``projected_due_date`` so the UI can disclose the
-   *  rate the projection assumes ("based on 120 mi/day"). */
+  /** Vehicle's median daily-miles velocity over the requested
+   *  window (default 30 days, drive-days only) — surfaced alongside
+   *  ``projected_due_date`` so the UI can disclose the rate the
+   *  projection assumes ("projected from 187 mi/day, 22 drive days,
+   *  last 30 days"). */
   velocity_avg_daily_miles?: number | null;
+  /** Window the velocity was computed over (calendar days, before
+   *  filtering down to drive-days).  Lets the tooltip say "last 30
+   *  days" instead of hiding the window. */
+  velocity_window_days?: number | null;
+  /** Number of days within the window that actually had meaningful
+   *  miles (the median's sample size).  Lets the tooltip disclose
+   *  the sample's robustness — a low number ("3 drive days") signals
+   *  the operator that the projection is on thin evidence. */
+  velocity_drive_days?: number | null;
+  /** Number of days within the window the vehicle reported any
+   *  data (drive + idle).  Useful for distinguishing "yard truck
+   *  with low utilization" (high days_observed, low drive_days)
+   *  from "cold-start onboarding" (low days_observed). */
+  velocity_days_observed?: number | null;
+  /** Where the velocity came from: ``"daily_metrics"`` (preferred,
+   *  730-day retention) or ``"snapshot_fallback"`` (used only when
+   *  the daily aggregator hasn't populated the table yet).  Lets
+   *  the operator see when a projection is on partial data. */
+  velocity_source?: string | null;
   created_at: string;
   /** Set when status flips to 'completed' or 'done'; drives the service
    *  history timeline ordering. */
@@ -1360,7 +1392,15 @@ export interface AIDiagnoseResponse {
   vehicle: string;
 }
 
+/** A real tier — one of the three model groups the router routes
+ *  inside.  Distinct from ``AITierChoice`` because a specific model
+ *  can only belong to one of these three (not to "auto"). */
 export type AITier = 'fast' | 'thinking' | 'reasoning';
+
+/** The set of values the user can pick + persist as their tier
+ *  preference.  ``"auto"`` resolves to one of the three real tiers
+ *  at request time from the prompt's classified category. */
+export type AITierChoice = AITier | 'auto';
 
 export interface AIModel {
   name: string;
@@ -1389,27 +1429,33 @@ export interface AIModelsResponse {
 }
 
 export interface AITierOption {
-  name: AITier;
-  /** Display label ("Fast", "Thinking", "Reasoning"). */
+  name: AITierChoice;
+  /** Display label ("Fast", "Thinking", "Reasoning", "Auto"). */
   label: string;
   /** Emoji icon picked server-side so adding a tier doesn't require a frontend change. */
   icon: string;
   description: string;
+  /** Number of models in the tier's fallback chain.  ``0`` for ``"auto"``
+   *  since auto doesn't have its own chain — it routes to one of the
+   *  three real tiers per request. */
   model_count: number;
 }
 
 export interface AITierResponse {
-  current_tier: AITier;
-  current_model: string;
-  current_model_display: string;
+  current_tier: AITierChoice;
+  /** Null when current_tier is ``"auto"`` — the model only gets picked
+   *  at request time from the prompt category. */
+  current_model: string | null;
+  current_model_display: string | null;
   tiers: AITierOption[];
 }
 
 export interface AITierSwitchResponse {
   ok: boolean;
-  tier: AITier;
-  resolved_model: string;
-  resolved_model_display: string;
+  tier: AITierChoice;
+  /** Null when switching to ``"auto"`` (no model is pre-cached). */
+  resolved_model: string | null;
+  resolved_model_display: string | null;
 }
 
 export interface AIHistoryResponse {

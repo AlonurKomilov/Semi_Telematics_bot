@@ -25,7 +25,9 @@ from capabilities.ai.registry import (
     DEFAULT_VISION_MODEL,
     DEFAULT_VISION_LOCATION,
     DEFAULT_TIER,
-    TIER_FALLBACK_CHAINS,
+    TIER_AUTO,
+    TIER_CHOICES,
+    TIER_FOR_CATEGORY,
     _is_openai_compat,
     is_vision_capable,
     get_tier_chain,
@@ -418,8 +420,13 @@ _account_tiers: dict[int, str] = {}     # account_id → tier
 
 
 async def save_user_tier(account_id: int, user_id: int, tier: str):
-    """Persist user's tier preference (per-account-settings)."""
-    if tier not in TIER_FALLBACK_CHAINS:
+    """Persist user's tier preference (per-account-settings).
+
+    Accepts ``"auto"`` in addition to the three real tiers — auto
+    isn't a real tier (it resolves to one at request time), but it's
+    a valid stored preference value.
+    """
+    if tier not in TIER_CHOICES:
         raise ValueError(f"Unknown tier: {tier}")
     tenant = await _get_tenant(account_id)
     if tenant:
@@ -430,20 +437,20 @@ async def save_user_tier(account_id: int, user_id: int, tier: str):
 
 
 async def load_user_tier(account_id: int, user_id: int) -> str | None:
-    """Return the user's stored tier, or None when unset."""
+    """Return the user's stored tier (including ``"auto"``), or None."""
     tenant = await _get_tenant(account_id)
     if tenant:
         tier = await tenant.get_account_setting(
             account_id, f"user:{user_id}:ai_tier", "",
         )
-        if tier in TIER_FALLBACK_CHAINS:
+        if tier in TIER_CHOICES:
             return tier
     return None
 
 
 async def save_account_tier(account_id: int, tier: str):
     """Persist the account-default tier (used when no user pref set)."""
-    if tier not in TIER_FALLBACK_CHAINS:
+    if tier not in TIER_CHOICES:
         raise ValueError(f"Unknown tier: {tier}")
     tenant = await _get_tenant(account_id)
     if tenant:
@@ -452,11 +459,11 @@ async def save_account_tier(account_id: int, tier: str):
 
 
 async def load_account_tier(account_id: int) -> str | None:
-    """Return the account's default tier, or None when unset."""
+    """Return the account's default tier (including ``"auto"``), or None."""
     tenant = await _get_tenant(account_id)
     if tenant:
         tier = await tenant.get_account_setting(account_id, "ai_tier", "")
-        if tier in TIER_FALLBACK_CHAINS:
+        if tier in TIER_CHOICES:
             return tier
     return None
 
@@ -510,9 +517,14 @@ async def ensure_user_tier(account_id: int, user_id: int):
 
     Called from the API ``ensure_account_model`` shim so the chat
     endpoint sees the user's choice without an extra round-trip.
+    No-op model-warm for ``"auto"`` — the model gets picked per
+    request from the prompt-derived tier in ``resolve_tier_for_request``.
     """
     tier = await resolve_tier(account_id, user_id)
     _user_tiers.setdefault(user_id, tier)
+    if tier == TIER_AUTO:
+        # Don't pre-pick a model — the per-request resolver does that.
+        return
     # Resolve the tier's current best model and switch the per-user
     # cache so generate() picks it up.  Cheap — no network call when
     # the model is already in the per-user cache.
@@ -526,6 +538,57 @@ async def ensure_user_tier(account_id: int, user_id: int):
             logger.debug("Tier-resolved switch_user_model failed: %s", e)
 
 
+def auto_resolve_tier(prompt: str) -> str:
+    """Map a user prompt to one of the three real tiers.
+
+    Uses the existing prompt classifier (lookup / analysis / comparison
+    / summary / troubleshooting / other) and the TIER_FOR_CATEGORY
+    table from the registry.  Pure function — no DB, no LLM call.
+    """
+    from capabilities.ai.usage import classify_prompt
+    category = classify_prompt(prompt)
+    return TIER_FOR_CATEGORY.get(category, DEFAULT_TIER)
+
+
+async def resolve_tier_for_request(
+    prompt: str,
+    account_id: int | None,
+    user_id: int | None,
+) -> str:
+    """Return the actual tier to use for a request.
+
+    Reads the user's stored choice; when that's ``"auto"``, classifies
+    the prompt and returns the auto-mapped real tier instead.  The
+    stored choice is never returned as ``"auto"`` — callers always
+    get one of the three real tiers ready to feed into
+    ``pick_model_for_tier``.
+
+    Side-effect: when the resolved tier differs from what's currently
+    cached in ``_user_models`` for this user, hot-swap the cached
+    model so ``generate()`` / ``ask_agent()`` see the right pick on
+    the next call without an extra round-trip.
+    """
+    stored = await resolve_tier(account_id, user_id)
+    real_tier = auto_resolve_tier(prompt) if stored == TIER_AUTO else stored
+
+    # When auto-mode is on, the in-memory user-model cache may point
+    # at a model from a previous prompt's resolved tier.  Re-pick the
+    # model from the newly-resolved tier and stage it before the call.
+    if stored == TIER_AUTO and user_id is not None:
+        model_name = await pick_model_for_tier(real_tier)
+        if model_name in MODEL_REGISTRY:
+            info = MODEL_REGISTRY[model_name]
+            loc = info["locations"][0]
+            try:
+                switch_user_model(user_id, model_name, loc)
+            except Exception as e:
+                logger.debug(
+                    "Auto-tier switch_user_model failed (tier=%s, model=%s): %s",
+                    real_tier, model_name, e,
+                )
+    return real_tier
+
+
 async def switch_tier(tier: str, account_id: int,
                       user_id: int | None = None):
     """Switch the tier for a user (or the account default).
@@ -534,13 +597,28 @@ async def switch_tier(tier: str, account_id: int,
     actual model picked is the first probe-available entry from
     the tier's fallback chain; the router then reorders by score
     inside that chain on each call.
+
+    Accepts ``"auto"`` — persisted as the user choice, but no model
+    is pre-cached because the auto-resolution runs per-request.  The
+    return value in that case is the empty string, signalling to the
+    caller that the resolved model will be determined on first
+    request after the switch.
     """
-    if tier not in TIER_FALLBACK_CHAINS:
+    if tier not in TIER_CHOICES:
         raise ValueError(f"Unknown tier: {tier}")
     if user_id is not None:
         await save_user_tier(account_id, user_id, tier)
     else:
         await save_account_tier(account_id, tier)
+    if tier == TIER_AUTO:
+        # Auto-mode: don't pre-pick a model.  The next request will
+        # classify the prompt and pick from the right tier on the fly.
+        # Drop any stale cached pick from a previous explicit-tier
+        # choice so we don't accidentally serve from the wrong tier
+        # before the next request.
+        if user_id is not None:
+            _user_models.pop(user_id, None)
+        return ""
     # Warm the model cache so the next generate() call uses it.
     model_name = await pick_model_for_tier(tier)
     info = MODEL_REGISTRY.get(model_name)

@@ -154,6 +154,14 @@ async def ai_chat(
 
     try:
         import time as _t
+        # Auto-mode tier resolution.  When the user's stored choice is
+        # "auto" this classifies the prompt and hot-swaps the per-user
+        # model cache to the right tier before ask_agent runs.  No-op
+        # for explicit-tier users — returns the stored tier unchanged.
+        await ai.resolve_tier_for_request(
+            body.message,
+            account_id=account_id, user_id=int(user["sub"]),
+        )
         snapshot = await ai.build_context(
             account_id, vehicle_nums=vehicle_filter,
         )
@@ -239,6 +247,13 @@ async def ai_chat_stream(
     user_context, vehicle_filter, language = await _get_user_info(user, platform_db)
 
     try:
+        # Auto-mode tier resolution — same as the non-streaming /chat
+        # path.  Has to fire before build_context so the model is
+        # already staged when ask_agent_stream picks it up.
+        await ai.resolve_tier_for_request(
+            body.message,
+            account_id=account_id, user_id=int(user["sub"]),
+        )
         snapshot = await ai.build_context(account_id, vehicle_nums=vehicle_filter)
         from infra.services import get_client
         samsara = await get_client(account_id)
@@ -439,42 +454,54 @@ async def list_models(
 
 
 class TierSwitchRequest(BaseModel):
-    tier: str = Field(..., pattern=r"^(fast|thinking|reasoning)$")
+    # ``auto`` is a valid stored choice — it picks a real tier per
+    # request from the prompt category (see capabilities/ai/models.py
+    # resolve_tier_for_request).
+    tier: str = Field(..., pattern=r"^(fast|thinking|reasoning|auto)$")
 
 
 @router.get("/tier")
 async def get_tier(
     user: dict = Depends(get_current_user),
 ):
-    """Return the user's current tier + all available tiers + the
-    resolved model the tier currently maps to.
+    """Return the user's current tier + all available tier choices.
 
-    The dashboard renders 3 buttons (Fast / Thinking / Reasoning)
-    and shows the resolved model as a small subtitle so the user
-    knows which underlying model the system is using right now —
-    without putting that knob in front of them.
+    The current_tier field carries the user's *stored* choice —
+    which may be ``"auto"``.  current_model is None when the stored
+    choice is auto, because the actual model only gets picked at
+    request time from the prompt.  Dashboards should show "Auto"
+    selected without claiming a fixed underlying model.
     """
     account_id = user["account_id"]
     user_id = int(user["sub"])
     await ai.ensure_user_tier(account_id, user_id)
 
     current_tier = await ai.resolve_tier(account_id, user_id)
-    current_model = await ai.pick_model_for_tier(current_tier)
-    info = ai.MODEL_REGISTRY.get(current_model, {})
+    if current_tier == ai.TIER_AUTO:
+        current_model: str | None = None
+        current_model_display: str | None = None
+    else:
+        current_model = await ai.pick_model_for_tier(current_tier)
+        _info = ai.MODEL_REGISTRY.get(current_model, {})
+        current_model_display = _info.get("display", current_model)
 
     return {
         "current_tier": current_tier,
         "current_model": current_model,
-        "current_model_display": info.get("display", current_model),
+        "current_model_display": current_model_display,
         "tiers": [
             {
                 "name": t,
                 "label": ai.TIER_DISPLAY[t]["label"],
                 "icon": ai.TIER_DISPLAY[t]["icon"],
                 "description": ai.TIER_DISPLAY[t]["description"],
-                "model_count": len(ai.get_tier_chain(t)),
+                # Auto has no fixed chain — show 0 so the dashboard
+                # can hide the "N models" badge for the Auto row.
+                "model_count": (
+                    0 if t == ai.TIER_AUTO else len(ai.get_tier_chain(t))
+                ),
             }
-            for t in ai.TIERS
+            for t in ai.TIER_CHOICES
         ],
     }
 
@@ -484,13 +511,25 @@ async def switch_tier(
     body: TierSwitchRequest,
     user: dict = Depends(get_current_user),
 ):
-    """Switch the user's tier — persisted per-(account, user)."""
+    """Switch the user's tier — persisted per-(account, user).
+
+    ``auto`` switches to per-request prompt-classified routing; the
+    resolved model is None in that case (it'll be picked on the next
+    chat call from the prompt).
+    """
     account_id = user["account_id"]
     user_id = int(user["sub"])
     try:
         model_name = await ai.switch_tier(
             body.tier, account_id=account_id, user_id=user_id,
         )
+        if body.tier == ai.TIER_AUTO:
+            return {
+                "ok": True,
+                "tier": body.tier,
+                "resolved_model": None,
+                "resolved_model_display": None,
+            }
         info = ai.MODEL_REGISTRY.get(model_name, {})
         return {
             "ok": True,

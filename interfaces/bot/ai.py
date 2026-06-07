@@ -314,6 +314,14 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
         tenant_db = await get_tenant_db(user.account_id)
 
         import time as _t
+        # Auto-mode tier resolution — when this user's stored tier is
+        # "auto" we classify the question and switch to the right tier
+        # before ask_agent runs.  No-op for explicit-tier users.
+        await ai.resolve_tier_for_request(
+            question,
+            account_id=user.account_id,
+            user_id=update.effective_user.id,
+        )
         _started = _t.monotonic()
         result = await ai.ask_agent(
             question, snapshot,
