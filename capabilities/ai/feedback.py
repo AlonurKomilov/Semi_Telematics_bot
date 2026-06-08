@@ -359,21 +359,21 @@ async def flip_last_response_as_thumbs_up(
         return False
 
 
-# ── Tier 1 quality check: heuristic refusal detector ──────────────
+# ── Heuristic refusal detector ────────────────────────────────────
 #
 # Catches the failure mode where the AI refuses a question that an
-# available tool could have answered.  Today's recurring example:
-# user asks "what vehicle was stopped 3 days without driving?", AI
-# answers "I only have real-time data" without calling
-# get_idle_vehicles.  An LLM-as-judge would catch this — but
-# heuristics catch it at zero token cost, which matters when chat
-# volume scales.
+# available tool could have answered.  Recurring example: user asks
+# "what vehicle was stopped 3 days without driving?", AI answers
+# "I only have real-time data" without calling get_idle_vehicles.
 #
-# This is "Tier 1".  A more expensive LLM-as-judge could be added
-# later (Tier 2) for failure modes heuristics can't see —
-# hallucinated numbers, wrong-truck answers, subtle scope misses —
-# but the data we have today (one confirmed silent-refusal bug)
-# doesn't yet justify spending judge tokens.
+# Pure regex + keyword match — no LLM call, microsecond latency.
+# Deliberately covers only refusal-when-tool-existed.  Failure
+# modes that need actual answer comprehension (hallucinated
+# numbers, wrong-truck answers, scope mismatches) would require
+# a model-based judge instead, which costs roughly as many tokens
+# per turn as the original chat call.  This detector is the cheap
+# half of the quality stack — leaves the expensive half off the
+# table until evidence shows heuristics aren't enough.
 
 # Refusal-flavoured opening phrases, by locale.  The detector
 # checks if any of these substrings appear in the answer's first

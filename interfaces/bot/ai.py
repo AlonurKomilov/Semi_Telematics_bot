@@ -364,12 +364,12 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
             tool_success_count=tool_success_count,
         )
 
-        # Tier 1 heuristic refusal check — flips had_reask when the
-        # AI refused with phrasing like "I don't have…" but a
-        # relevant tool was available and uncalled.  Bot users
-        # benefit especially: they have no thumbs-up/down UI, so
-        # explicit dissatisfaction signals are scarcer here than on
-        # the dashboard.
+        # Heuristic refusal detector — flips had_reask when the AI
+        # refused with phrasing like "I don't have…" but a relevant
+        # tool was available and uncalled.  Bot users benefit
+        # especially: they have no thumbs-up/down UI, so explicit
+        # dissatisfaction signals are scarcer here than on the
+        # dashboard.
         await ai.detect_unjustified_refusal_and_mark(
             user.account_id, update.effective_user.id,
             question, answer, tool_results,

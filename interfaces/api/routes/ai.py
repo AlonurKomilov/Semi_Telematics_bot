@@ -214,12 +214,12 @@ async def ai_chat(
             tool_success_count=tool_success_count,
         )
 
-        # Tier 1 quality check: heuristic refusal detector.  When the
-        # AI refused a question that a relevant tool could have
-        # answered (and didn't call), flip had_reask on THIS turn's
-        # row (not the prior one).  Fires only on real refusals —
-        # legitimate "no tool exists for this" answers stay clean.
-        # Zero LLM cost; runs in microseconds.
+        # Heuristic refusal detector.  When the AI refused a question
+        # that a relevant tool could have answered (and didn't call),
+        # flip had_reask on THIS turn's row (not the prior one).
+        # Fires only on real refusals — legitimate "no tool exists
+        # for this" answers stay clean.  Zero LLM cost; runs in
+        # microseconds.
         await ai.detect_unjustified_refusal_and_mark(
             user["account_id"], int(user["sub"]),
             body.message, answer, tool_results,
@@ -344,8 +344,8 @@ async def ai_chat_stream(
                     except Exception:
                         pass
 
-                    # Tier 1 heuristic refusal check — same as the
-                    # non-streaming path.  Wrapped in try/except so a
+                    # Heuristic refusal detector — same as the non-
+                    # streaming path.  Wrapped in try/except so a
                     # detector hiccup never breaks an otherwise-valid
                     # streaming response.
                     try:
