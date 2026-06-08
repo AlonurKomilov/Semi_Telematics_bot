@@ -357,3 +357,208 @@ async def flip_last_response_as_thumbs_up(
     except Exception as e:
         logger.debug("Thumbs-up-flip skipped: %s", e)
         return False
+
+
+# ── Tier 1 quality check: heuristic refusal detector ──────────────
+#
+# Catches the failure mode where the AI refuses a question that an
+# available tool could have answered.  Today's recurring example:
+# user asks "what vehicle was stopped 3 days without driving?", AI
+# answers "I only have real-time data" without calling
+# get_idle_vehicles.  An LLM-as-judge would catch this — but
+# heuristics catch it at zero token cost, which matters when chat
+# volume scales.
+#
+# This is "Tier 1".  A more expensive LLM-as-judge could be added
+# later (Tier 2) for failure modes heuristics can't see —
+# hallucinated numbers, wrong-truck answers, subtle scope misses —
+# but the data we have today (one confirmed silent-refusal bug)
+# doesn't yet justify spending judge tokens.
+
+# Refusal-flavoured opening phrases, by locale.  The detector
+# checks if any of these substrings appear in the answer's first
+# ~200 chars — refusals land at the start of the reply, not buried
+# in a multi-paragraph response.  Phrases overlap with what
+# real models actually emit; tested against the production gemini
+# answers that triggered the original idle-vehicles bug.
+_REFUSAL_PHRASES_BY_LANG: dict[str, tuple[str, ...]] = {
+    "en": (
+        "i don't have",
+        "i do not have",
+        "i only have",
+        "i can only access",
+        "i can only see",
+        "i cannot access",
+        "i can't access",
+        "no historical data",
+        "no access to",
+        "i can't determine",
+        "i cannot determine",
+        "i'm unable to",
+        "i am unable to",
+        "i don't have access",
+        "i lack access",
+        "that data isn't available",
+        "that information isn't available",
+        "i don't have that data",
+        "i don't have that information",
+        "this isn't something i can",
+    ),
+    "es": (
+        "no tengo acceso",
+        "no puedo acceder",
+        "no dispongo de",
+        "no tengo datos",
+        "no tengo información",
+        "no me es posible",
+    ),
+    "ru": (
+        "у меня нет",
+        "я не имею доступа",
+        "не имею данных",
+        "я не могу определить",
+        "я не имею",
+        "у меня отсутствует",
+    ),
+    "uk": (
+        "у мене немає",
+        "не маю доступу",
+        "я не можу визначити",
+    ),
+}
+
+# Question keywords → tool that probably should have been called.
+# Lists are deliberately tight to avoid false positives — a question
+# containing "fuel" matches many tools; we don't try to disambiguate
+# fuel-status (snapshot) vs fuel-cost (tool).  Only phrases that
+# unambiguously imply a historical / tool-only data source go here.
+#
+# Adding a new tool: drop its keywords here.  Missing entries just
+# mean the detector won't catch refusals for that tool — the cost
+# of being conservative is silent misses, not false positives, so
+# err toward fewer keywords if unsure.
+_TOOL_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "get_idle_vehicles": (
+        "stopped", "not driving", "without driving", "haven't moved",
+        "hasn't moved", "long-idle", "long idle", "sitting", "parked for",
+        "off the road", "out of service", "been parked",
+        "no se ha movido", "está parado", "не двигалс",
+    ),
+    "get_alert_history": (
+        "previous alerts", "past alerts", "alert history",
+        "alerts last week", "alerts yesterday", "old alerts",
+        "earlier alerts",
+    ),
+    "get_recent_work_orders": (
+        "shop visit", "service history", "repair history",
+        "work order", "maintenance done", "past repair",
+    ),
+    "get_recent_inspections": (
+        "inspection history", "previous inspection",
+        "past inspection", "dvir", "pti history",
+    ),
+    "get_vehicle_history": (
+        "history of truck", "vehicle history",
+        "past status", "history for truck",
+    ),
+    "get_driver_hos_status": (
+        "hours of service", "hos status",
+        "off duty", "drive time", "remaining drive",
+    ),
+}
+
+
+def _looks_like_refusal(answer: str, language: str) -> bool:
+    """Detect a refusal-flavoured opening in the AI's reply.
+
+    Only inspects the FIRST ~200 chars — real refusals land at the
+    start of the reply, not after several paragraphs of content.
+    Falls back to English phrases when the locale isn't in
+    ``_REFUSAL_PHRASES_BY_LANG`` so non-EN users still get the check.
+    """
+    if not answer:
+        return False
+    head = _normalize_for_match(answer[:200])
+    phrases = (
+        _REFUSAL_PHRASES_BY_LANG.get(language)
+        or _REFUSAL_PHRASES_BY_LANG["en"]
+    )
+    return any(p in head for p in phrases)
+
+
+def _tools_matching_question(question: str) -> set[str]:
+    """Return the set of tool names whose keyword set matches the
+    user's question (case + accent insensitive).  Empty set when no
+    tool's keywords are present in the question — i.e. it's likely a
+    legitimate refusal, no tool would have helped."""
+    if not question:
+        return set()
+    q = _normalize_for_match(question)
+    matched: set[str] = set()
+    for tool_name, keywords in _TOOL_KEYWORDS.items():
+        if any(_normalize_for_match(k) in q for k in keywords):
+            matched.add(tool_name)
+    return matched
+
+
+async def detect_unjustified_refusal_and_mark(
+    account_id: int,
+    user_id: int,
+    question: str,
+    answer: str,
+    tool_results: list[dict] | None,
+    *,
+    language: str = "en",
+) -> bool:
+    """When the AI refused a question that a tool could have answered
+    but didn't call, flip ``had_reask`` on this row.
+
+    Three conditions must ALL hold for a flag:
+    1. The answer opens with a refusal phrase (locale-aware).
+    2. The user's question contains keywords mapping to one or more
+       tools (from ``_TOOL_KEYWORDS``).
+    3. NONE of those matching tools were actually called this turn
+       (checked via the ``tool_results`` list from ``ask_agent``).
+
+    A refusal where a relevant tool WAS called and just returned an
+    error is legitimate — don't penalise the model for honest tool
+    failures.
+
+    Returns True when a problematic refusal was detected and flagged.
+    Best-effort and idempotent (same semantics as the other
+    ``*_and_mark`` helpers in this module).
+
+    Designed to be called by the chat handlers AFTER ask_agent
+    returns, so the row this flips is the per-attempt row that
+    produced *this* turn's response — caught immediately, not a turn
+    later like the timing/phrase detectors which target the prior
+    turn.
+    """
+    if not _looks_like_refusal(answer, language):
+        return False
+
+    relevant = _tools_matching_question(question)
+    if not relevant:
+        # Refusal language but no tool would have helped — legitimate.
+        return False
+
+    tools_called = {tr.get("tool") for tr in (tool_results or [])}
+    if relevant & tools_called:
+        # A relevant tool WAS called; refusal is honest (tool errored
+        # or returned empty).  Don't penalise the model.
+        return False
+
+    try:
+        from infra.platform import get_platform_db
+        pdb = get_platform_db()
+        updated = await pdb.mark_last_ai_usage_reask(account_id, user_id)
+        if updated:
+            logger.info(
+                "Unjustified refusal detected for user=%d "
+                "(refused but %s could have answered); marked 1 row",
+                user_id, sorted(relevant),
+            )
+        return bool(updated)
+    except Exception as e:
+        logger.debug("Unjustified-refusal marking skipped: %s", e)
+        return False

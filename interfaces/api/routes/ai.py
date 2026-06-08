@@ -141,7 +141,7 @@ async def ai_chat(
 ):
     """Send a message to the AI fleet assistant (agent mode with tools).
 
-    Gated on any of (can_faults, can_vehicle_all, can_vehicle_own) to
+    Gated on any of (can_faults, can_vehicle_all, can_vehicle_vehicle) to
     match the sidebar + React route — without this guard, a 403'd user
     could still call the endpoint directly and bypass the dashboard.
     """
@@ -214,6 +214,18 @@ async def ai_chat(
             tool_success_count=tool_success_count,
         )
 
+        # Tier 1 quality check: heuristic refusal detector.  When the
+        # AI refused a question that a relevant tool could have
+        # answered (and didn't call), flip had_reask on THIS turn's
+        # row (not the prior one).  Fires only on real refusals —
+        # legitimate "no tool exists for this" answers stay clean.
+        # Zero LLM cost; runs in microseconds.
+        await ai.detect_unjustified_refusal_and_mark(
+            user["account_id"], int(user["sub"]),
+            body.message, answer, tool_results,
+            language=language,
+        )
+
         clean, suggestions = _parse_suggestions(answer)
 
         # Persist to DB using clean text so suggestions don't re-appear on reload
@@ -246,7 +258,7 @@ async def ai_chat_stream(
     """Send a message to the AI fleet assistant; streams SSE tool events then the reply.
 
     Gated identically to ``/chat`` (any of can_faults / can_vehicle_all
-    / can_vehicle_own).  The streaming and non-streaming variants must
+    / can_vehicle_vehicle).  The streaming and non-streaming variants must
     stay aligned — clients fall back to ``/chat`` when SSE isn't
     available, so a permission mismatch would make the fallback work
     where the primary doesn't (or vice-versa).
@@ -328,6 +340,19 @@ async def ai_chat_stream(
                             event.get("usage"),
                             role=(user_context or {}).get("role"),
                             tool_success_count=tool_success_count,
+                        )
+                    except Exception:
+                        pass
+
+                    # Tier 1 heuristic refusal check — same as the
+                    # non-streaming path.  Wrapped in try/except so a
+                    # detector hiccup never breaks an otherwise-valid
+                    # streaming response.
+                    try:
+                        await ai.detect_unjustified_refusal_and_mark(
+                            account_id, uid,
+                            body.message, reply, tool_results,
+                            language=language,
                         )
                     except Exception:
                         pass
