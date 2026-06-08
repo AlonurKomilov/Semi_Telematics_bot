@@ -35,13 +35,12 @@ def build_user_ai_context(user_obj) -> dict:
     Accepts a DB user object (ORM row or dataclass).  Normalises role
     to its string value regardless of whether it is an enum or plain str.
 
-    Returns a dict with keys: name, role, department, vehicle_num, timezone.
+    Returns a dict with keys: name, role, vehicle_num, timezone.
     """
     role_val = user_obj.role.value if hasattr(user_obj.role, "value") else user_obj.role
     return {
         "name": getattr(user_obj, "display_name", "") or "",
         "role": role_val,
-        "department": getattr(user_obj, "department", "general") or "general",
         "vehicle_num": getattr(user_obj, "truck_num", None) or "",
         "timezone": getattr(user_obj, "timezone", "America/New_York") or "America/New_York",
     }
@@ -158,7 +157,12 @@ _CATEGORY_PATTERNS: tuple[tuple[str, re.Pattern], ...] = (
         r"\bbriefing\b|\bsummary\b|\boverview\b|"
         r"\bstatus report\b|\bmorning report\b|"
         r"\b(?:give|show) me (?:a |the )?(?:recap|summary|briefing|status)\b|"
-        r"\bsum it up\b|\btl;dr\b",
+        r"\bsum it up\b|\btl;dr\b|"
+        # "How was my driving today / this week / last month" — past
+        # period recap of a single subject; clearly summary-shaped.
+        r"\bhow was my\b|\bhow has my\b|\bhow have my\b|"
+        # "How are my vehicles doing today" — present-state recap.
+        r"\bhow (?:are|is) (?:my|the) \w+ doing\b",
         re.IGNORECASE,
     )),
     ("analysis", re.compile(
@@ -174,9 +178,18 @@ _CATEGORY_PATTERNS: tuple[tuple[str, re.Pattern], ...] = (
     )),
     ("lookup", re.compile(
         r"\bshow\b|\blist\b|\bwhere\b|\bwho\b|"
-        r"\bwhat (?:is|are)\b|\bwhich\b|"
+        r"\bwhat (?:is|are|vehicle|truck|driver)\b|\bwhich\b|"
         r"\bfind\b|\btell me about\b|"
-        r"\bhow many\b|\bhow much\b",
+        r"\bhow many\b|\bhow much\b|"
+        # "did you know what …" — interrogative lookup; user is
+        # asking the assistant to surface a specific data point.
+        r"\bdid you know\b|"
+        # Standalone "show", "stopped N days", parameterised refinements.
+        # These come up in follow-up turns ("3 days") which contain no
+        # other lookup keywords — match them so the classifier doesn't
+        # bucket follow-ups as 'other'.
+        r"\bstopped\b|\bparked\b|\bnot driving\b|\bwithout driving\b|"
+        r"\bidle\b",
         re.IGNORECASE,
     )),
 )

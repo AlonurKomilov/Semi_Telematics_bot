@@ -465,6 +465,15 @@ _TOOL_KEYWORDS: dict[str, tuple[str, ...]] = {
         "hours of service", "hos status",
         "off duty", "drive time", "remaining drive",
     ),
+    "get_driver_scorecard": (
+        "my driving", "how was my driving", "how am i driving",
+        "scorecard", "driving score", "safety score",
+        "my safety score", "my score",
+    ),
+    "get_driver_efficiency": (
+        "my efficiency", "how efficient", "my mpg",
+        "fuel efficiency", "eco driving", "eco-driving",
+    ),
 }
 
 

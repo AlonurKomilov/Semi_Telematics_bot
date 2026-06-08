@@ -53,9 +53,21 @@ async def get_driver_efficiency(tool_args: dict, samsara_client,
 @register_tool({
     "name": "get_efficiency_summary",
     "description": (
-        "Get engine hours, driving hours, idle hours, idle percentage, "
-        "and miles driven per truck over the last N days. Also includes "
-        "driver fuel efficiency (MPG) and eco-driving score when available."
+        "Fleet-wide efficiency report.  Per-truck rolling-window stats: "
+        "engine hours, driving hours, miles driven, MPG, eco-driving "
+        "score (also exposes idle hours / idle percentage as a "
+        "secondary metric).\n\n"
+        "USE THIS for: 'fleet efficiency over the last week', 'how is "
+        "my fleet performing', 'MPG report', 'eco-driving score by "
+        "truck'.\n\n"
+        "DO NOT use this for 'which trucks are stopped/parked N days' "
+        "or 'what vehicle hasn't moved' — those questions are about "
+        "long-idle vehicles parked at unsafe locations, which "
+        "``get_idle_vehicles`` answers directly.  If the user's "
+        "previous turn asked about stopped/parked/idle vehicles and "
+        "they then say 'N days', keep calling get_idle_vehicles with "
+        "min_days=N — don't switch to this tool just because it "
+        "accepts a ``days`` parameter."
     ),
     "parameters": {
         "type": "object",
