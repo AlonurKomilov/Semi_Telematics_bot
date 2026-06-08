@@ -14,13 +14,22 @@ from capabilities.ai.tools.registry import register_tool
 @register_tool({
     "name": "get_idle_vehicles",
     "description": (
-        "List vehicles that have been parked / stopped for at least "
-        "the requested number of days.  Returns vehicle name, parked "
-        "location (address + lat/lon), how long it's been parked (in "
-        "hours and days), location safety classification, and the "
-        "company code.  Use this for questions like 'which trucks "
-        "have been sitting more than a week', 'where is truck X "
-        "parked', or 'show long-idle trucks'."
+        "List vehicles that have been parked / stopped / not driving "
+        "for at least the requested number of days.  Returns vehicle "
+        "name, parked location (address + lat/lon), how long it's "
+        "been parked (in hours and days), location safety "
+        "classification, and the company code.\n\n"
+        "USE THIS TOOL when the user asks any of:\n"
+        "- 'which trucks have been sitting more than a week'\n"
+        "- 'where is truck X parked'\n"
+        "- 'show long-idle trucks'\n"
+        "- 'what vehicle was stopped N days'\n"
+        "- 'what truck hasn't moved in N days / hours'\n"
+        "- 'which vehicles have been without driving for N days'\n"
+        "- 'what trucks are off the road / out of service'\n"
+        "- 'how long has truck X been parked'\n"
+        "DO NOT refuse these questions claiming you only have "
+        "'real-time data' — this tool has the history."
     ),
     "parameters": {
         "type": "object",

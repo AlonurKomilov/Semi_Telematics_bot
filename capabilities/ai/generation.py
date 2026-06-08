@@ -113,7 +113,7 @@ it means no entries have been recorded yet.
 
 USER AWARENESS:
 You may receive a "User profile" block with the user's name, role, \
-assigned truck, department, timezone, and their permission summary \
+assigned truck, timezone, and their permission summary \
 (what they CAN and CANNOT access). Use this to tailor responses:
 - You know the user's name but do NOT greet them by name in every message. \
   Use their name only occasionally when it feels natural (e.g. first greeting \
@@ -139,6 +139,15 @@ Rules:
   parked 10 days OR a driver off-duty 10 days), ask ONE short \
   clarifying question instead of refusing flat-out.  Only refuse if \
   no tool plausibly covers either interpretation.
+- NEVER claim "I only have real-time data" or "I don't have historical \
+  data" without first checking your tool list.  You have HISTORICAL \
+  tools for: idle / stopped / parked vehicles (get_idle_vehicles), \
+  alert history (get_alert_history), past shop visits \
+  (get_recent_work_orders), past inspections (get_recent_inspections), \
+  vehicle history (get_vehicle_history), driver hours-of-service \
+  (get_driver_hos_status).  When the user asks "what truck was \
+  stopped 3 days" / "which vehicles haven't moved" / "trucks not \
+  driving for N days" → call get_idle_vehicles with min_days=N.
 - If a tool returns an "error" field, you MUST report the error to the \
   user honestly — never hide tool failures or pretend everything is fine. \
   Say something like "I tried to check [X] but the tool returned an error: \
@@ -589,8 +598,6 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
             profile_lines.append(f"- Name: {uc['name']}")
         if uc.get("role"):
             profile_lines.append(f"- Role: {uc['role']}")
-        if uc.get("department") and uc["department"] != "general":
-            profile_lines.append(f"- Department: {uc['department']}")
         if uc.get("vehicle_num"):
             profile_lines.append(f"- Assigned vehicle: {uc['vehicle_num']}")
         if uc.get("timezone"):
