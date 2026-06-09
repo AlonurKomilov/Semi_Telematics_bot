@@ -142,6 +142,12 @@ async def run_all(conn) -> None:
     # The only upweighting signal in the scoring stack.
     await migrate_ai_usage_had_thumbs_up(conn)
 
+    # Adds feedback_reason + feedback_note to ai_usage — captures
+    # the "why?" follow-up after a thumbs-down so the scorer can
+    # tell apart inaccurate-data dislikes from off-topic dislikes
+    # from hallucination dislikes.
+    await migrate_ai_usage_feedback_reason(conn)
+
 
 async def migrate_ai_chat_history(conn) -> None:
     """Create ai_chat_history table if it doesn't exist yet.
@@ -2667,6 +2673,39 @@ async def migrate_ai_usage_had_reask(conn) -> None:
         await conn.commit()
     except Exception as e:
         logger.debug("ai_usage had_reask ADD skipped (%s)", e)
+
+
+async def migrate_ai_usage_feedback_reason(conn) -> None:
+    """Adds ``feedback_reason`` + ``feedback_note`` to ``ai_usage``.
+
+    The bare thumbs-down signal flipped ``had_reask`` but didn't tell
+    us WHY the user disliked the answer.  These two columns capture
+    the follow-up the user fills in (or skips) — a category
+    (inaccurate / off_topic / incomplete / hallucinated / vague /
+    unjust_refusal / other) and an optional free-text note.
+
+    Each failure category maps to a different remediation pipeline:
+    'inaccurate' means review the tool result; 'unjust_refusal' is the
+    bug class the heuristic detector already catches; 'hallucinated'
+    is the strongest signal for downweighting.  Without these
+    columns every thumbs-down looks identical to the scorer.
+
+    Both nullable — most thumbs-down rows won't have them (users
+    skip the follow-up form), and that's fine: had_reask still flips
+    on plain thumbs-down, the reason is supplementary signal.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE ai_usage "
+            "ADD COLUMN IF NOT EXISTS feedback_reason TEXT"
+        )
+        await conn.execute(
+            "ALTER TABLE ai_usage "
+            "ADD COLUMN IF NOT EXISTS feedback_note TEXT"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.debug("ai_usage feedback_reason ADD skipped (%s)", e)
 
 
 async def migrate_ai_usage_had_thumbs_up(conn) -> None:

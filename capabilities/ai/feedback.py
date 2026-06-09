@@ -298,28 +298,44 @@ async def flip_last_response_as_reask(
 async def flip_last_response_as_thumbs_down(
     account_id: int,
     user_id: int,
+    *,
+    reason: str | None = None,
+    note: str | None = None,
 ) -> bool:
     """Mark the user's most recent successful response as ``had_reask=TRUE``.
 
     Powers the dashboard's "thumbs-down" icon — semantically same
     as the regenerate click (explicit dissatisfaction), but doesn't
-    re-fire the prompt.  Some users prefer this: they want to log
-    "this was bad" and move on, rather than wait for a regenerate.
+    re-fire the prompt.
+
+    Optional ``reason`` + ``note`` capture the "Why?" follow-up
+    form: a single-pick category (inaccurate / off_topic /
+    incomplete / hallucinated / vague / unjust_refusal / other) and
+    an optional free-text note.  When both are None the call
+    behaves exactly like a bare thumbs-down (just flips
+    ``had_reask``).  When reason is provided, the same row is
+    flagged AND the reason is recorded — supplementary detail for
+    per-category analytics, not a change to the scorer math.
 
     Shares the ``had_reask`` column with the timing / phrase /
     regenerate signals — all four converge on the idempotent
-    ``mark_last_ai_usage_reask`` helper, so a user who does multiple
-    of them on the same row still ends up with one ``had_reask=TRUE``
-    flag (no double-counting in the scorer).
+    ``mark_last_ai_usage_reask`` (or ``mark_last_ai_usage_feedback``
+    when reason is set) so a user who does multiple of them on the
+    same row still ends up with one ``had_reask=TRUE`` flag.
     """
     try:
         from infra.platform import get_platform_db
         pdb = get_platform_db()
-        updated = await pdb.mark_last_ai_usage_reask(account_id, user_id)
+        if reason is None and note is None:
+            updated = await pdb.mark_last_ai_usage_reask(account_id, user_id)
+        else:
+            updated = await pdb.mark_last_ai_usage_feedback(
+                account_id, user_id, reason=reason, note=note,
+            )
         if updated:
             logger.info(
-                "Thumbs-down click for user=%d; marked 1 ai_usage row",
-                user_id,
+                "Thumbs-down click for user=%d (reason=%s); marked 1 ai_usage row",
+                user_id, reason or "—",
             )
         return bool(updated)
     except Exception as e:

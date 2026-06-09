@@ -763,24 +763,54 @@ async def feedback_regenerate(
     return {"ok": True, "marked": marked}
 
 
+_THUMBS_DOWN_REASONS = {
+    "inaccurate", "off_topic", "incomplete", "hallucinated",
+    "vague", "unjust_refusal", "other",
+}
+
+
+class ThumbsDownRequest(BaseModel):
+    # Both fields optional — a bare thumbs-down (no body) is the
+    # original behaviour; the form follow-up sends reason + note.
+    reason: str | None = Field(
+        None,
+        pattern=r"^(inaccurate|off_topic|incomplete|hallucinated|vague|unjust_refusal|other)$",
+    )
+    note: str | None = Field(None, max_length=500)
+
+
 @router.post("/feedback/thumbs-down")
 @limiter.limit("30/minute")
 async def feedback_thumbs_down(
     request: Request,
+    body: ThumbsDownRequest | None = None,
     user: dict = Depends(get_current_user),
 ):
     """Flag the user's most recent AI response as unsatisfying — no retry.
 
-    Semantically same as ``/feedback/regenerate`` (both flip
-    ``had_reask=TRUE`` on the latest ok question row) but doesn't
-    re-fire the prompt.  For users who want to log "this was bad"
-    and move on.  Shares the scorer slice with all the other
-    negative signals — no double-counting on the same row thanks to
-    idempotent flipping.
+    Two call shapes accepted:
+    - Bare POST (no body) — flips ``had_reask=TRUE`` only, same as
+      the regenerate click.  Fired on the initial thumbs-down click
+      for immediate signal.
+    - POST with body ``{reason, note}`` — flips had_reask AND
+      records WHY the user disliked the answer.  Fired when the
+      "Why?" follow-up form is submitted.  ``reason`` is a fixed-
+      vocabulary category; ``note`` is optional free-text (≤500
+      chars).  Both validated by the Pydantic model — invalid
+      categories return 422.
+
+    Idempotent on had_reask (re-running won't double-flip).  When a
+    bare call has fired first and the reason form arrives later,
+    the reason column gets updated without changing had_reask —
+    that's the form-completion update.
     """
     account_id = user["account_id"]
     user_id = int(user["sub"])
-    marked = await ai.flip_last_response_as_thumbs_down(account_id, user_id)
+    reason = body.reason if body else None
+    note = body.note if body else None
+    marked = await ai.flip_last_response_as_thumbs_down(
+        account_id, user_id, reason=reason, note=note,
+    )
     return {"ok": True, "marked": marked}
 
 

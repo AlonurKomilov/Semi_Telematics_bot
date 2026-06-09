@@ -36,7 +36,6 @@ async def create_tables(conn) -> None:
             telegram_id     BIGINT  NOT NULL UNIQUE,
             account_id      INTEGER NOT NULL REFERENCES accounts(id),
             role            TEXT    NOT NULL DEFAULT 'fleet',
-            department      TEXT    NOT NULL DEFAULT 'general',
             truck_num       TEXT,
             display_name    TEXT    NOT NULL DEFAULT '',
             alerts_on       INTEGER NOT NULL DEFAULT 0,
@@ -56,6 +55,8 @@ async def create_tables(conn) -> None:
             ai_parking      INTEGER NOT NULL DEFAULT 0,
             quiet_start     TEXT,
             quiet_end       TEXT,
+            dnd_enabled     INTEGER NOT NULL DEFAULT 1,
+            assigned_work_hours_id INTEGER,
             timezone        TEXT    NOT NULL DEFAULT 'America/New_York',
             language        TEXT    NOT NULL DEFAULT 'en',
             last_shift_report TEXT,
@@ -71,7 +72,6 @@ async def create_tables(conn) -> None:
             code        TEXT    NOT NULL UNIQUE,
             account_id  INTEGER NOT NULL REFERENCES accounts(id),
             role        TEXT    NOT NULL DEFAULT 'fleet',
-            department  TEXT    NOT NULL DEFAULT 'general',
             truck_num   TEXT,
             created_by  INTEGER NOT NULL REFERENCES users(id),
             expires_at  TEXT    NOT NULL,
@@ -118,6 +118,14 @@ async def create_tables(conn) -> None:
             -- thumbs-up icon on this response.  The only upweighting
             -- signal in the scoring stack.
             had_thumbs_up      BOOLEAN NOT NULL DEFAULT FALSE,
+            -- Optional follow-up after thumbs-down: WHY the user
+            -- disliked the answer.  Categories: inaccurate /
+            -- off_topic / incomplete / hallucinated / vague /
+            -- unjust_refusal / other.  NULL when the user skipped
+            -- the form.  ``had_reask`` still flips on bare
+            -- thumbs-down — these columns are supplementary.
+            feedback_reason    TEXT,
+            feedback_note      TEXT,
             created_at         TEXT    NOT NULL
         );
 

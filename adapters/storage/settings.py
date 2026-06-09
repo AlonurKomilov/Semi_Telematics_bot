@@ -302,6 +302,50 @@ class SettingsMixin:
         await self._db.commit()
         return getattr(cur, "rowcount", 0) or 0
 
+    async def mark_last_ai_usage_feedback(
+        self, account_id: int, user_id: int,
+        reason: str | None = None, note: str | None = None,
+    ) -> int:
+        """Flip ``had_reask`` AND write the optional reason+note in one
+        statement.  Powers the "Why?" follow-up form on thumbs-down.
+
+        Targets the same row shape as ``mark_last_ai_usage_reask``
+        (latest ``request_type='question'`` + ``error_type='ok'``) so
+        the reason is attached to the row the user actually saw.
+
+        Reason values the API accepts (validated at the route layer):
+        ``inaccurate`` / ``off_topic`` / ``incomplete`` /
+        ``hallucinated`` / ``vague`` / ``unjust_refusal`` / ``other``.
+        NULL when the user skipped the form — in that case this is
+        equivalent to ``mark_last_ai_usage_reask`` and just flips
+        had_reask without touching the reason column.
+
+        Note is capped at 500 chars by the route layer; the column
+        itself is plain TEXT.
+        """
+        # Truncate defensively — the route layer already caps but
+        # belt-and-suspenders is cheap.
+        if note is not None and len(note) > 500:
+            note = note[:500]
+        cur = await self._db.execute(
+            """
+            UPDATE ai_usage SET
+                had_reask = TRUE,
+                feedback_reason = COALESCE(?, feedback_reason),
+                feedback_note   = COALESCE(?, feedback_note)
+            WHERE id = (
+                SELECT id FROM ai_usage
+                WHERE account_id = ? AND user_id = ?
+                  AND request_type = 'question'
+                  AND error_type = 'ok'
+                ORDER BY id DESC LIMIT 1
+            )
+            """,
+            (reason, note, account_id, user_id),
+        )
+        await self._db.commit()
+        return getattr(cur, "rowcount", 0) or 0
+
     async def mark_last_ai_usage_thumbs_up(
         self, account_id: int, user_id: int,
     ) -> int:

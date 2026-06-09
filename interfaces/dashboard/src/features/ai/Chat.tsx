@@ -6,6 +6,7 @@ import { apiJSON, apiJSONAI, apiStreamChat } from '../../api/client';
 import { useShellConfig } from '../../hooks/useShellConfig';
 import type { AIChatMessage, AIChatResponse, AIHistoryResponse, AISummaryResponse, AIModel, AIModelsResponse, AIUsage, AITierChoice, AITierOption, AITierResponse } from '../../types';
 import { formatAIResponse } from '../../utils/formatAI';
+import { DislikeReasonForm } from './sections/DislikeReasonForm';
 
 // Extended message type with client-side timestamp
 interface LocalMessage extends AIChatMessage {
@@ -103,6 +104,10 @@ export default function Chat() {
    *  the user has visual confirmation their feedback registered, and
    *  prevents a second click from triggering a duplicate POST. */
   const [feedbackByIdx, setFeedbackByIdx] = useState<Record<number, 'up' | 'down'>>({});
+  /** Bubble index whose dislike-reason form is currently open.
+   *  null = no form open.  Opens on thumbs-down click; closes on
+   *  Skip / Send / outside-click.  Only one form open at a time. */
+  const [dislikeFormFor, setDislikeFormFor] = useState<number | null>(null);
   const [clearConfirm, setClearConfirm] = useState(false);
   const clearConfirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -424,8 +429,17 @@ export default function Chat() {
    *  changing their mind is a real flow.
    */
   function voteOnMessage(aiIdx: number, kind: 'up' | 'down') {
-    if (feedbackByIdx[aiIdx] === kind) return;  // already voted this way
+    if (feedbackByIdx[aiIdx] === kind) {
+      // Already voted this way.  On thumbs-down, treat the second
+      // click as "re-open the reason form" so the user can change
+      // their mind about WHY — the initial had_reask flip is
+      // idempotent so re-firing the bare POST is fine.
+      if (kind === 'down') setDislikeFormFor(aiIdx);
+      return;
+    }
     setFeedbackByIdx((s) => ({ ...s, [aiIdx]: kind }));
+    // Switching from down to up (or vice-versa) closes any open form.
+    setDislikeFormFor(kind === 'down' ? aiIdx : null);
     const endpoint = kind === 'up' ? '/ai/feedback/thumbs-up' : '/ai/feedback/thumbs-down';
     apiJSON(endpoint, { method: 'POST', body: {} }).catch(() => {});
   }
@@ -758,6 +772,12 @@ export default function Chat() {
                           : <Copy size={12} />}
                       </button>
                     </div>
+                    {dislikeFormFor === i && (
+                      <DislikeReasonForm
+                        onSkip={() => setDislikeFormFor(null)}
+                        onSubmitted={() => setDislikeFormFor(null)}
+                      />
+                    )}
                   </div>
                 )}
               </div>
