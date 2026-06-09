@@ -817,3 +817,208 @@ def _sub_full(sub: dict | None) -> dict | None:
     # version not needed — operator detail page benefits from seeing
     # everything (provider customer ids, item ids for debugging).
     return dict(sub)
+
+
+# ── Telematics integrations (operator cross-account view) ───────
+
+
+@router.get("/integrations")
+async def system_list_integrations(
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Cross-account list of every telematics integration row.
+
+    Backs the operator-only Integrations view at
+    ``system.4truck.us/integrations``.  Owners see only their own
+    rows via ``/integrations``; this endpoint surfaces ALL accounts'
+    rows for support / ops triage.
+
+    Never exposes raw credentials — only ``has_credentials`` plus the
+    health / status columns.  Sorts errored rows to the top so the
+    operator's eye lands on them first.
+    """
+    try:
+        accounts = await platform_db.list_accounts(active_only=False)
+    except Exception:
+        logger.exception("system.list_integrations: list_accounts failed")
+        raise HTTPException(503, "platform DB unavailable")
+
+    out: list[dict] = []
+    for acct in accounts:
+        try:
+            rows = await platform_db.list_account_integrations(acct.id)
+        except Exception:
+            logger.exception(
+                "system.list_integrations: list failed acct=%d", acct.id,
+            )
+            continue
+        for ai in rows:
+            out.append({
+                "account_id":         ai.account_id,
+                "account_name":       acct.name,
+                "provider_id":        ai.provider_id,
+                "status":             ai.status,
+                "connected_at":       ai.connected_at,
+                "has_credentials":    bool(ai.credentials),
+                "last_health_at":     ai.last_health_at,
+                "last_health_error":  ai.last_health_error,
+                "updated_at":         ai.updated_at,
+            })
+
+    # Errored rows first, then connected, then anything else; within
+    # each bucket sort by most-recently-updated so the most relevant
+    # rows for the operator's session bubble up.
+    def _priority(row: dict) -> tuple:
+        status = row.get("status", "")
+        rank = {"error": 0, "connected": 1, "disabled": 2, "disconnected": 3}.get(status, 9)
+        return (rank, row.get("updated_at", ""))
+
+    out.sort(key=_priority)
+    return {"integrations": out, "total": len(out)}
+
+
+# ── AI feedback — operator review of dislikes ─────────────────────
+#
+# When a user clicks 👎 on the dashboard chat, ``ai_usage`` gets
+# ``had_reask=TRUE`` and (if they filled the form) a
+# ``feedback_reason`` + optional ``feedback_note``.  This endpoint
+# surfaces those rows to the operator so each complaint can be
+# triaged: 'unjust_refusal' rows feed the heuristic detector's
+# keyword list; 'hallucinated' rows get the model downweighted
+# harder; 'inaccurate' rows mean the tool result needs review.
+# Joins ai_chat_history so the operator sees the actual user
+# question + AI answer without having to cross-query.
+
+@router.get("/ai-feedback")
+async def system_ai_feedback(
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+    reason: str | None = None,
+    account_id: int | None = None,
+    days: int = 30,
+    limit: int = 100,
+    offset: int = 0,
+) -> dict:
+    """Recent thumbs-down rows across all accounts with their reason
+    + note + the chat-history context (user question + AI answer).
+
+    Filters:
+    - ``reason`` — one of the 7 feedback_reason categories, or omit
+      to include rows with NO reason set (bare thumbs-downs) too
+    - ``account_id`` — scope to a single tenant
+    - ``days`` — lookback window (default 30)
+    - ``limit`` / ``offset`` — pagination
+    """
+    from datetime import datetime, timezone, timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    where = ["u.had_reask = TRUE", "u.created_at >= ?", "u.request_type = 'question'"]
+    params: list = [cutoff]
+    if reason:
+        if reason not in {
+            "inaccurate", "off_topic", "incomplete", "hallucinated",
+            "vague", "unjust_refusal", "other",
+        }:
+            raise HTTPException(status_code=400, detail="invalid reason")
+        where.append("u.feedback_reason = ?")
+        params.append(reason)
+    if account_id is not None:
+        where.append("u.account_id = ?")
+        params.append(account_id)
+
+    # Pull the row + its closest chat-history context.  Two LATERAL-
+    # style scalar subqueries get the user question and AI answer
+    # closest to the row's created_at, so the operator sees the
+    # actual conversation that triggered the dislike.
+    sql = f"""
+        SELECT
+            u.id,
+            u.account_id,
+            COALESCE(a.name, 'acct#' || u.account_id) AS account_name,
+            u.user_id,
+            u.model,
+            u.role,
+            u.prompt_category,
+            u.feedback_reason,
+            u.feedback_note,
+            u.latency_ms,
+            u.created_at,
+            (
+                SELECT text FROM ai_chat_history
+                WHERE account_id = u.account_id
+                  AND user_id = u.user_id
+                  AND role = 'user'
+                  AND created_at <= u.created_at
+                ORDER BY created_at DESC LIMIT 1
+            ) AS user_question,
+            (
+                SELECT text FROM ai_chat_history
+                WHERE account_id = u.account_id
+                  AND user_id = u.user_id
+                  AND role = 'model'
+                  AND created_at >= u.created_at
+                ORDER BY created_at ASC LIMIT 1
+            ) AS ai_answer
+        FROM ai_usage u
+        LEFT JOIN accounts a ON a.id = u.account_id
+        WHERE {" AND ".join(where)}
+        ORDER BY u.id DESC
+        LIMIT ? OFFSET ?
+    """
+    params.extend([limit, offset])
+    cur = await platform_db._db.execute(sql, params)
+    rows = await cur.fetchall()
+
+    # Companion aggregate: how many rows per reason in the window
+    # (regardless of pagination) so the panel can show the breakdown.
+    counts_sql = f"""
+        SELECT COALESCE(u.feedback_reason, '__none__') AS reason,
+               COUNT(*) AS n
+        FROM ai_usage u
+        WHERE {" AND ".join(where[:1 + (1 if account_id is not None else 0) + (1 if reason else 0)])}
+              AND u.had_reask = TRUE
+              AND u.request_type = 'question'
+              AND u.created_at >= ?
+        GROUP BY COALESCE(u.feedback_reason, '__none__')
+    """
+    # Rebuild params for counts (drop the limit/offset)
+    counts_params: list = [cutoff]
+    if reason:
+        counts_params.append(reason)
+    if account_id is not None:
+        counts_params.append(account_id)
+    counts_params.append(cutoff)  # the WHERE u.created_at >= ? at the end
+    try:
+        cur2 = await platform_db._db.execute(counts_sql, counts_params)
+        counts_rows = await cur2.fetchall()
+        counts = {r["reason"]: int(r["n"]) for r in counts_rows}
+    except Exception:
+        # Defensive: aggregate is a nice-to-have; the main list is
+        # the load-bearing data, don't crash the endpoint over it.
+        counts = {}
+
+    return {
+        "items": [
+            {
+                "id": r["id"],
+                "account_id": r["account_id"],
+                "account_name": r["account_name"],
+                "user_id": r["user_id"],
+                "model": r["model"],
+                "role": r["role"],
+                "prompt_category": r["prompt_category"],
+                "feedback_reason": r["feedback_reason"],
+                "feedback_note": r["feedback_note"],
+                "latency_ms": r["latency_ms"],
+                "created_at": r["created_at"],
+                "user_question": r["user_question"],
+                "ai_answer": r["ai_answer"],
+            }
+            for r in rows
+        ],
+        "counts_by_reason": counts,
+        "days": days,
+        "limit": limit,
+        "offset": offset,
+    }

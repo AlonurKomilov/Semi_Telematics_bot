@@ -1,6 +1,6 @@
 import { Routes, Route, NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { Building2, Receipt, ScrollText, LogOut, Activity, Users, AlertTriangle } from 'lucide-react';
+import { Building2, Receipt, ScrollText, LogOut, Activity, Users, AlertTriangle, MessageSquareWarning } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import Login from './pages/Login';
 import Accounts from './pages/Accounts';
@@ -10,6 +10,7 @@ import InvoicesPage from './pages/Invoices';
 import HealthPage from './pages/Health';
 import UsersPage from './pages/Users';
 import ErrorsPage from './pages/Errors';
+import AIFeedbackPage from './pages/AIFeedback';
 import { clearToken, getToken } from './api/client';
 
 export default function App() {
@@ -53,6 +54,7 @@ export default function App() {
             <Route path="/health" element={<HealthPage />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/errors" element={<ErrorsPage />} />
+            <Route path="/ai-feedback" element={<AIFeedbackPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </div>
@@ -90,6 +92,7 @@ const NAV_GROUPS: { title: string | null; items: NavItem[] }[] = [
       { to: '/health', label: 'Health', icon: Activity },
       { to: '/users',  label: 'Users',  icon: Users },
       { to: '/errors', label: 'Errors', icon: AlertTriangle },
+      { to: '/ai-feedback', label: 'AI feedback', icon: MessageSquareWarning },
     ],
   },
 ];

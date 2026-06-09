@@ -254,3 +254,42 @@ export interface AlertRoutingConfig {
   personas:           Record<PersonaKey, PersonaGroupRow | null>;
   valid_personas:     PersonaKey[];
 }
+
+// AI feedback — what users thumbed-down on the dashboard chat.  One
+// row per ai_usage row that has ``had_reask=TRUE``; the reason +
+// note are optional (users skip the follow-up form sometimes).
+export type AIFeedbackReason =
+  | 'inaccurate'
+  | 'off_topic'
+  | 'incomplete'
+  | 'hallucinated'
+  | 'vague'
+  | 'unjust_refusal'
+  | 'other';
+
+export interface AIFeedbackRow {
+  id: number;
+  account_id: number;
+  account_name: string;
+  user_id: number;
+  model: string;
+  role: string | null;
+  prompt_category: string | null;
+  feedback_reason: AIFeedbackReason | null;
+  feedback_note: string | null;
+  latency_ms: number | null;
+  created_at: string;
+  user_question: string | null;
+  ai_answer: string | null;
+}
+
+export interface AIFeedbackResponse {
+  items: AIFeedbackRow[];
+  /** Aggregate count of rows per reason (over the same date window
+   *  as ``items``, regardless of pagination).  The key ``"__none__"``
+   *  counts bare thumbs-downs where the user skipped the form. */
+  counts_by_reason: Record<string, number>;
+  days: number;
+  limit: number;
+  offset: number;
+}
