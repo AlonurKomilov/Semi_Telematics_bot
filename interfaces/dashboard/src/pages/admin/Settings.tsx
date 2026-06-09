@@ -13,7 +13,7 @@ import {
 } from '../../components/shell';
 import { TIMEZONE_OPTIONS, timezoneLabelWithTime } from '../../utils/timezones';
 import { useNow } from '../../hooks/useNow';
-import { rollupByDisplayLabel } from '../../lib/aiUsage';
+import { rollupByDisplayLabel } from '../../features/ai/helpers';
 import ForumRoutingSection from './ForumRoutingSection';
 import { toneClasses } from '../../lib/status';
 

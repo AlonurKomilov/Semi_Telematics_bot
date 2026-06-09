@@ -2,26 +2,26 @@
 
 export interface Permissions {
   can_vehicle_all: boolean;
-  can_vehicle_own: boolean;
+  can_vehicle_vehicle: boolean;
   can_location_map: boolean;
-  can_location_own: boolean;
+  can_location_vehicle: boolean;
   can_alerts_all: boolean;
-  can_alerts_own: boolean;
+  can_alerts_vehicle: boolean;
   can_geofence_all: boolean;
-  can_geofence_own: boolean;
+  can_geofence_vehicle: boolean;
   can_route_all: boolean;
-  can_route_own: boolean;
+  can_route_vehicle: boolean;
   can_scorecard_all: boolean;
-  can_scorecard_own: boolean;
+  can_scorecard_vehicle: boolean;
   can_events_all: boolean;
-  can_events_own: boolean;
+  can_events_vehicle: boolean;
   can_faults: boolean;
   can_health: boolean;
   can_fuel: boolean;
   can_fuel_cost: boolean;
   can_cost_per_mile: boolean;
   can_maintenance_all: boolean;
-  can_maintenance_own: boolean;
+  can_maintenance_vehicle: boolean;
   can_cost_reports: boolean;
   can_manage_users: boolean;
   can_manage_companies: boolean;
@@ -58,7 +58,6 @@ export interface User {
   email_verified?: boolean;
   display_name: string;
   role: string;
-  department?: string;
   account_id?: number;
   payroll_enabled?: boolean;
   coaching_enabled?: boolean;
@@ -76,8 +75,18 @@ export interface User {
   account_timezone?: string;
   /** Resolved tz the dashboard should actually format dates in. */
   effective_timezone?: string;
+  /** Working Hours ACTIVE window for this user — admin-managed since
+   *  migration 100.  Both null → user inherits the role-level
+   *  Working Hours.  Both set → admin assigned a personal override.
+   *  The user sees these read-only on Profile alongside the DND
+   *  toggle below; editing happens via Team Management. */
   quiet_start?: number;
   quiet_end?: number;
+  /** Personal DND toggle (migration 100).  True → user honours the
+   *  Working Hours schedule (non-critical alerts queue outside).
+   *  False → user receives all non-critical alerts 24/7.
+   *  Critical-severity alerts always deliver regardless. */
+  dnd_enabled?: boolean;
   permissions: Permissions;
 }
 
@@ -797,7 +806,6 @@ export interface AdminUser {
   telegram_id: number | null;
   display_name: string;
   role: string;
-  department: string;
   truck_num: string | null;
   trucks: string[];
   allowed_companies: string[];
@@ -805,6 +813,17 @@ export interface AdminUser {
   email: string | null;
   language: string | null;
   timezone: string | null;
+  /** Per-user Working Hours override (0-23, user's effective timezone).
+   *  Defines the ACTIVE window during which alerts DELIVER to this
+   *  user; outside that window non-critical alerts queue until
+   *  shift-start.  When both are non-null the user has a personal
+   *  override that wins over the role-level Working Hours.  Both
+   *  ``null`` → inherits the role-level schedule.  Field names kept
+   *  ``quiet_*`` to match the backend column names; the semantics are
+   *  working-window, not silence-window.  Set/cleared via
+   *  PUT /admin/users/:id/quiet-hours. */
+  quiet_start: number | null;
+  quiet_end:   number | null;
   created_at: string | null;
 }
 
@@ -892,7 +911,6 @@ export interface InviteInfo {
   id: number;
   code: string;
   role: string;
-  department: string;
   truck_num: string | null;
   expires_at: string;
   used_by: number | null;
@@ -993,7 +1011,10 @@ export interface SettingsResponse {
   account: AccountInfo;
   settings: Record<string, string>;
   ai_usage: Record<string, unknown>;
-  schedules: WorkSchedule[];
+  // ``schedules`` removed from this response (was only consumed by
+  // the Working Hours section on the Settings page, which was
+  // consolidated into Team Management → Working Hours tab).  The
+  // dedicated GET /admin/work-hours endpoint is the single source.
 }
 
 export interface BotConfig {
@@ -1375,117 +1396,27 @@ export interface ParkingStatsResponse {
 }
 
 // ── AI Assistant ──────────────────────────────────────────────────
+//
+// Type contracts now live with the AI feature in features/ai/types.ts.
+// Re-exported here so existing imports `from '../../types'` keep
+// working — new AI code should import directly from
+// features/ai/types instead.
 
-export interface AIUsage {
-  prompt_tokens: number;
-  reply_tokens: number;
-  total_tokens: number;
-  thinking_tokens?: number;
-}
-
-export interface AIChatMessage {
-  role: 'user' | 'model';
-  text: string;
-  /** Client-side timestamp — not persisted to backend */
-  timestamp?: Date;
-  /**
-   * ISO timestamp from the backend (``created_at``).  Present only
-   * on messages loaded from history — the dashboard parses this into
-   * the live ``timestamp`` Date so a 3-day-old reply doesn't render
-   * with the browser's current time.
-   */
-  ts?: string;
-  /** Token usage from the backend — only present on model messages */
-  usage?: AIUsage;
-}
-
-export interface AIChatResponse {
-  reply: string;
-  suggestions: string[];
-  usage?: AIUsage;
-}
-
-export interface AISummaryResponse {
-  summary: string;
-  suggestions: string[];
-  usage?: AIUsage;
-}
-
-export interface AIDiagnoseResponse {
-  diagnosis: string;
-  vehicle: string;
-}
-
-/** A real tier — one of the three model groups the router routes
- *  inside.  Distinct from ``AITierChoice`` because a specific model
- *  can only belong to one of these three (not to "auto"). */
-export type AITier = 'fast' | 'thinking' | 'reasoning';
-
-/** The set of values the user can pick + persist as their tier
- *  preference.  ``"auto"`` resolves to one of the three real tiers
- *  at request time from the prompt's classified category. */
-export type AITierChoice = AITier | 'auto';
-
-export interface AIModel {
-  name: string;
-  display: string;
-  description: string;
-  category: string;
-  /**
-   * Upstream maker — "Google", "Anthropic", "OpenAI", "Meta",
-   * "DeepSeek", "Alibaba", "Moonshot", "Mistral", "xAI", "MiniMax",
-   * "Zhipu", or "Other".  Used by the model picker to group entries
-   * by who built them.
-   */
-  maker: string;
-  /** Tier this model belongs to.  Null for vision-only models. */
-  tier: AITier | null;
-  vision: boolean;
-  cost_per_request: number | null;
-}
-
-export interface AIModelsResponse {
-  models: AIModel[];
-  current_text: string;
-  current_vision: string;
-  account_default: string;
-  is_admin: boolean;
-}
-
-export interface AITierOption {
-  name: AITierChoice;
-  /** Display label ("Fast", "Thinking", "Reasoning", "Auto"). */
-  label: string;
-  /** Emoji icon picked server-side so adding a tier doesn't require a frontend change. */
-  icon: string;
-  description: string;
-  /** Number of models in the tier's fallback chain.  ``0`` for ``"auto"``
-   *  since auto doesn't have its own chain — it routes to one of the
-   *  three real tiers per request. */
-  model_count: number;
-}
-
-export interface AITierResponse {
-  current_tier: AITierChoice;
-  /** Null when current_tier is ``"auto"`` — the model only gets picked
-   *  at request time from the prompt category. */
-  current_model: string | null;
-  current_model_display: string | null;
-  tiers: AITierOption[];
-}
-
-export interface AITierSwitchResponse {
-  ok: boolean;
-  tier: AITierChoice;
-  /** Null when switching to ``"auto"`` (no model is pre-cached). */
-  resolved_model: string | null;
-  resolved_model_display: string | null;
-}
-
-export interface AIHistoryResponse {
-  messages: AIChatMessage[];
-  count: number;
-}
+export type {
+  AIUsage,
+  AIChatMessage,
+  AIChatResponse,
+  AISummaryResponse,
+  AIDiagnoseResponse,
+  AITier,
+  AITierChoice,
+  AIModel,
+  AIModelsResponse,
+  AITierOption,
+  AITierResponse,
+  AITierSwitchResponse,
+  AIHistoryResponse,
+} from '../features/ai/types';
 
 // ── Scheduled Reports ────────────────────────────────────────────
 

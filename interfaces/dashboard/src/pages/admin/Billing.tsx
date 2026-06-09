@@ -4,7 +4,7 @@ import { CreditCard, ExternalLink, FileText, AlertTriangle, Gift } from 'lucide-
 import { apiJSON } from '../../api/client';
 import { PageHeader, CardSkeleton } from '../../components/shell';
 import { toneClasses } from '../../lib/status';
-import { rollupByDisplayLabel } from '../../lib/aiUsage';
+import { rollupByDisplayLabel } from '../../features/ai/helpers';
 
 // ── Types ─────────────────────────────────────────────────────────
 

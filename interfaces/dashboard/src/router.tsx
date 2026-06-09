@@ -101,8 +101,8 @@ const Billing          = lazyWithReload(() => import('./pages/admin/Billing'));
 const Payroll          = lazyWithReload(() => import('./pages/payroll/Payroll'));
 const Coaching         = lazyWithReload(() => import('./pages/coaching/Coaching'));
 const Drivers          = lazyWithReload(() => import('./pages/workforce/Drivers'));
-const AIChat           = lazyWithReload(() => import('./pages/ai/Chat'));
-const AISummary        = lazyWithReload(() => import('./pages/ai/Summary'));
+const AIChat           = lazyWithReload(() => import('./features/ai/Chat'));
+const AISummary        = lazyWithReload(() => import('./features/ai/Summary'));
 const NotFound         = lazy(() => import('./pages/NotFound'));
 
 function RouteSkeleton() {
