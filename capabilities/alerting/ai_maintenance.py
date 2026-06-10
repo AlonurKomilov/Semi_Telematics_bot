@@ -257,22 +257,20 @@ async def check_api_health(account_id: int) -> dict[str, str]:
     """Test each company's Samsara API and return status dict.
 
     Returns: {company_code: "ok" | "error: <message>"}
+
+    For per-company credential probes use the Integration card's lean
+    ``/me`` test instead — this helper does a heavier ``get_vehicles``
+    call and is kept for backwards-compat with older callers.
     """
-    companies = await (await get_tenant_db(account_id)).get_account_companies(account_id)
+    from infra.services import get_client
+    multi = await get_client(account_id)
     results: dict[str, str] = {}
 
-    for co in companies:
-        from adapters.samsara.client import SamsaraClient
-        client = SamsaraClient(
-            api_key=co.samsara_api_key,
-            base_url="https://api.samsara.com",
-        )
+    for code, client in multi.clients.items():
         try:
             vehicles = await client.get_vehicles()
-            results[co.code] = f"ok ({len(vehicles)} vehicles)"
+            results[code] = f"ok ({len(vehicles)} vehicles)"
         except Exception as e:
-            results[co.code] = f"error: {e}"
-        finally:
-            await client.close()
+            results[code] = f"error: {e}"
 
     return results

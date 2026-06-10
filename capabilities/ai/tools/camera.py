@@ -33,29 +33,26 @@ async def check_vehicle_camera(tool_args: dict, samsara_client,
                                account_id: int | None = None, db=None) -> dict:
     vehicle = tool_args.get("vehicle_name", "")
     try:
-        from adapters.samsara.client import SamsaraClient
         from capabilities.ai.vision import analyze_camera_image
-        # Get snapshots for the specific truck
-        from infra.platform import get_tenant_db as _get_tdb
-        _tdb = await _get_tdb(account_id) if account_id else None
-        companies = await _tdb.get_account_companies(account_id) if _tdb else []
+        from infra.services import get_client
+        if account_id is None:
+            return {"vehicle": vehicle, "error": "Camera check requires account context."}
+        # Route through the cached MultiCompanyClient pool so this
+        # request shares the connection pool, circuit breaker, and
+        # rate-limit retries with the rest of the app.  Keys come from
+        # the Integration card (dual-write keeps the legacy column in
+        # sync for any not-yet-migrated reader).
+        multi = await get_client(account_id)
         snap = None
-        for co in companies:
-            client = SamsaraClient(
-                api_key=co.samsara_api_key,
-                active_days=co.active_days,
-            )
-            try:
-                snaps = await client.get_dashcam_snapshots(days=3)
-                match = [
-                    s for s in snaps
-                    if s["vehicle_name"].lower() == vehicle.lower()
-                ]
-                if match:
-                    snap = match[0]
-                    break
-            finally:
-                await client.close()
+        for _code, client in multi.clients.items():
+            snaps = await client.get_dashcam_snapshots(days=3)
+            match = [
+                s for s in snaps
+                if s["vehicle_name"].lower() == vehicle.lower()
+            ]
+            if match:
+                snap = match[0]
+                break
         if not snap or not snap.get("image_bytes"):
             return {"vehicle": vehicle, "result": "No recent camera image found for this vehicle."}
         analysis = await analyze_camera_image(

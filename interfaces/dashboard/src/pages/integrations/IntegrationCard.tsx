@@ -1,0 +1,1089 @@
+/**
+ * A single provider card on the Integrations page.
+ *
+ * Renders different content based on the catalog status:
+ *   * `available` + connected   → status badge, feature toggles, actions
+ *   * `available` + not connected → Connect button + form
+ *   * `coming_soon`             → inert preview card with "Coming soon" badge
+ *
+ * Designed to be composable — the card never assumes which provider
+ * it's rendering.  All provider-specific shape lives in the catalog
+ * metadata.
+ */
+
+import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Check, Plug, RefreshCw, X, AlertTriangle, Loader2,
+  KeyRound, Pencil, Trash2, ChevronDown, ChevronRight,
+} from 'lucide-react';
+import StatusBadge from '../../components/StatusBadge';
+import { Button } from '../../components/ui/button';
+import { toneClasses } from '../../lib/status';
+import {
+  getBackfillStatus,
+  listProviderCompanies,
+  setCompanyCredential,
+  removeCompanyCredential,
+  testCompanyConnection,
+  triggerCompanyBackfill,
+} from './api';
+import type {
+  AccountIntegration,
+  BackfillStatus,
+  CatalogEntry,
+  FeatureToggleMap,
+  ProviderCompaniesResponse,
+  ProviderCompanyEntry,
+  TestCompanyResponse,
+  TestConnectionResponse,
+} from './types';
+import { capabilityLabel, formatCadence } from './labels';
+
+/** Format an ISO timestamp like ``"2026-06-07T14:22:35+00:00"`` into
+ *  the relative + absolute form the card shows ("2 hours ago ·
+ *  Jun 7, 14:22 UTC").  Empty input → empty output. */
+function formatBackfillTimestamp(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const now = Date.now();
+  const ageMin = Math.round((now - d.getTime()) / 60_000);
+  const ageHr = Math.round(ageMin / 60);
+  const ageDays = Math.round(ageHr / 24);
+  const rel =
+    ageMin < 60 ? `${ageMin} min ago`
+    : ageHr < 48 ? `${ageHr} hr ago`
+    : `${ageDays} days ago`;
+  const abs = d.toLocaleDateString(undefined, {
+    month: 'short', day: 'numeric',
+  }) + ' · ' + d.toLocaleTimeString(undefined, {
+    hour: '2-digit', minute: '2-digit', timeZone: 'UTC',
+  }) + ' UTC';
+  return `${rel} · ${abs}`;
+}
+
+interface Props {
+  entry: CatalogEntry;
+  integration: AccountIntegration | null;
+  onConnect: (creds: Record<string, string>) => Promise<void>;
+  onDisconnect: () => Promise<void>;
+  onToggle: (next: FeatureToggleMap) => Promise<void>;
+  /**
+   * Returns the raw test_connection response so the card can render
+   * an inline OK / error banner.  ``null`` return means the caller
+   * already surfaced the error elsewhere; the card stays quiet.
+   */
+  onTestConnection: () => Promise<TestConnectionResponse | null>;
+  /**
+   * Returns the backfill trigger response (``state`` is "queued" on
+   * success or "skipped"/"error" otherwise) so the card can show
+   * an immediate confirmation toast even before the polling badge
+   * picks the status up.
+   */
+  onTriggerBackfill: (days: number) => Promise<{ state: string; days?: number; reason?: string } | null>;
+  backfillStatusBadge?: React.ReactNode;
+}
+
+type ActionFeedback = {
+  kind: 'success' | 'error' | 'info';
+  message: string;
+} | null;
+
+export default function IntegrationCard({
+  entry,
+  integration,
+  onConnect,
+  onDisconnect,
+  onToggle,
+  onTestConnection,
+  onTriggerBackfill,
+  backfillStatusBadge,
+}: Props) {
+  const [showConnect, setShowConnect] = useState(false);
+  const [showDisconnect, setShowDisconnect] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<ActionFeedback>(null);
+  const [triggering, setTriggering] = useState(false);
+  const [triggerResult, setTriggerResult] = useState<ActionFeedback>(null);
+
+  // Collapse state: when the page grows past a single integration,
+  // the densely-rendered toggles + companies + actions per card
+  // become a focus sink.  Default open for the actively-connected
+  // integration (operator probably came here to manage it), default
+  // closed for "coming soon" placeholders.  Persisted per-provider
+  // in localStorage so the choice survives a refresh.
+  const _storageKey = `integration-card-open:${entry.provider_id}`;
+  const [expanded, setExpanded] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(_storageKey);
+      if (saved !== null) return saved === '1';
+    } catch {
+      // localStorage unavailable (Safari private mode, etc.) —
+      // fall through to the default.
+    }
+    return Boolean(integration);  // open if connected, else collapsed
+  });
+  const toggleExpanded = () => {
+    setExpanded((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(_storageKey, next ? '1' : '0');
+      } catch {
+        // ignore — visual state still flips
+      }
+      return next;
+    });
+  };
+
+  // QueryClient handle so ``handleTrigger`` can optimistically seed
+  // the BackfillStatusBadge cache with a ``queued`` payload after a
+  // successful trigger — without that, the badge's ``refetchInterval``
+  // never starts because it only polls on running/queued states.
+  const qc = useQueryClient();
+
+  // Shared query key with BackfillStatusBadge — React Query dedupes
+  // the network call, so adding this read in the card doesn't double
+  // up on Redis traffic.  ``data?.state`` drives the Run-now button's
+  // disabled state so the user can't fire a duplicate while one is
+  // running (the backend would 409 anyway, but the UI feedback was
+  // otherwise just a stale "Queuing…" toast cycle).
+  const { data: backfillStatus } = useQuery<BackfillStatus>({
+    queryKey: ['integration-backfill-status', entry.provider_id],
+    queryFn: () => getBackfillStatus(entry.provider_id),
+    enabled: Boolean(integration),
+    refetchInterval: (q) => {
+      const s = q.state.data?.state;
+      return s === 'running' || s === 'queued' ? 5_000 : false;
+    },
+    staleTime: 4_000,
+  });
+  const backfillRunning =
+    backfillStatus?.state === 'running' || backfillStatus?.state === 'queued';
+
+  // Auto-dismiss the inline action banners after 8 seconds so the
+  // card doesn't accumulate stale messages over a session.
+  useEffect(() => {
+    if (!testResult) return;
+    const id = setTimeout(() => setTestResult(null), 8000);
+    return () => clearTimeout(id);
+  }, [testResult]);
+
+  useEffect(() => {
+    if (!triggerResult) return;
+    const id = setTimeout(() => setTriggerResult(null), 8000);
+    return () => clearTimeout(id);
+  }, [triggerResult]);
+
+  const isComingSoon = entry.status === 'coming_soon';
+  const isConnected = integration?.status === 'connected';
+  const isErrored = integration?.status === 'error';
+
+  const handleTest = async () => {
+    if (testing) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const result = await onTestConnection();
+      if (result) {
+        setTestResult({
+          kind: result.ok ? 'success' : 'error',
+          message: result.ok
+            ? `Connected${result.message ? ' — ' + result.message : ''}`
+            : `Failed: ${result.message || 'unknown error'}`,
+        });
+      }
+    } catch (err) {
+      setTestResult({
+        kind: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleTrigger = async (days: number) => {
+    if (triggering) return;
+    setTriggering(true);
+    setTriggerResult(null);
+    try {
+      const result = await onTriggerBackfill(days);
+      if (result) {
+        if (result.state === 'queued') {
+          setTriggerResult({
+            kind: 'success',
+            message: `Backfill queued for ${result.days ?? days} days — progress shows above`,
+          });
+          // Optimistic update: seed the React Query cache with a
+          // ``queued`` payload so the BackfillStatusBadge's
+          // ``refetchInterval`` (which only polls on running/queued
+          // states) kicks in immediately rather than waiting for
+          // ``staleTime`` to elapse against the prior idle/null
+          // cache.  Within 5s the real Redis-backed state will
+          // overwrite this seed via the polling refetch.
+          qc.setQueryData(
+            ['integration-backfill-status', entry.provider_id],
+            {
+              state: 'queued',
+              account_id: integration?.account_id,
+              provider_id: entry.provider_id,
+              days_requested: result.days ?? days,
+              days_done: 0,
+              days_total: 0,
+              rows_inserted: 0,
+            },
+          );
+          // Also invalidate so the badge does a fresh fetch right
+          // away — covers the case where the spawned task already
+          // wrote ``running`` to Redis before this line runs.
+          qc.invalidateQueries({
+            queryKey: ['integration-backfill-status', entry.provider_id],
+          });
+        } else if (result.state === 'skipped') {
+          setTriggerResult({
+            kind: 'info',
+            message: `Skipped: ${result.reason || 'another backfill is already running'}`,
+          });
+        } else {
+          setTriggerResult({
+            kind: 'info',
+            message: `State: ${result.state}`,
+          });
+        }
+      }
+    } catch (err) {
+      setTriggerResult({
+        kind: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setTriggering(false);
+    }
+  };
+
+  return (
+    <div
+      className={[
+        'bg-card border rounded-xl p-5',
+        isComingSoon ? 'border-border opacity-70' : 'border-border',
+      ].join(' ')}
+    >
+      {/* Header is the click target for collapse/expand on connected
+          integrations.  Coming-soon cards are never collapsible —
+          they're already minimal. */}
+      <div
+        className={[
+          'flex items-start gap-3',
+          isComingSoon ? '' : 'cursor-pointer select-none',
+        ].join(' ')}
+        onClick={isComingSoon ? undefined : toggleExpanded}
+        role={isComingSoon ? undefined : 'button'}
+        tabIndex={isComingSoon ? undefined : 0}
+        onKeyDown={(e) => {
+          if (isComingSoon) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleExpanded();
+          }
+        }}
+      >
+        <div className="size-10 rounded-lg bg-muted flex items-center justify-center text-muted-foreground">
+          <Plug size={20} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-base font-semibold">{entry.display_name}</h2>
+            {/* Status chips go through the canonical StatusBadge so the
+                soft-pill recipe (15% fill + solid text + 30% border) +
+                radius track the theme picker.  Tone resolution lives
+                in lib/status.ts STATUS_TONE — never pick a tone here. */}
+            {isComingSoon && <StatusBadge status="coming_soon" />}
+            {isConnected && <StatusBadge status="connected" />}
+            {isErrored && <StatusBadge status="error" />}
+            {integration?.status === 'disabled' && (
+              <StatusBadge status="paused" />
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground mt-0.5">{entry.tagline}</p>
+        </div>
+        {backfillStatusBadge}
+        {!isComingSoon && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); toggleExpanded(); }}
+            aria-label={expanded ? 'Collapse integration' : 'Expand integration'}
+            aria-expanded={expanded}
+            className="text-muted-foreground hover:text-foreground p-1 shrink-0"
+          >
+            {expanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+          </button>
+        )}
+      </div>
+
+      {/* Health-error banner stays visible even when collapsed — it's
+          a problem the operator needs to see at a glance. */}
+      {isErrored && integration?.last_health_error && (
+        <div className={`mt-3 flex items-start gap-2 text-xs border rounded px-2.5 py-2 ${toneClasses('danger')}`}>
+          <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+          <span className="break-words">{integration.last_health_error}</span>
+        </div>
+      )}
+
+      {/* When collapsed on a connected integration, render a one-line
+          summary so the operator still gets a quick read of what's
+          configured without having to expand every card. */}
+      {!isComingSoon && integration && !expanded && (
+        <p className="mt-3 text-xs text-muted-foreground">
+          {entry.capabilities.length} capabilities · click to manage keys + cadences
+        </p>
+      )}
+
+      {/* Everything below this point is in the collapsible region.
+          Coming-soon cards always show their description (they're
+          informational previews); connected cards hide it when
+          collapsed since the operator is here to manage, not to
+          read marketing. */}
+      {(isComingSoon || expanded) && (
+        <>
+      <p className="mt-3 text-sm text-muted-foreground">{entry.description}</p>
+
+      {entry.docs_url && (
+        <a
+          href={entry.docs_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 inline-block text-xs text-primary hover:underline"
+        >
+          Provider docs ↗
+        </a>
+      )}
+
+      {/* Connected — show toggles + actions */}
+      {!isComingSoon && integration && (
+        <div className="mt-4 border-t border-border pt-3">
+          {/* Provenance line: when the last full backfill landed,
+              relative + absolute UTC.  Always rendered so operators
+              can distinguish "never backfilled" (data freshness
+              unknown) from "fresh today" — silently hiding the
+              line would leave operators guessing about staleness. */}
+          <p className="mb-3 text-2xs text-muted-foreground">
+            Last history backfill:{' '}
+            {integration.last_backfill_at
+              ? formatBackfillTimestamp(integration.last_backfill_at)
+              : (
+                <span className="italic">
+                  {backfillRunning
+                    ? 'in progress — first run, please wait'
+                    : 'never — calendar projection may be empty'}
+                </span>
+              )}
+          </p>
+
+          {/* Per-company key matrix — canonical place to manage
+              Samsara API keys.  Replaces the API Key column that
+              used to live on the Companies page so operators have
+              ONE place to see "is Samsara wired up correctly". */}
+          <ConnectedCompanies providerId={entry.provider_id} />
+
+          <FeatureToggleList
+            capabilities={entry.capabilities}
+            toggles={integration.feature_toggles}
+            defaults={entry.feature_defaults}
+            onChange={onToggle}
+            onTriggerBackfill={handleTrigger}
+            // Disable the Run-now button if the local trigger is in
+            // flight OR if the server already has a backfill running
+            // (read from the shared Redis status query above).  This
+            // closes the gap where a user could spam the button while
+            // a 45-min backfill was in progress and see confusing
+            // toast cycles.
+            backfillPending={triggering || backfillRunning}
+            backfillRunningLabel={
+              backfillRunning && backfillStatus
+                ? `${backfillStatus.days_done ?? 0}/${backfillStatus.days_total ?? backfillStatus.days_requested ?? 30}`
+                : undefined
+            }
+            // When a previous backfill completed, the button label
+            // changes from "Run now (30 days)" to "Refresh history ·
+            // N ago".  Tells the operator at-a-glance that the data
+            // is already in place — clicking would just refresh, not
+            // start from zero.  ``last_backfill_at`` is set by M5's
+            // completion path (record_integration_backfill_completion).
+            backfillLastDoneLabel={
+              integration.last_backfill_at
+                ? formatBackfillTimestamp(integration.last_backfill_at)
+                : undefined
+            }
+          />
+          {triggerResult && (
+            <FeedbackBanner
+              kind={triggerResult.kind}
+              message={triggerResult.message}
+              onDismiss={() => setTriggerResult(null)}
+            />
+          )}
+          {testResult && (
+            <FeedbackBanner
+              kind={testResult.kind}
+              message={testResult.message}
+              onDismiss={() => setTestResult(null)}
+            />
+          )}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleTest}
+              disabled={testing}
+              title="Probe every company's Samsara /me endpoint"
+            >
+              {testing ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <RefreshCw size={14} />
+              )}
+              {testing ? 'Testing…' : 'Test all'}
+            </Button>
+            {/* Account-wide history backfill — same surface as the per-
+                company Refresh button but covers every company.  Smart
+                label: "Run all (30 days)" first time, "Refresh history
+                · N ago" when last_backfill_at is set, "Running · X/Y
+                days" while in flight. */}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => handleTrigger(30)}
+              disabled={triggering || backfillRunning}
+              title={
+                backfillRunning && backfillStatus
+                  ? `Backfill in progress · ${backfillStatus.days_done ?? 0}/${backfillStatus.days_total ?? backfillStatus.days_requested ?? 30} days`
+                  : integration.last_backfill_at
+                    ? `Last completed ${formatBackfillTimestamp(integration.last_backfill_at)}. Click to re-run for every company.`
+                    : 'Run a 30-day history backfill across every company'
+              }
+            >
+              {(triggering || backfillRunning) ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : integration.last_backfill_at ? (
+                <Check size={14} />
+              ) : (
+                <RefreshCw size={14} />
+              )}
+              {backfillRunning && backfillStatus
+                ? `Running · ${backfillStatus.days_done ?? 0}/${backfillStatus.days_total ?? backfillStatus.days_requested ?? 30}`
+                : triggering ? 'Queuing…'
+                : integration.last_backfill_at ? 'Refresh history'
+                : 'Run all (30 days)'}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={() => setShowDisconnect(true)}
+              title="Disconnect the integration — does not delete per-company keys"
+            >
+              <X size={14} />
+              Disconnect
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Not connected, but available — show Connect button */}
+      {!isComingSoon && !integration && !showConnect && (
+        <div className="mt-4">
+          <Button type="button" onClick={() => setShowConnect(true)}>
+            Connect {entry.display_name}
+          </Button>
+        </div>
+      )}
+
+      {showConnect && !integration && (
+        <div className="mt-4 border-t border-border pt-3">
+          <ConnectForm
+            authKind={entry.auth_kind}
+            onCancel={() => setShowConnect(false)}
+            onSubmit={async (creds) => {
+              await onConnect(creds);
+              setShowConnect(false);
+            }}
+          />
+        </div>
+      )}
+
+      {showDisconnect && (
+        <ConfirmDisconnect
+          providerName={entry.display_name}
+          onCancel={() => setShowDisconnect(false)}
+          onConfirm={async () => {
+            await onDisconnect();
+            setShowDisconnect(false);
+          }}
+        />
+      )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Connected companies (per-company key management) ─────────────
+
+/** Render the per-company key matrix.  Each row shows the company
+ *  code + name + key status, plus inline "Set / Edit / Remove"
+ *  affordances that POST to the new /integrations/{provider}/
+ *  companies/{code}/credentials endpoints.
+ *
+ *  The list comes from the backend (which already pulls from the
+ *  encrypted integration credentials map) — raw tokens are never
+ *  sent to the client.  A successful set/remove triggers a refetch
+ *  so the row immediately reflects the new state. */
+function ConnectedCompanies({ providerId }: { providerId: string }) {
+  const qc = useQueryClient();
+  const { data, isLoading, error } = useQuery<ProviderCompaniesResponse>({
+    queryKey: ['integration-companies', providerId],
+    queryFn: () => listProviderCompanies(providerId),
+    staleTime: 30_000,
+  });
+  // ALL hooks declared up-front BEFORE any early returns — React
+  // depends on the hook count being identical across renders.  The
+  // initial isLoading=true render must register the same hooks as
+  // the post-load render, or it raises minified error #310.
+  const [editing, setEditing] = useState<string | null>(null);
+  const [tokenDraft, setTokenDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  // Per-row "is this company currently being tested" state.
+  // Tracked as a Set rather than a single string so the operator
+  // can click Test on multiple companies in quick succession
+  // without the second click clearing the first row's spinner.
+  // Each row's spinner is driven by membership in this set; the
+  // feedback line accumulates results in order.
+  const [testingCodes, setTestingCodes] = useState<Set<string>>(new Set());
+  const [refreshingCodes, setRefreshingCodes] = useState<Set<string>>(new Set());
+
+  const companies = data?.companies ?? [];
+  if (isLoading) {
+    return (
+      <div className="mb-3 text-2xs text-muted-foreground">
+        Loading companies…
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className={`${toneClasses('danger')} mb-3 rounded px-2 py-1 text-2xs`}>
+        Couldn't load companies: {error instanceof Error ? error.message : 'unknown'}
+      </div>
+    );
+  }
+  if (companies.length === 0) {
+    return (
+      <div className={`${toneClasses('info')} mb-3 rounded px-2 py-1.5 text-2xs`}>
+        No companies yet. Add one on the Companies page, then return here to set its API key.
+      </div>
+    );
+  }
+
+  const handleSave = async (code: string) => {
+    setSaving(true); setFeedback(null);
+    try {
+      await setCompanyCredential(providerId, code, tokenDraft);
+      setEditing(null); setTokenDraft('');
+      setFeedback(`Key saved for ${code}`);
+      qc.invalidateQueries({ queryKey: ['integration-companies', providerId] });
+    } catch (e) {
+      setFeedback(`Failed to save ${code}: ${e instanceof Error ? e.message : 'error'}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemove = async (code: string) => {
+    if (!confirm(`Remove the Samsara API key for ${code}? Live ingest for this company will stop until a new key is added.`)) {
+      return;
+    }
+    setSaving(true); setFeedback(null);
+    try {
+      await removeCompanyCredential(providerId, code);
+      setFeedback(`Key cleared for ${code}`);
+      qc.invalidateQueries({ queryKey: ['integration-companies', providerId] });
+    } catch (e) {
+      setFeedback(`Failed to remove ${code}: ${e instanceof Error ? e.message : 'error'}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const missingKeys = companies.filter(c => !c.has_key).length;
+  const summary = data?.health_summary;
+
+  const handleRefresh = async (code: string) => {
+    // Mirror handleTest's "already in flight" guard so a double-
+    // click doesn't fire two queueing requests at the backend.
+    if (refreshingCodes.has(code)) return;
+    setRefreshingCodes(prev => new Set(prev).add(code));
+    try {
+      const r = await triggerCompanyBackfill(providerId, code, 30);
+      setFeedback(
+        r.state === 'queued'
+          ? `↻ ${code}: refresh queued · ${r.days} days`
+          : `${code}: ${r.state}`,
+      );
+      qc.invalidateQueries({ queryKey: ['integration-companies', providerId] });
+      qc.invalidateQueries({ queryKey: ['integrations'] });
+    } catch (e) {
+      setFeedback(`✗ ${code}: ${e instanceof Error ? e.message : 'refresh failed'}`);
+    } finally {
+      setRefreshingCodes(prev => {
+        const next = new Set(prev);
+        next.delete(code);
+        return next;
+      });
+    }
+  };
+
+  const handleTest = async (code: string) => {
+    // Already in flight for this company → no-op (defensive — the
+    // per-row Test button is already disabled while the row is in
+    // ``testingCodes``).
+    if (testingCodes.has(code)) return;
+    setTestingCodes(prev => new Set(prev).add(code));
+    try {
+      const r = await testCompanyConnection(providerId, code);
+      setFeedback(
+        r.ok
+          ? `✓ ${code}: ${r.message} · ${r.elapsed_ms}ms`
+          : `✗ ${code}: ${r.message}`,
+      );
+      // Refresh both the company list (picks up new health) AND
+      // the integration list (aggregate ai.status may have flipped
+      // back to "connected" via _refresh_aggregate_status, which
+      // unblocks the Run-now button).
+      qc.invalidateQueries({ queryKey: ['integration-companies', providerId] });
+      qc.invalidateQueries({ queryKey: ['integrations'] });
+    } catch (e) {
+      setFeedback(`✗ ${code}: ${e instanceof Error ? e.message : 'test failed'}`);
+    } finally {
+      setTestingCodes(prev => {
+        const next = new Set(prev);
+        next.delete(code);
+        return next;
+      });
+    }
+  };
+
+  return (
+    <div className="mb-4 border border-border rounded-md">
+      <div className="flex items-center justify-between px-3 py-2 bg-muted/40 border-b border-border">
+        <span className="text-xs font-medium flex items-center gap-1.5">
+          <KeyRound size={12} />
+          Connected companies ({companies.length})
+        </span>
+        <span className="flex items-center gap-2">
+          {/* Aggregate health summary — derived from per-company
+              probe results, NOT the legacy ai.status.  Lets the
+              operator see "4 of 5 healthy" instead of a binary
+              connected/error chip. */}
+          {summary && summary.status !== 'unknown' && (
+            <span className={`${toneClasses(
+              summary.status === 'healthy'
+                ? 'ok'
+                : summary.status === 'degraded'
+                ? 'warn'
+                : 'danger',
+            )} text-2xs px-1.5 py-0.5 rounded`}>
+              {summary.healthy} of {summary.total} healthy
+            </span>
+          )}
+          {missingKeys > 0 && (
+            <span className={`${toneClasses('warn')} text-2xs px-1.5 py-0.5 rounded`}>
+              {missingKeys} need a key
+            </span>
+          )}
+        </span>
+      </div>
+      <ul className="divide-y divide-border">
+        {companies.map((co) => (
+          <CompanyKeyRow
+            key={co.code}
+            company={co}
+            editing={editing === co.code}
+            tokenDraft={tokenDraft}
+            saving={saving}
+            testing={testingCodes.has(co.code)}
+            refreshing={refreshingCodes.has(co.code)}
+            onEdit={() => { setEditing(co.code); setTokenDraft(''); }}
+            onCancel={() => { setEditing(null); setTokenDraft(''); }}
+            onChangeDraft={setTokenDraft}
+            onSave={() => handleSave(co.code)}
+            onRemove={() => handleRemove(co.code)}
+            onTest={() => handleTest(co.code)}
+            onRefresh={() => handleRefresh(co.code)}
+          />
+        ))}
+      </ul>
+      {feedback && (
+        <p className="px-3 py-1.5 text-2xs border-t border-border text-muted-foreground">
+          {feedback}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function CompanyKeyRow({
+  company, editing, tokenDraft, saving, testing, refreshing,
+  onEdit, onCancel, onChangeDraft, onSave, onRemove, onTest, onRefresh,
+}: {
+  company: ProviderCompanyEntry;
+  editing: boolean;
+  tokenDraft: string;
+  saving: boolean;
+  testing: boolean;
+  refreshing: boolean;
+  onEdit: () => void;
+  onCancel: () => void;
+  onChangeDraft: (v: string) => void;
+  onSave: () => void;
+  onRemove: () => void;
+  onTest: () => void;
+  onRefresh: () => void;
+}) {
+  // Tone resolution for the per-row health badge.  ``null`` health
+  // (never tested / TTL expired) is treated as ``neutral`` — we don't
+  // know if it's healthy or not, so we shouldn't claim either way.
+  const healthTone =
+    company.health === null ? 'neutral'
+    : company.health.ok ? 'ok'
+    : 'danger';
+  const healthText =
+    company.health === null ? 'untested'
+    : company.health.ok
+      ? (company.health.elapsed_ms
+          ? `reachable · ${company.health.elapsed_ms}ms`
+          : 'reachable')
+      : company.health.message;
+
+  return (
+    <li className="px-3 py-2 text-xs">
+      <div className="flex items-center gap-3">
+        <span className="font-medium w-12 shrink-0">{company.code}</span>
+        <span className="flex-1 truncate text-muted-foreground">
+          {company.display_name}
+        </span>
+        {!editing && (
+          <>
+            {/* Per-company /me probe result.  Title tooltip carries
+                the full message when the badge gets ellipsised. */}
+            <span
+              className={`${toneClasses(healthTone)} text-2xs px-1.5 py-0.5 rounded max-w-[180px] truncate`}
+              title={
+                company.health
+                  ? `${company.health.ok ? '✓' : '✗'} ${company.health.message}`
+                  : 'No /me probe has been run for this company yet'
+              }
+            >
+              {healthText}
+            </span>
+            <Button
+              type="button" variant="ghost" size="sm"
+              onClick={onTest} disabled={testing}
+              title="Probe this company's Samsara /me endpoint"
+            >
+              {testing
+                ? <Loader2 size={12} className="animate-spin" />
+                : <RefreshCw size={12} />}
+              Test
+            </Button>
+            {/* Per-company history refresh — same shape as Test but
+                queues a 30-day backfill scoped to this company's key.
+                Disabled when the company has no key (nothing to fetch
+                with) or a refresh is already in flight for this row. */}
+            <Button
+              type="button" variant="ghost" size="sm"
+              onClick={onRefresh}
+              disabled={refreshing || !company.has_key}
+              title={
+                company.has_key
+                  ? `Refresh this company's last 30 days of history`
+                  : 'Set a key first before refreshing this company'
+              }
+            >
+              {refreshing
+                ? <Loader2 size={12} className="animate-spin" />
+                : <RefreshCw size={12} />}
+              Refresh
+            </Button>
+            {company.has_key ? (
+              <span className="text-ok text-2xs flex items-center gap-1">
+                <Check size={10} /> key set
+              </span>
+            ) : (
+              <span className="text-muted-foreground italic text-2xs">no key</span>
+            )}
+            <Button type="button" variant="ghost" size="sm" onClick={onEdit}>
+              <Pencil size={12} />
+              {company.has_key ? 'Rotate' : 'Set key'}
+            </Button>
+            {company.has_key && (
+              <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
+                <Trash2 size={12} />
+              </Button>
+            )}
+          </>
+        )}
+      </div>
+      {editing && (
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            type="password"
+            placeholder="Samsara API token"
+            value={tokenDraft}
+            onChange={(e) => onChangeDraft(e.target.value)}
+            className="flex-1 bg-muted border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-ring"
+            autoFocus
+          />
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            onClick={onSave}
+            disabled={saving || !tokenDraft.trim()}
+          >
+            {saving ? <Loader2 size={12} className="animate-spin" /> : 'Save'}
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={onCancel}>
+            Cancel
+          </Button>
+        </div>
+      )}
+    </li>
+  );
+}
+
+// ── Feature toggle list ────────────────────────────────────────
+
+function FeatureToggleList({
+  capabilities,
+  toggles,
+  defaults,
+  onChange,
+  onTriggerBackfill,
+  backfillPending,
+  backfillRunningLabel,
+  backfillLastDoneLabel,
+}: {
+  capabilities: string[];
+  toggles: FeatureToggleMap;
+  defaults: FeatureToggleMap;
+  onChange: (next: FeatureToggleMap) => Promise<void>;
+  onTriggerBackfill: (days: number) => Promise<void>;
+  backfillPending: boolean;
+  /** When defined, shows the progress (e.g. "12/30") on the button
+   *  so the operator can see the live backfill state without having
+   *  to look at the badge in the card header. */
+  backfillRunningLabel?: string;
+  /** When defined and no run is in flight, the button label switches
+   *  from "Run now (30 days)" to "Refresh history · N ago" so the
+   *  operator sees at-a-glance that the work is already done.
+   *  Format comes from formatBackfillTimestamp (relative + UTC). */
+  backfillLastDoneLabel?: string;
+}) {
+  return (
+    <ul className="space-y-1.5">
+      {capabilities.map((cap) => {
+        const t = toggles[cap] ?? { enabled: true };
+        const def = defaults[cap] ?? {};
+        const cadenceLabel = formatCadence(t.cron || t.interval_sec || t.interval_min || t.interval_hour ? t : def);
+        const isBackfill = cap === 'history_backfill';
+        return (
+          <li key={cap} className="flex items-center gap-3 text-sm">
+            <label className="flex items-center gap-2 flex-1 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={t.enabled ?? true}
+                onChange={(e) =>
+                  onChange({
+                    ...toggles,
+                    [cap]: { ...t, enabled: e.target.checked },
+                  })
+                }
+                className="size-4 accent-primary"
+              />
+              <span>{capabilityLabel(cap)}</span>
+            </label>
+            {cadenceLabel && !isBackfill && (
+              <span className="text-2xs text-muted-foreground">{cadenceLabel}</span>
+            )}
+            {/* The history_backfill row used to host an inline "Run
+                now" button here.  That button has been promoted to
+                the bottom action row alongside "Test all" so backfill,
+                test, and disconnect all live together — and per-row
+                "Refresh" buttons now expose the same affordance per
+                company.  The checkbox here still controls whether the
+                capability is enabled at all. */}
+            {isBackfill && (backfillPending || backfillRunningLabel) && (
+              <span
+                className="text-2xs text-muted-foreground italic"
+                title="A history backfill is in flight — see the badge in the card header for details"
+              >
+                {backfillRunningLabel
+                  ? `running · ${backfillRunningLabel}`
+                  : 'queuing…'}
+              </span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+// ── Inline action feedback banner ────────────────────────────
+
+function FeedbackBanner({
+  kind,
+  message,
+  onDismiss,
+}: {
+  kind: 'success' | 'error' | 'info';
+  message: string;
+  onDismiss: () => void;
+}) {
+  // Tone resolution funnels through toneClasses() — the canonical
+  // soft-pill recipe — so the banner inherits the theme's radius
+  // and the same 15% / 30% alpha mix every status pill uses.
+  const tone =
+    kind === 'success' ? toneClasses('ok')
+    : kind === 'error' ? toneClasses('danger')
+    : toneClasses('neutral');
+  const Icon = kind === 'success' ? Check : kind === 'error' ? AlertTriangle : RefreshCw;
+  return (
+    <div className={`mt-3 flex items-start gap-2 text-xs border rounded px-2.5 py-2 ${tone}`}>
+      <Icon size={14} className="flex-shrink-0 mt-0.5" />
+      <span className="flex-1 break-words">{message}</span>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="flex-shrink-0 opacity-60 hover:opacity-100"
+        aria-label="Dismiss"
+      >
+        <X size={12} />
+      </button>
+    </div>
+  );
+}
+
+// ── Connect form ──────────────────────────────────────────────
+
+function ConnectForm({
+  authKind,
+  onSubmit,
+  onCancel,
+}: {
+  authKind: string;
+  onSubmit: (creds: Record<string, string>) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [token, setToken] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (submitting) return;
+    setError('');
+    setSubmitting(true);
+    try {
+      await onSubmit({ api_token: token.trim() });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // For now every provider uses api_token; future OAuth providers
+  // will render their own sub-component switched on authKind.
+  if (authKind !== 'api_token') {
+    return (
+      <div className="text-sm text-muted-foreground">
+        {authKind} auth flow not yet supported in the dashboard.
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-2">
+      <label className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        API token
+      </label>
+      <input
+        type="password"
+        value={token}
+        onChange={(e) => setToken(e.target.value)}
+        className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+        placeholder="paste your provider API token"
+        autoFocus
+      />
+      {error && <p className="text-xs text-danger">{error}</p>}
+      <div className="flex gap-2">
+        <Button type="submit" disabled={submitting || !token.trim()}>
+          <Check size={14} />
+          {submitting ? 'Connecting…' : 'Connect'}
+        </Button>
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+// ── Disconnect confirmation ────────────────────────────────────
+
+function ConfirmDisconnect({
+  providerName,
+  onCancel,
+  onConfirm,
+}: {
+  providerName: string;
+  onCancel: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  return (
+    <div className="mt-3 border-t border-border pt-3 bg-danger/5 rounded p-3 -mx-2">
+      <p className="text-sm">
+        Disconnect <span className="font-semibold">{providerName}</span>?
+        Live ingest stops immediately.  Reconnecting later restores it
+        without re-entering credentials.
+      </p>
+      <div className="mt-2 flex gap-2">
+        <Button
+          type="button"
+          variant="destructive"
+          onClick={async () => {
+            if (submitting) return;
+            setSubmitting(true);
+            try {
+              await onConfirm();
+            } finally {
+              setSubmitting(false);
+            }
+          }}
+          disabled={submitting}
+        >
+          {submitting ? 'Disconnecting…' : 'Yes, disconnect'}
+        </Button>
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}

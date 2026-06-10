@@ -48,25 +48,23 @@ async def gather_snapshots(
     show_co = len(companies) > 1
 
     # Each company has its own Samsara API key → one round-trip per
-    # company (~3-5 s). Run them in parallel; the Samsara API rate
-    # limits per *key*, so concurrent calls across distinct keys don't
-    # contend with each other.
-    from adapters.samsara.client import SamsaraClient
+    # company (~3-5 s).  Run them in parallel through the cached
+    # MultiCompanyClient pool — Samsara rate-limits per *key*, so
+    # concurrent calls across distinct keys don't contend, and the
+    # shared pool gives us the circuit breaker + retry chain for
+    # free.  Per-company iteration is over ``multi.clients`` so this
+    # path can't drift from the canonical key map.
+    from infra.services import get_client
+    multi = await get_client(account_id)
 
-    async def _fetch_one(co):
-        client = SamsaraClient(
-            api_key=co.samsara_api_key,
-            active_days=co.active_days,
-        )
+    async def _fetch_one(code: str, client) -> list[dict]:
         try:
             snaps = await client.get_dashcam_snapshots(days=days)
         except Exception as e:
-            logger.warning(f"Camera snapshots failed for {co.code}: {e}")
+            logger.warning(f"Camera snapshots failed for {code}: {e}")
             return []
-        finally:
-            await client.close()
         for s in snaps:
-            s["_org"] = co.code
+            s["_org"] = code
         if vehicle_name:
             snaps = [
                 s for s in snaps
@@ -75,7 +73,7 @@ async def gather_snapshots(
         return snaps
 
     results = await asyncio.gather(
-        *(_fetch_one(co) for co in companies),
+        *(_fetch_one(code, c) for code, c in multi.clients.items()),
         return_exceptions=False,
     )
     all_snapshots: list[dict] = []
