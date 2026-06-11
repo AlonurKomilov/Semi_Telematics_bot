@@ -17,9 +17,6 @@ import { generateNav, type NavItem } from '../shells/nav/generateNav';
 // works without JSON parsing; reading is cheap enough to do in the
 // initializer of useState (called once per mount).
 const COLLAPSE_KEY = 'sidebar.collapsed';
-// The Settings group is ONE collapsible parent entry (the feature's
-// components nest under it).  Closed by default; the preference persists.
-const SETTINGS_OPEN_KEY = 'sidebar.settingsOpen';
 
 function readCollapsed(): boolean {
   try {
@@ -36,12 +33,11 @@ export default function Sidebar() {
   // Same-mount reads see the latest value because we update both
   // simultaneously below.
   const [collapsed, setCollapsed] = useState<boolean>(readCollapsed);
-  const [settingsOpen, setSettingsOpen] = useState<boolean>(() => {
-    try { return localStorage.getItem(SETTINGS_OPEN_KEY) === '1'; } catch { return false; }
-  });
-  useEffect(() => {
-    try { localStorage.setItem(SETTINGS_OPEN_KEY, settingsOpen ? '1' : '0'); } catch { /* session-only */ }
-  }, [settingsOpen]);
+  // The Settings group follows the route: it expands while you're on
+  // the Settings page or any of its components, and folds by itself the
+  // moment you navigate to another feature — no chevron press needed.
+  // (The chevron remains for peeking at the list without navigating.)
+  const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const location = useLocation();
   useEffect(() => {
     try {
@@ -62,6 +58,15 @@ export default function Sidebar() {
   // only thing left is the two account kill-switches (payroll / coaching)
   // which are separate from the department modules.
   const navConfig = generateNav(activeView, viewHasAny, user?.enabled_modules);
+
+  const settingsGroup = navConfig.find((g) => g.collapsible);
+  const inSettingsArea = !!settingsGroup && (
+    settingsGroup.items.some((i) => location.pathname.startsWith(i.path)) ||
+    (!!settingsGroup.parentItem && location.pathname.startsWith(settingsGroup.parentItem.path))
+  );
+  useEffect(() => {
+    if (!inSettingsArea) setSettingsOpen(false);
+  }, [location.pathname, inSettingsArea]);
 
   const filterItems = (items: NavItem[]) =>
     items.filter((item) => {
