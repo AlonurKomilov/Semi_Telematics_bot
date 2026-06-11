@@ -171,3 +171,54 @@ async def parking_map_image(
     if not real.startswith(os.path.realpath(_PROJECT_ROOT)):
         raise HTTPException(status_code=403, detail="Access denied")
     return FileResponse(real, media_type="image/png")
+
+
+# ═══ Utilisation heatmap (a Live-Map overlay served from THIS
+# feature's data — parking_events) ════════════════════════════════
+from interfaces.api.deps import require_permission  # noqa: F811
+
+fleet_router = APIRouter(prefix="/fleet", tags=["fleet"])
+
+
+@fleet_router.get("/utilisation/heatmap")
+async def fleet_utilisation_heatmap(
+    days: int = Query(30, ge=1, le=90),
+    user: dict = Depends(require_permission("can_vehicle_all")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Aggregate fleet activity points for the Owner / Admin Live Map
+    ``UtilisationHeatmap`` overlay.
+
+    Built from ``parking_events`` — every stop a truck makes is a
+    sample of "where this fleet operates."  Each point's weight is
+    the ``duration_hours`` of that stop (capped at 24h to keep one
+    long weekend stop from drowning out a busy weekday).  The result
+    is a [[lat, lon, weight], ...] array sized for ``leaflet.heat`` —
+    same wire shape the Safety event heatmap uses, so the frontend
+    overlay reuses the heatLayer wiring.
+
+    Permission-gated by ``can_vehicle_all`` — only roles whose job
+    spans the full fleet (Owner / Admin / Fleet / Safety / Dispatch
+    today) see utilisation density.  Driver / HR / Accounting either
+    don't reach the Live Map or have their own persona overlay.
+    """
+    # 24h cap on a single stop's weight.  Without this, a 72-hour
+    # weekend yard-stop shows up 3× brighter than a 24h Friday
+    # parking, which makes the heatmap visually misleading
+    # ("everyone's at the yard!") when really it's just one truck.
+    MAX_HOURS_PER_POINT = 24.0
+
+    rows = await tenant_db.get_parking_points_for_heatmap(
+        user["account_id"], days=days,
+    )
+    points: list[list[float]] = []
+    for r in rows:
+        lat = float(r.get("latitude") or 0)
+        lon = float(r.get("longitude") or 0)
+        weight = min(float(r.get("duration_hours") or 0), MAX_HOURS_PER_POINT)
+        if weight <= 0:
+            continue
+        points.append([lat, lon, weight])
+    return {"points": points, "count": len(points), "days": days}
+
+

@@ -52,7 +52,7 @@ async def overview_app(pg_db, monkeypatch):
     # Stub out Samsara — no live fleet in tests.
     async def _empty_fleet(_account_id, company=None):
         return []
-    import interfaces.api.routes.fleet as fleet_mod
+    import features.overview.router as fleet_mod
     monkeypatch.setattr(fleet_mod, "get_fleet_for_map", _empty_fleet)
 
     # Per-process cache leak across tests — drain before each.

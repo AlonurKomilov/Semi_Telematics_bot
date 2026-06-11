@@ -71,10 +71,21 @@ def test_catalog_lists_expected_providers():
         assert entry.auth_kind
 
 
-def test_catalog_marks_only_samsara_available_today():
+def test_catalog_availability_today():
+    """Samsara (telematics) and Datatruck (TMS) are both AVAILABLE.
+    Motive and Geotab remain COMING_SOON until their adapters ship."""
     assert PROVIDER_CATALOG["samsara"].status == ProviderStatus.AVAILABLE
-    for pid in ("motive", "geotab", "datatruck"):
+    assert PROVIDER_CATALOG["datatruck"].status == ProviderStatus.AVAILABLE
+    for pid in ("motive", "geotab"):
         assert PROVIDER_CATALOG[pid].status == ProviderStatus.COMING_SOON
+
+
+def test_datatruck_uses_api_token_with_subdomain_auth():
+    """Datatruck's per-tenant API host means the connect form must
+    ask for a subdomain in addition to the token.  This test locks
+    that contract so a future refactor can't silently revert it and
+    break the operator UX."""
+    assert PROVIDER_CATALOG["datatruck"].auth_kind == "api_token_with_subdomain"
 
 
 def test_catalog_samsara_defaults_include_all_capabilities():

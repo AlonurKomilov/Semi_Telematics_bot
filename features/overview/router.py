@@ -1,13 +1,7 @@
-"""Fleet operational view endpoints.
+"""Overview stats API — the landing page's aggregated numbers."""
 
-URL structure (category/feature, matches sidebar grouping):
-    GET /api/fleet/overview         raw fleet snapshot (admin/fleet/safety roles)
-    GET /api/fleet/overview/stats   aggregated overview-page stats (role-aware)
-    GET /api/fleet/weather          ambient temperature readings from sensors
-
-Per-vehicle data (list, detail, health, faults, timeline) lives in the
-canonical vehicle resource at /api/vehicles/* — see routes/vehicles.py.
-"""
+# router code is interface-layer, co-located with its owner
+# (docs/FEATURES.md): ONLY router files import interfaces.api.deps.
 
 from __future__ import annotations
 
@@ -81,62 +75,6 @@ def _stats_cache_put(key: tuple, value: dict) -> None:
                 _stats_cache.pop(k, None)
 
 
-@router.get("/overview")
-async def fleet_overview(
-    company: str | None = Query(None, description="Filter by company code"),
-    user: dict = Depends(require_permission("can_faults")),
-):
-    """Fleet snapshot — vehicles with status, location, faults."""
-    allowed = await get_user_company_codes(user)
-    validate_company_access(allowed, company)
-    async def _live():
-        return await _svc_fleet_overview(user["account_id"], company=company)
-    vehicles = await _wh_reader.get_current_vehicles(
-        user["account_id"], company=company, samsara_fallback=_live,
-    )
-    vehicles = filter_by_allowed_companies(vehicles, allowed)
-    vehicles = await filter_by_assigned_trucks(vehicles, user)
-    return {"vehicles": vehicles, "count": len(vehicles)}
-
-
-@router.get("/weather")
-async def fleet_weather(
-    user: dict = Depends(require_permission("can_faults")),
-):
-    """Ambient temperature readings from vehicle sensors."""
-    vehicles = await _svc_fleet_weather(user["account_id"])
-    vehicles = await filter_by_assigned_trucks(vehicles, user)
-
-    items = []
-    temps: list[float] = []
-    for v in vehicles:
-        w = v.get("_weather", {})
-        temp_f = w.get("temp_f")
-        entry = {
-            "name": v.get("name", "?"),
-            "company": v.get("_org", ""),
-            "temp_f": round(temp_f, 1) if temp_f is not None else None,
-            "temp_c": round(w["temp_c"], 1) if w.get("temp_c") is not None else None,
-            "baro_inhg": round(w["baro_inhg"], 2) if w.get("baro_inhg") is not None else None,
-            "temp_time": w.get("temp_time"),
-            "location": v.get("location", {}).get("reverseGeo", {}).get("formattedLocation", ""),
-        }
-        items.append(entry)
-        if temp_f is not None:
-            temps.append(temp_f)
-
-    summary = {}
-    if temps:
-        summary = {
-            "avg_f": round(sum(temps) / len(temps), 1),
-            "min_f": round(min(temps), 1),
-            "max_f": round(max(temps), 1),
-            "freezing_count": sum(1 for t in temps if t <= 32),
-            "hot_count": sum(1 for t in temps if t >= 95),
-            "reporting_count": len(temps),
-        }
-
-    return {"vehicles": items, "count": len(items), "summary": summary}
 
 
 @router.get("/overview/stats")
@@ -331,64 +269,9 @@ async def overview_stats(
     return result
 
 
-@router.get("/utilisation/heatmap")
-async def fleet_utilisation_heatmap(
-    days: int = Query(30, ge=1, le=90),
-    user: dict = Depends(require_permission("can_vehicle_all")),
-    tenant_db=Depends(get_tenant_db),
-):
-    """Aggregate fleet activity points for the Owner / Admin Live Map
-    ``UtilisationHeatmap`` overlay.
-
-    Built from ``parking_events`` — every stop a truck makes is a
-    sample of "where this fleet operates."  Each point's weight is
-    the ``duration_hours`` of that stop (capped at 24h to keep one
-    long weekend stop from drowning out a busy weekday).  The result
-    is a [[lat, lon, weight], ...] array sized for ``leaflet.heat`` —
-    same wire shape the Safety event heatmap uses, so the frontend
-    overlay reuses the heatLayer wiring.
-
-    Permission-gated by ``can_vehicle_all`` — only roles whose job
-    spans the full fleet (Owner / Admin / Fleet / Safety / Dispatch
-    today) see utilisation density.  Driver / HR / Accounting either
-    don't reach the Live Map or have their own persona overlay.
-    """
-    # 24h cap on a single stop's weight.  Without this, a 72-hour
-    # weekend yard-stop shows up 3× brighter than a 24h Friday
-    # parking, which makes the heatmap visually misleading
-    # ("everyone's at the yard!") when really it's just one truck.
-    MAX_HOURS_PER_POINT = 24.0
-
-    rows = await tenant_db.get_parking_points_for_heatmap(
-        user["account_id"], days=days,
-    )
-    points: list[list[float]] = []
-    for r in rows:
-        lat = float(r.get("latitude") or 0)
-        lon = float(r.get("longitude") or 0)
-        weight = min(float(r.get("duration_hours") or 0), MAX_HOURS_PER_POINT)
-        if weight <= 0:
-            continue
-        points.append([lat, lon, weight])
-    return {"points": points, "count": len(points), "days": days}
 
 
 legacy_router = APIRouter(tags=["fleet"], include_in_schema=False)
-
-
-@legacy_router.get("/overview/fleet")
-async def _legacy_fleet_overview(
-    company: str | None = Query(None, description="Filter by company code"),
-    user: dict = Depends(require_permission("can_faults")),
-):
-    return await fleet_overview(company=company, user=user)
-
-
-@legacy_router.get("/weather/fleet")
-async def _legacy_fleet_weather(
-    user: dict = Depends(require_permission("can_faults")),
-):
-    return await fleet_weather(user=user)
 
 
 @legacy_router.get("/dashboard/stats")

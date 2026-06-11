@@ -82,7 +82,22 @@ class DatatruckClient:
         # ``https://premier.datatruck.io`` both reduce to ``premier``.
         sub = company_subdomain.strip().lower()
         sub = sub.removeprefix("https://").removeprefix("http://")
-        sub = sub.removesuffix(".datatruck.io").removesuffix("/")
+        # Order matters: trailing slash MUST be stripped before the
+        # ".datatruck.io" suffix or "premier.datatruck.io/" leaves
+        # the full host in place ("/" doesn't end with ".datatruck.io").
+        sub = sub.removesuffix("/")
+        sub = sub.removesuffix(".datatruck.io")
+        # ``app`` is Datatruck's consolidated SPA login host — it's
+        # the most likely wrong-paste from an operator who copied
+        # their browser URL bar.  Give a specific error so they don't
+        # waste minutes wondering why the token is "rejected" when
+        # the real problem is the address.
+        if sub == "app":
+            raise ValueError(
+                "'app.datatruck.io' is the shared Datatruck login page, "
+                "not a company URL — paste the part that's unique to "
+                "your company (e.g. 'premier')",
+            )
         if not sub or "." in sub or "/" in sub:
             raise ValueError(
                 f"company_subdomain {company_subdomain!r} is not a "

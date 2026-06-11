@@ -1061,24 +1061,56 @@ function ConnectForm({
       {wantsSubdomain && (
         <div className="space-y-1.5">
           <label className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Company subdomain
+            Your Datatruck address
           </label>
           <input
             type="text"
             value={subdomain}
             onChange={(e) => setSubdomain(e.target.value)}
             className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
-            placeholder="premier"
+            placeholder="premier.datatruck.io  or just  premier"
             autoFocus
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
           />
-          <p className="text-2xs text-muted-foreground">
-            The label before <span className="font-mono">.datatruck.io</span> in
-            your Datatruck URL — e.g. <span className="font-mono">premier</span>
-            {' '}for <span className="font-mono">premier.datatruck.io</span>.
-          </p>
+          <details className="text-2xs text-muted-foreground">
+            <summary className="cursor-pointer select-none hover:text-foreground">
+              Where do I find this?
+            </summary>
+            <div className="mt-1.5 pl-3 space-y-1.5 border-l-2 border-border">
+              <p>
+                Datatruck gives every company its own URL prefix (e.g.{' '}
+                <span className="font-mono">premier</span> for Premier
+                Trucking). Three places you might find yours:
+              </p>
+              <ol className="list-decimal list-inside space-y-0.5 ml-1">
+                <li>
+                  In the welcome email Datatruck sent you when your
+                  account was first set up.
+                </li>
+                <li>
+                  By emailing{' '}
+                  <span className="font-mono">support@datatruck.io</span>{' '}
+                  — they answer this quickly.
+                </li>
+                <li>
+                  In your Datatruck browser tab: press{' '}
+                  <kbd className="font-mono">F12</kbd>, click{' '}
+                  <em>Network</em>, refresh the page, click any row in the
+                  list — the <em>Request URL</em> at the top shows{' '}
+                  <span className="font-mono">SOMETHING.datatruck.io</span>{' '}
+                  — that <em>SOMETHING</em> is what to paste.
+                </li>
+              </ol>
+              <p className="italic">
+                Heads up:{' '}
+                <span className="font-mono">app.datatruck.io</span> is the
+                shared login page — not your company URL. We need the part
+                that's unique to your company.
+              </p>
+            </div>
+          </details>
         </div>
       )}
       <div className="space-y-1.5">

@@ -18,7 +18,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 # Assembly-shell routers — ONLY cross-feature aggregation (fleet/overview)
 # and governance/personal/platform surfaces stay in interfaces/api/routes
 # (docs/FEATURES.md).
-from interfaces.api.routes import fleet, health
+from interfaces.api.routes import health
+from features.overview import router as overview_routes
 from interfaces.api.routes import user as user_routes
 from interfaces.api.routes import admin as admin_routes
 from interfaces.api.routes import system as system_routes
@@ -372,9 +373,11 @@ def create_api() -> FastAPI:
         app.include_router(health.router, prefix=prefix)
         app.include_router(auth_router, prefix=prefix)
         app.include_router(user_routes.router, prefix=prefix)
-        app.include_router(fleet.router, prefix=prefix)
-        app.include_router(fleet.legacy_router, prefix=prefix)
+        app.include_router(overview_routes.router, prefix=prefix)
+        app.include_router(overview_routes.legacy_router, prefix=prefix)
         app.include_router(vehicles_routes.router, prefix=prefix)
+        app.include_router(vehicles_routes.fleet_router, prefix=prefix)
+        app.include_router(vehicles_routes.fleet_legacy_router, prefix=prefix)
         app.include_router(maps.router, prefix=prefix)
         app.include_router(pois.router, prefix=prefix)
         app.include_router(geofences.router, prefix=prefix)
@@ -382,6 +385,7 @@ def create_api() -> FastAPI:
         app.include_router(alerts.router, prefix=prefix)
         app.include_router(alerts.user_router, prefix=prefix)
         app.include_router(parking_routes.router, prefix=prefix)
+        app.include_router(parking_routes.fleet_router, prefix=prefix)
         app.include_router(dispatch_routes.router, prefix=prefix)
         app.include_router(dispatch_routes.legacy_router, prefix=prefix)
         app.include_router(scorecards_routes.router, prefix=prefix)
