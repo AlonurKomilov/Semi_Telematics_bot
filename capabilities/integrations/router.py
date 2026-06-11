@@ -300,14 +300,50 @@ async def connect_integration(
     # Test connection BEFORE persisting anything so bad credentials
     # surface immediately and the integration row never enters a
     # half-configured "stored but unusable" state.
-    try:
-        provider = await get_telematics_client(account_id, provider_id)
-    except KeyError as e:
-        raise HTTPException(503, f"provider not registered: {e}")
-    try:
-        status = await provider.test_connection(body.credentials)
-    except Exception as e:
-        raise HTTPException(502, f"connection test failed: {e}")
+    #
+    # Datatruck is special-cased here: its construction path in
+    # ``get_telematics_client`` reads credentials from the integration
+    # row, which doesn't exist yet on first connect.  Build the
+    # client + provider directly from the request body, run the
+    # test, then fall through to the normal upsert path.  For all
+    # other providers (Samsara today, Motive/Geotab tomorrow), the
+    # cached resolver path works as before.
+    if provider_id == "datatruck":
+        from adapters.telematics.datatruck.client import DatatruckClient
+        from adapters.telematics.datatruck.provider import DatatruckProvider
+        sub = (body.credentials or {}).get("company_subdomain") or ""
+        tok = (body.credentials or {}).get("api_token") or ""
+        if not sub or not tok:
+            raise HTTPException(
+                400,
+                "datatruck requires both 'company_subdomain' "
+                "(e.g. 'premier') and 'api_token' in credentials",
+            )
+        try:
+            client = DatatruckClient(company_subdomain=sub, api_token=tok)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        provider = DatatruckProvider(client)
+        try:
+            try:
+                status = await provider.test_connection(body.credentials)
+            finally:
+                # Drop the bare client we built for this probe — the
+                # cached one will be built on first ingest from the
+                # persisted credentials.  Skipping this leaks the
+                # aiohttp session.
+                await client.close()
+        except Exception as e:
+            raise HTTPException(502, f"connection test failed: {e}")
+    else:
+        try:
+            provider = await get_telematics_client(account_id, provider_id)
+        except KeyError as e:
+            raise HTTPException(503, f"provider not registered: {e}")
+        try:
+            status = await provider.test_connection(body.credentials)
+        except Exception as e:
+            raise HTTPException(502, f"connection test failed: {e}")
     if not status.ok:
         raise HTTPException(
             400, f"credentials rejected: {status.message or 'unknown error'}",

@@ -372,9 +372,22 @@ def _protect_owner(role: Role, fs: FeatureSet) -> FeatureSet:
 
 
 def get_permissions(role: Role) -> FeatureSet:
-    """Get the default permission set for a role (sync, no DB).
+    """Get the hardcoded ROLE-DEFAULT permission set (sync, no DB).
 
-    For account-specific permissions, use get_account_permissions() instead.
+    ⚠️  ROLE DEFAULTS ONLY.  This IGNORES per-account permission overrides
+    (the Role Permissions matrix) AND module-disablement masking.  Using it
+    in any path that decides what an authenticated user may DO or SEE is a
+    silent authorization bypass — that is exactly the bug that let the AI
+    tool gate serve data an account had revoked (see
+    test_ai_tool_account_aware_perms.py).
+
+    In request / tool / handler paths use the account-aware resolvers:
+        await can_for_account(account_id, role, "can_...")        # one flag
+        await get_account_permissions(role, account_id)           # full set
+
+    This sync default is appropriate ONLY for account-agnostic surfaces
+    (e.g. building a static menu skeleton) and as an explicit fallback when
+    no account_id is available.
     """
     return ROLE_PERMISSIONS.get(role, FeatureSet())
 

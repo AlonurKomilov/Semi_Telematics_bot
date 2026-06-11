@@ -32,7 +32,6 @@ from capabilities.scoring import router as scorecards_routes
 from capabilities.billing import router as billing_routes
 from capabilities.integrations import router as integrations_routes
 from capabilities.storage import router as storage_routes
-from capabilities.work_hours import router as work_hours_routes
 # Feature-owned routers live with their feature (vertical slice):
 # features/<x>/router.py.  Aliases keep the mounting loop stable.
 from features.vehicles import router as vehicles_routes
@@ -409,7 +408,6 @@ def create_api() -> FastAPI:
         app.include_router(drivers_routes.router, prefix=prefix)
         app.include_router(integrations_routes.router, prefix=prefix)
         app.include_router(webhooks_routes.router, prefix=prefix)
-        app.include_router(work_hours_routes.router, prefix=prefix)
 
     # ── observability ─────────────────────────────
     # Wire /metrics + OTel auto-instrumentation BEFORE the static

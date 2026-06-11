@@ -39,6 +39,7 @@ from .registry import (
 # here too — one line per provider — so that touching this umbrella
 # module is enough to wire every available vendor in.
 from . import samsara as _samsara_provider  # noqa: F401
+from . import datatruck as _datatruck_provider  # noqa: F401
 
 __all__ = [
     "Capability",

@@ -433,13 +433,21 @@ def _build_agent_user_prompt(
     return "".join(parts)
 
 
-def _check_tool_permission(
+async def _check_tool_permission(
     tool_name: str,
     tool_args: dict,
     user_role: str | None,
     user_context: dict | None,
+    account_id: int | None = None,
 ) -> dict | None:
     """Server-side guard: enforce role permissions on tool execution.
+
+    Resolves permissions **account-aware** via ``get_account_permissions``
+    — the same source of truth the API, dashboard, and bot enforce — so a
+    per-account override set in the Role Permissions matrix, or a disabled
+    module, is honored here too rather than silently bypassed by the
+    hardcoded role defaults.  Falls back to role defaults only when
+    ``account_id`` is unknown (e.g. an unauthenticated context).
 
     Returns ``None`` if the call is allowed.  Returns a ``{"error": …}``
     dict if blocked — caller feeds that back to the model so it can
@@ -450,9 +458,14 @@ def _check_tool_permission(
     req_perms = TOOL_PERMISSIONS.get(tool_name)
     if req_perms is not None:
         try:
-            from capabilities.iam.permissions import get_permissions
             from adapters.storage import Role
-            perms = get_permissions(Role(user_role))
+            role = Role(user_role)
+            if account_id is not None:
+                from capabilities.iam.permissions import get_account_permissions
+                perms = await get_account_permissions(role, int(account_id))
+            else:
+                from capabilities.iam.permissions import get_permissions
+                perms = get_permissions(role)
             if not any(getattr(perms, p, False) for p in req_perms):
                 return {"error": f"Access denied: your role ({user_role}) cannot use {tool_name}."}
         except (ValueError, KeyError, ImportError) as e:
@@ -685,7 +698,9 @@ async def _run_anthropic_agent(
             tu_id = tu.get("id", "")
             logger.info("AI agent (anthropic) calling tool: %s(%s)", tool_name, tool_args)
 
-            blocked = _check_tool_permission(tool_name, tool_args, user_role, user_context)
+            blocked = await _check_tool_permission(
+                tool_name, tool_args, user_role, user_context, account_id,
+            )
             if blocked is not None:
                 tool_results.append({"tool": tool_name, "args": tool_args, "data": blocked})
                 result_blocks.append({
@@ -987,64 +1002,14 @@ async def ask_agent(question: str, fleet_context: dict,
 
                     logger.info(f"AI agent calling tool: {tool_name}({tool_args})")
 
-                    # Safety-net: enforce role permissions on tool execution
-                    _blocked = False
-                    if user_role:
-                        req_perms = TOOL_PERMISSIONS.get(tool_name)
-                        if req_perms is not None:
-                            try:
-                                from capabilities.iam.permissions import get_permissions
-                                from adapters.storage import Role
-                                _perms = get_permissions(Role(user_role))
-                                if not any(getattr(_perms, p, False) for p in req_perms):
-                                    _blocked = True
-                                    result = {
-                                        "error": (
-                                            f"Access denied: your role ({user_role})"
-                                            f" cannot use {tool_name}."
-                                        ),
-                                    }
-                            except (ValueError, KeyError, ImportError) as e:
-                                logger.debug("Tool dispatch error for %s: %s", tool_name, e)
-                        if not _blocked and user_role == "driver" and user_context:
-                            assigned_trucks = user_context.get("vehicle_nums") or []
-                            if not assigned_trucks and user_context.get("vehicle_num"):
-                                assigned_trucks = [user_context["vehicle_num"]]
-                            assigned_set = {t.strip().lower() for t in assigned_trucks if t}
-                            if assigned_set:
-                                if tool_name in VEHICLE_SPECIFIC_TOOLS:
-                                    requested = (tool_args.get("vehicle_name") or "").strip().lower()
-                                    if not requested:
-                                        # Tools with an optional vehicle_name run
-                                        # account-wide when it is omitted — drivers
-                                        # must always name an assigned vehicle.
-                                        _blocked = True
-                                        result = {
-                                            "error": (
-                                                f"Access denied: drivers cannot run"
-                                                f" fleet-wide queries. Call {tool_name}"
-                                                f" again with vehicle_name set to one of"
-                                                f" your assigned vehicle(s):"
-                                                f" {', '.join(assigned_trucks)}."
-                                            ),
-                                        }
-                                    elif requested not in assigned_set:
-                                        _blocked = True
-                                        result = {
-                                            "error": (
-                                                f"Access denied: you can only query your"
-                                                f" assigned vehicle(s) ({', '.join(assigned_trucks)}),"
-                                                f" not '{tool_args.get('vehicle_name')}'."
-                                            ),
-                                        }
-                                if tool_name in ACCOUNT_WIDE_TOOLS:
-                                    _blocked = True
-                                    result = {
-                                        "error": (
-                                            f"Access denied: {tool_name} returns"
-                                            f" fleet-wide data not available to drivers."
-                                        ),
-                                    }
+                    # Safety-net: enforce role + isolation on tool execution
+                    # through the shared account-aware gate — one source of
+                    # truth with the Anthropic path and the API permission
+                    # model (per-account overrides + module masking included).
+                    result = await _check_tool_permission(
+                        tool_name, tool_args, user_role, user_context, account_id,
+                    )
+                    _blocked = result is not None
 
                     if _blocked:
                         tool_results.append({"tool": tool_name, "args": tool_args, "data": result})

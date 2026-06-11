@@ -211,16 +211,43 @@ PROVIDER_CATALOG: dict[str, ProviderCatalogEntry] = {
     "datatruck": ProviderCatalogEntry(
         provider_id="datatruck",
         display_name="Datatruck",
-        tagline="Under integration — coming soon",
+        tagline="TMS — drivers, trucks, loads, work orders",
         description=(
-            "Datatruck integration is in evaluation.  Reach out via "
-            "support if you'd like early access once it ships."
+            "Datatruck is a Transportation Management System (TMS) — "
+            "we pull authoritative drivers, trucks, trailers, orders "
+            "and work orders FROM Datatruck into 4truck so operators "
+            "don't double-enter.  Different from Samsara which provides "
+            "LIVE telematics; the two complement each other and can "
+            "run side-by-side on the same fleet.  Per-account "
+            "credentials: enter your Datatruck company subdomain "
+            "(e.g. 'premier' for premier.datatruck.io) plus an API "
+            "token minted from Datatruck Settings → API tokens with "
+            "Driver, Orders, and Work Order Read scopes."
         ),
         capabilities=frozenset({
-            Capability.VEHICLE_STATE,
+            Capability.TMS_DRIVERS_SYNC,
+            Capability.TMS_TRUCKS_SYNC,
+            Capability.TMS_TRAILERS_SYNC,
+            Capability.TMS_ORDERS_SYNC,
+            Capability.TMS_WORK_ORDERS_SYNC,
         }),
-        auth_kind="api_token",
+        # Custom shape — the form must collect a company subdomain
+        # in addition to the token because Datatruck's API host is
+        # per-tenant (https://{subdomain}.datatruck.io/api/...).
+        auth_kind="api_token_with_subdomain",
+        docs_url="https://apidocs.datatruck.io/api-reference/introduction",
         icon="Plug",
-        status=ProviderStatus.COMING_SOON,
+        status=ProviderStatus.AVAILABLE,
+        feature_defaults={
+            # Conservative cadences — Datatruck rate-limits at
+            # 20 req/min globally per token.  A driver/truck sync
+            # at 15 minutes is plenty fresh for HR + fleet uses,
+            # and leaves headroom for orders + work-order pulls.
+            Capability.TMS_DRIVERS_SYNC:     {"enabled": True,  "interval_min": 15},
+            Capability.TMS_TRUCKS_SYNC:      {"enabled": True,  "interval_min": 15},
+            Capability.TMS_TRAILERS_SYNC:    {"enabled": False, "interval_min": 60},
+            Capability.TMS_ORDERS_SYNC:      {"enabled": False, "interval_min": 30},
+            Capability.TMS_WORK_ORDERS_SYNC: {"enabled": False, "interval_min": 30},
+        },
     ),
 }

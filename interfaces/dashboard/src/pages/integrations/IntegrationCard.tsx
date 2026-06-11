@@ -385,8 +385,14 @@ export default function IntegrationCard({
           {/* Per-company key matrix — canonical place to manage
               Samsara API keys.  Replaces the API Key column that
               used to live on the Companies page so operators have
-              ONE place to see "is Samsara wired up correctly". */}
-          <ConnectedCompanies providerId={entry.provider_id} />
+              ONE place to see "is Samsara wired up correctly".
+              Only rendered for providers whose credentials are
+              per-company (auth_kind="api_token") — TMS providers
+              like Datatruck use one token per account, so the
+              "Connected companies" matrix has nothing to show. */}
+          {entry.auth_kind === 'api_token' && (
+            <ConnectedCompanies providerId={entry.provider_id} />
+          )}
 
           <FeatureToggleList
             capabilities={entry.capabilities}
@@ -452,34 +458,39 @@ export default function IntegrationCard({
                 company Refresh button but covers every company.  Smart
                 label: "Run all (30 days)" first time, "Refresh history
                 · N ago" when last_backfill_at is set, "Running · X/Y
-                days" while in flight. */}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => handleTrigger(30)}
-              disabled={triggering || backfillRunning}
-              title={
-                backfillRunning && backfillStatus
-                  ? `Backfill in progress · ${backfillStatus.days_done ?? 0}/${backfillStatus.days_total ?? backfillStatus.days_requested ?? 30} days`
-                  : integration.last_backfill_at
-                    ? `Last completed ${formatBackfillTimestamp(integration.last_backfill_at)}. Click to re-run for every company.`
-                    : 'Run a 30-day history backfill across every company'
-              }
-            >
-              {(triggering || backfillRunning) ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : integration.last_backfill_at ? (
-                <Check size={14} />
-              ) : (
-                <RefreshCw size={14} />
-              )}
-              {backfillRunning && backfillStatus
-                ? `Running · ${backfillStatus.days_done ?? 0}/${backfillStatus.days_total ?? backfillStatus.days_requested ?? 30}`
-                : triggering ? 'Queuing…'
-                : integration.last_backfill_at ? 'Refresh history'
-                : 'Run all (30 days)'}
-            </Button>
+                days" while in flight.  Only rendered for providers
+                that declare history_backfill in the catalog — TMS
+                providers (Datatruck) have no historical telemetry to
+                replay, so the button would be a misleading no-op. */}
+            {entry.capabilities.includes('history_backfill') && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => handleTrigger(30)}
+                disabled={triggering || backfillRunning}
+                title={
+                  backfillRunning && backfillStatus
+                    ? `Backfill in progress · ${backfillStatus.days_done ?? 0}/${backfillStatus.days_total ?? backfillStatus.days_requested ?? 30} days`
+                    : integration.last_backfill_at
+                      ? `Last completed ${formatBackfillTimestamp(integration.last_backfill_at)}. Click to re-run for every company.`
+                      : 'Run a 30-day history backfill across every company'
+                }
+              >
+                {(triggering || backfillRunning) ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : integration.last_backfill_at ? (
+                  <Check size={14} />
+                ) : (
+                  <RefreshCw size={14} />
+                )}
+                {backfillRunning && backfillStatus
+                  ? `Running · ${backfillStatus.days_done ?? 0}/${backfillStatus.days_total ?? backfillStatus.days_requested ?? 30}`
+                  : triggering ? 'Queuing…'
+                  : integration.last_backfill_at ? 'Refresh history'
+                  : 'Run all (30 days)'}
+              </Button>
+            )}
             <Button
               type="button"
               variant="destructive"
@@ -1010,16 +1021,26 @@ function ConnectForm({
   onCancel: () => void;
 }) {
   const [token, setToken] = useState('');
+  const [subdomain, setSubdomain] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  const wantsSubdomain = authKind === 'api_token_with_subdomain';
+  const canSubmit = token.trim().length > 0 && (
+    !wantsSubdomain || subdomain.trim().length > 0
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (submitting) return;
+    if (submitting || !canSubmit) return;
     setError('');
     setSubmitting(true);
     try {
-      await onSubmit({ api_token: token.trim() });
+      const creds: Record<string, string> = { api_token: token.trim() };
+      if (wantsSubdomain) {
+        creds.company_subdomain = subdomain.trim().toLowerCase();
+      }
+      await onSubmit(creds);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1027,9 +1048,7 @@ function ConnectForm({
     }
   };
 
-  // For now every provider uses api_token; future OAuth providers
-  // will render their own sub-component switched on authKind.
-  if (authKind !== 'api_token') {
+  if (authKind !== 'api_token' && authKind !== 'api_token_with_subdomain') {
     return (
       <div className="text-sm text-muted-foreground">
         {authKind} auth flow not yet supported in the dashboard.
@@ -1038,21 +1057,52 @@ function ConnectForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-2">
-      <label className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        API token
-      </label>
-      <input
-        type="password"
-        value={token}
-        onChange={(e) => setToken(e.target.value)}
-        className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
-        placeholder="paste your provider API token"
-        autoFocus
-      />
+    <form onSubmit={handleSubmit} className="space-y-3">
+      {wantsSubdomain && (
+        <div className="space-y-1.5">
+          <label className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Company subdomain
+          </label>
+          <input
+            type="text"
+            value={subdomain}
+            onChange={(e) => setSubdomain(e.target.value)}
+            className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+            placeholder="premier"
+            autoFocus
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+          <p className="text-2xs text-muted-foreground">
+            The label before <span className="font-mono">.datatruck.io</span> in
+            your Datatruck URL — e.g. <span className="font-mono">premier</span>
+            {' '}for <span className="font-mono">premier.datatruck.io</span>.
+          </p>
+        </div>
+      )}
+      <div className="space-y-1.5">
+        <label className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          API token
+        </label>
+        <input
+          type="password"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+          placeholder="paste your provider API token"
+          autoFocus={!wantsSubdomain}
+        />
+        {wantsSubdomain && (
+          <p className="text-2xs text-muted-foreground">
+            Minted from Datatruck Settings → API tokens. Driver + Orders +
+            Work Order Read scopes are enough for the MVP sync.
+          </p>
+        )}
+      </div>
       {error && <p className="text-xs text-danger">{error}</p>}
       <div className="flex gap-2">
-        <Button type="submit" disabled={submitting || !token.trim()}>
+        <Button type="submit" disabled={submitting || !canSubmit}>
           <Check size={14} />
           {submitting ? 'Connecting…' : 'Connect'}
         </Button>

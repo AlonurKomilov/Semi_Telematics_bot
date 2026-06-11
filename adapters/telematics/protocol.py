@@ -67,6 +67,19 @@ class Capability:
     HISTORY_PRUNE           = "history_prune"
     HISTORY_BACKFILL        = "history_backfill"
 
+    # ── TMS (Transportation Management System) capabilities ─────
+    # These cover providers like Datatruck whose API is dispatch-
+    # shaped rather than telemetry-shaped — they have no live GPS
+    # or safety events, but they DO have authoritative drivers,
+    # trucks, orders/loads, and work orders.  A provider declaring
+    # any of these in supported_capabilities triggers TMS-shaped
+    # sync jobs rather than the live-state ingest jobs.
+    TMS_DRIVERS_SYNC        = "tms_drivers_sync"
+    TMS_TRUCKS_SYNC         = "tms_trucks_sync"
+    TMS_TRAILERS_SYNC       = "tms_trailers_sync"
+    TMS_ORDERS_SYNC         = "tms_orders_sync"
+    TMS_WORK_ORDERS_SYNC    = "tms_work_orders_sync"
+
 
 @dataclass(frozen=True)
 class ConnectionStatus:

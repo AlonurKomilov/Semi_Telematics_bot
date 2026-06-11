@@ -156,6 +156,28 @@ async def get_telematics_client(
     # own timeout, not a real upstream condition.
     if provider_id == "samsara":
         client = await get_client(account_id, prefetch=prefetch)
+    elif provider_id == "datatruck":
+        # Datatruck is account-level (NOT per-company like Samsara).
+        # Credentials are stored as ``{"company_subdomain": "...",
+        # "api_token": "..."}`` on the integration row.  The client
+        # construction reads them and builds the bare HTTPS session.
+        from adapters.telematics.datatruck.client import DatatruckClient
+        from infra.platform import get_platform_db as _pdb
+        integ = await _pdb().get_account_integration(account_id, "datatruck")
+        if integ is None or not integ.credentials:
+            raise NotImplementedError(
+                "datatruck integration is not configured for this "
+                "account — connect from the dashboard first",
+            )
+        creds = integ.credentials
+        sub = creds.get("company_subdomain") or ""
+        tok = creds.get("api_token") or ""
+        if not sub or not tok:
+            raise NotImplementedError(
+                "datatruck credentials missing company_subdomain or "
+                "api_token — reconnect from the dashboard",
+            )
+        client = DatatruckClient(company_subdomain=sub, api_token=tok)
     else:
         # Defensive: a registered-but-unhandled provider should
         # surface as a clear error rather than crash with

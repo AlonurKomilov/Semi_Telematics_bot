@@ -16,6 +16,8 @@ os.environ["GOOGLE_CLOUD_PROJECT"] = ""
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = ""
 os.environ.setdefault("ENCRYPTION_KEY", "")
 
+import pytest
+
 from capabilities.ai.intelligence import _check_tool_permission
 
 DRIVER_CTX = {"vehicle_nums": ["T-101"]}
@@ -23,36 +25,39 @@ DRIVER_CTX = {"vehicle_nums": ["T-101"]}
 OPTIONAL_VEHICLE_TOOLS = ["get_recent_work_orders", "get_recent_inspections"]
 
 
+# The gate is account-aware + async; these driver-isolation cases pass no
+# account_id, so they exercise the role-default fallback (unchanged behavior).
+@pytest.mark.asyncio
 class TestDriverOmittedVehicleName:
-    def test_driver_blocked_without_vehicle_name(self):
+    async def test_driver_blocked_without_vehicle_name(self):
         for tool in OPTIONAL_VEHICLE_TOOLS:
-            result = _check_tool_permission(tool, {}, "driver", DRIVER_CTX)
+            result = await _check_tool_permission(tool, {}, "driver", DRIVER_CTX)
             assert result is not None, f"{tool} must be blocked for drivers without vehicle_name"
             assert "Access denied" in result["error"]
             assert "T-101" in result["error"]  # model can retry with the right scope
 
-    def test_driver_blocked_with_blank_vehicle_name(self):
+    async def test_driver_blocked_with_blank_vehicle_name(self):
         for tool in OPTIONAL_VEHICLE_TOOLS:
-            result = _check_tool_permission(tool, {"vehicle_name": "  "}, "driver", DRIVER_CTX)
+            result = await _check_tool_permission(tool, {"vehicle_name": "  "}, "driver", DRIVER_CTX)
             assert result is not None
 
-    def test_driver_allowed_for_own_vehicle(self):
+    async def test_driver_allowed_for_own_vehicle(self):
         for tool in OPTIONAL_VEHICLE_TOOLS:
-            result = _check_tool_permission(tool, {"vehicle_name": "T-101"}, "driver", DRIVER_CTX)
+            result = await _check_tool_permission(tool, {"vehicle_name": "T-101"}, "driver", DRIVER_CTX)
             assert result is None, f"{tool} must stay usable for the driver's own vehicle"
 
-    def test_driver_blocked_for_other_vehicle(self):
+    async def test_driver_blocked_for_other_vehicle(self):
         for tool in OPTIONAL_VEHICLE_TOOLS:
-            result = _check_tool_permission(tool, {"vehicle_name": "T-999"}, "driver", DRIVER_CTX)
+            result = await _check_tool_permission(tool, {"vehicle_name": "T-999"}, "driver", DRIVER_CTX)
             assert result is not None
             assert "Access denied" in result["error"]
 
-    def test_owner_allowed_account_wide(self):
+    async def test_owner_allowed_account_wide(self):
         for tool in OPTIONAL_VEHICLE_TOOLS:
-            result = _check_tool_permission(tool, {}, "owner", {})
+            result = await _check_tool_permission(tool, {}, "owner", {})
             assert result is None
 
-    def test_driver_still_blocked_on_account_wide_tools(self):
-        result = _check_tool_permission("get_alert_history", {}, "driver", DRIVER_CTX)
+    async def test_driver_still_blocked_on_account_wide_tools(self):
+        result = await _check_tool_permission("get_alert_history", {}, "driver", DRIVER_CTX)
         assert result is not None
         assert "fleet-wide" in result["error"]
