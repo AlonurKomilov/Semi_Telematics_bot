@@ -26,6 +26,10 @@ export interface Permissions {
   can_manage_users: boolean;
   can_manage_companies: boolean;
   can_manage_account: boolean;
+  can_manage_permissions: boolean;
+  can_manage_integrations: boolean;
+  can_manage_storage: boolean;
+  can_manage_work_hours: boolean;
   can_manage_billing: boolean;
   can_invite: boolean;
   can_efficiency: boolean;

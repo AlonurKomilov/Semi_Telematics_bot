@@ -69,7 +69,7 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     description: 'Driver coaching assignments and acks', keywords: ['training','review'] },
   { label: 'Payroll',         path: '/payroll',          icon: DollarSign,    group: 'Workforce', permission: ['can_payroll_admin'],
     description: 'Driver paystubs and pay rules', keywords: ['pay','salary','wages'] },
-  { label: 'Working Hours',   path: '/admin/work-hours', icon: Clock,         group: 'Workforce', permission: ['can_manage_account'],
+  { label: 'Working Hours',   path: '/admin/work-hours', icon: Clock,         group: 'Workforce', permission: ['can_manage_work_hours'],
     description: 'Driver hours, HOS and shifts', keywords: ['hos','hours','shift'] },
   { label: 'Team Management', path: '/admin/users',      icon: Users,         group: 'Workforce', permission: ['can_manage_users'],
     description: 'Add or remove users, set roles', keywords: ['users','staff','team'] },
@@ -79,7 +79,7 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
   // Admin
   { label: 'Companies',        path: '/admin/companies',       icon: Building2,     group: 'Admin', permission: ['can_manage_companies'],
     description: 'Sub-companies in your account', keywords: ['org','tenants'] },
-  { label: 'Permissions',      path: '/admin/permissions',     icon: Shield,        group: 'Admin', permission: ['can_manage_account'],
+  { label: 'Permissions',      path: '/admin/permissions',     icon: Shield,        group: 'Admin', permission: ['can_manage_permissions'],
     description: 'What each role is allowed to do', keywords: ['rbac','roles','permissions'] },
   { label: 'Scorecard Rules',  path: '/admin/scorecard-rules', icon: Trophy,        group: 'Admin', permission: ['can_manage_account'],
     description: 'Rules that build the driver scorecard', keywords: ['scoring','penalties'] },

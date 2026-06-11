@@ -88,7 +88,14 @@ class FeatureSet:
     can_invite: bool = False         # /invite
     can_manage_users: bool = False   # /users, /setrole, /remove
     can_manage_companies: bool = False    # /addcompany, /removecompany
-    can_manage_account: bool = False # /account settings
+    can_manage_account: bool = False # /account settings (general config)
+    # Settings components — granular delegation flags so account
+    # administration can be split across roles (each Settings component
+    # is independently grantable; see docs/FEATURES.md).
+    can_manage_permissions: bool = False   # the Permissions matrix
+    can_manage_integrations: bool = False  # telematics integrations
+    can_manage_storage: bool = False       # storage backend + quota
+    can_manage_work_hours: bool = False    # working-hours schedules
 
     # Dispatcher extras
     can_rolling_stopped: bool = False   # rolling/stopped notifications
@@ -145,6 +152,8 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_alerts_all=True, can_alerts_vehicle=True,
         can_invite=True, can_manage_users=True,
         can_manage_companies=True, can_manage_account=True,
+        can_manage_permissions=True, can_manage_integrations=True,
+        can_manage_storage=True, can_manage_work_hours=True,
         can_rolling_stopped=True,
         can_geofence_all=True, can_geofence_vehicle=True,
         can_parking_all=True, can_parking_vehicle=True,
@@ -173,6 +182,8 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_alerts_all=True, can_alerts_vehicle=True,
         can_invite=True, can_manage_users=True,
         can_manage_companies=False, can_manage_account=False,
+        can_manage_permissions=False, can_manage_integrations=False,
+        can_manage_storage=False, can_manage_work_hours=False,
         can_rolling_stopped=True,
         can_geofence_all=True, can_geofence_vehicle=True,
         can_digest=True,
@@ -355,7 +366,8 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
 # Permissions matrix safely let an owner hide *operational* features from
 # their own view without ever risking a self-lockout.
 OWNER_PROTECTED_PERMS: frozenset[str] = frozenset({
-    "can_manage_account",    # gates Role Permissions, Modules, Settings, Storage…
+    "can_manage_account",    # gates Settings general config + Modules
+    "can_manage_permissions",  # the matrix itself — losing it = lockout
     "can_manage_users",      # gates Team Management + Audit Log
     "can_manage_billing",    # gates Billing
     "can_manage_companies",  # gates Companies
@@ -491,6 +503,15 @@ def invalidate_permissions_cache(
         keys_to_drop = [k for k in _permissions_cache if k[0] == account_id]
         for k in keys_to_drop:
             del _permissions_cache[k]
+    # The AI advertised-tool list is derived from these permissions, so drop
+    # it too — otherwise the model keeps being shown a tool after its feature
+    # was revoked, until that cache's own TTL expires.  Lazy import avoids a
+    # circular dependency (registry → permissions).
+    try:
+        from capabilities.ai.tools.registry import invalidate_tool_cache
+        invalidate_tool_cache(account_id)
+    except Exception:
+        pass
 
 
 # TTL on cached permission entries.  Bounds the cross-worker
@@ -654,6 +675,10 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_manage_users": "manage users",
     "can_manage_companies": "manage companies",
     "can_manage_account": "account settings",
+    "can_manage_permissions": "role permissions matrix",
+    "can_manage_integrations": "telematics integrations",
+    "can_manage_storage": "storage backend & quota",
+    "can_manage_work_hours": "working-hours schedules",
     "can_rolling_stopped": "rolling/stopped status",
     "can_geofence_all": "geofence alerts (all)",
     "can_geofence_vehicle": "geofence alerts (assigned vehicle)",

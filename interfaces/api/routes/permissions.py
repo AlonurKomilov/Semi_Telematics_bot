@@ -70,7 +70,7 @@ class UpdatePermissionsRequest(BaseModel):
 
 @router.get("/roles")
 async def get_all_roles(
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(require_permission("can_manage_permissions")),
     platform_db=Depends(get_platform_db),
 ):
     """Get permission sets for all roles in the account.
@@ -95,7 +95,7 @@ async def get_all_roles(
 
 @router.get("/roles/overrides")
 async def get_company_overrides(
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(require_permission("can_manage_permissions")),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -131,7 +131,7 @@ async def get_company_overrides(
 async def get_role_perms(
     role: str,
     company_id: Optional[int] = None,
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(require_permission("can_manage_permissions")),
     platform_db=Depends(get_platform_db),
 ):
     """Get permission set for a specific role."""
@@ -170,7 +170,7 @@ async def get_role_perms(
 @router.put("/roles")
 async def update_role_perms(
     body: UpdatePermissionsRequest,
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(require_permission("can_manage_permissions")),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -186,7 +186,7 @@ async def update_role_perms(
     # Prevent removing own management access
     caller_role = user.get("role", "")
     if body.role == caller_role:
-        if not body.permissions.get("can_manage_account", True):
+        if not body.permissions.get("can_manage_permissions", True):
             raise HTTPException(400, "Cannot remove your own management access")
 
     account_id = user["account_id"]
@@ -248,7 +248,7 @@ async def update_role_perms(
 @router.post("/roles/reset")
 async def reset_role_perms(
     body: UpdatePermissionsRequest,
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(require_permission("can_manage_permissions")),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -286,7 +286,7 @@ async def reset_role_perms(
 
 @router.post("/roles/reset-all")
 async def reset_all_perms(
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(require_permission("can_manage_permissions")),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -322,7 +322,7 @@ class DeleteOverrideRequest(BaseModel):
 @router.post("/roles/delete-override")
 async def delete_company_override(
     body: DeleteOverrideRequest,
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(require_permission("can_manage_permissions")),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):

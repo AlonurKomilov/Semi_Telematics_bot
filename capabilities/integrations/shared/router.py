@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
 
-_owner_only = require_permission("can_manage_account")
+_owner_only = require_permission("can_manage_integrations")
 
 
 # ── Catalog + per-account list ───────────────────────────────────

@@ -1674,7 +1674,7 @@ class ScheduleUpdate(BaseModel):
 
 @router.get("/work-hours")
 async def list_schedules(
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(require_permission("can_manage_work_hours")),
     tenant_db=Depends(get_tenant_db),
 ):
     """List work schedules."""
@@ -1685,7 +1685,7 @@ async def list_schedules(
 @router.post("/work-hours")
 async def create_schedule(
     body: ScheduleCreate,
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(require_permission("can_manage_work_hours")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Create a work schedule."""
@@ -1710,7 +1710,7 @@ async def create_schedule(
 async def update_schedule(
     schedule_id: int,
     body: ScheduleUpdate,
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(require_permission("can_manage_work_hours")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Update a work schedule."""
@@ -1730,7 +1730,7 @@ async def update_schedule(
 @router.delete("/work-hours/{schedule_id}")
 async def delete_schedule(
     schedule_id: int,
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(require_permission("can_manage_work_hours")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Delete a work schedule."""

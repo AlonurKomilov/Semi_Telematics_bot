@@ -4144,6 +4144,62 @@ async def migrate_vehicle_metrics_daily(conn) -> None:
     logger.info("Migration 100: vehicle_metrics_daily + vehicle_state_snapshot ready")
 
 
+@_register("102_settings_component_flags")
+async def migrate_settings_component_flags(conn) -> None:
+    """Default the granular Settings-component flags from the stored
+    ``can_manage_account`` value in customised role_permissions blobs.
+
+    Step 2 of the Settings consolidation: Permissions / Integrations /
+    Storage / Working Hours got their own delegation flags
+    (``can_manage_permissions`` etc.).  Accounts that customised a role
+    keep equivalent access — each new key inherits the row's
+    ``can_manage_account`` unless the key was already set.  Rows without
+    ``can_manage_account`` fall through to the role defaults at resolve
+    time (owner True, everyone else False), so they need no rewrite.
+
+    Idempotent: setdefault never overwrites an existing key.
+    """
+    import json as _json
+    new_keys = (
+        "can_manage_permissions", "can_manage_integrations",
+        "can_manage_storage", "can_manage_work_hours",
+    )
+    try:
+        cur = await conn.execute("SELECT id, permissions FROM role_permissions")
+        rows = await cur.fetchall()
+        updated = 0
+        for r in rows:
+            try:
+                perms = _json.loads(r["permissions"] or "{}")
+            except Exception:
+                continue
+            if not isinstance(perms, dict) or "can_manage_account" not in perms:
+                continue
+            base = bool(perms["can_manage_account"])
+            touched = False
+            for k in new_keys:
+                if k not in perms:
+                    perms[k] = base
+                    touched = True
+            if touched:
+                await conn.execute(
+                    "UPDATE role_permissions SET permissions = ? WHERE id = ?",
+                    (_json.dumps(perms), r["id"]),
+                )
+                updated += 1
+        await conn.commit()
+        logger.info(
+            "Migration 102: settings-component flags defaulted in %d rows", updated,
+        )
+    except Exception as e:
+        logger.error("Migration 102 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
 @_register("100_users_dnd_enabled")
 async def migrate_users_dnd_enabled(conn) -> None:
     """Add ``users.dnd_enabled`` — single per-user toggle that controls

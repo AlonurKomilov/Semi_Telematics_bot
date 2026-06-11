@@ -190,7 +190,7 @@ class BackendSwitchRequest(BaseModel):
 @router.post("/backend")
 async def switch_storage_backend(
     body: BackendSwitchRequest,
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(require_permission("can_manage_storage")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Switch the account's storage backend.
@@ -309,7 +309,7 @@ async def get_storage_health(
 async def list_storage_files(
     only: str = "all",
     limit: int = 200,
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(require_permission("can_manage_storage")),
     tenant_db=Depends(get_tenant_db),
 ):
     """List storage-sync queue rows for the account — file-manager grid.
@@ -361,7 +361,7 @@ async def list_storage_files(
 @router.post("/files/{queue_id}/retry")
 async def retry_storage_file(
     queue_id: int,
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(require_permission("can_manage_storage")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Operator action: push a single queue row's ``next_attempt_at``
@@ -387,7 +387,7 @@ async def retry_storage_file(
 
 @router.post("/files/retry-stuck")
 async def retry_all_stuck_files(
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(require_permission("can_manage_storage")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Bulk re-enqueue every stuck row for the account.  The natural
@@ -442,7 +442,7 @@ class OAuthStartResponse(BaseModel):
 
 @router.post("/google/start", response_model=OAuthStartResponse)
 async def start_google_oauth(
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(require_permission("can_manage_storage")),
 ):
     """Build the Google OAuth consent URL and return it.
 
@@ -639,7 +639,7 @@ async def google_oauth_callback(
 
 @router.post("/google/disconnect")
 async def disconnect_google(
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(require_permission("can_manage_storage")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Disconnect Drive and revert to the disk backend.
@@ -802,7 +802,7 @@ class StorageQuotaUpdate(BaseModel):
 
 @admin_router.get("/storage/quota")
 async def get_storage_quota(
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(require_permission("can_manage_storage")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Return current storage usage and quota for the caller's account."""
@@ -817,7 +817,7 @@ async def get_storage_quota(
 @admin_router.put("/storage/quota")
 async def update_storage_quota(
     body: StorageQuotaUpdate,
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(require_permission("can_manage_storage")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Raise/lower the per-account local-disk storage cap."""

@@ -227,12 +227,12 @@ export default function TeamManagement() {
   // Page-level tab: members list / invites / working hours.  The
   // Working Hours tab replaces the standalone /admin/work-hours
   // page — same panel, just hosted here so all team-shift config
-  // lives under one nav entry.  Gated on can_manage_account
-  // (same gate the standalone page used).
+  // lives under one nav entry.  Gated on can_manage_work_hours —
+  // the Settings component's own delegation flag.
   const [pageTab, setPageTab] = useState<'members' | 'invites' | 'working-hours'>('members');
   const { has } = usePermissions();
   const canInvite = has('can_invite');
-  const canManageAccount = has('can_manage_account');
+  const canManageWorkHours = has('can_manage_work_hours');
 
   // Vehicle assignment.  Variable + setter names matched (the old
   // legacy ``setEditVehicles`` setter on an ``editVehicles`` state was
@@ -602,12 +602,12 @@ export default function TeamManagement() {
                              alerts pause outside these windows)
           Tabs render only when the caller has permission for them
           so HR/Fleet without can_invite see just Members. */}
-      {(canInvite || canManageAccount) && (
+      {(canInvite || canManageWorkHours) && (
         <div role="tablist" aria-label="Team management sections" className="flex gap-1 mb-4 border-b border-border">
           {([
             { key: 'members'        as const, label: 'Members',       show: true },
             { key: 'invites'        as const, label: 'Invites',       show: canInvite },
-            { key: 'working-hours'  as const, label: 'Working Hours', show: canManageAccount },
+            { key: 'working-hours'  as const, label: 'Working Hours', show: canManageWorkHours },
           ]).filter(t => t.show).map(({ key, label }) => {
             const sel = pageTab === key;
             return (

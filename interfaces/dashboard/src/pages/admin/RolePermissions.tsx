@@ -55,7 +55,7 @@ const DEFAULT_SCOPED_FLAGS = (role: string): [boolean, boolean] =>
 // Mirrors OWNER_PROTECTED_PERMS in capabilities/iam/permissions.py (the
 // backend enforces it regardless of the UI).
 const OWNER_PROTECTED = new Set([
-  'can_manage_account', 'can_manage_users', 'can_manage_billing', 'can_manage_companies',
+  'can_manage_account', 'can_manage_users', 'can_manage_billing', 'can_manage_companies', 'can_manage_permissions',
 ]);
 
 // PERM_GROUPS — admin-facing grouping, mirrors the sidebar sections so an
@@ -89,10 +89,14 @@ const PERM_GROUPS: PermGroup[] = [
       // were lifted from under Team Management); the Team Management page
       // still HOSTS some as tabs — UI hosting ≠ taxonomy.
       { header: 'Settings', description: 'account administration — each component has its own permission' },
-      { key: 'can_manage_account',   label: 'Account Settings', indented: true, description: 'General config — also rides: Permissions, Modules, Integrations, Storage, Working Hours, Scorecard Rules' },
-      { key: 'can_manage_users',     label: 'Team Management', indented: true, description: 'Members, roles, data scope — also gates the Audit Log' },
-      { key: 'can_invite',           label: 'Send Invites', indented: true },
-      { key: 'can_manage_companies', label: 'Manage Companies', indented: true },
+      { key: 'can_manage_account',     label: 'Account Settings', indented: true, description: 'General config — also rides: Modules, Scorecard Rules, bot + forum routing' },
+      { key: 'can_manage_users',       label: 'Team Management', indented: true, description: 'Members, roles, data scope — also gates the Audit Log' },
+      { key: 'can_manage_permissions', label: 'Permissions', indented: true, description: 'This matrix — the owner always keeps it' },
+      { key: 'can_invite',             label: 'Send Invites', indented: true },
+      { key: 'can_manage_companies',   label: 'Manage Companies', indented: true },
+      { key: 'can_manage_work_hours',  label: 'Working Hours', indented: true },
+      { key: 'can_manage_integrations', label: 'Integrations', indented: true },
+      { key: 'can_manage_storage',     label: 'Storage', indented: true },
     ],
   },
   {

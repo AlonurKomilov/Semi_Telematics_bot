@@ -300,7 +300,7 @@ async def test_owner_cannot_remove_own_management_access(app_client):
     r = await s["client"].put(
         "/api/admin/permissions/roles",
         headers=_hdr(s["tokens"]["owner_a"]),
-        json={"role": "owner", "permissions": {"can_manage_account": False}},
+        json={"role": "owner", "permissions": {"can_manage_permissions": False}},
     )
     assert r.status_code == 400
 

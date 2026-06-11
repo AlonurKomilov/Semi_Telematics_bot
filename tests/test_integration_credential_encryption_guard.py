@@ -21,13 +21,15 @@ import pytest
 from fastapi import HTTPException
 
 import infra.crypto as crypto
-from capabilities.integrations.router import (
+from capabilities.integrations.samsara.router import (
     CompanyCredentialUpsert,
-    ConnectRequest,
-    _guard_credential_encryption,
-    connect_integration,
     set_company_credential_endpoint,
 )
+from capabilities.integrations.shared.helpers import (
+    ConnectRequest,
+    guard_credential_encryption as _guard_credential_encryption,
+)
+from capabilities.integrations.shared.router import connect_integration
 
 
 @pytest.fixture
@@ -89,7 +91,6 @@ class TestSetCompanyCredentialGuard:
         min_length=1) — it must 503 before any DB write."""
         with pytest.raises(HTTPException) as exc:
             await set_company_credential_endpoint(
-                "samsara",
                 "ACME",
                 CompanyCredentialUpsert(api_token="live-secret"),
                 user=_OWNER,

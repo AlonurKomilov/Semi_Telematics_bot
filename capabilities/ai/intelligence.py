@@ -433,6 +433,18 @@ def _build_agent_user_prompt(
     return "".join(parts)
 
 
+def _effective_scoped_flag(user_context: dict | None, user_role: str | None) -> bool:
+    """True if the caller is vehicle/company-restricted — used to drop
+    fleet-wide tools from what the model is advertised.  Mirrors the scope
+    determination in ``_check_tool_permission`` so advertisement and gate agree.
+    """
+    if not user_context:
+        return False
+    if "scoped_vehicle_nums" in user_context:
+        return user_context["scoped_vehicle_nums"] is not None
+    return user_role == "driver"
+
+
 async def _check_tool_permission(
     tool_name: str,
     tool_args: dict,
@@ -582,7 +594,10 @@ async def _run_anthropic_agent(
             return {"text": cached, "tool_results": [], "usage": None}
 
     user_role = user_context.get("role") if user_context else None
-    tools = _get_anthropic_tools(role=user_role)
+    tools = await _get_anthropic_tools(
+        role=user_role, account_id=account_id,
+        scoped=_effective_scoped_flag(user_context, user_role),
+    )
 
     system_prompt = ASSISTANT_SYSTEM
     if language and language != "en":
@@ -835,7 +850,10 @@ async def ask_agent(question: str, fleet_context: dict,
             return {"text": cached, "tool_results": []}
 
     user_role = user_context.get("role") if user_context else None
-    tools = _get_cached_tools(role=user_role)
+    tools = await _get_cached_tools(
+        role=user_role, account_id=account_id,
+        scoped=_effective_scoped_flag(user_context, user_role),
+    )
 
     # Per-attempt telemetry — write one ai_usage row per model call
     # (initial + each post-tool re-call) so the router sees this

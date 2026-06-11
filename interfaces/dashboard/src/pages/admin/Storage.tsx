@@ -13,7 +13,7 @@ import StorageFileTable from './StorageFileTable';
  *   2. Files       — what needs my attention right now?
  *   3. Settings    — connect/disconnect Drive, switch backend.
  *
- * Permission-guarded by the router (``can_manage_account``).
+ * Permission-guarded by the router (``can_manage_storage``).
  */
 export default function Storage() {
   const { t } = useTranslation();

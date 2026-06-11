@@ -222,17 +222,17 @@ export default function AppRouter() {
         {/* Admin */}
         <Route path="admin/users" element={L(<P perm="can_manage_users"><TeamManagement /></P>)} />
         <Route path="admin/companies" element={L(<P perm="can_manage_companies"><Companies /></P>)} />
-        <Route path="admin/integrations" element={L(<P perm="can_manage_account"><Integrations /></P>)} />
+        <Route path="admin/integrations" element={L(<P perm="can_manage_integrations"><Integrations /></P>)} />
         <Route path="admin/audit" element={L(<P perm="can_manage_users"><AuditLog /></P>)} />
-        <Route path="admin/work-hours" element={L(<P perm="can_manage_account"><WorkHours /></P>)} />
+        <Route path="admin/work-hours" element={L(<P perm="can_manage_work_hours"><WorkHours /></P>)} />
         <Route path="admin/invites" element={L(<P perm="can_invite"><Invites /></P>)} />
         <Route path="admin/settings" element={L(<P perm="can_manage_account"><Settings /></P>)} />
         {/* Personal preferences — accessible to every authenticated
             user regardless of role. */}
         <Route path="profile" element={L(<Profile />)} />
         <Route path="notifications" element={L(<MyNotifications />)} />
-        <Route path="admin/storage"  element={L(<P perm="can_manage_account"><Storage /></P>)} />
-        <Route path="admin/permissions" element={L(<P perm="can_manage_account"><RolePermissions /></P>)} />
+        <Route path="admin/storage"  element={L(<P perm="can_manage_storage"><Storage /></P>)} />
+        <Route path="admin/permissions" element={L(<P perm="can_manage_permissions"><RolePermissions /></P>)} />
         <Route path="admin/scorecard-rules" element={L(<P perm="can_manage_account"><ScorecardRules /></P>)} />
         {/* Legacy admin alias — the template editor moved INSIDE the
             Inspections page (it's a fleet-ops responsibility, not an
