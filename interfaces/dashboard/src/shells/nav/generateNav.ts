@@ -32,6 +32,12 @@ export interface NavGroup {
   /** Render as ONE collapsible parent entry (the Settings feature's
    *  components) instead of a flat labelled section. */
   collapsible?: boolean;
+  /** The group's own page (the Settings feature's general-config page,
+   *  /admin/settings): the parent row navigates HERE — "Settings" and
+   *  "Account Settings" are one thing, not a group plus a duplicate
+   *  child entry.  Absent when the user lacks can_manage_account; the
+   *  parent then falls back to a non-navigating expander. */
+  parentItem?: NavItem;
 }
 
 // Which catalog modules each persona's sidebar surfaces.  `core` is
@@ -89,7 +95,15 @@ export function generateNav(
     const items = FEATURE_CATALOG.filter((f) => f.navGroup === g.key && inScope(f)).map(
       (f) => ({ labelKey: f.labelKey, path: f.path, icon: f.icon, permission: f.permission }),
     );
-    if (items.length) groups.push({ titleKey: g.titleKey, items, collapsible: g.collapsible });
+    if (items.length) {
+      let parentItem: NavItem | undefined;
+      let rest = items;
+      if (g.collapsible) {
+        parentItem = items.find((i) => i.path === '/admin/settings');
+        if (parentItem) rest = items.filter((i) => i !== parentItem);
+      }
+      groups.push({ titleKey: g.titleKey, items: rest, collapsible: g.collapsible, parentItem });
+    }
   }
   return groups;
 }

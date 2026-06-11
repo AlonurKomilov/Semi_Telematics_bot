@@ -124,24 +124,51 @@ export default function Sidebar() {
           // collapsed icon rail there's no room for nesting — fall through
           // to the flat divider+icons rendering below.
           if (group.collapsible && !collapsed) {
-            const childActive = items.some((i) => location.pathname.startsWith(i.path));
-            const open = settingsOpen || childActive;
+            const groupActive =
+              items.some((i) => location.pathname.startsWith(i.path)) ||
+              (!!group.parentItem && location.pathname.startsWith(group.parentItem.path));
+            const open = settingsOpen || groupActive;
+            const label = group.titleKey ? t(group.titleKey) : '';
+            const chevron = (
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSettingsOpen(!open); }}
+                disabled={groupActive && open}
+                aria-expanded={open}
+                aria-label={open ? `Collapse ${label}` : `Expand ${label}`}
+                className="p-1 rounded text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-60"
+              >
+                {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </button>
+            );
             return (
               <div key={group.titleKey ?? `_set-${gi}`}>
-                <button
-                  type="button"
-                  onClick={() => setSettingsOpen(!open)}
-                  disabled={childActive && open}
-                  aria-expanded={open}
-                  className={`w-full flex items-center gap-3 px-3 mx-2 my-0.5 rounded-md py-2 text-sm transition-colors ${
-                    childActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                  }`}
-                  style={{ width: 'calc(100% - 1rem)' }}
-                >
-                  <SettingsIcon size={16} className="shrink-0" />
-                  <span className="flex-1 text-left">{group.titleKey ? t(group.titleKey) : ''}</span>
-                  {open ? <ChevronDown size={14} className="shrink-0" /> : <ChevronRight size={14} className="shrink-0" />}
-                </button>
+                {group.parentItem ? (
+                  // Pressing "Settings" opens the Settings page itself —
+                  // the page IS the feature's general-config component
+                  // ("Account Settings" was the same thing under a second
+                  // name).  The chevron alone expands/collapses.
+                  <NavLink
+                    to={group.parentItem.path}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 pl-3 pr-1 mx-2 my-0.5 rounded-md py-1.5 text-sm transition-colors ${
+                        isActive
+                          ? 'bg-primary/15 text-primary'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                      }`
+                    }
+                  >
+                    <SettingsIcon size={16} className="shrink-0" />
+                    <span className="flex-1">{label}</span>
+                    {chevron}
+                  </NavLink>
+                ) : (
+                  <div className="flex items-center gap-3 pl-3 pr-1 mx-2 my-0.5 rounded-md py-1.5 text-sm text-muted-foreground">
+                    <SettingsIcon size={16} className="shrink-0" />
+                    <span className="flex-1">{label}</span>
+                    {chevron}
+                  </div>
+                )}
                 {open && items.map((item) => {
                   const Icon = item.icon;
                   const label = t(item.labelKey);

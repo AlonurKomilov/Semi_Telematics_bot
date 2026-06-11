@@ -205,7 +205,7 @@
     "storage": "Storage",
     "audit_log": "Audit Log",
     "knowledge_base": "Knowledge Base",
-    "settings": "Account Settings"
+    "settings": "Settings"
   },
   "scorecards": {
     "page_title": "Vehicle Scorecards",
@@ -628,7 +628,7 @@
     "companies_desc": "Sub-companies inside your account — each with its own Samsara API key. Use companies to scope reporting and alerts to a single division or region.",
     "scheduled_reports_title": "Scheduled Reports",
     "scheduled_reports_desc": "Schedule a recurring report delivery via Telegram and/or email. Pick the report type, frequency, hour, time zone, and delivery channel(s) — you can change or stop it any time.",
-    "settings_title": "Account Settings",
+    "settings_title": "Settings",
     "settings_desc_short": "Account-wide settings: timezone, Telegram bot, working hours, and feature flags.",
     "settings_desc_long": "Account-wide settings that affect everyone on this account. For your own display name, language, timezone override, and Working Hours override, open My Profile from the user menu.",
     "billing_title": "Billing & Subscription",

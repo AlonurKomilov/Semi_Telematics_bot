@@ -89,7 +89,7 @@ const PERM_GROUPS: PermGroup[] = [
       // were lifted from under Team Management); the Team Management page
       // still HOSTS some as tabs — UI hosting ≠ taxonomy.
       { header: 'Settings', description: 'account administration — each component has its own permission' },
-      { key: 'can_manage_account',     label: 'Account Settings', indented: true, description: 'General config — also rides: Modules, Scorecard Rules, bot + forum routing' },
+      { key: 'can_manage_account',     label: 'General settings', indented: true, description: 'The Settings page itself — timezone, bot + forum routing; also rides: department modules, Scorecard Rules' },
       { key: 'can_manage_users',       label: 'Team Management', indented: true, description: 'Members, roles, data scope — also gates the Audit Log' },
       { key: 'can_manage_permissions', label: 'Permissions', indented: true, description: 'This matrix — the owner always keeps it' },
       { key: 'can_invite',             label: 'Send Invites', indented: true },

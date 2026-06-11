@@ -133,7 +133,7 @@ export default function MyNotifications() {
         icon={Bell}
         title="My Notifications"
         description={
-          'Personal alert preferences for your Telegram DM. Admins set group / forum routing separately on Account Settings — the two don’t override each other.'
+          'Personal alert preferences for your Telegram DM. Admins set group / forum routing separately on Settings — the two don’t override each other.'
         }
       />
 

@@ -78,7 +78,7 @@
     "billing": "Biilashada iyo Qorshaha",
     "audit_log": "Diiwaanka Hubinta",
     "knowledge_base": "Saldhigga Aqoonta",
-    "settings": "Habaynta Akoonka",
+    "settings": "Dejimaha",
     "settings_group": "Dejimaha"
   },
   "scorecards": {
@@ -347,7 +347,7 @@
     "companies_desc": "Shirkado hoose oo akoonkaaga ah — mid kasta oo leh furahiisa Samsara API. Adeegso shirkadaha si aad u xaddidid warbixinta iyo digniinaha qayb gaar ah.",
     "scheduled_reports_title": "Diiwaangelinta Warbixinta",
     "scheduled_reports_desc": "Jadwalee iimeyl soo noqnoqonaya oo wata warbixinta aad doorato. Dooro inta jeer, saacad iyo aagga waqtiga — wakhti kasta ayaad ka bixi kartaa.",
-    "settings_title": "Goobaha",
+    "settings_title": "Dejimaha",
     "settings_desc_short": "Doorashooyinka akoonka, luqadda, aagga waqtiga, iyo qaabaynta bot-ka Telegram.",
     "settings_desc_long": "Doorashooyinka akoonka, luqadda, aagga waqtiga iyo bot-ka Telegram. Qayb kasta oo gaar ah ayaa kaydsanaya.",
     "billing_title": "Biilashada iyo Qoraalka",
