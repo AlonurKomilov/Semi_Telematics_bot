@@ -29,6 +29,9 @@ export interface NavItem {
 export interface NavGroup {
   titleKey: string | null;
   items: NavItem[];
+  /** Render as ONE collapsible parent entry (the Settings feature's
+   *  components) instead of a flat labelled section. */
+  collapsible?: boolean;
 }
 
 // Which catalog modules each persona's sidebar surfaces.  `core` is
@@ -48,7 +51,7 @@ const PERSONA_MODULES: Record<string, string[]> = {
 
 // Render order + section headers.  `null` header = no title (pinned top /
 // bottom).  Empty groups are dropped.
-const NAV_GROUP_ORDER: { key: NavGroupKey; titleKey: string | null }[] = [
+const NAV_GROUP_ORDER: { key: NavGroupKey; titleKey: string | null; collapsible?: boolean }[] = [
   { key: 'main',       titleKey: null },
   { key: 'operations', titleKey: 'nav.operations_group' },
   { key: 'monitoring', titleKey: 'nav.monitoring_group' },
@@ -56,6 +59,9 @@ const NAV_GROUP_ORDER: { key: NavGroupKey; titleKey: string | null }[] = [
   { key: 'people',     titleKey: 'nav.people_group' },
   { key: 'costs',      titleKey: 'nav.costs_group' },
   { key: 'account',    titleKey: 'nav.account_group' },
+  // Settings is ONE feature; its components nest under one collapsible
+  // parent — only the components the user's flags grant are listed.
+  { key: 'settings',   titleKey: 'nav.settings_group', collapsible: true },
   { key: 'governance', titleKey: 'nav.governance_group' },
   { key: 'tail',       titleKey: null },
 ];
@@ -83,7 +89,7 @@ export function generateNav(
     const items = FEATURE_CATALOG.filter((f) => f.navGroup === g.key && inScope(f)).map(
       (f) => ({ labelKey: f.labelKey, path: f.path, icon: f.icon, permission: f.permission }),
     );
-    if (items.length) groups.push({ titleKey: g.titleKey, items });
+    if (items.length) groups.push({ titleKey: g.titleKey, items, collapsible: g.collapsible });
   }
   return groups;
 }

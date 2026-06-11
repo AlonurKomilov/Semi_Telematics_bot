@@ -168,6 +168,15 @@ function toBlocks(flags: PermFlag[]): Block[] {
   return blocks;
 }
 const GROUP_BLOCKS = PERM_GROUPS.map((g) => ({ title: g.title, blocks: toBlocks(g.flags) }));
+
+// Department band → account module.  The Modules page folded into this
+// matrix: the on/off switch lives ON the department header, so "is the
+// department even on" and "what can each role do" are one screen.
+// System/Shared bands have no switch (core + account are always on).
+const GROUP_MODULE: Record<string, string> = {
+  Fleet: 'fleet', Dispatch: 'dispatch', Safety: 'safety', HR: 'hr', Accounting: 'accounting',
+};
+interface ModulesData { enabled: string[]; all: string[] }
 // Parents that have sub-rows — collapsed by default (only features show).
 const COLLAPSIBLE_KEYS: string[] = GROUP_BLOCKS.flatMap((g) =>
   g.blocks.filter((b) => b.children.length > 0).map((b) => blockKey(b.parent)),
@@ -187,7 +196,7 @@ interface Change { role: RoleId; label: string; from: string; to: string; grante
 export default function RolePermissions() {
   const { t } = useTranslation();
   const { refreshPermissions } = useRoleView();
-  const { refreshUser } = useAuth();
+  const { user: authUser, refreshUser } = useAuth();
   const qc = useQueryClient();
 
   const [edits, setEdits] = useState<Edits>({});
@@ -210,6 +219,30 @@ export default function RolePermissions() {
     queryKey: ['perms-roles'],
     queryFn: () => apiJSON<PermsData>('/admin/permissions/roles'),
   });
+
+  // Module switches ride can_manage_account (Account Settings' remit) —
+  // matrix editing itself is can_manage_permissions, so the switches
+  // render only for holders of the account flag.
+  const canManageModules = !!authUser?.permissions?.can_manage_account;
+  const { data: modData } = useQuery({
+    queryKey: ['account-modules'],
+    queryFn: () => apiJSON<ModulesData>('/admin/account/modules'),
+    enabled: canManageModules,
+  });
+  const [moduleEdits, setModuleEdits] = useState<Record<string, boolean>>({});
+  const moduleOn = (id: string): boolean =>
+    moduleEdits[id] ?? !!modData?.enabled.includes(id);
+  const moduleChanges = useMemo(
+    () => !modData ? [] : Object.entries(GROUP_MODULE)
+      .filter(([, id]) => moduleOn(id) !== modData.enabled.includes(id))
+      .map(([title, id]) => ({ title, id, on: moduleOn(id) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [modData, moduleEdits],
+  );
+  const toggleModule = (id: string) => {
+    setModuleEdits((prev) => ({ ...prev, [id]: !moduleOn(id) }));
+    setSuccess('');
+  };
 
   // Effective value of a single flag for a role (pending edit wins).
   const flagVal = (role: string, key: string): boolean => {
@@ -278,7 +311,7 @@ export default function RolePermissions() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [edits, data]);
 
-  const totalPending = changes.length;
+  const totalPending = changes.length + moduleChanges.length;
 
   async function applyChanges() {
     setSaving(true); setError('');
@@ -286,7 +319,13 @@ export default function RolePermissions() {
       for (const [role, perms] of Object.entries(changedByRole)) {
         await apiJSON('/admin/permissions/roles', { method: 'PUT', body: { role, permissions: perms } });
       }
+      if (moduleChanges.length && modData) {
+        const enabled = modData.all.filter((id) => moduleOn(id));
+        await apiJSON('/admin/account/modules', { method: 'PUT', body: { enabled } });
+        await qc.invalidateQueries({ queryKey: ['account-modules'] });
+      }
       setEdits({});
+      setModuleEdits({});
       setConfirmOpen(false);
       setSuccess(`Saved ${totalPending} change${totalPending === 1 ? '' : 's'}.`);
       await qc.invalidateQueries({ queryKey: ['perms-roles'] });
@@ -369,7 +408,7 @@ export default function RolePermissions() {
       <PageHeader
         icon={Shield}
         title={t('pages.role_perms_title')}
-        description="What each role can DO. Tick a cell, review the summary, then Save — changes apply immediately. (Turn whole departments on/off in Modules; set whose data each person sees — All / Company / Vehicle — per-user in Team Management.)"
+        description="What each role can DO. Tick a cell, review the summary, then Save — changes apply immediately. (Department on/off switches sit on the section headers; whose data each person sees — All / Company / Vehicle — is per-user in Team Management.)"
       />
 
       {error && <div className="mb-3"><p className={`text-sm rounded-md px-3 py-2 ${toneClasses('danger')}`}>{error}</p></div>}
@@ -401,8 +440,34 @@ export default function RolePermissions() {
                 </tr>
               </thead>
               <tbody>
-                {GROUP_BLOCKS.map((group) => (
-                  <FragmentGroup key={group.title} title={group.title}>
+                {GROUP_BLOCKS.map((group) => {
+                  const moduleId = GROUP_MODULE[group.title];
+                  const on = moduleId ? moduleOn(moduleId) : true;
+                  const flipped = moduleId ? moduleChanges.some((m) => m.id === moduleId) : false;
+                  const control = moduleId && modData ? (
+                    <span className={`inline-flex items-center gap-1.5 ${flipped ? 'rounded px-1 bg-primary/10' : ''}`}>
+                      {canManageModules && (
+                        <button
+                          type="button"
+                          onClick={() => toggleModule(moduleId)}
+                          role="switch"
+                          aria-checked={on}
+                          aria-label={`${group.title} module`}
+                          title={`${group.title} department ${on ? 'on' : 'off'} — disabling hides its features from every sidebar`}
+                          className={`relative w-8 h-4 rounded-full transition shrink-0 ${on ? 'bg-primary' : 'bg-muted'}`}
+                        >
+                          <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-background shadow transition-transform ${on ? 'translate-x-4' : ''}`} />
+                        </button>
+                      )}
+                      {!on && (
+                        <span className={`text-2xs px-1.5 py-0.5 rounded normal-case tracking-normal ${toneClasses('warn')}`}>
+                          module off — features hidden from every sidebar
+                        </span>
+                      )}
+                    </span>
+                  ) : undefined;
+                  return (
+                  <FragmentGroup key={group.title} title={group.title} control={control}>
                     {group.blocks.map((block, bi) => {
                       const pk = blockKey(block.parent);
                       const hasChildren = block.children.length > 0;
@@ -417,7 +482,8 @@ export default function RolePermissions() {
                       );
                     })}
                   </FragmentGroup>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -438,7 +504,7 @@ export default function RolePermissions() {
             {totalPending} pending change{totalPending === 1 ? '' : 's'}
           </span>
           <div className="flex items-center gap-2">
-            <button onClick={() => setEdits({})} className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">Discard</button>
+            <button onClick={() => { setEdits({}); setModuleEdits({}); }} className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">Discard</button>
             <button onClick={() => setConfirmOpen(true)} className="px-4 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition">
               Review &amp; Save
             </button>
@@ -455,6 +521,17 @@ export default function RolePermissions() {
               <p className="text-sm text-muted-foreground mt-0.5">{totalPending} change{totalPending === 1 ? '' : 's'} will take effect immediately.</p>
             </div>
             <div className="px-5 py-3 overflow-y-auto space-y-3">
+              {moduleChanges.length > 0 && (
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Department modules</div>
+                  {moduleChanges.map((m) => (
+                    <div key={m.id} className="text-sm flex items-center justify-between py-0.5">
+                      <span>{m.title}</span>
+                      <span className={m.on ? 'text-ok' : 'text-danger'}>{m.on ? 'On' : 'Off — hidden from every sidebar'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {ROLES.filter((r) => changes.some((c) => c.role === r)).map((role) => (
                 <div key={role}>
                   <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">{ROLE_LABELS[role]}</div>
@@ -486,12 +563,15 @@ export default function RolePermissions() {
 }
 
 // A permission group: a header row spanning all columns + its feature rows.
-function FragmentGroup({ title, children }: { title: string; children: ReactNode }) {
+function FragmentGroup({ title, control, children }: { title: string; control?: ReactNode; children: ReactNode }) {
   return (
     <>
       <tr className="bg-muted/30">
         <td colSpan={1 + ROLES.length} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          {title}
+          <div className="flex items-center gap-2">
+            <span>{title}</span>
+            {control}
+          </div>
         </td>
       </tr>
       {children}

@@ -233,6 +233,9 @@ export default function AppRouter() {
         <Route path="notifications" element={L(<MyNotifications />)} />
         <Route path="admin/storage"  element={L(<P perm="can_manage_storage"><Storage /></P>)} />
         <Route path="admin/permissions" element={L(<P perm="can_manage_permissions"><RolePermissions /></P>)} />
+        {/* Modules folded into the Permissions matrix (department
+            switches on the section headers); redirect the old URL. */}
+        <Route path="admin/modules" element={<Navigate to="/admin/permissions" replace />} />
         <Route path="admin/scorecard-rules" element={L(<P perm="can_manage_account"><ScorecardRules /></P>)} />
         {/* Legacy admin alias — the template editor moved INSIDE the
             Inspections page (it's a fleet-ops responsibility, not an

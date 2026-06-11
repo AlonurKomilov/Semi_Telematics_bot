@@ -78,7 +78,8 @@
     "billing": "ክፍያና እቅድ",
     "audit_log": "የኦዲት ምዝግብ",
     "knowledge_base": "የእውቀት መሠረት",
-    "settings": "የመለያ ቅንብሮች"
+    "settings": "የመለያ ቅንብሮች",
+    "settings_group": "ቅንብሮች"
   },
   "scorecards": {
     "page_title": "የተሽከርካሪ ስኮርካርዶች",

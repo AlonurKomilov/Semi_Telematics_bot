@@ -78,7 +78,8 @@
     "billing": "Біллінг і тариф",
     "audit_log": "Журнал аудиту",
     "knowledge_base": "База знань",
-    "settings": "Налаштування акаунта"
+    "settings": "Налаштування акаунта",
+    "settings_group": "Налаштування"
   },
   "scorecards": {
     "page_title": "Оцінки транспорту",

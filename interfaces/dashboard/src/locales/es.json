@@ -78,7 +78,8 @@
     "billing": "Facturación y plan",
     "audit_log": "Registro de auditoría",
     "knowledge_base": "Base de conocimientos",
-    "settings": "Ajustes de cuenta"
+    "settings": "Ajustes de cuenta",
+    "settings_group": "Configuración"
   },
   "scorecards": {
     "page_title": "Tarjetas de Vehículos",

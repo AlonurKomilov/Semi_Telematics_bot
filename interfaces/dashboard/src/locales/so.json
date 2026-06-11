@@ -78,7 +78,8 @@
     "billing": "Biilashada iyo Qorshaha",
     "audit_log": "Diiwaanka Hubinta",
     "knowledge_base": "Saldhigga Aqoonta",
-    "settings": "Habaynta Akoonka"
+    "settings": "Habaynta Akoonka",
+    "settings_group": "Dejimaha"
   },
   "scorecards": {
     "page_title": "Scorecards Gawaarida",

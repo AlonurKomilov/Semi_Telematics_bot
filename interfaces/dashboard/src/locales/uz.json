@@ -79,7 +79,8 @@
     "audit_log": "Audit jurnali",
     "knowledge_base": "Bilimlar bazasi",
     "geofences": "Geozonalar",
-    "settings": "Hisob sozlamalari"
+    "settings": "Hisob sozlamalari",
+    "settings_group": "Sozlamalar"
   },
   "scorecards": {
     "page_title": "Transport reytinglari",

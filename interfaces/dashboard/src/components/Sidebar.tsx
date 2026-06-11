@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen, Settings as SettingsIcon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useRoleView } from '../context/RoleViewContext';
 import { PersonaSelector } from './PersonaSelector';
@@ -17,6 +17,9 @@ import { generateNav, type NavItem } from '../shells/nav/generateNav';
 // works without JSON parsing; reading is cheap enough to do in the
 // initializer of useState (called once per mount).
 const COLLAPSE_KEY = 'sidebar.collapsed';
+// The Settings group is ONE collapsible parent entry (the feature's
+// components nest under it).  Closed by default; the preference persists.
+const SETTINGS_OPEN_KEY = 'sidebar.settingsOpen';
 
 function readCollapsed(): boolean {
   try {
@@ -33,6 +36,13 @@ export default function Sidebar() {
   // Same-mount reads see the latest value because we update both
   // simultaneously below.
   const [collapsed, setCollapsed] = useState<boolean>(readCollapsed);
+  const [settingsOpen, setSettingsOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem(SETTINGS_OPEN_KEY) === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(SETTINGS_OPEN_KEY, settingsOpen ? '1' : '0'); } catch { /* session-only */ }
+  }, [settingsOpen]);
+  const location = useLocation();
   useEffect(() => {
     try {
       localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
@@ -108,6 +118,54 @@ export default function Sidebar() {
         {navConfig.map((group, gi) => {
           const items = filterItems(group.items);
           if (items.length === 0) return null;
+          // The Settings feature renders as one parent row that expands to
+          // its permitted components.  While a child route is active the
+          // group stays open so the active pill is never hidden.  In the
+          // collapsed icon rail there's no room for nesting — fall through
+          // to the flat divider+icons rendering below.
+          if (group.collapsible && !collapsed) {
+            const childActive = items.some((i) => location.pathname.startsWith(i.path));
+            const open = settingsOpen || childActive;
+            return (
+              <div key={group.titleKey ?? `_set-${gi}`}>
+                <button
+                  type="button"
+                  onClick={() => setSettingsOpen(!open)}
+                  disabled={childActive && open}
+                  aria-expanded={open}
+                  className={`w-full flex items-center gap-3 px-3 mx-2 my-0.5 rounded-md py-2 text-sm transition-colors ${
+                    childActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  }`}
+                  style={{ width: 'calc(100% - 1rem)' }}
+                >
+                  <SettingsIcon size={16} className="shrink-0" />
+                  <span className="flex-1 text-left">{group.titleKey ? t(group.titleKey) : ''}</span>
+                  {open ? <ChevronDown size={14} className="shrink-0" /> : <ChevronRight size={14} className="shrink-0" />}
+                </button>
+                {open && items.map((item) => {
+                  const Icon = item.icon;
+                  const label = t(item.labelKey);
+                  return (
+                    <NavLink
+                      key={item.path}
+                      to={item.path}
+                      title={undefined}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 pl-9 pr-3 mx-2 my-0.5 rounded-md py-1.5 text-sm transition-colors ${
+                          isActive
+                            ? 'bg-primary/15 text-primary'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                        }`
+                      }
+                    >
+                      <Icon size={14} className="shrink-0" />
+                      {label}
+                    </NavLink>
+                  );
+                })}
+              </div>
+            );
+          }
           return (
             <div key={group.titleKey ?? `_top-${gi}`}>
               {/* Group header.  Expanded: a quiet small-caps label so the

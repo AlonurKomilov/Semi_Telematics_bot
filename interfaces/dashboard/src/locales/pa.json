@@ -78,7 +78,8 @@
     "billing": "ਬਿਲਿੰਗ ਅਤੇ ਪਲਾਨ",
     "audit_log": "ਆਡਿਟ ਲੌਗ",
     "knowledge_base": "ਗਿਆਨ ਅਧਾਰ",
-    "settings": "ਖਾਤਾ ਸੈਟਿੰਗਜ਼"
+    "settings": "ਖਾਤਾ ਸੈਟਿੰਗਜ਼",
+    "settings_group": "ਸੈਟਿੰਗਾਂ"
   },
   "scorecards": {
     "page_title": "ਵਾਹਨ ਸਕੋਰਕਾਰਡ",
