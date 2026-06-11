@@ -149,9 +149,9 @@ export default function App() {
   }
 
   function canAccessPage(p: Page, perms: Record<string, boolean>): boolean {
-    if (p === 'alerts') return !!(perms.can_alerts_all || perms.can_alerts_own);
-    if (p === 'scorecard') return !!(perms.can_scorecard_all || perms.can_scorecard_own);
-    if (p === 'ai') return !!(perms.can_vehicle_all || perms.can_vehicle_own);
+    if (p === 'alerts') return !!(perms.can_alerts_all || perms.can_alerts_vehicle);
+    if (p === 'scorecard') return !!(perms.can_scorecard_all || perms.can_scorecard_vehicle);
+    if (p === 'ai') return !!(perms.can_vehicle_all || perms.can_vehicle_vehicle);
     return true; // map, vehicles, profile always accessible
   }
 

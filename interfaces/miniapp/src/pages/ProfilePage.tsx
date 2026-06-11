@@ -66,11 +66,14 @@ const LANG_OPTIONS = [
 ];
 
 const ROLE_LABELS: Record<string, string> = {
-  driver: 'Driver',
+  owner: 'Owner',
   admin: 'Admin',
+  fleet: 'Fleet',
+  safety: 'Safety',
   dispatcher: 'Dispatcher',
-  fleet_manager: 'Fleet Manager',
-  manager: 'Manager',
+  hr: 'HR',
+  accounting: 'Accounting',
+  driver: 'Driver',
 };
 
 const AVATAR_COLORS = ['#34c759', '#0a84ff', '#bf5af2', '#ff9f0a', '#ff453a', '#30b0c7'];
@@ -91,12 +94,12 @@ function langLabel(code: string | null): string {
 
 function permGroups(perms: Record<string, boolean>): { label: string; on: boolean }[] {
   return [
-    { label: 'See own vehicle on map',     on: !!(perms.can_location_map || perms.can_location_own) },
-    { label: 'See alerts for own vehicle', on: !!(perms.can_alerts_all || perms.can_alerts_own) },
-    { label: 'See own scorecard',          on: !!(perms.can_scorecard_all || perms.can_scorecard_own) },
-    { label: 'See own routes',             on: !!(perms.can_route_all || perms.can_route_own) },
-    { label: 'See own maintenance',        on: !!(perms.can_maintenance_all || perms.can_maintenance_own) },
-    { label: 'See own safety events',      on: !!(perms.can_events_all || perms.can_events_own) },
+    { label: 'See own vehicle on map',     on: !!(perms.can_location_map || perms.can_location_vehicle) },
+    { label: 'See alerts for own vehicle', on: !!(perms.can_alerts_all || perms.can_alerts_vehicle) },
+    { label: 'See own scorecard',          on: !!(perms.can_scorecard_all || perms.can_scorecard_vehicle) },
+    { label: 'See own routes',             on: !!(perms.can_route_all || perms.can_route_vehicle) },
+    { label: 'See own maintenance',        on: !!(perms.can_maintenance_all || perms.can_maintenance_vehicle) },
+    { label: 'See own safety events',      on: !!(perms.can_events_all || perms.can_events_vehicle) },
   ];
 }
 

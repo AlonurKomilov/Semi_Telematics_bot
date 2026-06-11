@@ -26,12 +26,12 @@ const ALL_TABS: { id: Page; labelKey: string; icon: React.ReactNode; permKeys?: 
   { id: 'map',       labelKey: 'tabs.map',       icon: <Icon24LocationMapOutline /> },
   { id: 'vehicles',  labelKey: 'tabs.vehicles',  icon: <Icon24TruckOutline /> },
   // PTI tab visible to drivers (own scope) and fleet reviewers (all scope).
-  { id: 'pti',       labelKey: 'tabs.pti',       icon: <Icon24CheckCircleOutline />,  permKeys: ['can_inspections_own', 'can_inspections_all'] },
-  { id: 'alerts',    labelKey: 'tabs.alerts',    icon: <Icon24NotificationOutline />, permKeys: ['can_alerts_all', 'can_alerts_own'] },
-  { id: 'scorecard', labelKey: 'tabs.scorecard', icon: <Icon24StatisticsOutline />,   permKeys: ['can_scorecard_all', 'can_scorecard_own'] },
+  { id: 'pti',       labelKey: 'tabs.pti',       icon: <Icon24CheckCircleOutline />,  permKeys: ['can_inspections_vehicle', 'can_inspections_all'] },
+  { id: 'alerts',    labelKey: 'tabs.alerts',    icon: <Icon24NotificationOutline />, permKeys: ['can_alerts_all', 'can_alerts_vehicle'] },
+  { id: 'scorecard', labelKey: 'tabs.scorecard', icon: <Icon24StatisticsOutline />,   permKeys: ['can_scorecard_all', 'can_scorecard_vehicle'] },
   // AI uses the same own-vehicle gate as the dashboard sidebar so drivers
-  // (who have can_vehicle_own=True) get access to chat with the assistant.
-  { id: 'ai',        labelKey: 'tabs.ai',        icon: <Icon24MessageOutline />,      permKeys: ['can_vehicle_all', 'can_vehicle_own'] },
+  // (who have can_vehicle_vehicle=True) get access to chat with the assistant.
+  { id: 'ai',        labelKey: 'tabs.ai',        icon: <Icon24MessageOutline />,      permKeys: ['can_vehicle_all', 'can_vehicle_vehicle'] },
   { id: 'profile',   labelKey: 'tabs.profile',   icon: <Icon24UserOutline /> },
 ];
 

@@ -131,6 +131,7 @@ export default function UsersPage() {
         <table className="w-full text-sm">
           <thead className="border-b border-slate-800 text-[10px] uppercase tracking-wider text-slate-500">
             <tr>
+              <th className="text-left px-3 py-2">#</th>
               <th className="text-left px-3 py-2">Name</th>
               <th className="text-left px-3 py-2">Telegram id</th>
               <th className="text-left px-3 py-2">Account</th>
@@ -142,9 +143,9 @@ export default function UsersPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={8} className="text-center text-slate-500 py-8">Loading…</td></tr>}
+            {loading && <tr><td colSpan={9} className="text-center text-slate-500 py-8">Loading…</td></tr>}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={8} className="text-center text-slate-500 py-8">No users match.</td></tr>
+              <tr><td colSpan={9} className="text-center text-slate-500 py-8">No users match.</td></tr>
             )}
             {rows.map((u) => {
               const ls = formatLastSeen(u.last_seen);
@@ -156,6 +157,7 @@ export default function UsersPage() {
                     onClick={() => toggleRow(u.id)}
                     className={`border-b border-slate-800/50 cursor-pointer ${isOpen ? 'bg-slate-800/50' : 'hover:bg-slate-800/50'}`}
                   >
+                    <td className="px-3 py-2 text-slate-500 font-mono text-xs tabular-nums">{u.id}</td>
                     <td className="px-3 py-2 text-slate-100">{u.display_name || <span className="text-slate-600 italic">—</span>}</td>
                     <td className="px-3 py-2 text-slate-400 font-mono text-xs tabular-nums">{u.telegram_id}</td>
                     <td className="px-3 py-2">
@@ -175,7 +177,7 @@ export default function UsersPage() {
                   </tr>
                   {isOpen && (
                     <tr className="border-b border-slate-800/50 bg-slate-950">
-                      <td colSpan={8} className="px-4 py-3">
+                      <td colSpan={9} className="px-4 py-3">
                         <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">
                           Active sessions
                         </div>
