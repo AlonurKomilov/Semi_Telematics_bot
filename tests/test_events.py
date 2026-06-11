@@ -80,31 +80,31 @@ class TestEventsPermissions:
     def test_owner_has_events_all(self):
         perms = get_permissions(Role.OWNER)
         assert perms.can_events_all is True
-        assert perms.can_events_own is True
+        assert perms.can_events_vehicle is True
 
     def test_admin_has_events_all(self):
         perms = get_permissions(Role.ADMIN)
         assert perms.can_events_all is True
-        assert perms.can_events_own is True
+        assert perms.can_events_vehicle is True
 
     def test_fleet_has_events_all(self):
         perms = get_permissions(Role.FLEET)
         assert perms.can_events_all is True
-        assert perms.can_events_own is True
+        assert perms.can_events_vehicle is True
 
     def test_dispatcher_sees_events(self):
-        # Dispatchers were granted can_events_all/can_events_own in the
+        # Dispatchers were granted can_events_all/can_events_vehicle in the
         # IAM refactor — they need safety-event visibility to react to
         # mid-shift deviations.  See capabilities/iam/permissions.py
         # comment on the DISPATCHER block.
         perms = get_permissions(Role.DISPATCHER)
         assert perms.can_events_all is True
-        assert perms.can_events_own is True
+        assert perms.can_events_vehicle is True
 
     def test_driver_events_own_only(self):
         perms = get_permissions(Role.DRIVER)
         assert perms.can_events_all is False
-        assert perms.can_events_own is True
+        assert perms.can_events_vehicle is True
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -536,8 +536,7 @@ class TestEventsKeyboard:
     def test_alert_settings_kb_has_events_toggle(self):
         from interfaces.bot.keyboards import alert_settings_kb
         user = User(
-            id=1, telegram_id=100, account_id=1, role=Role.OWNER,
-            department="", truck_num=None, alerts_on=True,
+            id=1, telegram_id=100, account_id=1, role=Role.OWNER, truck_num=None, alerts_on=True,
             is_active=True, created_at="2025-01-01T00:00:00",
             alert_faults=True, alert_health=True,
             alert_fuel=True, alert_geofence=True, alert_events=True,

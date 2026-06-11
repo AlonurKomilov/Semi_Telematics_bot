@@ -174,7 +174,7 @@ class TestSubMenuReports:
         assert _has_callback(kb, "cmd_menu")
 
     def test_driver_sees_only_events_and_back(self):
-        """Drivers can see events (can_events_own) + back."""
+        """Drivers can see events (can_events_vehicle) + back."""
         kb = submenu_reports_kb(Role.DRIVER)
         callbacks = _all_callbacks(kb)
         assert "cmd_events" in callbacks

@@ -24,7 +24,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from adapters.storage import Role
-from capabilities.pti.templates import (
+from features.pti.templates import (
     STANDARD_DOT_TRAILER_ITEMS,
     STANDARD_DOT_TRUCK_ITEMS,
 )

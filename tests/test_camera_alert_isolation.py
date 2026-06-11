@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from dataclasses import dataclass
 
 from adapters.storage import Role
-from capabilities.alerting.cameras import _issues_for_subscriber
+from features.vehicles.cameras.alert import _issues_for_subscriber
 
 
 @dataclass

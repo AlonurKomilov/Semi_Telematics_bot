@@ -23,18 +23,18 @@ import pytest_asyncio
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from adapters.storage import Database
-from capabilities.coaching import engine as coaching_engine
-from capabilities.coaching import service as coaching_service
-from capabilities.coaching.engine import (
+from features.coaching import engine as coaching_engine
+from features.coaching import service as coaching_service
+from features.coaching.engine import (
     evaluate_incident_rule,
     evaluate_score_rule,
 )
-from capabilities.coaching.models import (
+from features.coaching.models import (
     KIND_INCIDENT_COUNT,
     KIND_SCORE_THRESHOLD,
     CoachingRule,
 )
-from capabilities.coaching.service import CoachingDisabledError
+from features.coaching.service import CoachingDisabledError
 
 
 ACCOUNT_ID = 1

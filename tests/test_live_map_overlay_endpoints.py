@@ -110,7 +110,7 @@ async def test_maintenance_due_locations_aggregates_per_vehicle(app_client):
 
 @pytest.mark.asyncio
 async def test_maintenance_due_locations_driver_scope_returns_empty_when_no_trucks(app_client):
-    """Driver has ``can_maintenance_own=True`` (they can see their own
+    """Driver has ``can_maintenance_vehicle=True`` (they can see their own
     truck's tasks) but no truck assignments in this fixture, so the
     response is an empty list — not a 403.  This matches the
     storage-mixin contract: _own scope with no trucks safe-denies to

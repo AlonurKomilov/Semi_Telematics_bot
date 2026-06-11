@@ -17,7 +17,7 @@ import pytest
 from capabilities.scoring.engine import Scorecard, score
 from capabilities.scoring.rules import get_default_rules
 from capabilities.scoring.signals import vehicle_efficiency as veh_signals
-from capabilities.scoring.signals.safety_events import from_events_by_vehicle
+from features.events.signal import from_events_by_vehicle
 
 
 # ── Engine: subject abstraction ──────────────────────────────────────

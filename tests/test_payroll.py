@@ -23,21 +23,21 @@ import pytest_asyncio
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from adapters.storage import Database
-from capabilities.payroll import engine as payroll_engine
-from capabilities.payroll import service as payroll_service
-from capabilities.payroll.engine import (
+from features.payroll import engine as payroll_engine
+from features.payroll import service as payroll_service
+from features.payroll.engine import (
     compute_run,
     evaluate_incident_rule,
     evaluate_score_rule,
 )
-from capabilities.payroll.models import (
+from features.payroll.models import (
     KIND_INCIDENT_COUNT,
     KIND_SCORE_THRESHOLD,
     STATUS_DRAFT,
     STATUS_FINALIZED,
     BonusRule,
 )
-from capabilities.payroll.service import PayrollDisabledError
+from features.payroll.service import PayrollDisabledError
 
 
 ACCOUNT_ID = 1

@@ -345,8 +345,7 @@ class TestAlertSettingsKeyboard:
 
     def _make_user(self, **overrides):
         defaults = dict(
-            id=1, telegram_id=100, account_id=1, role=Role.OWNER,
-            department="general", truck_num=None, alerts_on=True,
+            id=1, telegram_id=100, account_id=1, role=Role.OWNER, truck_num=None, alerts_on=True,
             is_active=True, created_at="2024-01-01",
             alert_faults=True, alert_health=True,
             alert_fuel=True, alert_geofence=True,

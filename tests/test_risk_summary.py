@@ -116,7 +116,7 @@ def _fake_profile(subject_type: str = "vehicle") -> RiskProfile:
             {"snapshot_date": "2025-01-03", "total_score": 85},
         ],
         score_events=[],
-        safety_events=[
+        events=[
             {
                 "event_type": "harsh_brake",
                 "occurred_at": datetime(2025, 1, 2, 14, 30, tzinfo=timezone.utc),

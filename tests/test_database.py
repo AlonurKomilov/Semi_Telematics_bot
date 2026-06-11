@@ -245,12 +245,11 @@ class TestInvites:
     async def test_redeem_invite(self, seeded_db):
         db, acct, _, owner = seeded_db
         invite = await db.create_invite(
-            acct.id, owner.id, Role.DISPATCHER, "dispatch"
+            acct.id, owner.id, Role.DISPATCHER,
         )
         new_user = await db.redeem_invite(invite.code, 555555)
         assert new_user is not None
         assert new_user.role == Role.DISPATCHER
-        assert new_user.department == "dispatch"
         assert new_user.account_id == acct.id
 
     @pytest.mark.asyncio
@@ -345,12 +344,11 @@ class TestInvitesRevoke:
         forensic audit details) and sets revoked_at to an ISO-8601
         timestamp."""
         db, acct, _, owner = seeded_db
-        invite = await db.create_invite(acct.id, owner.id, Role.DRIVER, "ops")
+        invite = await db.create_invite(acct.id, owner.id, Role.DRIVER)
         revoked = await db.revoke_invite(acct.id, invite.id)
         assert revoked is not None
         assert revoked.id == invite.id
         assert revoked.role == "driver"
-        assert revoked.department == "ops"
         assert revoked.revoked_at is not None
         # Round-trips through ISO-8601 parser without raising
         from datetime import datetime

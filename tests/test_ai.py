@@ -411,11 +411,11 @@ class TestFleetSnapshot:
 
         with patch("infra.services.get_client", return_value=mock_client), \
              patch("infra.services.get_tenant_db", new_callable=AsyncMock), \
-             patch("capabilities.vehicles.service.get_fleet_overview",
+             patch("features.vehicles.service.get_fleet_overview",
                    new=AsyncMock(return_value=mock_fleet)), \
              patch("capabilities.telemetry.service.get_vehicle_health",
                    new=AsyncMock(return_value=mock_health)), \
-             patch("capabilities.events.service.get_events",
+             patch("features.events.service.get_events",
                    new=AsyncMock(return_value=[])):
             snapshot = await _gather_fleet_snapshot(account_id=1)
 
@@ -446,11 +446,11 @@ class TestFleetSnapshot:
 
         with patch("infra.services.get_client", return_value=mock_client), \
              patch("infra.services.get_tenant_db", new_callable=AsyncMock), \
-             patch("capabilities.vehicles.service.get_fleet_overview",
+             patch("features.vehicles.service.get_fleet_overview",
                    new=AsyncMock(return_value=mock_fleet)), \
              patch("capabilities.telemetry.service.get_vehicle_health",
                    new=AsyncMock(return_value=[])), \
-             patch("capabilities.events.service.get_events",
+             patch("features.events.service.get_events",
                    new=AsyncMock(return_value=[])):
             snapshot = await _gather_fleet_snapshot(
                 account_id=1, vehicle_num="101"

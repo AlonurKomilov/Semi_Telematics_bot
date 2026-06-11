@@ -5,7 +5,7 @@ Covers:
 - Returns the caller's own card + per-pillar rank + total rank.
 - Rank counts only drivers with ``has_data`` for that pillar.
 - ``week_delta`` populated from prior-week snapshot when available.
-- ``can_scorecard_own`` (driver role) callers are admitted.
+- ``can_scorecard_vehicle`` (driver role) callers are admitted.
 """
 
 from __future__ import annotations
@@ -95,7 +95,7 @@ async def me_app(pg_db, monkeypatch):
         return list(full)
 
     monkeypatch.setattr(
-        "interfaces.api.routes.safety._svc_evaluate_subjects",
+        "interfaces.api.routes.scorecards._svc_evaluate_subjects",
         _fake_evaluate,
     )
 
@@ -179,7 +179,7 @@ class TestScorecardMeRoute:
             # Caller's own card present.
             assert data["scorecard"]["subject_id"] == "drv-me"
             assert data["scorecard"]["total"] == 80
-            # Driver-role hardening: callers with only ``can_scorecard_own``
+            # Driver-role hardening: callers with only ``can_scorecard_vehicle``
             # MUST NOT see account-wide aggregates.  ``account_size`` and rank
             # fields would let a driver enumerate the rest of the fleet.
             assert data["account_size"] is None
@@ -240,7 +240,7 @@ class TestScorecardMeRoute:
             return [card]
 
         monkeypatch.setattr(
-            "interfaces.api.routes.safety._svc_evaluate_subjects", _fake,
+            "interfaces.api.routes.scorecards._svc_evaluate_subjects", _fake,
         )
 
         from interfaces.api.app import create_api
@@ -262,7 +262,7 @@ class TestScorecardMeRoute:
                     "efficiency": None, "compliance": None,
                 }
                 # Driver-role hardening: rank fields are suppressed for
-                # ``can_scorecard_own`` callers regardless of fleet size.
+                # ``can_scorecard_vehicle`` callers regardless of fleet size.
                 assert data["rank_total"] is None
                 assert data["rank_in_pillar"] is None
         finally:
@@ -300,7 +300,7 @@ class TestScorecardMeRoute:
             }]
 
         monkeypatch.setattr(
-            "interfaces.api.routes.safety._svc_evaluate_subjects",
+            "interfaces.api.routes.scorecards._svc_evaluate_subjects",
             _empty_when_filtered,
         )
 
@@ -383,7 +383,7 @@ class TestScorecardMeAdminRankVisibility:
             return list(my_only) if vehicle_nums else list(full)
 
         monkeypatch.setattr(
-            "interfaces.api.routes.safety._svc_evaluate_subjects",
+            "interfaces.api.routes.scorecards._svc_evaluate_subjects",
             _fake_evaluate,
         )
 
@@ -486,7 +486,7 @@ class TestScorecardMeProbationary:
                                  company=None, vehicle_nums=None):
             return list(my_only) if vehicle_nums else list(full)
         monkeypatch.setattr(
-            "interfaces.api.routes.safety._svc_evaluate_subjects",
+            "interfaces.api.routes.scorecards._svc_evaluate_subjects",
             _fake_evaluate,
         )
 
@@ -688,7 +688,7 @@ class TestMyScorecardExplanation:
                                  company=None, vehicle_nums=None):
             return [my_card]
         monkeypatch.setattr(
-            "interfaces.api.routes.safety._svc_evaluate_subjects",
+            "interfaces.api.routes.scorecards._svc_evaluate_subjects",
             _fake_evaluate,
         )
 

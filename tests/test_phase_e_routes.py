@@ -7,7 +7,7 @@ Covers:
   - Returns empty ``points`` when the warehouse flag is off.
 - ``GET /api/safety/events/heatmap`` (E26 — LiveMap heat layer).
   - Returns lat/lon/weight triples from ``safety_event_log``.
-  - ``can_events_own`` callers without a truck assignment get an empty list.
+  - ``can_events_vehicle`` callers without a truck assignment get an empty list.
   - Empty list when the warehouse flag is off.
 """
 
@@ -56,7 +56,7 @@ async def phase_e_app(pg_db, monkeypatch):
         return []
 
     monkeypatch.setattr(
-        "interfaces.api.routes.vehicles._svc_vehicle_detail",
+        "features.vehicles.router._svc_vehicle_detail",
         _fake_vehicle_detail,
     )
 
@@ -198,7 +198,7 @@ class TestHeatmapRoute:
             assert [p[0] for p in body["points"]] == [40.0, 40.1, 40.2]
 
     async def test_driver_with_truck_filtered_to_own(self, phase_e_app):
-        # Driver role hits can_events_own → only rows for their truck name.
+        # Driver role hits can_events_vehicle → only rows for their truck name.
         async with AsyncClient(
             transport=ASGITransport(app=phase_e_app["app"]), base_url="http://t"
         ) as c:

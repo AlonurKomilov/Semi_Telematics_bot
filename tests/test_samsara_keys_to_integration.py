@@ -21,11 +21,34 @@ the dashboard's own vitest suite, not here.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+import os
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from adapters.storage import Database
+
+
+@pytest.fixture
+def encryption_enabled():
+    """Activate Fernet encryption for the duration of a test.
+
+    The PUT /credentials route now refuses to persist a token while
+    encryption is disabled (it would land in cleartext), so the
+    dual-write happy-path test must run with a key configured — which
+    also mirrors the production deployment.  Resets the global cipher
+    state on teardown so the encryption-off default (conftest sets
+    ``ENCRYPTION_KEY=""``) doesn't leak to sibling tests in the worker.
+    """
+    import infra.crypto as _crypto
+    _crypto._fernet = None
+    with patch.dict(os.environ, {"ENCRYPTION_KEY": "test-passphrase-42"}):
+        _crypto.init_encryption()
+    assert _crypto.is_enabled()
+    try:
+        yield
+    finally:
+        _crypto._fernet = None
 
 
 # ── Storage: set_company_credential ──────────────────────────────
@@ -186,7 +209,7 @@ def test_build_multi_company_client_uses_fallback_token():
 
 
 @pytest.mark.asyncio
-async def test_put_credentials_dual_writes_and_invalidates_client(seeded_db, monkeypatch):
+async def test_put_credentials_dual_writes_and_invalidates_client(seeded_db, monkeypatch, encryption_enabled):
     """Putting a key via the new endpoint MUST:
       1. Write the canonical integration creds map.
       2. Dual-write the legacy ``companies.samsara_api_key`` column.

@@ -14,7 +14,7 @@ import sys
 os.environ.setdefault("ENCRYPTION_KEY", "")
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from capabilities.pti import pdf as pti_pdf
+from features.pti import pdf as pti_pdf
 
 _PNG_SIG = (
     "data:image/png;base64,"

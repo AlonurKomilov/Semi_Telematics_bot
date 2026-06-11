@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from adapters.storage import Database, Role
 from adapters.storage.drivers import DriverDocument
-from capabilities.drivers.expiration import (
+from features.drivers.expiration import (
     BUCKETS,
     classify_documents,
     format_alert,
@@ -244,13 +244,13 @@ class TestSchedulerJob:
         # consulted to skip 23/24 hourly ticks per account; we simulate
         # the one hour where it does fire.
         with patch(
-            "interfaces.bot.driver_expiry.get_app_for_account",
+            "features.drivers.documents.alert.get_app_for_account",
             return_value=fake_app,
         ), patch(
-            "interfaces.bot.driver_expiry.is_local_hour",
+            "features.drivers.documents.alert.is_local_hour",
             new=AsyncMock(return_value=True),
         ):
-            from interfaces.bot.driver_expiry import check_document_expirations
+            from features.drivers.documents.alert import check_document_expirations
             await check_document_expirations(None)
 
         # Past-due doc was flipped.
@@ -282,13 +282,13 @@ class TestSchedulerJob:
         fake_app.bot = fake_bot
 
         with patch(
-            "interfaces.bot.driver_expiry.get_app_for_account",
+            "features.drivers.documents.alert.get_app_for_account",
             return_value=fake_app,
         ), patch(
-            "interfaces.bot.driver_expiry.is_local_hour",
+            "features.drivers.documents.alert.is_local_hour",
             new=AsyncMock(return_value=True),
         ):
-            from interfaces.bot.driver_expiry import check_document_expirations
+            from features.drivers.documents.alert import check_document_expirations
             await check_document_expirations(None)
             first_count = fake_bot.send_message.call_count
             # Re-run — every alert is in dedup, every past-due doc is

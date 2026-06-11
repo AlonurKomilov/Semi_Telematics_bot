@@ -71,7 +71,7 @@ async def safety_app(pg_db, monkeypatch):
         ]
 
     monkeypatch.setattr(
-        "interfaces.api.routes.safety._svc_driver_efficiency",
+        "interfaces.api.routes.scorecards._svc_driver_efficiency",
         _fake_efficiency,
     )
 
@@ -167,13 +167,13 @@ class TestScorecardsRoute:
     async def test_driver_gets_truck_filter_from_assignment(
         self, safety_app, monkeypatch,
     ):
-        """`can_scorecard_own` callers must have their assigned trucks
+        """`can_scorecard_vehicle` callers must have their assigned trucks
         forwarded to the service, not None."""
         async def _fake_truck_nums(_user):
             return ["T-101", "T-202"]
 
         monkeypatch.setattr(
-            "interfaces.api.routes.safety.get_user_vehicle_nums",
+            "interfaces.api.routes.scorecards.get_user_vehicle_nums",
             _fake_truck_nums,
         )
         async with AsyncClient(
@@ -372,7 +372,7 @@ class TestPillarShapeContract:
                 "insufficient_data": False,
             }]
         monkeypatch.setattr(
-            "interfaces.api.routes.safety._svc_evaluate_subjects",
+            "interfaces.api.routes.scorecards._svc_evaluate_subjects",
             _fake_evaluate,
         )
         async with AsyncClient(

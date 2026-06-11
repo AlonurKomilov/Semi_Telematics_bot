@@ -82,12 +82,12 @@ async def test_samsara_called_on_cold_cache(mock_redis):
 
     # Warehouse disabled → fallback fires
     with (
-        patch("interfaces.api.routes.vehicles._redis", mock_redis),
+        patch("features.vehicles.router._redis", mock_redis),
         patch("capabilities.telemetry.warehouse_reader._enabled", return_value=False),
-        patch("capabilities.vehicles.service.get_fleet_overview", fake_fleet_overview),
-        patch("interfaces.api.routes.vehicles._svc_fleet_overview", fake_fleet_overview),
+        patch("features.vehicles.service.get_fleet_overview", fake_fleet_overview),
+        patch("features.vehicles.router._svc_fleet_overview", fake_fleet_overview),
     ):
-        from interfaces.api.routes.vehicles import vehicles_list  # noqa: F401
+        from features.vehicles.router import vehicles_list  # noqa: F401
         # Invoke the cache-aware helper directly
         user = {"account_id": 1, "role": "owner", "user_id": 100,
                 "allowed_companies": ["CO"], "vehicle_nums": None}
@@ -144,7 +144,7 @@ async def test_cache_key_includes_company(mock_redis):
 @pytest.mark.asyncio
 async def test_filters_applied_on_cached_data(mock_redis):
     """Search filter works correctly when data comes from the Redis cache."""
-    from interfaces.api.routes.vehicles import _simplify
+    from features.vehicles.router import _simplify
 
     async def _cached():
         cache_key = "fleet:raw:1:_all"

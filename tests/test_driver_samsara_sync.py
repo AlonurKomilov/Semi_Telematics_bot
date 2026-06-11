@@ -1,7 +1,7 @@
 """Driver Module — Samsara identity-sync tests.
 
 Two layers:
-  * Pure detector (``capabilities.drivers.samsara_sync.detect_mismatches``)
+  * Pure detector (``features.drivers.samsara_sync.detect_mismatches``)
     — fed synthetic local + Samsara lists, asserts the right
     ``Mismatch`` rows come back.
   * API route (``GET /api/drivers/samsara``) — verifies the route
@@ -25,7 +25,7 @@ from httpx import ASGITransport, AsyncClient
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from adapters.storage import Database, Role
-from capabilities.drivers.samsara_sync import (
+from features.drivers.samsara_sync import (
     Mismatch, detect_mismatches, format_digest,
 )
 from interfaces.api.auth import create_jwt

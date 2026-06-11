@@ -305,8 +305,7 @@ class TestNewKeyboards:
     def test_user_settings_kb(self):
         from interfaces.bot.keyboards import user_settings_kb
         user = User(
-            id=1, telegram_id=1, account_id=1, role=Role.OWNER,
-            department="", truck_num=None, alerts_on=True, is_active=True,
+            id=1, telegram_id=1, account_id=1, role=Role.OWNER, truck_num=None, alerts_on=True, is_active=True,
             created_at="", alert_faults=True, alert_health=True,
             alert_fuel=True, alert_geofence=True,
             quiet_start=None, quiet_end=None, timezone="America/New_York",
@@ -329,8 +328,7 @@ class TestNewKeyboards:
     def test_quiet_hours_kb_active(self):
         from interfaces.bot.keyboards import quiet_hours_kb
         user = User(
-            id=1, telegram_id=1, account_id=1, role=Role.OWNER,
-            department="", truck_num=None, alerts_on=True, is_active=True,
+            id=1, telegram_id=1, account_id=1, role=Role.OWNER, truck_num=None, alerts_on=True, is_active=True,
             created_at="", alert_faults=True, alert_health=True,
             alert_fuel=True, alert_geofence=True,
             quiet_start=22, quiet_end=6, timezone="America/New_York",
@@ -343,8 +341,7 @@ class TestNewKeyboards:
     def test_quiet_hours_kb_inactive(self):
         from interfaces.bot.keyboards import quiet_hours_kb
         user = User(
-            id=1, telegram_id=1, account_id=1, role=Role.OWNER,
-            department="", truck_num=None, alerts_on=True, is_active=True,
+            id=1, telegram_id=1, account_id=1, role=Role.OWNER, truck_num=None, alerts_on=True, is_active=True,
             created_at="", alert_faults=True, alert_health=True,
             alert_fuel=True, alert_geofence=True,
             quiet_start=None, quiet_end=None, timezone="America/New_York",
@@ -358,8 +355,7 @@ class TestNewKeyboards:
         """Manage button moved to Management menu; quiet_hours_kb should not have it."""
         from interfaces.bot.keyboards import quiet_hours_kb
         user = User(
-            id=1, telegram_id=1, account_id=1, role=Role.OWNER,
-            department="", truck_num=None, alerts_on=True, is_active=True,
+            id=1, telegram_id=1, account_id=1, role=Role.OWNER, truck_num=None, alerts_on=True, is_active=True,
             created_at="", alert_faults=True, alert_health=True,
             alert_fuel=True, alert_geofence=True,
             quiet_start=None, quiet_end=None, timezone="America/New_York",
@@ -371,8 +367,7 @@ class TestNewKeyboards:
     def test_quiet_hours_kb_non_admin_no_manage_button(self):
         from interfaces.bot.keyboards import quiet_hours_kb
         user = User(
-            id=1, telegram_id=1, account_id=1, role=Role.DRIVER,
-            department="", truck_num=None, alerts_on=True, is_active=True,
+            id=1, telegram_id=1, account_id=1, role=Role.DRIVER, truck_num=None, alerts_on=True, is_active=True,
             created_at="", alert_faults=True, alert_health=True,
             alert_fuel=True, alert_geofence=True,
             quiet_start=None, quiet_end=None, timezone="America/New_York",
@@ -1476,7 +1471,7 @@ class TestParkingMapRender:
             "REASON: Truck is on the highway shoulder near an interchange."
         )
 
-        with patch("capabilities.parking.ai_vision._render_parking_map", return_value=mock_map), \
+        with patch("features.parking.ai_vision._render_parking_map", return_value=mock_map), \
              patch("capabilities.ai.is_configured", return_value=True), \
              patch("capabilities.ai.generate_with_vision", new_callable=AsyncMock,
                    return_value=mock_vision_response) as mock_gv, \
@@ -1499,7 +1494,7 @@ class TestParkingMapRender:
         from capabilities.alerting import _get_ai_parking_analysis
         from unittest.mock import patch, AsyncMock
 
-        with patch("capabilities.parking.ai_vision._render_parking_map", return_value=None), \
+        with patch("features.parking.ai_vision._render_parking_map", return_value=None), \
              patch("capabilities.ai.is_configured", return_value=True), \
              patch("capabilities.ai.generate", new_callable=AsyncMock,
                    return_value="SAFE. This is a truck stop.") as mock_gen, \
@@ -1586,8 +1581,7 @@ class TestParkingAlertSubscription:
         from interfaces.bot.keyboards import alert_settings_kb
         from adapters.storage import User, Role
         user = User(
-            id=1, telegram_id=111, account_id=1, role=Role.OWNER,
-            department="general", truck_num=None, alerts_on=True,
+            id=1, telegram_id=111, account_id=1, role=Role.OWNER, truck_num=None, alerts_on=True,
             is_active=True, created_at="2025-01-01",
         )
         kb = alert_settings_kb(user)
@@ -1598,8 +1592,7 @@ class TestParkingAlertSubscription:
         from interfaces.bot.keyboards import alert_settings_kb
         from adapters.storage import User, Role
         user = User(
-            id=1, telegram_id=111, account_id=1, role=Role.OWNER,
-            department="general", truck_num=None, alerts_on=True,
+            id=1, telegram_id=111, account_id=1, role=Role.OWNER, truck_num=None, alerts_on=True,
             is_active=True, created_at="2025-01-01", alert_parking=True,
         )
         kb = alert_settings_kb(user)
@@ -1615,8 +1608,7 @@ class TestParkingAlertSubscription:
         from interfaces.bot.ai import _ai_alerts_kb
         from adapters.storage import User, Role
         user = User(
-            id=1, telegram_id=111, account_id=1, role=Role.OWNER,
-            department="general", truck_num=None, alerts_on=True,
+            id=1, telegram_id=111, account_id=1, role=Role.OWNER, truck_num=None, alerts_on=True,
             is_active=True, created_at="2025-01-01",
         )
         kb = _ai_alerts_kb(user)

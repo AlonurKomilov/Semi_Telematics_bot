@@ -184,14 +184,19 @@ async def test_get_vehicle_faults_strips_total_and_breakdown_tuple_elements():
 async def test_test_connection_ok_reports_each_company_reached():
     """test_connection now probes /me per company instead of fanning
     out to the rate-limited stats endpoints.  Verify the per-company
-    probe is fast + reports the company count + grabs the org id."""
-    company_a = MagicMock()
-    company_a.get_org_id = AsyncMock(return_value="samsara_org_42")
-    company_b = MagicMock()
-    company_b.get_org_id = AsyncMock(return_value="samsara_org_43")
+    probe is fast + reports the company count + grabs the org id.
+
+    The probe (``_probe_one_company``) opens a fresh aiohttp session
+    against ``client.base_url`` — stubbed at the method level since
+    this test cares about the aggregation, not the HTTP call."""
     stub = MagicMock()
-    stub.clients = {"ACME": company_a, "BETA": company_b}
+    stub.clients = {"ACME": MagicMock(), "BETA": MagicMock()}
     provider = SamsaraProvider(stub)
+
+    async def fake_probe(code, c):  # (code, org_id, error) — the real shape
+        return code, {"ACME": "samsara_org_42", "BETA": "samsara_org_43"}[code], None
+    provider._probe_one_company = fake_probe
+
     status = await provider.test_connection({})
     assert status.ok is True
     assert "2 companies" in status.message
@@ -200,11 +205,14 @@ async def test_test_connection_ok_reports_each_company_reached():
 
 @pytest.mark.asyncio
 async def test_test_connection_failure_returns_error_message():
-    company = MagicMock()
-    company.get_org_id = AsyncMock(side_effect=RuntimeError("401 Unauthorized"))
     stub = MagicMock()
-    stub.clients = {"ACME": company}
+    stub.clients = {"ACME": MagicMock()}
     provider = SamsaraProvider(stub)
+
+    async def fake_probe(code, c):
+        return code, None, f"{code}: credentials rejected (HTTP 401 Unauthorized)"
+    provider._probe_one_company = fake_probe
+
     status = await provider.test_connection({})
     assert status.ok is False
     assert "401 Unauthorized" in status.message

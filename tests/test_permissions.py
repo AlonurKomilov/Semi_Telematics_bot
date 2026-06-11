@@ -82,11 +82,11 @@ class TestRolePermissions:
     # ── Driver: own-only access ───────────────────────────────────
 
     def test_driver_own_truck_only(self):
-        assert can(Role.DRIVER, "can_vehicle_own")
+        assert can(Role.DRIVER, "can_vehicle_vehicle")
         assert not can(Role.DRIVER, "can_vehicle_all")
 
     def test_driver_own_alerts_only(self):
-        assert can(Role.DRIVER, "can_alerts_own")
+        assert can(Role.DRIVER, "can_alerts_vehicle")
         assert not can(Role.DRIVER, "can_alerts_all")
 
     def test_driver_no_fleet_reports(self):
@@ -102,7 +102,7 @@ class TestRolePermissions:
         assert can(Role.DRIVER, "can_digest")
 
     def test_driver_own_geofence(self):
-        assert can(Role.DRIVER, "can_geofence_own")
+        assert can(Role.DRIVER, "can_geofence_vehicle")
         assert not can(Role.DRIVER, "can_geofence_all")
 
 

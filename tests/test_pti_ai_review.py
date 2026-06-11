@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pytest
 
-from capabilities.pti import ai_review
+from features.pti import ai_review
 
 
 # ── Response parsing ────────────────────────────────────────────────

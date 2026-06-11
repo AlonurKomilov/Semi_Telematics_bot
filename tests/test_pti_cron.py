@@ -1,6 +1,6 @@
 """Cron-level tests for the PTI scheduled jobs.
 
-These exercise the integration between ``capabilities.pti.jobs`` and
+These exercise the integration between ``features.pti.jobs`` and
 the surrounding plumbing — ``is_local_hour`` gating, per-account
 fan-out, lazy bot-module imports.  Unit-level behaviour for
 ``spawn_weekly_inspections`` etc. is already covered in
@@ -21,7 +21,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from adapters.storage import Role
-from capabilities.pti import jobs as pti_jobs
+from features.pti import jobs as pti_jobs
 
 
 @pytest.fixture
@@ -146,7 +146,7 @@ class TestSchedulerRegistration:
         """Confirms the four entry points the scheduler registers can
         be imported by their canonical names — guards against a future
         rename breaking ``interfaces/bot/scheduler.py`` silently."""
-        from capabilities.pti.jobs import (
+        from features.pti.jobs import (
             job_pti_escalate_overdue,
             job_pti_fleet_digest,
             job_pti_remind_due_soon,
