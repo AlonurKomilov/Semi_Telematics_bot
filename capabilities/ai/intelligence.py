@@ -470,41 +470,53 @@ async def _check_tool_permission(
                 return {"error": f"Access denied: your role ({user_role}) cannot use {tool_name}."}
         except (ValueError, KeyError, ImportError) as e:
             logger.debug("Tool dispatch error for %s: %s", tool_name, e)
-    if user_role == "driver" and user_context:
-        assigned_trucks = user_context.get("vehicle_nums") or []
-        if not assigned_trucks and user_context.get("vehicle_num"):
-            assigned_trucks = [user_context["vehicle_num"]]
-        assigned_set = {t.strip().lower() for t in assigned_trucks if t}
-        if assigned_set:
-            if tool_name in VEHICLE_SPECIFIC_TOOLS:
-                requested = (tool_args.get("vehicle_name") or "").strip().lower()
-                if not requested:
-                    # Tools with an optional vehicle_name run account-wide
-                    # when it is omitted — drivers must always name one of
-                    # their assigned vehicles.
-                    return {
-                        "error": (
-                            f"Access denied: drivers cannot run fleet-wide"
-                            f" queries. Call {tool_name} again with"
-                            f" vehicle_name set to one of your assigned"
-                            f" vehicle(s): {', '.join(assigned_trucks)}."
-                        ),
-                    }
-                if requested not in assigned_set:
-                    return {
-                        "error": (
-                            f"Access denied: you can only query your"
-                            f" assigned vehicle(s) ({', '.join(assigned_trucks)}),"
-                            f" not '{tool_args.get('vehicle_name')}'."
-                        ),
-                    }
-            if tool_name in ACCOUNT_WIDE_TOOLS:
+    # Vehicle-Access isolation (Account → Company → Vehicle SSOT).  The AI
+    # entry point resolves the caller's effective scope into
+    # ``scoped_vehicle_nums``: ``None`` = unrestricted; a list = the only
+    # vehicles allowed (``[]`` = none).  This one rule covers drivers,
+    # vehicle-scoped, and company-scoped users alike.  Back-compat: when the
+    # key is absent we fall back to a driver's assigned trucks, so callers
+    # that predate the scope plumbing keep their driver isolation.
+    scoped: list | None = None
+    if user_context is not None:
+        if "scoped_vehicle_nums" in user_context:
+            scoped = user_context["scoped_vehicle_nums"]
+        elif user_role == "driver":
+            trucks = user_context.get("vehicle_nums") or []
+            if not trucks and user_context.get("vehicle_num"):
+                trucks = [user_context["vehicle_num"]]
+            scoped = [t for t in trucks if t]
+
+    if scoped is not None:
+        allowed_set = {t.strip().lower() for t in scoped if t}
+        names = ", ".join(scoped) if scoped else "(none assigned)"
+        if tool_name in VEHICLE_SPECIFIC_TOOLS:
+            requested = (tool_args.get("vehicle_name") or "").strip().lower()
+            if not requested:
+                # Tools with an optional vehicle_name run account-wide when it
+                # is omitted — a scoped user must always name an allowed one.
                 return {
                     "error": (
-                        f"Access denied: {tool_name} returns"
-                        f" fleet-wide data not available to drivers."
+                        f"Access denied: you can only query your assigned"
+                        f" vehicle(s) ({names}). Call {tool_name} again with"
+                        f" vehicle_name set to one of them."
                     ),
                 }
+            if requested not in allowed_set:
+                return {
+                    "error": (
+                        f"Access denied: you can only query your assigned"
+                        f" vehicle(s) ({names}),"
+                        f" not '{tool_args.get('vehicle_name')}'."
+                    ),
+                }
+        if tool_name in ACCOUNT_WIDE_TOOLS:
+            return {
+                "error": (
+                    f"Access denied: {tool_name} returns fleet-wide data"
+                    f" outside your access scope."
+                ),
+            }
     return None
 
 

@@ -124,7 +124,26 @@ async def _get_user_info(user: dict, platform_db) -> tuple[dict | None, list[str
     if vehicle_nums:
         user_context["vehicle_num"] = vehicle_nums[0]
 
-    vehicle_filter = vehicle_nums if user_context["role"] == "driver" and vehicle_nums else None
+    # Effective AI data scope from Vehicle Access (All / Company / Vehicle) —
+    # the single source of truth in Team Management.  ``None`` = unrestricted;
+    # a list = the only vehicles the AI may serve this user.  Drives both the
+    # server-side tool gate (via user_context) and the prompt snapshot below.
+    from capabilities.ai.scope import resolve_vehicle_scope
+    scope = await resolve_vehicle_scope(
+        platform_db, user_obj.account_id, user_obj.id,
+        user_context.get("role"), truck_num=getattr(user_obj, "truck_num", None),
+    )
+    user_context["scoped_vehicle_nums"] = scope
+
+    # Snapshot scoping mirrors the gate.  ``[]`` (restricted-to-none) must
+    # still filter the snapshot to empty, so pass a non-matching sentinel
+    # rather than None (which build_context reads as "all vehicles").
+    if scope is None:
+        vehicle_filter = None
+    elif scope:
+        vehicle_filter = scope
+    else:
+        vehicle_filter = ["\x00__no_access__"]
     language = getattr(user_obj, "language", "en") or "en"
     return user_context, vehicle_filter, language
 

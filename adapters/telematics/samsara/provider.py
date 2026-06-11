@@ -82,6 +82,39 @@ class SamsaraProvider:
 
     def __init__(self, client: MultiCompanyClient) -> None:
         self._client = client
+        # Flag the test-build path so close_if_owned_by_test() knows
+        # whether to drop the underlying client.  Samsara's build_for_test
+        # routes through the cached resolver so this stays False — the
+        # cached MultiCompanyClient lives across requests and must not
+        # be closed after a single connect probe.
+        self._owned_by_test = False
+
+    @classmethod
+    async def build_for_test(
+        cls, account_id: int, creds: dict[str, Any],
+    ) -> "SamsaraProvider":
+        """Construct a provider instance for the shared connect-route's
+        test probe.
+
+        For Samsara we route through the cached telematics-client
+        resolver since the underlying ``MultiCompanyClient`` is built
+        from per-company keys already on the ``companies`` table —
+        ``creds`` from the connect form is the integration credentials
+        envelope, not per-company tokens.  The cached instance survives
+        across the test → upsert → first-ingest path so we don't
+        rebuild it three times in a row.
+        """
+        from infra.services import get_telematics_client
+        provider = await get_telematics_client(
+            account_id, "samsara", prefetch=False,
+        )
+        return provider  # type: ignore[return-value]
+
+    async def close_if_owned_by_test(self) -> None:
+        """No-op for Samsara — the test path returns the cached
+        instance, which must NOT be closed after a probe.  Datatruck
+        overrides this to release its single-use HTTPS session."""
+        return None
 
     # ── Identity / direct access for legacy callers ───────────────
 

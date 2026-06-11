@@ -52,10 +52,48 @@ class DatatruckProvider:
 
     def __init__(self, client: DatatruckClient) -> None:
         self._client = client
+        # Mark whether this instance was built via build_for_test —
+        # in that case close_if_owned_by_test() releases the single-use
+        # HTTPS client.  The cached resolver path leaves it False.
+        self._owned_by_test = False
 
     @property
     def client(self) -> DatatruckClient:
         return self._client
+
+    @classmethod
+    async def build_for_test(
+        cls, account_id: int, creds: dict[str, Any],
+    ) -> "DatatruckProvider":
+        """Construct a single-use provider from raw credentials for
+        the shared connect route's test probe.
+
+        Datatruck's per-tenant URL means we can't go through the
+        cached resolver path (which reads creds from the integration
+        row, which doesn't exist yet on first connect).  Build a bare
+        ``DatatruckClient`` from the subdomain + token in ``creds``,
+        wrap it, and tag it as test-owned so the shared route's
+        ``close_if_owned_by_test()`` releases the aiohttp session
+        after the probe.
+        """
+        sub = (creds or {}).get("company_subdomain") or ""
+        tok = (creds or {}).get("api_token") or ""
+        if not sub or not tok:
+            raise ValueError(
+                "datatruck requires both 'company_subdomain' "
+                "(e.g. 'premier') and 'api_token' in credentials",
+            )
+        client = DatatruckClient(company_subdomain=sub, api_token=tok)
+        instance = cls(client)
+        instance._owned_by_test = True
+        return instance
+
+    async def close_if_owned_by_test(self) -> None:
+        """Release the single-use HTTPS client built by
+        ``build_for_test``.  No-op when the instance was built any
+        other way (cached resolver path)."""
+        if self._owned_by_test:
+            await self._client.close()
 
     # ── Lifecycle ─────────────────────────────────────────────────
 

@@ -1094,14 +1094,6 @@ function ConnectForm({
                   <span className="font-mono">support@datatruck.io</span>{' '}
                   — they answer this quickly.
                 </li>
-                <li>
-                  In your Datatruck browser tab: press{' '}
-                  <kbd className="font-mono">F12</kbd>, click{' '}
-                  <em>Network</em>, refresh the page, click any row in the
-                  list — the <em>Request URL</em> at the top shows{' '}
-                  <span className="font-mono">SOMETHING.datatruck.io</span>{' '}
-                  — that <em>SOMETHING</em> is what to paste.
-                </li>
               </ol>
               <p className="italic">
                 Heads up:{' '}

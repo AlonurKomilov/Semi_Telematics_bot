@@ -83,9 +83,25 @@ def _sanitize_ai_html(text: str) -> str:
     return escaped
 
 
-def _build_user_context(user) -> dict:
-    """Delegates to the shared builder in capabilities.ai.usage."""
-    return build_user_ai_context(user)
+async def _build_user_context(user) -> dict:
+    """Build the AI user-context + attach the Vehicle-Access data scope.
+
+    ``scoped_vehicle_nums`` is resolved from the same Team Management
+    Vehicle Access SSOT the dashboard uses (All / Company / Vehicle), so the
+    bot's AI honors the exact scope set for the user.  On error we leave the
+    key UNSET so the gate's back-compat path still isolates drivers via their
+    assigned trucks rather than failing open.
+    """
+    ctx = build_user_ai_context(user)
+    try:
+        from capabilities.ai.scope import resolve_vehicle_scope
+        ctx["scoped_vehicle_nums"] = await resolve_vehicle_scope(
+            get_platform_db(), user.account_id, user.id,
+            getattr(user, "role", None), truck_num=getattr(user, "truck_num", None),
+        )
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning("AI scope resolution failed (bot), using fallback: %s", e)
+    return ctx
 
 async def _log_ai_usage(account_id: int, telegram_user_id: int, action: str,
                         usage: dict | None,
@@ -295,7 +311,7 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
                         question: str):
     """Process the user's AI question and return the answer."""
     user = context.user_data["_db_user"]
-    user_ctx = _build_user_context(user)
+    user_ctx = await _build_user_context(user)
     lang = getattr(user, "language", "en") or "en"
 
     await _show_loading(update, context, "🤖  <i>Thinking...</i>")
@@ -413,7 +429,7 @@ async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user = context.user_data["_db_user"]
-    user_ctx = _build_user_context(user)
+    user_ctx = await _build_user_context(user)
     lang = getattr(user, "language", "en") or "en"
     await _show_loading(update, context, "📊  <i>Generating fleet briefing...</i>")
 
@@ -633,7 +649,7 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         prompt = " ".join(prompt_parts)
         lang = getattr(user, "language", "en") or "en"
-        user_ctx = _build_user_context(user)
+        user_ctx = await _build_user_context(user)
         # action="bot_diagnosis" — router telemetry fires inside
         # generate(); skipping external log to avoid double-counting.
         diagnosis, _usage = await ai.generate(

@@ -28,6 +28,11 @@ export interface FeatureToggle {
 
 export type FeatureToggleMap = Record<string, FeatureToggle>;
 
+/** Shape of data the provider exposes — drives which router file
+ *  owns its routes and which card body the frontend renders.
+ *  Backend source: `ProviderKind` in `adapters/telematics/catalog.py`. */
+export type ProviderKind = 'telematics' | 'tms';
+
 export interface CatalogEntry {
   provider_id: string;
   display_name: string;
@@ -35,6 +40,9 @@ export interface CatalogEntry {
   description: string;
   capabilities: string[];
   auth_kind: string;
+  /** New 2026-06-11 — defaults to 'telematics' on entries the backend
+   *  doesn't tag explicitly (back-compat with older catalog serializers). */
+  kind: ProviderKind;
   docs_url: string;
   icon: string;
   status: ProviderStatus;

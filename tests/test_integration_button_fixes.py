@@ -222,7 +222,11 @@ async def test_route_returns_504_when_test_connection_exceeds_12s(monkeypatch):
     """The route handler MUST cap the upstream call at 12s so the
     frontend never sees the bare 30s ABORT from the fetch timeout —
     a clean 504 with a useful message is better UX."""
-    from capabilities.integrations import router as integrations_module
+    # test_connection_action lives in the shared router after the
+    # route-layer carve.  Its name resolution for get_telematics_client,
+    # get_platform_db, and asyncio.wait_for runs in the shared router
+    # module's namespace, so patch there.
+    from capabilities.integrations.shared import router as integrations_module
 
     # Mock the provider's test_connection to hang forever.
     hanging_provider = MagicMock()
@@ -251,12 +255,11 @@ async def test_route_returns_504_when_test_connection_exceeds_12s(monkeypatch):
     original_wait_for = asyncio.wait_for
 
     async def fast_wait_for(coro, timeout):
-        # Force immediate timeout regardless of requested seconds —
-        # keeps test fast while exercising the timeout path.
         return await original_wait_for(coro, timeout=0.05)
 
     monkeypatch.setattr(
-        "capabilities.integrations.router.asyncio.wait_for", fast_wait_for,
+        "capabilities.integrations.shared.router.asyncio.wait_for",
+        fast_wait_for,
     )
 
     from fastapi import HTTPException
@@ -304,9 +307,11 @@ async def test_record_integration_backfill_completion_sets_timestamp(seeded_db):
 
 @pytest.mark.asyncio
 async def test_serializer_exposes_last_backfill_at(seeded_db):
-    """API surface check — the route's _serialize_integration helper
+    """API surface check — the route's serialize_integration helper
     must include the new field so the dashboard can read it."""
-    from capabilities.integrations.router import _serialize_integration
+    from capabilities.integrations.shared.helpers import (
+        serialize_integration as _serialize_integration,
+    )
 
     db: Database = seeded_db["db"]
     account = seeded_db["account"]

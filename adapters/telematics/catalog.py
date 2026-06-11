@@ -39,6 +39,27 @@ class ProviderStatus(str, Enum):
     DEPRECATED  = "deprecated"    # client still works but new connects blocked
 
 
+class ProviderKind(str, Enum):
+    """Shape of data the provider exposes.
+
+    ``telematics`` providers (Samsara, Motive, Geotab) push live
+    vehicle state, safety events, fault codes — fits the per-company-
+    key + history-backfill UX with a "Test connection" probe.
+
+    ``tms`` providers (Datatruck) expose dispatch-shaped data —
+    drivers, trucks, loads, work orders — sourced from one per-tenant
+    token.  No live telemetry, no per-company keys, no history backfill;
+    the UI renders a different card body for these.
+
+    Each kind owns its own router file under
+    ``capabilities/integrations/<kind>/router.py`` so adding a new
+    provider of one kind never touches the other kind's surface.
+    """
+
+    TELEMATICS = "telematics"
+    TMS        = "tms"
+
+
 @dataclass(frozen=True)
 class ProviderCatalogEntry:
     """Metadata the dashboard needs to render a provider card.
@@ -75,6 +96,13 @@ class ProviderCatalogEntry:
     the generic Plug icon."""
 
     status: ProviderStatus = ProviderStatus.AVAILABLE
+
+    kind: ProviderKind = ProviderKind.TELEMATICS
+    """Whether the provider is telematics-shaped (live vehicle state)
+    or TMS-shaped (dispatch/orders/drivers).  Picks which router
+    file owns the provider's routes and which frontend card body
+    gets rendered.  Defaults to TELEMATICS to keep existing entries
+    unchanged."""
 
     feature_defaults: dict[str, dict] = field(default_factory=dict)
     """Default per-capability config (cadence, etc.) applied when an
@@ -238,6 +266,7 @@ PROVIDER_CATALOG: dict[str, ProviderCatalogEntry] = {
         docs_url="https://apidocs.datatruck.io/api-reference/introduction",
         icon="Plug",
         status=ProviderStatus.AVAILABLE,
+        kind=ProviderKind.TMS,
         feature_defaults={
             # Conservative cadences — Datatruck rate-limits at
             # 20 req/min globally per token.  A driver/truck sync

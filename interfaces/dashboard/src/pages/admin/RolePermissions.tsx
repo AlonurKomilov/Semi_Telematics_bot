@@ -82,6 +82,17 @@ const PERM_GROUPS: PermGroup[] = [
       { key: 'can_digest',       label: 'Scheduled Reports', indented: true },
       { key: 'can_rolling_stopped', label: 'AI: Engine-state Lookup', description: 'AI-only: "what\'s rolling / idling / off right now?"' },
       { key: 'can_ai_chat', label: 'AI Chat', description: 'AI assistant chat + fleet summary' },
+      // Settings is ONE System-tier feature whose components each carry
+      // their own permission — account administration can be held by one
+      // role or delegated piecemeal (e.g. HR gets Invites without Users).
+      // Components are FLAT siblings (Invites / Working Hours / Audit Log
+      // were lifted from under Team Management); the Team Management page
+      // still HOSTS some as tabs — UI hosting ≠ taxonomy.
+      { header: 'Settings', description: 'account administration — each component has its own permission' },
+      { key: 'can_manage_account',   label: 'Account Settings', indented: true, description: 'General config — also rides: Permissions, Modules, Integrations, Storage, Working Hours, Scorecard Rules' },
+      { key: 'can_manage_users',     label: 'Team Management', indented: true, description: 'Members, roles, data scope — also gates the Audit Log' },
+      { key: 'can_invite',           label: 'Send Invites', indented: true },
+      { key: 'can_manage_companies', label: 'Manage Companies', indented: true },
     ],
   },
   {
@@ -135,15 +146,6 @@ const PERM_GROUPS: PermGroup[] = [
       { key: 'can_payroll_admin',    label: 'Payroll' },
       { key: 'can_payroll_view_own', label: 'View Own Paystubs', indented: true },
       { key: 'can_manage_billing',   label: 'Billing' },
-    ],
-  },
-  {
-    title: 'Account admin',
-    flags: [
-      { key: 'can_manage_account',   label: 'Account Settings', description: 'Also gates Permissions, Modules, Integrations, Storage, Working Hours, Scorecard Rules' },
-      { key: 'can_manage_users',     label: 'Manage Users', description: 'Also gates the Audit Log' },
-      { key: 'can_manage_companies', label: 'Manage Companies' },
-      { key: 'can_invite',           label: 'Send Invites' },
     ],
   },
 ];

@@ -219,7 +219,9 @@ async def test_put_credentials_dual_writes_and_invalidates_client(seeded_db, mon
     Two missing-await / swapped-args bugs were found in adversarial
     review precisely because no test exercised this end-to-end path.
     """
-    from capabilities.integrations import router as integrations_module
+    # The per-company credential endpoints + CompanyCredentialUpsert
+    # live in the samsara router after the route-layer carve.
+    from capabilities.integrations.samsara import router as integrations_module
 
     db: Database = seeded_db["db"]
     account = seeded_db["account"]
@@ -234,19 +236,17 @@ async def test_put_credentials_dual_writes_and_invalidates_client(seeded_db, mon
         display_name="Cargo Freight", active_days=30,
     )
 
-    # Stub the platform/tenant DB getters in the route module so they
-    # return our seeded test DB.  The route uses get_account_integration
-    # + set_company_credential + update_company — all live on the same
-    # Database instance.
-    monkeypatch.setattr(
-        "infra.platform.get_platform_db", lambda: db,
-    )
+    # Stub the platform/tenant DB getters where the SAMSARA ROUTER
+    # binds them (its `from infra.platform import ...` made local
+    # bindings — patching infra.platform's symbol no longer affects
+    # the route handler after the route-layer carve).
+    monkeypatch.setattr(integrations_module, "get_platform_db", lambda: db)
 
     async def fake_get_tenant_db(account_id):
         return db
 
     monkeypatch.setattr(
-        "infra.platform.get_tenant_db", fake_get_tenant_db,
+        integrations_module, "get_tenant_db", fake_get_tenant_db,
     )
 
     # Track invalidate_client — was it awaited?
@@ -263,7 +263,7 @@ async def test_put_credentials_dual_writes_and_invalidates_client(seeded_db, mon
     async def fake_audit(*a, **kw):
         return None
 
-    monkeypatch.setattr(integrations_module, "_audit", fake_audit)
+    monkeypatch.setattr(integrations_module, "audit", fake_audit)
 
     body = integrations_module.CompanyCredentialUpsert(
         api_token="NEW_INTEGRATION_KEY",
@@ -271,7 +271,7 @@ async def test_put_credentials_dual_writes_and_invalidates_client(seeded_db, mon
     user = {"account_id": account.id, "id": 1}
 
     await integrations_module.set_company_credential_endpoint(
-        "samsara", "CFT", body, user=user,
+        "CFT", body, user=user,
     )
 
     # 1. Integration creds map updated.
@@ -297,7 +297,9 @@ async def test_put_credentials_dual_writes_and_invalidates_client(seeded_db, mon
 @pytest.mark.asyncio
 async def test_delete_credentials_dual_writes_and_invalidates_client(seeded_db, monkeypatch):
     """Mirror of the above for the DELETE path."""
-    from capabilities.integrations import router as integrations_module
+    # The per-company credential endpoints + CompanyCredentialUpsert
+    # live in the samsara router after the route-layer carve.
+    from capabilities.integrations.samsara import router as integrations_module
 
     db: Database = seeded_db["db"]
     account = seeded_db["account"]
@@ -311,12 +313,14 @@ async def test_delete_credentials_dual_writes_and_invalidates_client(seeded_db, 
         display_name="Cargo Freight", active_days=30,
     )
 
-    monkeypatch.setattr("infra.platform.get_platform_db", lambda: db)
+    monkeypatch.setattr(integrations_module, "get_platform_db", lambda: db)
 
     async def fake_get_tenant_db(account_id):
         return db
 
-    monkeypatch.setattr("infra.platform.get_tenant_db", fake_get_tenant_db)
+    monkeypatch.setattr(
+        integrations_module, "get_tenant_db", fake_get_tenant_db,
+    )
 
     invalidate_calls: list = []
 
@@ -328,11 +332,11 @@ async def test_delete_credentials_dual_writes_and_invalidates_client(seeded_db, 
     async def fake_audit(*a, **kw):
         return None
 
-    monkeypatch.setattr(integrations_module, "_audit", fake_audit)
+    monkeypatch.setattr(integrations_module, "audit", fake_audit)
 
     user = {"account_id": account.id, "id": 1}
     await integrations_module.remove_company_credential_endpoint(
-        "samsara", "CFT", user=user,
+        "CFT", user=user,
     )
 
     integ = await db.get_account_integration(account.id, "samsara")

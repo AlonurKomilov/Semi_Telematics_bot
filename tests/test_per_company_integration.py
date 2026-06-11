@@ -265,7 +265,13 @@ async def test_run_now_preflight_passes_when_any_company_healthy(monkeypatch):
     """The Run-now trigger MUST pass even when ai.status='error'
     if at least one company has been tested and is healthy.
     Otherwise one bad company blocks backfill for 4 good ones."""
-    from capabilities.integrations import router as integrations_module
+    # Samsara-specific routes live under capabilities.integrations.samsara
+    # since the route layer carve.  The shared helpers (audit,
+    # spawn_background) live under .shared.helpers; they're imported
+    # into the samsara router module's namespace at import time, so
+    # patching them there is what the route handler actually sees.
+    from capabilities.integrations.samsara import router as samsara_router
+    from capabilities.integrations.shared import helpers as shared_helpers
     from capabilities.integrations import company_health
 
     # Fake "error" status integration
@@ -276,7 +282,7 @@ async def test_run_now_preflight_passes_when_any_company_healthy(monkeypatch):
 
     db = MagicMock()
     db.get_account_integration = AsyncMock(return_value=integ)
-    monkeypatch.setattr(integrations_module, "get_platform_db", lambda: db)
+    monkeypatch.setattr(samsara_router, "get_platform_db", lambda: db)
 
     # The loosened preflight also calls ``get_tenant_db`` from
     # ``infra.platform`` to filter stale health records by current
@@ -289,8 +295,11 @@ async def test_run_now_preflight_passes_when_any_company_healthy(monkeypatch):
     async def fake_get_tenant_db(_acct_id):
         return tenant_stub
 
-    import infra.platform as _platform_module
-    monkeypatch.setattr(_platform_module, "get_tenant_db", fake_get_tenant_db)
+    # Patch the name as it's bound INSIDE the samsara router (the
+    # `from infra.platform import get_tenant_db` import there made a
+    # local binding).  Patching infra.platform's symbol no longer
+    # affects the route after the route-layer carve.
+    monkeypatch.setattr(samsara_router, "get_tenant_db", fake_get_tenant_db)
 
     # Health map shows 1 of 5 healthy → preflight should pass.
     store, fake_get, fake_set, fake_scan, fake_avail = _make_redis_stub()
@@ -300,25 +309,28 @@ async def test_run_now_preflight_passes_when_any_company_healthy(monkeypatch):
     monkeypatch.setattr(company_health._redis, "scan_keys", fake_scan)
     await company_health.set_company_health(42, "samsara", "CFT", ok=True)
 
-    # Spawn-background spy.
+    # Spawn-background spy.  Patched in the samsara router's namespace
+    # because that's where ``trigger_backfill_history`` resolves the
+    # name at call-time (its `from ..shared.helpers import` binds the
+    # name locally to that module).
     spawned: list = []
     monkeypatch.setattr(
-        integrations_module, "_spawn_background",
+        samsara_router, "spawn_background",
         lambda coro: spawned.append(coro) or coro.close(),
     )
     monkeypatch.setattr(
-        integrations_module, "_audit",
+        samsara_router, "audit",
         AsyncMock(),
     )
     # backfill_status preflight = no running record.
     monkeypatch.setattr(
-        integrations_module, "get_backfill_status",
+        samsara_router, "get_backfill_status",
         AsyncMock(return_value=None),
     )
 
-    body = integrations_module.BackfillHistoryRequest(days=30)
-    result = await integrations_module.trigger_backfill_history(
-        "samsara", body, user={"account_id": 42, "id": 1},
+    body = shared_helpers.BackfillHistoryRequest(days=30)
+    result = await samsara_router.trigger_backfill_history(
+        body, user={"account_id": 42, "id": 1},
     )
     # Preflight passed → spawned a task → returned queued.
     assert result["state"] == "queued"
