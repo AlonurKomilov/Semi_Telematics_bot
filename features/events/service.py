@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from infra.services import get_client
-from capabilities.vehicles.service import prepare_companies
+from features.vehicles.service import prepare_companies
 
 
 async def get_events(

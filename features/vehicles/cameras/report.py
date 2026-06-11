@@ -1,5 +1,5 @@
 """Camera check PDF generator."""
-from .pdf_base import *  # noqa: F403,F401
+from capabilities.reporting.pdf_base import *  # noqa: F403,F401
 
 _CAM_STATUS_COLORS = {
     "PROBLEM": C_RED,

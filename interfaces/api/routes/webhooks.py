@@ -420,7 +420,7 @@ async def _audit_bounce(invite, action: str, bounce_type: str, reason: str) -> N
     try:
         tenant = await _get_tenant_db(invite.account_id)
         details = (
-            f"Role: {invite.role}, dept: {invite.department}, "
+            f"Role: {invite.role}, "
             f"bounce_type: {bounce_type}, reason: {reason[:100]}"
         )[:500]
         await tenant.add_audit_log(

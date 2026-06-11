@@ -6,7 +6,7 @@ import re
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
 
-from interfaces.api.deps import require_permission_any, get_tenant_db, get_user_vehicle_nums, paginate, active_view
+from interfaces.api.deps import require_permission_any, get_tenant_db, get_user_vehicle_nums, paginate, active_view, get_user_company_codes, filter_by_company_map
 from capabilities.alerting.service import filter_alerts_by_access
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
@@ -22,7 +22,7 @@ _FAULT_FMI_RE = re.compile(r"(\d+)-\d+(?=\b|:)")
 
 async def _filter_own(user: dict, alerts: list[dict]) -> list[dict]:
     """If user has only _own permission, filter alerts to their assigned vehicles."""
-    if user.get("_matched_perm") != "can_alerts_own":
+    if user.get("_matched_perm") != "can_alerts_vehicle":
         return alerts
     trucks = await get_user_vehicle_nums(user)
     return filter_alerts_by_access(alerts, trucks)
@@ -140,6 +140,24 @@ def _norm_ack_state(value: str | None) -> str:
     return v if v in ("all", "acknowledged") else "active"
 
 
+async def _vehicle_company_map(account_id: int, tenant_db) -> dict:
+    """``vehicle_id → company_code`` for the account, so alerts (which
+    carry no company column) can be company-filtered via their vehicle.
+
+    Keyed by ``vehicle_id`` (globally unique), NOT ``vehicle_name`` —
+    names collide across companies (e.g. truck "103" in two companies),
+    which would silently mis-map one and hide its alerts.
+
+    Best-effort: any read failure returns ``{}`` → ``filter_by_company_map``
+    fail-opens (shows all) rather than hiding every alert.
+    """
+    try:
+        states = await tenant_db.get_vehicle_state(account_id)
+        return {s.get("vehicle_id"): s.get("company_code") for s in states}
+    except Exception:
+        return {}
+
+
 @router.get("/pending")
 async def pending_alerts(
     alert_type: str | None = Query(None, description="Filter: fault, health, fuel, events"),
@@ -158,7 +176,7 @@ async def pending_alerts(
     # default stays 50 for backwards compat with any client that
     # doesn't pass page_size.
     page_size: int = Query(50, ge=1, le=500, description="Items per page (max 500)"),
-    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Get logical alerts for this account within the requested window.
@@ -173,22 +191,25 @@ async def pending_alerts(
     ``days`` windows the acknowledged/all views on first_seen.
     """
     state = _norm_ack_state(ack_state)
-    # Drivers only see their own trucks; that filter happens in Python
-    # because it joins against user→vehicle assignments.  Everyone else
-    # gets the much faster SQL-paginated path that lets the DB engine
-    # do top-K sort + LIMIT on the (now per-subtype) alert_history.
-    is_driver_scope = user.get("_matched_perm") == "can_alerts_own"
-    if is_driver_scope:
-        # Fetch the full filtered set (no SQL LIMIT) because the
-        # per-truck access filter runs in Python; drivers have few
-        # trucks so the unbounded fetch stays cheap.
+    # Drivers (own-truck) AND company-restricted users both need the
+    # PYTHON path: their filters can't run in SQL — alert_history has no
+    # company column, and the truck filter joins user→vehicle in Python.
+    # So fetch the full filtered set, filter, then paginate.  Everyone
+    # else gets the faster SQL-paginated path below.
+    is_driver_scope = user.get("_matched_perm") == "can_alerts_vehicle"
+    allowed = await get_user_company_codes(user)
+    if is_driver_scope or allowed:
         rows = await tenant_db.get_active_alert_history_for_account_paged(
             user["account_id"],
             alert_type=alert_type, vehicle_substring=vehicle,
             severity=severity, ack_state=state, days=days,
         )
         alerts = [_shape_history_for_pending_api(r) for r in rows]
-        alerts = await _filter_own(user, alerts)
+        if is_driver_scope:
+            alerts = await _filter_own(user, alerts)
+        if allowed:
+            veh_map = await _vehicle_company_map(user["account_id"], tenant_db)
+            alerts = filter_by_company_map(alerts, allowed, veh_map, key="vehicle_id")
         paged = paginate(alerts, page, page_size)
         return {"alerts": paged["items"], "count": paged["total"],
                 "page": paged["page"], "page_size": paged["page_size"],
@@ -222,7 +243,7 @@ async def pending_alerts_by_vehicle(
     days: int | None = Query(None, ge=1, le=90),
     page: int = Query(1, ge=1, description="Page number (over vehicles, not alerts)"),
     page_size: int = Query(50, ge=1, le=200, description="Vehicles per page (max 200)"),
-    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Per-vehicle aggregated view of alerts within the window.
@@ -235,7 +256,7 @@ async def pending_alerts_by_vehicle(
     ``days`` mirror the per-alert /pending endpoint.
     """
     state = _norm_ack_state(ack_state)
-    is_driver_scope = user.get("_matched_perm") == "can_alerts_own"
+    is_driver_scope = user.get("_matched_perm") == "can_alerts_vehicle"
     offset = (page - 1) * page_size
     vehicles, total = await tenant_db.get_active_vehicles_with_alerts_paged(
         user["account_id"],
@@ -260,6 +281,17 @@ async def pending_alerts_by_vehicle(
             # so the footer's "of N vehicles" stays consistent.
             total = min(total, len(vehicles)) if total else len(vehicles)
 
+    # Company scoping — restrict to the user's allowed companies (alerts
+    # carry no company column, so resolve via the vehicle).  Same clamp
+    # caveat as driver isolation above.
+    company_codes = await get_user_company_codes(user)
+    if company_codes:
+        veh_map = await _vehicle_company_map(user["account_id"], tenant_db)
+        before = len(vehicles)
+        vehicles = filter_by_company_map(vehicles, company_codes, veh_map, key="vehicle_id")
+        if len(vehicles) != before:
+            total = min(total, len(vehicles)) if total else len(vehicles)
+
     total_pages = max(1, (total + page_size - 1) // page_size) if total > 0 else 1
     return {
         "vehicles": vehicles,
@@ -273,7 +305,7 @@ async def pending_alerts_by_vehicle(
 @router.get("/aggregate")
 async def alerts_aggregate(
     days: int = Query(7, ge=1, le=90),
-    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Histogram of alert counts by alert_type for the last N days.
@@ -286,7 +318,7 @@ async def alerts_aggregate(
     only count their assigned trucks' alerts; ``_all`` users see the
     full account aggregate.
     """
-    is_driver_scope = user.get("_matched_perm") == "can_alerts_own"
+    is_driver_scope = user.get("_matched_perm") == "can_alerts_vehicle"
 
     if is_driver_scope:
         rows = await tenant_db.get_active_alert_history_for_account(user["account_id"])
@@ -301,6 +333,13 @@ async def alerts_aggregate(
             user["account_id"], days=days,
         )
         alerts = [_shape_history_for_pending_api(r) for r in rows]
+
+    # Company scope: a restricted user's histogram counts only their
+    # companies' alerts (resolved via vehicle; fail-open if cold/unknown).
+    company_codes = await get_user_company_codes(user)
+    if company_codes:
+        veh_map = await _vehicle_company_map(user["account_id"], tenant_db)
+        alerts = filter_by_company_map(alerts, company_codes, veh_map, key="vehicle_id")
 
     by_type: dict[str, int] = {}
     by_severity: dict[str, int] = {}
@@ -320,7 +359,7 @@ async def alerts_aggregate(
 
 @router.get("/pending/count")
 async def pending_alerts_count(
-    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
     tenant_db=Depends(get_tenant_db),
     view_role: str = Depends(active_view),
 ):
@@ -338,7 +377,7 @@ async def pending_alerts_count(
     triage Owner/Admin switch view to Fleet/Safety/etc. via the
     persona selector and the X-View-As header re-scopes the count.
     """
-    is_driver_scope = user.get("_matched_perm") == "can_alerts_own"
+    is_driver_scope = user.get("_matched_perm") == "can_alerts_vehicle"
     if is_driver_scope:
         # Driver scope still needs the row list because access filtering
         # joins user→vehicle assignments.  Their truck count is small,
@@ -357,6 +396,19 @@ async def pending_alerts_count(
         # tab won't surface a misleading count for a role that
         # doesn't actually triage alerts at this scope.
         return {"count": 0}
+
+    # Company scope: a restricted user can't use the SQL COUNT fast path
+    # (alert_history has no company column).  Fetch, filter by persona +
+    # company (resolved via vehicle), and count the rows instead.
+    company_codes = await get_user_company_codes(user)
+    if company_codes:
+        rows = await tenant_db.get_active_alert_history_for_account(user["account_id"])
+        alerts = [_shape_history_for_pending_api(r) for r in rows]
+        type_set = set(allowed_types)
+        alerts = [a for a in alerts if (a.get("alert_type") or "") in type_set]
+        veh_map = await _vehicle_company_map(user["account_id"], tenant_db)
+        alerts = filter_by_company_map(alerts, company_codes, veh_map, key="vehicle_id")
+        return {"count": len(alerts)}
 
     # Persona-filtered fast path: sum filtered COUNT(*) per type.  The
     # type set per persona is small (≤6 entries) so this stays sub-ms
@@ -383,7 +435,7 @@ async def alert_history(
     # default stays 50 for backwards compat with any client that
     # doesn't pass page_size.
     page_size: int = Query(50, ge=1, le=500, description="Items per page (max 500)"),
-    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Get alert history for this account.
@@ -403,6 +455,10 @@ async def alert_history(
         severity=severity,
     )
     alerts = await _filter_own(user, alerts)
+    company_codes = await get_user_company_codes(user)
+    if company_codes:
+        veh_map = await _vehicle_company_map(user["account_id"], tenant_db)
+        alerts = filter_by_company_map(alerts, company_codes, veh_map, key="vehicle_id")
     alerts = _dedup_by_alert_key(alerts)
 
     paged = paginate(alerts, page, page_size)
@@ -414,7 +470,7 @@ async def alert_history(
 @router.post("/{ack_id}/acknowledge")
 async def acknowledge_alert(
     ack_id: int,
-    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Acknowledge an alert from the web UI.
@@ -458,7 +514,7 @@ async def _ack_one(tenant_db, alert_id: int, telegram_id: int, account_id: int) 
 @router.post("/bulk-ack")
 async def bulk_acknowledge(
     body: BulkAckRequest,
-    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Acknowledge multiple alerts at once."""
@@ -490,7 +546,7 @@ class MuteRequest(BaseModel):
 async def mute_alert(
     history_id: int,
     body: MuteRequest,
-    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Mute Telegram delivery for a specific alert (alert_history.id).
@@ -515,7 +571,7 @@ async def mute_alert(
 @router.delete("/{history_id}/mute")
 async def unmute_alert(
     history_id: int,
-    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Drop every active mute on this alert — Telegram delivery resumes
@@ -529,7 +585,7 @@ async def unmute_alert(
 @router.get("/mutes")
 async def list_active_mutes(
     limit: int = Query(500, ge=1, le=2000),
-    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
     tenant_db=Depends(get_tenant_db),
 ):
     """List active (unexpired) mutes for this account so the dashboard
@@ -546,7 +602,7 @@ async def list_active_mutes(
 @router.post("/vehicle/{vehicle_id}/ack")
 async def acknowledge_vehicle_alerts(
     vehicle_id: str,
-    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_own")),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Acknowledge every active alert for one vehicle in one click.
@@ -565,7 +621,7 @@ async def acknowledge_vehicle_alerts(
         return {"acked": 0, "vehicle_id": vehicle_id}
 
     # Driver isolation: only let drivers ack alerts for their own truck(s).
-    if user.get("_matched_perm") == "can_alerts_own":
+    if user.get("_matched_perm") == "can_alerts_vehicle":
         from interfaces.api.deps import get_user_vehicle_nums
         allowed = await get_user_vehicle_nums(user)
         if allowed is not None:

@@ -224,7 +224,7 @@ def _render_trend(story, styles, profile: RiskProfile) -> None:
 def _render_incidents(story, styles, profile: RiskProfile,
                       cfg: AudienceConfig) -> None:
     _section_header(story, styles, "SAFETY INCIDENTS")
-    if not profile.safety_events:
+    if not profile.events:
         story.append(Paragraph(
             "No safety events recorded in the reporting window.",
             styles["CellText"],
@@ -235,7 +235,7 @@ def _render_incidents(story, styles, profile: RiskProfile,
     rows = [["Date", "Type", "Severity", "Vehicle", "Speed"]]
     if cfg.show_video_links:
         rows[0].append("Video")
-    for e in profile.safety_events[:50]:
+    for e in profile.events[:50]:
         occurred = str(e.get("occurred_at") or "")[:16].replace("T", " ")
         speed = e.get("speed_mph")
         speed_s = f"{float(speed):.0f} mph" if isinstance(speed, (int, float)) else "—"
@@ -364,7 +364,7 @@ def _render_data_sources(story, styles, profile: RiskProfile) -> None:
         ["Subject ID", profile.subject_id],
         ["Snapshots used", str(len(profile.daily_history))],
         ["Score events", str(len(profile.score_events))],
-        ["Safety events", str(len(profile.safety_events))],
+        ["Safety events", str(len(profile.events))],
         ["Maintenance tasks", str(
             len(profile.overdue_tasks) + len(profile.pending_tasks)
         )],

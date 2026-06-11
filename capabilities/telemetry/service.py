@@ -8,7 +8,7 @@ from __future__ import annotations
 
 
 from infra.services import get_client
-from capabilities.vehicles.service import prepare_companies
+from features.vehicles.service import prepare_companies
 
 
 async def get_vehicle_health(
@@ -89,7 +89,7 @@ async def get_vehicles_with_faults(
     Warehouse-first: reads ``vehicle_fault_snapshot`` + ``vehicle_state``
     when WAREHOUSE_READS_ENABLED=1, falls back to live Samsara otherwise.
     """
-    from capabilities.vehicles.severity import classify_fault_severity
+    from features.vehicles.severity import classify_fault_severity
 
     await prepare_companies(account_id)
     client = await get_client(account_id)
@@ -248,3 +248,15 @@ async def get_vehicle_odometer(
             return float(miles)
         return None
     return None
+
+
+async def get_engine_states(account_id: int) -> list[dict]:
+    """Latest engine state (On / Off / Idle) for every vehicle.
+
+    SSOT accessor for the rolling/idling/stopped classification — tools
+    and hubs call this instead of ``samsara_client.get_engine_states()``
+    directly (service-contract rule, docs/FEATURES.md).
+    """
+    await prepare_companies(account_id)
+    client = await get_client(account_id)
+    return await client.get_engine_states()

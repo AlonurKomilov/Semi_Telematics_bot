@@ -14,6 +14,7 @@ from telegram.ext import Application
 from adapters.storage import Role
 from infra.bot_registry import get_app_for_account
 from infra.services import get_platform_db, get_tenant_db
+from capabilities.alerting.registry import register_alert_source
 
 logger = logging.getLogger("bot")
 
@@ -109,15 +110,58 @@ async def is_user_dnd_active(user, tenant) -> bool:
     False when delivery should proceed immediately.
 
     Priority:
-      1. Per-user override (``quiet_start`` + ``quiet_end`` both set) —
-         the user explicitly defined a personal window.
+      0. ``user.dnd_enabled`` — personal opt-out toggle (migration 100).
+         When ``False`` the user has explicitly opted out of DND from
+         their Profile page; always deliver, ignoring the schedule.
+      1. Per-user Working Hours override (``quiet_start`` + ``quiet_end``
+         both set) — admin assigned this user a custom active window.
       2. Otherwise: derived from account ``work_hours`` for the user's
          role — admin-managed, single-source-of-truth for the team.
 
     Critical-severity alerts MUST bypass this check at the call site
     via their own ``bypasses_dnd`` flag — this helper doesn't know
-    about severity.
+    about severity.  Tier 0 (personal opt-out) similarly does NOT
+    silence critical alerts: this function returns False then, the
+    pipeline delivers, and the call site's bypass for critical never
+    even runs.
     """
+    # Tier 0: personal opt-out toggle.  ``getattr`` keeps this safe
+    # for callers passing a user-shaped object that predates the
+    # toggle (default-True semantics handled at the model layer).
+    if not getattr(user, "dnd_enabled", True):
+        return False
+    # Tier 1a: admin-assigned named schedule (migration 101).  Looks
+    # up the work_hours row by FK and treats it like a per-user
+    # override.  Wraps the lookup defensively so a deleted-schedule
+    # FK doesn't break alert delivery — falls through to the legacy
+    # free-form override / role-level tiers.
+    assigned_id = getattr(user, "assigned_work_hours_id", None)
+    if assigned_id is not None:
+        try:
+            # ``get_work_hour`` (singular) returns one row or None;
+            # scoped to the user's account so a stale FK to a deleted
+            # / cross-account schedule resolves None and falls through.
+            row = await tenant.get_work_hour(assigned_id, user.account_id)
+        except Exception as e:
+            logger.debug("Assigned-schedule lookup failed: %s — falling through", e)
+            row = None
+        if row:
+            from zoneinfo import ZoneInfo
+            try:
+                tz = ZoneInfo(user.timezone)
+            except Exception:
+                tz = ZoneInfo("America/New_York")
+            local_hour = datetime.now(timezone.utc).astimezone(tz).hour
+            start = int(row.get("start_hour", 0))
+            end = int(row.get("end_hour", 0))
+            in_working = (
+                start <= local_hour < end if start <= end
+                else local_hour >= start or local_hour < end
+            )
+            return not in_working
+    # Tier 1b: legacy free-form per-user override (kept for backward
+    # compatibility with rows set before the named-schedule selector
+    # shipped).
     if user.quiet_start is not None and user.quiet_end is not None:
         return user.is_in_quiet_hours()
     return not await is_user_on_shift(user, tenant)
@@ -145,6 +189,7 @@ def _filter_handoff_for_driver(
     ]
 
 
+@register_alert_source("dnd_delivery", trigger="cron", minute=0)
 async def deliver_dnd_alerts(app: Application):
     """Deliver shift handoff report when working hours start.
 

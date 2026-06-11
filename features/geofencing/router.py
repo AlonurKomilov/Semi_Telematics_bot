@@ -4,6 +4,10 @@ Geofences are part of fleet operations, so they live under /fleet/geofences
 to match the sidebar grouping. Legacy /map/geofences aliases are kept hidden
 from the schema for backwards-compat with old bookmarks.
 """
+# router.py is interface-layer code co-located with its feature
+# (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
+# service/alert/tool/signal modules never do.
+
 
 from __future__ import annotations
 
@@ -20,7 +24,7 @@ from interfaces.api.deps import (
     filter_by_allowed_companies,
     resolve_user_id,
 )
-from capabilities.geofencing.geometry import geofence_shape_type as _geofence_shape_type
+from features.geofencing.geometry import geofence_shape_type as _geofence_shape_type
 from interfaces.bot.state import get_tenant_db
 
 router = APIRouter(prefix="/fleet/geofences", tags=["geofences"])
@@ -41,12 +45,12 @@ class GeofenceCreateRequest(BaseModel):
 @router.get("")
 async def list_geofences(
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_geofence_all", "can_geofence_own")),
+    user: dict = Depends(require_permission_any("can_geofence_all", "can_geofence_vehicle")),
 ):
     """Geofence polygons for map overlay."""
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
-    from capabilities.geofencing.service import get_geofences as _svc_geofences
+    from features.geofencing.service import get_geofences as _svc_geofences
     geofences = await _svc_geofences(user["account_id"], company=company)
     geofences = filter_by_allowed_companies(geofences, allowed)
     features = []
@@ -215,7 +219,7 @@ legacy_router = APIRouter(prefix="/map/geofences", tags=["geofences"], include_i
 @legacy_router.get("")
 async def _legacy_list_geofences(
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_geofence_all", "can_geofence_own")),
+    user: dict = Depends(require_permission_any("can_geofence_all", "can_geofence_vehicle")),
 ):
     return await list_geofences(company=company, user=user)
 

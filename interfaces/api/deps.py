@@ -315,6 +315,7 @@ async def get_user_company_codes(user: dict) -> list[str]:
     db_user = await get_current_db_user(user, platform_db)
     if not db_user:
         return []
+    # Per-user company assignment (Team Management); empty = all companies.
     return await platform_db.get_user_company_codes(db_user.id)
 
 
@@ -346,6 +347,41 @@ def filter_by_allowed_companies(
         return data
     allowed_upper = {c.upper() for c in allowed_codes}
     return [d for d in data if (d.get(key) or "").upper() in allowed_upper]
+
+
+def filter_by_company_map(
+    rows: list[dict],
+    allowed_codes: list[str],
+    company_map: dict,
+    key: str = "vehicle_name",
+) -> list[dict]:
+    """Company-filter rows whose company ISN'T on the row itself.
+
+    For endpoints whose rows carry no company column (alerts → vehicle,
+    drivers → user_id, coaching → samsara driver_id): the caller builds a
+    ``row[key] → company-code(s)`` map and passes it here.
+
+    FAIL-OPEN on ambiguity so legitimate data is never hidden:
+      • ``allowed_codes`` empty → unrestricted → all rows.
+      • ``company_map`` empty (source cold/unavailable) → all rows.
+      • a row whose key isn't in the map (unresolved) → kept.
+    A row is dropped ONLY when its company is KNOWN and excluded.  Map
+    values may be a single code (str) or a list of codes.
+    """
+    if not allowed_codes or not company_map:
+        return rows
+    allowed_upper = {c.upper() for c in allowed_codes}
+    out = []
+    for r in rows:
+        codes = company_map.get(r.get(key))
+        if not codes:
+            out.append(r)  # unresolved → keep (fail-open)
+            continue
+        if isinstance(codes, str):
+            codes = [codes]
+        if any((c or "").upper() in allowed_upper for c in codes):
+            out.append(r)
+    return out
 
 
 async def filter_by_assigned_trucks(

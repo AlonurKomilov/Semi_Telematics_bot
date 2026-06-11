@@ -3,8 +3,8 @@
 from datetime import datetime as _dt
 from constants import TZ_ET as _TZ_ET
 from capabilities.localization.i18n import t
-from capabilities.geofencing.geometry import is_inside_geofence as _is_inside_geofence, geofence_shape_type as _geofence_shape_type, distance_to_geofence as _distance_to_geofence
-from capabilities.geofencing.service import get_platform_geofences
+from features.geofencing.geometry import is_inside_geofence as _is_inside_geofence, geofence_shape_type as _geofence_shape_type, distance_to_geofence as _distance_to_geofence
+from features.geofencing.service import get_platform_geofences
 
 from telegram import Update
 from telegram.ext import ContextTypes, Application
@@ -22,6 +22,7 @@ from interfaces.bot.helpers import (
     _show, _show_loading, _safe_error, reply_dashboard_redirect,
 )
 from interfaces.bot.auth import _require_registered
+from capabilities.alerting.registry import register_alert_source
 
 try:
     import infra.cache as rcache
@@ -36,7 +37,7 @@ async def cmd_geofences(update: Update, context: ContextTypes.DEFAULT_TYPE,
                         company: str | None = None):
     """List geofences — Samsara zones + platform zones."""
     user = context.user_data["_db_user"]
-    if not (can(user.role, "can_geofence_all") or can(user.role, "can_geofence_own")):
+    if not (can(user.role, "can_geofence_all") or can(user.role, "can_geofence_vehicle")):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -48,7 +49,7 @@ async def cmd_geofences(update: Update, context: ContextTypes.DEFAULT_TYPE,
     await _show_loading(update, context, t('geofence.loading'))
 
     try:
-        from capabilities.geofencing.service import get_geofences as _svc_geofences
+        from features.geofencing.service import get_geofences as _svc_geofences
         samsara_zones = await _svc_geofences(user.account_id, company=company)
         platform_zones = await tenant.get_platform_geofences(user.account_id, is_active=True)
 
@@ -161,6 +162,7 @@ async def cmd_delete_zone(update: Update, context: ContextTypes.DEFAULT_TYPE):  
 # Distance from zone boundary that counts as "approaching" (1 mile)
 _NEARBY_THRESHOLD_M: float = 1_609.344
 
+@register_alert_source("geofence_check", trigger="interval", minutes=5)
 async def check_geofence_events(app: Application):
     """Scheduled job: poll vehicle locations against platform geofences.
 
@@ -209,7 +211,7 @@ async def _check_geofences_account(bot_app: Application, account):
 
     # GPS from warehouse (60s-fresh) with live-Samsara fallback
     try:
-        from capabilities.geofencing.service import get_fleet_for_geofence_check
+        from features.geofencing.service import get_fleet_for_geofence_check
         vehicles = await get_fleet_for_geofence_check(account.id)
     except Exception as e:
         logger.debug("Geofence GPS fetch for account %d: %s", account.id, e)
@@ -376,7 +378,7 @@ def _filter_subscribers_for_zone(
         role = getattr(sub, "role", "")
         if role not in zone_roles:
             continue
-        # Driver isolation: can_geofence_own — only own vehicle
+        # Driver isolation: can_geofence_vehicle — only own vehicle
         if role == "driver":
             truck = getattr(sub, "truck_num", None)
             if truck and truck != vehicle_name:

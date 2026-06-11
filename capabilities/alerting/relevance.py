@@ -42,7 +42,7 @@ from capabilities.iam.permissions import ROLE_PERMISSIONS, FeatureSet
 # Mapping from canonical alert type → required permission(s).
 #
 # When the value is a list, the role needs ANY ONE of the listed
-# permissions (so a driver with only ``can_geofence_own`` still gets
+# permissions (so a driver with only ``can_geofence_vehicle`` still gets
 # parking + geofence toggles for their own truck).
 #
 # Adding a new alert type: add an entry here AND make sure the
@@ -58,15 +58,15 @@ ALERT_TYPE_REQUIRED_PERM: dict[str, Union[str, list[str]]] = {
     # Fuel level + DEF + fuel efficiency events.
     "fuel":     "can_fuel",
     # Safety / harsh-event alerts (braking, cornering, speeding, etc.).
-    "events":   ["can_events_all", "can_events_own"],
+    "events":   ["can_events_all", "can_events_vehicle"],
     # Geofence entry/exit alerts on platform-defined zones.
-    "geofence": ["can_geofence_all", "can_geofence_own"],
+    "geofence": ["can_geofence_all", "can_geofence_vehicle"],
     # Unauthorised-stop + long-idle parking alerts.  Uses geofence
     # permission because parking detection sits in the geofencing
     # capability today.
-    "parking":  ["can_geofence_all", "can_geofence_own"],
+    "parking":  ["can_geofence_all", "can_geofence_vehicle"],
     # Maintenance overdue + due-soon alerts.
-    "maintenance": ["can_maintenance_all", "can_maintenance_own"],
+    "maintenance": ["can_maintenance_all", "can_maintenance_vehicle"],
 }
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 
-from capabilities.vehicles.service import get_fleet_overview
+from features.vehicles.service import get_fleet_overview
 from infra.services import get_client
 
 
@@ -23,7 +23,7 @@ def classify_vehicle_status(vehicle: dict) -> str:
     (merged in by ``get_fleet_for_map`` from /fleet/vehicles/stats?types=
     engineStates).  Falls back to a speed-only heuristic for vehicles whose
     Samsara plan doesn't expose engineStates or for paths that don't merge
-    that data (e.g. ``capabilities.location`` consumers other than the map).
+    that data (e.g. ``features.location`` consumers other than the map).
     """
     loc = vehicle.get("location", {})
     speed = loc.get("speedMilesPerHour", vehicle.get("speed_mph", 0)) or 0

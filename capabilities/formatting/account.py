@@ -36,7 +36,7 @@ def format_users_list(users, account_name: str) -> str:
         alerts_label = _t('team.alerts_on') if u.alerts_on else _t('team.alerts_off')
         lines.append(
             f"  {role_display(u.role)}\n"
-            f"     {u.linked_label}  ·  {u.department}{truck}\n"
+            f"     {u.linked_label}{truck}\n"
             f"     {alerts}  {alerts_label}\n"
         )
     return "\n".join(lines)

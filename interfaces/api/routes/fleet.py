@@ -29,10 +29,10 @@ from interfaces.api.deps import (
 )
 from adapters.storage import Role
 from capabilities.iam.permissions import can
-from capabilities.vehicles.service import get_fleet_overview as _svc_fleet_overview
+from features.vehicles.service import get_fleet_overview as _svc_fleet_overview
 from capabilities.telemetry.service import get_fleet_weather as _svc_fleet_weather
 from capabilities.telemetry import warehouse_reader as _wh_reader
-from capabilities.location.service import classify_vehicle_status, get_fleet_for_map
+from features.location.service import classify_vehicle_status, get_fleet_for_map
 
 router = APIRouter(prefix="/fleet", tags=["fleet"])
 
@@ -189,16 +189,20 @@ async def overview_stats(
     fetch_alerts = (
         role == Role.DRIVER
         or can(role, "can_alerts_all")
-        or can(role, "can_alerts_own")
+        or can(role, "can_alerts_vehicle")
     )
-    fetch_parking = can(role, "can_alerts_all") or can(role, "can_alerts_own")
+    fetch_parking = can(role, "can_alerts_all") or can(role, "can_alerts_vehicle")
     fetch_maintenance = can(role, "can_maintenance_all")
 
+    # Fetch ALL open tasks (pending / overdue / in_progress) when
+    # the role can see maintenance — the count below filters them by
+    # urgency, not by stored status.  A pending task that's still
+    # 50,000 mi from due isn't "Maintenance due", it's scheduled.
     overview, pending_alerts, all_parked, maint_tasks = await asyncio.gather(
         get_fleet_for_map(account_id, company=company),
         tenant_db.get_pending_alerts(account_id) if fetch_alerts else asyncio.sleep(0, result=[]),
         tenant_db.get_active_parking_events(account_id, attention_only=False) if fetch_parking else asyncio.sleep(0, result=[]),
-        tenant_db.get_maintenance_tasks(account_id, status="pending") if fetch_maintenance else asyncio.sleep(0, result=[]),
+        tenant_db.get_maintenance_tasks(account_id) if fetch_maintenance else asyncio.sleep(0, result=[]),
     )
     overview = filter_by_allowed_companies(overview, allowed)
 
@@ -308,7 +312,19 @@ async def overview_stats(
         result["unknown_parking"] = sum(1 for e in all_parked if e.get("location_class") == "unknown")
 
     if fetch_maintenance:
-        result["maintenance_due"] = len(maint_tasks) if maint_tasks else 0
+        # ``maintenance_due`` counts tasks that classify as overdue OR
+        # due_soon (within 7 days / 5,000 mi / 100 engine hours of the
+        # threshold).  Matches the dashboard's "Due Soon + Overdue"
+        # chips so the shell header badge and the Maintenance page
+        # tell the same story.  A pending task that's still 50,000 mi
+        # away from due doesn't count.
+        from features.maintenance.service import classify_task_urgency
+        due_now = 0
+        for t in (maint_tasks or []):
+            urgency = classify_task_urgency(t)
+            if urgency in ("overdue", "due_soon"):
+                due_now += 1
+        result["maintenance_due"] = due_now
 
     if cache_key is not None:
         _stats_cache_put(cache_key, result)

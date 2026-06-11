@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from capabilities.alerting.pipeline import SYSTEM_USER_ID
-from capabilities.parking.maps import _render_parking_map
+from features.parking.maps import _render_parking_map
 from capabilities.formatting.helpers import escape_html
 
 logger = logging.getLogger("bot")
@@ -31,8 +31,8 @@ async def _get_ai_parking_analysis(
         # Render map screenshot (runs blocking I/O in a thread)
         import asyncio
         # NOTE: lookup the renderer through the local module so test code
-        # patching ``capabilities.parking.ai_vision._render_parking_map``
-        # (and the legacy ``capabilities.parking._render_parking_map``)
+        # patching ``features.parking.ai_vision._render_parking_map``
+        # (and the legacy ``features.parking._render_parking_map``)
         # still works.
         map_bytes = await asyncio.to_thread(_render_parking_map, lat, lng)
 

@@ -41,7 +41,7 @@ from interfaces.bot.config import logger
 from interfaces.bot.state import get_platform_db, get_tenant_db
 from infra.isolation import run_account_job
 from infra.services import get_tenant_db as _get_tenant_db_rls
-from capabilities.maintenance.service import (
+from features.maintenance.service import (
     mark_overdue_tasks_by_date,
     mark_overdue_tasks_by_mileage,
     mark_overdue_tasks_by_engine_hours,
@@ -51,6 +51,7 @@ from capabilities.maintenance.service import (
 )
 from interfaces.bot.helpers import _show, reply_dashboard_redirect
 from interfaces.bot.auth import _require_registered
+from capabilities.alerting.registry import register_alert_source
 
 
 def _task_label(task_type: str) -> str:
@@ -196,11 +197,12 @@ def _format_maintenance_alert(
 # ══════════════════════════════════════════════════════════════════
 
 
+@register_alert_source("maintenance_check", trigger="interval", hours=24)
 async def check_overdue_maintenance(app: Application):
     """Scheduled job: check for overdue maintenance tasks (by date).
 
     Runs daily. Business logic (DB mutations) delegated to
-    capabilities.maintenance.service.mark_overdue_tasks_by_date.
+    features.maintenance.service.mark_overdue_tasks_by_date.
     """
     try:
         accounts = await get_platform_db().list_accounts()
@@ -266,11 +268,12 @@ async def check_overdue_maintenance(app: Application):
         logger.info(f"Marked {total_marked} maintenance task(s) as overdue (date)")
 
 
+@register_alert_source("maintenance_mileage_check", trigger="interval", hours=6)
 async def check_overdue_by_mileage(app: Application):
     """Scheduled job: check for overdue maintenance by odometer reading.
 
     Runs every 6 hours. Business logic (DB mutations + odometer fetching)
-    delegated to capabilities.maintenance.service.mark_overdue_tasks_by_mileage.
+    delegated to features.maintenance.service.mark_overdue_tasks_by_mileage.
     """
     try:
         accounts = await get_platform_db().list_accounts()
@@ -340,6 +343,7 @@ async def check_overdue_by_mileage(app: Application):
         logger.info(f"Marked {total_marked} maintenance task(s) as overdue (mileage)")
 
 
+@register_alert_source("maintenance_engine_hours_check", trigger="interval", hours=6)
 async def check_overdue_by_engine_hours(app: Application):
     """Scheduled job: engine-hours threshold crossings.
 
@@ -415,6 +419,7 @@ async def check_overdue_by_engine_hours(app: Application):
         logger.info(f"Marked {total_marked} maintenance task(s) as overdue (engine hours)")
 
 
+@register_alert_source("maintenance_warning_check", trigger="interval", hours=24)
 async def check_upcoming_maintenance_warnings(app: Application):
     """Daily pre-overdue warning ("due in 7d / 500 mi / 50 hrs").
 

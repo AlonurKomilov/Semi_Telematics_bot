@@ -25,6 +25,8 @@ from infra.config import FAULT_ALERT_COOLDOWN_HOURS, CHRONIC_FAULT_SUPPRESS_AFTE
 from infra.context import set_tenant_display
 from infra.isolation import run_account_job
 from infra.services import get_client, get_platform_db, get_tenant_db
+from capabilities.alerting.registry import register_alert_source
+from infra.config import ALERT_INTERVAL
 
 logger = logging.getLogger("bot")
 
@@ -212,6 +214,7 @@ async def _clear_chronic_fire_count(account_id: int, vid: str, canonical_key: st
 #  Main fault-check scheduled job
 # ═══════════════════════════════════════════════════════════════════
 
+@register_alert_source("fault_check", trigger="interval", minutes=ALERT_INTERVAL)
 async def check_new_faults(app: Application):
     """Check all accounts with fault-alert subscribers for new faults.
 

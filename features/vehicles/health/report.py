@@ -1,5 +1,5 @@
 """Vehicle health PDF generator."""
-from .pdf_base import *  # noqa: F403,F401
+from capabilities.reporting.pdf_base import *  # noqa: F403,F401
 
 def _latest_reading(health: dict) -> tuple[str, str]:
     """Return (relative_time_str, color_hex) for the most recent sensor reading.

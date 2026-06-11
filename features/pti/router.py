@@ -2,7 +2,7 @@
 
 Three logical groups:
 
-  * **Driver-facing** (``/me/...`` paths, ``can_inspections_own``) —
+  * **Driver-facing** (``/me/...`` paths, ``can_inspections_vehicle``) —
     fetch current inspection, walk items, attach media, submit.
   * **Fleet-facing** (``/...`` paths, ``can_inspections_all``) —
     list submissions, view detail, review.
@@ -13,11 +13,15 @@ Three logical groups:
     submissions.  Account owners + admins inherit it via the default
     role grants.
 
-All write paths go through ``capabilities.pti.service`` rather than
+All write paths go through ``features.pti.service`` rather than
 the storage mixin directly so business rules (required items,
 required media, status transitions) can't be bypassed by hitting an
 endpoint with crafted payloads.
 """
+# router.py is interface-layer code co-located with its feature
+# (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
+# service/alert/tool/signal modules never do.
+
 
 from __future__ import annotations
 
@@ -36,8 +40,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from capabilities.iam.permissions import can
-from capabilities.pti import service as pti_service
-from capabilities.pti.templates import (
+from features.pti import service as pti_service
+from features.pti.templates import (
     STANDARD_DOT_TRAILER_ITEMS,
     STANDARD_DOT_TRUCK_ITEMS,
     VALID_ITEM_STATUSES,
@@ -251,7 +255,7 @@ async def _inspection_company_folder(
     docs.  Drivers without a company assignment (legacy / unassigned)
     land under ``unnamed-company/`` so writes never fail.
     """
-    from capabilities.work_orders.storage import resolve_company_folder
+    from features.work_orders.storage import resolve_company_folder
     user_id = int(inspection.get("user_id") or 0)
     company_code = ""
     if user_id:
@@ -421,7 +425,7 @@ async def _resolve_active_template(
 
 @router.get("/me/current")
 async def get_my_current_inspection(
-    user: dict = Depends(require_permission_any("can_inspections_own", "can_inspections_all")),
+    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Driver's currently-actionable inspection (or null when none)."""
@@ -440,7 +444,7 @@ async def get_my_current_inspection(
 @router.get("/me/history")
 async def list_my_history(
     days: int = Query(90, ge=1, le=365),
-    user: dict = Depends(require_permission_any("can_inspections_own", "can_inspections_all")),
+    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Driver's past inspections — used by the miniapp's PTI tab."""
@@ -456,7 +460,7 @@ async def update_item(
     inspection_id: int,
     item_key: str,
     body: ItemUpdate,
-    user: dict = Depends(require_permission_any("can_inspections_own", "can_inspections_all")),
+    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Driver updates one checklist item's status / notes."""
@@ -484,7 +488,7 @@ async def upload_media(
     inspection_id: int,
     item_key: Optional[str] = Query(default=None),
     file: UploadFile = File(...),
-    user: dict = Depends(require_permission_any("can_inspections_own", "can_inspections_all")),
+    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Attach a photo or video to an inspection.
@@ -610,7 +614,7 @@ async def upload_media(
 async def delete_media(
     inspection_id: int,
     media_id: int,
-    user: dict = Depends(require_permission_any("can_inspections_own", "can_inspections_all")),
+    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Remove a media row + best-effort blob deletion."""
@@ -662,7 +666,7 @@ async def annotate_media(
     inspection_id: int,
     media_id: int,
     body: AnnotateBody,
-    user: dict = Depends(require_permission_any("can_inspections_own", "can_inspections_all")),
+    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Overwrite a photo media row with a baked-overlay version.
@@ -754,7 +758,7 @@ async def annotate_media(
 async def ai_check_media(
     inspection_id: int,
     media_id: int,
-    user: dict = Depends(require_permission_any("can_inspections_own", "can_inspections_all")),
+    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Run a single-photo AI vision review of one media row.
@@ -771,7 +775,7 @@ async def ai_check_media(
     flow.
     """
     import capabilities.ai as ai
-    from capabilities.pti import ai_review
+    from features.pti import ai_review
     from adapters.storage.object_store import get_object_store_for_account
 
     ins = await _require_visible_inspection(inspection_id, user, tenant_db)
@@ -854,7 +858,7 @@ class SignatureBody(BaseModel):
 async def sign(
     inspection_id: int,
     body: SignatureBody,
-    user: dict = Depends(require_permission_any("can_inspections_own", "can_inspections_all")),
+    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Attach an e-signature to an inspection.
@@ -865,7 +869,7 @@ async def sign(
     account's compliance workflow needs a second human in the chain.
 
     Permission split:
-      * ``role == "driver"`` requires ``can_inspections_own`` (also
+      * ``role == "driver"`` requires ``can_inspections_vehicle`` (also
         granted via the catch-all ``can_inspections_all``).
       * ``role == "reviewer"`` requires ``can_inspections_all`` —
         drivers can't co-sign their own work.
@@ -918,7 +922,7 @@ class SubmitBody(BaseModel):
 async def submit(
     inspection_id: int,
     body: Optional[SubmitBody] = None,
-    user: dict = Depends(require_permission_any("can_inspections_own", "can_inspections_all")),
+    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Driver finalizes the inspection.
@@ -1093,7 +1097,7 @@ async def delete_reference_image(
 @router.get("/template-ref/{filename}")
 async def stream_reference_image(
     filename: str,
-    user: dict = Depends(require_permission_any("can_inspections_own", "can_inspections_all")),
+    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Stream a template reference image.  Account-scoped by the JWT —
@@ -1254,7 +1258,7 @@ async def list_inspections(
 @router.get("/{inspection_id}")
 async def get_inspection(
     inspection_id: int,
-    user: dict = Depends(require_permission_any("can_inspections_own", "can_inspections_all")),
+    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
     tenant_db=Depends(get_tenant_db),
     platform_db=Depends(get_platform_db),
 ):
@@ -1280,7 +1284,7 @@ async def get_inspection(
 async def stream_media(
     inspection_id: int,
     media_id: int,
-    user: dict = Depends(require_permission_any("can_inspections_own", "can_inspections_all")),
+    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Stream a media file back to the client.  Same auth shape as
@@ -1314,7 +1318,7 @@ async def stream_media(
 @router.get("/{inspection_id}/report.pdf")
 async def download_report(
     inspection_id: int,
-    user: dict = Depends(require_permission_any("can_inspections_own", "can_inspections_all")),
+    user: dict = Depends(require_permission_any("can_inspections_vehicle", "can_inspections_all")),
     tenant_db=Depends(get_tenant_db),
     platform_db=Depends(get_platform_db),
 ):
@@ -1327,7 +1331,7 @@ async def download_report(
     """
     import asyncio
     from adapters.storage.object_store import get_object_store_for_account
-    from capabilities.pti import pdf as pti_pdf
+    from features.pti import pdf as pti_pdf
 
     ins = await _require_visible_inspection(inspection_id, user, tenant_db)
     detail = await tenant_db.get_inspection_detail(

@@ -121,7 +121,7 @@ def _is_inside_any_geofence(
     lat: float, lng: float, geofences: list[dict],
 ) -> bool:
     """Check if coordinates fall inside any geofence."""
-    from capabilities.geofencing.geometry import is_inside_geofence
+    from features.geofencing.geometry import is_inside_geofence
     for gf in geofences:
         if is_inside_geofence(lat, lng, gf):
             return True

@@ -12,15 +12,15 @@ from capabilities.ai.tools.registry import (                              # noqa
 )
 
 # Import domain modules so @register_tool decorators run
-from capabilities.ai.tools import faults as faults                        # noqa: F401
+from features.vehicles.faults import tool as faults                       # noqa: F401
 from capabilities.ai.tools import vehicle as vehicle                      # noqa: F401
-from capabilities.ai.tools import health as health                        # noqa: F401
-from capabilities.ai.tools import fuel as fuel                            # noqa: F401
-from capabilities.ai.tools import efficiency as efficiency                # noqa: F401
-from capabilities.ai.tools import events as events                        # noqa: F401
+from features.vehicles.health import tool as health                       # noqa: F401
+from features.vehicles.fuel import tool as fuel                           # noqa: F401
+from features.vehicles.efficiency import tool as efficiency               # noqa: F401
+from features.events import tool as events                                # noqa: F401
 from capabilities.ai.tools import maintenance as maintenance              # noqa: F401
 from capabilities.ai.tools import geo as geo                              # noqa: F401
-from capabilities.ai.tools import camera as camera                        # noqa: F401
+from features.vehicles.cameras import tool as camera                      # noqa: F401
 from capabilities.ai.tools import odometer as odometer                    # noqa: F401
 from capabilities.ai.tools import drivers as drivers                      # noqa: F401
 from capabilities.ai.tools import knowledge as knowledge                  # noqa: F401

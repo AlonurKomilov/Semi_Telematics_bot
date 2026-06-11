@@ -8,6 +8,10 @@ Articles are stored in the platform DB (shared across all accounts).
   • Media URLs are validated (HTTPS only, no private IPs/localhost,
     must hit the media-host allowlist).
 """
+# router.py is interface-layer code co-located with its feature
+# (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
+# service/alert/tool/signal modules never do.
+
 
 from __future__ import annotations
 
@@ -28,8 +32,8 @@ from adapters.storage.knowledge import (
 from capabilities.iam.permissions import (
     is_kb_approver_role, is_kb_author_role,
 )
-from capabilities.knowledge.service import can_view_article as _can_view_article
-from capabilities.work_orders.storage import safe_attachment_name
+from features.knowledge.service import can_view_article as _can_view_article
+from features.work_orders.storage import safe_attachment_name
 from interfaces.api.deps import (
     get_current_user, get_platform_db, get_tenant_db, resolve_user_id,
 )

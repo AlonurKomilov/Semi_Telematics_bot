@@ -25,6 +25,7 @@ ingestor failure, but a crashed scheduler stops *every* job).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -319,23 +320,113 @@ async def ingest_driver_efficiency_daily(account_id: int, *, days: int = 1) -> i
     return n
 
 
-async def aggregate_telemetry_hourly(account_id: int) -> int:
-    """Derive last hour's ``vehicle_telemetry_hourly`` row per vehicle
-    from ``safety_event_log`` (harsh count) and ``vehicle_state``
-    (max speed snapshot).  This is a placeholder aggregation \u2014 it
-    counts safety events per vehicle in the trailing hour and snaps
-    the current speed/odometer.  A richer roll-up (drive vs idle
-    minutes by GPS sampling) is deferred to E3."""
+async def snapshot_vehicle_state(account_id: int) -> int:
+    """Copy the current ``vehicle_state`` row for every active vehicle
+    into ``vehicle_state_snapshot`` with the current timestamp.
+
+    Forms the raw history layer that other features build on:
+      * Maintenance - odometer deltas drive the calendar projection.
+      * Safety - speed deltas + RPM patterns drive hard-event
+        correlation and idle scoring.
+      * Dispatch - lat/lon over time backs trip playback.
+      * Accounting - fuel-pct deltas + miles-per-day feed fuel-burn
+        and cost-per-mile reports.
+      * Mechanics - battery / oil / coolant / RPM trend lines for the
+        predictive-maintenance composite.
+
+    Merges health metrics (battery_v, oil_psi, coolant_c, load_pct,
+    rpm) from ``vehicle_health_snapshot.raw_json`` so a single row
+    carries everything the consumers need.  Soft-fails on missing
+    health data: the row still gets written with the state fields
+    populated; health columns stay NULL.
+    """
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         return 0
-    now = datetime.now(timezone.utc)
-    hour_start = now.replace(minute=0, second=0, microsecond=0)
-    prev_hour_start = hour_start - timedelta(hours=1)
-    hour_label = prev_hour_start.strftime("%Y-%m-%dT%H:00:00")
+    captured_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
-    # Count harsh events per vehicle in the just-closed hour.
-    # Hard-coded column list — asyncpg cursors don't expose .description,
+    state_rows = await tenant.get_vehicle_state(account_id)
+    if not state_rows:
+        return 0
+
+    health_by_vid: dict[str, dict[str, Any]] = {}
+    try:
+        cur = await tenant._db.execute(
+            "SELECT vehicle_id, raw_json FROM vehicle_health_snapshot "
+            "WHERE account_id = ?",
+            (account_id,),
+        )
+        for row in await cur.fetchall():
+            d = dict(zip(("vehicle_id", "raw_json"), row))
+            vid = str(d.get("vehicle_id") or "")
+            blob = d.get("raw_json")
+            if not vid or not blob:
+                continue
+            try:
+                obj = json.loads(blob) if isinstance(blob, str) else blob
+            except (TypeError, ValueError):
+                continue
+            health = (obj or {}).get("_health") or {}
+            if health:
+                health_by_vid[vid] = health
+    except Exception as e:
+        logger.debug("snapshot_vehicle_state: health fetch skipped (%s)", e)
+
+    rows: list[dict[str, Any]] = []
+    for sr in state_rows:
+        vid = str(sr.get("vehicle_id") or "").strip()
+        if not vid:
+            continue
+        health = health_by_vid.get(vid, {})
+        rows.append({
+            "vehicle_id":         vid,
+            "captured_at":        captured_at,
+            "lat":                sr.get("lat"),
+            "lon":                sr.get("lon"),
+            "speed_mph":          sr.get("speed_mph"),
+            "engine_state":       sr.get("engine_state") or "",
+            "fuel_pct":           sr.get("fuel_pct"),
+            "def_pct":            sr.get("def_pct"),
+            "odometer_mi":        sr.get("odometer_mi"),
+            "engine_hours":       sr.get("engine_hours"),
+            "fault_count":        sr.get("fault_count") or 0,
+            "dtc_critical_count": sr.get("dtc_critical_count") or 0,
+            "last_driver_id":     sr.get("last_driver_id") or "",
+            "battery_v":          health.get("battery_v"),
+            "oil_psi":            health.get("oil_psi"),
+            "coolant_c":          health.get("coolant_c"),
+            "engine_load_pct":    health.get("load_pct"),
+            "rpm":                health.get("rpm"),
+        })
+    if not rows:
+        return 0
+    n = await tenant.upsert_vehicle_state_snapshots(account_id, rows)
+    logger.info(
+        "snapshot_vehicle_state acct=%d at=%s rows=%d with_health=%d",
+        account_id, captured_at, n, sum(1 for v in health_by_vid.values() if v),
+    )
+    return n
+
+
+async def _aggregate_hour_window(
+    tenant,
+    account_id: int,
+    hour_start: datetime,
+) -> int:
+    """Aggregate ONE hour into ``vehicle_telemetry_hourly``.
+
+    Shared body of the live cron path and the backfill path.  Window
+    is ``[hour_start, hour_start + 1h)`` so the caller controls
+    exactly which hour gets aggregated.  Used by:
+
+      * ``aggregate_telemetry_hourly`` (just-closed hour, every hour)
+      * ``backfill_aggregations`` (one call per hour for 30 days)
+    """
+    hour_end = hour_start + timedelta(hours=1)
+    hour_label = hour_start.strftime("%Y-%m-%dT%H:00:00")
+
+    # Harsh-event counts + window max-speed from safety_event_log.
+    # Hard-coded column list - asyncpg cursors don't expose .description,
     # see adapters/storage/warehouse.py:get_current_vehicles for the
     # original incident.
     cols = ["vehicle_id", "harsh_event_count", "max_speed_mph"]
@@ -350,28 +441,331 @@ async def aggregate_telemetry_hourly(account_id: int) -> int:
           AND occurred_at <  ?
         GROUP BY vehicle_id
         """,
-        (account_id, prev_hour_start.isoformat(), hour_start.isoformat()),
+        (account_id, hour_start.isoformat(), hour_end.isoformat()),
     )
     event_rows = [dict(zip(cols, r)) for r in await cur.fetchall()]
+    event_by_vid: dict[str, dict] = {
+        str(er.get("vehicle_id") or ""): er for er in event_rows if er.get("vehicle_id")
+    }
+
+    # Window snapshot rollup - one query per account, grouped by
+    # vehicle.  Vehicles with zero snapshots in the window simply
+    # don't get a row this hour.
+    snap_cols = [
+        "vehicle_id", "miles_in_window",
+        "max_speed", "avg_fuel_pct",
+        "drive_samples", "idle_samples",
+    ]
+    cur = await tenant._db.execute(
+        """
+        SELECT vehicle_id,
+               MAX(odometer_mi) - MIN(odometer_mi) AS miles_in_window,
+               MAX(COALESCE(speed_mph, 0))         AS max_speed,
+               AVG(COALESCE(fuel_pct, 0))          AS avg_fuel_pct,
+               SUM(CASE WHEN engine_state = 'moving' THEN 1 ELSE 0 END) AS drive_samples,
+               SUM(CASE WHEN engine_state = 'idle'   THEN 1 ELSE 0 END) AS idle_samples
+          FROM vehicle_state_snapshot
+         WHERE account_id = ?
+           AND captured_at >= ?
+           AND captured_at <  ?
+           AND odometer_mi IS NOT NULL
+         GROUP BY vehicle_id
+        """,
+        (account_id, hour_start.isoformat(), hour_end.isoformat()),
+    )
+    snap_rows = [dict(zip(snap_cols, r)) for r in await cur.fetchall()]
+
+    # 5-minute snapshot cadence: each sample represents 5 minutes of
+    # duty time.  drive_min / idle_min derive from sample counts.
+    SAMPLE_INTERVAL_MIN = 5
 
     rows: list[dict[str, Any]] = []
-    for er in event_rows:
-        if not er.get("vehicle_id"):
+    seen_vids: set[str] = set()
+    for sr in snap_rows:
+        vid = str(sr.get("vehicle_id") or "")
+        if not vid:
+            continue
+        seen_vids.add(vid)
+        miles = max(0.0, float(sr.get("miles_in_window") or 0))
+        max_speed = float(sr.get("max_speed") or 0)
+        avg_fuel = float(sr.get("avg_fuel_pct") or 0)
+        drive_min = int(sr.get("drive_samples") or 0) * SAMPLE_INTERVAL_MIN
+        idle_min = int(sr.get("idle_samples") or 0) * SAMPLE_INTERVAL_MIN
+        evt = event_by_vid.get(vid, {})
+        if not max_speed and evt:
+            max_speed = float(evt.get("max_speed_mph") or 0)
+        rows.append({
+            "vehicle_id":        vid,
+            "hour_utc":          hour_label,
+            "miles":             miles,
+            "drive_min":         drive_min,
+            "idle_min":          idle_min,
+            "max_speed_mph":     max_speed,
+            "avg_fuel_pct":      avg_fuel,
+            "harsh_event_count": int(evt.get("harsh_event_count") or 0),
+        })
+
+    # Vehicles that had safety events but no snapshot in the window
+    # still get a row - keeps the harsh-event count visible even
+    # when snapshots were missed for that hour.
+    for vid, evt in event_by_vid.items():
+        if vid in seen_vids:
             continue
         rows.append({
-            "vehicle_id":        er["vehicle_id"],
+            "vehicle_id":        vid,
             "hour_utc":          hour_label,
-            "miles":             0,  # filled by future per-vehicle history sampler
+            "miles":             0,
             "drive_min":         0,
             "idle_min":          0,
-            "max_speed_mph":     er.get("max_speed_mph") or 0,
-            "harsh_event_count": int(er.get("harsh_event_count") or 0),
+            "max_speed_mph":     float(evt.get("max_speed_mph") or 0),
+            "avg_fuel_pct":      0,
+            "harsh_event_count": int(evt.get("harsh_event_count") or 0),
+        })
+
+    if not rows:
+        return 0
+    return await tenant.upsert_vehicle_telemetry_hourly(account_id, rows)
+
+
+async def aggregate_telemetry_hourly(account_id: int) -> int:
+    """Roll the last closed hour into one row per vehicle in
+    ``vehicle_telemetry_hourly``.
+
+    Live-path wrapper around ``_aggregate_hour_window`` — computes
+    the just-closed hour and delegates.  Miles come from snapshot
+    deltas; drive_min / idle_min come from counting samples whose
+    engine_state was moving / idle, multiplied by the 5-minute
+    snapshot cadence.  Harsh events come from safety_event_log.
+    """
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        return 0
+    now = datetime.now(timezone.utc)
+    prev_hour_start = (
+        now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
+    )
+    n = await _aggregate_hour_window(tenant, account_id, prev_hour_start)
+    hour_label = prev_hour_start.strftime("%Y-%m-%dT%H:00:00")
+    logger.info(
+        "aggregate_telemetry_hourly acct=%d hour=%s rows=%d",
+        account_id, hour_label, n,
+    )
+    return n
+
+
+async def _aggregate_day_window(
+    tenant,
+    account_id: int,
+    day_start: datetime,
+) -> int:
+    """Aggregate ONE UTC day into ``vehicle_metrics_daily``.
+
+    Shared body of the live cron path and the backfill path.  Sums
+    the 24 hourly buckets in ``[day_start, day_start + 1d)`` and
+    UPSERTs one row per vehicle.  Idempotent — the daily upsert
+    overwrites in place.
+    """
+    day_end = day_start + timedelta(days=1)
+    day_label = day_start.strftime("%Y-%m-%d")
+    hour_start_label = day_start.strftime("%Y-%m-%dT%H:00:00")
+    hour_end_label = day_end.strftime("%Y-%m-%dT%H:00:00")
+
+    cols = [
+        "vehicle_id", "miles", "drive_min", "idle_min",
+        "max_speed_mph", "avg_fuel_pct", "harsh_event_count",
+    ]
+    cur = await tenant._db.execute(
+        """
+        SELECT vehicle_id,
+               SUM(COALESCE(miles, 0))             AS miles,
+               SUM(COALESCE(drive_min, 0))         AS drive_min,
+               SUM(COALESCE(idle_min, 0))          AS idle_min,
+               MAX(COALESCE(max_speed_mph, 0))     AS max_speed_mph,
+               AVG(COALESCE(avg_fuel_pct, 0))      AS avg_fuel_pct,
+               SUM(COALESCE(harsh_event_count, 0)) AS harsh_event_count
+          FROM vehicle_telemetry_hourly
+         WHERE account_id = ?
+           AND hour_utc >= ?
+           AND hour_utc <  ?
+         GROUP BY vehicle_id
+        """,
+        (account_id, hour_start_label, hour_end_label),
+    )
+    rows = []
+    for r in await cur.fetchall():
+        d = dict(zip(cols, r))
+        vid = str(d.get("vehicle_id") or "")
+        if not vid:
+            continue
+        rows.append({
+            "vehicle_id":        vid,
+            "day_utc":           day_label,
+            "miles":             float(d.get("miles") or 0),
+            "drive_min":         float(d.get("drive_min") or 0),
+            "idle_min":          float(d.get("idle_min") or 0),
+            "max_speed_mph":     d.get("max_speed_mph"),
+            "avg_fuel_pct":      d.get("avg_fuel_pct"),
+            "harsh_event_count": int(d.get("harsh_event_count") or 0),
+            # End-of-day fault count would need a snapshot lookup at
+            # day-end; left at 0 until the predictive-maintenance
+            # consumer needs it (column reserved so adding it later
+            # doesn't require another migration).
+            "fault_count_eod":   0,
         })
     if not rows:
         return 0
-    n = await tenant.upsert_vehicle_telemetry_hourly(account_id, rows)
-    logger.info("aggregate_telemetry_hourly acct=%d hour=%s rows=%d", account_id, hour_label, n)
+    return await tenant.upsert_vehicle_metrics_daily(account_id, rows)
+
+
+async def aggregate_metrics_daily(account_id: int) -> int:
+    """Roll the previous UTC day's hourly buckets into one daily row
+    per vehicle in ``vehicle_metrics_daily``.
+
+    Live-path wrapper around ``_aggregate_day_window`` — computes
+    "yesterday UTC" and delegates.  Runs at 00:05 UTC daily.
+
+    Daily storage is the right tier for year-over-year comparisons,
+    fleet-wide executive scorecards, and long-horizon trend lines:
+    querying 730 rows beats querying 17,520 hourly rows on the same
+    horizon.
+    """
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        return 0
+    now = datetime.now(timezone.utc)
+    day_start = (now - timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0,
+    )
+    n = await _aggregate_day_window(tenant, account_id, day_start)
+    day_label = day_start.strftime("%Y-%m-%d")
+    logger.info(
+        "aggregate_metrics_daily acct=%d day=%s rows=%d",
+        account_id, day_label, n,
+    )
     return n
+
+
+async def backfill_aggregations(
+    account_id: int,
+    *,
+    days: int = 30,
+) -> dict[str, int]:
+    """Replay hourly + daily aggregators for the last ``days`` days.
+
+    Designed to run right after a fresh ``backfill_vehicle_history``
+    completes, so the calendar projection has data the moment the
+    Samsara backfill finishes.
+
+    Pipeline:
+      1. For each hour in the last ``days * 24`` hours: re-aggregate
+         from ``vehicle_state_snapshot`` into ``vehicle_telemetry_hourly``.
+      2. For each UTC day in the last ``days`` days: roll the hourly
+         buckets into one row per vehicle in ``vehicle_metrics_daily``.
+
+    Both steps are idempotent (UPSERT semantics) so running this
+    alongside the live cron jobs is safe — the cron writes the same
+    rows the backfill writes; whoever writes second wins, both
+    answers are identical.
+
+    Returns ``{"hours": N, "days": M, "hourly_rows": ..., "daily_rows": ...}``
+    so the caller can log progress.
+    """
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        return {"hours": 0, "days": 0, "hourly_rows": 0, "daily_rows": 0}
+
+    now = datetime.now(timezone.utc)
+    # Re-aggregate hours back to the start of (now - days days), then
+    # forward to the just-closed hour.  Most accounts have ~720 hours
+    # for a 30-day backfill — each query is a bounded GROUP BY on an
+    # indexed column so total wall-clock is typically under a minute.
+    hourly_rows_total = 0
+    daily_rows_total = 0
+    hours_done = 0
+    days_done = 0
+
+    current_hour_start = now.replace(minute=0, second=0, microsecond=0)
+    earliest_hour_start = current_hour_start - timedelta(hours=days * 24)
+    cursor = earliest_hour_start
+    # ``<=`` so the in-progress hour gets aggregated too — operators
+    # were told "calendar works the moment this backfill finishes",
+    # so leaving the current hour unaggregated until the next cron
+    # tick would make that promise off by up to one hour.  The hour
+    # is idempotent — the next cron pass overwrites with the
+    # complete value when the hour closes.
+    while cursor <= current_hour_start:
+        try:
+            hourly_rows_total += await _aggregate_hour_window(
+                tenant, account_id, cursor,
+            )
+        except Exception as e:
+            logger.warning(
+                "backfill_aggregations acct=%d hour=%s failed: %s",
+                account_id, cursor.isoformat(), e,
+            )
+        hours_done += 1
+        cursor += timedelta(hours=1)
+
+    # Daily roll-up — once the hourly table is fully populated, each
+    # day's aggregation is a fast SUM over 24 rows.
+    today_utc_start = now.replace(
+        hour=0, minute=0, second=0, microsecond=0,
+    )
+    earliest_day_start = today_utc_start - timedelta(days=days)
+    day_cursor = earliest_day_start
+    while day_cursor < today_utc_start:
+        try:
+            daily_rows_total += await _aggregate_day_window(
+                tenant, account_id, day_cursor,
+            )
+        except Exception as e:
+            logger.warning(
+                "backfill_aggregations acct=%d day=%s failed: %s",
+                account_id, day_cursor.date().isoformat(), e,
+            )
+        days_done += 1
+        day_cursor += timedelta(days=1)
+
+    logger.info(
+        "backfill_aggregations acct=%d hours=%d days=%d "
+        "hourly_rows=%d daily_rows=%d",
+        account_id, hours_done, days_done,
+        hourly_rows_total, daily_rows_total,
+    )
+    return {
+        "hours": hours_done,
+        "days": days_done,
+        "hourly_rows": hourly_rows_total,
+        "daily_rows": daily_rows_total,
+    }
+
+
+async def prune_telemetry_history(account_id: int) -> int:
+    """Drop snapshot / hourly / daily rows past their retention windows.
+
+    Single function so a missed run on one tier doesn't leave the
+    others unpruned, and so the next run finds a clean state.
+    Returns total rows deleted across all three tables.
+    """
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        return 0
+    snap_deleted = await tenant.prune_vehicle_state_snapshots(
+        account_id, days_keep=7,
+    )
+    hourly_deleted = await tenant.prune_vehicle_telemetry_hourly(
+        account_id, days_keep=90,
+    )
+    daily_deleted = await tenant.prune_vehicle_metrics_daily(
+        account_id, days_keep=730,
+    )
+    total = snap_deleted + hourly_deleted + daily_deleted
+    if total:
+        logger.info(
+            "prune_telemetry_history acct=%d snap=%d hourly=%d daily=%d total=%d",
+            account_id, snap_deleted, hourly_deleted, daily_deleted, total,
+        )
+    return total
 
 
 # ── scheduler entry points (iterate active accounts) ─────────────────
@@ -438,20 +832,156 @@ async def _for_each_active_account(coro_factory) -> None:
         )
 
 
+# ── Capability-aware fan-out ─────────────────────────────────────
+#
+# Wraps the bare ``_for_each_active_account`` with per-account
+# integration-toggle checks so jobs only run for accounts whose
+# feature_toggles enable the capability AND whose integration row
+# status is ``connected``.
+#
+# Default-on semantics: when an account has no integration row at all
+# (legacy / unmigrated accounts that pre-date M1), the job runs
+# unconditionally — preserves existing production behaviour during
+# rollout.  Once M1's data-backfill migration runs in production,
+# every existing account has a row and toggles take effect.
+
+async def _for_each_account_with_capability(
+    capability: str,
+    coro_factory,
+    *,
+    provider_id: str = "samsara",
+) -> None:
+    """Fan out a job to accounts that have ``capability`` enabled.
+
+    For each active account:
+      1. Look up its integration row for ``provider_id``.
+      2. Skip if status is anything other than ``connected``.
+      3. Skip if ``feature_toggles[capability]["enabled"]`` is False.
+      4. Run ``coro_factory(account_id)`` under the same RLS / error-
+         containment harness as the bare fan-out helper.
+
+    When an account has no integration row yet (mid-rollout, legacy
+    account, account created via the old code path), the job runs.
+    This keeps every existing pipeline working while rollout
+    happens; once production runs migration 084, every active
+    account has a row.
+    """
+    import time as _time
+    job_name = getattr(coro_factory, "__name__", "anon")
+    t0 = _time.perf_counter()
+    try:
+        accounts = await get_platform_db().list_accounts(active_only=True)
+    except Exception:
+        logger.exception("ingestor: list_accounts failed")
+        return
+    if not accounts:
+        return
+
+    sem = asyncio.Semaphore(_INGEST_MAX_CONCURRENT_ACCOUNTS)
+    per_acct_ms: dict[int, float] = {}
+    skipped_disabled = 0
+    skipped_paused = 0
+    ran = 0
+    lock = asyncio.Lock()
+
+    async def _run(acc):
+        nonlocal skipped_disabled, skipped_paused, ran
+        async with sem:
+            t_acct = _time.perf_counter()
+            try:
+                tenant_db = await get_tenant_db(acc.id)
+                async with tenant_db.with_account(acc.id):
+                    db = get_platform_db()
+                    ai = await db.get_account_integration(acc.id, provider_id)
+                    if ai is not None:
+                        if ai.status != "connected":
+                            async with lock:
+                                skipped_paused += 1
+                            return
+                        cap_cfg = ai.feature_toggles.get(capability) or {}
+                        # Default-on for accounts that exist but
+                        # whose toggle map predates this capability
+                        # (e.g. a new capability the catalog adds
+                        # after the row was first written).  Operators
+                        # turn it off explicitly via the dashboard.
+                        if cap_cfg.get("enabled", True) is False:
+                            async with lock:
+                                skipped_disabled += 1
+                            return
+                    await coro_factory(acc.id)
+                    async with lock:
+                        ran += 1
+            except Exception:
+                logger.exception(
+                    "ingestor: per-account job failed acct=%d cap=%s",
+                    acc.id, capability,
+                )
+            finally:
+                per_acct_ms[acc.id] = round(
+                    (_time.perf_counter() - t_acct) * 1000, 1,
+                )
+
+    await asyncio.gather(*(_run(a) for a in accounts))
+    total_ms = round((_time.perf_counter() - t0) * 1000, 1)
+    if per_acct_ms:
+        slowest_aid = max(per_acct_ms, key=per_acct_ms.get)
+        logger.info(
+            "ingestor job=%s cap=%s accounts=%d ran=%d "
+            "skipped_disabled=%d skipped_paused=%d total_ms=%s "
+            "slowest_acct=%d slowest_ms=%s",
+            job_name, capability, len(accounts),
+            ran, skipped_disabled, skipped_paused, total_ms,
+            slowest_aid, per_acct_ms[slowest_aid],
+        )
+
+
+# Import the capability names so each job's wrapper carries the
+# canonical id rather than a magic string.  Mismatches between the
+# canonical id and the integration-row toggle key would silently
+# disable a job — keep them lockstep.
+from adapters.telematics.protocol import Capability as _Cap  # noqa: E402
+
+
 async def job_ingest_vehicle_state(_app=None) -> None:
-    await _for_each_active_account(ingest_vehicle_state)
+    await _for_each_account_with_capability(
+        _Cap.VEHICLE_STATE, ingest_vehicle_state,
+    )
 
 
 async def job_ingest_safety_events(_app=None) -> None:
-    await _for_each_active_account(ingest_safety_events)
+    await _for_each_account_with_capability(
+        _Cap.SAFETY_EVENTS, ingest_safety_events,
+    )
 
 
 async def job_ingest_driver_efficiency_daily(_app=None) -> None:
-    await _for_each_active_account(ingest_driver_efficiency_daily)
+    await _for_each_account_with_capability(
+        _Cap.DRIVER_EFFICIENCY_DAILY, ingest_driver_efficiency_daily,
+    )
 
 
 async def job_aggregate_telemetry_hourly(_app=None) -> None:
-    await _for_each_active_account(aggregate_telemetry_hourly)
+    await _for_each_account_with_capability(
+        _Cap.TELEMETRY_HOURLY, aggregate_telemetry_hourly,
+    )
+
+
+async def job_snapshot_vehicle_state(_app=None) -> None:
+    await _for_each_account_with_capability(
+        _Cap.STATE_SNAPSHOT_HISTORY, snapshot_vehicle_state,
+    )
+
+
+async def job_aggregate_metrics_daily(_app=None) -> None:
+    await _for_each_account_with_capability(
+        _Cap.METRICS_DAILY, aggregate_metrics_daily,
+    )
+
+
+async def job_prune_telemetry_history(_app=None) -> None:
+    await _for_each_account_with_capability(
+        _Cap.HISTORY_PRUNE, prune_telemetry_history,
+    )
 
 
 # ── vehicle health snapshot ────────────────────────────────
@@ -498,7 +1028,9 @@ async def ingest_vehicle_health(account_id: int) -> int:
 
 
 async def job_ingest_vehicle_health(_app=None) -> None:
-    await _for_each_active_account(ingest_vehicle_health)
+    await _for_each_account_with_capability(
+        _Cap.VEHICLE_HEALTH, ingest_vehicle_health,
+    )
 
 
 # ── vehicle faults (snapshot + per-DTC detail) ────────────
@@ -586,7 +1118,9 @@ async def _previously_active_vehicle_ids(tenant, account_id: int) -> set[str]:
 
 
 async def job_ingest_vehicle_faults(_app=None) -> None:
-    await _for_each_active_account(ingest_vehicle_faults)
+    await _for_each_account_with_capability(
+        _Cap.VEHICLE_FAULTS, ingest_vehicle_faults,
+    )
 
 
 # ── fleet weather ──────────────────────────────────────────
@@ -625,7 +1159,9 @@ async def ingest_fleet_weather(account_id: int) -> int:
 
 
 async def job_ingest_fleet_weather(_app=None) -> None:
-    await _for_each_active_account(ingest_fleet_weather)
+    await _for_each_account_with_capability(
+        _Cap.FLEET_WEATHER, ingest_fleet_weather,
+    )
 
 
 # ── fleet efficiency ───────────────────────────────────────
@@ -663,7 +1199,9 @@ async def job_ingest_fleet_efficiency(_app=None) -> None:
     """Refresh the 7-day window — the most-requested by the dashboard."""
     async def _do(acct_id: int) -> int:
         return await ingest_fleet_efficiency(acct_id, days=7)
-    await _for_each_active_account(_do)
+    await _for_each_account_with_capability(
+        _Cap.FLEET_EFFICIENCY, _do,
+    )
 
 
 # ── geofence definitions cache ─────────────────────────────
@@ -694,4 +1232,6 @@ async def ingest_geofence_definitions(account_id: int) -> int:
 
 
 async def job_ingest_geofence_definitions(_app=None) -> None:
-    await _for_each_active_account(ingest_geofence_definitions)
+    await _for_each_account_with_capability(
+        _Cap.GEOFENCE_DEFINITIONS, ingest_geofence_definitions,
+    )

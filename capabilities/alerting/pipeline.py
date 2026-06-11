@@ -816,6 +816,15 @@ async def send_alert(
 
     tenant = await get_tenant_db(account_id)
 
+    # ── Company-scope gate for DM delivery ────────────────────────
+    # Drop subscribers whose company restriction (per-user override, or
+    # their role's company assignment) excludes THIS alert's company, so
+    # they aren't DM'd about another company's vehicle.  Fail-open: owner/
+    # unrestricted subscribers and unknown-company alerts deliver to all.
+    # Group/forum delivery is per-account and intentionally NOT gated.
+    from capabilities.alerting.company_scope import filter_subscribers_by_company
+    subscribers = await filter_subscribers_by_company(subscribers, co, account_id)
+
     # ── Chronic-pattern suppression gate (Fix C) ──────────────────
     # When the operator has marked this ``(alert_type, vehicle_id)``
     # as a known chronic issue, suppress new Telegram delivery + ack

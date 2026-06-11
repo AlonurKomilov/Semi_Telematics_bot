@@ -28,7 +28,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from capabilities.pti.templates import (
+from features.pti.templates import (
     DEFECT_ITEM_STATUSES,
     OOS_ITEM_STATUSES,
     STANDARD_DOT_TRAILER_ITEMS,
@@ -743,7 +743,7 @@ async def review_inspection(
     Returns the refreshed inspection row.
 
     Phase 4 hook: when ``review_status == 'needs_service'`` the
-    capability layer can fan out to ``capabilities.maintenance`` and
+    capability layer can fan out to ``features.maintenance`` and
     spawn a maintenance task carrying the OOS items.  Not implemented
     in MVP; the fleet creates the task manually for now.
     """
@@ -844,7 +844,7 @@ async def reset_template_to_default(
     inspection_type: str = "weekly",
 ) -> int:
     """Wraps ``tenant_db.reset_template_to_default`` with the right
-    default item list pulled from ``capabilities.pti.templates``.
+    default item list pulled from ``features.pti.templates``.
 
     Routes call this rather than the storage method directly so the
     item list source of truth stays in one place.

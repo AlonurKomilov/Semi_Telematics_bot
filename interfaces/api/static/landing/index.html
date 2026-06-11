@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>4truck — Trucking Operations Platform</title>
-    <meta name="description" content="4truck is a trucking operations platform for fleet managers, drivers, dispatchers, safety, and maintenance teams. Bring your own Google Drive for documents.">
+    <meta name="description" content="4truck is a trucking operations platform with six purpose-built roles — owner, admin, fleet, safety, dispatcher, and driver. Bring your own Google Drive for documents.">
     <link rel="icon" type="image/png" sizes="32x32" href="/dashboard/favicon-32.png">
     <link rel="icon" type="image/png" sizes="64x64" href="/dashboard/favicon-64.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/dashboard/apple-touch-icon.png">
@@ -192,20 +192,8 @@
         .drive h2 { color: #ffffff; }
         .drive .sub { color: rgba(255, 255, 255, 0.7); }
         .drive-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 48px;
-            align-items: center;
-        }
-        .drive-grid .visual {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            padding: 32px;
-            font-family: "SF Mono", Menlo, Consolas, monospace;
-            font-size: 14px;
-            line-height: 2;
-            color: rgba(255, 255, 255, 0.85);
+            max-width: 720px;
+            margin: 0 auto;
         }
         .drive ul {
             list-style: none;
@@ -232,7 +220,6 @@
             font-size: 12px;
         }
         @media (max-width: 768px) {
-            .drive-grid { grid-template-columns: 1fr; }
             .hero h1 { font-size: 36px; }
         }
 
@@ -285,7 +272,7 @@
             <ul>
                 <li><a href="#roles">Roles</a></li>
                 <li><a href="#modules">Modules</a></li>
-                <li><a href="#drive">Drive</a></li>
+                <li><a href="#drive">Storage</a></li>
                 <li><a href="/privacy">Privacy</a></li>
                 <li><a href="/terms">Terms</a></li>
                 <li><a href="/login">Sign in</a></li>
@@ -317,22 +304,22 @@
         <div class="grid">
             <div class="card">
                 <span class="tag">OWNER</span>
-                <h3>Account Owner</h3>
-                <p>Top-level admin: billing, company setup, integrations (Samsara, Drive), permission overrides, and account-wide reports.</p>
+                <h3>Owner</h3>
+                <p>Top-level account holder: billing, company setup, integrations (Samsara, Drive), permission overrides, and account-wide reports.</p>
             </div>
             <div class="card">
                 <span class="tag">ADMIN</span>
-                <h3>Administrator</h3>
+                <h3>Admin</h3>
                 <p>Day-to-day management: invite users, assign roles, configure alerts and DND windows, audit log review &mdash; without account-level billing access.</p>
             </div>
             <div class="card">
                 <span class="tag">FLEET</span>
-                <h3>Fleet Manager</h3>
+                <h3>Fleet</h3>
                 <p>Vehicle telematics, fuel monitoring, maintenance schedules, work orders, fault tracking &mdash; everything that keeps the fleet moving.</p>
             </div>
             <div class="card">
                 <span class="tag">SAFETY</span>
-                <h3>Safety Officer</h3>
+                <h3>Safety</h3>
                 <p>Driver Qualification File tracking (49 CFR Part 391), dashcam review, incident scoring, coaching workflow and assignments.</p>
             </div>
             <div class="card">
@@ -342,7 +329,7 @@
             </div>
             <div class="card">
                 <span class="tag">DRIVER</span>
-                <h3>Driver Self-Service</h3>
+                <h3>Driver</h3>
                 <p>Drivers see their assigned trucks, document expirations, personal scorecards, and shift-end checklists from the Telegram mini-app.</p>
             </div>
         </div>
@@ -426,34 +413,26 @@
 
 <section class="drive" id="drive">
     <div class="container">
-        <h2 style="text-align:center; margin-bottom:16px;">Your documents, your Drive.</h2>
+        <h2 style="text-align:center; margin-bottom:16px;">Choose where your files live.</h2>
         <p class="sub" style="text-align:center; max-width:720px; margin:0 auto 48px;">
-            Connect your own Google Drive once. Driver licenses, medical cards, truck registrations,
-            and work-order invoices land in <em>your</em> Drive &mdash; not our servers.
+            By default, 4truck stores your company&rsquo;s documents and captures on the platform &mdash; driver records,
+            work-order invoices, dashcam frames, parking maps. Prefer to keep them in your own cloud? Connect Google
+            Drive &mdash; totally optional &mdash; and new uploads route there instead. Switch modes any time from the
+            Storage admin page.
         </p>
         <div class="drive-grid">
             <ul>
-                <li><strong>BYOS (Bring Your Own Storage).</strong> Files live in your Google account, organized by company.</li>
-                <li><strong>Minimum scope &mdash; <code>drive.file</code>.</strong> 4truck only accesses files it creates or you explicitly select. Your other Drive files remain private.</li>
+                <li><strong>Platform storage (default).</strong> Files saved on 4truck servers. Counts against your account&rsquo;s platform-storage quota.</li>
+                <li><strong>Google Drive (opt-in).</strong> Files live in your own Google account, organized per company &mdash; nothing leaves your control.</li>
+                <li><strong>Hybrid mode.</strong> Fast platform write, background sync to Drive. Best of both worlds when Drive is connected.</li>
                 <li><strong>FMCSA-friendly structure.</strong> Per-company folders for driver records, work orders, camera images, and parking maps.</li>
-                <li><strong>Disconnect anytime.</strong> Settings &rarr; Disconnect Drive. Files stay with you.</li>
+                <li><strong>Disconnect any time.</strong> Settings &rarr; Disconnect Drive. Existing Drive files stay with you; new uploads go back to platform storage.</li>
             </ul>
-            <div class="visual">
-📁 My Drive/
-&nbsp;&nbsp;└─ 📁 4truck/
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ 📁 PREMIER TRUCKING/
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├─ work-orders/
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├─ camera-images/
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├─ parking-maps/
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└─ drivers/
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 📁 CARGO FREIGHT/
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ ...
-            </div>
         </div>
         <p style="text-align:center; margin-top:32px; color:rgba(255,255,255,0.6); font-size:14px;">
-            4truck's use of Google API data adheres to the
-            <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener" style="color:#fff; text-decoration:underline;">Google API Services User Data Policy</a>,
-            including the Limited Use requirements.
+            Curious about the privacy / scope details?
+            See our <a href="/privacy" style="color:#fff; text-decoration:underline;">Privacy Policy</a> and
+            <a href="/terms" style="color:#fff; text-decoration:underline;">Terms of Service</a>.
         </p>
     </div>
 </section>
@@ -465,7 +444,7 @@
                 <a href="/" class="brand" style="font-size:20px;">4truck</a>
                 <p style="color:var(--gray-600); font-size:14px; margin-top:12px; max-width:380px;">
                     Operated by <strong>ABC LEGACY LLC</strong>. A trucking operations platform built for
-                    fleet managers, drivers, dispatchers, safety officers, and maintenance teams.
+                    owners, admins, fleet, safety, dispatchers, and drivers.
                 </p>
             </div>
             <div>
@@ -473,7 +452,7 @@
                 <ul>
                     <li><a href="#roles">Roles</a></li>
                     <li><a href="#modules">Modules</a></li>
-                    <li><a href="#drive">Drive Integration</a></li>
+                    <li><a href="#drive">Storage Options</a></li>
                     <li><a href="/login">Sign in</a></li>
                 </ul>
             </div>

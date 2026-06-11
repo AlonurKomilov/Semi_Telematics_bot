@@ -6,7 +6,7 @@ from capabilities.ai.tools.registry import register_tool
 from capabilities.telemetry.service import (
     get_vehicles_with_faults as _svc_with_faults,
 )
-from capabilities.vehicles.service import get_vehicle_detail as _svc_detail
+from features.vehicles.service import get_vehicle_detail as _svc_detail
 
 
 @register_tool({
@@ -40,16 +40,12 @@ async def get_vehicle_faults(tool_args: dict, samsara_client,
 
     if vehicle:
         # Per-vehicle fault detail
-        if account_id is not None:
-            detail = await _svc_detail(account_id, vehicle)
-        else:
-            detail = await samsara_client.get_vehicle_detail(vehicle)
+        if account_id is None:
+            return {"error": "This tool requires account context."}
+        detail = await _svc_detail(account_id, vehicle)
         if not detail:
             return {"error": f"Vehicle '{vehicle}' not found. Check the name/number and try again."}
-        if account_id is not None:
-            faulted, _total, _bd = await _svc_with_faults(account_id)
-        else:
-            faulted, _ = await samsara_client.get_vehicles_with_faults()
+        faulted, _total, _bd = await _svc_with_faults(account_id)
         matches = [v for v in faulted if v.get("name", "").lower() == vehicle.lower()]
         if not matches:
             return {
@@ -75,10 +71,9 @@ async def get_vehicle_faults(tool_args: dict, samsara_client,
 
     if critical_only:
         # Account-wide critical scan — filter by _severity stamped by get_vehicles_with_faults
-        if account_id is not None:
-            faulted_all, _t, _b = await _svc_with_faults(account_id)
-        else:
-            faulted_all, _t = await samsara_client.get_vehicles_with_faults()
+        if account_id is None:
+            return {"error": "This tool requires account context."}
+        faulted_all, _t, _b = await _svc_with_faults(account_id)
         critical = [v for v in faulted_all if v.get("_severity") == "critical"]
         return {
             "critical_count": len(critical),
@@ -97,10 +92,9 @@ async def get_vehicle_faults(tool_args: dict, samsara_client,
         }
 
     # Account-wide fault overview
-    if account_id is not None:
-        faulted, total, _bd = await _svc_with_faults(account_id)
-    else:
-        faulted, total = await samsara_client.get_vehicles_with_faults()
+    if account_id is None:
+        return {"error": "This tool requires account context."}
+    faulted, total, _bd = await _svc_with_faults(account_id)
     return {
         "total_active_vehicles": total,
         "vehicles_with_faults": len(faulted),

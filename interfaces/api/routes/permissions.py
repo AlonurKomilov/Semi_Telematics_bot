@@ -15,6 +15,7 @@ from capabilities.iam.permissions import (
     FeatureSet,
     get_account_permissions,
     invalidate_permissions_cache,
+    OWNER_PROTECTED_PERMS,
 )
 
 logger = logging.getLogger(__name__)
@@ -202,6 +203,15 @@ async def update_role_perms(
     merged = dict(before)
     merged.update(body.permissions)
 
+    # Owner lockout protection — the owner can never lose the account-
+    # control permissions that are the only way back from a
+    # misconfiguration.  Force them on in the stored row (also enforced
+    # at resolve time in get_account_permissions, so this is belt-and-
+    # suspenders that keeps the persisted data honest).
+    if body.role == "owner":
+        for _k in OWNER_PROTECTED_PERMS:
+            merged[_k] = True
+
     await platform_db.set_role_permissions(
         account_id, body.role, merged, updated_by, body.company_id,
     )
@@ -353,3 +363,5 @@ async def delete_company_override(
         account_id, body.role, body.company_id, updated_by,
     )
     return {"ok": True, "role": body.role, "company_id": body.company_id}
+
+

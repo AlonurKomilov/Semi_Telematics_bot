@@ -85,9 +85,9 @@ async def build_context(account_id: int,
 
     # Warehouse-first reads via service layer (falls back to live Samsara on
     # cold-start or when WAREHOUSE_READS_ENABLED=0).
-    from capabilities.vehicles.service import get_fleet_overview as _svc_fleet_overview
+    from features.vehicles.service import get_fleet_overview as _svc_fleet_overview
     from capabilities.telemetry.service import get_vehicle_health as _svc_vehicle_health
-    from capabilities.events.service import get_events as _svc_get_events
+    from features.events.service import get_events as _svc_get_events
     snapshot: dict = {}
 
     try:
@@ -381,8 +381,6 @@ def _build_agent_user_prompt(
             profile_lines.append(f"- Name: {uc['name']}")
         if uc.get("role"):
             profile_lines.append(f"- Role: {uc['role']}")
-        if uc.get("department") and uc["department"] != "general":
-            profile_lines.append(f"- Department: {uc['department']}")
         if uc.get("vehicle_nums") and len(uc["vehicle_nums"]) > 0:
             profile_lines.append(f"- Assigned trucks: {', '.join(uc['vehicle_nums'])}")
         elif uc.get("vehicle_num"):
@@ -467,7 +465,19 @@ def _check_tool_permission(
         if assigned_set:
             if tool_name in VEHICLE_SPECIFIC_TOOLS:
                 requested = (tool_args.get("vehicle_name") or "").strip().lower()
-                if requested and requested not in assigned_set:
+                if not requested:
+                    # Tools with an optional vehicle_name run account-wide
+                    # when it is omitted — drivers must always name one of
+                    # their assigned vehicles.
+                    return {
+                        "error": (
+                            f"Access denied: drivers cannot run fleet-wide"
+                            f" queries. Call {tool_name} again with"
+                            f" vehicle_name set to one of your assigned"
+                            f" vehicle(s): {', '.join(assigned_trucks)}."
+                        ),
+                    }
+                if requested not in assigned_set:
                     return {
                         "error": (
                             f"Access denied: you can only query your"
@@ -859,8 +869,6 @@ async def ask_agent(question: str, fleet_context: dict,
             profile_lines.append(f"- Name: {uc['name']}")
         if uc.get("role"):
             profile_lines.append(f"- Role: {uc['role']}")
-        if uc.get("department") and uc["department"] != "general":
-            profile_lines.append(f"- Department: {uc['department']}")
         if uc.get("vehicle_nums") and len(uc["vehicle_nums"]) > 0:
             profile_lines.append(f"- Assigned trucks: {', '.join(uc['vehicle_nums'])}")
         elif uc.get("vehicle_num"):
@@ -1006,7 +1014,21 @@ async def ask_agent(question: str, fleet_context: dict,
                             if assigned_set:
                                 if tool_name in VEHICLE_SPECIFIC_TOOLS:
                                     requested = (tool_args.get("vehicle_name") or "").strip().lower()
-                                    if requested and requested not in assigned_set:
+                                    if not requested:
+                                        # Tools with an optional vehicle_name run
+                                        # account-wide when it is omitted — drivers
+                                        # must always name an assigned vehicle.
+                                        _blocked = True
+                                        result = {
+                                            "error": (
+                                                f"Access denied: drivers cannot run"
+                                                f" fleet-wide queries. Call {tool_name}"
+                                                f" again with vehicle_name set to one of"
+                                                f" your assigned vehicle(s):"
+                                                f" {', '.join(assigned_trucks)}."
+                                            ),
+                                        }
+                                    elif requested not in assigned_set:
                                         _blocked = True
                                         result = {
                                             "error": (

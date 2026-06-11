@@ -17,26 +17,26 @@ from capabilities.alerting.pipeline import (              # noqa: F401
 )
 
 # ── faults ───────────────────────────────────────────────────────
-from capabilities.alerting.faults import (                # noqa: F401
+from features.vehicles.faults.alert import (       # noqa: F401
     check_new_faults,
     initialize_known_faults,
 )
 
 # ── health ───────────────────────────────────────────────────────
-from capabilities.alerting.health import (                # noqa: F401
+from features.vehicles.health.alert import (       # noqa: F401
     check_health_alerts,
     _CRITICAL_HEALTH,
     _WARNING_HEALTH,
 )
 
 # ── fuel ─────────────────────────────────────────────────────────
-from capabilities.alerting.fuel import (                  # noqa: F401
+from features.vehicles.fuel.alert import (         # noqa: F401
     check_low_fuel,
     FUEL_CRITICAL_PCT,
 )
 
 # ── cameras ──────────────────────────────────────────────────────
-from capabilities.alerting.cameras import (               # noqa: F401
+from features.vehicles.cameras.alert import (      # noqa: F401
     check_camera_alerts,
 )
 
@@ -49,13 +49,13 @@ from capabilities.alerting.escalation import (            # noqa: F401
 )
 
 # ── events ───────────────────────────────────────────────────────
-from capabilities.alerting.events import (                # noqa: F401
+from features.events.alert import (                # noqa: F401
     check_events,
     _event_severity,
 )
 
 # ── parking (now its own top-level capability) ───────────────────
-from capabilities.parking import (                        # noqa: F401
+from features.parking import (                        # noqa: F401
     check_unsafe_parking,
     classify_parking_location,
     get_parking_classification_reason,
@@ -69,7 +69,7 @@ from capabilities.parking import (                        # noqa: F401
 from capabilities.alerting.ai_maintenance import (        # noqa: F401
     check_api_health,
 )
-from capabilities.maintenance.service import (            # noqa: F401
+from features.maintenance.service import (            # noqa: F401
     auto_create_maintenance_from_faults,
 )
 

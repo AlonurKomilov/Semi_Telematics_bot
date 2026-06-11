@@ -564,10 +564,11 @@
     "share_step2": "2. Tap 🔑 Join",
     "share_step3": "3. Enter code:",
     "driver_title": "🚛 <b>Invite Driver</b>",
-    "step2": "<b>Step 2/2</b> — Truck number (required)",
-    "driver_prompt": "Type the truck number for this driver:",
-    "driver_vehicle_required": "⚠️ A truck number is required for drivers.\n\nType the truck number — for example <code>107</code> — so the alert pipeline can route messages to this driver.",
-    "vehicle_assigned": "🚛 Truck: #{vehicle}",
+    "step2": "<b>Step 2/2</b> — Vehicle (required)",
+    "driver_prompt": "Type the vehicle number for this driver:",
+    "driver_vehicle_prompt": "🚛 <b>Invite Driver</b>\n\nType the vehicle number this driver will operate (e.g. <code>107</code>).\n\nThe alert pipeline routes messages by vehicle assignment, so the number is required.",
+    "driver_vehicle_required": "⚠️ A vehicle number is required for drivers.\n\nType the vehicle number — for example <code>107</code> — so the alert pipeline can route messages to this driver.",
+    "vehicle_assigned": "🚛 Vehicle: #{vehicle}",
     "vehicle_not_assigned": "not assigned"
   },
   "team": {

@@ -15,29 +15,38 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from interfaces.api.routes import fleet, maps, alerts, health, pois, geofences
-from interfaces.api.routes import vehicles as vehicles_routes
-from interfaces.api.routes import parking as parking_routes
-from interfaces.api.routes import routes as dispatch_routes
-from interfaces.api.routes import safety as safety_routes
+# Assembly-shell routers — cross-feature, governance, and hub surfaces
+# stay in interfaces/api/routes (docs/FEATURES.md).
+from interfaces.api.routes import fleet, alerts, health
+from interfaces.api.routes import scorecards as scorecards_routes
 from interfaces.api.routes import reports as reports_routes
-from interfaces.api.routes import costs as costs_routes
 from interfaces.api.routes import user as user_routes
 from interfaces.api.routes import admin as admin_routes
 from interfaces.api.routes import system as system_routes
-from interfaces.api.routes import maintenance as maintenance_routes
-from interfaces.api.routes import work_orders as work_orders_routes
-from interfaces.api.routes import inspections as inspections_routes
 from interfaces.api.routes import storage as storage_routes
 from interfaces.api.routes import ai as ai_routes
-from interfaces.api.routes import knowledge as knowledge_routes
 from interfaces.api.routes import permissions as permissions_routes
 from interfaces.api.routes import billing as billing_routes
-from interfaces.api.routes import payroll as payroll_routes
-from interfaces.api.routes import coaching as coaching_routes
-from interfaces.api.routes import drivers as drivers_routes
 from interfaces.api.routes import integrations as integrations_routes
 from interfaces.api.routes import webhooks as webhooks_routes
+# Feature-owned routers live with their feature (vertical slice):
+# features/<x>/router.py.  Aliases keep the mounting loop stable.
+from features.vehicles import router as vehicles_routes
+from features.vehicles.cameras import router as cameras_routes
+from features.location import router as maps
+from features.location import pois
+from features.geofencing import router as geofences
+from features.parking import router as parking_routes
+from features.routes import router as dispatch_routes
+from features.events import router as events_routes
+from features.costs import router as costs_routes
+from features.maintenance import router as maintenance_routes
+from features.work_orders import router as work_orders_routes
+from features.pti import router as inspections_routes
+from features.knowledge import router as knowledge_routes
+from features.payroll import router as payroll_routes
+from features.coaching import router as coaching_routes
+from features.drivers import router as drivers_routes
 from interfaces.api.auth import router as auth_router
 from interfaces.api.rate_limit import limiter
 
@@ -371,8 +380,10 @@ def create_api() -> FastAPI:
         app.include_router(parking_routes.router, prefix=prefix)
         app.include_router(dispatch_routes.router, prefix=prefix)
         app.include_router(dispatch_routes.legacy_router, prefix=prefix)
-        app.include_router(safety_routes.router, prefix=prefix)
-        app.include_router(safety_routes.legacy_router, prefix=prefix)
+        app.include_router(scorecards_routes.router, prefix=prefix)
+        app.include_router(scorecards_routes.legacy_router, prefix=prefix)
+        app.include_router(events_routes.router, prefix=prefix)
+        app.include_router(cameras_routes.router, prefix=prefix)
         app.include_router(reports_routes.router, prefix=prefix)
         app.include_router(costs_routes.router, prefix=prefix)
         app.include_router(admin_routes.router, prefix=prefix)

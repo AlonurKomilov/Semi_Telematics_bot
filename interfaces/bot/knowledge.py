@@ -9,7 +9,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from adapters.storage.knowledge import KB_CATEGORIES
-from capabilities.knowledge.service import can_view_article as _can_view_article_fn
+from features.knowledge.service import can_view_article as _can_view_article_fn
 from interfaces.bot.state import get_platform_db
 from interfaces.bot.helpers import _show
 from interfaces.bot.auth import _require_registered

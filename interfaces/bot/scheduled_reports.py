@@ -23,14 +23,12 @@ from telegram.constants import ParseMode
 
 from capabilities.iam.permissions import can
 from adapters.samsara.client import populate_company_display
-from capabilities.reporting import (
-    generate_fault_report_pdf,
-    generate_fuel_report_pdf,
-    generate_vehicle_health_pdf,
-    generate_fleet_efficiency_pdf,
-    generate_camera_check_pdf,
-    compute_stats,
-)
+from capabilities.reporting import compute_stats
+from features.vehicles.faults.report import generate_fault_report_pdf
+from features.vehicles.fuel.report import generate_fuel_report_pdf
+from features.vehicles.efficiency.report import generate_fleet_efficiency_pdf
+from features.vehicles.cameras.report import generate_camera_check_pdf
+from features.vehicles.health.report import generate_vehicle_health_pdf
 from capabilities.reporting.registry import REPORTS as _REPORT_REGISTRY
 
 from capabilities.localization.i18n import t
@@ -39,7 +37,7 @@ from interfaces.bot.state import get_platform_db, get_tenant_db
 from infra.bot_registry import get_app_for_account
 from infra.isolation import SCHEDULED_REPORTS_JOB_TIMEOUT, run_account_job
 from infra.services import get_tenant_db as _get_tenant_db_rls
-from capabilities.vehicles.service import (
+from features.vehicles.service import (
     prepare_companies,
     get_fleet_overview as _svc_fleet_overview,
 )

@@ -21,6 +21,10 @@ Routes:
     DELETE /api/drivers/documents/{doc_id}       — delete (admin only)
     GET    /api/drivers/documents/expiring       — account-wide expiring list
 """
+# router.py is interface-layer code co-located with its feature
+# (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
+# service/alert/tool/signal modules never do.
+
 
 from __future__ import annotations
 
@@ -37,6 +41,7 @@ from pydantic import BaseModel, Field
 from interfaces.api.deps import (
     get_platform_db, get_tenant_db,
     require_permission, require_permission_any,
+    get_user_company_codes, filter_by_company_map,
 )
 from adapters.storage import Role
 from adapters.storage.drivers import VALID_DOC_TYPES
@@ -131,6 +136,16 @@ async def _require_driver_visibility(
     is_admin = can(caller["role"], "can_manage_driver_docs")
     if not is_admin and caller_id != target_user_id:
         raise HTTPException(status_code=404, detail="Driver not found")
+    # Company scope: a company-restricted admin can't reach a driver
+    # outside their companies by guessing the id (the list already hides
+    # them).  Fail-open: a driver with no company assignment stays visible.
+    allowed = await get_user_company_codes(caller)
+    if allowed:
+        driver_cos = await platform_db.get_user_company_codes(target_user_id)
+        if driver_cos and not (
+            {c.upper() for c in driver_cos} & {c.upper() for c in allowed}
+        ):
+            raise HTTPException(status_code=404, detail="Driver not found")
     return target
 
 
@@ -220,10 +235,15 @@ async def list_drivers(
     drivers = await platform_db.list_drivers(
         user["account_id"], include_terminated=include_terminated,
     )
-    return {
-        "drivers": [_profile_to_dict(p) for p in drivers],
-        "count": len(drivers),
-    }
+    rows = [_profile_to_dict(p) for p in drivers]
+    # Company scoping — a restricted user sees only their companies' drivers.
+    # Fail-open: a driver with NO company assignment stays visible (so HR can
+    # still onboard / assign them); only known-other-company drivers drop.
+    allowed = await get_user_company_codes(user)
+    if allowed:
+        user_map = await platform_db.get_all_user_company_codes(user["account_id"])
+        rows = filter_by_company_map(rows, allowed, user_map, key="user_id")
+    return {"drivers": rows, "count": len(rows)}
 
 
 @router.get("/samsara")
@@ -543,7 +563,7 @@ async def upload_driver_document(
     # the admin route triggers the archive flow which moves this
     # folder to ``{company}/drivers/_archive/{date}/user-{id}/`` and
     # rewrites bucket paths on existing rows.
-    from capabilities.work_orders.storage import (
+    from features.work_orders.storage import (
         driver_docs_bucket, resolve_company_folder,
     )
     user_companies = await platform_db.get_user_companies(user_id)

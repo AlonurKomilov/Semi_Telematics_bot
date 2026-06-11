@@ -1,7 +1,7 @@
 """Bot-side wiring for the driver-document expiration scheduler.
 
 The pure logic — bucketing, message formatting, expired-flip detection —
-lives in :mod:`capabilities.drivers.expiration`.  This module is the
+lives in :mod:`features.drivers.expiration`.  This module is the
 thin adapter: it iterates accounts, calls the platform DB, sends
 Telegram messages, records dedup rows, and logs counters.
 """
@@ -14,7 +14,7 @@ from telegram.constants import ParseMode
 from telegram.ext import Application
 
 from adapters.storage import Role
-from capabilities.drivers.expiration import (
+from features.drivers.expiration import (
     classify_documents, format_alert,
 )
 from capabilities.localization.tz import is_local_hour
@@ -22,6 +22,7 @@ from infra.bot_registry import get_app_for_account
 from infra.isolation import run_account_job
 from infra.services import get_tenant_db as _get_tenant_db_rls
 from interfaces.bot.state import get_platform_db
+from capabilities.alerting.registry import register_alert_source
 
 # Per-account local hour at which this job's per-account body runs.
 # Scheduler ticks hourly; the gate below skips the other 23 ticks per
@@ -32,6 +33,7 @@ _TARGET_HOUR_LOCAL = 9
 logger = logging.getLogger(__name__)
 
 
+@register_alert_source("driver_doc_expiry_check", trigger="cron", minute=2)
 async def check_document_expirations(_app: Application | None = None) -> None:
     """Daily — fire driver-document expiration alerts and mark past-due
     documents as ``expired``.
@@ -91,6 +93,12 @@ async def check_document_expirations(_app: Application | None = None) -> None:
             ]
             by_user_id = {u.id: u for u in users}
 
+            # Tenant handle for the per-driver DND queue check below.
+            # Fetched once per account so the loop doesn't re-resolve
+            # the pool on every alert.
+            from interfaces.bot.state import get_tenant_db as _get_tenant_db
+            doc_tenant = await _get_tenant_db(acct.id)
+
             # 3) For each alert: record dedup row first, then send.
             for a in alerts:
                 fresh = await pdb.record_doc_notification(a.doc_id, a.bucket)
@@ -108,19 +116,45 @@ async def check_document_expirations(_app: Application | None = None) -> None:
                     + format_alert(a, for_driver=False)
                 )
 
-                # Send to the driver themselves.
+                # Send to the driver themselves.  DND-gated: CDL /
+                # medical / DQF expiry is a compliance reminder, not
+                # a safety-critical alert, so respect the driver's
+                # "Don't disturb me off-shift" toggle.  Critical alerts
+                # (severity-tagged via the main pipeline) bypass this
+                # path entirely.
                 if driver.telegram_id:
+                    from capabilities.alerting.dnd import is_user_dnd_active
+                    skip_driver_dm = False
                     try:
-                        await bot_app.bot.send_message(
-                            chat_id=driver.telegram_id,
-                            text=driver_text,
-                            parse_mode=ParseMode.HTML,
-                        )
+                        # ``driver`` here is the per-account user row
+                        # from ``by_user_id`` — a User dataclass with
+                        # dnd_enabled + quiet_start/end populated.
+                        if await is_user_dnd_active(driver, doc_tenant):
+                            await doc_tenant.queue_dnd_alert(
+                                account_id=acct.id,
+                                telegram_id=driver.telegram_id,
+                                alert_type="documents",
+                                vehicle_name=driver_name,
+                                alert_text=driver_text,
+                            )
+                            skip_driver_dm = True
                     except Exception as e:
                         logger.debug(
-                            "Driver-doc alert to %s failed: %s",
+                            "Driver-doc DND check for %s failed: %s — sending anyway",
                             driver.telegram_id, e,
                         )
+                    if not skip_driver_dm:
+                        try:
+                            await bot_app.bot.send_message(
+                                chat_id=driver.telegram_id,
+                                text=driver_text,
+                                parse_mode=ParseMode.HTML,
+                            )
+                        except Exception as e:
+                            logger.debug(
+                                "Driver-doc alert to %s failed: %s",
+                                driver.telegram_id, e,
+                            )
 
                 # Forum routing for the admin view: one post to the
                 # Driver Documents topic when configured.  The driver's

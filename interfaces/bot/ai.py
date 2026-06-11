@@ -484,7 +484,7 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
     try:
         # Route through service layer (SSOT) — warehouse-aware when available,
         # falls back to live Samsara otherwise.
-        from capabilities.vehicles.service import (
+        from features.vehicles.service import (
             get_vehicle_detail as _svc_vehicle_detail,
         )
         matches = await _svc_vehicle_detail(

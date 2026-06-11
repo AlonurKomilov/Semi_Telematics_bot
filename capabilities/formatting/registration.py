@@ -186,8 +186,11 @@ def format_join_success(account_name: str, role_str: str) -> str:
     )
 
 
-def format_invite_created(code: str, role_str: str, dept: str,
+def format_invite_created(code: str, role_str: str, dept: str = "",
                          invite_link: str | None = None) -> str:
+    # ``dept`` retained as a positional arg for backward-compat with
+    # any caller that still passes it; ignored.  Department was
+    # removed in migration 098.
     text = (
         "━━━━━━━━━━━━━━━━━━━\n"
         f"  {_t('invite.created_title')}\n"
@@ -195,7 +198,6 @@ def format_invite_created(code: str, role_str: str, dept: str,
         "\n"
         f"  {_t('invite.code_label')}  <code>{code}</code>\n"
         f"  {_t('invite.role_label')}  {role_str}\n"
-        f"  {_t('invite.dept_label')}  {dept}\n"
         f"  {_t('invite.expires')}\n"
     )
     if invite_link:

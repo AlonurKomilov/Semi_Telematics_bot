@@ -15,6 +15,7 @@ from interfaces.api.deps import (
     require_permission,
 )
 from capabilities.iam.permissions import get_account_permissions
+from capabilities.iam.modules import enabled_modules as _enabled_modules
 from capabilities.localization.tz import effective_tz_for_user, IANA_OPTIONS
 from adapters.storage import Role
 
@@ -47,7 +48,8 @@ async def user_me(
     if not trucks and db_user.truck_num:
         trucks = [db_user.truck_num]
 
-    # Get company access restrictions
+    # Company access restrictions — per-user assignment (Team Management);
+    # empty = all companies.
     allowed_companies = await platform_db.get_user_company_codes(db_user.id)
 
     # ``timezone`` is the per-user override stored on the row (may be
@@ -86,7 +88,6 @@ async def user_me(
         "telegram_id": db_user.telegram_id,
         "display_name": db_user.display_name,
         "role": user["role"],
-        "department": db_user.department,
         "account_id": user["account_id"],
         "truck_num": db_user.truck_num,
         "trucks": trucks,
@@ -95,10 +96,18 @@ async def user_me(
         "timezone": db_user.timezone,
         "effective_timezone": effective_tz,
         "account_timezone": getattr(acct, "timezone", None),
+        # ``quiet_start`` / ``quiet_end`` are read-only here since
+        # migration 100 (admin-managed via Team Management).  Returned
+        # so Profile.tsx can render the schedule preview text alongside
+        # the user's personal DND toggle.
         "quiet_start": db_user.quiet_start,
         "quiet_end": db_user.quiet_end,
+        # Personal DND toggle (migration 100).  True = user honours
+        # the schedule above (queue non-critical alerts outside the
+        # window).  False = user receives all non-critical alerts 24/7.
+        "dnd_enabled": db_user.dnd_enabled,
         # DND derivation summary for the dashboard UI:
-        #   "user_override" → personal quiet_start/end is active
+        #   "user_override" → admin-set personal quiet_start/end is active
         #   "work_hours"    → derived from account Working Hours for this role
         #   "none"          → DND inactive (no override AND no work_hours for role)
         "dnd_source": dnd_source,
@@ -124,6 +133,10 @@ async def user_me(
         "permissions": perm_dict,
         "payroll_enabled": bool(getattr(acct, "payroll_enabled", False)),
         "coaching_enabled": bool(getattr(acct, "coaching_enabled", False)),
+        # Enabled department modules (Fleet/Dispatch/Safety/HR/Accounting).
+        # Drives module-aware sidebar filtering; Core + Account admin are
+        # always on and not listed.  See capabilities/iam/modules.py.
+        "enabled_modules": _enabled_modules(getattr(acct, "disabled_modules", "")),
     }
 
 
@@ -359,6 +372,19 @@ async def delete_scheduled_report(
 class PreferencesRequest(BaseModel):
     language: Optional[str] = Field(None, pattern=r"^(en|es|ru|uk|fr|so|am|uz|pa)$")
     timezone: Optional[str] = None
+    # ``dnd_enabled`` (migration 100) is the user's personal toggle
+    # over honouring the admin-set Working Hours schedule.  True =
+    # respect schedule (queue non-critical alerts outside the window),
+    # False = receive all non-critical alerts 24/7.  Critical alerts
+    # bypass either way via the pipeline's ``bypasses_dnd`` flag.
+    dnd_enabled: Optional[bool] = None
+    # ``quiet_start`` / ``quiet_end`` were here when users could
+    # self-edit their personal Working Hours window.  Since
+    # migration 100 those columns are admin-managed only (via
+    # PUT /admin/users/:id/quiet-hours); a non-null value on this
+    # endpoint is rejected below with a 403 pointing at the admin
+    # path.  The fields stay on the schema so old clients posting
+    # them get the explicit rejection instead of a silent ignore.
     quiet_start: Optional[int] = Field(None, ge=0, le=23)
     quiet_end: Optional[int] = Field(None, ge=0, le=23)
     display_name: Optional[str] = Field(None, min_length=1, max_length=100)
@@ -535,11 +561,23 @@ async def update_preferences(
                 detail=f"Unsupported timezone. Valid values: {', '.join(IANA_OPTIONS)}",
             )
         updates["timezone"] = tz_val
-    if "quiet_start" in sent:
-        # Accept explicit null to clear; otherwise stored as int.
-        updates["quiet_start"] = body.quiet_start
-    if "quiet_end" in sent:
-        updates["quiet_end"] = body.quiet_end
+    # Working-Hours hours are admin-managed since migration 100.
+    # Reject any attempt by the user to self-edit ``quiet_start`` or
+    # ``quiet_end`` from their Profile — point them at the admin path.
+    # Sending ``dnd_enabled`` from the same body is the supported
+    # personal control (Profile DND toggle).
+    if "quiet_start" in sent or "quiet_end" in sent:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Working Hours are managed by your administrator. "
+                "Use the DND toggle to opt in/out of receiving alerts "
+                "outside your shift, or ask your admin to update your "
+                "schedule via Team Management."
+            ),
+        )
+    if "dnd_enabled" in sent and body.dnd_enabled is not None:
+        updates["dnd_enabled"] = body.dnd_enabled
     if body.display_name is not None:
         updates["display_name"] = body.display_name
 
@@ -638,7 +676,6 @@ async def my_data_export(
             "account_id": db_user.account_id,
             "display_name": db_user.display_name,
             "role": db_user.role.value if hasattr(db_user.role, "value") else str(db_user.role),
-            "department": db_user.department,
             "truck_num": db_user.truck_num,
             "email": db_user.email,
             "language": getattr(db_user, "language", None),

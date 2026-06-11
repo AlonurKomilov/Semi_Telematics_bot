@@ -26,6 +26,7 @@ from infra.config import HEALTH_ALERT_COOLDOWN_HOURS
 from infra.context import set_tenant_display
 from infra.isolation import run_account_job
 from infra.services import get_client, get_platform_db, get_tenant_db
+from capabilities.alerting.registry import register_alert_source
 
 logger = logging.getLogger("bot")
 
@@ -96,6 +97,7 @@ def _is_health_on_cooldown(last_sent: float) -> bool:
 #  Health Alerts Scheduled Job
 # ═══════════════════════════════════════════════════════════════════
 
+@register_alert_source("health_check", trigger="interval", minutes=15)
 async def check_health_alerts(app: Application):
     """Check all accounts for vehicle health warnings and push alerts.
 

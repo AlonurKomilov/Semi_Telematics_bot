@@ -4,6 +4,10 @@ Other map data lives in dedicated routers:
     /map/pois, /map/custom-layers/*   → routes/pois.py
     /fleet/geofences/*                → routes/geofences.py
 """
+# router.py is interface-layer code co-located with its feature
+# (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
+# service/alert/tool/signal modules never do.
+
 
 from __future__ import annotations
 
@@ -17,7 +21,7 @@ from interfaces.api.deps import (
     filter_by_assigned_trucks,
 )
 from infra.services import get_client
-from capabilities.location.service import classify_vehicle_status, get_fleet_for_map
+from features.location.service import classify_vehicle_status, get_fleet_for_map
 
 router = APIRouter(prefix="/map", tags=["map"])
 
@@ -25,11 +29,11 @@ router = APIRouter(prefix="/map", tags=["map"])
 @router.get("/vehicles")
 async def map_vehicles(
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_location_map", "can_location_own")),
+    user: dict = Depends(require_permission_any("can_location_map", "can_location_vehicle")),
 ):
     """Current positions for all vehicles — optimized for map rendering.
 
-    Drivers (``can_location_own`` only) get the same payload but the
+    Drivers (``can_location_vehicle`` only) get the same payload but the
     response is restricted to their assigned truck(s) by
     ``filter_by_assigned_trucks`` below, so the miniapp can render a
     map for them too.
@@ -103,7 +107,7 @@ async def map_vehicles(
 @router.get("/vehicles/live")
 async def map_vehicles_live(
     company: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_location_map", "can_location_own")),
+    user: dict = Depends(require_permission_any("can_location_map", "can_location_vehicle")),
 ):
     """Lightweight position-only update for smooth live tracking.
 
@@ -141,7 +145,7 @@ async def map_vehicles_live(
             "updated_at": loc.get("time", ""),
         }
 
-    if user.get("_matched_perm") == "can_location_own":
+    if user.get("_matched_perm") == "can_location_vehicle":
         from interfaces.api.deps import get_user_vehicle_nums
         trucks = await get_user_vehicle_nums(user)
         if not trucks:

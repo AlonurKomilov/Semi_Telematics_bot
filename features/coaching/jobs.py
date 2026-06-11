@@ -1,7 +1,7 @@
 """Coaching scheduled jobs — nightly evaluation pass.
 
 Runs every night and, for each account with ``coaching_enabled = 1``,
-calls :func:`capabilities.coaching.service.run_evaluation` to persist
+calls :func:`features.coaching.service.run_evaluation` to persist
 proposed assignments based on the last 7 days of scorecards / events.
 """
 

@@ -50,7 +50,15 @@ async def cmd_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @_require_registered
 async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Create an invite code: /invite <role> [department] [truck_num]"""
+    """Create an invite code: /invite <role> [truck_num]
+
+    Transition kindness: the legacy syntax ``/invite <role> <department>
+    [truck_num]`` is silently accepted — if the second positional arg
+    matches a known legacy department literal (``general``,
+    ``operations``, ``management``, ``dispatch``), we skip it and treat
+    the third arg as the truck.  Operators with muscle memory for the
+    old shape don't get a cryptic error.
+    """
     user = context.user_data["_db_user"]
     if not can(user.role, "can_invite"):
         await _show(update, context,
@@ -67,7 +75,10 @@ async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton("🔧 Fleet", callback_data="inv_fleet"),
             ],
             [
+                InlineKeyboardButton("🛡️ Safety", callback_data="inv_safety"),
                 InlineKeyboardButton("📡 Dispatcher", callback_data="inv_dispatcher"),
+            ],
+            [
                 InlineKeyboardButton("🚛 Driver", callback_data="inv_driver"),
             ],
             [InlineKeyboardButton("◀️ Back", callback_data="cmd_menu")],
@@ -80,8 +91,15 @@ async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     role_str = context.args[0].lower()
-    dept = context.args[1] if len(context.args) > 1 else "general"
-    truck = context.args[2] if len(context.args) > 2 else None
+    # Legacy positional-arg compatibility: ``/invite driver general 47``
+    # used to mean role=driver, dept=general, truck=47.  Department was
+    # removed in migration 098.  If the 2nd arg looks like a known
+    # legacy department literal, skip it and treat arg-3 as the truck.
+    _LEGACY_DEPT_LITERALS = {"general", "operations", "management", "dispatch"}
+    rest = list(context.args[1:])
+    if rest and rest[0].lower() in _LEGACY_DEPT_LITERALS:
+        rest = rest[1:]
+    truck = rest[0] if rest else None
 
     # Validate role
     try:
@@ -111,12 +129,11 @@ async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
             account_id=user.account_id,
             created_by=user.id,
             role=invite_role,
-            department=dept,
             truck_num=truck,
         )
         link = make_invite_link(invite.code, context)
         text = format_invite_created(
-            invite.code, role_display(invite_role), dept,
+            invite.code, role_display(invite_role), "",
             invite_link=link,
         )
         kb = invite_kb(link)

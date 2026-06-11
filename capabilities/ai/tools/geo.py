@@ -20,11 +20,10 @@ from capabilities.telemetry.service import get_fleet_weather as _svc_weather
 })
 async def get_geofences(tool_args: dict, samsara_client,
                         account_id: int | None = None, db=None) -> dict:
-    if account_id is not None:
-        from capabilities.geofencing.service import get_geofences as _svc_geofences
-        fences = await _svc_geofences(account_id)
-    else:
-        fences = await samsara_client.get_geofences()
+    if account_id is None:
+        return {"error": "This tool requires account context."}
+    from features.geofencing.service import get_geofences as _svc_geofences
+    fences = await _svc_geofences(account_id)
     return {
         "count": len(fences),
         "geofences": [
@@ -52,10 +51,9 @@ async def get_geofences(tool_args: dict, samsara_client,
 })
 async def get_weather(tool_args: dict, samsara_client,
                             account_id: int | None = None, db=None) -> dict:
-    if account_id is not None:
-        weather = await _svc_weather(account_id)
-    else:
-        weather = await samsara_client.get_fleet_weather()
+    if account_id is None:
+        return {"error": "This tool requires account context."}
+    weather = await _svc_weather(account_id)
     return {
         "vehicle_count": len(weather),
         "vehicles": [

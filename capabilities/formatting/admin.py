@@ -201,7 +201,7 @@ def format_admin_account_detail(acct, companies, users) -> str:
         active = "🟢" if u.is_active else "🔴"
         lines.append(
             f"     {active} {role_display(u.role)}\n"
-            f"        {u.linked_label} · {u.department}{truck}\n"
+            f"        {u.linked_label}{truck}\n"
             f"        {alerts} Alerts · Since: {u.created_at[:10]}"
         )
 

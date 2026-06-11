@@ -14,7 +14,7 @@ Workflow:
 The bot writes directly to the tenant DB + object store — no HTTP
 roundtrip to the API — because the driver's identity is already
 established via their telegram_id at this point.  Drivers are scoped
-to their own truck via the same ``can_maintenance_own`` permission used
+to their own truck via the same ``can_maintenance_vehicle`` permission used
 elsewhere.
 """
 
@@ -31,8 +31,8 @@ from telegram.ext import ContextTypes
 from adapters.storage import Role
 from adapters.storage.object_store import get_object_store_for_account
 from capabilities.iam.permissions import can
-from capabilities.maintenance.service import has_maintenance_access
-from capabilities.work_orders.storage import (
+from features.maintenance.service import has_maintenance_access
+from features.work_orders.storage import (
     resolve_company_folder, safe_attachment_name, work_order_folder,
 )
 from infra.bot_registry import get_app_for_account

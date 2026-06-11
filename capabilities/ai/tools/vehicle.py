@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
-from capabilities.vehicles.service import (
+from features.vehicles.service import (
     get_fleet_overview as _svc_fleet,
     get_vehicle_detail as _svc_detail,
 )
+from capabilities.telemetry.service import get_engine_states as _svc_engine_states
 
 
 @register_tool({
@@ -29,10 +30,9 @@ from capabilities.vehicles.service import (
 async def get_vehicle_detail(tool_args: dict, samsara_client,
                              account_id: int | None = None, db=None) -> dict:
     vehicle = tool_args.get("vehicle_name", "")
-    if account_id is not None:
-        detail = await _svc_detail(account_id, vehicle)
-    else:
-        detail = await samsara_client.get_vehicle_detail(vehicle)
+    if account_id is None:
+        return {"error": "This tool requires account context."}
+    detail = await _svc_detail(account_id, vehicle)
     if not detail:
         return {"result": f"Vehicle {vehicle} not found."}
     v = detail[0] if isinstance(detail, list) else detail
@@ -69,10 +69,9 @@ async def get_vehicle_detail(tool_args: dict, samsara_client,
 async def get_vehicle_location(tool_args: dict, samsara_client,
                                account_id: int | None = None, db=None) -> dict:
     vehicle = tool_args.get("vehicle_name", "")
-    if account_id is not None:
-        detail = await _svc_detail(account_id, vehicle)
-    else:
-        detail = await samsara_client.get_vehicle_detail(vehicle)
+    if account_id is None:
+        return {"error": "This tool requires account context."}
+    detail = await _svc_detail(account_id, vehicle)
     if not detail:
         return {"result": f"Vehicle {vehicle} not found."}
     v = detail[0] if isinstance(detail, list) else detail
@@ -105,11 +104,10 @@ async def get_vehicle_location(tool_args: dict, samsara_client,
 })
 async def get_rolling_stopped(tool_args: dict, samsara_client,
                               account_id: int | None = None, db=None) -> dict:
-    if account_id is not None:
-        fleet = await _svc_fleet(account_id)
-    else:
-        fleet = await samsara_client.get_fleet_overview()
-    engine_states = await samsara_client.get_engine_states()
+    if account_id is None:
+        return {"error": "This tool requires account context."}
+    fleet = await _svc_fleet(account_id)
+    engine_states = await _svc_engine_states(account_id)
     # Index engine states by vehicle ID
     state_by_id: dict[str, str] = {}
     for es in engine_states:
@@ -179,15 +177,14 @@ async def search_vehicles(tool_args: dict, samsara_client,
     city_filter = (tool_args.get("city") or "").strip().lower()
     status_filter = (tool_args.get("status") or "").strip().lower()
 
-    if account_id is not None:
-        fleet = await _svc_fleet(account_id)
-    else:
-        fleet = await samsara_client.get_fleet_overview()
+    if account_id is None:
+        return {"error": "This tool requires account context."}
+    fleet = await _svc_fleet(account_id)
 
     # Only fetch engine states when status filter is requested
     state_by_id: dict[str, str] = {}
     if status_filter in ("rolling", "idling", "off"):
-        engine_states = await samsara_client.get_engine_states()
+        engine_states = await _svc_engine_states(account_id)
         for es in engine_states:
             vid = es.get("id", "")
             eng = es.get("engineStates", {})

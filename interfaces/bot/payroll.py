@@ -11,7 +11,7 @@ from telegram.ext import ContextTypes
 
 from capabilities.iam.permissions import can
 from capabilities.localization.i18n import t
-from capabilities.payroll import service as svc
+from features.payroll import service as svc
 from infra.platform import get_platform_db
 
 logger = logging.getLogger(__name__)

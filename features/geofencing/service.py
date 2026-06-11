@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from infra.services import get_client
-from capabilities.vehicles.service import prepare_companies
+from features.vehicles.service import prepare_companies
 
 
 async def get_geofences(
@@ -38,13 +38,13 @@ async def get_fleet_for_geofence_check(
     geofence proximity tolerates the small lag and avoids hammering Samsara
     every check cycle.
     """
-    from capabilities.vehicles.service import get_fleet_overview as _svc
+    from features.vehicles.service import get_fleet_overview as _svc
     return await _svc(account_id, company=company)
 
 
 async def get_platform_geofences(account_id: int, db) -> list[dict]:
     """Fetch platform-owned zones from the DB and normalise them so
-    ``capabilities.geofencing.geometry.is_inside_geofence`` works unchanged.
+    ``features.geofencing.geometry.is_inside_geofence`` works unchanged.
 
     Circle zones become::
         {"id": ..., "name": ..., "geofence_type": ..., "notify_roles": [...],

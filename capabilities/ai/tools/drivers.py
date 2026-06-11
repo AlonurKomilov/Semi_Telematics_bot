@@ -20,7 +20,10 @@ from capabilities.ai.tools.registry import register_tool
 })
 async def get_drivers_list(tool_args: dict, samsara_client,
                            account_id: int | None = None, db=None) -> dict:
-    drivers = await samsara_client.get_drivers()
+    if account_id is None:
+        return {"error": "This tool requires account context."}
+    from features.drivers.service import get_drivers as _svc_drivers
+    drivers = await _svc_drivers(account_id)
     # Filter to active drivers only
     active = [d for d in drivers if not d.get("deactivatedAtMs")]
     return {

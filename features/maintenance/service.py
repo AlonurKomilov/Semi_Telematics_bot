@@ -35,7 +35,103 @@ def has_maintenance_access(role: str) -> bool:
         r = Role(role) if not isinstance(role, Role) else role
     except ValueError:
         return False
-    return can(r, "can_maintenance_all") or can(r, "can_maintenance_own")
+    return can(r, "can_maintenance_all") or can(r, "can_maintenance_vehicle")
+
+
+def has_work_orders_access(role: str) -> bool:
+    """Return True if *role* grants any work-order permission.
+
+    Work orders are gated independently of maintenance via the
+    ``can_work_orders_*`` flags — defaults mirror maintenance, but an
+    account can grant/revoke them separately in the Role Permissions matrix.
+    """
+    try:
+        r = Role(role) if not isinstance(role, Role) else role
+    except ValueError:
+        return False
+    return can(r, "can_work_orders_all") or can(r, "can_work_orders_vehicle")
+
+
+# ── Due-soon classifier (shared between API stats + scheduler) ─────
+#
+# Same thresholds the dashboard's chip filter uses in
+# ``interfaces/dashboard/src/pages/maintenance/Tasks.tsx``.  Keeping
+# the Python and TS classifiers literally identical means the
+# "Maintenance due 9" badge in the shell header matches the "Due
+# Soon 9" chip on the Maintenance page — operators won't see two
+# different counts for the same concept.
+
+DUE_SOON_DAYS = 7
+DUE_SOON_MILES = 5_000
+DUE_SOON_HOURS = 100
+
+
+def classify_task_urgency(task: dict) -> Optional[str]:
+    """Return ``"overdue"``, ``"due_soon"``, or ``None``.
+
+    Mirrors ``dueSoonClassify`` in [Tasks.tsx].  An ``overdue`` result
+    on ANY axis (date / mileage / engine hours) wins — a task that's
+    overdue on mileage but not yet on date is still overdue.
+
+    Tasks that are closed (status completed / cancelled) return
+    ``None`` regardless of dates, so the cleanup pass in the caller
+    doesn't have to special-case them.
+    """
+    status = (task.get("status") or "").lower()
+    if status in ("completed", "cancelled"):
+        return None
+    if status == "overdue":
+        return "overdue"
+
+    # Date axis.
+    due_date = task.get("due_date")
+    if due_date:
+        try:
+            from datetime import date as _date, datetime as _dt
+            today = _dt.now().date()
+            if isinstance(due_date, str):
+                d = _dt.fromisoformat(due_date[:10]).date()
+            elif isinstance(due_date, _date):
+                d = due_date
+            else:
+                d = None
+            if d is not None:
+                days = (d - today).days
+                if days < 0:
+                    return "overdue"
+                if days <= DUE_SOON_DAYS:
+                    return "due_soon"
+        except (TypeError, ValueError):
+            pass
+
+    # Mileage axis.
+    due_miles = task.get("due_miles")
+    last_odo = task.get("last_odometer")
+    if due_miles is not None and last_odo is not None:
+        try:
+            remaining_mi = float(due_miles) - float(last_odo)
+            if remaining_mi < 0:
+                return "overdue"
+            if remaining_mi <= DUE_SOON_MILES:
+                return "due_soon"
+        except (TypeError, ValueError):
+            pass
+
+    # Engine-hours axis.
+    due_hours = task.get("due_engine_hours")
+    last_hours = task.get("last_engine_hours")
+    if due_hours is not None and last_hours is not None:
+        try:
+            remaining_h = float(due_hours) - float(last_hours)
+            if remaining_h < 0:
+                return "overdue"
+            if remaining_h <= DUE_SOON_HOURS:
+                return "due_soon"
+        except (TypeError, ValueError):
+            pass
+
+    return None
+
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +209,76 @@ async def mark_overdue_tasks_by_date(account_id: int, tenant_db) -> list[dict]:
     return list(overdue_tasks)
 
 
+def _index_state_rows_for_routing(state_rows: list[dict]) -> tuple[
+    dict[str, dict],
+    dict[tuple[str, str], dict],
+    dict[str, dict],
+]:
+    """Build the three indices that route a task to its OWN vehicle.
+
+    Returns ``(by_id, by_company_name, by_name_unique)`` — same shape
+    as the route-time enrichment block in
+    ``interfaces/api/routes/maintenance.py``.  Kept here so the
+    scheduler and the route share one mental model.
+
+    The name-only fallback contains an entry ONLY for names that
+    appear exactly once across the account; ambiguous names get
+    removed so the scheduler can't accidentally cross-merge "103" on
+    G1 with "103" on OSY (the historical bug that corrupted
+    ``last_odometer`` across both tasks every 6 hours).
+    """
+    by_id: dict[str, dict] = {}
+    by_company_name: dict[tuple[str, str], dict] = {}
+    name_counts: dict[str, int] = {}
+    by_name_unique: dict[str, dict] = {}
+    for row in state_rows:
+        vid = (row.get("vehicle_id") or "").strip()
+        cc = (row.get("company_code") or "").strip()
+        nm = (row.get("vehicle_name") or "").strip()
+        if vid:
+            by_id[vid] = row
+        if nm:
+            # Always index by (company, name) — empty company tagged
+            # explicitly so legacy single-company state rows still
+            # match the legacy company-less task rows.
+            by_company_name[(cc, nm)] = row
+            name_counts[nm] = name_counts.get(nm, 0) + 1
+            if name_counts[nm] == 1:
+                by_name_unique[nm] = row
+            else:
+                by_name_unique.pop(nm, None)
+    return by_id, by_company_name, by_name_unique
+
+
+def _route_task_to_state_row(
+    task: dict,
+    by_id: dict[str, dict],
+    by_company_name: dict[tuple[str, str], dict],
+    by_name_unique: dict[str, dict],
+) -> Optional[dict]:
+    """Resolve a task to its single ``vehicle_state`` row.
+
+    Priority — same as the route-time enrichment:
+      1. ``vehicle_id`` — unique PRIMARY KEY of vehicle_state.
+      2. ``(company_code, vehicle_name)`` — scoped fallback.
+      3. ``vehicle_name`` — only when unambiguous across the account.
+
+    Returns ``None`` when the task can't be resolved to exactly one
+    state row — better empty than wrong.
+    """
+    vid = (task.get("vehicle_id") or "").strip()
+    if vid and vid in by_id:
+        return by_id[vid]
+    nm = (task.get("vehicle_name") or "").strip()
+    if not nm:
+        return None
+    cc = (task.get("company_code") or "").strip()
+    live = by_company_name.get((cc, nm))
+    if live is not None:
+        return live
+    return by_name_unique.get(nm)
+
+
 async def mark_overdue_tasks_by_mileage(
     account_id: int,
     tenant_db,
@@ -134,29 +300,35 @@ async def mark_overdue_tasks_by_mileage(
         return []
 
     # Single warehouse read for the whole account — no per-company
-    # Samsara fan-out, no rate-limit risk.
+    # Samsara fan-out, no rate-limit risk.  Routed through the shared
+    # ``_route_task_to_state_row`` helper so two trucks with the same
+    # name in different companies (e.g. "103" in G1 + "103" in OSY)
+    # don't get cross-merged into a single odometer value the way the
+    # pre-fix ``odometer_by_vehicle_name[name] = ...`` lookup did.
     state_rows = await tenant_db.get_vehicle_state(account_id)
-    odometer_by_vehicle_name: dict[str, float] = {}
-    for row in state_rows:
-        name = row.get("vehicle_name") or ""
-        miles = row.get("odometer_mi")
-        if name and isinstance(miles, (int, float)):
-            odometer_by_vehicle_name[name] = float(miles)
-
-    if not odometer_by_vehicle_name:
+    if not state_rows:
         logger.debug(
             "mark_overdue_tasks_by_mileage acct=%d — warehouse has no odometer yet",
             account_id,
         )
         return []
+    by_id, by_company_name, by_name_unique = _index_state_rows_for_routing(
+        state_rows,
+    )
 
     newly_overdue: list[dict] = []
     odometer_updates: list[tuple[int, float]] = []
     overdue_ids: list[int] = []
     for task in tasks:
-        current_miles = odometer_by_vehicle_name.get(task["vehicle_name"])
-        if current_miles is None:
+        live = _route_task_to_state_row(
+            task, by_id, by_company_name, by_name_unique,
+        )
+        if live is None:
             continue
+        miles = live.get("odometer_mi")
+        if not isinstance(miles, (int, float)):
+            continue
+        current_miles = float(miles)
         due_miles = task["due_miles"]
 
         odometer_updates.append((int(task["id"]), round(current_miles, 1)))
@@ -207,28 +379,34 @@ async def mark_overdue_tasks_by_engine_hours(
     if not tasks:
         return []
 
+    # Shared routing — see ``mark_overdue_tasks_by_mileage`` for the
+    # rationale.  Lookup priority is vehicle_id → (company, name) →
+    # name-when-unambiguous so cross-company name collisions can't
+    # corrupt ``last_engine_hours`` across both tasks every 6 hours.
     state_rows = await tenant_db.get_vehicle_state(account_id)
-    hours_by_vehicle: dict[str, float] = {}
-    for row in state_rows:
-        name = row.get("vehicle_name") or ""
-        hrs = row.get("engine_hours")
-        if name and isinstance(hrs, (int, float)):
-            hours_by_vehicle[name] = float(hrs)
-
-    if not hours_by_vehicle:
+    if not state_rows:
         logger.debug(
             "mark_overdue_tasks_by_engine_hours acct=%d — warehouse has no engine_hours yet",
             account_id,
         )
         return []
+    by_id, by_company_name, by_name_unique = _index_state_rows_for_routing(
+        state_rows,
+    )
 
     newly_overdue: list[dict] = []
     hours_updates: list[tuple[int, float]] = []
     overdue_ids: list[int] = []
     for task in tasks:
-        current = hours_by_vehicle.get(task["vehicle_name"])
-        if current is None:
+        live = _route_task_to_state_row(
+            task, by_id, by_company_name, by_name_unique,
+        )
+        if live is None:
             continue
+        hrs = live.get("engine_hours")
+        if not isinstance(hrs, (int, float)):
+            continue
+        current = float(hrs)
         due = task["due_engine_hours"]
 
         hours_updates.append((int(task["id"]), round(current, 1)))

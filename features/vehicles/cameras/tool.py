@@ -34,7 +34,6 @@ async def check_vehicle_camera(tool_args: dict, samsara_client,
     vehicle = tool_args.get("vehicle_name", "")
     try:
         from capabilities.ai.vision import analyze_camera_image
-        from infra.services import get_client
         if account_id is None:
             return {"vehicle": vehicle, "error": "Camera check requires account context."}
         # Route through the cached MultiCompanyClient pool so this
@@ -42,17 +41,16 @@ async def check_vehicle_camera(tool_args: dict, samsara_client,
         # rate-limit retries with the rest of the app.  Keys come from
         # the Integration card (dual-write keeps the legacy column in
         # sync for any not-yet-migrated reader).
-        multi = await get_client(account_id)
-        snap = None
-        for _code, client in multi.clients.items():
-            snaps = await client.get_dashcam_snapshots(days=3)
-            match = [
-                s for s in snaps
-                if s["vehicle_name"].lower() == vehicle.lower()
-            ]
-            if match:
-                snap = match[0]
-                break
+        # Snapshot frames come through the media service (the SSOT
+        # accessor) — it merges companies and rides the same cached
+        # MultiCompanyClient pool (breaker + rate-limit retries).
+        from capabilities.media.service import get_dashcam_snapshots as _svc_snaps
+        snaps = await _svc_snaps(account_id, days=3)
+        match = [
+            s for s in snaps
+            if s["vehicle_name"].lower() == vehicle.lower()
+        ]
+        snap = match[0] if match else None
         if not snap or not snap.get("image_bytes"):
             return {"vehicle": vehicle, "result": "No recent camera image found for this vehicle."}
         analysis = await analyze_camera_image(

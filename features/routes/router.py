@@ -1,12 +1,16 @@
 """Route-replay API endpoints — GPS history per vehicle, lives under /fleet/routes."""
+# router.py is interface-layer code co-located with its feature
+# (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
+# service/alert/tool/signal modules never do.
+
 
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query, HTTPException
 
 from interfaces.api.deps import require_permission_any, get_user_vehicle_nums
-from capabilities.routes.service import total_route_miles, get_vehicle_gps_history
-from capabilities.vehicles.service import get_fleet_overview as _svc_fleet_overview
+from features.routes.service import total_route_miles, get_vehicle_gps_history
+from features.vehicles.service import get_fleet_overview as _svc_fleet_overview
 
 router = APIRouter(prefix="/fleet/routes", tags=["routes"])
 
@@ -18,7 +22,7 @@ async def route_replay(
         None,
         description="Date in YYYY-MM-DD format (defaults to today UTC)",
     ),
-    user: dict = Depends(require_permission_any("can_route_all", "can_route_own")),
+    user: dict = Depends(require_permission_any("can_route_all", "can_route_vehicle")),
 ):
     """Get GPS breadcrumb trail for a vehicle on a given day.
 
@@ -26,7 +30,7 @@ async def route_replay(
     suitable for drawing a polyline on Leaflet.
     """
     # If user only has _own, verify they're requesting their own truck
-    if user.get("_matched_perm") == "can_route_own":
+    if user.get("_matched_perm") == "can_route_vehicle":
         trucks = await get_user_vehicle_nums(user)
         if not trucks or not any(vehicle_name.lower() == t.lower() for t in trucks):
             raise HTTPException(status_code=403, detail="You can only view routes for your assigned vehicle")
@@ -89,7 +93,7 @@ async def route_replay(
 
 @router.get("")
 async def routes_vehicles(
-    user: dict = Depends(require_permission_any("can_route_all", "can_route_own")),
+    user: dict = Depends(require_permission_any("can_route_all", "can_route_vehicle")),
 ):
     """Vehicle picker list for route replay (used by frontend dropdown)."""
     overview = await _svc_fleet_overview(user["account_id"])
@@ -99,7 +103,7 @@ async def routes_vehicles(
     ]
 
     # If user only has _own, filter to their assigned truck
-    if user.get("_matched_perm") == "can_route_own":
+    if user.get("_matched_perm") == "can_route_vehicle":
         trucks = await get_user_vehicle_nums(user)
         if trucks:
             needles = [t.lower() for t in trucks]
@@ -118,13 +122,13 @@ legacy_router = APIRouter(prefix="/dispatch", tags=["dispatch"], include_in_sche
 async def _legacy_route_replay(
     vehicle_name: str,
     date: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_route_all", "can_route_own")),
+    user: dict = Depends(require_permission_any("can_route_all", "can_route_vehicle")),
 ):
     return await route_replay(vehicle_name=vehicle_name, date=date, user=user)
 
 
 @legacy_router.get("/vehicles")
 async def _legacy_dispatch_vehicles(
-    user: dict = Depends(require_permission_any("can_route_all", "can_route_own")),
+    user: dict = Depends(require_permission_any("can_route_all", "can_route_vehicle")),
 ):
     return await routes_vehicles(user=user)

@@ -1,5 +1,5 @@
 """Fuel report PDF generator."""
-from .pdf_base import *  # noqa: F403,F401
+from capabilities.reporting.pdf_base import *  # noqa: F403,F401
 
 def generate_fuel_report_pdf(
     all_vehicles: list[dict],

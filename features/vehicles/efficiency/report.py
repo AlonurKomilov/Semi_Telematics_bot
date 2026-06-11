@@ -1,5 +1,5 @@
 """Fleet efficiency PDF generator."""
-from .pdf_base import *  # noqa: F403,F401
+from capabilities.reporting.pdf_base import *  # noqa: F403,F401
 
 def generate_fleet_efficiency_pdf(
     vehicles: list[dict],

@@ -49,7 +49,7 @@ class RiskProfile:
     score_events: list[dict] = field(default_factory=list)   # fired rules
 
     # Incidents (Samsara safety event log)
-    safety_events: list[dict] = field(default_factory=list)
+    events: list[dict] = field(default_factory=list)
 
     # Maintenance
     overdue_tasks: list[dict] = field(default_factory=list)
@@ -299,7 +299,7 @@ async def build_risk_profile(
         breakdown=breakdown,
         daily_history=history,
         score_events=events,
-        safety_events=safety,
+        events=safety,
         overdue_tasks=overdue,
         pending_tasks=pending,
         fleet_median=fleet_median,

@@ -10,7 +10,7 @@ from adapters.storage import Role
 from capabilities.iam.permissions import can
 from adapters.samsara.client import populate_company_display
 from capabilities.formatting import format_events_dashboard
-from capabilities.events.service import filter_events_by_access as _filter_events_by_access, get_events as _svc_get_events
+from features.events.service import filter_events_by_access as _filter_events_by_access, get_events as _svc_get_events
 
 from interfaces.bot.config import logger
 from interfaces.bot.state import get_tenant_db
@@ -23,7 +23,7 @@ from interfaces.bot.auth import _require_registered
 async def cmd_events(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show format/period picker for events dashboard."""
     user = context.user_data["_db_user"]
-    if not (can(user.role, "can_events_all") or can(user.role, "can_events_own")):
+    if not (can(user.role, "can_events_all") or can(user.role, "can_events_vehicle")):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -43,7 +43,7 @@ async def cmd_events_text(update: Update, context: ContextTypes.DEFAULT_TYPE,
                           days: int = 7):
     """Generate events text dashboard."""
     user = context.user_data["_db_user"]
-    if not (can(user.role, "can_events_all") or can(user.role, "can_events_own")):
+    if not (can(user.role, "can_events_all") or can(user.role, "can_events_vehicle")):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return
@@ -79,7 +79,7 @@ async def cmd_events_csv(update: Update, context: ContextTypes.DEFAULT_TYPE,
                          days: int = 7):
     """Generate events CSV export."""
     user = context.user_data["_db_user"]
-    if not (can(user.role, "can_events_all") or can(user.role, "can_events_own")):
+    if not (can(user.role, "can_events_all") or can(user.role, "can_events_vehicle")):
         if update.callback_query:
             await update.callback_query.answer(t("access.no_access"), show_alert=True)
         return

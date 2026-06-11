@@ -250,7 +250,7 @@ async def _get_ai_health_note(
 # ── Auto-Maintenance from Critical Faults ────────────────────────
 # Canonical implementation lives in capabilities/maintenance/service.py.
 # Re-exported here for backward compatibility.
-from capabilities.maintenance.service import auto_create_maintenance_from_faults  # noqa: F401, E402
+from features.maintenance.service import auto_create_maintenance_from_faults  # noqa: F401, E402
 
 
 async def check_api_health(account_id: int) -> dict[str, str]:

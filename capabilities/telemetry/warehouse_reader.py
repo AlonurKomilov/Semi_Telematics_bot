@@ -233,6 +233,78 @@ async def get_vehicle_telemetry_hourly(
     )
 
 
+async def get_vehicle_metrics_daily(
+    account_id: int,
+    *,
+    vehicle_id: str | None = None,
+    days: int = 30,
+) -> list[dict[str, Any]]:
+    """Per-vehicle daily roll-up window.  Same fall-back semantics as
+    the hourly reader: empty list when the flag is off or the table
+    hasn't been populated yet."""
+    if not _enabled():
+        return []
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        return []
+    return await tenant.get_vehicle_metrics_daily(
+        account_id, vehicle_id=vehicle_id, days=days,
+    )
+
+
+async def get_vehicle_usage_summary(
+    account_id: int,
+    vehicle_id: str,
+    *,
+    days: int = 30,
+) -> dict[str, Any]:
+    """Vehicle-level usage summary (miles, drive_h, idle_h,
+    utilization %, cost-per-mile) over the window.  Returns a
+    zero-filled shape when no data exists rather than ``None`` so
+    callers can render the cards unconditionally."""
+    zero = {
+        "vehicle_id":       vehicle_id,
+        "vehicle_name":     "",
+        "days":             int(days),
+        "days_with_data":   0,
+        "total_miles":      0.0,
+        "drive_hours":      0.0,
+        "idle_hours":       0.0,
+        "utilization_pct":  0.0,
+        "max_speed_mph":    0.0,
+        "avg_fuel_pct":     0.0,
+        "harsh_events":     0,
+        "total_cost":       0.0,
+        "work_order_count": 0,
+        "cost_per_mile":    None,
+    }
+    if not _enabled():
+        return zero
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        return zero
+    return await tenant.get_vehicle_usage_summary(
+        account_id, vehicle_id, days=days,
+    )
+
+
+async def get_account_utilization_summary(
+    account_id: int,
+    *,
+    days: int = 30,
+) -> list[dict[str, Any]]:
+    """Fleet-wide per-vehicle utilization summary.  Empty list when
+    the flag is off or the daily table is still cold."""
+    if not _enabled():
+        return []
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        return []
+    return await tenant.get_account_utilization_summary(
+        account_id, days=days,
+    )
+
+
 # ── vehicle health snapshot ────────────────────────────────
 
 

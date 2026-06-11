@@ -15,6 +15,7 @@ from infra.bot_registry import get_app_for_account
 from infra.context import set_tenant_display
 from infra.isolation import run_account_job
 from infra.services import get_client, get_platform_db, get_tenant_db
+from capabilities.alerting.registry import register_alert_source
 
 logger = logging.getLogger("bot")
 
@@ -62,6 +63,7 @@ async def _add_known_event_ids(account_id: int, ids: set[str]):
         _known_event_ids.setdefault(account_id, set()).update(ids)
 
 
+@register_alert_source("events_check", trigger="interval", minutes=5)
 async def check_events(app: Application):
     """Scheduled job: poll Samsara safety events and send alerts for new ones.
 

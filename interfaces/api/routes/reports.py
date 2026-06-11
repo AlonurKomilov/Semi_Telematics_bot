@@ -423,7 +423,7 @@ async def report_risk_summary_me(
 # URLs remain for a release cycle so any pinned client (older bundle,
 # integration script) doesn't break.
 
-from interfaces.api.routes.work_orders import (
+from features.work_orders.router import (
     report_per_vehicle as _wo_report_per_vehicle,
     report_per_task_type as _wo_report_per_task_type,
     report_per_vendor as _wo_report_per_vendor,
@@ -450,7 +450,7 @@ router.get("/cost-reports/monthly-trend")(_wo_report_monthly_trend)
 # so any pinned client (older bundle, integration script) doesn't
 # break.
 
-from interfaces.api.routes.maintenance import (
+from features.maintenance.router import (
     export_dot_binder as _mt_export_dot_binder,
 )
 

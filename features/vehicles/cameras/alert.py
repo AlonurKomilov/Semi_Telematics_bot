@@ -13,6 +13,7 @@ from adapters.storage import Role
 from infra.bot_registry import get_app_for_account
 from infra.isolation import run_account_job, CAMERA_JOB_TIMEOUT
 from infra.services import get_platform_db, get_tenant_db
+from capabilities.alerting.registry import register_alert_source
 
 logger = logging.getLogger("bot")
 
@@ -48,6 +49,7 @@ _known_camera_issues: dict[int, set[str]] = {}
 _camera_warmup_done: set[int] = set()
 
 
+@register_alert_source("camera_check", trigger="interval", hours=6)
 async def check_camera_alerts(app: Application):
     """Periodic camera check — alerts on PROBLEM/WARNING dashcams.
 
@@ -271,6 +273,17 @@ async def _check_cameras_account(
         logger.debug("Forum post for camera alerts failed: %s", e)
 
     import io
+    # Company scope: restrict each subscriber's camera digest to the
+    # companies they're allowed (per-user override, else role assignment).
+    # Owner/unrestricted → full fleet; no-company issues stay (fail-open).
+    from capabilities.alerting.company_scope import load_company_scope, subscriber_companies
+    from capabilities.alerting.dnd import is_user_dnd_active
+    from interfaces.bot.state import get_tenant_db as _get_tenant_db
+    _user_co = await load_company_scope(account_id)
+    # Tenant DB handle for the per-sub DND queue.  Fetched once
+    # (cheap pool lookup) so the per-subscriber loop doesn't
+    # re-resolve it on every iteration.
+    _camera_tenant = await _get_tenant_db(account_id)
     for sub in subs:
         # Driver-role isolation: drivers only see camera alerts for
         # their own assigned truck.  Account-wide subscribers (owner /
@@ -278,11 +291,50 @@ async def _check_cameras_account(
         # this, drivers received every camera issue across every
         # company in the account — a privacy regression.
         sub_issues = _issues_for_subscriber(sub, new_issues)
+        _sub_co = subscriber_companies(sub, _user_co)
+        if _sub_co:
+            _allow = {c.upper() for c in _sub_co}
+            sub_issues = [r for r in sub_issues
+                          if not r.get("company") or (r.get("company") or "").upper() in _allow]
         if not sub_issues:
             continue  # nothing relevant for this subscriber; skip silently
 
         sub_problems = sum(1 for r in sub_issues if r.get("status") == "PROBLEM")
         sub_warnings = sum(1 for r in sub_issues if r.get("status") == "WARNING")
+        # DND gate — mirrors pipeline.send_alert's per-subscriber DND
+        # check (capabilities/alerting/pipeline.py:1055).  Without this
+        # the per-user digest pushes to Telegram regardless of the
+        # subscriber's "Don't disturb me off-shift" toggle.  PROBLEM
+        # rows are treated as critical (PROBLEM = camera detected
+        # something wrong, equivalent to a critical-severity alert in
+        # the main pipeline) so they bypass DND.  Warning-only
+        # digests respect DND and queue for shift-start.
+        bypasses_dnd = sub_problems > 0
+        if not bypasses_dnd:
+            try:
+                if await is_user_dnd_active(sub, _camera_tenant):
+                    # Queue a single rolled-up DM so the subscriber
+                    # gets the digest when they come on-shift.  Body
+                    # rebuilt to match what the live push would have
+                    # said; the warning count + first vehicle name
+                    # are enough to triage at shift-start.
+                    first_v = sub_issues[0].get("vehicle", "?")
+                    queued_text = (
+                        f"📷 Camera alerts ({sub_warnings} warning"
+                        f"{'s' if sub_warnings != 1 else ''}) — "
+                        f"#{first_v}"
+                        + (f" +{len(sub_issues) - 1} more" if len(sub_issues) > 1 else "")
+                    )
+                    await _camera_tenant.queue_dnd_alert(
+                        account_id=account_id,
+                        telegram_id=sub.telegram_id,
+                        alert_type="camera",
+                        vehicle_name=first_v,
+                        alert_text=queued_text,
+                    )
+                    continue
+            except Exception as e:
+                logger.debug("Camera DND check failed for %s: %s — sending anyway", sub.telegram_id, e)
         from capabilities.formatting.severity import badge as _badge
         sub_sev = "critical" if sub_problems else "warning"
         sub_roll = []

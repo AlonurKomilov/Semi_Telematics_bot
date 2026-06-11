@@ -760,7 +760,7 @@ def _prepare_company_folders(creds, root_folder_id: str, companies) -> None:
     ``GDriveObjectStore._resolve_folder_chain`` still works.
     """
     from googleapiclient.discovery import build
-    from capabilities.work_orders.storage import sanitize_company_folder
+    from features.work_orders.storage import sanitize_company_folder
 
     svc = build("drive", "v3", credentials=creds, cache_discovery=False)
     subdirs = ("work-orders", "camera-images", "parking-maps", "drivers")

@@ -188,7 +188,7 @@ async def run_comp_expiry_sweep(_app=None, *, now: datetime | None = None) -> di
 
     # Expire lapsed comps and notify their admins
     try:
-        expired_ids = await platform_db.expire_lapsed_comps()
+        expired_ids = await platform_db.expire_lapsed_comps(now=now)
     except Exception:
         logger.exception("run_comp_expiry_sweep: expire_lapsed_comps failed")
         expired_ids = []

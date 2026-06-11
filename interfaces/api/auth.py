@@ -732,15 +732,40 @@ async def auth_telegram_login(request: Request, response: Response, body: LoginW
 _EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
 
+def _signup_base_url() -> str:
+    """The apex origin where the public ``/signup/<code>`` route lives.
+
+    Honors ``AUTH_BASE_URL`` (preferred) → ``DASHBOARD_BASE_URL`` (legacy)
+    → ``https://4truck.us`` (default).  Same env precedence the email
+    sender uses, so invite emails AND clipboard URLs always point at
+    the apex where Login.tsx is reachable — never at a persona
+    subdomain (``dash./app./api./bot.``) which would 404 the unauth
+    visitor.  Frontend reads this from ``/auth/config`` to build
+    the URL-channel clipboard string.
+    """
+    return (
+        os.getenv("AUTH_BASE_URL")
+        or os.getenv("DASHBOARD_BASE_URL")
+        or "https://4truck.us"
+    ).rstrip("/")
+
+
 @router.get("/config")
 async def auth_config(request: Request):
-    """Return public auth config (bot username for Telegram Login Widget).
+    """Return public auth config (bot username for Telegram Login Widget
+    + signup_base_url for the URL-channel invite clipboard).
 
     If the request carries a valid JWT, returns the per-account bot_username.
     Otherwise returns the first configured account bot (for the login widget),
     falling back to the global system bot.
+
+    ``signup_base_url`` is the apex origin where /signup/<code> works —
+    used by the dashboard's invite "Copy URL" / "URL link channel"
+    to build a recipient-facing link that lands on Login.tsx (which
+    lives on the apex, NOT on dash./app./api. subdomains).
     """
     from interfaces.bot.config import bot_username as global_bot_username
+    signup_base = _signup_base_url()
 
     # Try to extract account-specific bot_username from JWT
     auth_header = request.headers.get("authorization", "")
@@ -762,7 +787,11 @@ async def auth_config(request: Request):
                                 acct_bot_id = tok.split(":", 1)[0]
                         except Exception as e:
                             logging.getLogger("api.auth").debug("Could not decrypt bot token: %s", e)
-                    return {"bot_username": account.bot_username, "bot_id": acct_bot_id}
+                    return {
+                        "bot_username": account.bot_username,
+                        "bot_id": acct_bot_id,
+                        "signup_base_url": signup_base,
+                    }
         except Exception as e:
             logging.getLogger("api.auth").debug("JWT account lookup failed, falling through: %s", e)
     # (account bots handle user auth; system bot is for platform admin only)
@@ -780,7 +809,11 @@ async def auth_config(request: Request):
                         acct_bot_id = tok.split(":", 1)[0]
                 except Exception as e:
                     logging.getLogger("api.auth").debug("Could not decrypt bot token: %s", e)
-                return {"bot_username": acct.bot_username, "bot_id": acct_bot_id}
+                return {
+                    "bot_username": acct.bot_username,
+                    "bot_id": acct_bot_id,
+                    "signup_base_url": signup_base,
+                }
     except Exception as e:
         logging.getLogger("api.auth").debug("Could not look up fallback account bot: %s", e)
     # Last-resort fallback for the customer-side Login Widget — show
@@ -798,6 +831,7 @@ async def auth_config(request: Request):
     return {
         "bot_username": login_username or global_bot_username or "4truckBot",
         "bot_id": _bot_id,
+        "signup_base_url": signup_base,
     }
 
 
@@ -1393,7 +1427,6 @@ async def auth_email_register(request: Request, response: Response, body: EmailR
                 password_hash=pw_hash,
                 account_id=invite.account_id,
                 role=database.Role.from_str(invite.role),
-                department=invite.department,
                 display_name=body.display_name or body.email.split("@")[0],
             )
             # Mark invite as used.  TOCTOU defence (mirrors
@@ -1760,7 +1793,6 @@ async def auth_register_account(request: Request, response: Response, body: Regi
             password_hash=pw_hash,
             account_id=account.id,
             role=database.Role.OWNER,
-            department="management",
             display_name=body.display_name or body.email.split("@")[0],
         )
 
@@ -1882,7 +1914,7 @@ async def _decline_invite_impl(request: Request, token: str) -> None:
             request.client.host if request.client else "unknown"
         )
         details = (
-            f"Role: {invite.role}, dept: {invite.department}, "
+            f"Role: {invite.role}, "
             f"channel: {invite.channel}, source_ip: {source_ip}"
         )[:500]
         await tenant.add_audit_log(

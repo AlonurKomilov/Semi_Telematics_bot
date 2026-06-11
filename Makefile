@@ -364,19 +364,19 @@ test-watch:
 
 ## Spawn weekly PTI inspections now (gated on local 06:00 by default)
 pti-spawn:
-	python3 -c "import asyncio; from capabilities.pti.jobs import job_pti_spawn_weekly; asyncio.run(job_pti_spawn_weekly())"
+	python3 -c "import asyncio; from features.pti.jobs import job_pti_spawn_weekly; asyncio.run(job_pti_spawn_weekly())"
 
 ## Remind drivers whose PTI is due in <24h
 pti-remind:
-	python3 -c "import asyncio; from capabilities.pti.jobs import job_pti_remind_due_soon; asyncio.run(job_pti_remind_due_soon())"
+	python3 -c "import asyncio; from features.pti.jobs import job_pti_remind_due_soon; asyncio.run(job_pti_remind_due_soon())"
 
 ## Escalate overdue PTIs to admin (gated on local 09:00)
 pti-escalate:
-	python3 -c "import asyncio; from capabilities.pti.jobs import job_pti_escalate_overdue; asyncio.run(job_pti_escalate_overdue())"
+	python3 -c "import asyncio; from features.pti.jobs import job_pti_escalate_overdue; asyncio.run(job_pti_escalate_overdue())"
 
 ## Send the daily fleet PTI digest (gated on local 09:00)
 pti-digest:
-	python3 -c "import asyncio; from capabilities.pti.jobs import job_pti_fleet_digest; asyncio.run(job_pti_fleet_digest())"
+	python3 -c "import asyncio; from features.pti.jobs import job_pti_fleet_digest; asyncio.run(job_pti_fleet_digest())"
 
 # ── Docker targets ───────────────────────────────────
 

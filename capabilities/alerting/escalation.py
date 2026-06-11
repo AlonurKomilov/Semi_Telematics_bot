@@ -17,6 +17,7 @@ from capabilities.alerting.pipeline import (
 from infra.bot_registry import get_app_for_account
 from infra.context import get_company_display
 from infra.services import get_db, get_platform_db, get_tenant_db
+from capabilities.alerting.registry import register_alert_source
 
 logger = logging.getLogger("bot")
 
@@ -626,6 +627,7 @@ def _backoff_hours_for_attempt(attempt_index: int, schedule: tuple[int, ...]) ->
     return schedule[attempt_index]
 
 
+@register_alert_source("critical_reescalate", trigger="interval", hours=1)
 async def re_escalate_critical_alerts(app: Application):
     """Hourly job: bump unacknowledged CRITICAL/WARNING alerts.
 

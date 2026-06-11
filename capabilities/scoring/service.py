@@ -16,25 +16,29 @@ import asyncio
 import logging
 from dataclasses import asdict
 
-from capabilities.events.service import get_events
+from features.events.service import get_events
 from capabilities.telemetry.service import (
     get_driver_efficiency,
     get_fleet_efficiency,
     get_vehicle_health,
     get_vehicles_with_faults,
 )
-from capabilities.vehicles.service import prepare_companies
+from features.vehicles.service import prepare_companies
 from infra.services import get_tenant_db
 
 from .engine import Scorecard, score
 from .rules import apply_overrides, get_default_rules
-from .signals import cameras as camera_signals
-from .signals import efficiency as eff_signals
-from .signals import fuel as fuel_signals
-from .signals import maintenance as maint_signals
-from .signals import safety_events as safety_signals
-from .signals import vehicle_efficiency as veh_eff_signals
-from .signals import vehicle_health as health_signals
+# Per-feature signal collectors come through the SIGNALS registry — the
+# hub's extension point — rather than one hardcoded import per module.
+from .signals import SIGNALS
+
+camera_signals = SIGNALS["cameras"]
+eff_signals = SIGNALS["efficiency"]
+fuel_signals = SIGNALS["fuel"]
+maint_signals = SIGNALS["maintenance"]
+events_signals = SIGNALS["events"]
+veh_eff_signals = SIGNALS["vehicle_efficiency"]
+health_signals = SIGNALS["vehicle_health"]
 
 
 logger = logging.getLogger(__name__)
@@ -72,7 +76,7 @@ async def evaluate_subjects(
       cards instead of 18.
 
     *vehicle_nums* (when set) filters scope to those truck identifiers,
-    used by ``can_scorecard_own`` callers in the bot.  In ``vehicle``
+    used by ``can_scorecard_vehicle`` callers in the bot.  In ``vehicle``
     mode it filters by exact (case-insensitive) truck name.  In
     ``driver`` mode it filters drivers whose ``_vehicle_summaries``
     intersect the list (existing behaviour).
@@ -207,7 +211,7 @@ async def evaluate_subjects(
             account_id, days=days, company=company, vehicle_nums=vehicle_nums,
         )
         eff_by_subject = eff_signals.from_driver_records(drivers)
-        events_by_subject = safety_signals.from_events(events)
+        events_by_subject = events_signals.from_events(events)
     else:
         # Vehicle subject: pull fleet efficiency (per-truck) and bucket
         # events by vehicle id/name.  Truck-name filter applies here too.
@@ -221,7 +225,7 @@ async def evaluate_subjects(
                 if (v.get("name") or "").strip().lower() in allowed
             ]
         eff_by_subject = veh_eff_signals.from_vehicle_records(vehicles)
-        events_by_subject = safety_signals.from_events_by_vehicle(events)
+        events_by_subject = events_signals.from_events_by_vehicle(events)
     _mark("efficiency_fetch", _t)
 
     # ── 3. Score each subject ────────────────────────────────────

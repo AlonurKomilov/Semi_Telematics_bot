@@ -22,11 +22,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-from .camera_pdf import generate_camera_check_pdf
-from .efficiency_pdf import generate_fleet_efficiency_pdf
-from .fault_pdf import generate_fault_report_pdf
-from .fuel_pdf import generate_fuel_report_pdf
-from .health_pdf import generate_vehicle_health_pdf
+from features.vehicles.cameras.report import generate_camera_check_pdf
+from features.vehicles.efficiency.report import generate_fleet_efficiency_pdf
+from features.vehicles.faults.report import generate_fault_report_pdf
+from features.vehicles.fuel.report import generate_fuel_report_pdf
+from features.vehicles.health.report import generate_vehicle_health_pdf
 
 from .csv_generators import (
     generate_camera_check_csv,

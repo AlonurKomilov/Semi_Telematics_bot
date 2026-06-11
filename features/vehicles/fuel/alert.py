@@ -23,6 +23,8 @@ from infra.config import FUEL_THRESHOLD, FUEL_HYSTERESIS_PERCENT
 from infra.context import set_tenant_display
 from infra.isolation import run_account_job
 from infra.services import get_client, get_platform_db, get_tenant_db
+from capabilities.alerting.registry import register_alert_source
+from infra.config import ALERT_INTERVAL
 
 logger = logging.getLogger("bot")
 
@@ -60,6 +62,7 @@ async def _set_low_fuel_flag(account_id: int, vid: str, flagged: bool):
 #  Low Fuel Alerts Scheduled Job
 # ═══════════════════════════════════════════════════════════════════
 
+@register_alert_source("fuel_check", trigger="interval", minutes=ALERT_INTERVAL)
 async def check_low_fuel(app: Application):
     """Check all accounts for vehicles below the fuel threshold and push alerts.
 

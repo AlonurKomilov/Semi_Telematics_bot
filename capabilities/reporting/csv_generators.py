@@ -666,7 +666,7 @@ def generate_risk_summary_csv(profile, *, audience: str = "owner") -> io.BytesIO
     if cfg.show_video_links:
         base_hdr.append("video_url")
     writer.writerow(base_hdr)
-    for e in profile.safety_events:
+    for e in profile.events:
         row = [
             e.get("occurred_at"), e.get("event_type"), e.get("severity"),
             e.get("vehicle_name"), e.get("driver_name"), e.get("speed_mph"),

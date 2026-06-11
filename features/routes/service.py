@@ -7,7 +7,7 @@ from math import radians, sin, cos, sqrt, atan2
 import logging
 
 from infra.services import get_client, get_tenant_db
-from capabilities.vehicles.service import prepare_companies
+from features.vehicles.service import prepare_companies
 
 logger = logging.getLogger(__name__)
 

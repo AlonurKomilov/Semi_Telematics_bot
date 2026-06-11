@@ -1,11 +1,12 @@
 """Work Orders API — shop-invoice records, parts, attachments, cost reports.
 
-Permissions mirror the Maintenance module so a fleet manager sees the
+Permissions are work-order-specific (defaults mirror Maintenance, but an
+account can grant/revoke them separately) so a fleet manager sees the
 full picture and a driver sees only their own truck's records:
 
-* ``can_maintenance_all`` — create / edit / delete any work order;
+* ``can_work_orders_all`` — create / edit / delete any work order;
   upload + delete attachments.
-* ``can_maintenance_own`` — read work orders for the driver's assigned
+* ``can_work_orders_vehicle`` — read work orders for the driver's assigned
   truck; upload attachments to drafts for that truck (driver-from-the-
   shop workflow).
 
@@ -14,6 +15,10 @@ calls ``get_object_store()`` and hands it the structured path returned
 by ``capabilities/work_orders/storage.py``.  When per-account BYO
 Drive ships, only the factory function changes; this code is unchanged.
 """
+# router.py is interface-layer code co-located with its feature
+# (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
+# service/alert/tool/signal modules never do.
+
 
 from __future__ import annotations
 
@@ -26,10 +31,10 @@ from pydantic import BaseModel, Field
 from interfaces.api.deps import (
     get_current_user, get_platform_db, get_tenant_db,
     get_user_vehicle_nums, require_permission, resolve_user_id,
+    get_user_company_codes, filter_by_allowed_companies,
 )
-from capabilities.iam.permissions import can
-from capabilities.maintenance.service import has_maintenance_access
-from capabilities.work_orders.storage import (
+from capabilities.iam.permissions import can_for_account, Role
+from features.work_orders.storage import (
     resolve_company_folder, safe_attachment_name, work_order_folder,
 )
 
@@ -113,9 +118,22 @@ class LinkTasks(BaseModel):
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _driver_owns_vehicle(user: dict, vehicle_name: str, trucks: list[str]) -> bool:
-    """Driver-side ownership check used by every read/write path."""
-    if can(user["role"], "can_maintenance_all"):
+async def _wo_access(user: dict) -> tuple[bool, bool]:
+    """Account-aware work-order permissions for *user*: ``(can_all, has_any)``.
+
+    Resolves through ``can_for_account`` so per-account overrides set in
+    the Role Permissions matrix take effect — not just the role defaults.
+    """
+    role, acct = Role(user["role"]), user["account_id"]
+    can_all = await can_for_account(acct, role, "can_work_orders_all")
+    can_own = await can_for_account(acct, role, "can_work_orders_vehicle")
+    return can_all, (can_all or can_own)
+
+
+def _driver_owns_vehicle(can_all: bool, vehicle_name: str, trucks: list[str]) -> bool:
+    """Driver-side ownership check.  ``can_all`` is the account-aware
+    'all trucks' permission, computed once by the caller."""
+    if can_all:
         return True
     if not trucks:
         return False
@@ -132,14 +150,18 @@ async def _require_visible_work_order(
     or cross-truck access so we don't leak existence to drivers who
     aren't supposed to see other trucks' records.
     """
-    if not has_maintenance_access(user["role"]):
+    can_all, has_access = await _wo_access(user)
+    if not has_access:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     wo = await tenant_db.get_work_order(work_order_id, account_id=user["account_id"])
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
-    if not can(user["role"], "can_maintenance_all"):
+    _allowed = await get_user_company_codes(user)
+    if _allowed and not filter_by_allowed_companies([wo], _allowed, key="company_code"):
+        raise HTTPException(status_code=404, detail="Work order not found")
+    if not can_all:
         trucks = await get_user_vehicle_nums(user)
-        if not _driver_owns_vehicle(user, wo.get("vehicle_name", ""), trucks or []):
+        if not _driver_owns_vehicle(can_all, wo.get("vehicle_name", ""), trucks or []):
             raise HTTPException(status_code=404, detail="Work order not found")
     return wo
 
@@ -165,23 +187,25 @@ async def list_work_orders(
     tenant_db=Depends(get_tenant_db),
 ):
     """List work orders for the account with optional filters."""
-    if not has_maintenance_access(user["role"]):
+    can_all, has_access = await _wo_access(user)
+    if not has_access:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     rows = await tenant_db.list_work_orders(
         user["account_id"],
         status=status, payment_status=payment_status, vehicle_name=vehicle,
     )
-    if not can(user["role"], "can_maintenance_all"):
+    rows = filter_by_allowed_companies(rows, await get_user_company_codes(user), key="company_code")
+    if not can_all:
         trucks = await get_user_vehicle_nums(user)
         rows = [r for r in rows
-                if _driver_owns_vehicle(user, r.get("vehicle_name", ""), trucks or [])]
+                if _driver_owns_vehicle(can_all, r.get("vehicle_name", ""), trucks or [])]
     return {"work_orders": rows, "count": len(rows)}
 
 
 @router.post("")
 async def create_work_order(
     body: WorkOrderCreate,
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_work_orders_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Create a new work order.  Manager-only — drivers use the bot
@@ -237,7 +261,7 @@ async def get_work_order(
 async def update_work_order(
     work_order_id: int,
     body: WorkOrderUpdate,
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_work_orders_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Update mutable fields on a work order."""
@@ -263,7 +287,7 @@ async def update_work_order(
 @router.delete("/{work_order_id}")
 async def delete_work_order(
     work_order_id: int,
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_work_orders_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Delete a work order, its parts, its attachments (DB rows only —
@@ -311,7 +335,7 @@ async def delete_work_order(
 async def add_part(
     work_order_id: int,
     body: PartCreate,
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_work_orders_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     wo = await tenant_db.get_work_order(work_order_id, account_id=user["account_id"])
@@ -324,7 +348,7 @@ async def add_part(
 @router.delete("/{work_order_id}/parts/{part_id}")
 async def delete_part(
     work_order_id: int, part_id: int,
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_work_orders_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     wo = await tenant_db.get_work_order(work_order_id, account_id=user["account_id"])
@@ -347,7 +371,7 @@ async def upload_attachment(
 ):
     """Upload an attachment to a work order.
 
-    Drivers (``can_maintenance_own``) can upload to drafts for their
+    Drivers (``can_work_orders_vehicle``) can upload to drafts for their
     own truck only — supports the bot/photo workflow where the driver
     photographs the invoice in the field and a manager fills in the
     cost details later.  Managers can upload to any work order.
@@ -357,7 +381,7 @@ async def upload_attachment(
 
     # Drivers locked to uploading on DRAFTS for their truck — once
     # paid/submitted, the manager owns the record.
-    if not can(user["role"], "can_maintenance_all"):
+    if not await can_for_account(user["account_id"], Role(user["role"]), "can_work_orders_all"):
         if wo.get("status") != "draft":
             raise HTTPException(
                 status_code=403,
@@ -464,7 +488,7 @@ async def download_attachment(
 @router.delete("/{work_order_id}/attachments/{attachment_id}")
 async def delete_attachment(
     work_order_id: int, attachment_id: int,
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_work_orders_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     from adapters.storage.object_store import get_object_store_for_account
@@ -504,7 +528,7 @@ async def delete_attachment(
 async def link_tasks(
     work_order_id: int,
     body: LinkTasks,
-    user: dict = Depends(require_permission("can_maintenance_all")),
+    user: dict = Depends(require_permission("can_work_orders_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Attach N maintenance tasks to this work order so cost

@@ -30,8 +30,8 @@ import logging
 
 from infra.services import get_platform_db, get_tenant_db
 from capabilities.localization.tz import is_local_hour
-from capabilities.pti import service as pti_service
-from capabilities.pti.formatter import fleet_digest_line
+from features.pti import service as pti_service
+from features.pti.formatter import fleet_digest_line
 
 logger = logging.getLogger(__name__)
 

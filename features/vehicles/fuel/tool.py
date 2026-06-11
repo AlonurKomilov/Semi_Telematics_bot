@@ -25,10 +25,9 @@ from capabilities.telemetry.service import get_low_fuel_vehicles as _svc_low_fue
 async def get_low_fuel_vehicles(tool_args: dict, samsara_client,
                                 account_id: int | None = None, db=None) -> dict:
     threshold = tool_args.get("threshold", 20)
-    if account_id is not None:
-        low = await _svc_low_fuel(account_id, threshold=threshold)
-    else:
-        low = await samsara_client.get_low_fuel_vehicles(threshold=threshold)
+    if account_id is None:
+        return {"error": "This tool requires account context."}
+    low = await _svc_low_fuel(account_id, threshold=threshold)
     return {
         "threshold_pct": threshold,
         "count": len(low),

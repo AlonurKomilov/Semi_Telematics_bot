@@ -15,14 +15,14 @@ def _own_only(user) -> bool:
     """True when this caller may only see parking events for their own truck.
 
     A driver who lacks ``can_geofence_all`` (the fleet-wide flag) but holds
-    ``can_geofence_own`` falls into this branch.  The list/history/detail
+    ``can_geofence_vehicle`` falls into this branch.  The list/history/detail
     callbacks must filter results to the user's assigned truck before they
     are rendered or the bot will leak the entire fleet's parking activity.
     """
     return (
         user.role == Role.DRIVER
         and not can(user.role, "can_geofence_all")
-        and can(user.role, "can_geofence_own")
+        and can(user.role, "can_geofence_vehicle")
     )
 
 
@@ -47,7 +47,7 @@ async def _handle_parking_events(update, context, user, show_all: bool = False):
     query = update.callback_query
     await query.answer()
 
-    if not can(user.role, "can_geofence_all") and not can(user.role, "can_geofence_own"):
+    if not can(user.role, "can_geofence_all") and not can(user.role, "can_geofence_vehicle"):
         await query.answer(t("access.no_access"), show_alert=True)
         return
 
@@ -94,7 +94,7 @@ async def _handle_parking_history(update, context, user, days: int = 7):
     query = update.callback_query
     await query.answer()
 
-    if not can(user.role, "can_geofence_all") and not can(user.role, "can_geofence_own"):
+    if not can(user.role, "can_geofence_all") and not can(user.role, "can_geofence_vehicle"):
         await query.answer(t("access.no_access"), show_alert=True)
         return
 
@@ -136,7 +136,7 @@ async def _handle_parking_detail(update, context, user, event_id: int):
     query = update.callback_query
     await query.answer()
 
-    if not can(user.role, "can_geofence_all") and not can(user.role, "can_geofence_own"):
+    if not can(user.role, "can_geofence_all") and not can(user.role, "can_geofence_vehicle"):
         await query.answer(t("access.no_access"), show_alert=True)
         return
 

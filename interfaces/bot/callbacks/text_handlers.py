@@ -134,7 +134,6 @@ async def handle_text(update, context):
                 account_id=user.account_id,
                 created_by=user.id,
                 role=Role.DRIVER,
-                department="operations",
                 truck_num=vehicle_num,
             )
             link = make_invite_link(invite.code, context)

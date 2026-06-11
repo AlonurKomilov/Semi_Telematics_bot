@@ -1,4 +1,8 @@
 """Payroll API endpoints — bonus rules, runs, driver settings, paystubs."""
+# router.py is interface-layer code co-located with its feature
+# (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
+# service/alert/tool/signal modules never do.
+
 
 from __future__ import annotations
 
@@ -9,8 +13,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from capabilities.payroll import service as svc
-from capabilities.payroll.service import PayrollDisabledError
+from features.payroll import service as svc
+from features.payroll.service import PayrollDisabledError
 from interfaces.api.deps import (
     require_permission,
     require_permission_any,

@@ -1,10 +1,14 @@
 """Costs API endpoints — fuel cost tracking + cost-per-mile."""
+# router.py is interface-layer code co-located with its feature
+# (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
+# service/alert/tool/signal modules never do.
+
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from interfaces.api.deps import require_permission, get_tenant_db, get_user_company_codes, validate_company_access, filter_by_assigned_trucks, resolve_user_id
-from capabilities.costs.service import compute_fleet_cpm, summarize_fuel_entries
+from interfaces.api.deps import require_permission, get_tenant_db, get_user_company_codes, validate_company_access, filter_by_assigned_trucks, filter_by_allowed_companies, resolve_user_id
+from features.costs.service import compute_fleet_cpm, summarize_fuel_entries
 
 router = APIRouter(prefix="/costs", tags=["costs"])
 
@@ -34,6 +38,7 @@ async def fuel_entries(
         limit=limit,
     )
     entries = await filter_by_assigned_trucks(entries, user, name_key="vehicle_name")
+    entries = filter_by_allowed_companies(entries, await get_user_company_codes(user), key="company_code")
     return {"entries": entries, "count": len(entries)}
 
 
@@ -67,6 +72,7 @@ async def fuel_summary(
     """Per-vehicle fuel cost summary — total gallons, cost, avg price, miles, MPG."""
     rows = await tenant_db.get_fuel_summary(user["account_id"])
     rows = await filter_by_assigned_trucks(rows, user, name_key="vehicle_name")
+    rows = filter_by_allowed_companies(rows, await get_user_company_codes(user), key="company_code")
     return summarize_fuel_entries(rows)
 
 
@@ -80,6 +86,7 @@ async def cost_per_mile(
     """Per-vehicle cost-per-mile: fuel cost ÷ miles driven."""
     rows = await tenant_db.get_fuel_summary(user["account_id"])
     rows = await filter_by_assigned_trucks(rows, user, name_key="vehicle_name")
+    rows = filter_by_allowed_companies(rows, await get_user_company_codes(user), key="company_code")
     results, fleet = compute_fleet_cpm(rows)
 
     items = []

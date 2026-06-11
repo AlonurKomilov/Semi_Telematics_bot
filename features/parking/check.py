@@ -13,17 +13,17 @@ from datetime import datetime, timezone
 
 from telegram.ext import Application
 
-from capabilities.parking.ai_vision import _get_ai_parking_analysis
-from capabilities.parking.classifier import (
+from features.parking.ai_vision import _get_ai_parking_analysis
+from features.parking.classifier import (
     _is_inside_any_geofence,
     classify_parking_location,
     parse_ai_confidence,
 )
-from capabilities.parking.formatting import (
+from features.parking.formatting import (
     _format_parking_alert,
     _send_parking_resolved,
 )
-from capabilities.parking.maps import (
+from features.parking.maps import (
     _render_parking_map,
     _save_parking_map,
 )
@@ -58,6 +58,7 @@ _PARKING_CONFIRM_CHECKS = 2
 # Samsara location rechecks (~300 ms each); these gates parallelize that
 # I/O without melting either the LLM endpoint or the Samsara API.
 import os as _os
+from capabilities.alerting.registry import register_alert_source
 _PARKING_VEHICLE_CONCURRENCY = int(_os.getenv("PARKING_VEHICLE_CONCURRENCY", "10"))
 _PARKING_AI_CONCURRENCY = int(_os.getenv("PARKING_AI_CONCURRENCY", "5"))
 del _os
@@ -116,6 +117,7 @@ _PARKING_BREAKDOWN_HOURS = 4.0
 _first_run = True
 
 
+@register_alert_source("parking_check", trigger="interval", minutes=30)
 async def check_unsafe_parking(app: Application):
     """Scheduled job: detect vehicles parked in unsafe locations.
 
@@ -175,7 +177,7 @@ async def check_unsafe_parking(app: Application):
                 continue
 
             try:
-                from capabilities.vehicles.service import get_fleet_overview as _svc_fleet
+                from features.vehicles.service import get_fleet_overview as _svc_fleet
                 with _obs.time_block(acct_timings, "samsara_fetch"):
                     vehicles, engine_data = await asyncio.gather(
                         _svc_fleet(account.id),
@@ -192,7 +194,7 @@ async def check_unsafe_parking(app: Application):
             # Geofences are optional — many Samsara plans don't include them.
             # Fetch separately so a 404 doesn't crash the entire check.
             try:
-                from capabilities.geofencing.service import get_geofences as _svc_geofences
+                from features.geofencing.service import get_geofences as _svc_geofences
                 geofences = await _svc_geofences(account.id)
             except Exception:
                 geofences = []

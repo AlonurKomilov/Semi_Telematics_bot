@@ -47,7 +47,7 @@ CAMERA_CHECK_SYSTEM = (
     "OBSTRUCTION: none | partial | full — brief description\n"
     "ALIGNMENT: centered | too_high | too_low | tilted_left | tilted_right — brief note\n"
     "QUALITY: good | dark | bright | blurry — brief note\n"
-    "SUMMARY: One-sentence plain-language summary for the fleet manager."
+    "SUMMARY: One-sentence plain-language summary for the fleet team."
 )
 
 

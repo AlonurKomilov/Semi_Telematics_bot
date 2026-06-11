@@ -1,5 +1,5 @@
 """Fault and critical report PDF generators."""
-from .pdf_base import *  # noqa: F403,F401
+from capabilities.reporting.pdf_base import *  # noqa: F403,F401
 
 def generate_fault_report_pdf(
     vehicles_with_faults: list,

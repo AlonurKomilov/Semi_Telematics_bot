@@ -167,6 +167,27 @@ def _validate_provider(provider_id: str) -> None:
         )
 
 
+def _guard_credential_encryption() -> None:
+    """Refuse to persist a fresh integration secret while encryption is off.
+
+    ``infra.crypto`` is a deliberate plaintext pass-through when
+    ``ENCRYPTION_KEY`` is unset — a migration affordance for the legacy
+    single-key column.  That is fine for reading or clearing a value, but
+    an operator connecting a new integration (or rotating a token) through
+    the API would otherwise land a live third-party API key in the DB in
+    cleartext.  Fail closed with a 503 so the dashboard surfaces a clear
+    "configure ENCRYPTION_KEY" message instead of silently storing it.
+    """
+    from infra import crypto
+    if not crypto.is_enabled():
+        raise HTTPException(
+            503,
+            "ENCRYPTION_KEY is not configured, so the integration's API "
+            "token would be stored in plaintext. Set ENCRYPTION_KEY and "
+            "restart the service before connecting an integration.",
+        )
+
+
 def _serialize_catalog_entry(entry: Any) -> dict:
     """Render a catalog entry as a JSON-shaped dict for the dashboard.
 
@@ -267,6 +288,11 @@ async def connect_integration(
     _validate_provider(provider_id)
     account_id = int(user["account_id"])
     triggered_by = int(user.get("id") or 0)
+
+    # Fail fast before even touching the provider: if we can't encrypt
+    # the token, don't connect at all rather than store it in cleartext.
+    if body.credentials:
+        _guard_credential_encryption()
 
     # Test connection BEFORE persisting anything so bad credentials
     # surface immediately and the integration row never enters a
@@ -1274,6 +1300,10 @@ async def set_company_credential_endpoint(
     _validate_provider(provider_id)
     account_id = int(user["account_id"])
     triggered_by = int(user.get("id") or 0)
+
+    # api_token is min_length=1, so this PUT always writes a fresh secret
+    # — refuse if we can only store it in cleartext.
+    _guard_credential_encryption()
 
     from infra.platform import get_platform_db, get_tenant_db
     platform_db = get_platform_db()

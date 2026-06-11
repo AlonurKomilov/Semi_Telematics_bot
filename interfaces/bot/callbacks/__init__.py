@@ -5,6 +5,8 @@ from submodules, plus a route table for simple one-line delegations to
 existing command functions.
 """
 
+import logging
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -14,14 +16,18 @@ from capabilities.formatting import (
     format_welcome_unregistered,
     format_unregistered_member,
     format_system_owner_welcome,
+    format_invite_created,
 )
 
+from adapters.storage import Role
+from capabilities.iam.permissions import role_display
 from interfaces.bot.config import SUPPORT_CONTACT
 from interfaces.bot.state import get_platform_db, get_tenant_db
 from interfaces.bot.keyboards import (
     back_kb, system_owner_kb, unregistered_kb,
     co_menu_kb, vehicle_company_picker_kb,
 )
+from interfaces.bot.helpers import make_invite_link, _safe_error
 from interfaces.bot.helpers import _show, _render_audit_log
 from interfaces.bot.auth import _get_user, _group_chat_guard
 from capabilities.localization.i18n import t
@@ -44,7 +50,7 @@ from interfaces.bot.fleet import (
 # / cmd_cam_tool / cmd_camera_history / cmd_cam) is fully retired from
 # the bot.  Old callbacks fall through to the unknown-action handler.
 # Camera *alerts* still ping via capabilities/alerting/cameras.py.
-from interfaces.bot.management import cmd_account, cmd_users
+from interfaces.bot.management import cmd_account, cmd_users, cmd_invite
 from interfaces.bot.admin import cmd_admin, cmd_accounts, cmd_sys_ai_stats, cmd_sys_server
 from interfaces.bot.scorecards import cmd_scorecards
 from interfaces.bot.fuel_costs import cmd_fuelcost, cmd_fuelcost_add, cmd_fuelcost_summary
@@ -103,6 +109,8 @@ from interfaces.bot.callbacks.text_handlers import handle_text as handle_text  #
 
 # ── Build the router ─────────────────────────────────────────────
 
+logger = logging.getLogger(__name__)
+
 _router = CallbackRouter()
 
 # Register domain handlers
@@ -146,6 +154,7 @@ _router.exact("cmd_api_status", cmd_api_status)
 # unknown-action handler.
 _router.exact("cmd_account", cmd_account)
 _router.exact("cmd_users", cmd_users)
+_router.exact("cmd_invite", cmd_invite)
 _router.exact("cmd_scorecards", cmd_scorecards)
 _router.exact("cmd_livemap", cmd_livemap)
 _router.exact("cmd_route", cmd_route)
@@ -497,6 +506,103 @@ async def _cmd_audit(update, context):
     await _show(update, context, [text], keyboard=back_kb())
 
 _router.exact("cmd_audit", _cmd_audit)
+
+
+# ── Invite flow (button-driven) ─────────────────────────────────
+#
+# The slash-command ``/invite`` (handler at interfaces/bot/management.py)
+# shows a four-button role picker when called with no args.  These
+# callbacks complete the flow on the Telegram side — bot invites are
+# Telegram-channel only.  URL + Email channels stay dashboard-only
+# (richer UX: typeahead vehicle picker, debounced duplicate-recipient
+# check, bounce-tracked Resend transport, multi-locale i18n).  An
+# operator who wants those clicks the "📨 Invite team member" button
+# in the Management submenu, which deep-links to /admin/invites.
+
+async def _cmd_invite_role(update, context):
+    """Handle a role-pick from the ``/invite`` inline keyboard.
+
+    Non-driver roles → create the Telegram-link invite immediately,
+    return the deep-link with a Copy button.  Driver role → set a
+    pending text-input state so the operator's next message is the
+    vehicle number; the orphaned-since-refactor branch at
+    ``text_handlers.py:invite_driver`` already handles the rest.
+    """
+    query = update.callback_query
+    await query.answer()
+    user = context.user_data.get("_db_user")
+    if not user:
+        from interfaces.bot.auth import _get_user
+        user, _, _ = await _get_user(update)
+    if not user:
+        await query.answer(t("access.no_access"), show_alert=True)
+        return
+    context.user_data["_db_user"] = user
+
+    from capabilities.iam.permissions import can
+    if not can(user.role, "can_invite"):
+        await query.answer(t("access.no_access"), show_alert=True)
+        return
+
+    role_name = query.data.replace("inv_", "")
+    try:
+        invite_role = Role.from_str(role_name)
+    except ValueError:
+        await query.answer(t("common.unknown_action"), show_alert=True)
+        return
+
+    # Rank check mirrors validate_invite_role from the slash-command
+    # path.  HR-tier (can_invite + low rank) can't invite Admin or
+    # peer-tier; OWNER-via-invite is forbidden outright.
+    from capabilities.iam.permissions import validate_invite_role
+    ok, reason = validate_invite_role(user.role, invite_role)
+    if not ok:
+        msg = (
+            t('access.owner_via_invite')
+            if reason == "owner_via_invite"
+            else t('access.cant_invite_higher')
+        )
+        await _show(update, context, [msg], keyboard=back_kb())
+        return
+
+    # Driver flow needs a vehicle.  Stash a pending state and prompt
+    # for the vehicle number — text_handlers.py picks up the next
+    # message and finishes the invite create with truck_num set.
+    # No paginated vehicle-picker on Telegram: typing the truck
+    # number is faster than scrolling 100 inline buttons, and the
+    # dashboard has the typeahead VehiclePicker for the rare case
+    # where the operator doesn't know the number off-hand.
+    if invite_role == Role.DRIVER:
+        context.user_data["_pending"] = "invite_driver"
+        await _show(update, context, [
+            t('invite.driver_vehicle_prompt'),
+        ], keyboard=back_kb())
+        return
+
+    # Non-driver: create the invite immediately + show the link.
+    try:
+        invite = await get_platform_db().create_invite(
+            account_id=user.account_id,
+            created_by=user.id,
+            role=invite_role,
+        )
+        link = make_invite_link(invite.code, context)
+        text = format_invite_created(
+            invite.code, role_display(invite_role), "",
+            invite_link=link,
+        )
+        from interfaces.bot.keyboards import invite_kb
+        kb = invite_kb(link)
+        await _show(update, context, [text], keyboard=kb)
+    except Exception as e:
+        logger.error("Invite (button) error: %s", e, exc_info=True)
+        await _show(update, context, [_safe_error(e)], keyboard=back_kb())
+
+
+# Register one route per role — the existing keyboard at
+# management.py:cmd_invite emits callback_data="inv_admin" etc.
+for _role_key in ("admin", "fleet", "safety", "dispatcher", "driver"):
+    _router.exact(f"inv_{_role_key}", _cmd_invite_role)
 
 
 # ── AI usage stats ───────────────────────────────────────────────

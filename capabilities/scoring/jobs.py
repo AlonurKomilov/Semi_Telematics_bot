@@ -25,6 +25,7 @@ from datetime import datetime, timedelta, timezone
 
 from capabilities.scoring.service import evaluate_subjects
 from infra.services import get_platform_db, get_tenant_db
+from capabilities.alerting.registry import register_alert_source
 
 
 logger = logging.getLogger(__name__)
@@ -153,6 +154,7 @@ DEFAULT_DROP_THRESHOLD  = 10   # alert if score falls by ≥ N points week-over-
 DEFAULT_FLOOR_THRESHOLD = 60   # alert if score is at or below this value
 
 
+@register_alert_source("scorecard_drop_alerts", trigger="cron", minute=0)
 async def check_scorecard_drop_alerts(_app=None) -> None:
     """After nightly snapshots are written, send alerts for significant score drops.
 

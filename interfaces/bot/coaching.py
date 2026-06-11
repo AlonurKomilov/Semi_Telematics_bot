@@ -9,8 +9,8 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
-from capabilities.coaching import service as svc
-from capabilities.coaching.service import CoachingDisabledError
+from features.coaching import service as svc
+from features.coaching.service import CoachingDisabledError
 from capabilities.iam.permissions import can
 from capabilities.localization.i18n import t
 from infra.platform import get_platform_db

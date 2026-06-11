@@ -81,7 +81,6 @@ async def list_users(
                 "telegram_id": u.telegram_id,
                 "display_name": u.display_name,
                 "role": u.role.value if hasattr(u.role, "value") else u.role,
-                "department": u.department,
                 "truck_num": u.truck_num,
                 "trucks": truck_map.get(u.id, [u.truck_num] if u.truck_num else []),
                 "allowed_companies": company_map.get(u.id, []),
@@ -89,6 +88,18 @@ async def list_users(
                 "email": u.email,
                 "language": u.language,
                 "timezone": u.timezone,
+                # Per-user quiet-hours override.  When ``quiet_start`` and
+                # ``quiet_end`` are both non-null the user has a personal
+                # override that wins over the role-level Working Hours
+                # schedule.  Surfaced so the Team Management drawer can
+                # show the override state + let operators edit it.
+                "quiet_start": getattr(u, "quiet_start", None),
+                "quiet_end": getattr(u, "quiet_end", None),
+                # FK to a work_hours.id (migration 101) — admin-assigned
+                # named schedule.  Wins over free-form quiet_start/end
+                # when set; drawer dropdown reads this back to show which
+                # schedule is currently selected.
+                "assigned_work_hours_id": getattr(u, "assigned_work_hours_id", None),
                 "created_at": getattr(u, "created_at", None),
             }
             for u in page_users
@@ -111,19 +122,50 @@ async def get_user_avatar(
     user: dict = Depends(require_permission("can_manage_users")),
     platform_db=Depends(get_platform_db),
 ):
-    """Return Telegram profile photo for a user. Cached locally for 24h."""
+    """Return Telegram profile photo for a user. Cached locally for 24h.
+
+    Three response shapes:
+      * 200 + image/jpeg — user has a photo (cached or fresh fetch)
+      * 204 No Content — user has no photo (cached as a marker file
+        so subsequent requests don't re-hit Telegram).  Browsers
+        treat 204 as success → no red console spam for unphotoed users
+      * 404 — caller asked for a user that doesn't exist in the account
+
+    The 204 negative-cache fix matters: before this, every Team
+    Management page load fired N Telegram API calls (where N = users
+    without a photo) and the dashboard console showed N red 404 lines.
+    """
     target = await platform_db.get_user(user_id)
     if not target or target.account_id != user["account_id"]:
         raise HTTPException(status_code=404, detail="User not found")
 
+    from fastapi.responses import Response as _Response
+
+    # Email-only users (no Telegram link) have no profile photo by
+    # definition.  Returning 204 short-circuits before we try to
+    # call ``get_user_profile_photos(user_id=None)`` which would
+    # crash with a less-helpful TypeError inside the Telegram SDK.
+    if not target.telegram_id:
+        return _Response(status_code=204)
+
     from adapters.storage.object_store import get_object_store
     store = get_object_store()
     key = f"{target.telegram_id}.jpg"
+    # Marker file for "we've checked Telegram and there's no photo"
+    # — same TTL as the avatar cache, so a user who later uploads a
+    # profile photo gets picked up on the next 24-hour cycle.
+    none_key = f"{target.telegram_id}.none"
 
-    # Serve from cache if fresh
+    # Serve from positive cache if fresh
     cached = store.local_path("avatars", key)
     if cached and (time.time() - os.path.getmtime(cached)) < AVATAR_MAX_AGE:
         return FileResponse(cached, media_type="image/jpeg")
+
+    # Serve from negative cache if fresh — Telegram said "no photo"
+    # within the last 24h, skip the API round-trip.
+    cached_none = store.local_path("avatars", none_key)
+    if cached_none and (time.time() - os.path.getmtime(cached_none)) < AVATAR_MAX_AGE:
+        return _Response(status_code=204)
 
     # Fetch from Telegram via the SYSTEM bot — any bot can call
     # ``get_user_profile_photos`` for any user, but we anchor to the
@@ -135,7 +177,10 @@ async def get_user_avatar(
         bot = telegram.Bot(token=_token)
         photos = await bot.get_user_profile_photos(user_id=target.telegram_id, limit=1)
         if not photos.photos:
-            raise HTTPException(status_code=404, detail="No profile photo")
+            # Negative-cache the "no photo" answer so we don't pound
+            # Telegram on every dashboard render.
+            store.put("avatars", none_key, b"")
+            return _Response(status_code=204)
 
         # Get the largest size of the first photo
         photo_sizes = photos.photos[0]
@@ -149,13 +194,20 @@ async def get_user_avatar(
         store.put("avatars", key, buf.getvalue())
         served = store.local_path("avatars", key)
         if not served:
-            raise HTTPException(status_code=404, detail="Could not fetch avatar")
+            # Persist failed — treat as no-photo for this cycle
+            # so we don't loop the operator into endless retries.
+            store.put("avatars", none_key, b"")
+            return _Response(status_code=204)
         return FileResponse(served, media_type="image/jpeg")
     except HTTPException:
         raise
     except Exception as exc:
+        # Genuine fetch failure (network, Telegram 5xx, etc.) — log
+        # and return 204 instead of 404.  Failing closed as "no photo"
+        # is safer than spamming the console with reds; the next
+        # request will retry once the negative-cache TTL expires.
         logger.warning("Failed to fetch avatar for user %s: %s", user_id, exc)
-        raise HTTPException(status_code=404, detail="Could not fetch avatar")
+        return _Response(status_code=204)
 
 
 class RoleUpdate(BaseModel):
@@ -236,6 +288,183 @@ async def update_user_samsara_driver_id(
             details=f"driver_id={new_did or '(unset)'}",
         )
     return {"ok": ok, "samsara_driver_id": new_did}
+
+
+class WorkHoursOverrideUpdate(BaseModel):
+    # Per-user Working Hours override.  Field names ``quiet_start`` /
+    # ``quiet_end`` are historical (the underlying columns kept their
+    # original names to avoid a backfill migration), but semantically
+    # they define the ACTIVE window — when alerts DELIVER, not when
+    # they're silenced.  Outside the window non-critical alerts queue
+    # until shift-start.
+    #
+    # ``None`` on either field clears that side of the override; both
+    # ``None`` clears the override entirely so the user inherits the
+    # role-level Working Hours.  Half-set (one null, one int) is
+    # rejected: a one-sided window has no meaning (start without end
+    # never closes, end without start never opens).  Hours are 0-23
+    # in the user's effective timezone.
+    quiet_start: Optional[int] = Field(default=None, ge=0, le=23)
+    quiet_end:   Optional[int] = Field(default=None, ge=0, le=23)
+
+
+@router.put("/users/{user_id}/quiet-hours")
+async def update_user_work_hours_override(
+    user_id: int,
+    body: WorkHoursOverrideUpdate,
+    user: dict = Depends(require_permission("can_manage_users")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Set or clear a user's per-user Working Hours override.
+
+    Defines the active window during which alerts DELIVER to this user;
+    outside the window non-critical alerts queue until shift-start.
+    Three valid states:
+
+      * ``{quiet_start: H, quiet_end: H}`` → personal override active;
+        wraps across midnight when start >= end (night-shift case).
+      * ``{quiet_start: null, quiet_end: null}`` → clear override; user
+        inherits the role-level Working Hours (or alerts 24/7 when
+        neither is configured).
+      * any half-set combo (one null, one int) → 422.
+
+    URL path stays ``/quiet-hours`` for backward compat with existing
+    integrations / docs / audit-log filters.  Renaming the route would
+    break any third-party caller bound to the old path.
+
+    Same caller gate as role-change + deactivate (``can_manage_users``)
+    plus a rank check so HR/Fleet can't shift the working window of an
+    Admin / Owner.  Audit-logged because shifting a teammate's
+    on-call window is sensitive — operators should be accountable.
+    """
+    target = await platform_db.get_user(user_id)
+    if not target or target.account_id != user["account_id"]:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    caller_rank = role_rank(user["role"])
+    target_rank = role_rank(
+        target.role.value if hasattr(target.role, "value") else target.role
+    )
+    if target_rank >= caller_rank:
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot modify Working Hours for a user with equal or higher role",
+        )
+
+    half_set = (body.quiet_start is None) != (body.quiet_end is None)
+    if half_set:
+        raise HTTPException(
+            status_code=422,
+            detail="quiet_start and quiet_end must both be set, or both cleared",
+        )
+
+    await platform_db.update_user(
+        user_id,
+        quiet_start=body.quiet_start,
+        quiet_end=body.quiet_end,
+    )
+
+    cleared = body.quiet_start is None and body.quiet_end is None
+    detail = (
+        "cleared (inherits role Working Hours)"
+        if cleared
+        else f"alerts deliver {body.quiet_start:02d}:00 – {body.quiet_end:02d}:00"
+    )
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        # Action name kept ``user_quiet_hours_set`` so existing audit-
+        # log searches / dashboards continue to surface this row.
+        # Renaming would orphan historical rows under the old action.
+        "user_quiet_hours_set",
+        target_type="user", target_id=str(user_id),
+        details=detail,
+    )
+    return {
+        "ok": True,
+        "quiet_start": body.quiet_start,
+        "quiet_end": body.quiet_end,
+    }
+
+
+class AssignedWorkHoursUpdate(BaseModel):
+    # ``None`` clears the assignment (user falls back to role-level
+    # Working Hours).  Integer must reference a ``work_hours.id`` that
+    # belongs to the caller's account — validated below; a stale or
+    # cross-account FK gets a 404 rather than corrupting the user row.
+    schedule_id: Optional[int] = Field(default=None)
+
+
+@router.put("/users/{user_id}/assigned-work-hours")
+async def update_user_assigned_work_hours(
+    user_id: int,
+    body: AssignedWorkHoursUpdate,
+    user: dict = Depends(require_permission("can_manage_users")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Assign a user to a named Working Hours schedule from the catalog,
+    or clear the assignment so they inherit the role-level schedule.
+
+    The schedule selector in the Team Management drawer Settings tab
+    posts here.  Replaces the older free-form quiet-hours picker — the
+    Working Hours table is the single source of truth for shift
+    definitions; per-user customization happens by POINTING at a row
+    instead of duplicating its hours into the user row.
+
+    Same caller gate as role-change + deactivate (``can_manage_users``)
+    plus a rank check so HR/Fleet can't reshape an Admin/Owner's
+    schedule.  Schedule ownership validated to prevent cross-account
+    pointers.  Audit-logged because shifting someone's on-call window
+    is sensitive.
+    """
+    target = await platform_db.get_user(user_id)
+    if not target or target.account_id != user["account_id"]:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    caller_rank = role_rank(user["role"])
+    target_rank = role_rank(
+        target.role.value if hasattr(target.role, "value") else target.role
+    )
+    if target_rank >= caller_rank:
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot modify Working Hours for a user with equal or higher role",
+        )
+
+    schedule_label = "cleared (inherits role schedule)"
+    if body.schedule_id is not None:
+        # Validate the schedule belongs to this account — prevents an
+        # operator from pointing one of their users at another tenant's
+        # row (defence in depth; the per-account scope on the storage
+        # method below would already filter, but explicit > implicit).
+        sched = await tenant_db.get_work_hour(body.schedule_id, user["account_id"])
+        if not sched:
+            raise HTTPException(
+                status_code=404,
+                detail="Schedule not found in this account's Working Hours",
+            )
+        schedule_label = (
+            f"{sched.get('label', '#' + str(body.schedule_id))} "
+            f"({int(sched.get('start_hour', 0)):02d}:00 – "
+            f"{int(sched.get('end_hour', 0)):02d}:00)"
+        )
+
+    await platform_db.update_user(
+        user_id,
+        assigned_work_hours_id=body.schedule_id,
+    )
+
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "user_assigned_work_hours_set",
+        target_type="user", target_id=str(user_id),
+        details=f"assigned schedule: {schedule_label}",
+    )
+    return {
+        "ok": True,
+        "assigned_work_hours_id": body.schedule_id,
+    }
 
 
 @router.put("/users/{user_id}/status")
@@ -482,7 +711,7 @@ async def _archive_driver_folders(
     """
     from datetime import datetime, timezone
     from adapters.storage.object_store import get_object_store_for_account
-    from capabilities.work_orders.storage import (
+    from features.work_orders.storage import (
         driver_docs_archive_bucket, driver_docs_bucket, resolve_company_folder,
     )
 
@@ -523,7 +752,6 @@ _INVITE_EMAIL_RE = __import__("re").compile(
 
 class InviteCreate(BaseModel):
     role: str = Field("fleet", pattern=r"^(admin|fleet|safety|dispatcher|driver)$")
-    department: str = "general"
     truck_num: Optional[str] = None
     hours: int = Field(24, ge=1, le=720)
     # Email-channel: when present, the server generates the invite
@@ -728,7 +956,6 @@ async def create_invite(
         account_id=user["account_id"],
         created_by=db_user.id,
         role=Role(body.role),
-        department=body.department,
         truck_num=body.truck_num,
         hours=body.hours,
         recipient_email=recipient,
@@ -821,14 +1048,13 @@ async def create_invite(
         "invite_create",
         target_type="invite", target_id=str(invite.id),
         details=(
-            f"Role: {body.role}, dept: {body.department}{detail_extras}"
+            f"Role: {body.role}{detail_extras}"
         )[:500],  # hard-cap defends against future operator-supplied text
     )
     return {
         "id": invite.id,
         "code": invite.code,
         "role": invite.role,
-        "department": invite.department,
         "truck_num": invite.truck_num,
         "expires_at": invite.expires_at,
         "channel": invite.channel,
@@ -972,7 +1198,7 @@ async def resend_invite_email_endpoint(
         "invite_email_resent",
         target_type="invite", target_id=str(invite_id),
         details=(
-            f"Role: {invite.role}, dept: {invite.department}, "
+            f"Role: {invite.role}, "
             f"attempt: {invite.email_send_count}, outcome: {outcome}"
         )[:500],
     )
@@ -1017,7 +1243,6 @@ async def list_invites(
                 "id": inv.id,
                 "code": inv.code,
                 "role": inv.role,
-                "department": inv.department,
                 "truck_num": inv.truck_num,
                 "expires_at": inv.expires_at,
                 "used_by": inv.used_by,
@@ -1065,7 +1290,7 @@ async def revoke_invite_endpoint(
     invites), tight enough to cap an attacker's audit-log amplification
     if a token is ever leaked.
 
-    Audit log captures role/department/created_by from the row BEFORE
+    Audit log captures role/created_by from the row BEFORE
     the UPDATE so an auditor reading the log after a revoke can
     reconstruct what was killed even when the operator's default view
     (revoked rows hidden) doesn't show it.
@@ -1086,7 +1311,7 @@ async def revoke_invite_endpoint(
             detail="Too many invite changes — wait a moment and try again",
         )
 
-    # Fetch the row before the UPDATE so we have role/department/
+    # Fetch the row before the UPDATE so we have role/
     # created_by available for the audit log details — and so we can
     # rank-check the invite's role against the caller's role.  Returns
     # None if the row doesn't exist OR belongs to a different account
@@ -1120,7 +1345,7 @@ async def revoke_invite_endpoint(
         user["account_id"], int(user["sub"]),
         "invite_revoke",
         target_type="invite", target_id=str(invite_id),
-        details=f"Role: {revoked.role}, dept: {revoked.department}, created_by: {revoked.created_by}",
+        details=f"Role: {revoked.role}, created_by: {revoked.created_by}",
     )
     return {"ok": True, "revoked_at": revoked.revoked_at}
 
@@ -1191,7 +1416,7 @@ async def extend_invite_endpoint(
         # created_by mirrors revoke's audit details — keeps the
         # forensic question "who created this and who keeps extending
         # it?" answerable from the audit log alone.
-        details=f"Role: {extended.role}, dept: {extended.department}, created_by: {extended.created_by}, hours: {body.hours}, new_expires_at: {extended.expires_at}",
+        details=f"Role: {extended.role}, created_by: {extended.created_by}, hours: {body.hours}, new_expires_at: {extended.expires_at}",
     )
     return {"ok": True, "expires_at": extended.expires_at}
 
@@ -1386,8 +1611,13 @@ async def get_settings(
     # AI usage
     ai_stats = await platform_db.get_ai_usage_stats(user["account_id"], days=30)
 
-    # Work schedules
-    schedules = await tenant_db.get_work_hours(user["account_id"])
+    # ``schedules`` field removed from this response: the only consumer
+    # was the Working Hours section in the Settings page, which was
+    # consolidated into Team Management → Working Hours tab.  That tab
+    # fetches schedules from the dedicated ``GET /admin/work-hours``
+    # endpoint, so keeping a second copy in this payload was a wasted
+    # DB read + bandwidth per Settings page load.  Endpoint still
+    # exists; only the duplicate fetch path is gone.
 
     return {
         "account": {
@@ -1398,7 +1628,6 @@ async def get_settings(
         },
         "settings": settings,
         "ai_usage": ai_stats,
-        "schedules": schedules,
     }
 
 

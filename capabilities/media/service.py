@@ -25,7 +25,7 @@ async def get_fleet_for_cameras(
     is warehouse-first with live-Samsara fallback (same SSOT pattern as
     every other fleet read).
     """
-    from capabilities.vehicles.service import (
+    from features.vehicles.service import (
         get_fleet_overview as _svc_fleet_overview,
     )
     return await _svc_fleet_overview(account_id, company=company)
@@ -156,7 +156,7 @@ async def save_camera_image(
     """
     try:
         from adapters.storage.object_store import get_object_store_for_account
-        from capabilities.work_orders.storage import resolve_company_folder
+        from features.work_orders.storage import resolve_company_folder
         safe_name = vehicle_name.replace("/", "_").replace("\\", "_")
         # Bucket path mirrors the work-orders layout so a user browsing
         # their Drive sees ``{COMPANY}/camera-images/…`` next to
@@ -203,3 +203,19 @@ async def save_camera_results(account_id: int, results: list[dict]):
             )
         except Exception as e:
             logger.debug(f"Camera history save failed: {e}")
+
+
+async def get_dashcam_snapshots(account_id: int, days: int = 3) -> list[dict]:
+    """One recent dashcam frame per vehicle, merged across companies.
+
+    SSOT accessor for raw snapshot frames (the camera tool's data path);
+    ``gather_snapshots`` above remains the richer analysis-pipeline
+    entrypoint.  Routed through the cached MultiCompanyClient pool so
+    callers share the breaker + rate-limit retries.
+    """
+    from infra.services import get_client
+    multi = await get_client(account_id)
+    out: list[dict] = []
+    for _code, client in multi.clients.items():
+        out.extend(await client.get_dashcam_snapshots(days=days))
+    return out

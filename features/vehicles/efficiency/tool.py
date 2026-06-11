@@ -29,10 +29,9 @@ from capabilities.telemetry.service import (
 async def get_driver_efficiency(tool_args: dict, samsara_client,
                                 account_id: int | None = None, db=None) -> dict:
     days = tool_args.get("days", 7)
-    if account_id is not None:
-        drivers = await _svc_drv_eff(account_id, days=days)
-    else:
-        drivers = await samsara_client.get_driver_efficiency(days=days)
+    if account_id is None:
+        return {"error": "This tool requires account context."}
+    drivers = await _svc_drv_eff(account_id, days=days)
     return {
         "period_days": days,
         "drivers": [
@@ -91,10 +90,9 @@ async def get_driver_efficiency(tool_args: dict, samsara_client,
 async def get_efficiency_summary(tool_args: dict, samsara_client,
                                account_id: int | None = None, db=None) -> dict:
     days = tool_args.get("days", 7)
-    if account_id is not None:
-        eff = await _svc_fleet_eff(account_id, days=days)
-    else:
-        eff = await samsara_client.get_fleet_efficiency(days=days)
+    if account_id is None:
+        return {"error": "This tool requires account context."}
+    eff = await _svc_fleet_eff(account_id, days=days)
     return {
         "period_days": days,
         "vehicle_count": len(eff),
@@ -142,10 +140,9 @@ async def get_driver_scorecard(tool_args: dict, samsara_client,
                                account_id: int | None = None, db=None) -> dict:
     days = tool_args.get("days", 7)
     driver_filter = tool_args.get("driver_name", "").strip().lower()
-    if account_id is not None:
-        drivers = await _svc_drv_eff(account_id, days=days)
-    else:
-        drivers = await samsara_client.get_driver_efficiency(days=days)
+    if account_id is None:
+        return {"error": "This tool requires account context."}
+    drivers = await _svc_drv_eff(account_id, days=days)
     if driver_filter:
         drivers = [
             d for d in drivers

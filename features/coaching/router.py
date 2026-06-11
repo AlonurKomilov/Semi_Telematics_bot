@@ -1,4 +1,8 @@
 """Coaching API endpoints — rules, assignments, ack flow, driver /me."""
+# router.py is interface-layer code co-located with its feature
+# (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
+# service/alert/tool/signal modules never do.
+
 
 from __future__ import annotations
 
@@ -8,11 +12,14 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from capabilities.coaching import service as svc
-from capabilities.coaching.service import CoachingDisabledError
+from features.coaching import service as svc
+from features.coaching.service import CoachingDisabledError
 from interfaces.api.deps import (
     require_permission,
     require_permission_any,
+    get_platform_db,
+    get_user_company_codes,
+    filter_by_company_map,
 )
 
 log = logging.getLogger(__name__)
@@ -153,11 +160,20 @@ async def list_assignments(
     status: Optional[str] = Query(default=None, max_length=32),
     limit: int = Query(default=200, ge=1, le=1000),
     user: dict = Depends(require_permission("can_coaching_admin")),
+    platform_db=Depends(get_platform_db),
 ):
     try:
-        return await svc.list_assignments(
+        rows = await svc.list_assignments(
             user["account_id"], driver_id=driver_id, status=status, limit=limit,
         )
+        # Company scoping — restricted users see only their companies'
+        # drivers' coaching.  Fail-open: a driver whose Samsara id isn't
+        # linked to a user/company stays visible.
+        allowed = await get_user_company_codes(user)
+        if allowed:
+            drv_map = await platform_db.get_driver_company_codes_by_samsara(user["account_id"])
+            rows = filter_by_company_map(rows, allowed, drv_map, key="driver_id")
+        return rows
     except CoachingDisabledError as e:
         raise _disabled_to_403(e)
     except ValueError as e:
@@ -209,7 +225,17 @@ async def assign_manual(
 async def cancel_assignment(
     assignment_id: int,
     user: dict = Depends(require_permission("can_coaching_admin")),
+    platform_db=Depends(get_platform_db),
 ):
+    # Company scope: a restricted admin can't cancel another company's
+    # driver's assignment by guessing the id (the list already hides it).
+    allowed = await get_user_company_codes(user)
+    if allowed:
+        assignment = await svc.get_assignment(user["account_id"], assignment_id)
+        if assignment:
+            drv_map = await platform_db.get_driver_company_codes_by_samsara(user["account_id"])
+            if not filter_by_company_map([assignment], allowed, drv_map, key="driver_id"):
+                raise HTTPException(404, "assignment not found or not cancellable")
     try:
         ok = await svc.cancel_assignment(
             user["account_id"], assignment_id, user_id=int(user["sub"]),

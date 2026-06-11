@@ -66,7 +66,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         report_items.append("⛽ Fuel & DEF levels")
     if perms.can_vehicle_all:
         report_items.append("🚛 Search any vehicle")
-    elif perms.can_vehicle_own:
+    elif perms.can_vehicle_vehicle:
         report_items.append("🚛 View your vehicle")
     if report_items:
         lines.append(f"\n  {t('help.reports_label')}")
@@ -75,13 +75,13 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Tools
     tool_items = []
-    if perms.can_scorecard_all or perms.can_scorecard_own:
+    if perms.can_scorecard_all or perms.can_scorecard_vehicle:
         tool_items.append("🏆 Driver scorecards")
-    if perms.can_location_map or perms.can_location_own:
+    if perms.can_location_map or perms.can_location_vehicle:
         tool_items.append("🗺 Live fleet map")
-    if perms.can_route_all or perms.can_route_own:
+    if perms.can_route_all or perms.can_route_vehicle:
         tool_items.append("🛣 Routes")
-    if perms.can_geofence_all or perms.can_geofence_own:
+    if perms.can_geofence_all or perms.can_geofence_vehicle:
         tool_items.append("📍 Geofences")
     if tool_items:
         lines.append(f"\n  {t('help.tools_label')}")
@@ -94,7 +94,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cost_items.append("💰 Fuel cost tracker")
     if perms.can_cost_per_mile:
         cost_items.append("📊 Cost per mile")
-    if perms.can_maintenance_all or perms.can_maintenance_own:
+    if perms.can_maintenance_all or perms.can_maintenance_vehicle:
         cost_items.append("🔧 Maintenance scheduler")
     if cost_items:
         lines.append(f"\n  {t('help.costs_label')}")
@@ -102,7 +102,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lines.append(f"  · {item}")
 
     # Alerts & Digest
-    if perms.can_alerts_all or perms.can_alerts_own:
+    if perms.can_alerts_all or perms.can_alerts_vehicle:
         lines.append("\n  · 🔔 Alerts (auto-notifications)")
     if perms.can_digest:
         lines.append("  · 📬 Daily/weekly digest")
@@ -285,7 +285,6 @@ async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
             telegram_id=tid,
             account_id=account.id,
             role=Role.OWNER,
-            department="management",
             display_name=tg_name,
         )
         logger.info(f"New account: '{company_name}' by TG user {tid}")
@@ -396,7 +395,7 @@ async def _handle_bot_login(
             "━━━━━━━━━━━━━━━━━━━━━\n"
             "\n"
             f"Hi{(' ' + name) if name else ''}, you are not registered\n"
-            "in the system. Ask your fleet manager for\n"
+            "in the system. Ask your company admin for\n"
             "an invite link to join your company first."
         ])
         logger.info(f"Bot-login rejected: TG user {tid} not registered")

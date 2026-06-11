@@ -40,8 +40,8 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
         # wrapper.  The submenu_* builders below still exist as
         # fallbacks for cached buttons.
         has_reports = (perms.can_vehicle_all
-                       or perms.can_events_all or perms.can_events_own)
-        has_parking = perms.can_geofence_all or perms.can_geofence_own
+                       or perms.can_events_all or perms.can_events_vehicle)
+        has_parking = perms.can_geofence_all or perms.can_geofence_vehicle
         has_fuel_cost = perms.can_fuel_cost
 
         row1 = []
@@ -55,7 +55,7 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
         row2 = []
         if has_fuel_cost:
             row2.append(InlineKeyboardButton(t("costs_menu.fuel_costs"), callback_data="cmd_fuelcost"))
-        if perms.can_alerts_all or perms.can_alerts_own:
+        if perms.can_alerts_all or perms.can_alerts_vehicle:
             row2.append(InlineKeyboardButton(t("menu.alerts"), callback_data="cmd_alerts"))
         if row2:
             rows.append(row2)
@@ -67,7 +67,7 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
 
         # Live Map Mini App (visible when WEBAPP_URL is configured)
         from interfaces.bot.config import WEBAPP_URL
-        if WEBAPP_URL and (perms.can_location_map or perms.can_location_own):
+        if WEBAPP_URL and (perms.can_location_map or perms.can_location_vehicle):
             rows.append([InlineKeyboardButton(
                 "🗺 Live Map",
                 web_app=WebAppInfo(url=f"{WEBAPP_URL}#map"),
@@ -123,7 +123,7 @@ def submenu_reports_kb(role: Role, company_codes: list[str] | None = None) -> In
     perms = get_permissions(role)
     rows = []
 
-    if perms.can_events_all or perms.can_events_own:
+    if perms.can_events_all or perms.can_events_vehicle:
         rows.append([InlineKeyboardButton(t("tools_menu.events"), callback_data="cmd_events")])
 
     if perms.can_vehicle_all:
@@ -145,7 +145,7 @@ def submenu_tools_kb(role: Role) -> InlineKeyboardMarkup:
     rows = []
 
     # Parking — driver-scoped event view (uses geofence permission)
-    if perms.can_geofence_all or perms.can_geofence_own:
+    if perms.can_geofence_all or perms.can_geofence_vehicle:
         rows.append([InlineKeyboardButton("🅿️ Parking", callback_data="cmd_parking_events")])
 
     rows.append([InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")])
@@ -170,7 +170,7 @@ def submenu_costs_kb(role: Role) -> InlineKeyboardMarkup:
 
 
 def submenu_mgmt_kb(role: Role, has_api: bool = False) -> InlineKeyboardMarkup:
-    """Team & Management sub-menu — account, users, audit, schedules."""
+    """Team & Management sub-menu — account, invite, audit."""
     perms = get_permissions(role)
     rows = []
 
@@ -178,8 +178,12 @@ def submenu_mgmt_kb(role: Role, has_api: bool = False) -> InlineKeyboardMarkup:
     top_row = []
     if perms.can_manage_account:
         top_row.append(InlineKeyboardButton(t("mgmt_menu.account_info"), callback_data="cmd_account"))
-    # Team / Users grid removed — manage roles + departments on the
-    # dashboard (sortable columns, bulk actions, confirmation dialogs).
+    # Team / Users grid removed — full role / vehicle assignment + bulk
+    # actions live on the dashboard.  Invite stays bot-side because
+    # the Telegram-channel deep-link only makes sense from the bot —
+    # operators wanting URL/Email channels use the dashboard.
+    if perms.can_invite:
+        top_row.append(InlineKeyboardButton("✉️ Invite", callback_data="cmd_invite"))
     if top_row:
         rows.append(top_row)
 

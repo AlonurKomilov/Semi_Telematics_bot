@@ -1,7 +1,7 @@
 """Daily Driver/Samsara identity-sync job — bot-side wrapper.
 
 Pure detection logic lives in
-:mod:`capabilities.drivers.samsara_sync`.  This module fetches the
+:mod:`features.drivers.samsara_sync`.  This module fetches the
 inputs, runs the detector per account, and sends a single digest
 message to each account's admins (Owner + Admin roles).  Soft-fails
 when Samsara is unreachable so the job doesn't block other workloads.
@@ -15,7 +15,7 @@ from telegram.constants import ParseMode
 from telegram.ext import Application
 
 from adapters.storage import Role
-from capabilities.drivers.samsara_sync import (
+from features.drivers.samsara_sync import (
     detect_mismatches, format_digest,
 )
 from capabilities.localization.tz import is_local_hour
@@ -23,6 +23,7 @@ from infra.bot_registry import get_app_for_account
 from infra.isolation import run_account_job
 from infra.services import get_client as _get_samsara, get_tenant_db as _get_tenant_db_rls
 from interfaces.bot.state import get_platform_db
+from capabilities.alerting.registry import register_alert_source
 
 # Fires at 10:00 LOCAL for each account — one hour after the doc-expiry
 # digest so admins get the two driver pings back-to-back.
@@ -31,6 +32,7 @@ _TARGET_HOUR_LOCAL = 10
 logger = logging.getLogger(__name__)
 
 
+@register_alert_source("driver_samsara_sync", trigger="cron", minute=4)
 async def check_driver_samsara_sync(_app: Application | None = None) -> None:
     """Run identity-drift detection for every account.
 

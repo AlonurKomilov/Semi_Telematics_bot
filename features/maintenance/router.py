@@ -1,14 +1,21 @@
 """Maintenance API endpoints — CRUD for maintenance tasks."""
+# router.py is interface-layer code co-located with its feature
+# (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
+# service/alert/tool/signal modules never do.
 
+
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 
-from interfaces.api.deps import get_current_user, require_permission, get_tenant_db, get_platform_db, get_user_vehicle_nums, paginate, resolve_user_id
+from interfaces.api.deps import get_current_user, require_permission, get_tenant_db, get_platform_db, get_user_vehicle_nums, paginate, resolve_user_id, get_user_company_codes, filter_by_allowed_companies
 from capabilities.iam.permissions import can
-from capabilities.maintenance.service import has_maintenance_access, spawn_recurring_if_completed
+from features.maintenance.service import has_maintenance_access, spawn_recurring_if_completed
+
+logger = logging.getLogger(__name__)
 
 # Attachment constraints — match the Work Orders limits exactly so the
 # user can't sneak past one upload cap by using the other route.  Same
@@ -184,13 +191,17 @@ async def list_tasks(
         status=status,
         vehicle_name=vehicle,
     )
+    # Company scoping — a restricted user sees only their companies' tasks.
+    # Legacy tasks with no company_code are conservatively hidden from a
+    # restricted user (safe-deny); unrestricted users (empty allowed) see all.
+    tasks = filter_by_allowed_companies(tasks, await get_user_company_codes(user), key="company_code")
     # Filter to assigned trucks for _own permission.  Pre-compile a
     # single alternation regex from the driver's truck-num set so the
     # inner ``in`` loop collapses to one scan per task — was O(tasks ×
     # needles); now O(tasks).  Substring semantics preserved so
     # "Truck-107A" still matches needle "107".
     #
-    # Safe-deny: a user with can_maintenance_own but NO assigned trucks
+    # Safe-deny: a user with can_maintenance_vehicle but NO assigned trucks
     # gets an empty list, never the unfiltered account dataset.
     if not can(user["role"], "can_maintenance_all"):
         trucks = await get_user_vehicle_nums(user)
@@ -267,14 +278,26 @@ async def list_tasks(
                         by_name_unique.pop(nm, None)
             for t in items:
                 live = None
+                # ``trust_live`` flips on when the lookup is unambiguous
+                # (vehicle_id match or company-scoped name match) — at
+                # that point the live reading is authoritative for THAT
+                # exact vehicle and can be used even if it's lower than
+                # the stored value.  This is the recovery path for
+                # tasks whose ``last_odometer`` was corrupted by the
+                # pre-fix scheduler's name-only cross-company merge.
+                trust_live = False
                 tid = (t.get("vehicle_id") or "").strip()
                 if tid and tid in by_id:
                     live = by_id[tid]
+                    trust_live = True
                 else:
                     cc = (t.get("company_code") or "").strip()
                     nm = (t.get("vehicle_name") or "").strip()
                     if nm:
                         live = by_company_name.get((cc, nm))
+                        if live is not None:
+                            # Scoped by company → authoritative.
+                            trust_live = bool(cc)
                         # Final fallback: name-only when unambiguous.
                         # Catches tasks that were created with neither
                         # vehicle_id nor company_code (the SPN
@@ -284,6 +307,7 @@ async def list_tasks(
                         # company chip blank than guess wrong.
                         if live is None:
                             live = by_name_unique.get(nm)
+                            trust_live = live is not None
                 if not live:
                     continue
                 # Backfill the task row's identity fields from the
@@ -294,27 +318,167 @@ async def list_tasks(
                     t["company_code"] = live.get("company_code") or ""
                 if not (t.get("vehicle_id") or "").strip():
                     t["vehicle_id"] = live.get("vehicle_id") or ""
-                # Use the live value when the stored one is NULL, or
-                # when the live reading is newer (higher odometer /
-                # higher engine-hours).  Never go backwards — a glitchy
-                # warehouse read shouldn't undo a real reading.
+                # When ``trust_live`` is set, take the live value
+                # unconditionally — it's the current odometer for the
+                # uniquely identified vehicle.  Otherwise keep the
+                # historical "never go backwards" guard so a transient
+                # warehouse blip (returns 0 or stale low value) can't
+                # undo a real reading.
                 live_odo = live.get("odometer_mi")
                 if isinstance(live_odo, (int, float)):
                     stored_odo = t.get("last_odometer")
-                    if stored_odo is None or float(live_odo) > float(stored_odo):
+                    if (
+                        trust_live
+                        or stored_odo is None
+                        or float(live_odo) > float(stored_odo)
+                    ):
                         t["last_odometer"] = float(live_odo)
                 live_hrs = live.get("engine_hours")
                 if isinstance(live_hrs, (int, float)):
                     stored_hrs = t.get("last_engine_hours")
-                    if stored_hrs is None or float(live_hrs) > float(stored_hrs):
+                    if (
+                        trust_live
+                        or stored_hrs is None
+                        or float(live_hrs) > float(stored_hrs)
+                    ):
                         t["last_engine_hours"] = float(live_hrs)
         except Exception:
             # Warehouse outage shouldn't break the list view.
             pass
 
+    # Mileage-projected due dates for the calendar view.  A task that
+    # tracks only by ``due_miles`` has nothing to render on a date
+    # grid, so the calendar would silently skip it.  Computing
+    # ``projected_due_date = today + (mi_to_go / avg_daily_miles)``
+    # lets the dashboard place those tasks at their expected service
+    # day with a clear "projected" visual marker.
+    #
+    # Bounds:
+    #   * Skip when no telemetry-driven velocity exists for the truck.
+    #   * Skip when the projection lands more than 365 days out — that
+    #     far ahead the truck's recent average is noise; the calendar
+    #     would over-promise.
+    #   * Skip closed / cancelled tasks (already in history).
+    if items:
+        try:
+            # Velocity comes from the daily roll-up table
+            # (``vehicle_metrics_daily``, 730-day retention) so the
+            # requested 30-day window is actually honoured.  Median of
+            # drive-day miles is robust to weekend / repair / spare-
+            # truck idle distributions that would drag a mean
+            # unrealistically low.
+            velocity_map = await tenant_db.compute_vehicle_velocity_daily(
+                user["account_id"], window_days=30,
+            )
+            # Snapshot + hourly fallbacks are computed LAZILY: only
+            # when at least one task references a vehicle missing from
+            # ``velocity_map``.  This handles the "mixed account" case
+            # where most trucks have 30+ days of daily roll-ups but a
+            # recently-onboarded truck has none — the older trucks
+            # use the median path, the new truck falls back to the
+            # 7-day snapshot helper instead of getting no projection
+            # at all (the pre-fix behaviour).
+            snapshot_velocities: Optional[dict[str, float]] = None
+
+            async def _fetch_snapshot_fallback() -> dict[str, float]:
+                # NB: bounded by 7-day snapshot retention regardless
+                # of the ``days=30`` request — this is a degraded-mode
+                # fallback for vehicles missing from the daily table.
+                snap = await tenant_db.compute_vehicle_velocity_window(
+                    user["account_id"], days=30, min_days_required=3,
+                )
+                if not snap:
+                    snap = await tenant_db.get_vehicle_avg_daily_miles(
+                        user["account_id"], days=30,
+                    )
+                return snap or {}
+
+            from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+            today = _dt.now(_tz.utc)
+            for t in items:
+                if t.get("status") in ("completed", "cancelled"):
+                    continue
+                if t.get("due_date"):
+                    # Date already pinned by the operator — projection
+                    # would override their intent.
+                    continue
+                due_mi = t.get("due_miles")
+                last_mi = t.get("last_odometer")
+                if due_mi is None or last_mi is None:
+                    continue
+                mi_to_go = float(due_mi) - float(last_mi)
+                if mi_to_go <= 0:
+                    # Already overdue by mileage — let DueDateChip /
+                    # the bucket logic flag it, no projection needed.
+                    continue
+                vid = str(t.get("vehicle_id") or "")
+                if not vid:
+                    continue
+
+                avg = 0.0
+                window_days = 30
+                drive_days = 0
+                days_observed = 0
+                source = ""
+                stats = velocity_map.get(vid)
+                if stats:
+                    avg = float(stats.get("velocity") or 0)
+                    window_days = int(stats.get("window_days") or 30)
+                    drive_days = int(stats.get("drive_days") or 0)
+                    days_observed = int(stats.get("days_observed") or 0)
+                    source = "daily_metrics"
+                else:
+                    # Lazy fetch — only the first task that needs a
+                    # fallback triggers the queries; later tasks reuse
+                    # the cached result.
+                    if snapshot_velocities is None:
+                        snapshot_velocities = await _fetch_snapshot_fallback()
+                    if vid in snapshot_velocities:
+                        avg = float(snapshot_velocities.get(vid) or 0)
+                        source = "snapshot_fallback"
+
+                if avg <= 0:
+                    continue
+                days_out = mi_to_go / avg
+                if days_out > 365:
+                    continue
+                projected = today + _td(days=days_out)
+                t["projected_due_date"] = projected.date().isoformat()
+                t["velocity_avg_daily_miles"] = round(float(avg), 1)
+                # Provenance fields surface in the calendar tooltip so
+                # operators can sanity-check the projection.  Older
+                # dashboards that don't know about them ignore them.
+                t["velocity_window_days"] = window_days
+                t["velocity_drive_days"] = drive_days
+                t["velocity_days_observed"] = days_observed
+                t["velocity_source"] = source
+        except Exception:
+            # Warehouse outage on the velocity query shouldn't break
+            # the list — projections just don't appear this request.
+            # Log the actual cause so a hidden schema drift / KeyError
+            # is grep-able from production instead of silently dropping
+            # every projection forever.
+            logger.warning(
+                "maintenance list: velocity projection block failed acct=%d",
+                user["account_id"],
+                exc_info=True,
+            )
+
     return {"tasks": items, "count": paged["total"],
             "page": paged["page"], "page_size": paged["page_size"],
             "total_pages": paged["total_pages"]}
+
+
+async def _require_company_visible_task(task: dict, user: dict) -> None:
+    """404 if the task's company is outside the caller's allowed companies.
+
+    Used by every by-id maintenance route so a company-restricted user
+    can't view/modify another company's task by guessing the id — the
+    company-filtered list already hides it.
+    """
+    allowed = await get_user_company_codes(user)
+    if allowed and not filter_by_allowed_companies([task], allowed, key="company_code"):
+        raise HTTPException(status_code=404, detail="Task not found")
 
 
 @router.get("/tasks/{task_id}")
@@ -331,8 +495,9 @@ async def get_task(
     task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    await _require_company_visible_task(task, user)
     # Check truck ownership for _own permission.  Safe-deny: a user with
-    # can_maintenance_own but no assigned trucks must NOT see anything.
+    # can_maintenance_vehicle but no assigned trucks must NOT see anything.
     if not can(user["role"], "can_maintenance_all"):
         trucks = await get_user_vehicle_nums(user)
         if not trucks:
@@ -382,16 +547,19 @@ async def get_task(
                     enriched["company_code"] = live.get("company_code") or ""
                 if not vehicle_id:
                     enriched["vehicle_id"] = live.get("vehicle_id") or ""
+                # Single-row lookup is scoped by vehicle_id or
+                # (company, name) — authoritative for THIS exact
+                # vehicle.  Trust the live value unconditionally so a
+                # task whose stored ``last_odometer`` got corrupted by
+                # the pre-fix scheduler's cross-company merge can
+                # recover on the next read.  See the list-view
+                # ``trust_live`` block for the matching logic.
                 live_odo = live.get("odometer_mi")
                 if isinstance(live_odo, (int, float)):
-                    stored_odo = enriched.get("last_odometer")
-                    if stored_odo is None or float(live_odo) > float(stored_odo):
-                        enriched["last_odometer"] = float(live_odo)
+                    enriched["last_odometer"] = float(live_odo)
                 live_hrs = live.get("engine_hours")
                 if isinstance(live_hrs, (int, float)):
-                    stored_hrs = enriched.get("last_engine_hours")
-                    if stored_hrs is None or float(live_hrs) > float(stored_hrs):
-                        enriched["last_engine_hours"] = float(live_hrs)
+                    enriched["last_engine_hours"] = float(live_hrs)
         except Exception:
             pass
 
@@ -410,7 +578,7 @@ async def create_task(
     # telemetry — previously the bar showed "no telemetry" until the next
     # 6-h scheduler tick.  Best-effort: no telemetry → both None, the
     # scheduler will fill in later.
-    from capabilities.maintenance.service import (
+    from features.maintenance.service import (
         fetch_current_telemetry_for_vehicle,
     )
     last_odo, last_hrs = await fetch_current_telemetry_for_vehicle(
@@ -493,7 +661,7 @@ async def bulk_create_tasks(
     backfill, audit log entry, and recurrence chain — failures on one
     vehicle don't roll back the others (best-effort per-row).
     """
-    from capabilities.maintenance.service import (
+    from features.maintenance.service import (
         fetch_current_telemetry_for_vehicle,
     )
     created: list[dict] = []
@@ -548,6 +716,7 @@ async def update_task(
     task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    await _require_company_visible_task(task, user)
 
     # Clearable fields can be set to ``null`` explicitly to wipe the
     # column.  Everything else only flows through when a real value is
@@ -645,6 +814,7 @@ async def snooze_task(
     task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    await _require_company_visible_task(task, user)
     ok = await tenant_db.snooze_task(
         task_id, account_id=user["account_id"], until_iso=body.until,
     )
@@ -672,12 +842,12 @@ async def upload_task_attachment(
     This route is for the quick "snap a photo of the roadside DEF
     receipt" workflow.
 
-    Permission: ``can_maintenance_all`` OR ``can_maintenance_own`` on
+    Permission: ``can_maintenance_all`` OR ``can_maintenance_vehicle`` on
     a task whose vehicle the driver is assigned to.  Drivers must NOT
     be able to attach evidence to other trucks' tasks.
     """
     from adapters.storage.object_store import get_object_store_for_account
-    from capabilities.work_orders.storage import (
+    from features.work_orders.storage import (
         resolve_company_folder, safe_attachment_name,
     )
     if not has_maintenance_access(user["role"]):
@@ -685,6 +855,7 @@ async def upload_task_attachment(
     task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    await _require_company_visible_task(task, user)
     # Drivers locked to their assigned trucks.  Safe-deny on empty
     # assignment list, matching the list/get routes.
     if not can(user["role"], "can_maintenance_all"):
@@ -753,13 +924,14 @@ async def download_task_attachment(
     browser; PDFs render too.
     """
     from adapters.storage.object_store import get_object_store_for_account
-    from capabilities.work_orders.storage import resolve_company_folder
+    from features.work_orders.storage import resolve_company_folder
     from fastapi.responses import StreamingResponse
     if not has_maintenance_access(user["role"]):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    await _require_company_visible_task(task, user)
     if not can(user["role"], "can_maintenance_all"):
         trucks = await get_user_vehicle_nums(user)
         if not trucks:
@@ -803,10 +975,11 @@ async def delete_task_attachment(
     captured, only a manager removes it (audit-trail intent).
     """
     from adapters.storage.object_store import get_object_store_for_account
-    from capabilities.work_orders.storage import resolve_company_folder
+    from features.work_orders.storage import resolve_company_folder
     task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    await _require_company_visible_task(task, user)
     name = task.get("attachment_name")
     if name:
         try:
@@ -845,6 +1018,7 @@ async def delete_task(
     task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    await _require_company_visible_task(task, user)
 
     await tenant_db.delete_maintenance_task(task_id, account_id=user["account_id"])
     await tenant_db.add_audit_log(
@@ -984,7 +1158,7 @@ async def get_vehicle_odometer(
     }
     if not has_maintenance_access(user["role"]):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    # DRIVER (can_maintenance_own, no can_maintenance_all): enforce truck ownership
+    # DRIVER (can_maintenance_vehicle, no can_maintenance_all): enforce truck ownership
     # so a driver cannot enumerate readings for the entire fleet by
     # guessing truck names.
     if not can(user["role"], "can_maintenance_all"):
@@ -1124,7 +1298,7 @@ async def list_templates(
     """List all templates for the operator's account.
 
     Read permission matches the rest of the maintenance module —
-    anyone with ``can_maintenance_own`` can SEE the templates; only
+    anyone with ``can_maintenance_vehicle`` can SEE the templates; only
     ``can_maintenance_all`` can mutate them (write routes below).
     """
     if not has_maintenance_access(user["role"]):
@@ -1207,6 +1381,89 @@ async def delete_template(
         user["account_id"], int(user["sub"]),
         "maintenance_template_delete",
         target_type="maintenance_template", target_id=str(template_id),
+    )
+    return {"ok": True}
+
+
+# ── Custom task types (per-account picker entries) ───────────────
+
+
+class CustomTaskTypeBody(BaseModel):
+    """Body for ``POST /maintenance/task-types``.  ``label`` is the
+    operator-facing display name (e.g. "Tire change"); the server
+    derives a stable ``value`` key from it for storage."""
+
+    label: str = Field(..., min_length=1, max_length=60)
+
+
+@router.get("/task-types")
+async def list_custom_task_types(
+    user: dict = Depends(get_current_user),
+    tenant_db=Depends(get_tenant_db),
+):
+    """List the account's saved custom task types.
+
+    Read permission matches the rest of maintenance: anyone with
+    ``can_maintenance_vehicle`` can SEE them.  Adding / removing custom
+    types requires ``can_maintenance_all`` (separate routes below).
+    """
+    if not has_maintenance_access(user["role"]):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    items = await tenant_db.list_maintenance_custom_task_types(
+        user["account_id"],
+    )
+    return {"types": items}
+
+
+@router.post("/task-types")
+async def create_custom_task_type(
+    body: CustomTaskTypeBody,
+    user: dict = Depends(require_permission("can_maintenance_all")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Create or return-existing a custom task type for the account.
+
+    Idempotent: re-submitting the same label returns the existing
+    row.  The dashboard relies on this so an operator who repeatedly
+    types "Tire change" never sees a UNIQUE-violation error.
+    """
+    created_by = await resolve_user_id(user)
+    row = await tenant_db.create_maintenance_custom_task_type(
+        user["account_id"], body.label, created_by=created_by,
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=400,
+            detail="label must be non-empty after trimming whitespace",
+        )
+    await tenant_db.add_audit_log(
+        user["account_id"], created_by,
+        "maintenance_custom_type_create",
+        target_type="maintenance_custom_type",
+        target_id=str(row["id"]),
+        details=row["label"],
+    )
+    return row
+
+
+@router.delete("/task-types/{type_id}")
+async def delete_custom_task_type(
+    type_id: int,
+    user: dict = Depends(require_permission("can_maintenance_all")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Remove a custom task type from the picker.  Existing
+    maintenance tasks already using the type keep their stored
+    ``task_type`` string unchanged."""
+    ok = await tenant_db.delete_maintenance_custom_task_type(
+        user["account_id"], type_id,
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Custom type not found")
+    await tenant_db.add_audit_log(
+        user["account_id"], await resolve_user_id(user),
+        "maintenance_custom_type_delete",
+        target_type="maintenance_custom_type", target_id=str(type_id),
     )
     return {"ok": True}
 
@@ -1404,7 +1661,7 @@ async def maintenance_due_locations(
     that need shop time, so the overlay doesn't need lat/lon plumbed
     server-side.
 
-    ``can_maintenance_own`` callers (drivers / per-truck scoping) see
+    ``can_maintenance_vehicle`` callers (drivers / per-truck scoping) see
     only their assigned vehicles' tasks.
     """
     if not has_maintenance_access(user["role"]):
