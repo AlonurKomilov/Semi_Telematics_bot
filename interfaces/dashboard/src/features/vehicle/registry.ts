@@ -45,4 +45,8 @@ export const VEHICLE_SECTIONS: SectionRegistry<VehicleSectionProps> = {
     Component: lazy(() => import('./sections/VehicleTimeline')),
     label: '7-Day Activity',
   },
+  usage: {
+    Component: lazy(() => import('./sections/VehicleUsage')),
+    label: 'Usage Trends',
+  },
 };

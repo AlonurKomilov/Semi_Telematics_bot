@@ -15,7 +15,7 @@
  * opens a popup listing the counts + a deep link to the standalone
  * Maintenance page.
  *
- * Permission-gated by ``can_maintenance_all`` / ``can_maintenance_own``.
+ * Permission-gated by ``can_maintenance_all`` / ``can_maintenance_vehicle``.
  * No-ops cleanly for personas without access.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -49,7 +49,7 @@ export default function MaintenanceMarkersLayer({
 }: LiveMapSectionProps) {
   const { has } = usePermissions();
   const hasAccess =
-    has('can_maintenance_all') || has('can_maintenance_own');
+    has('can_maintenance_all') || has('can_maintenance_vehicle');
   const [dueRows, setDueRows] = useState<DueRow[]>([]);
   const layerRef = useRef<L.LayerGroup | null>(null);
 

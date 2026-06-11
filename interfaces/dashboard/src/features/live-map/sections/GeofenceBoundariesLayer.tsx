@@ -11,7 +11,7 @@
  *
  * Reads ``/fleet/geofences`` (same endpoint as the standalone
  * Geofences page) so the data is consistent.  Permission-gated by
- * ``can_geofence_all`` / ``can_geofence_own`` — overlay silently
+ * ``can_geofence_all`` / ``can_geofence_vehicle`` — overlay silently
  * no-ops when the user lacks geofence access, so layouts can
  * include this overlay without per-persona conditional logic.
  *
@@ -43,7 +43,7 @@ export default function GeofenceBoundariesLayer({
   isReady,
 }: LiveMapSectionProps) {
   const { has } = usePermissions();
-  const hasGeofencePerm = has('can_geofence_all') || has('can_geofence_own');
+  const hasGeofencePerm = has('can_geofence_all') || has('can_geofence_vehicle');
   const layerRef = useRef<L.LayerGroup | null>(null);
 
   useEffect(() => {

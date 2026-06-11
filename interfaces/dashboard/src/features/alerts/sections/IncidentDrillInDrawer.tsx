@@ -133,7 +133,7 @@ function DrawerBody({ alert }: { alert: Alert }) {
   // Quick-link visibility maps to existing dashboard pages.  Permission
   // gates mirror the route guards on each page so operators don't see
   // dead links.
-  const canScorecards = hasAny('can_scorecard_all', 'can_scorecard_own');
+  const canScorecards = hasAny('can_scorecard_all', 'can_scorecard_vehicle');
   const canCoaching = has('can_coaching_admin');
   const canCamera = has('can_camera');
   const isEventAlert = alert.alert_type === 'events' || alert.alert_type === 'event';

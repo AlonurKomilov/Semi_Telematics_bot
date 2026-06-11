@@ -15,12 +15,16 @@ import type { Vehicle, VehiclesResponse } from '../../../types';
 import { Row } from './_shared/Row';
 import type { VehicleSectionProps } from './_shared/types';
 
-export default function VehicleInfo({ vehicleName }: VehicleSectionProps) {
+export default function VehicleInfo({ vehicleName, company }: VehicleSectionProps) {
   const { data: v, isLoading } = useQuery<Vehicle | null>({
-    queryKey: ['vehicle', vehicleName],
+    // ``company`` is part of the query key so the cache keeps a
+    // separate entry for each (name, company) pair — opening a
+    // different "103" never recycles the previous one's data.
+    queryKey: ['vehicle', vehicleName, company ?? ''],
     queryFn: async () => {
+      const qs = company ? `?company=${encodeURIComponent(company)}` : '';
       const res = await apiJSON<VehiclesResponse>(
-        `/vehicles/${encodeURIComponent(vehicleName)}`,
+        `/vehicles/${encodeURIComponent(vehicleName)}${qs}`,
       );
       return res.vehicles?.[0] ?? null;
     },

@@ -162,10 +162,31 @@ const TYPE_LABELS: Record<string, string> = {
   custom:         'Custom',
 };
 
-export function TaskTypeCell({ type }: { type: string }) {
+export function TaskTypeCell({
+  type,
+  customLabel,
+}: {
+  type: string;
+  // Per-account custom types come from ``GET /maintenance/task-types``.
+  // The list parent fetches once and passes the resolved label here so
+  // the cell doesn't have to query React-Query on every row render.
+  customLabel?: string;
+}) {
   const Icon = TYPE_ICON_COMPONENTS[type] ?? Wrench;
   const colour = TYPE_ICON_COLORS[type] ?? 'text-muted-foreground';
-  const label = TYPE_LABELS[type] ?? String(type || '').replace(/_/g, ' ');
+  // Fallback chain:
+  //   1. Built-in label map (Oil Change, Tire Service, …).
+  //   2. Per-account custom-type label passed in by the caller.
+  //   3. ``custom_<slug>`` → strip prefix + de-kebab so cells stay
+  //      readable even when the custom-types fetch hasn't returned yet.
+  //   4. Raw value with underscores → spaces.
+  let label = TYPE_LABELS[type] ?? customLabel;
+  if (!label) {
+    const isCustom = (type || '').startsWith('custom_');
+    label = isCustom
+      ? type.slice('custom_'.length).replace(/-/g, ' ')
+      : String(type || '').replace(/_/g, ' ');
+  }
   return (
     <span className="inline-flex items-center gap-1.5">
       <Icon size={14} className={`shrink-0 ${colour}`} />

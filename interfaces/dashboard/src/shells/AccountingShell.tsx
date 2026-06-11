@@ -17,7 +17,6 @@ import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
 import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
-import { accountingNav } from './nav/accountingNav';
 
 export default function AccountingShell() {
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -44,7 +43,7 @@ export default function AccountingShell() {
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <div className="hidden lg:block">
-        <Sidebar navConfig={accountingNav} />
+        <Sidebar />
       </div>
 
       {mobileSidebarOpen && (
@@ -53,7 +52,7 @@ export default function AccountingShell() {
           onClick={() => setMobileSidebarOpen(false)}
         >
           <div className="h-full" onClick={(e) => e.stopPropagation()}>
-            <Sidebar navConfig={accountingNav} />
+            <Sidebar />
           </div>
         </div>
       )}

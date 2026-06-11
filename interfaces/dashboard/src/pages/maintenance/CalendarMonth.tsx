@@ -199,9 +199,24 @@ export function CalendarMonth({
                   // when it'll come due".  Tooltip discloses the
                   // velocity assumption that drove the projection.
                   const isProjected = !task.due_date && Boolean(task.projected_due_date);
-                  const projTitle = isProjected && task.velocity_avg_daily_miles
-                    ? ` (projected from ${task.velocity_avg_daily_miles.toLocaleString()} mi/day avg)`
-                    : '';
+                  // Build a richer projection tooltip when the new
+                  // velocity provenance fields are populated.  Older
+                  // backends that don't send them fall through to the
+                  // original "mi/day avg" string so the calendar
+                  // never loses its disclosure during rollout.
+                  let projTitle = '';
+                  if (isProjected && task.velocity_avg_daily_miles) {
+                    const v = task.velocity_avg_daily_miles.toLocaleString();
+                    const window = task.velocity_window_days;
+                    const driveDays = task.velocity_drive_days;
+                    if (window && driveDays) {
+                      projTitle = ` (projected from ${v} mi/day median over `
+                        + `${driveDays} drive day${driveDays === 1 ? '' : 's'} in `
+                        + `the last ${window} days)`;
+                    } else {
+                      projTitle = ` (projected from ${v} mi/day avg)`;
+                    }
+                  }
                   return (
                     <button
                       key={task.id}

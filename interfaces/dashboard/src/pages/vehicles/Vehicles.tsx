@@ -18,6 +18,12 @@ import {
 import { useShellConfig } from '../../hooks/useShellConfig';
 import type { Vehicle, VehiclesResponse } from '../../types';
 import type { AnyColumn } from '../../types';
+import UtilizationSummary from './UtilizationSummary';
+
+// Personas that benefit from the 30-day utilization roll-up at the top
+// of the Vehicles page.  Drivers + Dispatch don't need it (drivers care
+// about their own vehicle only; dispatch lives in the live view).
+const UTILIZATION_PERSONAS = new Set(['owner', 'admin', 'fleet', 'accounting']);
 
 type StatusFilter = 'all' | 'moving' | 'idle' | 'stopped';
 const STATUS_OPTIONS: readonly StatusFilter[] = ['all', 'moving', 'idle', 'stopped'] as const;
@@ -154,6 +160,8 @@ export default function Vehicles() {
         }
       />
 
+      {UTILIZATION_PERSONAS.has(persona) && <UtilizationSummary />}
+
       <div className="mb-4">
         <FilterChips
           options={STATUS_OPTIONS}
@@ -198,12 +206,27 @@ export default function Vehicles() {
           columns={columns}
           data={vehicles as unknown as Record<string, unknown>[]}
           searchKey="name"
-          onRowClick={(row) =>
+          onRowClick={(row) => {
             // Route is mounted at root (`vehicles/:name`), not under
             // `/fleet/`; the persona context (fleet./dispatch./safety.)
             // is carried by the subdomain so the URL path stays neutral.
-            navigate(`/vehicles/${encodeURIComponent(row.name as string)}`)
-          }
+            //
+            // The ``?company=`` query param disambiguates cross-company
+            // vehicle-name collisions.  Two trucks named "103" in
+            // different companies under the same account are legal;
+            // without the qualifier the detail page would arbitrarily
+            // render whichever row landed first in the API response.
+            const name = String(row.name ?? '');
+            const company = String(
+              (row as { _org?: unknown; company?: unknown })._org
+              ?? (row as { _org?: unknown; company?: unknown }).company
+              ?? '',
+            ).trim();
+            const qs = company
+              ? `?company=${encodeURIComponent(company)}`
+              : '';
+            navigate(`/vehicles/${encodeURIComponent(name)}${qs}`);
+          }}
         />
       )}
     </div>

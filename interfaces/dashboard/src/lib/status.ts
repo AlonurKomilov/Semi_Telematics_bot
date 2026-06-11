@@ -79,6 +79,14 @@ const STATUS_TONE: Record<string, Tone> = {
   low: 'neutral', medium: 'info', high: 'warn', critical: 'danger',
   // Generic health
   healthy: 'ok', ok: 'ok', warning: 'warn', degraded: 'warn',
+  // Telematics integration lifecycle.  Mirrors the
+  // account_integrations.status column values; connected reads as a
+  // healthy green pill, paused / disabled reads as warn (operator
+  // intent — still configured), error reads as urgent, disconnected
+  // reads as neutral (no signal, by design).
+  connected: 'ok', paused: 'warn', disabled: 'warn',
+  disconnected: 'neutral',
+  coming_soon: 'neutral',
 };
 
 export function statusTone(status: string | null | undefined): Tone {

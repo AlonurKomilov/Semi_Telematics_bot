@@ -88,6 +88,7 @@ const Inspections      = lazyWithReload(() => import('./pages/inspections/Inspec
 const KnowledgeBase    = lazyWithReload(() => import('./pages/knowledge/KnowledgeBase'));
 const TeamManagement   = lazyWithReload(() => import('./pages/admin/TeamManagement'));
 const Companies        = lazyWithReload(() => import('./pages/admin/Companies'));
+const Integrations     = lazyWithReload(() => import('./pages/integrations/Integrations'));
 const AuditLog         = lazyWithReload(() => import('./pages/admin/AuditLog'));
 const Settings         = lazyWithReload(() => import('./pages/admin/Settings'));
 const Profile          = lazyWithReload(() => import('./pages/Profile'));
@@ -221,6 +222,7 @@ export default function AppRouter() {
         {/* Admin */}
         <Route path="admin/users" element={L(<P perm="can_manage_users"><TeamManagement /></P>)} />
         <Route path="admin/companies" element={L(<P perm="can_manage_companies"><Companies /></P>)} />
+        <Route path="admin/integrations" element={L(<P perm="can_manage_account"><Integrations /></P>)} />
         <Route path="admin/audit" element={L(<P perm="can_manage_users"><AuditLog /></P>)} />
         <Route path="admin/work-hours" element={L(<P perm="can_manage_account"><WorkHours /></P>)} />
         <Route path="admin/invites" element={L(<P perm="can_invite"><Invites /></P>)} />

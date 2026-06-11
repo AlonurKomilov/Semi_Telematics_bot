@@ -824,6 +824,13 @@ export interface AdminUser {
    *  PUT /admin/users/:id/quiet-hours. */
   quiet_start: number | null;
   quiet_end:   number | null;
+  /** FK to a work_hours.id from the catalog (migration 101).
+   *  When set, the user uses THAT named schedule's window; replaces
+   *  the legacy free-form quiet_start/end pair.  ``null`` →
+   *  inherits the role-level Working Hours.  Edited via
+   *  PUT /admin/users/:id/assigned-work-hours; the drawer dropdown
+   *  reads this back to show which row is currently selected. */
+  assigned_work_hours_id?: number | null;
   created_at: string | null;
 }
 
@@ -1011,10 +1018,13 @@ export interface SettingsResponse {
   account: AccountInfo;
   settings: Record<string, string>;
   ai_usage: Record<string, unknown>;
-  // ``schedules`` removed from this response (was only consumed by
-  // the Working Hours section on the Settings page, which was
-  // consolidated into Team Management → Working Hours tab).  The
-  // dedicated GET /admin/work-hours endpoint is the single source.
+  // ``schedules`` was removed from the canonical /admin/settings
+  // response when Working Hours was consolidated into Team Management
+  // → Working Hours tab.  Kept as an optional field on the type so the
+  // Settings.tsx section that the linter restored can still compile
+  // (it'll just render "No schedules configured" when the backend
+  // omits the field — the tab is the canonical edit surface).
+  schedules?: WorkSchedule[];
 }
 
 export interface BotConfig {

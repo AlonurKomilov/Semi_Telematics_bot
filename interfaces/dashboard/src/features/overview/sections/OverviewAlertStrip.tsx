@@ -35,7 +35,7 @@ export default function OverviewAlertStrip({ stats, has, kpiPriority }: Overview
   if (
     (stats.pending_alerts ?? 0) > 0 &&
     relevant.has('pendingAlerts') &&
-    (has('can_alerts_all') || has('can_alerts_own'))
+    (has('can_alerts_all') || has('can_alerts_vehicle'))
   ) {
     alertItems.push({
       label: 'pending alerts',
@@ -61,7 +61,7 @@ export default function OverviewAlertStrip({ stats, has, kpiPriority }: Overview
   if (
     unsafeParking > 0 &&
     relevant.has('unsafeParking') &&
-    (has('can_alerts_all') || has('can_alerts_own'))
+    (has('can_alerts_all') || has('can_alerts_vehicle'))
   ) {
     alertItems.push({
       label: 'parked unsafely',

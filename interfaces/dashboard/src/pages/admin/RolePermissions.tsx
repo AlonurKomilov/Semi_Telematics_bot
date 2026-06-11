@@ -1,211 +1,171 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, Fragment, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Shield } from 'lucide-react';
+import { Shield, Check, X, Lock, ChevronRight, ChevronDown } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useRoleView } from '../../context/RoleViewContext';
 import { useAuth } from '../../context/AuthContext';
 import { PageHeader, CardSkeleton } from '../../components/shell';
 import { toneClasses } from '../../lib/status';
 
-// Order mirrors the persona-selector dropdown so the column layout
-// matches what an Owner already sees there.  HR + Accounting were
-// added to ROLE_PERMISSIONS (capabilities/iam/permissions.py) but
-// the frontend column list had drifted; without them an Owner
-// couldn't customize per-account permissions for those two personas
-// even though the backend GET /admin/permissions/roles returned
-// them all along.
+// Column order mirrors the persona-selector dropdown.
 const ROLES = [
   'owner', 'admin', 'fleet', 'dispatcher', 'safety', 'hr', 'accounting', 'driver',
 ] as const;
+type RoleId = typeof ROLES[number];
 
 const ROLE_LABELS: Record<string, string> = {
-  owner: 'Owner',
-  admin: 'Admin',
-  fleet: 'Fleet',
-  dispatcher: 'Dispatch',
-  safety: 'Safety',
-  hr: 'HR',
-  accounting: 'Accounting',
-  driver: 'Driver',
+  owner: 'Owner', admin: 'Admin', fleet: 'Fleet', dispatcher: 'Dispatch',
+  safety: 'Safety', hr: 'HR', accounting: 'Accounting', driver: 'Driver',
 };
 
-type ScopeValue = 'all' | 'company' | 'assigned' | 'none';
+// ── Permission flag model ─────────────────────────────────────────
+// A feature is gated either by a single boolean flag (SimpleFlag) or by
+// a scoped pair (ScopedFlag: an "all" key + a "vehicle" key).  In this
+// matrix the cell is a single checkbox: checked = grant the feature at
+// the role's default scope (vehicle for drivers, all for everyone
+// else); unchecked = no access.  Whose data the role actually sees
+// (All / Company / Vehicle) is configured per-user in Team Management.
+// `indented` rows are sub-components of the feature/header above them
+// (e.g. Manage POI Layers under Live Map; the individual reports under
+// the Reports header).  A FeatureHeader is a pure label row (no
+// checkboxes) used to group sub-permissions that have no parent flag.
+interface ScopedFlag { allKey: string; vehicleKey: string; label: string; scoped: true; description?: string; indented?: boolean }
+interface SimpleFlag { key: string; label: string; scoped?: false; description?: string; indented?: boolean }
+interface FeatureHeader { header: string; description?: string }
+type PermFlag = ScopedFlag | SimpleFlag | FeatureHeader;
+interface PermGroup { title: string; flags: PermFlag[] }
 
-interface ScopedFlag {
-  allKey: string;
-  ownKey: string;
-  label: string;
-  scoped: true;
-  /** Optional one-line subtitle rendered under the label.  Use when
-   *  the flag gates more than its label suggests (an "overloaded"
-   *  flag — see can_faults, can_manage_users, can_manage_account)
-   *  so an Owner toggling it sees the full blast radius before
-   *  saving. */
-  description?: string;
-}
+const isHeader = (f: PermFlag): f is FeatureHeader => 'header' in f;
+const isScoped = (f: PermFlag): f is ScopedFlag => (f as ScopedFlag).scoped === true;
 
-interface SimpleFlag {
-  key: string;
-  label: string;
-  scoped?: false;
-  /** Optional one-line subtitle. */
-  description?: string;
-  /** Render as a sub-row visually attached to the row immediately
-   *  above — used to express admin/own pairs (admin can edit X /
-   *  owners can view their own X) without inventing a new dual-toggle
-   *  control.  The pair stays as two flags (they're genuinely
-   *  separate operations), but reads as one decision. */
-  indented?: boolean;
-}
+// ── Per-role data-scope default ───────────────────────────────────
+// This matrix only grants/revokes FEATURES.  "Whose data" (All /
+// Company / Vehicle) is configured per-user in Team Management, not
+// here.  When a scoped (*) feature is ticked we grant it at the role's
+// intrinsic default: drivers are vehicle-scoped (their assigned vehicle
+// only); every other role sees all, then narrowed per-user by the
+// Company / Vehicle assignment in Team Management.  Returns the
+// [allKey, vehicleKey] pair to write.
+const DEFAULT_SCOPED_FLAGS = (role: string): [boolean, boolean] =>
+  role === 'driver' ? [false, true] : [true, true];
 
-type PermFlag = ScopedFlag | SimpleFlag;
+// Owner escape-hatch permissions — locked-on in the Owner column so an
+// owner can never revoke their own way back from a misconfiguration.
+// Mirrors OWNER_PROTECTED_PERMS in capabilities/iam/permissions.py (the
+// backend enforces it regardless of the UI).
+const OWNER_PROTECTED = new Set([
+  'can_manage_account', 'can_manage_users', 'can_manage_billing', 'can_manage_companies',
+]);
 
-interface PermGroup {
-  title: string;
-  icon: string;
-  flags: PermFlag[];
-}
-
-const SCOPE_OPTIONS: { value: ScopeValue; label: string; active: string }[] = [
-  { value: 'none', label: 'None', active: 'bg-muted text-foreground' },
-  { value: 'assigned', label: 'Vehicle', active: 'bg-amber-600 text-white' },
-  { value: 'company', label: 'Company', active: 'bg-primary text-primary-foreground' },
-  { value: 'all', label: 'All', active: 'bg-green-600 text-white' },
-];
-
-// PERM_GROUPS — admin-facing organization of permission flags.
-//
-// Structure deliberately mirrors the dashboard sidebar so an admin can
-// jump from "I see this in the nav" to "this is where I customize it"
-// without re-learning the layout.  Until 2026-05-19 the grouping had
-// no relationship to the sidebar: "Core" was a junk drawer, "Fleet"
-// held reports, "Safety & Compliance" held cost reports, and feature-
-// group names collided with role names ("Fleet" group vs "Fleet
-// Manager" role column).  The five groups below match the five
-// sidebar sections; flag names themselves are unchanged so backend
-// enforcement keeps working.
+// PERM_GROUPS — admin-facing grouping, mirrors the sidebar sections so an
+// admin maps "what I see in the nav" → "where I grant it".  Flag names
+// are unchanged (backend enforcement keeps working).
+// Groups mirror the catalog taxonomy (tier → department): System, Shared,
+// then one block per department — the SAME buckets as the Modules page,
+// so the matrix and the modules speak one language.  Sub-permissions are
+// `indented` under their parent feature (POI Layers under Live Map, the
+// reports under the Reports header, View-Own pairs under their admin row).
 const PERM_GROUPS: PermGroup[] = [
   {
-    // Operations — day-to-day operational features (where vehicles
-    // are, where they go, what's wrong with them).  Renamed from
-    // "Fleet Operations" so the group title no longer collides with
-    // the "Fleet" role column header — the contents are cross-role
-    // (every working persona touches Live Map / Vehicles / Geofences)
-    // and the prefix was misleading admins into thinking the group
-    // gated Fleet-only access.
-    title: 'Operations',
-    icon: '🚛',
+    // System — available to everyone, account-wide.
+    title: 'System',
     flags: [
-      { allKey: 'can_location_map', ownKey: 'can_location_own', label: 'Live Map', scoped: true },
-      { allKey: 'can_vehicle_all',  ownKey: 'can_vehicle_own',  label: 'Vehicles', scoped: true },
-      { allKey: 'can_route_all',    ownKey: 'can_route_own',    label: 'Routes', scoped: true },
-      { allKey: 'can_geofence_all', ownKey: 'can_geofence_own', label: 'Geofences', scoped: true },
-      { allKey: 'can_maintenance_all', ownKey: 'can_maintenance_own', label: 'Maintenance & Work Orders', scoped: true },
-      { allKey: 'can_inspections_all', ownKey: 'can_inspections_own', label: 'PTI Inspections', scoped: true },
-      { key: 'can_manage_poi_layers', label: 'Manage POI Layers' },
-      {
-        key: 'can_rolling_stopped',
-        label: 'AI: Engine-state Lookup',
-        description: 'Lets the AI assistant answer "what\'s rolling, idling, or off right now?" — no dashboard page',
-      },
+      { allKey: 'can_alerts_all', vehicleKey: 'can_alerts_vehicle', label: 'Alerts', scoped: true },
+      { header: 'Reports', description: 'the individual report types below' },
+      { key: 'can_faults',     label: 'Faults Report', indented: true },
+      { key: 'can_health',     label: 'Health Report', indented: true },
+      { key: 'can_efficiency', label: 'Efficiency Report', indented: true },
+      { key: 'can_fuel',       label: 'Fuel Report', indented: true },
+      { allKey: 'can_risk_report_all', vehicleKey: 'can_risk_report_own', label: 'Risk Summary', scoped: true, indented: true },
+      { key: 'can_cost_reports', label: 'Cost Reports', indented: true },
+      { key: 'can_digest',       label: 'Scheduled Reports', indented: true },
+      { key: 'can_rolling_stopped', label: 'AI: Engine-state Lookup', description: 'AI-only: "what\'s rolling / idling / off right now?"' },
+      { key: 'can_ai_chat', label: 'AI Chat', description: 'AI assistant chat + fleet summary' },
     ],
   },
   {
-    // Monitoring & Compliance — driver scoring, safety events, alerts.
-    // Renamed from "Safety & Compliance" so the title no longer
-    // collides with the "Safety" role column header.  The group's
-    // contents are about *ongoing monitoring* (scorecards trend over
-    // time; safety events are real-time incidents; alerts are
-    // notifications about anomalies) — "Monitoring & Compliance"
-    // captures that without using a role name.
-    title: 'Monitoring & Compliance',
-    icon: '🛡️',
+    // Shared — features several departments use.
+    title: 'Shared',
     flags: [
-      { allKey: 'can_scorecard_all', ownKey: 'can_scorecard_own', label: 'Driver Scorecards', scoped: true },
-      { allKey: 'can_events_all',    ownKey: 'can_events_own',    label: 'Safety Events', scoped: true },
-      {
-        allKey: 'can_alerts_all', ownKey: 'can_alerts_own',
-        label: 'Alerts',
-        scoped: true,
-        description: 'Also gates the Parking page (unsafe-parking events are gated through the alerts flag)',
-      },
+      { allKey: 'can_location_map', vehicleKey: 'can_location_vehicle', label: 'Live Map', scoped: true },
+      { key: 'can_manage_poi_layers', label: 'Manage POI Layers', indented: true },
+      { allKey: 'can_vehicle_all',  vehicleKey: 'can_vehicle_vehicle',  label: 'Vehicles', scoped: true },
+      { allKey: 'can_geofence_all', vehicleKey: 'can_geofence_vehicle', label: 'Geofences', scoped: true },
+      { key: 'can_manage_driver_docs', label: 'Drivers', description: 'Driver list + document management' },
+      { key: 'can_driver_docs_own',    label: 'View Own Documents', indented: true },
+      { allKey: 'can_scorecard_all', vehicleKey: 'can_scorecard_vehicle', label: 'Driver Scorecards', scoped: true, description: 'Scorecard Rules (the scoring config) is this feature’s admin component' },
     ],
   },
   {
-    // Reports — read-only aggregations from /reports/*.  Previously
-    // bundled with Costs in a single "Reports & Costs" group, but the
-    // two have different route trees and different audiences (Owner
-    // reads reports; Accounting manages costs).
-    title: 'Reports',
-    icon: '📊',
+    title: 'Fleet',
     flags: [
-      {
-        key: 'can_faults',
-        label: 'Faults Report',
-        description: 'Also gates Cameras page + AI Chat + AI Summary',
-      },
-      { key: 'can_health',     label: 'Health Report' },
-      { key: 'can_efficiency', label: 'Efficiency Report' },
-      { key: 'can_fuel',       label: 'Fuel Report' },
-      { allKey: 'can_risk_report_all', ownKey: 'can_risk_report_own', label: 'Risk Summary Report', scoped: true },
-      {
-        key: 'can_digest',
-        label: 'Scheduled Reports',
-        description: 'Lets the user schedule recurring report deliveries (Telegram PDF) at a chosen frequency + local hour',
-      },
+      { allKey: 'can_maintenance_all', vehicleKey: 'can_maintenance_vehicle', label: 'Maintenance', scoped: true },
+      { allKey: 'can_work_orders_all', vehicleKey: 'can_work_orders_vehicle', label: 'Work Orders', scoped: true },
+      { allKey: 'can_inspections_all', vehicleKey: 'can_inspections_vehicle', label: 'PTI Inspections', scoped: true },
     ],
   },
   {
-    // Costs — cost-management pages.  Routed under /costs/* in the
-    // dashboard sidebar; gating belongs to Accounting/Owner audience.
-    title: 'Costs',
-    icon: '💰',
+    title: 'Dispatch',
     flags: [
-      { key: 'can_fuel_cost',     label: 'Fuel Costs' },
-      { key: 'can_cost_per_mile', label: 'Cost per Mile' },
-      { key: 'can_cost_reports',  label: 'Cost Reports' },
+      { allKey: 'can_route_all', vehicleKey: 'can_route_vehicle', label: 'Routes', scoped: true },
     ],
   },
   {
-    // Workforce — driver-facing identity and HR-adjacent features.
-    // Absorbs the previous standalone "Coaching" and "Payroll" groups
-    // because they share a Workforce subject area in the dashboard
-    // sidebar (/workforce/drivers, /coaching, /payroll).
-    title: 'Workforce',
-    icon: '🪪',
+    title: 'Safety',
     flags: [
-      { key: 'can_manage_driver_docs', label: 'Manage Driver Documents' },
-      { key: 'can_driver_docs_own',    label: 'View Own Driver Documents',         indented: true },
-      { key: 'can_coaching_admin',     label: 'Manage Coaching Rules & Assignments' },
-      { key: 'can_coaching_view_own',  label: 'View & Acknowledge Own Coaching',   indented: true },
-      { key: 'can_payroll_admin',      label: 'Manage Bonus Rules & Payroll Runs' },
-      { key: 'can_payroll_view_own',   label: 'View Own Paystubs',                 indented: true },
+      { allKey: 'can_events_all', vehicleKey: 'can_events_vehicle', label: 'Safety Events', scoped: true },
+      { key: 'can_cameras', label: 'Cameras', description: 'Dashcam footage' },
+      { allKey: 'can_parking_all', vehicleKey: 'can_parking_vehicle', label: 'Parking', scoped: true, description: 'Unsafe-parking events' },
     ],
   },
   {
-    // Administration — account-level controls.  Renamed from "Admin"
-    // to avoid collision with the Admin ROLE column header at the top
-    // of the page.
-    title: 'Administration',
-    icon: '👥',
+    title: 'HR',
     flags: [
-      {
-        key: 'can_manage_account',
-        label: 'Account Settings',
-        description: 'Also gates Role Permissions, Storage, Working Hours, Scorecard Rules',
-      },
-      {
-        key: 'can_manage_users',
-        label: 'Manage Users',
-        description: 'Also gates the Audit Log',
-      },
+      { key: 'can_coaching_admin',    label: 'Coaching' },
+      { key: 'can_coaching_view_own', label: 'View Own Coaching', indented: true },
+    ],
+  },
+  {
+    title: 'Accounting',
+    flags: [
+      { header: 'Costs', description: 'fuel spend + cost-per-mile components' },
+      { key: 'can_fuel_cost',     label: 'Fuel Costs', indented: true },
+      { key: 'can_cost_per_mile', label: 'Cost per Mile', indented: true },
+      { key: 'can_payroll_admin',    label: 'Payroll' },
+      { key: 'can_payroll_view_own', label: 'View Own Paystubs', indented: true },
+      { key: 'can_manage_billing',   label: 'Billing' },
+    ],
+  },
+  {
+    title: 'Account admin',
+    flags: [
+      { key: 'can_manage_account',   label: 'Account Settings', description: 'Also gates Permissions, Modules, Integrations, Storage, Working Hours, Scorecard Rules' },
+      { key: 'can_manage_users',     label: 'Manage Users', description: 'Also gates the Audit Log' },
       { key: 'can_manage_companies', label: 'Manage Companies' },
       { key: 'can_invite',           label: 'Send Invites' },
-      { key: 'can_manage_billing',   label: 'Manage Billing & Subscription' },
     ],
   },
 ];
+
+// A parent feature + its indented sub-permissions, so the matrix can
+// collapse the detail (POI Layers under Live Map, the reports under the
+// Reports header, View-Own pairs under their admin row).
+interface Block { parent: PermFlag; children: PermFlag[] }
+const blockKey = (f: PermFlag): string => (isHeader(f) ? f.header : f.label);
+function toBlocks(flags: PermFlag[]): Block[] {
+  const blocks: Block[] = [];
+  for (const f of flags) {
+    if (!isHeader(f) && f.indented && blocks.length) blocks[blocks.length - 1].children.push(f);
+    else blocks.push({ parent: f, children: [] });
+  }
+  return blocks;
+}
+const GROUP_BLOCKS = PERM_GROUPS.map((g) => ({ title: g.title, blocks: toBlocks(g.flags) }));
+// Parents that have sub-rows — collapsed by default (only features show).
+const COLLAPSIBLE_KEYS: string[] = GROUP_BLOCKS.flatMap((g) =>
+  g.blocks.filter((b) => b.children.length > 0).map((b) => blockKey(b.parent)),
+);
 
 interface PermsData {
   current: Record<string, Record<string, boolean>>;
@@ -213,152 +173,118 @@ interface PermsData {
   fields: string[];
 }
 
-interface CompanyInfo {
-  id: number;
-  code: string;
-  display_name: string;
-}
+// role -> flag -> pending boolean
+type Edits = Record<string, Record<string, boolean>>;
 
-interface OverridesData {
-  companies: CompanyInfo[];
-  overrides: Record<string, string[]>;   // company_id -> roles[]
-  override_perms: Record<string, Record<string, boolean>>; // "cid:role" -> perms
-}
+interface Change { role: RoleId; label: string; from: string; to: string; granted: boolean }
 
 export default function RolePermissions() {
   const { t } = useTranslation();
   const { refreshPermissions } = useRoleView();
   const { refreshUser } = useAuth();
   const qc = useQueryClient();
-  const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [success, setSuccess] = useState('');
-  const [selectedRole, setSelectedRole] = useState('admin');
-  const [selectedCompany, setSelectedCompany] = useState<number | null>(null);
-  const [edits, setEdits] = useState<Record<string, boolean>>({});
-  const [resetAllConfirm, setResetAllConfirm] = useState(false);
-  const [deleteOverrideConfirm, setDeleteOverrideConfirm] = useState(false);
 
-  const { data, isLoading: rolesLoading, error: rolesErr } = useQuery({
+  const [edits, setEdits] = useState<Edits>({});
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  // Sub-permissions collapsed by default — show only the top-level
+  // features; expand a feature to reveal/edit its sub-rows.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(COLLAPSIBLE_KEYS));
+  const toggleCollapse = (key: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  const allExpanded = collapsed.size === 0;
+
+  const { data, isLoading, error: qErr } = useQuery({
     queryKey: ['perms-roles'],
     queryFn: () => apiJSON<PermsData>('/admin/permissions/roles'),
   });
-  const { data: overridesData } = useQuery({
-    queryKey: ['perms-overrides'],
-    queryFn: () => apiJSON<OverridesData>('/admin/permissions/roles/overrides'),
-  });
-  const loading = rolesLoading;
-  const fetchError = rolesErr instanceof Error ? rolesErr.message : '';
-  const load = () =>
-    Promise.all([
-      qc.invalidateQueries({ queryKey: ['perms-roles'] }),
-      qc.invalidateQueries({ queryKey: ['perms-overrides'] }),
-    ]);
 
-  const companies = overridesData?.companies ?? [];
-  const hasCompanies = companies.length > 0;
+  // Effective value of a single flag for a role (pending edit wins).
+  const flagVal = (role: string, key: string): boolean => {
+    const e = edits[role]?.[key];
+    return e !== undefined ? e : !!data?.current[role]?.[key];
+  };
+  const curFlagVal = (role: string, key: string): boolean => !!data?.current[role]?.[key];
 
-  // Does the currently selected company+role have a DB override?
-  const hasCompanyOverride = useMemo(() => {
-    if (selectedCompany === null || !overridesData) return false;
-    const roles = overridesData.overrides[String(selectedCompany)] ?? [];
-    return roles.includes(selectedRole);
-  }, [selectedCompany, selectedRole, overridesData]);
+  // A feature is "granted" if any of its flags is on (scoped = all || own).
+  const grantedFor = (role: string, f: PermFlag, valFn: (r: string, k: string) => boolean): boolean =>
+    isHeader(f) ? false : isScoped(f) ? valFn(role, f.allKey) || valFn(role, f.vehicleKey) : valFn(role, f.key);
 
-  // Base permissions for the selected role (account-wide from /roles endpoint)
-  const accountWidePerms = data?.current[selectedRole] ?? {};
+  const isGranted = (role: string, f: PermFlag) => grantedFor(role, f, flagVal);
+  // Owner cells for the escape-hatch perms are locked on (never editable).
+  const ownerLocked = (role: string, f: PermFlag) =>
+    role === 'owner' && !isHeader(f) && !isScoped(f) && OWNER_PROTECTED.has(f.key);
 
-  // Resolve current permissions: company override if it exists, else account-wide
-  const basePerms = useMemo(() => {
-    if (selectedCompany !== null && hasCompanyOverride && overridesData) {
-      const key = `${selectedCompany}:${selectedRole}`;
-      return overridesData.override_perms[key] ?? { ...accountWidePerms };
-    }
-    return { ...accountWidePerms };
-  }, [selectedCompany, selectedRole, hasCompanyOverride, overridesData, accountWidePerms]);
-
-  // Current permissions with local edits applied
-  const currentPerms = useMemo(() => {
-    return { ...basePerms, ...edits };
-  }, [basePerms, edits]);
-
-  const defaultPerms = data?.defaults[selectedRole] ?? {};
-
-  // Check if there are unsaved changes
-  const hasChanges = useMemo(() => {
-    return Object.entries(edits).some(([k, v]) => basePerms[k] !== v);
-  }, [basePerms, edits]);
-
-  // Check if account-wide current differs from factory defaults
-  const isCustomized = useMemo(() => {
-    if (!data) return false;
-    const cur = data.current[selectedRole] ?? {};
-    const def = data.defaults[selectedRole] ?? {};
-    return Object.keys(def).some((k) => cur[k] !== def[k]);
-  }, [data, selectedRole]);
-
-  function handleRoleChange(role: string) {
-    setSelectedRole(role);
-    setEdits({});
-    setSuccess('');
-    setDeleteOverrideConfirm(false);
-  }
-
-  function handleCompanyChange(companyId: number | null) {
-    setSelectedCompany(companyId);
-    setEdits({});
-    setSuccess('');
-    setDeleteOverrideConfirm(false);
-  }
-
-  function toggleFlag(key: string) {
-    setEdits((prev) => ({ ...prev, [key]: !currentPerms[key] }));
+  function toggle(role: RoleId, f: PermFlag) {
+    if (isHeader(f) || ownerLocked(role, f)) return;
+    const granted = isGranted(role, f);
+    setEdits((prev) => {
+      const roleEdits = { ...(prev[role] ?? {}) };
+      if (isScoped(f)) {
+        // Grant at the role's default scope; revoke = None (both off).
+        // Whose data is narrowed per-user in Team Management.
+        const [a, o] = granted ? [false, false] : DEFAULT_SCOPED_FLAGS(role);
+        roleEdits[f.allKey] = a; roleEdits[f.vehicleKey] = o;
+      } else {
+        roleEdits[f.key] = !granted;
+      }
+      return { ...prev, [role]: roleEdits };
+    });
     setSuccess('');
   }
 
-  function getScope(allKey: string, ownKey: string): ScopeValue {
-    const a = !!currentPerms[allKey];
-    const o = !!currentPerms[ownKey];
-    if (a && o) return 'all';
-    if (a) return 'company';
-    if (o) return 'assigned';
-    return 'none';
-  }
+  // Human label of a cell's state — granted / no-access.  Drives both
+  // the change diff and the confirm dialog.
+  const cellState = (role: string, f: PermFlag, valFn: (r: string, k: string) => boolean): string => {
+    if (isHeader(f)) return '';
+    return grantedFor(role, f, valFn) ? 'Granted' : 'No access';
+  };
 
-  function setScope(allKey: string, ownKey: string, scope: ScopeValue) {
-    const map: Record<ScopeValue, [boolean, boolean]> = {
-      all: [true, true], company: [true, false], assigned: [false, true], none: [false, false],
-    };
-    const [a, o] = map[scope];
-    setEdits((prev) => ({ ...prev, [allKey]: a, [ownKey]: o }));
-    setSuccess('');
-  }
+  // Human-readable list of pending changes (drives the confirm dialog).
+  const changes = useMemo<Change[]>(() => {
+    if (!data) return [];
+    const out: Change[] = [];
+    for (const role of ROLES)
+      for (const g of PERM_GROUPS)
+        for (const f of g.flags) {
+          if (isHeader(f)) continue;
+          const before = cellState(role, f, curFlagVal);
+          const after = cellState(role, f, flagVal);
+          if (before !== after) out.push({ role, label: f.label, from: before, to: after, granted: after !== 'No access' });
+        }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, edits]);
 
-  async function handleSave() {
-    if (!hasChanges) return;
-    setSaving(true);
-    setError('');
-    setSuccess('');
+  // Only the flags that actually differ, grouped per role, for the API.
+  const changedByRole = useMemo(() => {
+    const out: Record<string, Record<string, boolean>> = {};
+    for (const [role, roleEdits] of Object.entries(edits))
+      for (const [k, v] of Object.entries(roleEdits))
+        if (curFlagVal(role, k) !== v) (out[role] ??= {})[k] = v;
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edits, data]);
+
+  const totalPending = changes.length;
+
+  async function applyChanges() {
+    setSaving(true); setError('');
     try {
-      await apiJSON('/admin/permissions/roles', {
-        method: 'PUT',
-        body: {
-          role: selectedRole,
-          permissions: edits,
-          ...(selectedCompany !== null ? { company_id: selectedCompany } : {}),
-        },
-      });
+      for (const [role, perms] of Object.entries(changedByRole)) {
+        await apiJSON('/admin/permissions/roles', { method: 'PUT', body: { role, permissions: perms } });
+      }
       setEdits({});
-      const label = selectedCompany !== null
-        ? `${ROLE_LABELS[selectedRole]} (${companies.find(c => c.id === selectedCompany)?.code ?? ''}) saved`
-        : `${ROLE_LABELS[selectedRole]} saved`;
-      setSuccess(label);
-      await load();
+      setConfirmOpen(false);
+      setSuccess(`Saved ${totalPending} change${totalPending === 1 ? '' : 's'}.`);
+      await qc.invalidateQueries({ queryKey: ['perms-roles'] });
       refreshPermissions();
-      // Force the saving admin's OWN /user/me to refresh so their
-      // sidebar/route guards reflect the change immediately, without
-      // waiting for the next tab-focus event.  Other already-logged-in
-      // users on this account pick up the change on their next focus.
       try { await refreshUser(); } catch { /* best-effort */ }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save');
@@ -367,341 +293,202 @@ export default function RolePermissions() {
     }
   }
 
-  async function handleReset() {
-    setSaving(true);
-    setError('');
-    setSuccess('');
-    try {
-      await apiJSON('/admin/permissions/roles/reset', {
-        method: 'POST',
-        body: {
-          role: selectedRole,
-          permissions: {},
-          ...(selectedCompany !== null ? { company_id: selectedCompany } : {}),
-        },
-      });
-      setEdits({});
-      setSuccess(`${ROLE_LABELS[selectedRole]} reset to defaults`);
-      await load();
-      refreshPermissions();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to reset');
-    } finally {
-      setSaving(false);
+  const cellChanged = (role: RoleId, f: PermFlag) => cellState(role, f, flagVal) !== cellState(role, f, curFlagVal);
+
+  // Render one matrix row.  `collapse` adds an expand/collapse chevron to
+  // a parent feature that has sub-rows.
+  const renderRow = (f: PermFlag, collapse?: { isCollapsed: boolean; onToggle: () => void }): ReactNode => {
+    const chevron = collapse ? (
+      <button type="button" onClick={collapse.onToggle} className="text-muted-foreground hover:text-foreground shrink-0 -ml-1"
+        aria-label={collapse.isCollapsed ? 'Expand' : 'Collapse'}>
+        {collapse.isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+      </button>
+    ) : null;
+
+    if (isHeader(f)) {
+      return (
+        <tr className="border-t border-border">
+          <td colSpan={1 + ROLES.length} className="px-3 pt-2 pb-1 sticky left-0 bg-card z-10">
+            <div className="flex items-center gap-1">
+              {chevron}
+              <span className="text-xs font-semibold">{f.header}</span>
+              {f.description && <span className="text-2xs text-muted-foreground ml-2">{f.description}</span>}
+            </div>
+          </td>
+        </tr>
+      );
     }
-  }
-
-  async function handleDeleteOverride() {
-    if (selectedCompany === null) return;
-    setSaving(true);
-    setError('');
-    setSuccess('');
-    try {
-      await apiJSON('/admin/permissions/roles/delete-override', {
-        method: 'POST',
-        body: { role: selectedRole, company_id: selectedCompany },
-      });
-      setEdits({});
-      setDeleteOverrideConfirm(false);
-      const code = companies.find(c => c.id === selectedCompany)?.code ?? '';
-      setSuccess(`${ROLE_LABELS[selectedRole]} override for ${code} removed`);
-      await load();
-      refreshPermissions();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to remove override');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleResetAll() {
-    setSaving(true);
-    setError('');
-    setSuccess('');
-    try {
-      await apiJSON('/admin/permissions/roles/reset-all', { method: 'POST' });
-      setEdits({});
-      setResetAllConfirm(false);
-      setSuccess('All roles reset to factory defaults');
-      await load();
-      refreshPermissions();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to reset');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // Count company overrides for a role
-  function overrideCount(role: string): number {
-    if (!overridesData) return 0;
-    return Object.values(overridesData.overrides)
-      .filter(roles => roles.includes(role)).length;
-  }
-
-  if (loading) {
     return (
-      <div>
-        <PageHeader
-          icon={Shield}
-          title={t('pages.role_perms_title')}
-          description={t('pages.role_perms_desc_short')}
-        />
-        <CardSkeleton height="h-96" />
-      </div>
+      <tr className="border-t border-border hover:bg-muted/20">
+        <td className={`py-1.5 sticky left-0 bg-card z-10 ${f.indented ? 'pl-7 pr-3' : 'px-3'}`}>
+          <div className="flex items-center gap-1.5">
+            {chevron}
+            <span className={f.indented ? 'text-muted-foreground' : ''}>{f.label}</span>
+            {isScoped(f) && <span className="text-2xs text-muted-foreground" title="Scoped feature — checkbox = full access">*</span>}
+          </div>
+          {f.description && <div className="text-2xs text-muted-foreground/70 mt-0.5">{f.description}</div>}
+        </td>
+        {ROLES.map((role) => {
+          const on = isGranted(role, f);
+          const locked = ownerLocked(role, f);
+          const changed = !locked && cellChanged(role, f);
+          return (
+            <td key={role} className={`text-center px-2 py-1.5 ${changed ? 'bg-primary/10' : ''}`}>
+              <button
+                onClick={() => toggle(role, f)}
+                disabled={locked}
+                aria-pressed={on}
+                title={locked
+                  ? `Owner always keeps "${f.label}" — prevents lockout`
+                  : `${ROLE_LABELS[role]} · ${f.label}: ${on ? 'granted' : 'no access'}`}
+                className={`inline-flex items-center justify-center w-5 h-5 rounded border transition ${
+                  locked
+                    ? 'bg-primary/40 border-primary/40 text-primary-foreground cursor-not-allowed'
+                    : on
+                      ? 'bg-primary border-primary text-primary-foreground'
+                      : 'bg-transparent border-border text-transparent hover:border-muted-foreground'
+                }`}
+              >
+                {locked ? <Lock size={12} strokeWidth={2.5} /> : <Check size={14} strokeWidth={3} />}
+              </button>
+            </td>
+          );
+        })}
+      </tr>
     );
-  }
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="pb-20">
       <PageHeader
         icon={Shield}
         title={t('pages.role_perms_title')}
-        description={t('pages.role_perms_desc_long')}
-        actions={
-          !resetAllConfirm ? (
-          <button
-            onClick={() => setResetAllConfirm(true)}
-            className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-border hover:border-border/80 rounded-md transition"
-          >
-            Reset all roles
-          </button>
-        ) : (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-destructive">Reset all to defaults?</span>
-            <button
-              onClick={handleResetAll}
-              disabled={saving}
-              className="px-3 py-1.5 bg-destructive hover:bg-destructive/90 disabled:opacity-50 rounded text-xs font-medium text-destructive-foreground transition"
-            >
-              Confirm
-            </button>
-            <button
-              onClick={() => setResetAllConfirm(false)}
-              className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition"
-            >
-              Cancel
-            </button>
-          </div>
-        )
-        }
+        description="What each role can DO. Tick a cell, review the summary, then Save — changes apply immediately. (Turn whole departments on/off in Modules; set whose data each person sees — All / Company / Vehicle — per-user in Team Management.)"
       />
 
-      {(error || fetchError) && <p className="text-destructive text-sm">{error || fetchError}</p>}
-      {success && <p className="text-ok text-sm">{success}</p>}
+      {error && <div className="mb-3"><p className={`text-sm rounded-md px-3 py-2 ${toneClasses('danger')}`}>{error}</p></div>}
+      {success && <p className="text-ok text-sm mb-3">{success}</p>}
 
-      {/* Company selector */}
-      {hasCompanies && (
-        <div className="flex items-center gap-3">
-          <label className="text-sm text-muted-foreground">Company:</label>
-          <select
-            value={selectedCompany ?? ''}
-            onChange={(e) => handleCompanyChange(e.target.value ? Number(e.target.value) : null)}
-            className="bg-card border border-border rounded-lg px-3 py-2 text-sm focus:border-ring focus:outline-none"
-          >
-            <option value="">All Companies (account-wide)</option>
-            {companies.map((c) => {
-              const companyOverrides = overridesData?.overrides[String(c.id)] ?? [];
-              const badge = companyOverrides.length > 0
-                ? ` (${companyOverrides.length} override${companyOverrides.length > 1 ? 's' : ''})`
-                : '';
-              return (
-                <option key={c.id} value={c.id}>
-                  {c.code}{c.display_name ? ` — ${c.display_name}` : ''}{badge}
-                </option>
-              );
-            })}
-          </select>
-          {selectedCompany !== null && (
-            <span className={`text-xs px-2 py-0.5 rounded border ${
-              hasCompanyOverride
-                ? toneClasses('warn')
-                : toneClasses('neutral')
-            }`}>
-              {hasCompanyOverride ? 'Company Override' : 'Inherited'}
-            </span>
-          )}
+      {isLoading || !data ? (
+        <CardSkeleton />
+      ) : qErr ? (
+        <p className="text-danger text-sm">{qErr instanceof Error ? qErr.message : 'Failed to load'}</p>
+      ) : (
+        <>
+          <div className="flex justify-end mb-2">
+            <button
+              type="button"
+              onClick={() => setCollapsed(allExpanded ? new Set(COLLAPSIBLE_KEYS) : new Set())}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              {allExpanded ? 'Collapse all' : 'Expand all'}
+            </button>
+          </div>
+          <div className="rounded-lg border border-border overflow-x-auto bg-card">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-muted/40">
+                  <th className="text-left font-semibold px-3 py-2 sticky left-0 bg-muted/40 z-10 min-w-[200px]">Feature</th>
+                  {ROLES.map((r) => (
+                    <th key={r} className="px-2 py-2 text-center font-semibold text-xs whitespace-nowrap">{ROLE_LABELS[r]}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {GROUP_BLOCKS.map((group) => (
+                  <FragmentGroup key={group.title} title={group.title}>
+                    {group.blocks.map((block, bi) => {
+                      const pk = blockKey(block.parent);
+                      const hasChildren = block.children.length > 0;
+                      const isColl = hasChildren && collapsed.has(pk);
+                      return (
+                        <Fragment key={`${group.title}-${pk}-${bi}`}>
+                          {renderRow(block.parent, hasChildren ? { isCollapsed: isColl, onToggle: () => toggleCollapse(pk) } : undefined)}
+                          {hasChildren && !isColl && block.children.map((c, ci) => (
+                            <Fragment key={`${pk}-c-${ci}`}>{renderRow(c)}</Fragment>
+                          ))}
+                        </Fragment>
+                      );
+                    })}
+                  </FragmentGroup>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* Footnote */}
+      {!isLoading && data && (
+        <p className="text-2xs text-muted-foreground mt-2">
+          <span className="font-semibold">*</span> scoped feature — ticking grants the role access to the feature. <span className="font-medium text-foreground/80">Whose data</span> they see (All / Company / Vehicle) is set per-user in <span className="font-medium text-foreground/80">Team Management</span> (Company Access + Vehicle Assignments).
+        </p>
+      )}
+
+      {/* Sticky save bar — appears only when there are pending changes. */}
+      {totalPending > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-popover border-t border-border px-4 py-3 flex items-center justify-between gap-4 shadow-lg">
+          <span className="text-sm text-muted-foreground">
+            {totalPending} pending change{totalPending === 1 ? '' : 's'}
+          </span>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setEdits({})} className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">Discard</button>
+            <button onClick={() => setConfirmOpen(true)} className="px-4 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition">
+              Review &amp; Save
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Role selector tabs */}
-      <div className="flex gap-1 bg-card border border-border rounded-xl p-1">
-        {ROLES.map((role) => {
-          const oc = overrideCount(role);
-          return (
-            <button
-              key={role}
-              onClick={() => handleRoleChange(role)}
-              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition relative ${
-                selectedRole === role
-                  ? 'bg-muted/80 text-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {ROLE_LABELS[role]}
-              {oc > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-warn text-background text-3xs rounded-full flex items-center justify-center font-bold">
-                  {oc}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Permission groups */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {PERM_GROUPS.map((group) => (
-          <section
-            key={group.title}
-            className="bg-card border border-border rounded-xl p-5"
-          >
-            <h3 className="font-semibold mb-3 flex items-center gap-2">
-              <span>{group.icon}</span>
-              {group.title}
-            </h3>
-            <div className="space-y-2">
-              {group.flags.map((flag) => {
-                if (flag.scoped) {
-                  const scope = getScope(flag.allKey, flag.ownKey);
-                  const resolveScope = (a: boolean, o: boolean): ScopeValue => {
-                    if (a && o) return 'all'; if (a) return 'company'; if (o) return 'assigned'; return 'none';
-                  };
-                  const defScope = resolveScope(!!defaultPerms[flag.allKey], !!defaultPerms[flag.ownKey]);
-                  const acctScope = resolveScope(!!accountWidePerms[flag.allKey], !!accountWidePerms[flag.ownKey]);
-                  const isChanged = flag.allKey in edits || flag.ownKey in edits;
-                  return (
-                    <div
-                      key={flag.allKey}
-                      className="flex items-center justify-between py-1 px-2 rounded hover:bg-muted/50"
-                    >
-                      <div className="flex flex-col min-w-0 pr-3">
-                        <span className="text-sm flex items-center gap-2">
-                          {flag.label}
-                          {selectedCompany === null && scope !== defScope && !isChanged && (
-                            <span className="text-3xs text-warn uppercase tracking-wider">custom</span>
-                          )}
-                          {selectedCompany !== null && scope !== acctScope && !isChanged && (
-                            <span className="text-3xs text-info uppercase tracking-wider">override</span>
-                          )}
-                        </span>
-                        {flag.description && (
-                          <span className="text-2xs text-muted-foreground mt-0.5">
-                            {flag.description}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex rounded-lg overflow-hidden border border-border">
-                        {SCOPE_OPTIONS.map((opt) => (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => setScope(flag.allKey, flag.ownKey, opt.value)}
-                            className={`px-2.5 py-1 text-xs font-medium transition ${
-                              scope === opt.value ? opt.active : 'bg-muted text-muted-foreground hover:text-foreground/80'
-                            }`}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                }
-                const enabled = !!currentPerms[flag.key];
-                const isDefault = defaultPerms[flag.key];
-                const isChanged = flag.key in edits;
-                const differsFromAccountWide = selectedCompany !== null && enabled !== !!accountWidePerms[flag.key];
-                return (
-                  <label
-                    key={flag.key}
-                    className={`flex items-center justify-between py-1 px-2 rounded hover:bg-muted/50 cursor-pointer group ${
-                      flag.indented ? 'ml-5 border-l-2 border-border/40 pl-3 -mt-1' : ''
-                    }`}
-                  >
-                    <div className="flex flex-col min-w-0 pr-3">
-                      <span className="text-sm flex items-center gap-2">
-                        {flag.label}
-                        {selectedCompany === null && enabled !== isDefault && !isChanged && (
-                          <span className="text-3xs text-warn uppercase tracking-wider">custom</span>
-                        )}
-                        {selectedCompany !== null && differsFromAccountWide && !isChanged && (
-                          <span className="text-3xs text-info uppercase tracking-wider">override</span>
-                        )}
-                      </span>
-                      {flag.description && (
-                        <span className="text-2xs text-muted-foreground mt-0.5">
-                          {flag.description}
-                        </span>
-                      )}
-                    </div>
-                    <div className="relative">
-                      <input
-                        type="checkbox"
-                        className="sr-only peer"
-                        checked={enabled}
-                        onChange={() => toggleFlag(flag.key)}
-                      />
-                      <div className="w-9 h-5 bg-muted rounded-full peer-checked:bg-primary transition-colors" />
-                      <div className="absolute top-0.5 left-0.5 w-4 h-4 bg-background rounded-full shadow peer-checked:translate-x-4 transition-transform" />
-                    </div>
-                  </label>
-                );
-              })}
+      {/* Confirmation — every change spelled out before it powers on. */}
+      {confirmOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => !saving && setConfirmOpen(false)}>
+          <div className="bg-card rounded-xl border border-border w-full max-w-md max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-border">
+              <h2 className="text-lg font-semibold">Confirm permission changes</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">{totalPending} change{totalPending === 1 ? '' : 's'} will take effect immediately.</p>
             </div>
-          </section>
-        ))}
-      </div>
-
-      {/* Action bar */}
-      <div className="flex items-center justify-between bg-card border border-border rounded-xl p-4">
-        <div className="flex items-center gap-3">
-          {selectedCompany === null && isCustomized && (
-            <button
-              onClick={handleReset}
-              disabled={saving}
-              className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border hover:border-border/80 rounded-lg transition disabled:opacity-50"
-            >
-              Reset {ROLE_LABELS[selectedRole]} to Defaults
-            </button>
-          )}
-          {selectedCompany !== null && hasCompanyOverride && (
-            !deleteOverrideConfirm ? (
-              <button
-                onClick={() => setDeleteOverrideConfirm(true)}
-                disabled={saving}
-                className="px-4 py-2 text-sm text-destructive hover:text-destructive/80 border border-destructive/40 hover:border-destructive rounded-lg transition disabled:opacity-50"
-              >
-                Remove Override
+            <div className="px-5 py-3 overflow-y-auto space-y-3">
+              {ROLES.filter((r) => changes.some((c) => c.role === r)).map((role) => (
+                <div key={role}>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">{ROLE_LABELS[role]}</div>
+                  <ul className="space-y-0.5">
+                    {changes.filter((c) => c.role === role).map((c) => (
+                      <li key={c.label} className="flex items-center gap-2 text-sm">
+                        {c.granted
+                          ? <Check size={14} className="text-ok shrink-0" />
+                          : <X size={14} className="text-danger shrink-0" />}
+                        <span>{c.label}</span>
+                        <span className="text-2xs text-muted-foreground">{c.from} → {c.to}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            <div className="px-5 py-4 border-t border-border flex justify-end gap-2">
+              <button onClick={() => setConfirmOpen(false)} disabled={saving} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">Cancel</button>
+              <button onClick={applyChanges} disabled={saving} className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition disabled:opacity-50">
+                {saving ? 'Saving…' : 'Confirm & apply'}
               </button>
-            ) : (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-destructive">Remove company override?</span>
-                <button
-                  onClick={handleDeleteOverride}
-                  disabled={saving}
-                  className="px-3 py-1.5 bg-destructive hover:bg-destructive/90 disabled:opacity-50 rounded text-xs font-medium text-destructive-foreground transition"
-                >
-                  Confirm
-                </button>
-                <button
-                  onClick={() => setDeleteOverrideConfirm(false)}
-                  className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition"
-                >
-                  Cancel
-                </button>
-              </div>
-            )
-          )}
+            </div>
+          </div>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={!hasChanges || saving}
-          className="px-6 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-lg text-sm font-medium transition"
-        >
-          {saving ? 'Saving...' : selectedCompany !== null ? 'Save Company Override' : 'Save Changes'}
-        </button>
-      </div>
+      )}
     </div>
+  );
+}
+
+// A permission group: a header row spanning all columns + its feature rows.
+function FragmentGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <>
+      <tr className="bg-muted/30">
+        <td colSpan={1 + ROLES.length} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {title}
+        </td>
+      </tr>
+      {children}
+    </>
   );
 }

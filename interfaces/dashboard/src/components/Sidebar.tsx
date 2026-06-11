@@ -5,15 +5,12 @@ import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useRoleView } from '../context/RoleViewContext';
 import { PersonaSelector } from './PersonaSelector';
-import { defaultNav, type NavGroup, type NavItem } from '../shells/nav/defaultNav';
+import { generateNav, type NavItem } from '../shells/nav/generateNav';
 
-// Sidebar is now presentational: it renders whatever ``navConfig`` is
-// passed in.  Each shell (DefaultShell, FleetShell, DispatchShell,
-// SafetyShell) supplies its own nav config from ``shells/nav/*Nav.ts``.
-// Default to ``defaultNav`` for callers that don't specify one.
-interface SidebarProps {
-  navConfig?: NavGroup[];
-}
+// Sidebar generates its own nav from the feature catalog, keyed off the
+// active persona (RoleViewContext.activeView).  No per-shell nav config:
+// every shell just renders <Sidebar /> and the catalog decides what each
+// persona sees (catalog ∩ enabled modules ∩ permissions).
 
 // Persist the collapsed preference so the user's choice survives across
 // page loads.  Stored as ``'1'`` / ``'0'`` so a simple string check
@@ -29,7 +26,7 @@ function readCollapsed(): boolean {
   }
 }
 
-export default function Sidebar({ navConfig = defaultNav }: SidebarProps) {
+export default function Sidebar() {
   const { user } = useAuth();
   const { t } = useTranslation();
   // Local state seeded from localStorage; persisted on every toggle.
@@ -49,20 +46,18 @@ export default function Sidebar({ navConfig = defaultNav }: SidebarProps) {
   // Admin previewing as another role, it uses that role's perm set so
   // the sidebar reflects what the previewed persona would see — no
   // bouncing back to "but they're Owner so show everything".
-  const { viewHasAny } = useRoleView();
+  const { viewHasAny, activeView } = useRoleView();
 
-  const isFeatureVisible = (item: NavItem) => {
-    if (item.path === '/payroll') return user?.payroll_enabled !== false;
-    if (item.path === '/coaching') return user?.coaching_enabled !== false;
-    return true;
-  };
+  // The generated nav already applies module + permission filtering; the
+  // only thing left is the two account kill-switches (payroll / coaching)
+  // which are separate from the department modules.
+  const navConfig = generateNav(activeView, viewHasAny, user?.enabled_modules);
 
   const filterItems = (items: NavItem[]) =>
     items.filter((item) => {
-      if (!isFeatureVisible(item)) return false;
-      if (!item.permission) return true;
-      const flags = Array.isArray(item.permission) ? item.permission : [item.permission];
-      return viewHasAny(...flags);
+      if (item.path === '/payroll') return user?.payroll_enabled !== false;
+      if (item.path === '/coaching') return user?.coaching_enabled !== false;
+      return true;
     });
 
   return (
@@ -115,8 +110,18 @@ export default function Sidebar({ navConfig = defaultNav }: SidebarProps) {
           if (items.length === 0) return null;
           return (
             <div key={group.titleKey ?? `_top-${gi}`}>
-              {group.titleKey && gi > 0 && (
-                <div className="my-2 mx-3 border-t border-sidebar-border" />
+              {/* Group header.  Expanded: a quiet small-caps label so the
+                  sidebar's structure (Fleet / Workforce / Admin …) is
+                  legible instead of an unlabelled run of links.  Collapsed:
+                  fall back to a thin divider since text doesn't fit the
+                  icon rail. */}
+              {group.titleKey && (collapsed
+                ? gi > 0 && <div className="my-2 mx-3 border-t border-sidebar-border" />
+                : (
+                  <div className={`px-3 ${gi > 0 ? 'mt-4' : 'mt-1'} mb-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground/70 select-none`}>
+                    {t(group.titleKey)}
+                  </div>
+                )
               )}
               {items.map((item) => {
                 const Icon = item.icon;

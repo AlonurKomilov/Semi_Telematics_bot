@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, Plus, X } from 'lucide-react';
+import { Building2, Plus, X, KeyRound } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { apiJSON } from '../../api/client';
 import DataTable from '../../components/DataTable';
 import {
@@ -10,13 +11,16 @@ import {
   ErrorState,
   TableSkeleton,
 } from '../../components/shell';
+import { toneClasses } from '../../lib/status';
 import type { CompanyInfo, AnyColumn } from '../../types';
 
+// Columns no longer include the API Key — that lives on the
+// Integrations > Samsara card now.  Companies is back to being a
+// pure business-entity list (code, name, status, dates).
 const columns: AnyColumn[] = [
   { key: 'code', label: 'Code', sortable: true },
   { key: 'display_name', label: 'Name', sortable: true },
   { key: 'active_days', label: 'Active Days', sortable: true },
-  { key: 'has_api_key', label: 'API Key', render: (v) => v ? <span className="text-ok">Connected</span> : <span className="text-muted-foreground">None</span> },
   { key: 'is_active', label: 'Status', render: (v) => v ? <span className="text-ok">Active</span> : <span className="text-danger">Inactive</span> },
   { key: 'created_at', label: 'Created', render: (v) => v ? new Date(String(v)).toLocaleDateString() : '—' },
 ];
@@ -28,16 +32,14 @@ export default function Companies() {
   const [showAdd, setShowAdd] = useState(false);
   const [selected, setSelected] = useState<CompanyInfo | null>(null);
 
-  // Form
+  // Add form — no API key field; keys are entered on the Integrations
+  // page once the company exists.
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
-  const [apiKey, setApiKey] = useState('');
   const [days, setDays] = useState(30);
   const [saving, setSaving] = useState(false);
 
-  // Edit form
   const [editName, setEditName] = useState('');
-  const [editKey, setEditKey] = useState('');
   const [editDays, setEditDays] = useState(30);
 
   const { data, isLoading: loading, error: queryError } = useQuery({
@@ -51,8 +53,11 @@ export default function Companies() {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true); setError('');
     try {
-      await apiJSON('/admin/companies', { method: 'POST', body: { code, samsara_api_key: apiKey, display_name: name || code, active_days: days } });
-      setShowAdd(false); setCode(''); setName(''); setApiKey(''); setDays(30);
+      // samsara_api_key intentionally omitted — the new flow is
+      // "create the company, then set its key on the Integration
+      // card."  The backend defaults the field to empty string.
+      await apiJSON('/admin/companies', { method: 'POST', body: { code, display_name: name || code, active_days: days } });
+      setShowAdd(false); setCode(''); setName(''); setDays(30);
       load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     finally { setSaving(false); }
@@ -63,7 +68,6 @@ export default function Companies() {
     setSaving(true); setError('');
     const body: Record<string, unknown> = {};
     if (editName && editName !== selected.display_name) body.display_name = editName;
-    if (editKey) body.samsara_api_key = editKey;
     if (editDays !== selected.active_days) body.active_days = editDays;
     if (Object.keys(body).length === 0) { setSaving(false); return; }
     try {
@@ -97,12 +101,25 @@ export default function Companies() {
         }
       />
 
+      {/* Locator banner — operators looking for the API Key column
+          used to land here; the field moved to the Integrations card. */}
+      <div className={`${toneClasses('info')} mb-4 rounded-md px-3 py-2 text-xs flex items-center gap-2`}>
+        <KeyRound size={14} />
+        <span>
+          Samsara API keys are now managed under{' '}
+          <Link to="/integrations" className="underline font-medium">
+            Integrations &rsaquo; Samsara
+          </Link>
+          {' '}— add a company here, then set its key on the integration card.
+        </span>
+      </div>
+
       {(error || queryErrorMsg) && (
         <div className="mb-3"><ErrorState message={error || queryErrorMsg} /></div>
       )}
 
       {showAdd && (
-        <form onSubmit={handleAdd} className="bg-card border border-border rounded-xl p-4 mb-6 grid grid-cols-5 gap-3">
+        <form onSubmit={handleAdd} className="bg-card border border-border rounded-xl p-4 mb-6 grid grid-cols-4 gap-3">
           <div>
             <label className="block text-xs text-muted-foreground mb-1">Code</label>
             <input required value={code} onChange={e => setCode(e.target.value)} maxLength={20} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
@@ -110,10 +127,6 @@ export default function Companies() {
           <div>
             <label className="block text-xs text-muted-foreground mb-1">Display Name</label>
             <input value={name} onChange={e => setName(e.target.value)} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
-          </div>
-          <div>
-            <label className="block text-xs text-muted-foreground mb-1">Samsara API Key</label>
-            <input required type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
           </div>
           <div>
             <label className="block text-xs text-muted-foreground mb-1">Active Days</label>
@@ -128,12 +141,12 @@ export default function Companies() {
       )}
 
       {loading && companies.length === 0 ? (
-        <TableSkeleton rows={6} cols={6} />
+        <TableSkeleton rows={6} cols={5} />
       ) : companies.length === 0 ? (
         <EmptyState
           icon={Building2}
           title="No companies yet"
-          description="Add your first company to start syncing vehicles and drivers from Samsara."
+          description="Add your first company, then set its Samsara API key on the Integrations page."
           action={
             <button
               onClick={() => setShowAdd(true)}
@@ -147,7 +160,7 @@ export default function Companies() {
       ) : (
         <DataTable columns={columns} data={companies as unknown as Record<string, unknown>[]} searchKey="display_name" onRowClick={(row) => {
           const c = row as unknown as CompanyInfo;
-          setSelected(c); setEditName(c.display_name); setEditKey(''); setEditDays(c.active_days);
+          setSelected(c); setEditName(c.display_name); setEditDays(c.active_days);
         }} />
       )}
 
@@ -160,17 +173,24 @@ export default function Companies() {
             </div>
             <dl className="space-y-3 text-sm mb-6">
               <div className="flex justify-between"><dt className="text-muted-foreground">Code</dt><dd>{selected.code}</dd></div>
-              <div className="flex justify-between"><dt className="text-muted-foreground">API Key</dt><dd>{selected.has_api_key ? 'Connected' : 'None'}</dd></div>
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">Samsara key</dt>
+                <dd>
+                  {selected.has_api_key ? (
+                    <span className="text-ok">Set</span>
+                  ) : (
+                    <Link to="/integrations" className="text-primary underline">
+                      Set on Integrations →
+                    </Link>
+                  )}
+                </dd>
+              </div>
               <div className="flex justify-between"><dt className="text-muted-foreground">Status</dt><dd>{selected.is_active ? 'Active' : 'Inactive'}</dd></div>
             </dl>
             <div className="space-y-3">
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">Display Name</label>
                 <input value={editName} onChange={e => setEditName(e.target.value)} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
-              </div>
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">New API Key (leave blank to keep)</label>
-                <input type="password" value={editKey} onChange={e => setEditKey(e.target.value)} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
               </div>
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">Active Days</label>

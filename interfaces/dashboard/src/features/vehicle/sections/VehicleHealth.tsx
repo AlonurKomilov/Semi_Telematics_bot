@@ -36,16 +36,18 @@ interface FleetWeatherResponse {
   vehicles: FleetWeatherEntry[];
 }
 
-export default function VehicleHealth({ vehicleName }: VehicleSectionProps) {
+export default function VehicleHealth({ vehicleName, company }: VehicleSectionProps) {
   const { has } = usePermissions();
   const hasHealthPerm = has('can_health');
 
   const { data: health, isLoading: healthLoading } = useQuery<HealthResponse | null>({
-    queryKey: ['vehicle-health', vehicleName],
-    queryFn: () =>
-      apiJSON<HealthResponse>(
-        `/vehicles/${encodeURIComponent(vehicleName)}/health`,
-      ),
+    queryKey: ['vehicle-health', vehicleName, company ?? ''],
+    queryFn: () => {
+      const qs = company ? `?company=${encodeURIComponent(company)}` : '';
+      return apiJSON<HealthResponse>(
+        `/vehicles/${encodeURIComponent(vehicleName)}/health${qs}`,
+      );
+    },
     enabled: hasHealthPerm,
     staleTime: 60_000,
   });

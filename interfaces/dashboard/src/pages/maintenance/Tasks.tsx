@@ -19,9 +19,10 @@ import {
 import type { MaintenanceTask, AnyColumn } from '../../types';
 import {
   PriorityBadge, EngineHoursProgress, TaskTypeCell, DueDateChip, MileageProgress,
-  TASK_TYPE_OPTIONS, PRIORITY_OPTIONS,
+  PRIORITY_OPTIONS,
   type Priority,
 } from './badges';
+import TypePicker from './TypePicker';
 import { VehiclePicker, MilesPicker, HoursPicker, DaysPicker, type FleetVehicle } from './pickers';
 import { CalendarMonth } from './CalendarMonth';
 import { toneClasses } from '@/lib/status';
@@ -374,9 +375,25 @@ export default function Tasks() {
   // Fleet vehicle list for the vehicle picker — only fetched once the
   // add form opens (the picker is the only consumer). Cached for 60s by
   // the global QueryClient default so reopening the form is instant.
+  // Walks all pages — backend caps page_size at 200, so the picker
+  // used to silently truncate on fleets >200 vehicles.  Sequential
+  // paging keeps the simple-fleet case (<200) at one round-trip.
   const { data: fleetData, isLoading: fleetLoading } = useQuery({
     queryKey: ['maintenance-fleet-vehicles'],
-    queryFn: () => apiJSON<{ vehicles: FleetVehicle[] }>('/vehicles?page_size=200'),
+    queryFn: async () => {
+      const all: FleetVehicle[] = [];
+      let page = 1;
+      while (true) {
+        const res = await apiJSON<{
+          vehicles: FleetVehicle[];
+          total_pages: number;
+        }>(`/vehicles?page_size=200&page=${page}`);
+        all.push(...(res.vehicles ?? []));
+        if (page >= (res.total_pages ?? 1)) break;
+        page++;
+      }
+      return { vehicles: all };
+    },
     enabled: showAdd,
   });
   const fleetVehicles = fleetData?.vehicles ?? [];
@@ -391,6 +408,23 @@ export default function Tasks() {
     enabled: showAdd,
   });
   const templates = templatesData?.templates ?? [];
+
+  // Account's custom task types — drives the "Type" column's display
+  // label for rows that use a custom type, plus the TypePicker
+  // dropdown in the add / edit forms.  Lookup map is built once per
+  // fetch so the table render closures don't reduce on every row.
+  const { data: customTypesData } = useQuery({
+    queryKey: ['maintenance-custom-types'],
+    queryFn: () => apiJSON<{ types: { value: string; label: string }[] }>(
+      '/maintenance/task-types',
+    ),
+    staleTime: 60_000,
+  });
+  const customTypeLabelByValue = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const t of customTypesData?.types ?? []) map[t.value] = t.label;
+    return map;
+  }, [customTypesData]);
 
   // Apply a template's defaults into the open add-form fields.  Only
   // touches the fields the template actually sets, so the user can
@@ -717,21 +751,39 @@ export default function Tasks() {
     // Backend ``status`` column is untouched; only the display label
     // flips based on the same urgency check the bucket uses.
     const enrichedBase = baseColumns.map(col => {
-      if (col.key !== 'status') return col;
-      return {
-        ...col,
-        render: (v: unknown, row: Record<string, unknown>) => {
-          const t = row as unknown as MaintenanceTask;
-          const stored = String(v);
-          if (stored === 'pending' && dueSoonClassify(t) === 'due_soon') {
-            return <StatusBadge status="due_soon" />;
-          }
-          return <StatusBadge status={stored} />;
-        },
-      };
+      if (col.key === 'status') {
+        return {
+          ...col,
+          render: (v: unknown, row: Record<string, unknown>) => {
+            const t = row as unknown as MaintenanceTask;
+            const stored = String(v);
+            if (stored === 'pending' && dueSoonClassify(t) === 'due_soon') {
+              return <StatusBadge status="due_soon" />;
+            }
+            return <StatusBadge status={stored} />;
+          },
+        };
+      }
+      if (col.key === 'task_type') {
+        // Override the static render so custom types resolve to the
+        // operator-supplied label instead of the kebab-cased value.
+        return {
+          ...col,
+          render: (v: unknown) => {
+            const type = String(v || 'inspection');
+            return (
+              <TaskTypeCell
+                type={type}
+                customLabel={customTypeLabelByValue[type]}
+              />
+            );
+          },
+        };
+      }
+      return col;
     });
     return [checkboxCol, ...enrichedBase];
-  }, [tasks, selectedIds, dueSoonClassify]);
+  }, [tasks, selectedIds, dueSoonClassify, customTypeLabelByValue]);
 
   // Bulk action handlers — POST to the new /tasks/bulk/* routes.
   const handleBulkComplete = async () => {
@@ -1400,11 +1452,7 @@ export default function Tasks() {
           )}
           <label className="block">
             <span className="block text-xs text-muted-foreground mb-1">Type</span>
-            <select value={fType} onChange={e => setFType(e.target.value)} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring">
-              {TASK_TYPE_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
+            <TypePicker value={fType} onChange={setFType} />
           </label>
           <label className="block">
             <span className="block text-xs text-muted-foreground mb-1">Description</span>
@@ -1885,19 +1933,12 @@ export default function Tasks() {
               {/* Type selector — lets the operator FIX a mistyped task
                   type after creation.  Without this they had to delete
                   the row and re-create just to flip e.g. "Oil Change"
-                  to "Inspection".  Uses the same TASK_TYPE_OPTIONS the
-                  add form does. */}
+                  to "Inspection".  Uses the same TypePicker the add
+                  form does so custom types created here also surface
+                  on the create form (and vice versa). */}
               <label className="block">
                 <span className="block text-xs text-muted-foreground mb-1">Type</span>
-                <select
-                  value={eType}
-                  onChange={e => setEType(e.target.value)}
-                  className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
-                >
-                  {TASK_TYPE_OPTIONS.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
+                <TypePicker value={eType} onChange={setEType} />
               </label>
               <label className="block">
                 <span className="block text-xs text-muted-foreground mb-1">Priority</span>

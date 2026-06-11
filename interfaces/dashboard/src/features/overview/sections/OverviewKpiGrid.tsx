@@ -55,7 +55,7 @@ export default function OverviewKpiGrid({
       icon: Bell,
       hint: 'Need acknowledgement',
       href: '/alerts',
-      permission: (h) => h('can_alerts_all') || h('can_alerts_own'),
+      permission: (h) => h('can_alerts_all') || h('can_alerts_vehicle'),
       showWhen: () => stats.pending_alerts !== undefined,
     },
     {
@@ -98,7 +98,7 @@ export default function OverviewKpiGrid({
       icon: ParkingCircle,
       hint: 'Drivers parked outside safe zones',
       href: '/parking',
-      permission: (h) => h('can_alerts_all') || h('can_alerts_own'),
+      permission: (h) => h('can_alerts_all') || h('can_alerts_vehicle'),
       showWhen: () => unsafeParking > 0,
     },
     {
@@ -129,7 +129,7 @@ export default function OverviewKpiGrid({
       icon: Route,
       hint: 'Trip history per truck',
       href: '/routes',
-      permission: (h) => h('can_route_all') || h('can_route_own'),
+      permission: (h) => h('can_route_all') || h('can_route_vehicle'),
     },
   ];
 

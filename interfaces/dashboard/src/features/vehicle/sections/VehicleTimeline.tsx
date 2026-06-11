@@ -36,13 +36,15 @@ interface TimelineResponse {
   error?: string;
 }
 
-export default function VehicleTimeline({ vehicleName }: VehicleSectionProps) {
+export default function VehicleTimeline({ vehicleName, company }: VehicleSectionProps) {
   const { data, isLoading, error } = useQuery<TimelineResponse>({
-    queryKey: ['vehicle-timeline', vehicleName],
-    queryFn: () =>
-      apiJSON<TimelineResponse>(
-        `/vehicles/${encodeURIComponent(vehicleName)}/timeline?days=7`,
-      ),
+    queryKey: ['vehicle-timeline', vehicleName, company ?? ''],
+    queryFn: () => {
+      const companyQs = company ? `&company=${encodeURIComponent(company)}` : '';
+      return apiJSON<TimelineResponse>(
+        `/vehicles/${encodeURIComponent(vehicleName)}/timeline?days=7${companyQs}`,
+      );
+    },
     staleTime: 5 * 60_000,
   });
 

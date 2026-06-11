@@ -18,7 +18,6 @@ import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
 import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
-import { hrNav } from './nav/hrNav';
 
 export default function HRShell() {
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -45,7 +44,7 @@ export default function HRShell() {
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <div className="hidden lg:block">
-        <Sidebar navConfig={hrNav} />
+        <Sidebar />
       </div>
 
       {mobileSidebarOpen && (
@@ -54,7 +53,7 @@ export default function HRShell() {
           onClick={() => setMobileSidebarOpen(false)}
         >
           <div className="h-full" onClick={(e) => e.stopPropagation()}>
-            <Sidebar navConfig={hrNav} />
+            <Sidebar />
           </div>
         </div>
       )}

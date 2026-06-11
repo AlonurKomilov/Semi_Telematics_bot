@@ -70,7 +70,11 @@ type CategoryFilter = (typeof CATEGORIES)[number];
 
 // ── Page ─────────────────────────────────────────────────────────
 
-export default function ScorecardRules() {
+// Panel-export pattern (same as InvitesPanel / WorkHoursPanel): the body
+// is hosted as the "Rules" tab inside the Scorecards page — Scorecard
+// Rules is that feature's config component (docs/FEATURES.md) — while the
+// default export keeps the /admin/scorecard-rules route + deep links alive.
+export function ScorecardRulesPanel() {
   const { t } = useTranslation();
   const [rules, setRules]     = useState<ScoreRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -183,12 +187,6 @@ export default function ScorecardRules() {
 
   return (
     <div>
-      <PageHeader
-        icon={Trophy}
-        title={t('pages.scorecard_rules_title')}
-        description={t('pages.scorecard_rules_desc')}
-      />
-
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
         <Kpi label="Rules" value={stats.total.toString()} />
@@ -273,6 +271,22 @@ export default function ScorecardRules() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Standalone page — keeps the /admin/scorecard-rules route + deep links
+ *  working; the same panel is hosted as the Scorecards page's Rules tab. */
+export default function ScorecardRules() {
+  const { t } = useTranslation();
+  return (
+    <div>
+      <PageHeader
+        icon={Trophy}
+        title={t('pages.scorecard_rules_title')}
+        description={t('pages.scorecard_rules_desc')}
+      />
+      <ScorecardRulesPanel />
     </div>
   );
 }

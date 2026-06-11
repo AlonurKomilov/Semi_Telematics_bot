@@ -12,7 +12,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, RotateCcw } from 'lucide-react';
+import { Check, Loader2, RotateCcw } from 'lucide-react';
+import { Button } from '../../components/ui/button';
 import { getBackfillStatus, resetBackfillStatus } from './api';
 import type { BackfillStatus } from './types';
 
@@ -88,8 +89,9 @@ export default function BackfillStatusBadge({
 
   if (data.state === 'completed') {
     return (
-      <div className="text-2xs text-ok">
-        ✓ Backfill done · {data.rows_inserted?.toLocaleString() ?? 0} rows
+      <div className="flex items-center gap-1.5 text-2xs text-ok">
+        <Check size={12} />
+        Backfill done · {data.rows_inserted?.toLocaleString() ?? 0} rows
       </div>
     );
   }
@@ -104,16 +106,17 @@ export default function BackfillStatusBadge({
     return (
       <div className="flex items-center gap-2 text-2xs text-danger">
         <span title={data.reason || undefined}>Backfill failed</span>
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="xs"
           onClick={handleReset}
           disabled={resetting}
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-card hover:bg-muted text-muted-foreground text-2xs disabled:opacity-50"
           title="Clear the stuck record so you can re-run the backfill"
         >
-          {resetting ? <Loader2 size={10} className="animate-spin" /> : <RotateCcw size={10} />}
+          {resetting ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
           Reset
-        </button>
+        </Button>
       </div>
     );
   }
@@ -128,16 +131,17 @@ export default function BackfillStatusBadge({
     return (
       <div className="flex items-center gap-2 text-2xs text-muted-foreground">
         <span title={data.reason || undefined}>Skipped: {data.reason}</span>
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="xs"
           onClick={handleReset}
           disabled={resetting}
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-card hover:bg-muted text-2xs disabled:opacity-50"
           title="Clear the skipped record so you can re-run the backfill"
         >
-          {resetting ? <Loader2 size={10} className="animate-spin" /> : <RotateCcw size={10} />}
+          {resetting ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
           Reset
-        </button>
+        </Button>
       </div>
     );
   }

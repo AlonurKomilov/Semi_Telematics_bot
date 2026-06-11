@@ -12,7 +12,7 @@
  * full width below — each of those three sections opts in via
  * ``lg:col-span-2`` on its own root.
  */
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { PageLayoutHost } from '../_lib/PageLayoutHost';
 import { CardSkeleton } from '../../components/shell';
 import { VEHICLE_SECTIONS } from './registry';
@@ -20,13 +20,22 @@ import { VEHICLE_LAYOUTS } from './layouts';
 
 export default function VehicleDetail() {
   const { name } = useParams<{ name: string }>();
+  // The ``?company=`` URL search param disambiguates cross-company
+  // vehicle-name collisions (one account can have a "103" in G1 AND
+  // a "103" in OSY).  Without it, the /vehicles/{name} endpoint
+  // returns both matches and every section on this page would
+  // silently render data from whichever truck happened to land in
+  // ``vehicles[0]`` — often the wrong one.
+  const [search] = useSearchParams();
+  const company = search.get('company') || undefined;
+
   if (!name) return null;
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <PageLayoutHost
         registry={VEHICLE_SECTIONS}
         layouts={VEHICLE_LAYOUTS}
-        sectionProps={{ vehicleName: name }}
+        sectionProps={{ vehicleName: name, company }}
         sectionFallback={<CardSkeleton height="h-32" />}
       />
     </div>

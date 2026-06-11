@@ -309,15 +309,17 @@ export default function IntegrationCard({
         </div>
         {backfillStatusBadge}
         {!isComingSoon && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             onClick={(e) => { e.stopPropagation(); toggleExpanded(); }}
             aria-label={expanded ? 'Collapse integration' : 'Expand integration'}
             aria-expanded={expanded}
-            className="text-muted-foreground hover:text-foreground p-1 shrink-0"
+            className="shrink-0"
           >
             {expanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-          </button>
+          </Button>
         )}
       </div>
 
@@ -555,7 +557,7 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [tokenDraft, setTokenDraft] = useState('');
   const [saving, setSaving] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<ActionFeedback>(null);
   // Per-row "is this company currently being tested" state.
   // Tracked as a Set rather than a single string so the operator
   // can click Test on multiple companies in quick succession
@@ -593,10 +595,13 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
     try {
       await setCompanyCredential(providerId, code, tokenDraft);
       setEditing(null); setTokenDraft('');
-      setFeedback(`Key saved for ${code}`);
+      setFeedback({ kind: 'success', message: `Key saved for ${code}` });
       qc.invalidateQueries({ queryKey: ['integration-companies', providerId] });
     } catch (e) {
-      setFeedback(`Failed to save ${code}: ${e instanceof Error ? e.message : 'error'}`);
+      setFeedback({
+        kind: 'error',
+        message: `Failed to save ${code}: ${e instanceof Error ? e.message : 'error'}`,
+      });
     } finally {
       setSaving(false);
     }
@@ -609,10 +614,13 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
     setSaving(true); setFeedback(null);
     try {
       await removeCompanyCredential(providerId, code);
-      setFeedback(`Key cleared for ${code}`);
+      setFeedback({ kind: 'success', message: `Key cleared for ${code}` });
       qc.invalidateQueries({ queryKey: ['integration-companies', providerId] });
     } catch (e) {
-      setFeedback(`Failed to remove ${code}: ${e instanceof Error ? e.message : 'error'}`);
+      setFeedback({
+        kind: 'error',
+        message: `Failed to remove ${code}: ${e instanceof Error ? e.message : 'error'}`,
+      });
     } finally {
       setSaving(false);
     }
@@ -630,13 +638,16 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
       const r = await triggerCompanyBackfill(providerId, code, 30);
       setFeedback(
         r.state === 'queued'
-          ? `↻ ${code}: refresh queued · ${r.days} days`
-          : `${code}: ${r.state}`,
+          ? { kind: 'info', message: `${code}: refresh queued · ${r.days} days` }
+          : { kind: 'info', message: `${code}: ${r.state}` },
       );
       qc.invalidateQueries({ queryKey: ['integration-companies', providerId] });
       qc.invalidateQueries({ queryKey: ['integrations'] });
     } catch (e) {
-      setFeedback(`✗ ${code}: ${e instanceof Error ? e.message : 'refresh failed'}`);
+      setFeedback({
+        kind: 'error',
+        message: `${code}: ${e instanceof Error ? e.message : 'refresh failed'}`,
+      });
     } finally {
       setRefreshingCodes(prev => {
         const next = new Set(prev);
@@ -656,8 +667,8 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
       const r = await testCompanyConnection(providerId, code);
       setFeedback(
         r.ok
-          ? `✓ ${code}: ${r.message} · ${r.elapsed_ms}ms`
-          : `✗ ${code}: ${r.message}`,
+          ? { kind: 'success', message: `${code}: ${r.message} · ${r.elapsed_ms}ms` }
+          : { kind: 'error', message: `${code}: ${r.message}` },
       );
       // Refresh both the company list (picks up new health) AND
       // the integration list (aggregate ai.status may have flipped
@@ -666,7 +677,10 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
       qc.invalidateQueries({ queryKey: ['integration-companies', providerId] });
       qc.invalidateQueries({ queryKey: ['integrations'] });
     } catch (e) {
-      setFeedback(`✗ ${code}: ${e instanceof Error ? e.message : 'test failed'}`);
+      setFeedback({
+        kind: 'error',
+        message: `${code}: ${e instanceof Error ? e.message : 'test failed'}`,
+      });
     } finally {
       setTestingCodes(prev => {
         const next = new Set(prev);
@@ -727,9 +741,13 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
         ))}
       </ul>
       {feedback && (
-        <p className="px-3 py-1.5 text-2xs border-t border-border text-muted-foreground">
-          {feedback}
-        </p>
+        <div className="border-t border-border">
+          <FeedbackBanner
+            kind={feedback.kind}
+            message={feedback.message}
+            onDismiss={() => setFeedback(null)}
+          />
+        </div>
       )}
     </div>
   );
@@ -780,10 +798,10 @@ function CompanyKeyRow({
             {/* Per-company /me probe result.  Title tooltip carries
                 the full message when the badge gets ellipsised. */}
             <span
-              className={`${toneClasses(healthTone)} text-2xs px-1.5 py-0.5 rounded max-w-[180px] truncate`}
+              className={`${toneClasses(healthTone)} text-2xs px-1.5 py-0.5 rounded max-w-44 truncate`}
               title={
                 company.health
-                  ? `${company.health.ok ? '✓' : '✗'} ${company.health.message}`
+                  ? `${company.health.ok ? 'reachable' : 'failed'} — ${company.health.message}`
                   : 'No /me probe has been run for this company yet'
               }
             >
@@ -820,7 +838,7 @@ function CompanyKeyRow({
             </Button>
             {company.has_key ? (
               <span className="text-ok text-2xs flex items-center gap-1">
-                <Check size={10} /> key set
+                <Check size={12} /> key set
               </span>
             ) : (
               <span className="text-muted-foreground italic text-2xs">no key</span>
@@ -966,14 +984,16 @@ function FeedbackBanner({
     <div className={`mt-3 flex items-start gap-2 text-xs border rounded px-2.5 py-2 ${tone}`}>
       <Icon size={14} className="flex-shrink-0 mt-0.5" />
       <span className="flex-1 break-words">{message}</span>
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-xs"
         onClick={onDismiss}
         className="flex-shrink-0 opacity-60 hover:opacity-100"
         aria-label="Dismiss"
       >
         <X size={12} />
-      </button>
+      </Button>
     </div>
   );
 }

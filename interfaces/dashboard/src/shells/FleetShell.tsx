@@ -19,7 +19,6 @@ import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
 import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
-import { fleetNav } from './nav/fleetNav';
 import FleetHero from './heroes/FleetHero';
 
 export default function FleetShell() {
@@ -43,7 +42,7 @@ export default function FleetShell() {
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <div className="hidden lg:block">
-        <Sidebar navConfig={fleetNav} />
+        <Sidebar />
       </div>
 
       {mobileSidebarOpen && (
@@ -52,7 +51,7 @@ export default function FleetShell() {
           onClick={() => setMobileSidebarOpen(false)}
         >
           <div className="h-full" onClick={(e) => e.stopPropagation()}>
-            <Sidebar navConfig={fleetNav} />
+            <Sidebar />
           </div>
         </div>
       )}

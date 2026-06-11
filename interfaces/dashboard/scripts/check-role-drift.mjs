@@ -59,6 +59,9 @@ const ROLE_KEYS = [
 //   • admin/WorkHours   — `target_role` is a field on schedule rows
 //   • ai/Chat           — `msg.role === 'user'` is the chat message
 //                         author (user vs. model), not a persona
+//   • admin/RolePermissions — `role` is the matrix's role COLUMN (the row
+//                         of permissions being edited) + the owner-lockout
+//                         protected check; not the current user's persona
 const ALLOWLIST = new Set([
   'src/hooks/useShellConfig.ts',
   'src/context/RoleViewContext.tsx',
@@ -67,6 +70,7 @@ const ALLOWLIST = new Set([
   'src/pages/admin/Users.tsx',
   'src/pages/admin/WorkHours.tsx',
   'src/pages/ai/Chat.tsx',
+  'src/pages/admin/RolePermissions.tsx',
 ]);
 
 // Match BOTH === and !== so an "if (role !== 'owner')" check is

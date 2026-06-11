@@ -8,7 +8,7 @@
  * triage spatially (a cluster on one street vs. scattered across
  * three states changes the response priority).
  *
- * Permission-gated by ``can_alerts_all`` / ``can_alerts_own`` /
+ * Permission-gated by ``can_alerts_all`` / ``can_alerts_vehicle`` /
  * ``can_vehicle_all`` — same gate the /parking/active route uses,
  * so the overlay silently no-ops for personas without access
  * (HR / Accounting / Driver).
@@ -32,7 +32,7 @@ export default function UnsafeParkingMarkers({
 }: LiveMapSectionProps) {
   const { has } = usePermissions();
   const hasAccess =
-    has('can_alerts_all') || has('can_alerts_own') || has('can_vehicle_all');
+    has('can_alerts_all') || has('can_alerts_vehicle') || has('can_vehicle_all');
   const layerRef = useRef<L.LayerGroup | null>(null);
 
   useEffect(() => {

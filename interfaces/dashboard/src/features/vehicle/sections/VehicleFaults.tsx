@@ -28,7 +28,7 @@ import type {
 } from '../../../types';
 import type { VehicleSectionProps } from './_shared/types';
 
-export default function VehicleFaults({ vehicleName }: VehicleSectionProps) {
+export default function VehicleFaults({ vehicleName, company }: VehicleSectionProps) {
   const { has } = usePermissions();
   const navigate = useNavigate();
   const hasFaultsPerm = has('can_faults');
@@ -38,11 +38,13 @@ export default function VehicleFaults({ vehicleName }: VehicleSectionProps) {
   const [diagnosisError, setDiagnosisError] = useState('');
 
   const { data: faults, isLoading: faultsLoading } = useQuery<FaultsResponse | null>({
-    queryKey: ['vehicle-faults', vehicleName],
-    queryFn: () =>
-      apiJSON<FaultsResponse>(
-        `/vehicles/${encodeURIComponent(vehicleName)}/faults`,
-      ),
+    queryKey: ['vehicle-faults', vehicleName, company ?? ''],
+    queryFn: () => {
+      const qs = company ? `?company=${encodeURIComponent(company)}` : '';
+      return apiJSON<FaultsResponse>(
+        `/vehicles/${encodeURIComponent(vehicleName)}/faults${qs}`,
+      );
+    },
     enabled: hasFaultsPerm,
     staleTime: 30_000,
   });
@@ -51,11 +53,13 @@ export default function VehicleFaults({ vehicleName }: VehicleSectionProps) {
   // lights even when the Health section isn't in this persona's
   // layout.  Deduped against VehicleHealth via the query key.
   const { data: health } = useQuery<HealthResponse | null>({
-    queryKey: ['vehicle-health', vehicleName],
-    queryFn: () =>
-      apiJSON<HealthResponse>(
-        `/vehicles/${encodeURIComponent(vehicleName)}/health`,
-      ),
+    queryKey: ['vehicle-health', vehicleName, company ?? ''],
+    queryFn: () => {
+      const qs = company ? `?company=${encodeURIComponent(company)}` : '';
+      return apiJSON<HealthResponse>(
+        `/vehicles/${encodeURIComponent(vehicleName)}/health${qs}`,
+      );
+    },
     enabled: hasFaultsPerm,
     staleTime: 60_000,
   });

@@ -7,7 +7,9 @@
  *   - Display name
  *   - UI language
  *   - Personal timezone override (falls back to the account default)
- *   - Quiet hours (DND window for Telegram alerts)
+ *   - Working Hours override (the personal active-alerts window that
+ *     overrides the account/role default; outside this window non-
+ *     critical alerts queue until shift-start)
  *
  * Visible to every authenticated user regardless of role; no admin
  * permission required.  The admin-only counterpart (account timezone,
@@ -42,7 +44,10 @@ import { LANGUAGE_OPTIONS } from '../utils/languages';
 import { TIMEZONE_OPTIONS, timezoneLabelWithTime } from '../utils/timezones';
 import { useNow } from '../hooks/useNow';
 
-const HOURS = Array.from({ length: 24 }, (_, i) => i);
+// HOURS array removed in the migration-100 cleanup — the user no
+// longer picks shift hours from Profile (admin-managed in Team
+// Management → drawer Settings tab).  Profile keeps only the DND
+// toggle + a read-only preview of the admin-set schedule.
 
 
 export default function Profile() {
@@ -52,8 +57,16 @@ export default function Profile() {
   const [lang, setLang] = useState('en');
   const [tz, setTz] = useState('');
   const [accountTz, setAccountTz] = useState('America/New_York');
-  const [quietStart, setQuietStart] = useState<number | ''>('');
-  const [quietEnd, setQuietEnd] = useState<number | ''>('');
+  // Working Hours values are admin-managed (read-only here); kept as
+  // state purely so the schedule preview text re-renders on /user/me
+  // load.  The user's only personal control is ``dndEnabled`` below.
+  const [quietStart, setQuietStart] = useState<number | null>(null);
+  const [quietEnd, setQuietEnd] = useState<number | null>(null);
+  // Personal DND toggle (migration 100).  True = honour the schedule
+  // shown above (queue non-critical alerts outside the window).
+  // False = receive all non-critical alerts 24/7.  Defaults to true
+  // so the toggle on first load mirrors the existing user behaviour.
+  const [dndEnabled, setDndEnabled] = useState<boolean>(true);
   const [name, setName] = useState('');
   // DND derivation state surfaced by /user/me so the UI can render
   // "auto from Working Hours" vs "personal override" without
@@ -74,8 +87,9 @@ export default function Profile() {
     }>('/user/me')
       .then((u) => {
         setLang(u.language || 'en');
-        setQuietStart(u.quiet_start ?? '');
-        setQuietEnd(u.quiet_end ?? '');
+        setQuietStart(u.quiet_start ?? null);
+        setQuietEnd(u.quiet_end ?? null);
+        setDndEnabled(u.dnd_enabled ?? true);
         setName(u.display_name || '');
         setDndSource(u.dnd_source || 'none');
         setWorkHoursForRole(u.work_hours_for_role || []);
@@ -101,12 +115,10 @@ export default function Profile() {
     // Always send timezone — empty string clears the override.
     body.timezone = tz;
     if (name) body.display_name = name;
-    // Always send quiet hours (including null) so the user can CLEAR
-    // an existing override and fall back to the Working Hours-derived
-    // DND.  Sending only when non-empty would silently keep the old
-    // override forever.
-    body.quiet_start = quietStart === '' ? null : quietStart;
-    body.quiet_end   = quietEnd   === '' ? null : quietEnd;
+    // Personal DND toggle.  Working Hours hours themselves (quiet_start /
+    // quiet_end) are admin-managed since migration 100 — the backend
+    // explicitly rejects them on /user/preferences, so we never send.
+    body.dnd_enabled = dndEnabled;
     try {
       await apiJSON('/user/preferences', { method: 'PUT', body });
       setSuccess('Preferences saved.');
@@ -200,97 +212,97 @@ export default function Profile() {
             </p>
           </div>
 
-          {/* Quiet hours / DND with derivation banner */}
+          {/* Notifications — personal DND toggle (the user's only
+              control over alert delivery timing).  Working Hours are
+              admin-managed since migration 100; the schedule preview
+              below is read-only.  Toggling DND off opts the user out
+              of the schedule entirely — they receive every alert 24/7.
+              Critical-severity alerts always come through either way. */}
           <div className="md:col-span-2">
             <label className="block text-xs text-muted-foreground mb-1">
-              Quiet hours (Do Not Disturb)
+              Notifications
             </label>
-            <div className={`rounded border p-3 mb-2 text-xs ${
+
+            {/* DND toggle row.  Label rewritten to plain English —
+                "Quiet outside shift" read as jargon to operators.  The
+                new phrasing matches the way drivers actually talk about
+                it ("don't bother me when I'm off the clock"). */}
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/30 p-3 mb-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">Don't disturb me off-shift</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {dndEnabled
+                    ? 'Non-urgent alerts wait until your shift starts. Critical alerts always come through.'
+                    : 'You get every alert 24/7. Turn on to silence non-urgent ones when you\'re off-shift.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={dndEnabled}
+                aria-label="Don't disturb me off-shift"
+                onClick={() => setDndEnabled(v => !v)}
+                className={`shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                  dndEnabled ? 'bg-primary' : 'bg-muted-foreground/30'
+                }`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-background shadow transition ${
+                    dndEnabled ? 'translate-x-5' : 'translate-x-0.5'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Schedule preview — show each shift WITH its label so a
+                user with multiple matching role schedules can tell
+                which line is which.  Bullet list reads cleaner than a
+                comma-joined string of hours that mashed them together. */}
+            <div className={`rounded border p-3 text-xs ${
               dndSource === 'user_override'
                 ? 'border-primary/40 bg-primary/5'
                 : dndSource === 'work_hours'
                 ? toneClasses('ok')
                 : 'border-border bg-muted/30 text-muted-foreground'
             }`}>
-              {dndSource === 'user_override' && (
+              {dndSource === 'user_override' && quietStart !== null && quietEnd !== null && (
                 <>
-                  <p className="font-medium">🌙 Personal override active</p>
-                  <p className="mt-0.5">
-                    Your alerts are silenced between the hours you've set below. Clear both fields to fall back to your team's Working Hours.
+                  <p className="font-medium mb-1">My shift</p>
+                  <p>
+                    {String(quietStart).padStart(2, '0')}:00 – {String(quietEnd).padStart(2, '0')}:00
+                  </p>
+                  <p className="text-2xs text-muted-foreground mt-1.5">
+                    Personal shift set by your admin. Ask them to change it.
                   </p>
                 </>
               )}
               {dndSource === 'work_hours' && (
                 <>
-                  <p className="font-medium">⏰ Auto from your team's Working Hours</p>
-                  <p className="mt-0.5">
-                    Alerts deliver during these shifts (set by your admin):
+                  <p className="font-medium mb-1">
+                    My shift{workHoursForRole.length > 1 ? 's' : ''} (from your role)
                   </p>
-                  <ul className="mt-1 list-disc list-inside">
+                  <ul className="space-y-0.5">
                     {workHoursForRole.map((wh) => (
-                      <li key={wh.id}>
-                        <span className="font-medium">{wh.label}</span> · {String(wh.start_hour).padStart(2, '0')}:00 – {String(wh.end_hour).padStart(2, '0')}:00
-                        {wh.target_role !== 'all' && (
-                          <span className="text-muted-foreground"> ({wh.target_role})</span>
-                        )}
+                      <li key={wh.id} className="flex items-baseline gap-2">
+                        <span className="font-medium">{wh.label}</span>
+                        <span>
+                          {String(wh.start_hour).padStart(2, '0')}:00 – {String(wh.end_hour).padStart(2, '0')}:00
+                        </span>
                       </li>
                     ))}
                   </ul>
-                  <p className="mt-1 text-2xs">
-                    Set custom hours below to override these defaults for yourself only.
+                  <p className="text-2xs text-muted-foreground mt-1.5">
+                    {workHoursForRole.length > 1
+                      ? 'You\'re considered on-shift during ANY of these windows. Ask your admin to change them.'
+                      : 'Ask your admin to change this.'}
                   </p>
                 </>
               )}
               {dndSource === 'none' && (
-                <>
-                  <p className="font-medium">🔔 DND is off — alerts deliver 24/7</p>
-                  <p className="mt-0.5">
-                    Your team has no Working Hours configured and you have no personal override.
-                    Set hours below to silence alerts during specific times,
-                    or ask your admin to define Working Hours for your role.
-                  </p>
-                </>
+                <p>
+                  No shift set — alerts deliver 24/7. Ask your admin to set Working Hours for your role.
+                </p>
               )}
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">
-                  Quiet hours start{dndSource === 'work_hours' && ' (override)'}
-                </label>
-                <select
-                  value={quietStart}
-                  onChange={(e) =>
-                    setQuietStart(e.target.value === '' ? '' : +e.target.value)
-                  }
-                  className="w-full bg-muted border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-ring"
-                >
-                  <option value="">Use Working Hours</option>
-                  {HOURS.map((h) => (
-                    <option key={h} value={h}>
-                      {String(h).padStart(2, '0')}:00
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">
-                  Quiet hours end{dndSource === 'work_hours' && ' (override)'}
-                </label>
-                <select
-                  value={quietEnd}
-                  onChange={(e) =>
-                    setQuietEnd(e.target.value === '' ? '' : +e.target.value)
-                  }
-                  className="w-full bg-muted border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-ring"
-                >
-                  <option value="">Use Working Hours</option>
-                  {HOURS.map((h) => (
-                    <option key={h} value={h}>
-                      {String(h).padStart(2, '0')}:00
-                    </option>
-                  ))}
-                </select>
-              </div>
             </div>
           </div>
         </div>
@@ -298,7 +310,7 @@ export default function Profile() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="mt-5 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition"
+          className="mt-5 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition"
         >
           {saving ? 'Saving…' : 'Save preferences'}
         </button>
@@ -616,7 +628,7 @@ function SignInMethods() {
                   type="button"
                   onClick={submitCredentials}
                   disabled={savingCreds || !newEmail || !newPassword}
-                  className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded bg-primary hover:bg-primary/90 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                 >
                   {savingCreds
                     ? t('profile.signin_saving', 'Saving…')
@@ -852,7 +864,7 @@ function DataExport() {
       <button
         onClick={download}
         disabled={downloading}
-        className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded bg-primary hover:bg-primary/90 disabled:opacity-50 transition"
+        className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition"
       >
         <ExternalLink size={14} />
         {downloading

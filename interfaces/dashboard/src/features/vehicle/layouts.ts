@@ -22,13 +22,14 @@ export const VEHICLE_LAYOUTS: LayoutMap = {
   // Superset — preserves the original page order so Owner / Admin
   // see byte-identical output to pre-Pattern-B.  Used as the runtime
   // fallback for any persona that doesn't have an entry below.
-  owner: ['header', 'info', 'location', 'health', 'faults', 'inspections', 'timeline'],
-  admin: ['header', 'info', 'location', 'health', 'faults', 'inspections', 'timeline'],
+  owner: ['header', 'info', 'location', 'health', 'faults', 'inspections', 'timeline', 'usage'],
+  admin: ['header', 'info', 'location', 'health', 'faults', 'inspections', 'timeline', 'usage'],
 
   // Fleet — vehicle health + maintenance signals lead.  Faults bubbles
   // above Location because a fleet manager opening a truck is usually
-  // chasing a fault code; coordinates can wait.
-  fleet: ['header', 'info', 'health', 'faults', 'inspections', 'location', 'timeline'],
+  // chasing a fault code; coordinates can wait.  Usage trends sit at
+  // the bottom for utilization review.
+  fleet: ['header', 'info', 'health', 'faults', 'inspections', 'location', 'timeline', 'usage'],
 
   // Dispatcher — "where is this truck right now and what's it doing
   // over the next few hours."  Health / Faults / Inspections are
@@ -38,8 +39,9 @@ export const VEHICLE_LAYOUTS: LayoutMap = {
   // Safety — drilling into a truck during an incident review.
   // Inspections (CSA history proxy) and Timeline (where was the
   // truck during the incident) matter most; Faults are omitted
-  // because Safety doesn't action mechanical issues directly.
-  safety: ['header', 'info', 'location', 'inspections', 'timeline'],
+  // because Safety doesn't action mechanical issues directly.  Usage
+  // trends added for harsh-event totals over the recent window.
+  safety: ['header', 'info', 'location', 'inspections', 'timeline', 'usage'],
 
   // Driver — uses the Mini App in practice; this is a fallback for the
   // unlikely web-dashboard visit by a driver role.  Minimal: identity
@@ -53,10 +55,9 @@ export const VEHICLE_LAYOUTS: LayoutMap = {
   // slot in between info and inspections.
   hr: ['header', 'info', 'inspections', 'location'],
 
-  // Accounting — utilisation + identity, no ops.  Timeline drives
-  // CPM / fuel cost analytics so it stays.  Health / Faults /
-  // Inspections / Location all omitted — accounting reviews the
-  // financial outcome of operations, not the operations themselves.
-  // When a CostBreakdown section is built, it slots after timeline.
-  accounting: ['header', 'info', 'timeline'],
+  // Accounting — utilisation + identity, no ops.  Usage trends carry
+  // the cost-per-mile + work-order spend; Timeline kept for the
+  // weekly drill-down.  Health / Faults / Inspections / Location all
+  // omitted — accounting reviews financial outcomes, not operations.
+  accounting: ['header', 'info', 'usage', 'timeline'],
 };

@@ -13,12 +13,13 @@ import type { Vehicle, VehiclesResponse } from '../../../types';
 import { LocationRows } from './_shared/LocationRows';
 import type { VehicleSectionProps } from './_shared/types';
 
-export default function VehicleLocation({ vehicleName }: VehicleSectionProps) {
+export default function VehicleLocation({ vehicleName, company }: VehicleSectionProps) {
   const { data: v, isLoading } = useQuery<Vehicle | null>({
-    queryKey: ['vehicle', vehicleName],
+    queryKey: ['vehicle', vehicleName, company ?? ''],
     queryFn: async () => {
+      const qs = company ? `?company=${encodeURIComponent(company)}` : '';
       const res = await apiJSON<VehiclesResponse>(
-        `/vehicles/${encodeURIComponent(vehicleName)}`,
+        `/vehicles/${encodeURIComponent(vehicleName)}${qs}`,
       );
       return res.vehicles?.[0] ?? null;
     },

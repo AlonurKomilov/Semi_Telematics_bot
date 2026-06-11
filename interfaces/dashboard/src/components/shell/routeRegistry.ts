@@ -21,31 +21,31 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
   // Top
   { label: 'Overview',     path: '/',        icon: LayoutDashboard, group: 'Home',   permission: null,
     description: 'Status at a glance — adapts to your role', keywords: ['home','dashboard','start'] },
-  { label: 'AI Assistant', path: '/ai/chat', icon: Bot,             group: 'Home',   permission: 'can_faults',
+  { label: 'AI Assistant', path: '/ai/chat', icon: Bot,             group: 'Home',   permission: 'can_ai_chat',
     description: 'Ask AI about vehicles, faults, trips, and events', keywords: ['chat','assistant','gpt'] },
 
   // Fleet
-  { label: 'Live Map',    path: '/live-map',       icon: Map,           group: 'Fleet',  permission: ['can_location_map', 'can_location_own'],
+  { label: 'Live Map',    path: '/live-map',       icon: Map,           group: 'Fleet',  permission: ['can_location_map', 'can_location_vehicle'],
     description: 'Real-time map of every vehicle', keywords: ['map','gps','location'] },
-  { label: 'Vehicles',    path: '/vehicles',  icon: Truck,         group: 'Fleet',  permission: ['can_vehicle_all', 'can_vehicle_own'],
+  { label: 'Vehicles',    path: '/vehicles',  icon: Truck,         group: 'Fleet',  permission: ['can_vehicle_all', 'can_vehicle_vehicle'],
     description: 'List of trucks, status, fuel and faults', keywords: ['trucks','assets'] },
-  { label: 'Routes',      path: '/routes',    icon: Route,         group: 'Fleet',  permission: ['can_route_all', 'can_route_own'],
+  { label: 'Routes',      path: '/routes',    icon: Route,         group: 'Fleet',  permission: ['can_route_all', 'can_route_vehicle'],
     description: 'Trip history and active routes', keywords: ['trips','dispatch'] },
-  { label: 'Geofences',   path: '/geofences', icon: MapPin,        group: 'Fleet',  permission: ['can_geofence_all', 'can_geofence_own'],
+  { label: 'Geofences',   path: '/geofences', icon: MapPin,        group: 'Fleet',  permission: ['can_geofence_all', 'can_geofence_vehicle'],
     description: 'Zones that trigger arrival/exit alerts', keywords: ['zones','boundaries'] },
-  { label: 'Maintenance', path: '/maintenance',     icon: Wrench,        group: 'Fleet',  permission: ['can_maintenance_all', 'can_maintenance_own'],
+  { label: 'Maintenance', path: '/maintenance',     icon: Wrench,        group: 'Fleet',  permission: ['can_maintenance_all', 'can_maintenance_vehicle'],
     description: 'Scheduled service and open tasks', keywords: ['service','repair','tasks'] },
-  { label: 'Parking',     path: '/parking',   icon: ParkingSquare, group: 'Fleet',  permission: ['can_alerts_all', 'can_alerts_own'],
+  { label: 'Parking',     path: '/parking',   icon: ParkingSquare, group: 'Fleet',  permission: ['can_parking_all', 'can_parking_vehicle'],
     description: 'Where drivers park and safety classification', keywords: ['parking','safe'] },
 
   // Safety
-  { label: 'Driver Scorecards', path: '/driver-scorecards', icon: Trophy,        group: 'Safety', permission: ['can_scorecard_all', 'can_scorecard_own'],
+  { label: 'Driver Scorecards', path: '/driver-scorecards', icon: Trophy,        group: 'Safety', permission: ['can_scorecard_all', 'can_scorecard_vehicle'],
     description: 'Driver behaviour scoring and ranking', keywords: ['drivers','score','behavior'] },
-  { label: 'Safety Events',     path: '/safety-events',     icon: AlertTriangle, group: 'Safety', permission: ['can_events_all', 'can_events_own'],
+  { label: 'Safety Events',     path: '/safety-events',     icon: AlertTriangle, group: 'Safety', permission: ['can_events_all', 'can_events_vehicle'],
     description: 'Harsh braking, speeding, and crash events', keywords: ['harsh','speeding','crash'] },
-  { label: 'Cameras',           path: '/cameras',    icon: Camera,        group: 'Safety', permission: ['can_faults'],
+  { label: 'Cameras',           path: '/cameras',    icon: Camera,        group: 'Safety', permission: ['can_cameras'],
     description: 'Vehicle dashcam footage', keywords: ['video','dashcam'] },
-  { label: 'Alerts',            path: '/alerts',     icon: Bell,          group: 'Safety', permission: ['can_alerts_all', 'can_alerts_own'],
+  { label: 'Alerts',            path: '/alerts',     icon: Bell,          group: 'Safety', permission: ['can_alerts_all', 'can_alerts_vehicle'],
     description: 'Pending notifications across all vehicles', keywords: ['notifications','warnings'] },
 
   // Reports
@@ -79,8 +79,8 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
   // Admin
   { label: 'Companies',        path: '/admin/companies',       icon: Building2,     group: 'Admin', permission: ['can_manage_companies'],
     description: 'Sub-companies in your account', keywords: ['org','tenants'] },
-  { label: 'Role Permissions', path: '/admin/permissions',     icon: Shield,        group: 'Admin', permission: ['can_manage_account'],
-    description: 'What each role is allowed to do', keywords: ['rbac','roles'] },
+  { label: 'Permissions',      path: '/admin/permissions',     icon: Shield,        group: 'Admin', permission: ['can_manage_account'],
+    description: 'What each role is allowed to do', keywords: ['rbac','roles','permissions'] },
   { label: 'Scorecard Rules',  path: '/admin/scorecard-rules', icon: Trophy,        group: 'Admin', permission: ['can_manage_account'],
     description: 'Rules that build the driver scorecard', keywords: ['scoring','penalties'] },
   { label: 'Billing & Plan',   path: '/admin/billing',         icon: CreditCard,    group: 'Admin', permission: ['can_manage_billing'],

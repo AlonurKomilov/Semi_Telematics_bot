@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { VehiclePicker, type FleetVehicle } from '../maintenance/pickers';
 import { Link as LinkIcon, Plus, Trash2, Copy, Check, Loader2, TimerReset, Search, Mail, Send, ChevronDown, AlertCircle, ShieldAlert } from 'lucide-react';
 import {
   DropdownMenu,
@@ -105,12 +107,46 @@ export function InvitesPanel() {
   const [showAll, setShowAll] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [botUsername, setBotUsername] = useState('4truckBot');
+  // Origin where /signup/<code> works.  Comes from /auth/config so it
+  // matches the env-driven AUTH_BASE_URL on the server (defaults to
+  // https://4truck.us — the apex where Login.tsx is reachable, NOT
+  // the dash./app./api. subdomains where it would 404).  Falls back
+  // to window.location.origin only during the brief load window.
+  const [signupBase, setSignupBase] = useState<string | null>(null);
 
   // Create form
   const [showForm, setShowForm] = useState(false);
   const [role, setRole] = useState('fleet');
-  const [department, setDepartment] = useState('general');
   const [truckNum, setTruckNum] = useState('');
+  // Selected vehicle for driver invites — picker writes the vehicle
+  // name to truckNum on select; we mirror the FleetVehicle here so
+  // re-opening the dialog can pre-select the same row visually.
+  const [pickedVehicle, setPickedVehicle] = useState<FleetVehicle | null>(null);
+
+  // Fleet vehicles for the picker (driver role only).  Walks all
+  // pages — backend caps page_size at 200 so for fleets >200 a
+  // single fetch silently truncated the picker.  Sequential paging
+  // (most accounts fit in one round-trip).  staleTime keeps it from
+  // refetching mid-dialog while the operator types.
+  const { data: vehiclesData, isLoading: vehiclesLoading } = useQuery({
+    queryKey: ['invite-vehicle-picker'],
+    queryFn: async () => {
+      const all: FleetVehicle[] = [];
+      let page = 1;
+      while (true) {
+        const res = await apiJSON<{
+          vehicles: FleetVehicle[];
+          total_pages: number;
+        }>(`/vehicles?page_size=200&page=${page}`);
+        all.push(...(res.vehicles ?? []));
+        if (page >= (res.total_pages ?? 1)) break;
+        page++;
+      }
+      return { vehicles: all };
+    },
+    staleTime: 60_000,
+  });
+  const fleetVehicles = vehiclesData?.vehicles ?? [];
   const [hours, setHours] = useState(24);
   const [creating, setCreating] = useState(false);
   // Send-via channel for the create form.  Three options:
@@ -206,7 +242,7 @@ export function InvitesPanel() {
   const [extending, setExtending] = useState<number | null>(null);
 
   // Filters (client-side, applied on top of the fetched data).  Search
-  // matches department / truck / code (the three free-text columns
+  // matches vehicle / code (the two free-text columns
   // operators search for).  Role + status chips are exclusive
   // single-select; null = no filter.
   const [search, setSearch] = useState('');
@@ -260,25 +296,30 @@ export function InvitesPanel() {
     // the per-account bot when the request carries an admin JWT (so
     // invite links land on the account's branded bot rather than the
     // global login bot — the right semantic for "join my company").
-    apiJSON<{ bot_username: string }>('/auth/config')
-      .then(d => { if (d.bot_username) setBotUsername(d.bot_username); })
+    // signup_base_url is the apex origin where /signup/<code> works
+    // (env-driven; defaults to 4truck.us).  We need it because URL-
+    // channel invites issued from dash.4truck.us must point at the
+    // apex (where Login.tsx lives) — using window.location.origin
+    // here would 404 the recipient.
+    apiJSON<{
+      bot_username: string;
+      signup_base_url?: string;
+    }>('/auth/config')
+      .then(d => {
+        if (d.bot_username) setBotUsername(d.bot_username);
+        if (d.signup_base_url) setSignupBase(d.signup_base_url);
+      })
       .catch(() => {});
   }, []);
 
   async function create() {
     setCreating(true);
     try {
-      // Department falls back to 'general' if the operator cleared the
-      // input — the column default is 'general' but Pydantic accepts
-      // an explicit empty string and bypasses it.  Trimming here is
-      // the only thing standing between the operator and a row with
-      // department=''.
-      const dep = department.trim() || 'general';
-      const body: Record<string, unknown> = { role, department: dep, hours };
+      const body: Record<string, unknown> = { role, hours };
       // Gate truck_num on CURRENT role, not on the state string
       // having content — otherwise switching role=driver → role=fleet
-      // (which hides the Truck# input but preserves truckNum state)
-      // attaches the stale truck number to a non-driver invite.
+      // (which hides the Vehicle picker but preserves truckNum state)
+      // attaches the stale vehicle to a non-driver invite.
       if (role === 'driver' && truckNum.trim()) {
         body.truck_num = truckNum.trim();
       }
@@ -351,11 +392,11 @@ export function InvitesPanel() {
       }
       setShowForm(false);
       // Reset per-driver field + per-recipient address on success;
-      // leave role/department/hours so bulk-onboarding flows
-      // ("invite three drivers") don't have to re-fill the same
-      // form three times.  Channel is reset on every dialog open
-      // (see open useEffect) — high-blast-radius choice, not sticky.
+      // leave role/hours so bulk-onboarding flows ("invite three
+      // drivers") don't have to re-fill the same form three times.
+      // Channel is the operator's persisted last-choice — not reset.
       setTruckNum('');
+      setPickedVehicle(null);
       setRecipientEmail('');
       try { await load({ silent: true }); } catch { /* surfaced */ }
     } catch (e) {
@@ -421,21 +462,23 @@ export function InvitesPanel() {
    * Build the recipient-facing URL for an invite code.  Single
    * source of truth — three channels, three URL shapes:
    *   telegram → ``https://t.me/<bot>?start=join_<code>``
-   *   url      → ``<origin>/signup/<code>`` (path-segment, keeps
-   *              code out of Referer + CDN query logs)
-   *   email    → same as url (the operator's clipboard fallback
-   *              when SMTP succeeds OR fails — the recipient is
-   *              web-only, NOT on Telegram)
-   * window.location.origin works on apex (dash.4truck.us) and on
-   * tenant subdomains alike; for cross-domain operators the URL
-   * still routes to /signup/<code> handled by App.tsx.
+   *   url      → ``<apex>/signup/<code>``  (path-segment URL)
+   *   email    → same as url (operator's clipboard fallback)
+   *
+   * Apex origin comes from /auth/config's ``signup_base_url`` field
+   * (env-driven on the server; defaults to ``https://4truck.us`` —
+   * the APEX, not a persona subdomain).  This matters because
+   * Login.tsx lives ONLY on the apex; a URL like
+   * ``https://dash.4truck.us/signup/CODE`` would 404 the unauth
+   * recipient.  Falls back to window.location.origin during the
+   * brief load window before /auth/config resolves.
    */
   function buildInviteUrl(c: Channel, code: string): string {
     if (c === 'telegram') {
       return `https://t.me/${botUsername}?start=join_${code}`;
     }
-    // Both 'url' and 'email' channels use the path-segment signup URL.
-    return `${window.location.origin}/signup/${code}`;
+    const base = signupBase || window.location.origin;
+    return `${base}/signup/${code}`;
   }
 
   /**
@@ -635,7 +678,6 @@ export function InvitesPanel() {
       if (term) {
         const haystack = [
           i.code,
-          i.department,
           i.truck_num,
           i.role,
           ROLE_LABEL[i.role.toLowerCase()],
@@ -680,8 +722,7 @@ export function InvitesPanel() {
         return <RoleBadge role={String(v)} />;
       },
     },
-    { key: 'department', label: 'Department' },
-    { key: 'truck_num', label: 'Truck', render: (v) => (v as string) || '—' },
+    { key: 'truck_num', label: 'Vehicle', render: (v) => (v as string) || '—' },
     {
       key: 'expires_at',
       label: 'Expires',
@@ -944,7 +985,7 @@ export function InvitesPanel() {
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={t('forms.search_invites', { defaultValue: 'Search code, department, truck, or role…' })}
+              placeholder={t('forms.search_invites', { defaultValue: 'Search code, vehicle, or role…' })}
               className="w-full bg-muted rounded pl-8 pr-3 py-1.5 text-xs text-foreground border border-border focus:outline-none focus:border-ring"
             />
           </div>
@@ -1073,7 +1114,7 @@ export function InvitesPanel() {
           ARIA labelling for screen readers.  Wrapping the body in
           a ``<form>`` also gets Enter-to-submit for free, which the
           old overlay didn't have — operators can now type
-          department, hit Enter, and the link is on their clipboard. */}
+          vehicle, hit Enter, and the link is on their clipboard. */}
       <Dialog
         open={showForm}
         onOpenChange={(open, eventDetails) => {
@@ -1198,24 +1239,33 @@ export function InvitesPanel() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm text-muted-foreground mb-1">Department</label>
-                <input
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                  className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border"
-                />
-              </div>
-
               {role === 'driver' && (
                 <div>
-                  <label className="block text-sm text-muted-foreground mb-1">Truck # (optional)</label>
-                  <input
+                  <label className="block text-sm text-muted-foreground mb-1">
+                    {t('forms.vehicle_optional', { defaultValue: 'Vehicle (optional)' })}
+                  </label>
+                  <VehiclePicker
                     value={truckNum}
-                    onChange={(e) => setTruckNum(e.target.value)}
-                    className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border"
-                    placeholder={t('forms.truck_example')}
+                    onChange={(name, vehicle) => {
+                      setTruckNum(name);
+                      setPickedVehicle(vehicle);
+                    }}
+                    vehicles={fleetVehicles}
+                    loading={vehiclesLoading}
                   />
+                  <p className="text-2xs text-muted-foreground mt-1">
+                    {t('forms.vehicle_hint', {
+                      defaultValue: 'Pick the vehicle this driver will operate, or leave blank to assign later.',
+                    })}
+                  </p>
+                  {/* pickedVehicle hint — surface the picked vehicle's status
+                      so the operator sees they're inviting a driver to a
+                      stopped/idle vehicle, etc. */}
+                  {pickedVehicle && (
+                    <p className="text-2xs text-muted-foreground mt-1 opacity-70">
+                      {pickedVehicle.company} · {pickedVehicle.status}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -1297,12 +1347,10 @@ export function InvitesPanel() {
             <div className="text-xs text-muted-foreground border border-border rounded-md p-3 bg-muted/30">
               <div className="flex items-center gap-2">
                 <RoleBadge role={confirming.role} />
-                <span>·</span>
-                <span>{confirming.department}</span>
                 {confirming.truck_num && (
                   <>
                     <span>·</span>
-                    <span>Truck {confirming.truck_num}</span>
+                    <span>{t('forms.vehicle_label', { defaultValue: 'Vehicle' })} {confirming.truck_num}</span>
                   </>
                 )}
               </div>

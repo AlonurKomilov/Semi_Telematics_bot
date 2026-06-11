@@ -24,6 +24,10 @@ import type {
   SamsaraDriversResponse,
   AnyColumn,
 } from '../../types';
+import { useShellConfig } from '../../hooks/useShellConfig';
+import {
+  tabsForPersona, showsExpiringBanner, type DriverDetailTab,
+} from '../../features/drivers/personaConfig';
 
 const DOC_TYPES: Array<{ key: string; label: string }> = [
   { key: 'cdl',              label: 'CDL' },
@@ -39,7 +43,9 @@ const DOC_LABEL: Record<string, string> = Object.fromEntries(
   DOC_TYPES.map((d) => [d.key, d.label]),
 );
 
-type DetailTab = 'profile' | 'vehicles' | 'documents' | 'inspections' | 'trainings' | 'hos';
+// Drawer tabs are persona-composed (Shared-tier feature): the available
+// set per role lives in features/drivers/personaConfig.ts.
+type DetailTab = DriverDetailTab;
 
 function daysUntil(iso: string | null): number | null {
   if (!iso) return null;
@@ -127,6 +133,16 @@ export default function Drivers() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detailTab, setDetailTab] = useState<DetailTab>('profile');
   const [includeTerminated, setIncludeTerminated] = useState(false);
+  // Persona composition: resolve the active persona's tab set once at
+  // the page wrapper; the drawer + tab bodies never read persona state.
+  const { persona } = useShellConfig();
+  const visibleTabs = tabsForPersona(persona);
+  useEffect(() => {
+    // Live persona switch (View-As) can strand the open tab on one the
+    // new persona doesn't have — snap back to its first tab.
+    if (!visibleTabs.includes(detailTab)) setDetailTab(visibleTabs[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persona]);
 
   const { data: listData, isLoading, error: listError } = useQuery({
     queryKey: ['drivers', includeTerminated],
@@ -161,14 +177,16 @@ export default function Drivers() {
     return () => clearTimeout(tid);
   }, [success]);
 
-  // Cross-fleet expiring docs (for the banner)
+  // Cross-fleet expiring docs (for the banner) — only fetched for
+  // personas that action documents (see personaConfig).
   const { data: expiringData } = useQuery({
     queryKey: ['drivers-expiring'],
     queryFn: () => apiJSON<{ documents: DriverDocument[]; count: number }>(
       '/drivers/documents/expiring?within_days=30',
     ),
+    enabled: showsExpiringBanner(persona),
   });
-  const expiringCount = expiringData?.count ?? 0;
+  const expiringCount = showsExpiringBanner(persona) ? (expiringData?.count ?? 0) : 0;
 
   const close = () => { setSelectedId(null); setDetailTab('profile'); };
 
@@ -235,6 +253,7 @@ export default function Drivers() {
               <DriverDrawer
                 detail={detail}
                 tab={detailTab}
+                tabs={visibleTabs}
                 onTab={setDetailTab}
                 onClose={close}
                 onSaved={() => { refetchDetail(); refetchList(); setSuccess('Saved'); }}
@@ -249,10 +268,11 @@ export default function Drivers() {
 }
 
 function DriverDrawer({
-  detail, tab, onTab, onClose, onSaved, onError,
+  detail, tab, tabs, onTab, onClose, onSaved, onError,
 }: {
   detail: DriverDetail;
   tab: DetailTab;
+  tabs: DetailTab[];
   onTab: (t: DetailTab) => void;
   onClose: () => void;
   onSaved: () => void;
@@ -309,7 +329,7 @@ function DriverDrawer({
             { key: 'inspections' as DetailTab, label: 'Inspections', icon: <ClipboardCheck size={12} />, soon: true  },
             { key: 'trainings' as DetailTab,   label: 'Trainings',   icon: <GraduationCap size={12} />,  soon: true  },
             { key: 'hos' as DetailTab,         label: 'HOS',         icon: <Clock size={12} />,          soon: true  },
-          ]).map((tt) => (
+          ]).filter((tt) => tabs.includes(tt.key)).map((tt) => (
             <button
               key={tt.key}
               onClick={() => onTab(tt.key)}

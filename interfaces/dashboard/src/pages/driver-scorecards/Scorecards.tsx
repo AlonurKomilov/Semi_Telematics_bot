@@ -18,6 +18,10 @@ import {
   DateRangePresets,
   useLoadingStage,
 } from '../../components/shell';
+import { useShellConfig } from '../../hooks/useShellConfig';
+import { usePermissions } from '../../hooks/usePermissions';
+import { blocksForPersona } from '../../features/driver-scorecards/personaConfig';
+import { ScorecardRulesPanel } from '../admin/ScorecardRules';
 import type {
   CompositeScorecard,
   CompositeScorecardsResponse,
@@ -583,6 +587,16 @@ function makeColumns(
 
 export default function Scorecards() {
   const { t } = useTranslation();
+  // Persona composition: resolve the active persona's block set once at
+  // the page wrapper (features/driver-scorecards/personaConfig.ts);
+  // block components never read persona state themselves.
+  const { persona } = useShellConfig();
+  const blocks = blocksForPersona(persona);
+  // Scorecard Rules is this feature's CONFIG component (docs/FEATURES.md)
+  // — hosted as a Rules tab for admins; the scoreboard stays the default.
+  const { has } = usePermissions();
+  const canRules = has('can_manage_account');
+  const [pageTab, setPageTab] = useState<'scoreboard' | 'rules'>('scoreboard');
   // Default 30 days — matches Events, RiskSummary and Reports so the
   // dashboard's "default window" is consistent across the SAFETY group.
   const [days, setDays]       = useState(30);
@@ -675,6 +689,42 @@ export default function Scorecards() {
     });
   }, [cards, pillarFilter]);
 
+  // Tab bar — only admins (can_manage_account) see the Rules tab; for
+  // everyone else the page renders tabless, exactly as before.
+  const tabBar = canRules ? (
+    <div className="flex items-center gap-1 mb-4 border-b border-border">
+      {([['scoreboard', t('scorecards.tab_scoreboard', 'Scoreboard')],
+         ['rules', t('scorecards.tab_rules', 'Rules')]] as const).map(([k, label]) => (
+        <button
+          key={k}
+          type="button"
+          onClick={() => setPageTab(k)}
+          className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition ${
+            pageTab === k
+              ? 'border-primary text-foreground'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  if (pageTab === 'rules' && canRules) {
+    return (
+      <div>
+        <PageHeader
+          icon={Trophy}
+          title={t('scorecards.page_title')}
+          description={t('pages.scorecard_rules_desc', 'Configure the scoring pillars, points and caps behind every scorecard.')}
+        />
+        {tabBar}
+        <ScorecardRulesPanel />
+      </div>
+    );
+  }
+
   if (error && cards.length === 0) {
     return (
       <div>
@@ -683,6 +733,7 @@ export default function Scorecards() {
           title={t('scorecards.page_title')}
           description={t('scorecards.page_description')}
         />
+        {tabBar}
         <ErrorState
           title={t('errors.load_failed')}
           message={error}
@@ -794,8 +845,10 @@ export default function Scorecards() {
         }
       />
 
+      {tabBar}
+
       {/* KPI strip */}
-      {cards.length > 0 && (
+      {cards.length > 0 && blocks.includes('kpi') && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <KpiCard
             label={t('scorecards.kpi_active_trucks')}
@@ -844,16 +897,20 @@ export default function Scorecards() {
         />
       ) : (
         <>
-          {cards.length > 0 && (
+          {cards.length > 0 && (blocks.includes('distribution') || blocks.includes('top_bottom')) && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-              <div className="bg-card border border-border rounded-xl p-5">
-                <p className="text-sm font-medium mb-3">{t('scorecards.score_distribution')}</p>
-                <ScoreDistribution cards={cards} />
-              </div>
-              <div className="bg-card border border-border rounded-xl p-5">
-                <p className="text-sm font-medium mb-3">{t('scorecards.top_vs_bottom')}</p>
-                <TopBottomChart cards={cards} />
-              </div>
+              {blocks.includes('distribution') && (
+                <div className="bg-card border border-border rounded-xl p-5">
+                  <p className="text-sm font-medium mb-3">{t('scorecards.score_distribution')}</p>
+                  <ScoreDistribution cards={cards} />
+                </div>
+              )}
+              {blocks.includes('top_bottom') && (
+                <div className="bg-card border border-border rounded-xl p-5">
+                  <p className="text-sm font-medium mb-3">{t('scorecards.top_vs_bottom')}</p>
+                  <TopBottomChart cards={cards} />
+                </div>
+              )}
             </div>
           )}
           {/* Pillar filter chips */}
