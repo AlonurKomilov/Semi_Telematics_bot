@@ -23,10 +23,33 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Iterable
+import statistics
+from datetime import date, datetime, timezone
+from typing import TYPE_CHECKING, Any, Iterable, Optional
 
 logger = logging.getLogger(__name__)
+
+
+# ── Velocity tuning constants ─────────────────────────────────────
+#
+# A "drive day" is a day where the vehicle moved meaningfully —
+# 5 mi keeps the threshold robust against parking-lot crawl, fuel-
+# island repositioning, and GPS jitter that can register as a
+# fractional mile.  Below this we treat the day as idle (shop /
+# weekend / spare) and exclude it from the median.
+VELOCITY_DRIVE_DAY_MIN_MILES = 5.0
+
+# Minimum days of OBSERVED data (regardless of whether they were
+# drive or idle) before we'll surface a velocity at all.  Below this
+# coverage threshold the projection is noise, and we'd rather show
+# nothing than guess.  7 days = at least one full week including
+# whatever the truck's weekly cycle is.
+VELOCITY_MIN_COVERAGE_DAYS = 7
+
+# Minimum DRIVE days (the median's actual sample size) before we
+# trust the result.  3 drive days catches a typical Mon-Wed-Fri
+# pattern; below this the median is too dependent on a single point.
+VELOCITY_MIN_DRIVE_DAYS = 3
 
 if TYPE_CHECKING:
     class _MixinBase:
@@ -45,6 +68,22 @@ else:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _opt_float(value: Any) -> float | None:
+    """Coerce a possibly-None / possibly-strings input into ``float | None``.
+
+    Lets snapshot writers pass raw dict-from-JSON values without
+    pre-cleaning every column.  Returns None for None, empty strings,
+    or unparseable inputs so the column stays NULL rather than turning
+    into 0.0 (which would silently corrupt downstream delta math).
+    """
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 class WarehouseMixin(_MixinBase):
@@ -630,6 +669,750 @@ class WarehouseMixin(_MixinBase):
             tuple(args),
         )
         return [dict(zip(cols, row)) for row in await cur.fetchall()]
+
+    async def get_vehicle_avg_daily_miles(
+        self,
+        account_id: int,
+        *,
+        days: int = 30,
+    ) -> dict[str, float]:
+        """Average daily miles per vehicle over the last ``days``.
+
+        Aggregates ``vehicle_telemetry_hourly.miles`` per vehicle_id and
+        divides by ``days``.  Drives the maintenance-calendar's mileage
+        projection: a truck that does 120 mi/day with 600 mi to go on
+        the next oil change projects to ~5 days out.
+
+        Returned dict is keyed by ``vehicle_id`` because that's the
+        column the warehouse populates; callers that join by
+        ``vehicle_name`` should map through the live state table.
+
+        Vehicles with no telemetry in the window are simply absent from
+        the returned dict (not present-but-zero) so the caller can tell
+        "0 mi/day driven" from "no signal at all" and decide whether to
+        project or not.
+        """
+        from datetime import timedelta
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
+            "%Y-%m-%dT%H:00:00",
+        )
+        cur = await self._db.execute(
+            """
+            SELECT vehicle_id, SUM(miles) AS total_miles
+              FROM vehicle_telemetry_hourly
+             WHERE account_id = ? AND hour_utc >= ?
+             GROUP BY vehicle_id
+            """,
+            (account_id, since),
+        )
+        out: dict[str, float] = {}
+        for row in await cur.fetchall():
+            d = dict(zip(("vehicle_id", "total_miles"), row))
+            vid = str(d.get("vehicle_id") or "")
+            total = d.get("total_miles") or 0
+            if vid and total:
+                out[vid] = float(total) / float(days)
+        return out
+
+
+    # ── vehicle_state_snapshot (5-min history) ──────────────────────
+    #
+    # Persistence layer for the per-vehicle state-over-time history
+    # that backs the maintenance calendar projection, safety event
+    # correlation, dispatch trip playback, accounting fuel-burn
+    # reports, HR hours-of-service reconciliation, and predictive
+    # maintenance.  The snapshot job copies vehicle_state rows in;
+    # the aggregator job reads them to compute hourly deltas; the
+    # retention prune drops rows past the configured window.
+
+    async def upsert_vehicle_state_snapshots(
+        self,
+        account_id: int,
+        rows: Iterable[dict[str, Any]],
+    ) -> int:
+        """Bulk-insert snapshot rows.  ``ON CONFLICT DO NOTHING`` keeps
+        re-runs idempotent — if the scheduler fires twice within the
+        same minute the second insert is a no-op rather than a duplicate
+        key error."""
+        values: list[tuple] = []
+        for r in rows:
+            vid = str(r.get("vehicle_id") or "").strip()
+            ts = str(r.get("captured_at") or "").strip()
+            if not vid or not ts:
+                continue
+            values.append((
+                account_id, vid, ts,
+                _opt_float(r.get("lat")),
+                _opt_float(r.get("lon")),
+                _opt_float(r.get("speed_mph")),
+                str(r.get("engine_state") or ""),
+                _opt_float(r.get("fuel_pct")),
+                _opt_float(r.get("def_pct")),
+                _opt_float(r.get("odometer_mi")),
+                _opt_float(r.get("engine_hours")),
+                int(r.get("fault_count") or 0),
+                int(r.get("dtc_critical_count") or 0),
+                str(r.get("last_driver_id") or ""),
+                _opt_float(r.get("battery_v")),
+                _opt_float(r.get("oil_psi")),
+                _opt_float(r.get("coolant_c")),
+                _opt_float(r.get("engine_load_pct")),
+                _opt_float(r.get("rpm")),
+            ))
+        if values:
+            await self._db.executemany(
+                """
+                INSERT INTO vehicle_state_snapshot (
+                    account_id, vehicle_id, captured_at,
+                    lat, lon, speed_mph, engine_state,
+                    fuel_pct, def_pct, odometer_mi, engine_hours,
+                    fault_count, dtc_critical_count, last_driver_id,
+                    battery_v, oil_psi, coolant_c,
+                    engine_load_pct, rpm
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (account_id, vehicle_id, captured_at) DO NOTHING
+                """,
+                values,
+            )
+        await self._db.commit()
+        return len(values)
+
+    async def get_vehicle_state_at_or_before(
+        self,
+        account_id: int,
+        vehicle_id: str,
+        captured_before: str,
+    ) -> Optional[dict[str, Any]]:
+        """Latest snapshot for a vehicle at-or-before ``captured_before``.
+
+        Used by the hourly aggregator to compute miles delta over each
+        hour window: end_snapshot.odometer - start_snapshot.odometer.
+        Returns None when no snapshot exists in the retention window —
+        in that case the aggregator skips this hour for this vehicle
+        and the miles total stays at zero rather than guessing.
+        """
+        cur = await self._db.execute(
+            """
+            SELECT odometer_mi, engine_hours, fuel_pct, captured_at,
+                   engine_state, speed_mph
+              FROM vehicle_state_snapshot
+             WHERE account_id = ? AND vehicle_id = ?
+               AND captured_at <= ?
+             ORDER BY captured_at DESC
+             LIMIT 1
+            """,
+            (account_id, vehicle_id, captured_before),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        return dict(zip(
+            ("odometer_mi", "engine_hours", "fuel_pct", "captured_at",
+             "engine_state", "speed_mph"),
+            row,
+        ))
+
+    async def compute_vehicle_velocity_window(
+        self,
+        account_id: int,
+        *,
+        days: int = 30,
+        min_days_required: int = 3,
+    ) -> dict[str, float]:
+        """Average daily miles per vehicle over the recent history.
+
+        Reads from ``vehicle_state_snapshot`` directly so the answer
+        reflects the genuine odometer-delta over the window, regardless
+        of whether the hourly aggregator has run for every hour in the
+        window.
+
+        ``min_days_required`` skips vehicles whose first observed
+        snapshot is too recent for the window to be meaningful — a
+        truck onboarded yesterday with one snapshot would otherwise
+        report 0 mi/day and trigger no projection.  3 days is the
+        empirical threshold below which Samsara odometer noise can
+        outweigh signal.
+
+        Returned dict is keyed by ``vehicle_id``; vehicles with no
+        data in the window are absent rather than present-with-zero so
+        the caller can distinguish "no signal" from "zero miles".
+        """
+        from datetime import timedelta
+        now = datetime.now(timezone.utc)
+        since = (now - timedelta(days=days)).isoformat()
+        cur = await self._db.execute(
+            """
+            SELECT vehicle_id,
+                   MIN(odometer_mi) AS first_odo,
+                   MAX(odometer_mi) AS last_odo,
+                   MIN(captured_at) AS first_at,
+                   MAX(captured_at) AS last_at
+              FROM vehicle_state_snapshot
+             WHERE account_id = ?
+               AND captured_at >= ?
+               AND odometer_mi IS NOT NULL
+             GROUP BY vehicle_id
+            """,
+            (account_id, since),
+        )
+        out: dict[str, float] = {}
+        cols = ("vehicle_id", "first_odo", "last_odo", "first_at", "last_at")
+        for row in await cur.fetchall():
+            d = dict(zip(cols, row))
+            vid = str(d.get("vehicle_id") or "")
+            if not vid:
+                continue
+            first_odo = d.get("first_odo")
+            last_odo = d.get("last_odo")
+            first_at = d.get("first_at")
+            last_at = d.get("last_at")
+            if first_odo is None or last_odo is None or not first_at or not last_at:
+                continue
+            try:
+                t0 = datetime.fromisoformat(first_at.replace("Z", "+00:00"))
+                t1 = datetime.fromisoformat(last_at.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                continue
+            actual_span_days = (t1 - t0).total_seconds() / 86400.0
+            if actual_span_days < float(min_days_required):
+                continue
+            miles_driven = max(0.0, float(last_odo) - float(first_odo))
+            out[vid] = miles_driven / actual_span_days
+        return out
+
+    async def compute_vehicle_velocity_daily(
+        self,
+        account_id: int,
+        *,
+        window_days: int = 30,
+    ) -> dict[str, dict[str, Any]]:
+        """Per-vehicle daily-miles velocity, robust to weekly cycles.
+
+        Returns the **median** of per-day miles over the requested
+        window, computed from ``vehicle_metrics_daily`` — which
+        retains 730 days, so the requested window is honoured for
+        real (unlike the snapshot-based helper, where the 7-day
+        retention silently truncates a 30-day query).
+
+        Why median, not mean
+        --------------------
+        Fleet trucks have bimodal day distributions: a drive day
+        does 200-400 mi, an idle day (weekend / shop / spare) does
+        0.  A simple mean of [0, 0, 0, 300, 350, 280, 0] (Mon-Sun)
+        is 133 mi/day, which is wrong — the truck does 300 on
+        operating days; the zeros are absences, not slowness.
+        Projecting against the mean over-estimates how long it'll
+        take to hit a maintenance threshold and pushes due dates
+        too far into the future.
+
+        Why "operational days only"
+        ---------------------------
+        Days with ``miles < VELOCITY_DRIVE_DAY_MIN_MILES`` are
+        excluded from the median.  This is what makes yard / backup
+        / shop-held trucks project accurately — they have legitimate
+        idle weeks the calendar shouldn't smooth into the velocity.
+
+        Coverage guards
+        ---------------
+        Two guards together prevent low-data projections:
+          * ``window_observed_days >= VELOCITY_MIN_COVERAGE_DAYS``
+            (any kind of day, drive or idle) — captures cold-start
+            and onboarding cases.
+          * ``drive_day_count >= VELOCITY_MIN_DRIVE_DAYS`` — the
+            median's sample size must be meaningful.
+
+        Vehicles failing either guard are absent from the result so
+        the caller can distinguish "no signal" from "signal present
+        but zero".
+
+        Return shape
+        ------------
+        Each value is a dict so the caller can surface the provenance
+        in the operator-facing tooltip ("projected from 187 mi/day,
+        last 30 days, 22 drive days observed"):
+
+            {
+              "velocity":       187.0,   # median of drive-day miles
+              "window_days":    30,      # the requested window
+              "days_observed":  30,      # any-kind-of-day rows seen
+              "drive_days":     22,      # rows with miles >= threshold
+              "min_drive_mi":   60.0,    # robustness: floor of drive-day miles
+              "max_drive_mi":   410.0,   # robustness: ceiling
+            }
+        """
+        from datetime import timedelta
+        # ``window_days - 1`` so a 30-day window covers exactly 30
+        # calendar days inclusive of today.  Without this offset the
+        # ``>= since_day`` filter returns 31 days (today and the 30
+        # before it), which makes ``days_observed > window_days``
+        # — confusing in the tooltip and noted as a reporting
+        # mismatch in code review.
+        since_day = (
+            datetime.now(timezone.utc) - timedelta(days=max(0, window_days - 1))
+        ).date().isoformat()
+        cur = await self._db.execute(
+            """
+            SELECT vehicle_id, day_utc, COALESCE(miles, 0) AS miles
+              FROM vehicle_metrics_daily
+             WHERE account_id = ? AND day_utc >= ?
+             ORDER BY vehicle_id, day_utc
+            """,
+            (account_id, since_day),
+        )
+        rows = await cur.fetchall()
+
+        # Group per vehicle on the python side — the daily table is
+        # bounded (~30 rows × N vehicles for the default window), so
+        # this is cheaper than running per-vehicle SQL with window
+        # functions.
+        per_vehicle: dict[str, list[float]] = {}
+        for row in rows:
+            d = dict(zip(("vehicle_id", "day_utc", "miles"), row))
+            vid = str(d.get("vehicle_id") or "")
+            if not vid:
+                continue
+            try:
+                miles = float(d.get("miles") or 0)
+            except (TypeError, ValueError):
+                continue
+            per_vehicle.setdefault(vid, []).append(miles)
+
+        out: dict[str, dict[str, Any]] = {}
+        for vid, daily_miles in per_vehicle.items():
+            if len(daily_miles) < VELOCITY_MIN_COVERAGE_DAYS:
+                continue
+            drive_days = [
+                m for m in daily_miles
+                if m >= VELOCITY_DRIVE_DAY_MIN_MILES
+            ]
+            if len(drive_days) < VELOCITY_MIN_DRIVE_DAYS:
+                continue
+            out[vid] = {
+                "velocity":       round(statistics.median(drive_days), 1),
+                "window_days":    int(window_days),
+                "days_observed":  len(daily_miles),
+                "drive_days":     len(drive_days),
+                "min_drive_mi":   round(min(drive_days), 1),
+                "max_drive_mi":   round(max(drive_days), 1),
+            }
+        return out
+
+    async def prune_vehicle_state_snapshots(
+        self, account_id: int, *, days_keep: int = 7,
+    ) -> int:
+        """Drop snapshot rows older than the retention window."""
+        from datetime import timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days_keep)).isoformat()
+        cur = await self._db.execute(
+            "DELETE FROM vehicle_state_snapshot "
+            "WHERE account_id = ? AND captured_at < ?",
+            (account_id, cutoff),
+        )
+        await self._db.commit()
+        return getattr(cur, "rowcount", 0) or 0
+
+    async def vehicle_state_snapshot_has_day(
+        self, account_id: int, day_utc: date,
+    ) -> bool:
+        """Cheap existence check used by the backfill day cursor.
+
+        A day "exists" if ANY snapshot row sits inside its UTC window.
+        We don't try to detect partial-day coverage — that would be
+        expensive and the backfill is idempotent (``ON CONFLICT DO
+        NOTHING`` at the row level), so re-fetching a partially-
+        populated day is safe even if wasteful.  In practice partial
+        days only happen when a backfill is interrupted mid-day, and
+        the next run finishes the day cheaply.
+        """
+        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+        start = _dt.combine(day_utc, _dt.min.time(), tzinfo=_tz.utc).isoformat()
+        end = (_dt.combine(day_utc, _dt.min.time(), tzinfo=_tz.utc) + _td(days=1)).isoformat()
+        cur = await self._db.execute(
+            "SELECT 1 FROM vehicle_state_snapshot "
+            "WHERE account_id = ? AND captured_at >= ? AND captured_at < ? "
+            "LIMIT 1",
+            (account_id, start, end),
+        )
+        row = await cur.fetchone()
+        return row is not None
+
+    async def vehicle_state_snapshot_day_summary(
+        self, account_id: int, *, days_back: int = 30,
+    ) -> list[dict[str, Any]]:
+        """Per-day row count for the recent window — backs the
+        backfill progress card on the dashboard.
+
+        Returns ``[{"day_utc": "YYYY-MM-DD", "row_count": N}, ...]``
+        ordered newest-first.  Days with zero rows are present in the
+        list with ``row_count=0`` so callers can render gaps.
+        """
+        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+        since = (_dt.now(_tz.utc) - _td(days=days_back)).date().isoformat()
+        cur = await self._db.execute(
+            """
+            SELECT substr(captured_at, 1, 10) AS day_utc,
+                   COUNT(*) AS row_count
+              FROM vehicle_state_snapshot
+             WHERE account_id = ? AND captured_at >= ?
+             GROUP BY day_utc
+             ORDER BY day_utc DESC
+            """,
+            (account_id, since),
+        )
+        rows = await cur.fetchall()
+        cols = ("day_utc", "row_count")
+        existing = {
+            str(dict(zip(cols, row)).get("day_utc") or ""): int(
+                dict(zip(cols, row)).get("row_count") or 0
+            )
+            for row in rows
+        }
+        # Pad missing days so the dashboard can render gaps.
+        out: list[dict[str, Any]] = []
+        today = _dt.now(_tz.utc).date()
+        for offset in range(days_back):
+            d = (today - _td(days=offset)).isoformat()
+            out.append({"day_utc": d, "row_count": existing.get(d, 0)})
+        return out
+
+
+    async def query_vehicle_state_history(
+        self,
+        account_id: int,
+        *,
+        vehicle_id: str | None = None,
+        vehicle_name: str | None = None,
+        days: int = 7,
+        max_rows: int = 200,
+    ) -> list[dict]:
+        """Read raw snapshot rows for one vehicle (or all) over a window.
+
+        Surfaces the ``vehicle_state_snapshot`` 5-min history to the AI
+        agent so it can answer trend / utilization / "when did X last
+        move" / idle-streak questions that the point-in-time tools
+        can't.  Caps at ``max_rows`` so a careless 30-day query against
+        a busy fleet doesn't blow the agent's context window — the
+        caller should narrow ``days`` or pick a specific vehicle when
+        they need finer resolution.
+
+        Requires either ``vehicle_id`` (Samsara ID) or ``vehicle_name``
+        — fleet-wide history queries are intentionally not supported
+        because the row count explodes quadratically with fleet size.
+        ``vehicle_name`` is resolved via the ``vehicle_state`` table
+        which carries the canonical name→id mapping.
+        """
+        from datetime import timedelta as _td
+        if not vehicle_id and not vehicle_name:
+            return []
+
+        # Resolve vehicle_name → vehicle_id if needed.
+        if not vehicle_id and vehicle_name:
+            cur = await self._db.execute(
+                "SELECT vehicle_id FROM vehicle_state "
+                "WHERE account_id = ? AND vehicle_name = ? LIMIT 1",
+                (account_id, vehicle_name),
+            )
+            r = await cur.fetchone()
+            if not r:
+                return []
+            vehicle_id = r[0]
+
+        since = (datetime.now(timezone.utc) - _td(days=days)).isoformat()
+        cur = await self._db.execute(
+            """
+            SELECT captured_at, lat, lon, speed_mph, engine_state,
+                   fuel_pct, def_pct, odometer_mi, engine_hours,
+                   fault_count, dtc_critical_count, last_driver_id,
+                   battery_v, oil_psi, coolant_c, engine_load_pct, rpm
+              FROM vehicle_state_snapshot
+             WHERE account_id = ? AND vehicle_id = ?
+               AND captured_at >= ?
+             ORDER BY captured_at DESC
+             LIMIT ?
+            """,
+            (account_id, vehicle_id, since, max_rows),
+        )
+        rows = await cur.fetchall()
+        cols = (
+            "captured_at", "lat", "lon", "speed_mph", "engine_state",
+            "fuel_pct", "def_pct", "odometer_mi", "engine_hours",
+            "fault_count", "dtc_critical_count", "last_driver_id",
+            "battery_v", "oil_psi", "coolant_c", "engine_load_pct", "rpm",
+        )
+        return [dict(zip(cols, row)) for row in rows]
+
+
+    # ── vehicle_metrics_daily (day roll-up) ─────────────────────────
+
+    async def upsert_vehicle_metrics_daily(
+        self,
+        account_id: int,
+        rows: Iterable[dict[str, Any]],
+    ) -> int:
+        """Bulk-upsert daily roll-up rows.  Re-running today's
+        aggregator overwrites today's row in place, so a partial
+        day's metrics converge as more hours close out."""
+        ts = _now_iso()
+        values: list[tuple] = []
+        for r in rows:
+            vid = str(r.get("vehicle_id") or "").strip()
+            day = str(r.get("day_utc") or "").strip()
+            if not vid or not day:
+                continue
+            values.append((
+                account_id, vid, day,
+                float(r.get("miles") or 0),
+                float(r.get("drive_min") or 0),
+                float(r.get("idle_min") or 0),
+                _opt_float(r.get("max_speed_mph")),
+                _opt_float(r.get("avg_fuel_pct")),
+                int(r.get("harsh_event_count") or 0),
+                int(r.get("fault_count_eod") or 0),
+                ts,
+            ))
+        if values:
+            await self._db.executemany(
+                """
+                INSERT INTO vehicle_metrics_daily (
+                    account_id, vehicle_id, day_utc,
+                    miles, drive_min, idle_min,
+                    max_speed_mph, avg_fuel_pct,
+                    harsh_event_count, fault_count_eod, ingested_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (account_id, vehicle_id, day_utc) DO UPDATE SET
+                    miles=excluded.miles,
+                    drive_min=excluded.drive_min,
+                    idle_min=excluded.idle_min,
+                    max_speed_mph=excluded.max_speed_mph,
+                    avg_fuel_pct=excluded.avg_fuel_pct,
+                    harsh_event_count=excluded.harsh_event_count,
+                    fault_count_eod=excluded.fault_count_eod,
+                    ingested_at=excluded.ingested_at
+                """,
+                values,
+            )
+        await self._db.commit()
+        return len(values)
+
+    async def prune_vehicle_metrics_daily(
+        self, account_id: int, *, days_keep: int = 730,
+    ) -> int:
+        """Drop daily roll-up rows older than the retention window."""
+        from datetime import timedelta
+        cutoff_day = (datetime.now(timezone.utc) - timedelta(days=days_keep)).date().isoformat()
+        cur = await self._db.execute(
+            "DELETE FROM vehicle_metrics_daily "
+            "WHERE account_id = ? AND day_utc < ?",
+            (account_id, cutoff_day),
+        )
+        await self._db.commit()
+        return getattr(cur, "rowcount", 0) or 0
+
+    async def get_vehicle_metrics_daily(
+        self,
+        account_id: int,
+        *,
+        vehicle_id: str | None = None,
+        days: int = 30,
+    ) -> list[dict[str, Any]]:
+        """Read daily roll-up rows for the window, oldest-first.
+
+        Backs the vehicle-detail usage chart (per-day miles, drive
+        hours, idle hours over 30/90/365 day windows), the fleet
+        utilization summary, and the predictive-maintenance trend
+        lines.  Default window is 30 days to keep the dashboard
+        payload cheap; routes can override.
+        """
+        from datetime import timedelta
+        since_day = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+        where = ["account_id = ?", "day_utc >= ?"]
+        args: list[Any] = [account_id, since_day]
+        if vehicle_id:
+            where.append("vehicle_id = ?")
+            args.append(vehicle_id)
+        cols = [
+            "vehicle_id", "day_utc", "miles", "drive_min", "idle_min",
+            "max_speed_mph", "avg_fuel_pct", "harsh_event_count",
+        ]
+        cur = await self._db.execute(
+            f"""
+            SELECT {', '.join(cols)}
+              FROM vehicle_metrics_daily
+             WHERE {' AND '.join(where)}
+             ORDER BY day_utc ASC
+            """,
+            tuple(args),
+        )
+        return [dict(zip(cols, row)) for row in await cur.fetchall()]
+
+    async def get_vehicle_usage_summary(
+        self,
+        account_id: int,
+        vehicle_id: str,
+        *,
+        days: int = 30,
+    ) -> dict[str, Any]:
+        """One-row totals over the window: miles, drive_h, idle_h,
+        utilization %, average fuel %, harsh-event count, plus the
+        cost-per-mile aggregate joined from ``work_orders``.
+
+        Returns zeros when no data exists — callers render that as
+        "no recent activity" rather than as an error.  Utilization is
+        drive / (drive + idle); parked time isn't captured by sample
+        counts (only moving + idle states populate samples in the
+        hourly aggregator), so the ratio reads as "duty time" not
+        "calendar time".
+        """
+        from datetime import timedelta
+        since_day = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+        cur = await self._db.execute(
+            """
+            SELECT COALESCE(SUM(miles), 0)              AS total_miles,
+                   COALESCE(SUM(drive_min), 0)          AS total_drive_min,
+                   COALESCE(SUM(idle_min), 0)           AS total_idle_min,
+                   COALESCE(MAX(max_speed_mph), 0)      AS max_speed_mph,
+                   COALESCE(AVG(avg_fuel_pct), 0)       AS avg_fuel_pct,
+                   COALESCE(SUM(harsh_event_count), 0)  AS harsh_events,
+                   COUNT(*)                             AS days_with_data
+              FROM vehicle_metrics_daily
+             WHERE account_id = ? AND vehicle_id = ?
+               AND day_utc >= ?
+            """,
+            (account_id, vehicle_id, since_day),
+        )
+        row = await cur.fetchone()
+        cols = (
+            "total_miles", "total_drive_min", "total_idle_min",
+            "max_speed_mph", "avg_fuel_pct", "harsh_events",
+            "days_with_data",
+        )
+        d = dict(zip(cols, row)) if row else {k: 0 for k in cols}
+
+        # Cost over the same window from work_orders.  Match by both
+        # vehicle_id (preferred — set on new uploads) and vehicle_name
+        # (legacy rows) so older work orders still count.  Service
+        # date is the canonical "when did the cost occur" timestamp.
+        cur = await self._db.execute(
+            """
+            SELECT vehicle_id, vehicle_name FROM vehicle_state
+             WHERE account_id = ? AND vehicle_id = ?
+             LIMIT 1
+            """,
+            (account_id, vehicle_id),
+        )
+        vrow = await cur.fetchone()
+        vehicle_name = (vrow[1] if vrow else "") or ""
+
+        cur = await self._db.execute(
+            """
+            SELECT COALESCE(SUM(total_cost), 0) AS total_cost,
+                   COUNT(*)                     AS work_order_count
+              FROM work_orders
+             WHERE account_id = ?
+               AND service_date >= ?
+               AND status != 'draft'
+               AND (vehicle_id = ? OR (vehicle_id = '' AND vehicle_name = ?))
+            """,
+            (account_id, since_day, vehicle_id, vehicle_name),
+        )
+        crow = await cur.fetchone()
+        cost_cols = ("total_cost", "work_order_count")
+        cd = dict(zip(cost_cols, crow)) if crow else {"total_cost": 0, "work_order_count": 0}
+
+        total_miles = float(d.get("total_miles") or 0)
+        drive_min = float(d.get("total_drive_min") or 0)
+        idle_min = float(d.get("total_idle_min") or 0)
+        duty_min = drive_min + idle_min
+        utilization_pct = (drive_min / duty_min * 100.0) if duty_min > 0 else 0.0
+        total_cost = float(cd.get("total_cost") or 0)
+        cost_per_mile = (total_cost / total_miles) if total_miles > 0 else None
+
+        return {
+            "vehicle_id":        vehicle_id,
+            "vehicle_name":      vehicle_name,
+            "days":              int(days),
+            "days_with_data":    int(d.get("days_with_data") or 0),
+            "total_miles":       round(total_miles, 1),
+            "drive_hours":       round(drive_min / 60.0, 2),
+            "idle_hours":        round(idle_min / 60.0, 2),
+            "utilization_pct":   round(utilization_pct, 1),
+            "max_speed_mph":     round(float(d.get("max_speed_mph") or 0), 1),
+            "avg_fuel_pct":      round(float(d.get("avg_fuel_pct") or 0), 1),
+            "harsh_events":      int(d.get("harsh_events") or 0),
+            "total_cost":        round(total_cost, 2),
+            "work_order_count":  int(cd.get("work_order_count") or 0),
+            "cost_per_mile":     round(cost_per_mile, 3) if cost_per_mile is not None else None,
+        }
+
+    async def get_account_utilization_summary(
+        self,
+        account_id: int,
+        *,
+        days: int = 30,
+    ) -> list[dict[str, Any]]:
+        """Per-vehicle utilization summary across the entire fleet.
+
+        Backs the Vehicles list "Utilization (30d)" column and the
+        fleet executive scorecard.  Vehicles with no data in the
+        window are absent — the caller can render them as "—" rather
+        than as zero.
+        """
+        from datetime import timedelta
+        since_day = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+        cur = await self._db.execute(
+            """
+            SELECT vehicle_id,
+                   COALESCE(SUM(miles), 0)     AS total_miles,
+                   COALESCE(SUM(drive_min), 0) AS drive_min,
+                   COALESCE(SUM(idle_min), 0)  AS idle_min,
+                   COUNT(*)                    AS days_with_data
+              FROM vehicle_metrics_daily
+             WHERE account_id = ? AND day_utc >= ?
+             GROUP BY vehicle_id
+            """,
+            (account_id, since_day),
+        )
+        out: list[dict[str, Any]] = []
+        cols = ("vehicle_id", "total_miles", "drive_min", "idle_min", "days_with_data")
+        for row in await cur.fetchall():
+            d = dict(zip(cols, row))
+            vid = str(d.get("vehicle_id") or "")
+            if not vid:
+                continue
+            drive_min = float(d.get("drive_min") or 0)
+            idle_min = float(d.get("idle_min") or 0)
+            duty_min = drive_min + idle_min
+            utilization_pct = (drive_min / duty_min * 100.0) if duty_min > 0 else 0.0
+            out.append({
+                "vehicle_id":      vid,
+                "total_miles":     round(float(d.get("total_miles") or 0), 1),
+                "drive_hours":     round(drive_min / 60.0, 2),
+                "idle_hours":      round(idle_min / 60.0, 2),
+                "utilization_pct": round(utilization_pct, 1),
+                "days_with_data":  int(d.get("days_with_data") or 0),
+            })
+        return out
+
+    async def prune_vehicle_telemetry_hourly(
+        self, account_id: int, *, days_keep: int = 90,
+    ) -> int:
+        """Drop hourly bucket rows older than the retention window.
+
+        Lives here next to its siblings so all three retention windows
+        are tuned in one place.  90 days matches the predictive-
+        maintenance lookback used by the engine-wear analyzer."""
+        from datetime import timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days_keep)).strftime(
+            "%Y-%m-%dT%H:00:00",
+        )
+        cur = await self._db.execute(
+            "DELETE FROM vehicle_telemetry_hourly "
+            "WHERE account_id = ? AND hour_utc < ?",
+            (account_id, cutoff),
+        )
+        await self._db.commit()
+        return getattr(cur, "rowcount", 0) or 0
+
 
     # ── vehicle_health_snapshot ────────────────────────────
 

@@ -47,6 +47,24 @@ SAMSARA_DASHBOARD_URL = os.getenv(
     SAMSARA_BASE_URL.replace("://api.", "://cloud.").rstrip("/"),
 )
 
+# ── Samsara rate-limit safety ────────────────────────────────────
+#
+# Defaults pace the history-endpoint backfill (the heaviest Samsara
+# call we make) at 20 % of Samsara's documented 5 RPS sustained limit
+# for the stats/history endpoint, leaving plenty of headroom for the
+# live ingest jobs.  Ops can tighten or loosen via env without a
+# redeploy of code.
+
+SAMSARA_BACKFILL_RPS = float(os.getenv("SAMSARA_BACKFILL_RPS", "1.0"))
+SAMSARA_BACKFILL_BURST = int(os.getenv("SAMSARA_BACKFILL_BURST", "3"))
+SAMSARA_BACKFILL_DAY_CHUNK_SEC = int(
+    os.getenv("SAMSARA_BACKFILL_DAY_CHUNK_SEC", "60"),
+)
+SAMSARA_429_MAX_RETRIES = int(os.getenv("SAMSARA_429_MAX_RETRIES", "3"))
+SAMSARA_429_DEFAULT_RETRY_AFTER_SEC = float(
+    os.getenv("SAMSARA_429_DEFAULT_RETRY_AFTER_SEC", "5.0"),
+)
+
 # ── Alert intervals & thresholds ─────────────────────────────────
 
 ALERT_INTERVAL = int(os.getenv("ALERT_CHECK_INTERVAL_MINUTES", "30"))

@@ -211,6 +211,29 @@ async def exists(key: str) -> bool:
         return False
 
 
+async def scan_keys(pattern: str, batch: int = 500) -> list[str]:
+    """Return every key matching ``pattern``.
+
+    Uses non-blocking SCAN (not KEYS) so a sweep across thousands of
+    keys doesn't stall the server.  Decodes bytes → str so callers
+    don't have to.  Returns an empty list on failure rather than
+    raising — sweep workers shouldn't crash on transient Redis errors.
+    """
+    if not _available or not _pool:
+        return []
+    try:
+        out: list[str] = []
+        async for k in _pool.scan_iter(match=pattern, count=batch):
+            if isinstance(k, bytes):
+                out.append(k.decode("utf-8", errors="replace"))
+            else:
+                out.append(str(k))
+        return out
+    except Exception as e:
+        logger.warning("Redis SCAN %s: %s", pattern, e)
+        return []
+
+
 async def setex_flag(key: str, ttl: int):
     """Set a flag key with TTL (for cooldowns).  Value is always '1'."""
     if not _available or not _pool:

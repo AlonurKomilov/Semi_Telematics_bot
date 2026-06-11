@@ -432,5 +432,31 @@ async def create_tables(conn) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_account_persona_groups_account
             ON account_persona_groups(account_id);
+
+        -- Telematics-provider connections (one row per account × provider).
+        -- Backs AccountIntegrationsMixin (adapters/storage/account_integrations.py)
+        -- — the feature's storage code shipped without its DDL and only worked
+        -- on dev DBs where the table already existed; a fresh install crashed
+        -- with "relation account_integrations does not exist".
+        -- UNIQUE(account_id, provider_id) backs the upsert's ON CONFLICT.
+        CREATE TABLE IF NOT EXISTS account_integrations (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id         INTEGER NOT NULL,
+            provider_id        TEXT    NOT NULL,
+            status             TEXT    NOT NULL DEFAULT 'disconnected',
+            connected_at       TEXT,
+            credentials_enc    TEXT,
+            feature_toggles    TEXT    NOT NULL DEFAULT '{}',
+            cadence_overrides  TEXT    NOT NULL DEFAULT '{}',
+            last_health_at     TEXT,
+            last_health_error  TEXT,
+            last_backfill_at   TEXT,
+            created_by         BIGINT  NOT NULL DEFAULT 0,
+            created_at         TEXT    NOT NULL DEFAULT '',
+            updated_at         TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, provider_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_account_integrations_account
+            ON account_integrations(account_id);
     """)
     await conn.commit()

@@ -3949,3 +3949,261 @@ async def migrate_invites_bounce_channel(conn) -> None:
         except Exception:
             pass
         raise
+
+
+@_register("098_drop_department_column")
+async def migrate_drop_department_column(conn) -> None:
+    """Drop ``department`` from invites and users.
+
+    The free-text ``department`` per-person label was vestigial — 99%
+    of users carried the default ``'general'`` value, and the term
+    collides confusingly with the account-level "department modules"
+    concept (the 5 toggleable Fleet/Dispatch/Safety/HR/Accounting
+    capability surfaces).  Role already covers the per-person scope
+    that ``department`` was trying to express, so the column adds
+    cognitive overhead without operational value.
+
+    Migration shape:
+      ALTER TABLE invites DROP COLUMN department;
+      ALTER TABLE users   DROP COLUMN department;
+
+    Postgres supports this since 9.0; SQLite since 3.35 (March 2021).
+    Older SQLite would need the table-recreate dance — flagged in the
+    runbook but not handled here since the project runs Postgres in
+    every prod deploy.
+
+    Data loss: any non-default value (operations, dispatch,
+    management, etc.) is unrecoverable post-drop.  The migration is
+    intentional and the operator-facing change is the disappearance
+    of the per-person department label from invite creation, audit
+    logs, user profile cards, and the TeamManagement column.
+    """
+    try:
+        # ``ALTER TABLE DROP COLUMN`` is idempotent in Postgres via
+        # ``IF EXISTS`` but SQLite predates that syntax.  Wrap in
+        # try/except so a re-run on a deploy that already dropped is
+        # a no-op.
+        for stmt in (
+            "ALTER TABLE invites DROP COLUMN department",
+            "ALTER TABLE users   DROP COLUMN department",
+        ):
+            try:
+                await conn.execute(stmt)
+            except Exception as e:
+                # Most likely cause: column already dropped in a prior
+                # run on this deploy.  Log + continue rather than
+                # rolling back the whole migration.
+                logger.info(
+                    "Migration 098: %r — assuming already-dropped: %s",
+                    stmt, e,
+                )
+        await conn.commit()
+        logger.info("Migration 098: dropped invites.department + users.department")
+    except Exception as e:
+        logger.error("Migration 098 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
+@_register("099_permissions_own_to_vehicle")
+async def migrate_permissions_own_to_vehicle(conn) -> None:
+    """Rename the 11 vehicle-scoped ``can_*_own`` keys to ``can_*_vehicle``
+    inside every stored ``role_permissions.permissions`` JSON blob.
+
+    The data-scope model was renamed Own → Vehicle (All / Company /
+    Vehicle) and the flag identifiers followed in code; stored custom
+    role-permission blobs still carry the old keys, so this rewrites them
+    in place (values preserved).
+
+    The 4 self-service ``_own`` flags (coaching_view / payroll_view /
+    driver_docs / risk_report) are deliberately LEFT untouched — they
+    mean "own self", not "own vehicle".
+
+    Idempotent: rows with no old keys are skipped, so a re-run is a no-op.
+    """
+    import json as _json
+    rename = {
+        "can_alerts_own": "can_alerts_vehicle",
+        "can_scorecard_own": "can_scorecard_vehicle",
+        "can_vehicle_own": "can_vehicle_vehicle",
+        "can_events_own": "can_events_vehicle",
+        "can_maintenance_own": "can_maintenance_vehicle",
+        "can_geofence_own": "can_geofence_vehicle",
+        "can_inspections_own": "can_inspections_vehicle",
+        "can_route_own": "can_route_vehicle",
+        "can_location_own": "can_location_vehicle",
+        "can_parking_own": "can_parking_vehicle",
+        "can_work_orders_own": "can_work_orders_vehicle",
+    }
+    try:
+        cur = await conn.execute("SELECT id, permissions FROM role_permissions")
+        rows = await cur.fetchall()
+        updated = 0
+        for r in rows:
+            try:
+                perms = _json.loads(r["permissions"] or "{}")
+            except Exception:
+                continue
+            if not isinstance(perms, dict):
+                continue
+            touched = False
+            for old, new in rename.items():
+                if old in perms:
+                    perms[new] = perms.pop(old)
+                    touched = True
+            if touched:
+                await conn.execute(
+                    "UPDATE role_permissions SET permissions = ? WHERE id = ?",
+                    (_json.dumps(perms), r["id"]),
+                )
+                updated += 1
+        await conn.commit()
+        logger.info(
+            "Migration 099: rewrote own→vehicle keys in %d role_permissions rows",
+            updated,
+        )
+    except Exception as e:
+        logger.error("Migration 099 (own→vehicle) failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
+@_register("100_vehicle_metrics_daily")
+async def migrate_vehicle_metrics_daily(conn) -> None:
+    """Create the per-day vehicle roll-up table.
+
+    Backs ``WarehouseMixin.upsert/get/prune_vehicle_metrics_daily`` and
+    the daily-velocity reads — the feature's storage code shipped
+    without its DDL, so it only worked on dev DBs where the table
+    already existed; a fresh Postgres install crashed with
+    ``relation "vehicle_metrics_daily" does not exist``.
+
+    UNIQUE(account_id, vehicle_id, day_utc) backs the upsert's
+    ``ON CONFLICT`` clause.
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS vehicle_metrics_daily (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id          INTEGER NOT NULL,
+            vehicle_id          TEXT    NOT NULL,
+            day_utc             TEXT    NOT NULL,
+            miles               REAL    NOT NULL DEFAULT 0,
+            drive_min           REAL    NOT NULL DEFAULT 0,
+            idle_min            REAL    NOT NULL DEFAULT 0,
+            max_speed_mph       REAL,
+            avg_fuel_pct        REAL,
+            harsh_event_count   INTEGER NOT NULL DEFAULT 0,
+            fault_count_eod     INTEGER NOT NULL DEFAULT 0,
+            ingested_at         TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, vehicle_id, day_utc)
+        );
+    """)
+    await conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_vehicle_metrics_daily_account_day
+            ON vehicle_metrics_daily(account_id, day_utc);
+    """)
+    # 5-minute vehicle state history (the M1 snapshot feature) — same
+    # ship-without-DDL story as vehicle_metrics_daily above.  UNIQUE
+    # backs the upsert's ON CONFLICT DO NOTHING.
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS vehicle_state_snapshot (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id          INTEGER NOT NULL,
+            vehicle_id          TEXT    NOT NULL,
+            captured_at         TEXT    NOT NULL,
+            lat                 REAL,
+            lon                 REAL,
+            speed_mph           REAL,
+            engine_state        TEXT,
+            fuel_pct            REAL,
+            def_pct             REAL,
+            odometer_mi         REAL,
+            engine_hours        REAL,
+            fault_count         INTEGER NOT NULL DEFAULT 0,
+            dtc_critical_count  INTEGER NOT NULL DEFAULT 0,
+            last_driver_id      TEXT,
+            battery_v           REAL,
+            oil_psi             REAL,
+            coolant_c           REAL,
+            engine_load_pct     REAL,
+            rpm                 REAL,
+            UNIQUE(account_id, vehicle_id, captured_at)
+        );
+    """)
+    await conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_vehicle_state_snapshot_acct_day
+            ON vehicle_state_snapshot(account_id, captured_at);
+    """)
+    await conn.commit()
+    logger.info("Migration 100: vehicle_metrics_daily + vehicle_state_snapshot ready")
+
+
+@_register("100_users_dnd_enabled")
+async def migrate_users_dnd_enabled(conn) -> None:
+    """Add ``users.dnd_enabled`` — single per-user toggle that controls
+    whether the user honours the admin-set Working Hours.
+
+    Default TRUE preserves existing behaviour: every user keeps
+    respecting the schedule the admin configured (per-user override or
+    role-level Working Hours).  Users who opt OUT via the Profile DND
+    toggle will get alerts 24/7 regardless of the schedule.
+
+    Replaces the previous design where users could edit their own
+    quiet_start/end from Profile — that path is now read-only.  The
+    existing quiet_start/end columns are kept (admin-managed only) so
+    no data is lost; ownership flips, not the values.
+
+    Idempotent: SQLite ALTER TABLE ADD COLUMN fails-but-doesn't-corrupt
+    on re-run; caught + logged.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE users ADD COLUMN dnd_enabled INTEGER NOT NULL DEFAULT 1"
+        )
+        await conn.commit()
+        logger.info("Migration 100: added users.dnd_enabled (default ON)")
+    except Exception as e:
+        logger.info(
+            "Migration 100: users.dnd_enabled likely already exists — %s", e,
+        )
+
+
+@_register("101_users_assigned_work_hours_id")
+async def migrate_users_assigned_work_hours_id(conn) -> None:
+    """Add ``users.assigned_work_hours_id`` — FK to a ``work_hours`` row.
+
+    Lets admins assign a user to a NAMED schedule from the Working
+    Hours catalog instead of typing custom hours into the per-user
+    override.  Reads as "Bakhtinur uses Night Shift" rather than
+    "Bakhtinur = 22:00-06:00", which is cleaner for the audit log and
+    keeps the schedule list as the single source of truth.
+
+    Backward-compatible: existing ``quiet_start`` / ``quiet_end`` values
+    keep working as a fallback when ``assigned_work_hours_id`` is NULL
+    (the DND precedence is: dnd_enabled → assigned schedule →
+    free-form override → role-level → none).
+
+    Nullable; no default so existing rows stay NULL → inherit role-level.
+    Not a foreign-key constraint at the DB layer (SQLite would skip it
+    anyway without ``PRAGMA foreign_keys=ON``); referential integrity
+    is enforced at the endpoint by validating the schedule belongs to
+    the caller's account before write.
+
+    Idempotent: ALTER ADD COLUMN fails-but-doesn't-corrupt on re-run.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE users ADD COLUMN assigned_work_hours_id INTEGER"
+        )
+        await conn.commit()
+        logger.info("Migration 101: added users.assigned_work_hours_id")
+    except Exception as e:
+        logger.info(
+            "Migration 101: users.assigned_work_hours_id likely already exists — %s", e,
+        )

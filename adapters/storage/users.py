@@ -12,7 +12,6 @@ class UsersMixin:
     async def create_user(
         self, telegram_id: int, account_id: int,
         role: Role = Role.FLEET,
-        department: str = "general",
         truck_num: Optional[str] = None,
         display_name: str = "",
     ) -> User:
@@ -20,15 +19,15 @@ class UsersMixin:
         now = self._now()
         cur = await self._db.execute(
             """INSERT INTO users
-               (telegram_id, account_id, role, department, truck_num, display_name, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (telegram_id, account_id, role.value, department, truck_num, display_name, now),
+               (telegram_id, account_id, role, truck_num, display_name, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (telegram_id, account_id, role.value, truck_num, display_name, now),
         )
         await self._db.commit()
         return User(
             id=cur.lastrowid, telegram_id=telegram_id,
             account_id=account_id, role=role,
-            department=department, truck_num=truck_num,
+            truck_num=truck_num,
             display_name=display_name,
             alerts_on=False, is_active=True, created_at=now,
         )
@@ -102,7 +101,7 @@ class UsersMixin:
 
     async def create_user_with_email(
         self, email: str, password_hash: str, account_id: int,
-        role: Role = Role.FLEET, department: str = "general",
+        role: Role = Role.FLEET,
         display_name: str = "",
     ) -> User:
         """Create a user that signed up via email + password.
@@ -124,17 +123,17 @@ class UsersMixin:
         now = self._now()
         cur = await self._db.execute(
             """INSERT INTO users
-               (telegram_id, account_id, role, department, display_name,
+               (telegram_id, account_id, role, display_name,
                 email, password_hash, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (None, account_id, role.value, department,
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (None, account_id, role.value,
              display_name, email.lower().strip(), password_hash, now),
         )
         await self._db.commit()
         return User(
             id=cur.lastrowid, telegram_id=None,
             account_id=account_id, role=role,
-            department=department, truck_num=None,
+            truck_num=None,
             display_name=display_name, email=email.lower().strip(),
             password_hash=password_hash,
             alerts_on=False, is_active=True, created_at=now,
@@ -462,8 +461,8 @@ class UsersMixin:
         return [self._row_to_user(r) for r in rows]
 
     async def update_user(self, user_id: int, **kwargs) -> bool:
-        """Update user fields. Allowed: role, department, truck_num, alerts_on, is_active, alert_*."""
-        allowed = {"role", "department", "truck_num", "alerts_on", "is_active",
+        """Update user fields. Allowed: role, truck_num, alerts_on, is_active, alert_*."""
+        allowed = {"role", "truck_num", "alerts_on", "is_active",
                    "alert_faults", "alert_health", "alert_fuel", "alert_geofence",
                    "alert_events", "alert_parking",
                    "alert_camera",
@@ -473,13 +472,25 @@ class UsersMixin:
                    "alert_resolve_receipts",
                    "ai_fault", "ai_health", "ai_fuel", "ai_events", "ai_parking",
                    "quiet_start", "quiet_end", "timezone", "display_name",
-                   "language", "samsara_driver_id"}
+                   "language", "samsara_driver_id",
+                   # Personal DND toggle (migration 100).  ``True`` =
+                   # respect Working Hours, ``False`` = receive alerts
+                   # 24/7.  Coerced to int below for SQLite (no native bool).
+                   "dnd_enabled",
+                   # FK to work_hours.id (migration 101) — admin-set
+                   # named-schedule pointer.  Validated at the endpoint
+                   # layer (must belong to caller's account).
+                   "assigned_work_hours_id"}
         updates = {}
         for k, v in kwargs.items():
             if k not in allowed:
                 continue
             if k == "role" and isinstance(v, Role):
                 v = v.value
+            # SQLite has no native boolean — store ``dnd_enabled`` as
+            # INTEGER 0/1.  Coerce here so callers can pass real bools.
+            if k == "dnd_enabled" and isinstance(v, bool):
+                v = 1 if v else 0
             updates[k] = v
         if not updates:
             return False

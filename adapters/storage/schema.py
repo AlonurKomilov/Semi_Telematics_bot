@@ -73,7 +73,6 @@ async def create_tables(conn) -> None:
             telegram_id BIGINT  NOT NULL UNIQUE,
             account_id  INTEGER NOT NULL REFERENCES accounts(id),
             role        TEXT    NOT NULL DEFAULT 'fleet',
-            department  TEXT    NOT NULL DEFAULT 'general',
             truck_num   TEXT,
             alerts_on   INTEGER NOT NULL DEFAULT 0,
             is_active   INTEGER NOT NULL DEFAULT 1,
@@ -85,7 +84,6 @@ async def create_tables(conn) -> None:
             code        TEXT    NOT NULL UNIQUE,
             account_id  INTEGER NOT NULL REFERENCES accounts(id),
             role        TEXT    NOT NULL DEFAULT 'fleet',
-            department  TEXT    NOT NULL DEFAULT 'general',
             truck_num   TEXT,
             created_by  INTEGER NOT NULL REFERENCES users(id),
             expires_at  TEXT    NOT NULL,
@@ -209,6 +207,23 @@ async def create_tables(conn) -> None:
             ON fuel_entries(account_id, vehicle_name);
         CREATE INDEX IF NOT EXISTS idx_digest_subs_active
             ON digest_subscriptions(is_active, send_hour);
+
+        -- Per-account custom maintenance task types (operator-defined
+        -- dropdown options for the maintenance scheduler).  Queried by
+        -- adapters/storage/maintenance.py; UNIQUE(account_id, value)
+        -- backs the idempotent upsert (ON CONFLICT (account_id, value)).
+        CREATE TABLE IF NOT EXISTS maintenance_custom_task_types (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id  INTEGER NOT NULL REFERENCES accounts(id),
+            value       TEXT    NOT NULL,
+            label       TEXT    NOT NULL,
+            created_by  INTEGER NOT NULL DEFAULT 0,
+            created_at  TEXT    NOT NULL DEFAULT '',
+            updated_at  TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, value)
+        );
+        CREATE INDEX IF NOT EXISTS idx_maint_custom_types_account
+            ON maintenance_custom_task_types(account_id);
 
         -- account_settings: per-account key/value store for feature flags,
         -- AI model preferences, pillar caps, etc.  Isolation is enforced

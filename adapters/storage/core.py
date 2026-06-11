@@ -313,7 +313,6 @@ class _DatabaseCore:
             id=row["id"], telegram_id=row["telegram_id"],
             account_id=row["account_id"],
             role=Role.from_str(row["role"]),
-            department=row["department"],
             truck_num=row["truck_num"],
             alerts_on=bool(row["alerts_on"]),
             is_active=bool(row["is_active"]),
@@ -338,6 +337,16 @@ class _DatabaseCore:
                 if "alert_resolve_receipts" in row.keys() else False,
             quiet_start=row["quiet_start"] if "quiet_start" in row.keys() else None,
             quiet_end=row["quiet_end"] if "quiet_end" in row.keys() else None,
+            # ``dnd_enabled`` defaults TRUE so users on a DB row that
+            # predates migration 100 keep honouring Working Hours (the
+            # same behaviour they had before the toggle existed).
+            dnd_enabled=bool(row["dnd_enabled"])
+                if "dnd_enabled" in row.keys() else True,
+            # FK to work_hours.id — admin assigned this user to a
+            # named schedule (migration 101).  Defaults None for rows
+            # predating the migration.
+            assigned_work_hours_id=row["assigned_work_hours_id"]
+                if "assigned_work_hours_id" in row.keys() else None,
             timezone=row["timezone"] if "timezone" in row.keys() else "America/New_York",
             language=row["language"] if "language" in row.keys() else "en",
             last_shift_report=row["last_shift_report"] if "last_shift_report" in row.keys() else None,
@@ -389,7 +398,7 @@ class _DatabaseCore:
         return Invite(
             id=row["id"], code=row["code"],
             account_id=row["account_id"],
-            role=row["role"], department=row["department"],
+            role=row["role"],
             truck_num=row["truck_num"],
             created_by=row["created_by"],
             expires_at=row["expires_at"],

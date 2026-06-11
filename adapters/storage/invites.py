@@ -16,7 +16,6 @@ class InvitesMixin:
     async def create_invite(
         self, account_id: int, created_by: int,
         role: Role = Role.FLEET,
-        department: str = "general",
         truck_num: Optional[str] = None,
         hours: int = 24,
         recipient_email: Optional[str] = None,
@@ -65,16 +64,16 @@ class InvitesMixin:
 
         cur = await self._db.execute(
             """INSERT INTO invites
-               (code, account_id, role, department, truck_num,
+               (code, account_id, role, truck_num,
                 created_by, expires_at, created_at, sent_to_email)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (code, account_id, role.value, department, truck_num,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (code, account_id, role.value, truck_num,
              created_by, exp_str, now_str, stored_email),
         )
         await self._db.commit()
         return Invite(
             id=cur.lastrowid, code=code, account_id=account_id,
-            role=role.value, department=department, truck_num=truck_num,
+            role=role.value, truck_num=truck_num,
             created_by=created_by, expires_at=exp_str,
             used_by=None, created_at=now_str,
             revoked_at=None,
@@ -462,7 +461,7 @@ class InvitesMixin:
         """Look up an invite by primary key, scoped to an account.
 
         Used by the admin revoke flow so the endpoint can capture the
-        invite's role/department/created_by for the audit log BEFORE
+        invite's role/created_by for the audit log BEFORE
         flipping it to revoked.  Includes revoked rows because the
         operator-side might be re-checking a row they just revoked.
         Cross-account access is prevented by the ``account_id`` clause.
@@ -515,7 +514,6 @@ class InvitesMixin:
                 telegram_id=telegram_id,
                 account_id=invite.account_id,
                 role=Role.from_str(invite.role),
-                department=invite.department,
                 truck_num=invite.truck_num,
                 display_name=display_name,
             )
@@ -572,7 +570,7 @@ class InvitesMixin:
         """Mark an unused invite as revoked.
 
         Returns the revoked Invite row so the caller can write a
-        forensic audit log entry (role / department / created_by).
+        forensic audit log entry (role / created_by).
         Returns ``None`` when no row was flipped — covers:
           - invite_id not found in this account (cross-account attempt
             included; the WHERE clause silently swallows it)

@@ -78,12 +78,14 @@ from .payroll import PayrollMixin
 from .coaching import CoachingMixin
 from .storage_sync import StorageSyncMixin
 from .ai_chat import AIChatHistoryMixin
+from .account_integrations import AccountIntegrationsMixin, AccountIntegration  # noqa: F401
 from .platform import PlatformDB
 
 
 class Database(
     AccountsMixin,
     CompaniesMixin,
+    AccountIntegrationsMixin,
     UsersMixin,
     InvitesMixin,
     ChatsMixin,

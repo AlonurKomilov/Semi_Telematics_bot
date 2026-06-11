@@ -124,3 +124,45 @@ class UserCompaniesMixin:
                 (user_id, account_id, cid, assigned_by, now),
             )
         await self._db.commit()
+
+    async def get_all_user_company_codes(self, account_id: int) -> dict[int, list[str]]:
+        """All ``user_id → [company codes]`` for an account (batch, list views).
+
+        Used to company-filter the Drivers list without an N+1 of per-user
+        lookups.  Users with no assignment are simply absent from the map.
+        """
+        async with self.acquire() as conn:
+            cur = await conn.execute(
+                "SELECT uc.user_id, c.code FROM user_companies uc "
+                "JOIN companies c ON c.id = uc.company_id "
+                "WHERE uc.account_id = ? ORDER BY uc.user_id, c.code",
+                (account_id,),
+            )
+            rows = await cur.fetchall()
+        out: dict[int, list[str]] = {}
+        for r in rows:
+            out.setdefault(r["user_id"], []).append(r["code"])
+        return out
+
+    async def get_driver_company_codes_by_samsara(self, account_id: int) -> dict[str, list[str]]:
+        """``samsara_driver_id → [company codes]`` for coaching/payroll list views.
+
+        Coaching/payroll rows carry only the Samsara driver id; this maps it
+        through the linked user (``users.samsara_driver_id``) to the user's
+        companies.  Drivers with no linked user / no company are absent.
+        """
+        async with self.acquire() as conn:
+            cur = await conn.execute(
+                "SELECT u.samsara_driver_id AS sid, c.code FROM users u "
+                "JOIN user_companies uc ON uc.user_id = u.id "
+                "JOIN companies c ON c.id = uc.company_id "
+                "WHERE u.account_id = ? AND u.samsara_driver_id IS NOT NULL "
+                "ORDER BY u.samsara_driver_id, c.code",
+                (account_id,),
+            )
+            rows = await cur.fetchall()
+        out: dict[str, list[str]] = {}
+        for r in rows:
+            out.setdefault(r["sid"], []).append(r["code"])
+        return out
+

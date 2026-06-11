@@ -324,7 +324,7 @@ class BillingMixin:
         )
         await self._db.commit()
 
-    async def expire_lapsed_comps(self) -> list[int]:
+    async def expire_lapsed_comps(self, now: "datetime | None" = None) -> list[int]:
         """Clear ``is_comped`` for any account whose comp window has elapsed.
 
         Returns the list of account_ids whose comp expired.  Designed to
@@ -332,7 +332,10 @@ class BillingMixin:
         scan).  Audit rows are written so finance can correlate expired
         comps with the support tickets that follow.
         """
-        now = datetime.now(timezone.utc).isoformat()
+        # ``now`` is injectable so the sweep's frozen test clock applies to
+        # BOTH phases — with the real clock here, comps granted relative to
+        # a test clock expire instantly once the calendar passes them.
+        now = (now or datetime.now(timezone.utc)).isoformat()
         cur = await self._db.execute(
             """
             SELECT account_id FROM subscriptions

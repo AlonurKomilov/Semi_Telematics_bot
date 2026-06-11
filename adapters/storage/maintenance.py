@@ -2,10 +2,137 @@
 
 from __future__ import annotations
 
-from typing import Optional
+import re
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any, Optional
 
 
-class MaintenanceMixin:
+if TYPE_CHECKING:
+    # Typing stub — actual ``_db`` is provided by the ``_DatabaseCore``
+    # class that gets composed alongside this mixin on ``Database``.
+    class _MixinBase:
+        _db: Any
+
+        def _now(self) -> str: ...
+else:
+    _MixinBase = object
+
+
+_CUSTOM_TYPE_VALUE_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _slugify_type_value(label: str) -> str:
+    """Stable kebab-case key derived from the operator-supplied label.
+
+    The dashboard stores this string in ``maintenance_tasks.task_type``
+    so it has to survive label renames (operator edits the display
+    label but the stored value stays put).  Lowercase, alphanumerics +
+    hyphens only, prefixed with ``custom_`` so we can tell custom from
+    built-in at a glance.
+    """
+    cleaned = _CUSTOM_TYPE_VALUE_RE.sub("-", label.strip().lower()).strip("-")
+    if not cleaned:
+        cleaned = "untitled"
+    return f"custom_{cleaned}"[:80]
+
+
+class MaintenanceMixin(_MixinBase):
+
+    # ── Custom task types ───────────────────────────────────────────
+
+    async def list_maintenance_custom_task_types(
+        self, account_id: int,
+    ) -> list[dict[str, Any]]:
+        """Return the account's saved custom maintenance task types.
+
+        Sorted by label so the dashboard dropdown shows them in a
+        predictable order regardless of creation timestamp.
+        """
+        cur = await self._db.execute(
+            """
+            SELECT id, account_id, value, label,
+                   created_by, created_at, updated_at
+              FROM maintenance_custom_task_types
+             WHERE account_id = ?
+             ORDER BY label
+            """,
+            (account_id,),
+        )
+        cols = (
+            "id", "account_id", "value", "label",
+            "created_by", "created_at", "updated_at",
+        )
+        return [dict(zip(cols, row)) for row in await cur.fetchall()]
+
+    async def create_maintenance_custom_task_type(
+        self,
+        account_id: int,
+        label: str,
+        *,
+        created_by: int = 0,
+    ) -> Optional[dict[str, Any]]:
+        """Create or return-existing a custom task type.
+
+        Idempotent: if the same operator (or anyone else on the
+        account) adds the same label twice, the second call returns
+        the existing row instead of failing on the UNIQUE constraint.
+
+        Returns ``None`` when the label is empty after normalisation
+        — the caller maps that to a 400.
+        """
+        clean_label = (label or "").strip()
+        if not clean_label:
+            return None
+        value = _slugify_type_value(clean_label)
+        # Cap label length so a buggy / hostile caller can't store
+        # a 10 MB string in this field.
+        clean_label = clean_label[:60]
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        await self._db.execute(
+            """
+            INSERT INTO maintenance_custom_task_types (
+                account_id, value, label,
+                created_by, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT (account_id, value) DO UPDATE SET
+                label = excluded.label,
+                updated_at = excluded.updated_at
+            """,
+            (account_id, value, clean_label, created_by, now, now),
+        )
+        await self._db.commit()
+        cur = await self._db.execute(
+            """
+            SELECT id, account_id, value, label,
+                   created_by, created_at, updated_at
+              FROM maintenance_custom_task_types
+             WHERE account_id = ? AND value = ?
+            """,
+            (account_id, value),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        cols = (
+            "id", "account_id", "value", "label",
+            "created_by", "created_at", "updated_at",
+        )
+        return dict(zip(cols, row))
+
+    async def delete_maintenance_custom_task_type(
+        self, account_id: int, type_id: int,
+    ) -> bool:
+        """Remove a custom type.  Existing tasks already using the
+        type keep their ``task_type`` string unchanged — only the
+        dashboard-dropdown listing goes away."""
+        cur = await self._db.execute(
+            "DELETE FROM maintenance_custom_task_types "
+            "WHERE account_id = ? AND id = ?",
+            (account_id, type_id),
+        )
+        await self._db.commit()
+        return (getattr(cur, "rowcount", 0) or 0) > 0
+
 
     async def add_maintenance_task(
         self, account_id: int, company_code: str,

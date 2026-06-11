@@ -83,7 +83,6 @@ class User:
     telegram_id: Optional[int]
     account_id: int
     role: Role
-    department: str
     truck_num: Optional[str]   # for driver role
     alerts_on: bool
     is_active: bool
@@ -109,8 +108,37 @@ class User:
     # governed by a parallel ``alert_routing.send_resolve_receipt``
     # column controlled by admins on the Account Settings page.
     alert_resolve_receipts: bool = False
-    quiet_start: Optional[int] = None   # DND start hour (0-23)
-    quiet_end: Optional[int] = None     # DND end hour (0-23)
+    # Per-user Working Hours override (active alert-delivery window).
+    # Despite the name, these are NOT "silence start/end" — they define
+    # the ACTIVE window during which alerts deliver to this user.
+    # Outside the window non-critical alerts queue for shift-start.
+    # Both NULL → user inherits the role-level ``work_hours`` schedule
+    # (or "no Working Hours" → alerts 24/7 if the role has none either).
+    # Name kept ``quiet_*`` only because renaming the column requires a
+    # backfill migration; the semantics are working-window everywhere.
+    #
+    # ADMIN-MANAGED ONLY (since migration 100): set via the Team
+    # Management drawer Settings tab.  The user's own Profile page
+    # shows these read-only and offers ``dnd_enabled`` below as the
+    # only personal control over alert delivery.
+    quiet_start: Optional[int] = None   # working window START hour (0-23)
+    quiet_end: Optional[int] = None     # working window END hour   (0-23)
+    # Personal DND toggle (migration 100).  When TRUE the user honours
+    # the Working Hours schedule (per-user override OR role-level);
+    # outside that window non-critical alerts queue for shift-start.
+    # When FALSE the user opts out entirely — all non-critical alerts
+    # deliver 24/7 regardless of schedule.  Critical-severity alerts
+    # still bypass via ``bypasses_dnd`` at the pipeline call site.
+    # Default TRUE so existing users behave exactly as they did
+    # before this toggle was added.
+    dnd_enabled: bool = True
+    # FK to a ``work_hours`` row (migration 101).  Admin-managed: when
+    # set, the user's active alert-delivery window is taken from THAT
+    # named schedule, replacing the role-level lookup.  Lets operators
+    # assign "Night Shift" / "Day Shift A" / etc. to specific people
+    # instead of typing custom hours.  NULL → fall back to free-form
+    # quiet_start/quiet_end (legacy override) → then role-level.
+    assigned_work_hours_id: Optional[int] = None
     timezone: str = "America/New_York"
     language: str = "en"                # UI language (en/es/ru/uk/fr)
     last_shift_report: Optional[str] = None  # ISO date of last shift report
@@ -139,14 +167,19 @@ class User:
         return getattr(self, f"alert_{alert_type}", True)
 
     def is_in_quiet_hours(self) -> bool:
-        """Check if the user is currently in their DND quiet hours.
+        """Returns True when the user is currently OUTSIDE their personal
+        Working Hours override window — i.e. alerts should be DND-queued.
 
-        quiet_start/quiet_end define the WORKING hours window (when
-        alerts should be delivered).  This method returns True when
-        the current local time is OUTSIDE that window, meaning the
-        user is in quiet / do-not-disturb mode.
+        ``quiet_start`` / ``quiet_end`` define the ACTIVE working window
+        (when alerts SHOULD deliver).  This method returns True when
+        the user's local time falls OUTSIDE that window, which the
+        notification pipeline reads as "DND-active, queue this alert
+        for shift-start."  The naming is historical and inverted from
+        what the columns store; renaming would require a migration
+        and a backfill, so the comment carries the contract instead.
 
-        Returns False if quiet hours are not configured.
+        Returns False when no override is configured (both fields NULL)
+        — the caller falls back to the role-level Working Hours.
         """
         if self.quiet_start is None or self.quiet_end is None:
             return False
@@ -159,9 +192,9 @@ class User:
             if start <= end:
                 in_working = start <= local_hour < end
             else:
-                # Wraps midnight, e.g., 22:00 - 06:00
+                # Wraps midnight (e.g. 22:00 - 06:00) — common night-shift case.
                 in_working = local_hour >= start or local_hour < end
-            # Quiet hours = NOT in working hours
+            # DND-active = currently OUTSIDE the working window.
             return not in_working
         except Exception:
             return False
@@ -304,7 +337,6 @@ class Invite:
     code: str
     account_id: int
     role: str
-    department: str
     truck_num: Optional[str]
     created_by: int          # user.id
     expires_at: str

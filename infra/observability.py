@@ -92,6 +92,11 @@ BILLING_COMP_SWEEP: Any = _STUB
 # Resend invite-email webhook events — sibling to BILLING_WEBHOOK_EVENTS
 # so the Stripe and Resend webhooks share a dashboarding pattern.
 EMAIL_WEBHOOK_EVENTS: Any = _STUB
+# Telematics-provider health probes (capabilities/telematics_health.py).
+# Cardinality bounded: a handful of providers × {ok, error, timeout}.
+INTEGRATION_HEALTH: Any = _STUB
+# Telematics history-backfill runs (capabilities/telemetry/history_backfill.py).
+INTEGRATION_BACKFILL: Any = _STUB
 
 
 def _build_metrics() -> bool:
@@ -104,7 +109,7 @@ def _build_metrics() -> bool:
     global SINGLE_FLIGHT_COLLAPSE, SCORECARD_STAGE, ARQ_JOB, ARQ_QUEUE_DEPTH
     global BILLING_WEBHOOK_EVENTS, BILLING_SYNC_QTY
     global BILLING_NOTIFICATIONS, BILLING_COMP_SWEEP
-    global EMAIL_WEBHOOK_EVENTS
+    global EMAIL_WEBHOOK_EVENTS, INTEGRATION_HEALTH, INTEGRATION_BACKFILL
 
     if not isinstance(SAMSARA_LATENCY, _StubMetric):
         return True  # already built
@@ -186,6 +191,18 @@ def _build_metrics() -> bool:
         "email_webhook_events_total",
         "Resend webhook events received and the outcome of dispatch",
         labelnames=("event_type", "result"),
+    )
+
+    INTEGRATION_HEALTH = Counter(
+        "integration_health_checks_total",
+        "Telematics-provider health probes and their outcome",
+        labelnames=("provider", "status"),
+    )
+
+    INTEGRATION_BACKFILL = Counter(
+        "integration_backfill_runs_total",
+        "Telematics history-backfill runs and their outcome",
+        labelnames=("provider", "status"),
     )
 
     # Billing — extras-quantity reconciliation after every Samsara
@@ -276,6 +293,32 @@ def record_email_webhook(event_type: str, result: str) -> None:
     EMAIL_WEBHOOK_EVENTS.labels(
         event_type=(event_type or "unknown"),
         result=result,
+    ).inc()
+
+
+def record_integration_health_check(provider: str, status: str) -> None:
+    """One telematics-provider health probe.
+
+    ``status`` ∈ {``ok``, ``error``, ``timeout``}.  Called by
+    ``capabilities/telematics_health.py`` after each per-account probe;
+    safe before metrics init (stub no-ops).
+    """
+    INTEGRATION_HEALTH.labels(
+        provider=(provider or "unknown"),
+        status=status,
+    ).inc()
+
+
+def record_integration_backfill_run(provider: str, status: str) -> None:
+    """One telematics history-backfill run.
+
+    ``status`` ∈ {``completed``, ``failed``, ``partial``}.  Called by
+    ``capabilities/telemetry/history_backfill.py`` (via getattr, so this
+    stays optional); safe before metrics init (stub no-ops).
+    """
+    INTEGRATION_BACKFILL.labels(
+        provider=(provider or "unknown"),
+        status=status,
     ).inc()
 
 
