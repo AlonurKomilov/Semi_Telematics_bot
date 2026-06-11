@@ -1,4 +1,7 @@
 """AI Assistant API endpoints — chat, summary, diagnosis, model management."""
+# router.py is interface-layer code co-located with its hub/domain
+# (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps.
+
 
 
 import json

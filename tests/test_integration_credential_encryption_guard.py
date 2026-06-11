@@ -21,7 +21,7 @@ import pytest
 from fastapi import HTTPException
 
 import infra.crypto as crypto
-from interfaces.api.routes.integrations import (
+from capabilities.integrations.router import (
     CompanyCredentialUpsert,
     ConnectRequest,
     _guard_credential_encryption,

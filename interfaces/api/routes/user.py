@@ -226,147 +226,6 @@ async def set_credentials(
     }
 
 
-# ── Scheduled Reports ──────────────────────────────────────────
-# Recurring report delivery (PDF via Telegram).  Underlying storage
-# table is still ``digest_subscriptions`` (legacy name kept to avoid a
-# migration); the API + UI surface is fully renamed to "Scheduled
-# Reports".  The /subscriptions API aliases were dropped — any client
-# still calling them has had one release to update.
-
-VALID_FREQUENCIES = {"daily", "weekly", "monthly"}
-VALID_REPORT_TYPES = {"faults", "fuel", "health", "efficiency", "camera"}
-VALID_DELIVERY_CHANNELS = {"telegram", "email"}
-
-
-class ScheduledReportRequest(BaseModel):
-    frequency: str = Field("daily", pattern=r"^(daily|weekly|monthly)$")
-    send_hour: int = Field(7, ge=0, le=23)
-    timezone: str = "America/New_York"
-    report_type: str = Field("faults", pattern=r"^(faults|fuel|health|efficiency|camera)$")
-    # Delivery channels — at least one of "telegram" or "email".
-    # Defaults to ["telegram"] to preserve pre-2026-06 client behaviour
-    # for any older SPA bundle still in flight.  Validated below.
-    delivery_channels: list[str] = Field(default_factory=lambda: ["telegram"])
-
-    def validated_channels(self) -> list[str]:
-        """Return the de-duplicated, normalized channel list.
-
-        Raises ``HTTPException`` if invalid (empty, unknown channel,
-        all-bogus).  Keeps the route handlers free of inline validation
-        boilerplate and ensures one consistent error shape.
-        """
-        seen: list[str] = []
-        for c in self.delivery_channels:
-            v = (c or "").strip().lower()
-            if v in VALID_DELIVERY_CHANNELS and v not in seen:
-                seen.append(v)
-        if not seen:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "delivery_channels must include at least one of "
-                    f"{sorted(VALID_DELIVERY_CHANNELS)}"
-                ),
-            )
-        return seen
-
-
-@router.get("/scheduled-reports")
-async def list_scheduled_reports(
-    user: dict = Depends(require_permission("can_digest")),
-    platform_db=Depends(get_platform_db),
-    tenant_db=Depends(get_tenant_db),
-):
-    """Return every active scheduled-report row for the current user.
-
-    Gated on ``can_digest`` so toggling the flag OFF for a role in
-    RolePermissions actually disables the dashboard surface (not just
-    the bot delivery).  Without this guard the page kept loading and
-    accepting writes that the bot would silently never deliver.
-
-    Response envelope: ``{"scheduled_reports": [...]}``  (multi-schedule
-    model added 2026-06).  Empty list when the user has no schedules.
-    """
-    db_user = await get_current_db_user(user, platform_db)
-    if not db_user:
-        raise HTTPException(status_code=404, detail="User not found")
-    rows = await tenant_db.get_digest_subscriptions(db_user.id)
-    return {"scheduled_reports": rows}
-
-
-@router.put("/scheduled-reports")
-async def upsert_scheduled_report(
-    body: ScheduledReportRequest,
-    user: dict = Depends(require_permission("can_digest")),
-    platform_db=Depends(get_platform_db),
-    tenant_db=Depends(get_tenant_db),
-):
-    """Create or update the user's scheduled report delivery."""
-    db_user = await get_current_db_user(user, platform_db)
-    if not db_user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    channels = body.validated_channels()
-    # Email delivery requires a verified address — otherwise the
-    # scheduler would silently bounce, which hurts sender reputation.
-    # We reject up-front so the dashboard can surface the gap as a
-    # clear "verify your email" prompt instead of a mute non-delivery.
-    if "email" in channels:
-        if not db_user.email:
-            raise HTTPException(
-                status_code=422,
-                detail="Email delivery requires an email address on your profile",
-            )
-        if not getattr(db_user, "email_verified", False):
-            raise HTTPException(
-                status_code=422,
-                detail="Email delivery requires a verified email address — check your inbox for the verification link",
-            )
-
-    await tenant_db.subscribe_digest_ext(
-        db_user.id,
-        frequency=body.frequency,
-        send_hour=body.send_hour,
-        timezone=body.timezone,
-        report_type=body.report_type,
-        delivery_channels=channels,
-    )
-    # Return the FULL list so the dashboard can render the updated
-    # schedule grid without a second roundtrip.  The multi-schedule
-    # model means a single PUT can both create one row AND leave the
-    # other rows visible — clients want them in the same response.
-    rows = await tenant_db.get_digest_subscriptions(db_user.id)
-    return {"scheduled_reports": rows}
-
-
-@router.delete("/scheduled-reports")
-async def delete_scheduled_report(
-    report_type: Optional[str] = None,
-    user: dict = Depends(require_permission("can_digest")),
-    platform_db=Depends(get_platform_db),
-    tenant_db=Depends(get_tenant_db),
-):
-    """Stop scheduled report delivery.
-
-    ``?report_type=fuel`` stops only that schedule (per-row delete from
-    the dashboard or per-schedule bot wizard).  Omitting the param
-    stops EVERY schedule the user has — the "Stop all" button on the
-    dashboard.  Validated against the canonical report registry so a
-    malformed value can't deactivate by accident.
-    """
-    db_user = await get_current_db_user(user, platform_db)
-    if not db_user:
-        raise HTTPException(status_code=404, detail="User not found")
-    if report_type is not None:
-        if report_type not in VALID_REPORT_TYPES:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Invalid report_type: must be one of {sorted(VALID_REPORT_TYPES)}",
-            )
-    await tenant_db.unsubscribe_digest(db_user.id, report_type=report_type)
-    return {"ok": True}
-
-
 # ── User Preferences ────────────────────────────────────────────
 
 class PreferencesRequest(BaseModel):
@@ -388,204 +247,6 @@ class PreferencesRequest(BaseModel):
     quiet_start: Optional[int] = Field(None, ge=0, le=23)
     quiet_end: Optional[int] = Field(None, ge=0, le=23)
     display_name: Optional[str] = Field(None, min_length=1, max_length=100)
-
-
-# ── Personal alert preferences (per-user DM toggles) ───────────────
-#
-# These endpoints power the dashboard "My Notifications" page
-# (avatar menu → My Notifications).  Each user owns their own
-# per-alert-type DM toggle + the new "🟢 Resolve receipts" opt-in
-# (migration 080).  The toggle list is role-tailored — a Safety
-# user doesn't see a Fuel toggle; a Dispatcher doesn't see Health.
-# See ``capabilities/alerting/relevance.py`` for the role → type
-# mapping.
-#
-# Admin-side per-topic config (group/forum routing + resolve-
-# receipt toggle per topic) lives separately in
-# ``interfaces/api/routes/admin.py``; the two surfaces are
-# independent — neither overrides the other.
-
-
-class AlertPrefsRequest(BaseModel):
-    """Per-user alert preferences PATCH body.
-
-    Every field is optional so the dashboard can send partial
-    updates (toggle one switch at a time).  Unknown alert types are
-    silently ignored at the adapter layer so a stale UI doesn't
-    500 the request.
-    """
-    alerts_on: Optional[bool] = None
-    alert_faults: Optional[bool] = None
-    alert_health: Optional[bool] = None
-    alert_fuel: Optional[bool] = None
-    alert_geofence: Optional[bool] = None
-    alert_events: Optional[bool] = None
-    alert_parking: Optional[bool] = None
-    alert_camera: Optional[bool] = None
-    alert_resolve_receipts: Optional[bool] = None
-
-
-@router.get("/me/alerts")
-async def get_my_alerts(
-    user: dict = Depends(get_current_user),
-    platform_db=Depends(get_platform_db),
-):
-    """Return the role-tailored alert preferences for the current user.
-
-    Response shape::
-
-        {
-          "alerts_on": true,
-          "alert_resolve_receipts": false,
-          "relevant_types": ["faults", "health", "fuel", ...],
-          "toggles": {
-            "alert_faults": true,
-            "alert_health": true,
-            ...  // only includes relevant types
-          }
-        }
-
-    The ``relevant_types`` list drives which toggles the dashboard
-    renders.  ``toggles`` mirrors that filter so the client never
-    sees a stale value for an irrelevant type.
-    """
-    db_user = await get_current_db_user(user, platform_db)
-    if not db_user:
-        raise HTTPException(status_code=404, detail="User not found")
-    from capabilities.alerting.relevance import alert_types_for_role
-    relevant = alert_types_for_role(db_user.role)
-    toggles: dict[str, bool] = {}
-    for atype in relevant:
-        attr = f"alert_{atype}"
-        toggles[attr] = bool(getattr(db_user, attr, True))
-    return {
-        "alerts_on": bool(db_user.alerts_on),
-        "alert_resolve_receipts": bool(
-            getattr(db_user, "alert_resolve_receipts", False)
-        ),
-        "relevant_types": relevant,
-        "toggles": toggles,
-    }
-
-
-@router.put("/me/alerts")
-async def update_my_alerts(
-    body: AlertPrefsRequest,
-    user: dict = Depends(get_current_user),
-    platform_db=Depends(get_platform_db),
-):
-    """Patch the current user's alert preferences.
-
-    Role-tailored: requests to toggle an alert type the user's role
-    doesn't have permission for are silently dropped (the dashboard
-    UI shouldn't render that toggle anyway, but this is defense in
-    depth so a crafted request can't enable irrelevant alerts).
-    """
-    db_user = await get_current_db_user(user, platform_db)
-    if not db_user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    from capabilities.alerting.relevance import alert_types_for_role
-    relevant_attrs = {
-        f"alert_{atype}" for atype in alert_types_for_role(db_user.role)
-    }
-    # ``alerts_on`` (master switch) and ``alert_resolve_receipts``
-    # apply regardless of role — every role can opt in/out of these.
-    relevant_attrs.add("alerts_on")
-    relevant_attrs.add("alert_resolve_receipts")
-
-    updates: dict[str, bool] = {}
-    for field, value in body.model_dump(exclude_unset=True).items():
-        if value is None:
-            continue
-        if field not in relevant_attrs:
-            # Silently drop irrelevant toggles instead of 422'ing —
-            # the dashboard might briefly include a stale field
-            # during a role-change race, and we don't want to error
-            # the whole save for that.
-            continue
-        updates[field] = bool(value)
-
-    if updates:
-        await platform_db.update_user(db_user.id, **updates)
-
-    # Echo the post-update state so the dashboard re-syncs without
-    # a second roundtrip.
-    fresh = await platform_db.get_user_by_id(db_user.id) if hasattr(
-        platform_db, "get_user_by_id"
-    ) else db_user
-    relevant = alert_types_for_role(fresh.role if fresh else db_user.role)
-    toggles: dict[str, bool] = {}
-    target = fresh or db_user
-    for atype in relevant:
-        attr = f"alert_{atype}"
-        toggles[attr] = bool(getattr(target, attr, True))
-    return {
-        "alerts_on": bool(target.alerts_on),
-        "alert_resolve_receipts": bool(
-            getattr(target, "alert_resolve_receipts", False)
-        ),
-        "relevant_types": relevant,
-        "toggles": toggles,
-    }
-
-
-@router.put("/preferences")
-async def update_preferences(
-    body: PreferencesRequest,
-    user: dict = Depends(get_current_user),
-    platform_db=Depends(get_platform_db),
-):
-    """Update user display preferences (language, timezone, DND)."""
-    db_user = await get_current_db_user(user, platform_db)
-    if not db_user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    updates: dict = {}
-    # Pydantic's ``model_fields_set`` distinguishes "field not sent" from
-    # "field sent explicitly as null".  We need that for quiet_start /
-    # quiet_end so the user can CLEAR their override (= explicit null)
-    # to fall back to the Working-Hours-derived DND.  Without this, a
-    # null in the JSON body would silently be skipped and the old
-    # override would persist forever.
-    sent = body.model_fields_set
-    if body.language is not None:
-        updates["language"] = body.language
-    if "timezone" in sent and body.timezone is not None:
-        # Validate against the supported IANA list — an empty string is
-        # allowed as "clear my override, fall back to account default."
-        tz_val = body.timezone.strip()
-        if tz_val and tz_val not in IANA_OPTIONS:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Unsupported timezone. Valid values: {', '.join(IANA_OPTIONS)}",
-            )
-        updates["timezone"] = tz_val
-    # Working-Hours hours are admin-managed since migration 100.
-    # Reject any attempt by the user to self-edit ``quiet_start`` or
-    # ``quiet_end`` from their Profile — point them at the admin path.
-    # Sending ``dnd_enabled`` from the same body is the supported
-    # personal control (Profile DND toggle).
-    if "quiet_start" in sent or "quiet_end" in sent:
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                "Working Hours are managed by your administrator. "
-                "Use the DND toggle to opt in/out of receiving alerts "
-                "outside your shift, or ask your admin to update your "
-                "schedule via Team Management."
-            ),
-        )
-    if "dnd_enabled" in sent and body.dnd_enabled is not None:
-        updates["dnd_enabled"] = body.dnd_enabled
-    if body.display_name is not None:
-        updates["display_name"] = body.display_name
-
-    if not updates:
-        raise HTTPException(status_code=422, detail="No fields to update")
-
-    await platform_db.update_user(db_user.id, **updates)
-    return {"ok": True, "updated": list(updates.keys())}
 
 
 # ── Activity log + GDPR export ──────────────────────────────────────
@@ -910,3 +571,61 @@ async def telegram_unlink(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"ok": True}
+
+
+@router.put("/preferences")
+async def update_preferences(
+    body: PreferencesRequest,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Update user display preferences (language, timezone, DND)."""
+    db_user = await get_current_db_user(user, platform_db)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    updates: dict = {}
+    # Pydantic's ``model_fields_set`` distinguishes "field not sent" from
+    # "field sent explicitly as null".  We need that for quiet_start /
+    # quiet_end so the user can CLEAR their override (= explicit null)
+    # to fall back to the Working-Hours-derived DND.  Without this, a
+    # null in the JSON body would silently be skipped and the old
+    # override would persist forever.
+    sent = body.model_fields_set
+    if body.language is not None:
+        updates["language"] = body.language
+    if "timezone" in sent and body.timezone is not None:
+        # Validate against the supported IANA list — an empty string is
+        # allowed as "clear my override, fall back to account default."
+        tz_val = body.timezone.strip()
+        if tz_val and tz_val not in IANA_OPTIONS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unsupported timezone. Valid values: {', '.join(IANA_OPTIONS)}",
+            )
+        updates["timezone"] = tz_val
+    # Working-Hours hours are admin-managed since migration 100.
+    # Reject any attempt by the user to self-edit ``quiet_start`` or
+    # ``quiet_end`` from their Profile — point them at the admin path.
+    # Sending ``dnd_enabled`` from the same body is the supported
+    # personal control (Profile DND toggle).
+    if "quiet_start" in sent or "quiet_end" in sent:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Working Hours are managed by your administrator. "
+                "Use the DND toggle to opt in/out of receiving alerts "
+                "outside your shift, or ask your admin to update your "
+                "schedule via Team Management."
+            ),
+        )
+    if "dnd_enabled" in sent and body.dnd_enabled is not None:
+        updates["dnd_enabled"] = body.dnd_enabled
+    if body.display_name is not None:
+        updates["display_name"] = body.display_name
+
+    if not updates:
+        raise HTTPException(status_code=422, detail="No fields to update")
+
+    await platform_db.update_user(db_user.id, **updates)
+    return {"ok": True, "updated": list(updates.keys())}

@@ -424,7 +424,7 @@ async def test_shutdown_sweep_handles_no_records_cleanly(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_reset_endpoint_returns_cleared_true_on_existing_record(monkeypatch):
-    from interfaces.api.routes import integrations as integrations_module
+    from capabilities.integrations import router as integrations_module
 
     monkeypatch.setattr(
         integrations_module, "reset_backfill_status",
@@ -444,7 +444,7 @@ async def test_reset_endpoint_returns_cleared_true_on_existing_record(monkeypatc
 
 @pytest.mark.asyncio
 async def test_reset_endpoint_returns_cleared_false_when_absent(monkeypatch):
-    from interfaces.api.routes import integrations as integrations_module
+    from capabilities.integrations import router as integrations_module
 
     monkeypatch.setattr(
         integrations_module, "reset_backfill_status",

@@ -222,7 +222,7 @@ async def test_route_returns_504_when_test_connection_exceeds_12s(monkeypatch):
     """The route handler MUST cap the upstream call at 12s so the
     frontend never sees the bare 30s ABORT from the fetch timeout —
     a clean 504 with a useful message is better UX."""
-    from interfaces.api.routes import integrations as integrations_module
+    from capabilities.integrations import router as integrations_module
 
     # Mock the provider's test_connection to hang forever.
     hanging_provider = MagicMock()
@@ -256,7 +256,7 @@ async def test_route_returns_504_when_test_connection_exceeds_12s(monkeypatch):
         return await original_wait_for(coro, timeout=0.05)
 
     monkeypatch.setattr(
-        "interfaces.api.routes.integrations.asyncio.wait_for", fast_wait_for,
+        "capabilities.integrations.router.asyncio.wait_for", fast_wait_for,
     )
 
     from fastapi import HTTPException
@@ -306,7 +306,7 @@ async def test_record_integration_backfill_completion_sets_timestamp(seeded_db):
 async def test_serializer_exposes_last_backfill_at(seeded_db):
     """API surface check — the route's _serialize_integration helper
     must include the new field so the dashboard can read it."""
-    from interfaces.api.routes.integrations import _serialize_integration
+    from capabilities.integrations.router import _serialize_integration
 
     db: Database = seeded_db["db"]
     account = seeded_db["account"]

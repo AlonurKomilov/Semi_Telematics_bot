@@ -10,6 +10,9 @@ Endpoints:
 
 All endpoints except /webhook require a valid JWT with role admin or owner.
 """
+# router.py is interface-layer code co-located with its hub/domain
+# (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps.
+
 
 from __future__ import annotations
 

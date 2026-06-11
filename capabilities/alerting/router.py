@@ -1,4 +1,7 @@
 """Alert API endpoints."""
+# router.py is interface-layer code co-located with its hub/domain
+# (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps.
+
 
 import asyncio
 import re
@@ -639,3 +642,154 @@ async def acknowledge_vehicle_alerts(
     )
     acked = sum(1 for r in results if r and not isinstance(r, BaseException))
     return {"acked": acked, "total": len(targets), "vehicle_id": vehicle_id}
+
+
+
+# ═══ Per-user alert preferences — My Notifications (an Alerts component) ═══════════════════════════════════════════════════
+# Extracted from the governance router — these endpoints belong to THIS
+# domain (docs/FEATURES.md feature→component tree).  URLs unchanged.
+from typing import Optional
+from interfaces.api.deps import (  # noqa: F811 — section-local completeness
+    get_current_db_user, get_current_user, get_platform_db,
+    get_tenant_db, require_permission,
+)
+user_router = APIRouter(prefix="/user", tags=["user"])
+
+# ── Personal alert preferences (per-user DM toggles) ───────────────
+#
+# These endpoints power the dashboard "My Notifications" page
+# (avatar menu → My Notifications).  Each user owns their own
+# per-alert-type DM toggle + the new "🟢 Resolve receipts" opt-in
+# (migration 080).  The toggle list is role-tailored — a Safety
+# user doesn't see a Fuel toggle; a Dispatcher doesn't see Health.
+# See ``capabilities/alerting/relevance.py`` for the role → type
+# mapping.
+#
+# Admin-side per-topic config (group/forum routing + resolve-
+# receipt toggle per topic) lives separately in
+# ``interfaces/api/routes/admin.py``; the two surfaces are
+# independent — neither overrides the other.
+
+
+class AlertPrefsRequest(BaseModel):
+    """Per-user alert preferences PATCH body.
+
+    Every field is optional so the dashboard can send partial
+    updates (toggle one switch at a time).  Unknown alert types are
+    silently ignored at the adapter layer so a stale UI doesn't
+    500 the request.
+    """
+    alerts_on: Optional[bool] = None
+    alert_faults: Optional[bool] = None
+    alert_health: Optional[bool] = None
+    alert_fuel: Optional[bool] = None
+    alert_geofence: Optional[bool] = None
+    alert_events: Optional[bool] = None
+    alert_parking: Optional[bool] = None
+    alert_camera: Optional[bool] = None
+    alert_resolve_receipts: Optional[bool] = None
+
+
+@user_router.get("/me/alerts")
+async def get_my_alerts(
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Return the role-tailored alert preferences for the current user.
+
+    Response shape::
+
+        {
+          "alerts_on": true,
+          "alert_resolve_receipts": false,
+          "relevant_types": ["faults", "health", "fuel", ...],
+          "toggles": {
+            "alert_faults": true,
+            "alert_health": true,
+            ...  // only includes relevant types
+          }
+        }
+
+    The ``relevant_types`` list drives which toggles the dashboard
+    renders.  ``toggles`` mirrors that filter so the client never
+    sees a stale value for an irrelevant type.
+    """
+    db_user = await get_current_db_user(user, platform_db)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    from capabilities.alerting.relevance import alert_types_for_role
+    relevant = alert_types_for_role(db_user.role)
+    toggles: dict[str, bool] = {}
+    for atype in relevant:
+        attr = f"alert_{atype}"
+        toggles[attr] = bool(getattr(db_user, attr, True))
+    return {
+        "alerts_on": bool(db_user.alerts_on),
+        "alert_resolve_receipts": bool(
+            getattr(db_user, "alert_resolve_receipts", False)
+        ),
+        "relevant_types": relevant,
+        "toggles": toggles,
+    }
+
+
+@user_router.put("/me/alerts")
+async def update_my_alerts(
+    body: AlertPrefsRequest,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Patch the current user's alert preferences.
+
+    Role-tailored: requests to toggle an alert type the user's role
+    doesn't have permission for are silently dropped (the dashboard
+    UI shouldn't render that toggle anyway, but this is defense in
+    depth so a crafted request can't enable irrelevant alerts).
+    """
+    db_user = await get_current_db_user(user, platform_db)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    from capabilities.alerting.relevance import alert_types_for_role
+    relevant_attrs = {
+        f"alert_{atype}" for atype in alert_types_for_role(db_user.role)
+    }
+    # ``alerts_on`` (master switch) and ``alert_resolve_receipts``
+    # apply regardless of role — every role can opt in/out of these.
+    relevant_attrs.add("alerts_on")
+    relevant_attrs.add("alert_resolve_receipts")
+
+    updates: dict[str, bool] = {}
+    for field, value in body.model_dump(exclude_unset=True).items():
+        if value is None:
+            continue
+        if field not in relevant_attrs:
+            # Silently drop irrelevant toggles instead of 422'ing —
+            # the dashboard might briefly include a stale field
+            # during a role-change race, and we don't want to error
+            # the whole save for that.
+            continue
+        updates[field] = bool(value)
+
+    if updates:
+        await platform_db.update_user(db_user.id, **updates)
+
+    # Echo the post-update state so the dashboard re-syncs without
+    # a second roundtrip.
+    fresh = await platform_db.get_user_by_id(db_user.id) if hasattr(
+        platform_db, "get_user_by_id"
+    ) else db_user
+    relevant = alert_types_for_role(fresh.role if fresh else db_user.role)
+    toggles: dict[str, bool] = {}
+    target = fresh or db_user
+    for atype in relevant:
+        attr = f"alert_{atype}"
+        toggles[attr] = bool(getattr(target, attr, True))
+    return {
+        "alerts_on": bool(target.alerts_on),
+        "alert_resolve_receipts": bool(
+            getattr(target, "alert_resolve_receipts", False)
+        ),
+        "relevant_types": relevant,
+        "toggles": toggles,
+    }

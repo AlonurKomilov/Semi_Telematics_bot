@@ -81,7 +81,7 @@ async def precompute_scorecards(
         from infra.platform import get_tenant_db
         from infra.services import get_platform_db
         from infra import cache as _redis_cache
-        from interfaces.api.routes.scorecards import _build_scorecards_payload
+        from capabilities.scoring.router import _build_scorecards_payload
         from interfaces.api.deps import get_user_company_codes
 
         tenant = await get_tenant_db(account_id)

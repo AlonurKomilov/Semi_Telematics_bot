@@ -15,20 +15,24 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 
-# Assembly-shell routers — cross-feature, governance, and hub surfaces
-# stay in interfaces/api/routes (docs/FEATURES.md).
-from interfaces.api.routes import fleet, alerts, health
-from interfaces.api.routes import scorecards as scorecards_routes
-from interfaces.api.routes import reports as reports_routes
+# Assembly-shell routers — ONLY cross-feature aggregation (fleet/overview)
+# and governance/personal/platform surfaces stay in interfaces/api/routes
+# (docs/FEATURES.md).
+from interfaces.api.routes import fleet, health
 from interfaces.api.routes import user as user_routes
 from interfaces.api.routes import admin as admin_routes
 from interfaces.api.routes import system as system_routes
-from interfaces.api.routes import storage as storage_routes
-from interfaces.api.routes import ai as ai_routes
 from interfaces.api.routes import permissions as permissions_routes
-from interfaces.api.routes import billing as billing_routes
-from interfaces.api.routes import integrations as integrations_routes
 from interfaces.api.routes import webhooks as webhooks_routes
+# Hub + platform-capability routers live WITH their domain:
+from capabilities.alerting import router as alerts
+from capabilities.reporting import router as reports_routes
+from capabilities.ai import router as ai_routes
+from capabilities.scoring import router as scorecards_routes
+from capabilities.billing import router as billing_routes
+from capabilities.integrations import router as integrations_routes
+from capabilities.storage import router as storage_routes
+from capabilities.work_hours import router as work_hours_routes
 # Feature-owned routers live with their feature (vertical slice):
 # features/<x>/router.py.  Aliases keep the mounting loop stable.
 from features.vehicles import router as vehicles_routes
@@ -377,14 +381,17 @@ def create_api() -> FastAPI:
         app.include_router(geofences.router, prefix=prefix)
         app.include_router(geofences.legacy_router, prefix=prefix)
         app.include_router(alerts.router, prefix=prefix)
+        app.include_router(alerts.user_router, prefix=prefix)
         app.include_router(parking_routes.router, prefix=prefix)
         app.include_router(dispatch_routes.router, prefix=prefix)
         app.include_router(dispatch_routes.legacy_router, prefix=prefix)
         app.include_router(scorecards_routes.router, prefix=prefix)
         app.include_router(scorecards_routes.legacy_router, prefix=prefix)
+        app.include_router(scorecards_routes.admin_router, prefix=prefix)
         app.include_router(events_routes.router, prefix=prefix)
         app.include_router(cameras_routes.router, prefix=prefix)
         app.include_router(reports_routes.router, prefix=prefix)
+        app.include_router(reports_routes.user_router, prefix=prefix)
         app.include_router(costs_routes.router, prefix=prefix)
         app.include_router(admin_routes.router, prefix=prefix)
         app.include_router(system_routes.router, prefix=prefix)
@@ -393,6 +400,7 @@ def create_api() -> FastAPI:
         app.include_router(work_orders_routes.router, prefix=prefix)
         app.include_router(inspections_routes.router, prefix=prefix)
         app.include_router(storage_routes.router, prefix=prefix)
+        app.include_router(storage_routes.admin_router, prefix=prefix)
         app.include_router(ai_routes.router, prefix=prefix)
         app.include_router(knowledge_routes.router, prefix=prefix)
         app.include_router(billing_routes.router, prefix=prefix)
@@ -401,6 +409,7 @@ def create_api() -> FastAPI:
         app.include_router(drivers_routes.router, prefix=prefix)
         app.include_router(integrations_routes.router, prefix=prefix)
         app.include_router(webhooks_routes.router, prefix=prefix)
+        app.include_router(work_hours_routes.router, prefix=prefix)
 
     # ── observability ─────────────────────────────
     # Wire /metrics + OTel auto-instrumentation BEFORE the static

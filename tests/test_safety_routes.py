@@ -71,7 +71,7 @@ async def safety_app(pg_db, monkeypatch):
         ]
 
     monkeypatch.setattr(
-        "interfaces.api.routes.scorecards._svc_driver_efficiency",
+        "capabilities.scoring.router._svc_driver_efficiency",
         _fake_efficiency,
     )
 
@@ -173,7 +173,7 @@ class TestScorecardsRoute:
             return ["T-101", "T-202"]
 
         monkeypatch.setattr(
-            "interfaces.api.routes.scorecards.get_user_vehicle_nums",
+            "capabilities.scoring.router.get_user_vehicle_nums",
             _fake_truck_nums,
         )
         async with AsyncClient(
@@ -372,7 +372,7 @@ class TestPillarShapeContract:
                 "insufficient_data": False,
             }]
         monkeypatch.setattr(
-            "interfaces.api.routes.scorecards._svc_evaluate_subjects",
+            "capabilities.scoring.router._svc_evaluate_subjects",
             _fake_evaluate,
         )
         async with AsyncClient(

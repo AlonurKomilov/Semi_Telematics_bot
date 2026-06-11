@@ -36,6 +36,9 @@ All routes require ``can_manage_account`` (owner / admin).  The
 dashboard surface in M6 will gate the UI by the same permission so
 the API and UI agree on who can act.
 """
+# router.py is interface-layer code co-located with its hub/domain
+# (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps.
+
 
 from __future__ import annotations
 

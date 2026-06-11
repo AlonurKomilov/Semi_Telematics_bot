@@ -265,7 +265,7 @@ async def test_run_now_preflight_passes_when_any_company_healthy(monkeypatch):
     """The Run-now trigger MUST pass even when ai.status='error'
     if at least one company has been tested and is healthy.
     Otherwise one bad company blocks backfill for 4 good ones."""
-    from interfaces.api.routes import integrations as integrations_module
+    from capabilities.integrations import router as integrations_module
     from capabilities.integrations import company_health
 
     # Fake "error" status integration

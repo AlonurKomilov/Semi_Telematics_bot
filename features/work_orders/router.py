@@ -265,9 +265,7 @@ async def update_work_order(
     tenant_db=Depends(get_tenant_db),
 ):
     """Update mutable fields on a work order."""
-    wo = await tenant_db.get_work_order(work_order_id, account_id=user["account_id"])
-    if not wo:
-        raise HTTPException(status_code=404, detail="Work order not found")
+    await _require_visible_work_order(work_order_id, user, tenant_db)
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
@@ -294,9 +292,7 @@ async def delete_work_order(
     files in the object store are cleared first), and unlink any
     maintenance tasks that pointed at it."""
     from adapters.storage.object_store import get_object_store_for_account
-    wo = await tenant_db.get_work_order(work_order_id, account_id=user["account_id"])
-    if not wo:
-        raise HTTPException(status_code=404, detail="Work order not found")
+    wo = await _require_visible_work_order(work_order_id, user, tenant_db)
 
     # Drop physical files first so deleting the row doesn't orphan them.
     # Best-effort — a missing object is fine (idempotent delete).
@@ -338,9 +334,7 @@ async def add_part(
     user: dict = Depends(require_permission("can_work_orders_all")),
     tenant_db=Depends(get_tenant_db),
 ):
-    wo = await tenant_db.get_work_order(work_order_id, account_id=user["account_id"])
-    if not wo:
-        raise HTTPException(status_code=404, detail="Work order not found")
+    await _require_visible_work_order(work_order_id, user, tenant_db)
     pid = await tenant_db.add_work_order_part(work_order_id, **body.model_dump())
     return {"id": pid}
 
@@ -351,9 +345,7 @@ async def delete_part(
     user: dict = Depends(require_permission("can_work_orders_all")),
     tenant_db=Depends(get_tenant_db),
 ):
-    wo = await tenant_db.get_work_order(work_order_id, account_id=user["account_id"])
-    if not wo:
-        raise HTTPException(status_code=404, detail="Work order not found")
+    await _require_visible_work_order(work_order_id, user, tenant_db)
     ok = await tenant_db.delete_work_order_part(part_id)
     return {"ok": ok}
 
@@ -492,9 +484,7 @@ async def delete_attachment(
     tenant_db=Depends(get_tenant_db),
 ):
     from adapters.storage.object_store import get_object_store_for_account
-    wo = await tenant_db.get_work_order(work_order_id, account_id=user["account_id"])
-    if not wo:
-        raise HTTPException(status_code=404, detail="Work order not found")
+    wo = await _require_visible_work_order(work_order_id, user, tenant_db)
     att = await tenant_db.get_work_order_attachment(attachment_id)
     if not att or att.get("work_order_id") != work_order_id:
         raise HTTPException(status_code=404, detail="Attachment not found")
@@ -533,9 +523,7 @@ async def link_tasks(
 ):
     """Attach N maintenance tasks to this work order so cost
     aggregation (by task_type) can join through."""
-    wo = await tenant_db.get_work_order(work_order_id, account_id=user["account_id"])
-    if not wo:
-        raise HTTPException(status_code=404, detail="Work order not found")
+    await _require_visible_work_order(work_order_id, user, tenant_db)
     n = await tenant_db.link_maintenance_tasks_to_work_order(
         user["account_id"], work_order_id, body.task_ids,
     )

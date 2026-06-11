@@ -183,7 +183,7 @@ def test_csv_broker_anonymises_subject():
 # ── API route smoke check ──────────────────────────────────────────
 
 def test_reports_router_has_risk_summary_routes():
-    from interfaces.api.routes import reports as reports_route
+    from capabilities.reporting import router as reports_route
     paths = {r.path for r in reports_route.router.routes}
     assert any("risk-summary" in p for p in paths)
     assert any(p.endswith("/risk-summary/me") for p in paths)

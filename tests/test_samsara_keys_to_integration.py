@@ -219,7 +219,7 @@ async def test_put_credentials_dual_writes_and_invalidates_client(seeded_db, mon
     Two missing-await / swapped-args bugs were found in adversarial
     review precisely because no test exercised this end-to-end path.
     """
-    from interfaces.api.routes import integrations as integrations_module
+    from capabilities.integrations import router as integrations_module
 
     db: Database = seeded_db["db"]
     account = seeded_db["account"]
@@ -297,7 +297,7 @@ async def test_put_credentials_dual_writes_and_invalidates_client(seeded_db, mon
 @pytest.mark.asyncio
 async def test_delete_credentials_dual_writes_and_invalidates_client(seeded_db, monkeypatch):
     """Mirror of the above for the DELETE path."""
-    from interfaces.api.routes import integrations as integrations_module
+    from capabilities.integrations import router as integrations_module
 
     db: Database = seeded_db["db"]
     account = seeded_db["account"]

@@ -22,6 +22,9 @@ variables (the OAuth app itself is registered once per platform
 deployment, but each user's refresh token is scoped to their own
 Drive).
 """
+# router.py is interface-layer code co-located with its hub/domain
+# (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps.
+
 
 from __future__ import annotations
 
@@ -776,3 +779,62 @@ def _prepare_company_folders(creds, root_folder_id: str, companies) -> None:
                 "Drive prep: failed to create folders for company %s: %s",
                 getattr(co, "code", "?"), e,
             )
+
+
+
+# ═══ Storage quota ═══════════════════════════════════════════════════
+# Extracted from the governance router — these endpoints belong to THIS
+# domain (docs/FEATURES.md feature→component tree).  URLs unchanged.
+from pydantic import BaseModel, Field
+from interfaces.api.deps import require_permission, get_tenant_db  # noqa: F811
+admin_router = APIRouter(prefix="/admin", tags=["admin"])
+
+# ── Storage quota (local-disk fallback for driver documents) ─────
+#
+# Only meaningful for accounts that haven't connected Google Drive —
+# Drive-connected accounts use the user's own Drive quota. The local
+# fallback enforces a per-account cap so a single tenant can't fill
+# the host disk.
+
+class StorageQuotaUpdate(BaseModel):
+    quota_bytes: int = Field(..., ge=0)
+
+
+@admin_router.get("/storage/quota")
+async def get_storage_quota(
+    user: dict = Depends(require_permission("can_manage_account")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Return current storage usage and quota for the caller's account."""
+    used, quota = await tenant_db.get_storage_usage(user["account_id"])
+    return {
+        "used_bytes": used,
+        "quota_bytes": quota,
+        "remaining_bytes": max(0, quota - used),
+    }
+
+
+@admin_router.put("/storage/quota")
+async def update_storage_quota(
+    body: StorageQuotaUpdate,
+    user: dict = Depends(require_permission("can_manage_account")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Raise/lower the per-account local-disk storage cap."""
+    ok = await tenant_db.set_storage_quota(user["account_id"], body.quota_bytes)
+    if not ok:
+        raise HTTPException(404, "Account not found")
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "storage_quota_update",
+        target_type="account", target_id=str(user["account_id"]),
+        details=f"Set storage quota to {body.quota_bytes} bytes",
+    )
+    used, quota = await tenant_db.get_storage_usage(user["account_id"])
+    return {
+        "used_bytes": used,
+        "quota_bytes": quota,
+        "remaining_bytes": max(0, quota - used),
+    }
+
+
