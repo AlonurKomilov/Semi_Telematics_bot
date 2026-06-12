@@ -1,30 +1,45 @@
 """Datatruck-shaped storage tables — TMS data, kept separate from
 the existing Samsara/telemetry tables.
 
-Each table is owned by exactly one feature (drivers, trucks, trailers,
-orders, work_orders) and lives in its own mixin so dropping Datatruck
-later means dropping one subpackage, no schema entanglement with
-Samsara.
+Each table is owned by exactly one resource file (drivers, trucks,
+trailers, orders, work_orders) so dropping Datatruck later means
+dropping one subpackage + five ``datatruck_*`` tables — no schema
+entanglement with Samsara.
 
-Schema layout (planned for next phase, NOT yet present in
-``platform_schema.py``):
+All five tables share the ELT shape (see ``_base.py``): promoted
+columns for what screens filter/join on, plus a raw ``payload`` JSON
+column so un-promoted upstream fields survive locally and never need
+a re-fetch through Datatruck's 20 req/min budget.
 
-  datatruck_drivers
-    id INTEGER PRIMARY KEY
-    account_id INTEGER NOT NULL
-    external_id TEXT NOT NULL          -- Datatruck's row id
-    name, license_no, cdl_class, cdl_expiry, phone, …
-    last_seen_at TEXT NOT NULL         -- when sync last saw this row
-    UNIQUE(account_id, external_id)
-
-  datatruck_trucks      — similar shape; VIN, plate, make, model, year, …
-  datatruck_trailers    — similar shape; VIN, plate, …
-  datatruck_orders      — pickup/delivery, rate, status, assigned driver+truck
-  datatruck_work_orders — type, parts, labour, status, dates
-
-The mixins themselves are placeholder stubs until the sync layer
-lands.  Keeping the package in place now avoids a future "where do
-these go?" question and signals the intended architecture.
+``DatatruckStorageMixin`` composes the five resource mixins into the
+single class the ``Database`` registers — per the house rule of one
+mixin entry per domain on ``Database``.
 """
 
 from __future__ import annotations
+
+from .drivers import DatatruckDriver, DatatruckDriversMixin
+from .orders import DatatruckOrder, DatatruckOrdersMixin
+from .trailers import DatatruckTrailer, DatatruckTrailersMixin
+from .trucks import DatatruckTruck, DatatruckTrucksMixin
+from .work_orders import DatatruckWorkOrder, DatatruckWorkOrdersMixin
+
+
+class DatatruckStorageMixin(
+    DatatruckDriversMixin,
+    DatatruckTrucksMixin,
+    DatatruckTrailersMixin,
+    DatatruckOrdersMixin,
+    DatatruckWorkOrdersMixin,
+):
+    """All five Datatruck resource mixins, composed for ``Database``."""
+
+
+__all__ = [
+    "DatatruckDriver",
+    "DatatruckOrder",
+    "DatatruckStorageMixin",
+    "DatatruckTrailer",
+    "DatatruckTruck",
+    "DatatruckWorkOrder",
+]

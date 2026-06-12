@@ -4200,6 +4200,50 @@ async def migrate_settings_component_flags(conn) -> None:
         raise
 
 
+@_register("103_datatruck_tables_rls")
+async def migrate_datatruck_tables_rls(conn) -> None:
+    """Apply the tenant_isolation RLS policy to the five
+    ``datatruck_*`` TMS-sync tables.
+
+    The tables themselves come from ``schema.create_tables`` (which
+    runs before migrations on every boot), so by the time this runs
+    they exist on both fresh installs and upgrades.  Migration 057
+    applied the policy to every tenant table that existed at the
+    time; new tenant tables each need a follow-up like this one.
+
+    Same gating + shape as 057: skipped entirely unless ``ENABLE_RLS``
+    is set, fail-closed policy on ``app.account_id`` GUC, FORCE so the
+    table owner is subject to the policy too.  Idempotent — the DROP
+    POLICY IF EXISTS + CREATE POLICY pair re-runs cleanly.
+    """
+    import os
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        logger.info("Migration 103: ENABLE_RLS not set; RLS policies skipped")
+        return
+
+    tables = [
+        "datatruck_drivers", "datatruck_trucks", "datatruck_trailers",
+        "datatruck_orders", "datatruck_work_orders",
+    ]
+    enabled = 0
+    for tbl in tables:
+        try:
+            await conn.execute(f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY")
+            await conn.execute(f"ALTER TABLE {tbl} FORCE ROW LEVEL SECURITY")
+            await conn.execute(f"DROP POLICY IF EXISTS tenant_isolation ON {tbl}")
+            await conn.execute(
+                f"""
+                CREATE POLICY tenant_isolation ON {tbl}
+                USING       (account_id::text = current_setting('app.account_id', true))
+                WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+                """
+            )
+            enabled += 1
+        except Exception as e:
+            logger.warning("Migration 103: %s skipped (%s)", tbl, e)
+    logger.info("Migration 103: RLS enabled on %d datatruck tables", enabled)
+
+
 @_register("100_users_dnd_enabled")
 async def migrate_users_dnd_enabled(conn) -> None:
     """Add ``users.dnd_enabled`` — single per-user toggle that controls

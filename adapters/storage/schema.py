@@ -419,5 +419,112 @@ async def create_tables(conn) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_scorecard_snapshots_lookup
             ON daily_scorecard_snapshots(account_id, subject_type, subject_id, snapshot_date);
+
+        -- ── Datatruck TMS sync (adapters/storage/datatruck/) ───────
+        -- ELT shape: promoted columns for filtering/joins + raw JSON
+        -- payload so un-promoted upstream fields survive locally.
+        -- UNIQUE(account_id, external_id) makes sync upserts
+        -- idempotent per upstream record.
+        CREATE TABLE IF NOT EXISTS datatruck_drivers (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            external_id     TEXT    NOT NULL,
+            first_name      TEXT    NOT NULL DEFAULT '',
+            last_name       TEXT    NOT NULL DEFAULT '',
+            display_name    TEXT    NOT NULL DEFAULT '',
+            phone           TEXT    NOT NULL DEFAULT '',
+            email           TEXT    NOT NULL DEFAULT '',
+            status          TEXT    NOT NULL DEFAULT '',
+            payload         TEXT    NOT NULL DEFAULT '{}',
+            first_seen_at   TEXT    NOT NULL DEFAULT '',
+            synced_at       TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, external_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_datatruck_drivers_account
+            ON datatruck_drivers(account_id, synced_at);
+
+        CREATE TABLE IF NOT EXISTS datatruck_trucks (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            external_id     TEXT    NOT NULL,
+            unit_number     TEXT    NOT NULL DEFAULT '',
+            plate_number    TEXT    NOT NULL DEFAULT '',
+            vin             TEXT    NOT NULL DEFAULT '',
+            make            TEXT    NOT NULL DEFAULT '',
+            model           TEXT    NOT NULL DEFAULT '',
+            year            INTEGER,
+            status          TEXT    NOT NULL DEFAULT '',
+            owner_name      TEXT    NOT NULL DEFAULT '',
+            operator_name   TEXT    NOT NULL DEFAULT '',
+            odometer        REAL,
+            payload         TEXT    NOT NULL DEFAULT '{}',
+            first_seen_at   TEXT    NOT NULL DEFAULT '',
+            synced_at       TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, external_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_datatruck_trucks_account
+            ON datatruck_trucks(account_id, synced_at);
+        CREATE INDEX IF NOT EXISTS idx_datatruck_trucks_unit
+            ON datatruck_trucks(account_id, unit_number);
+
+        CREATE TABLE IF NOT EXISTS datatruck_trailers (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            external_id     TEXT    NOT NULL,
+            unit_number     TEXT    NOT NULL DEFAULT '',
+            plate_number    TEXT    NOT NULL DEFAULT '',
+            vin             TEXT    NOT NULL DEFAULT '',
+            make            TEXT    NOT NULL DEFAULT '',
+            model           TEXT    NOT NULL DEFAULT '',
+            year            INTEGER,
+            status          TEXT    NOT NULL DEFAULT '',
+            payload         TEXT    NOT NULL DEFAULT '{}',
+            first_seen_at   TEXT    NOT NULL DEFAULT '',
+            synced_at       TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, external_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_datatruck_trailers_account
+            ON datatruck_trailers(account_id, synced_at);
+
+        CREATE TABLE IF NOT EXISTS datatruck_orders (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id          INTEGER NOT NULL,
+            external_id         TEXT    NOT NULL,
+            order_number        TEXT    NOT NULL DEFAULT '',
+            status              TEXT    NOT NULL DEFAULT '',
+            pickup_date         TEXT    NOT NULL DEFAULT '',
+            delivery_date       TEXT    NOT NULL DEFAULT '',
+            origin              TEXT    NOT NULL DEFAULT '',
+            destination         TEXT    NOT NULL DEFAULT '',
+            driver_external_id  TEXT    NOT NULL DEFAULT '',
+            truck_external_id   TEXT    NOT NULL DEFAULT '',
+            total_rate          REAL,
+            payload             TEXT    NOT NULL DEFAULT '{}',
+            first_seen_at       TEXT    NOT NULL DEFAULT '',
+            synced_at           TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, external_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_datatruck_orders_account
+            ON datatruck_orders(account_id, synced_at);
+        CREATE INDEX IF NOT EXISTS idx_datatruck_orders_status
+            ON datatruck_orders(account_id, status, pickup_date);
+
+        CREATE TABLE IF NOT EXISTS datatruck_work_orders (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            external_id     TEXT    NOT NULL,
+            number          TEXT    NOT NULL DEFAULT '',
+            status          TEXT    NOT NULL DEFAULT '',
+            vehicle_unit    TEXT    NOT NULL DEFAULT '',
+            opened_at       TEXT    NOT NULL DEFAULT '',
+            closed_at       TEXT    NOT NULL DEFAULT '',
+            total_cost      REAL,
+            payload         TEXT    NOT NULL DEFAULT '{}',
+            first_seen_at   TEXT    NOT NULL DEFAULT '',
+            synced_at       TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, external_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_datatruck_work_orders_account
+            ON datatruck_work_orders(account_id, synced_at);
     """)
     await conn.commit()

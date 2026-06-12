@@ -79,6 +79,7 @@ from .coaching import CoachingMixin
 from .storage_sync import StorageSyncMixin
 from .ai_chat import AIChatHistoryMixin
 from .account_integrations import AccountIntegrationsMixin, AccountIntegration  # noqa: F401
+from .datatruck import DatatruckStorageMixin
 from .platform import PlatformDB
 
 
@@ -119,6 +120,7 @@ class Database(
     CoachingMixin,
     StorageSyncMixin,
     AIChatHistoryMixin,
+    DatatruckStorageMixin,
     _DatabaseCore,
 ):
     """Async Postgres wrapper with typed helpers.
