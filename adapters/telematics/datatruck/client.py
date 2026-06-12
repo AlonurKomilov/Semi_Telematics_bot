@@ -180,9 +180,26 @@ class DatatruckClient:
         status code plus the parsed body (or raw text on parse
         failure) so callers can build clean error messages.
         """
+        return await self._get_url(
+            self._base + path.lstrip("/"), params=params,
+        )
+
+    async def _get_url(
+        self,
+        url: str,
+        params: dict[str, Any] | None = None,
+    ) -> tuple[int, Any]:
+        """GET an absolute URL — the body of ``_get`` plus the entry
+        point for following paginated ``next`` links (which Datatruck
+        returns as absolute URLs).  Guarded so we never follow a link
+        off this client's own tenant host."""
+        if not url.startswith(self._base):
+            raise ValueError(
+                f"refusing non-tenant URL {url!r} — pagination links "
+                f"must stay under {self._base}",
+            )
         await self._wait_for_quota()
         sess = await self._ensure_session()
-        url = self._base + path.lstrip("/")
         async with sess.get(url, params=params) as resp:
             ctype = resp.headers.get("content-type", "")
             if "application/json" in ctype:
@@ -190,6 +207,44 @@ class DatatruckClient:
             else:
                 body = await resp.text()
             return resp.status, body
+
+    async def iter_pages(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+        *,
+        max_pages: int = 50,
+    ):
+        """Async generator over a paginated list endpoint.
+
+        Yields each page's parsed body (the ``{count, next, previous,
+        results}`` envelope).  Follows ``next`` links up to
+        ``max_pages`` — the cap exists because the orders endpoint on
+        a mature tenant holds 17k+ records (1,700+ pages at the
+        10-item ceiling), which at 18 req/min is ~95 minutes; callers
+        decide how much budget a sync run may burn and the sync
+        status surfaces ``pages_done`` vs ``count`` so a capped run
+        is visible, never silent.
+
+        Raises ``RuntimeError`` on the first non-2xx page so callers
+        fail loudly rather than persist a partial page silently.
+        """
+        merged = dict(params or {})
+        merged.setdefault("page_size", _MAX_PAGE_SIZE)
+        status, body = await self._get(path, params=merged)
+        pages = 0
+        while True:
+            if status >= 400:
+                raise RuntimeError(
+                    f"datatruck {path} page {pages + 1} HTTP {status}: "
+                    f"{str(body)[:200]}",
+                )
+            yield body
+            pages += 1
+            next_url = body.get("next") if isinstance(body, dict) else None
+            if not next_url or pages >= max_pages:
+                return
+            status, body = await self._get_url(next_url)
 
     async def test_connection(self) -> tuple[bool, str, dict[str, Any] | None]:
         """Cheapest possible probe — ``GET /drivers/list/?page_size=1``.

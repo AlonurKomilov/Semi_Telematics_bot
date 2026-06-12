@@ -31,7 +31,13 @@ from infra.platform import get_platform_db
 from infra.services import get_telematics_client
 from interfaces.api.deps import require_permission
 
-from ..shared.helpers import validate_provider
+from ..shared.helpers import audit, spawn_background, validate_provider
+from .sync import (
+    RESOURCES,
+    collect_sync_overview,
+    get_sync_status,
+    sync_resource,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,4 +111,102 @@ async def sync_preview(user: dict = Depends(_owner_only)):
         "account_id":  account_id,
         "provider_id": _PROVIDER_ID,
         "resources":   by_resource,
+    }
+
+
+# ── Sync triggers + status ───────────────────────────────────────
+
+
+@router.post("/datatruck/sync/{resource}")
+async def trigger_sync(
+    resource: str,
+    user: dict = Depends(_owner_only),
+):
+    """Queue one resource's sync (fire-and-forget).
+
+    Validates the resource name against the engine registry, requires
+    the integration to be connected with the matching capability
+    toggle enabled, and refuses a duplicate while a run for the same
+    resource is in flight (Redis-backed preflight, multi-worker safe).
+
+    Returns ``{state: "queued", resource}`` immediately; the dashboard
+    polls ``GET /datatruck/sync-status`` to watch progress.
+    """
+    validate_provider(_PROVIDER_ID)
+    account_id = int(user["account_id"])
+    triggered_by = int(user.get("id") or 0)
+
+    spec = RESOURCES.get(resource)
+    if spec is None:
+        raise HTTPException(
+            404,
+            f"unknown resource {resource!r} — one of: "
+            f"{', '.join(sorted(RESOURCES))}",
+        )
+
+    db = get_platform_db()
+    ai = await db.get_account_integration(account_id, _PROVIDER_ID)
+    if ai is None:
+        raise HTTPException(404, "datatruck integration not configured")
+    if ai.status != "connected":
+        raise HTTPException(
+            409, f"integration status is {ai.status!r}, not connected",
+        )
+    cap_cfg = (ai.feature_toggles or {}).get(spec.capability) or {}
+    if not cap_cfg.get("enabled", False):
+        raise HTTPException(
+            409,
+            f"the {resource} sync toggle is disabled — enable it on "
+            "the Integration card first",
+        )
+
+    running = await get_sync_status(account_id, resource)
+    if running and running.get("state") in ("running", "queued"):
+        raise HTTPException(
+            409,
+            f"a {resource} sync is already running — wait for it to "
+            "complete",
+        )
+
+    async def _run() -> None:
+        # sync_resource never raises — failures land in its returned
+        # status + Redis record, so this wrapper only exists to keep
+        # the GC-safe spawner's signature happy.
+        await sync_resource(
+            account_id, resource, triggered_by=triggered_by,
+        )
+
+    spawn_background(_run())
+    logger.info(
+        "datatruck sync queued acct=%d resource=%s by user=%d",
+        account_id, resource, triggered_by,
+    )
+    await audit(
+        account_id, triggered_by, "integration.datatruck_sync",
+        f"{_PROVIDER_ID}:{resource}",
+    )
+    return {
+        "state": "queued",
+        "account_id": account_id,
+        "provider_id": _PROVIDER_ID,
+        "resource": resource,
+    }
+
+
+@router.get("/datatruck/sync-status")
+async def sync_status(user: dict = Depends(_owner_only)):
+    """Per-resource sync overview for the Integration card.
+
+    For each of the five resources: whether its toggle is enabled,
+    what's stored locally (count + last synced stamp), and the live
+    Redis state of any in-flight or recent run.  One call backs the
+    whole "Synced data" panel so the dashboard doesn't fan out five
+    requests on every poll tick.
+    """
+    validate_provider(_PROVIDER_ID)
+    account_id = int(user["account_id"])
+    return {
+        "account_id":  account_id,
+        "provider_id": _PROVIDER_ID,
+        "resources":   await collect_sync_overview(account_id),
     }
