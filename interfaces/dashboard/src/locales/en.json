@@ -422,8 +422,8 @@
     "username": "Username",
     "password": "Password",
     "email": "Email",
-    "display_name": "Display name",
-    "invite_code": "Invite code",
+    "display_name": "Your name — e.g. John Smith",
+    "invite_code": "Invite code — from your invite email or link",
     "sign_in": "Sign in",
     "create_account": "Create account",
     "remember_me": "Remember me for 30 days",
@@ -464,7 +464,8 @@
     "verification_resend_button": "Resend verification email",
     "verification_resending": "Sending…",
     "verification_resent": "Verification email sent. Check your inbox.",
-    "register_check_inbox": "We sent a verification link to {{email}}. Click it to activate your account, then sign in."
+    "register_check_inbox": "We sent a verification link to {{email}}. Click it to activate your account, then sign in.",
+    "company_name": "Company name — e.g. Premier Trucking Group Inc"
   },
   "errors": {
     "load_failed": "Failed to load",

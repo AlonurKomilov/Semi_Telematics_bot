@@ -122,15 +122,18 @@ export default function Companies() {
         <form onSubmit={handleAdd} className="bg-card border border-border rounded-xl p-4 mb-6 grid grid-cols-4 gap-3">
           <div>
             <label className="block text-xs text-muted-foreground mb-1">Code</label>
-            <input required value={code} onChange={e => setCode(e.target.value)} maxLength={20} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
+            <input required value={code} onChange={e => setCode(e.target.value)} maxLength={20} placeholder="PTG" className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
+            <p className="mt-1 text-2xs text-muted-foreground">Short label used in reports and alerts — e.g. PTG, OSY.</p>
           </div>
           <div>
             <label className="block text-xs text-muted-foreground mb-1">Display Name</label>
-            <input value={name} onChange={e => setName(e.target.value)} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Premier Trucking Group Inc" className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
+            <p className="mt-1 text-2xs text-muted-foreground">The company's full legal or trading name.</p>
           </div>
           <div>
             <label className="block text-xs text-muted-foreground mb-1">Active Days</label>
             <input type="number" min={1} max={365} value={days} onChange={e => setDays(Number(e.target.value))} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
+            <p className="mt-1 text-2xs text-muted-foreground">A vehicle counts as active if seen within this many days.</p>
           </div>
           <div className="flex items-end">
             <button type="submit" disabled={saving} className="px-4 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition">
