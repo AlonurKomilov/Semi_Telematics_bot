@@ -10,6 +10,7 @@ import { apiJSON } from '../../api/client';
 import type {
   AccountIntegration,
   BackfillStatus,
+  DatatruckSyncStatusResponse,
   IntegrationsListResponse,
   ProviderCompaniesResponse,
   SnapshotCoverageResponse,
@@ -206,5 +207,29 @@ export async function resetBackfillStatus(
   return apiJSON<{ cleared: boolean }>(
     `${BASE}/${encodeURIComponent(providerId)}/actions/backfill-history/reset`,
     { method: 'POST' },
+  );
+}
+
+// ── Datatruck TMS sync ──────────────────────────────────────────
+
+/** Queue one resource's sync (drivers / trucks / trailers / orders /
+ *  work_orders).  Fire-and-forget — poll ``getDatatruckSyncStatus``
+ *  to watch progress.  409s when a run is already in flight or the
+ *  resource's toggle is disabled. */
+export async function triggerDatatruckSync(
+  resource: string,
+): Promise<{ state: string; resource: string }> {
+  return apiJSON<{ state: string; resource: string }>(
+    `${BASE}/datatruck/sync/${encodeURIComponent(resource)}`,
+    { method: 'POST' },
+  );
+}
+
+/** One call returns every resource's toggle state, stored count,
+ *  last-synced stamp, and live run state — backs the whole "Synced
+ *  data" panel without a per-resource fan-out. */
+export async function getDatatruckSyncStatus(): Promise<DatatruckSyncStatusResponse> {
+  return apiJSON<DatatruckSyncStatusResponse>(
+    `${BASE}/datatruck/sync-status`,
   );
 }

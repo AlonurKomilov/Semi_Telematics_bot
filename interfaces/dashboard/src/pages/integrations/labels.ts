@@ -21,10 +21,50 @@ export const CAPABILITY_LABELS: Record<string, string> = {
   metrics_daily:            'Daily roll-up',
   history_prune:            'History retention prune',
   history_backfill:         'One-time history backfill',
+  // TMS capabilities (Datatruck) — dispatch-shaped sync, not telemetry.
+  tms_drivers_sync:         'Drivers sync',
+  tms_trucks_sync:          'Trucks sync',
+  tms_trailers_sync:        'Trailers sync',
+  tms_orders_sync:          'Loads / orders sync',
+  tms_work_orders_sync:     'Work orders sync',
 };
+
+/** Resource ids of the Datatruck sync engine → row labels for the
+ *  "Synced data" panel.  Order here is render order. */
+export const DATATRUCK_RESOURCE_LABELS: [string, string][] = [
+  ['drivers',     'Drivers'],
+  ['trucks',      'Trucks'],
+  ['trailers',    'Trailers'],
+  ['orders',      'Loads / orders'],
+  ['work_orders', 'Work orders'],
+];
 
 export function capabilityLabel(id: string): string {
   return CAPABILITY_LABELS[id] || id;
+}
+
+/** Format an ISO timestamp like ``"2026-06-07T14:22:35+00:00"`` into
+ *  the relative + absolute form the cards show ("2 hr ago · Jun 7,
+ *  14:22 UTC").  Empty/invalid input → empty output.  Shared by the
+ *  Samsara backfill line and the Datatruck synced-data rows so the
+ *  same stamp renders identically across providers. */
+export function formatSyncTimestamp(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const ageMin = Math.round((Date.now() - d.getTime()) / 60_000);
+  const ageHr = Math.round(ageMin / 60);
+  const ageDays = Math.round(ageHr / 24);
+  const rel =
+    ageMin < 60 ? `${ageMin} min ago`
+    : ageHr < 48 ? `${ageHr} hr ago`
+    : `${ageDays} days ago`;
+  const abs = d.toLocaleDateString(undefined, {
+    month: 'short', day: 'numeric',
+  }) + ' · ' + d.toLocaleTimeString(undefined, {
+    hour: '2-digit', minute: '2-digit', timeZone: 'UTC',
+  }) + ' UTC';
+  return `${rel} · ${abs}`;
 }
 
 /**

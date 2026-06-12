@@ -38,30 +38,12 @@ import type {
   TestCompanyResponse,
   TestConnectionResponse,
 } from './types';
-import { capabilityLabel, formatCadence } from './labels';
-
-/** Format an ISO timestamp like ``"2026-06-07T14:22:35+00:00"`` into
- *  the relative + absolute form the card shows ("2 hours ago ·
- *  Jun 7, 14:22 UTC").  Empty input → empty output. */
-function formatBackfillTimestamp(iso: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const now = Date.now();
-  const ageMin = Math.round((now - d.getTime()) / 60_000);
-  const ageHr = Math.round(ageMin / 60);
-  const ageDays = Math.round(ageHr / 24);
-  const rel =
-    ageMin < 60 ? `${ageMin} min ago`
-    : ageHr < 48 ? `${ageHr} hr ago`
-    : `${ageDays} days ago`;
-  const abs = d.toLocaleDateString(undefined, {
-    month: 'short', day: 'numeric',
-  }) + ' · ' + d.toLocaleTimeString(undefined, {
-    hour: '2-digit', minute: '2-digit', timeZone: 'UTC',
-  }) + ' UTC';
-  return `${rel} · ${abs}`;
-}
+import DatatruckSyncPanel from './DatatruckSyncPanel';
+import {
+  capabilityLabel,
+  formatCadence,
+  formatSyncTimestamp as formatBackfillTimestamp,
+} from './labels';
 
 interface Props {
   entry: CatalogEntry;
@@ -393,6 +375,12 @@ export default function IntegrationCard({
           {entry.auth_kind === 'api_token' && (
             <ConnectedCompanies providerId={entry.provider_id} />
           )}
+
+          {/* TMS providers get the "Synced data" panel instead — one
+              row per resource with stored counts, live run progress,
+              and a Sync-now button.  Keyed on kind (not provider_id)
+              so a future second TMS provider inherits the surface. */}
+          {entry.kind === 'tms' && <DatatruckSyncPanel />}
 
           <FeatureToggleList
             capabilities={entry.capabilities}

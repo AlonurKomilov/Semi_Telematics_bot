@@ -159,3 +159,35 @@ export interface TestCompanyResponse {
   message: string;
   elapsed_ms: number;
 }
+
+// ── Datatruck TMS sync ──────────────────────────────────────────
+
+/** Live state of one resource's sync run (Redis-backed, 24h TTL).
+ *  ``null`` when no run has ever been recorded. */
+export interface DatatruckSyncRun {
+  state: 'queued' | 'running' | 'completed' | 'failed';
+  resource: string;
+  pages_done: number;
+  records_written: number;
+  /** Upstream total from the first page's count — lets the UI show
+   *  "synced 500 of 17,093" when a page cap truncated the run. */
+  total_upstream: number | null;
+  started_at: string;
+  finished_at: string | null;
+  error: string | null;
+}
+
+/** One resource row in the sync overview. */
+export interface DatatruckResourceOverview {
+  /** Whether the matching capability toggle is on. */
+  enabled: boolean;
+  capability: string;
+  stored: { count: number; last_synced_at: string | null };
+  sync: DatatruckSyncRun | null;
+}
+
+export interface DatatruckSyncStatusResponse {
+  account_id: number;
+  provider_id: string;
+  resources: Record<string, DatatruckResourceOverview>;
+}
