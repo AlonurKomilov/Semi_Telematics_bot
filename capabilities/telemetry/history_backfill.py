@@ -724,6 +724,26 @@ async def backfill_vehicle_history(
                 await _publish_status(account_id, provider_id, asdict(result), company_code=company_code)
                 return result
 
+            # Nothing to fetch when the account has zero companies with
+            # API keys — the per-day loop would walk the whole window
+            # fetching empty batches and finish as "completed · 0 rows",
+            # which reads like the backfill worked but found no data.
+            # A fresh account connecting Samsara before adding companies
+            # hits this on the auto-triggered first-connect backfill.
+            # Skip with an actionable reason instead.  ``getattr`` chain
+            # keeps this provider-generic — only providers whose client
+            # exposes a per-company ``clients`` map are checked.
+            company_clients = getattr(
+                getattr(provider, "client", None), "clients", None,
+            )
+            if company_clients is not None and len(company_clients) == 0:
+                result.reason = (
+                    "no companies with API keys yet — add your companies "
+                    "and their keys, then run Refresh history"
+                )
+                await _publish_status(account_id, provider_id, asdict(result), company_code=company_code)
+                return result
+
             tenant = await get_tenant_db(account_id)
             if tenant is None:
                 result.reason = "tenant DB unavailable"

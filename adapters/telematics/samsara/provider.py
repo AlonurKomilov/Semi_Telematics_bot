@@ -236,9 +236,45 @@ class SamsaraProvider:
         """
         clients = self._client.clients
         if not clients:
+            # Brand-new account path: the owner connects Samsara BEFORE
+            # adding any companies (or before any company has a key).
+            # The per-company fan-out below would have nothing to probe,
+            # and the old behaviour — "credentials rejected: no companies
+            # configured" — read like the token was bad when it was
+            # never even tested.  Instead, probe the connect-form token
+            # directly against /me so a valid token connects cleanly and
+            # the success message steers the owner to the next step.
+            # The token persists as ``credentials.api_token`` which
+            # ``build_multi_company_client`` uses as the fallback for
+            # companies without their own key — so a single-company
+            # account is fully live the moment they add the company.
+            token = str((creds or {}).get("api_token") or "").strip()
+            if not token:
+                return ConnectionStatus(
+                    ok=False,
+                    message=(
+                        "no companies with API keys yet — add your "
+                        "companies on the Companies page, then set each "
+                        "one's key under Connected companies on this card"
+                    ),
+                )
+            from types import SimpleNamespace
+            probe_target = SimpleNamespace(
+                api_key=token, base_url="https://api.samsara.com",
+            )
+            _code, org_id, err = await self._probe_one_company(
+                "token", probe_target,
+            )
+            if err:
+                return ConnectionStatus(ok=False, message=err[:300])
             return ConnectionStatus(
-                ok=False,
-                message="no companies configured for this integration",
+                ok=True,
+                message=(
+                    "API token valid — next, add your companies on the "
+                    "Companies page; this token covers any company "
+                    "without its own key"
+                ),
+                provider_account_id=org_id or "",
             )
 
         results = await asyncio.gather(

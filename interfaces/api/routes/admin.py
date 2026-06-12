@@ -1481,6 +1481,13 @@ async def add_company(
         display_name=body.display_name or body.code,
         active_days=body.active_days,
     )
+    # Drop the cached MultiCompanyClient so the new company is visible
+    # to the next telematics call.  Without this, an owner who connected
+    # the integration BEFORE adding companies keeps hitting the cached
+    # zero-company client — "Test all" says "no companies" even though
+    # the company list clearly shows one, until a process restart.
+    from infra.services import invalidate_client
+    await invalidate_client(user["account_id"])
     await tenant_db.add_audit_log(
         user["account_id"], int(user["sub"]),
         "company_add",
@@ -1526,6 +1533,11 @@ async def update_company(
     if not ok:
         raise HTTPException(status_code=404, detail="Company not found")
 
+    # Same rationale as add_company — key rotations and display
+    # changes must not serve a stale cached client.
+    from infra.services import invalidate_client
+    await invalidate_client(user["account_id"])
+
     await tenant_db.add_audit_log(
         user["account_id"], int(user["sub"]),
         "company_update",
@@ -1561,6 +1573,11 @@ async def deactivate_company(
     ok = await tenant_db.remove_company(company_id, account_id=user["account_id"])
     if not ok:
         raise HTTPException(status_code=404, detail="Company not found")
+
+    # Same rationale as add_company — drop the cached client so the
+    # deactivated company stops being polled immediately.
+    from infra.services import invalidate_client
+    await invalidate_client(user["account_id"])
 
     await tenant_db.add_audit_log(
         user["account_id"], int(user["sub"]),

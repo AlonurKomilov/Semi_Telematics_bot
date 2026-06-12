@@ -405,6 +405,69 @@ async def test_get_telematics_client_no_self_deadlock_on_cold_cache(monkeypatch)
     assert a is b is c
 
 
+# ── New-owner flow: connect before any companies exist ────────
+
+
+@pytest.mark.asyncio
+async def test_test_connection_zero_companies_probes_raw_token(monkeypatch):
+    """A fresh account connects Samsara BEFORE adding companies.
+    The connect-form token must be probed directly against /me —
+    the old behaviour returned "credentials rejected: no companies
+    configured" without ever testing the token, which read as a
+    bad-token error to the new owner."""
+    from adapters.telematics.samsara.provider import SamsaraProvider
+
+    multi = MagicMock()
+    multi.clients = {}  # zero companies → nothing to fan out to
+
+    _install_fake_session(monkeypatch, {
+        "https://api.samsara.com/me": _FakeResponse(
+            200, {"data": {"id": "org_new_owner"}},
+        ),
+    })
+
+    provider = SamsaraProvider(multi)
+    status = await provider.test_connection({"api_token": "tok_fresh"})
+    assert status.ok is True
+    assert "add your companies" in status.message
+    assert status.provider_account_id == "org_new_owner"
+
+
+@pytest.mark.asyncio
+async def test_test_connection_zero_companies_bad_token_is_honest(monkeypatch):
+    """Same fresh-account path with an INVALID token — the error must
+    say the credentials were rejected, not blame missing companies."""
+    from adapters.telematics.samsara.provider import SamsaraProvider
+
+    multi = MagicMock()
+    multi.clients = {}
+
+    _install_fake_session(monkeypatch, {
+        "https://api.samsara.com/me": _FakeResponse(401),
+    })
+
+    provider = SamsaraProvider(multi)
+    status = await provider.test_connection({"api_token": "tok_bad"})
+    assert status.ok is False
+    assert "credentials rejected" in status.message
+
+
+@pytest.mark.asyncio
+async def test_test_connection_zero_companies_no_token_gives_guidance():
+    """Stored-creds path (Test all) on an account with no keyed
+    companies and no fallback token — the message steers the owner
+    to the Companies page instead of claiming bad credentials."""
+    from adapters.telematics.samsara.provider import SamsaraProvider
+
+    multi = MagicMock()
+    multi.clients = {}
+    provider = SamsaraProvider(multi)
+
+    status = await provider.test_connection({})
+    assert status.ok is False
+    assert "Companies page" in status.message
+
+
 # ── Per-company backfill scoping ──────────────────────────────
 
 
