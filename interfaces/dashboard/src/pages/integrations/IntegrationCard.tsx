@@ -12,10 +12,11 @@
  */
 
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Check, Plug, RefreshCw, X, AlertTriangle, Loader2,
-  KeyRound, Pencil, Trash2, ChevronDown, ChevronRight,
+  KeyRound, Pencil, Plus, Trash2, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import StatusBadge from '../../components/StatusBadge';
 import { Button } from '../../components/ui/button';
@@ -584,7 +585,11 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
   if (companies.length === 0) {
     return (
       <div className={`${toneClasses('info')} mb-3 rounded px-2 py-1.5 text-2xs`}>
-        No companies yet. Add one on the Companies page, then return here to set its API key.
+        No companies yet.{' '}
+        <Link to="/admin/companies" className="underline font-medium">
+          Add one on the Companies page
+        </Link>
+        , then return here to set its API key.
       </div>
     );
   }
@@ -717,6 +722,18 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
               {missingKeys} need a key
             </span>
           )}
+          {/* Companies are CREATED on the Companies page (code, name,
+              active window); their Samsara keys are managed here.
+              The link closes the "how do I add a 6th company?" gap —
+              without it the operator has to already know the split. */}
+          <Link
+            to="/admin/companies"
+            className="text-2xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+            title="Create the company on the Companies page — it appears here for its API key"
+          >
+            <Plus size={12} />
+            Add company
+          </Link>
         </span>
       </div>
       <ul className="divide-y divide-border">
