@@ -285,7 +285,7 @@ export default function Vehicles() {
         <VehicleManageDialog
           open
           vehicle={dialog.vehicle}
-          fleet={vehicles}
+          existingVehicles={vehicles}
           onClose={() => setDialog(null)}
           onSaved={() => refetch()}
         />

@@ -51,16 +51,17 @@ const EMPTY: Draft = {
 };
 
 export default function VehicleManageDialog({
-  open, vehicle, fleet = [], onClose, onSaved,
+  open, vehicle, existingVehicles = [], onClose, onSaved,
 }: {
   open: boolean;
   /** The row being edited, or null to create a new one. */
   vehicle: Vehicle | null;
-  /** The account's current fleet (registry-backed /vehicles list).
-   *  Powers the unit-number autocomplete + "already in your fleet"
-   *  detection so the operator doesn't re-add a vehicle Samsara
-   *  already knows. */
-  fleet?: Vehicle[];
+  /** The account's existing vehicles (the registry-backed /vehicles
+   *  list).  Powers the unit-number autocomplete + "already in your
+   *  vehicles" detection so the operator doesn't re-add one an
+   *  integration already knows.  Role-neutral: this is the account's
+   *  vehicle registry, not a fleet-role concept. */
+  existingVehicles?: Vehicle[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -103,13 +104,15 @@ export default function VehicleManageDialog({
     }
   }, [open, target]);
 
-  // In create mode, does the typed unit already exist in the fleet?
+  // In create mode, does the typed unit already exist in the registry?
   const existingMatch = useMemo(() => {
     if (isEdit) return null;
     const u = draft.unit_number.trim().toLowerCase();
     if (!u) return null;
-    return fleet.find((v) => (v.name ?? '').trim().toLowerCase() === u) ?? null;
-  }, [isEdit, draft.unit_number, fleet]);
+    return existingVehicles.find(
+      (v) => (v.name ?? '').trim().toLowerCase() === u,
+    ) ?? null;
+  }, [isEdit, draft.unit_number, existingVehicles]);
 
   // Pull the matched vehicle's full Samsara spec and switch to editing
   // it — the comfort helper: VIN / make / model / plate fill in.
@@ -134,8 +137,8 @@ export default function VehicleManageDialog({
         make: clean(detail.make),
         model: clean(detail.model),
         license_plate: clean(detail.license_plate ?? detail.licensePlate),
-        // Carry the registry_id from the fleet row (the detail endpoint
-        // is keyed by name; the registry id rides on the list row).
+        // Carry the registry_id from the matched row (the detail
+        // endpoint is keyed by name; the registry id rides on the row).
         registry_id: existingMatch.registry_id,
       });
     } catch (e) {
@@ -215,12 +218,12 @@ export default function VehicleManageDialog({
               <Input
                 value={draft.unit_number} onChange={set('unit_number')}
                 placeholder="247" required autoFocus
-                list={isEdit ? undefined : 'fleet-units'}
+                list={isEdit ? undefined : 'registry-units'}
                 autoComplete="off"
               />
               {!isEdit && (
-                <datalist id="fleet-units">
-                  {fleet.map((v) => (
+                <datalist id="registry-units">
+                  {existingVehicles.map((v) => (
                     <option key={`${v.company}-${v.name}`} value={v.name ?? ''} />
                   ))}
                 </datalist>
@@ -262,14 +265,14 @@ export default function VehicleManageDialog({
             <Input value={draft.notes} onChange={set('notes')} placeholder="optional" />
           </div>
 
-          {/* Already-in-fleet helper: the typed unit matches a vehicle
-              Samsara already reports.  Offer to pull its details and
-              edit it rather than create a duplicate (which would 409). */}
+          {/* Already-registered helper: the typed unit matches a
+              vehicle an integration already reports.  Offer to pull its
+              details and edit it rather than create a duplicate (409). */}
           {existingMatch && (
             <div className={`${toneClasses('info')} rounded px-2.5 py-2 text-2xs flex items-center justify-between gap-2`}>
               <span>
                 Unit <span className="font-medium">{existingMatch.name}</span> is
-                already in your fleet
+                already in your vehicles
                 {existingMatch.company ? ` (${existingMatch.company})` : ''} —
                 pull its details to edit instead of adding a duplicate.
               </span>
