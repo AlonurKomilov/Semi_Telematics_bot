@@ -11,7 +11,7 @@
  * persona layouts.
  */
 import { usePermissions } from '../../../hooks/usePermissions';
-import { VehicleInspectionsCard } from '../../../pages/vehicles/VehicleInspectionsCard';
+import { VehicleInspectionsCard } from '../VehicleInspectionsCard';
 import type { VehicleSectionProps } from './_shared/types';
 
 export default function VehicleInspections({ vehicleName }: VehicleSectionProps) {

@@ -21,7 +21,7 @@ import {
 import { useShellConfig } from '../../hooks/useShellConfig';
 import { usePermissions } from '../../hooks/usePermissions';
 import { blocksForPersona } from '../../features/driver-scorecards/personaConfig';
-import { ScorecardRulesPanel } from '../admin/ScorecardRules';
+import { ScorecardRulesPanel } from '@/pages/admin/ScorecardRules';
 import type {
   CompositeScorecard,
   CompositeScorecardsResponse,
