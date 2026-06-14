@@ -6,6 +6,10 @@ export interface FleetVehicle {
   status: string;
   fuel_percent: number | null;
   speed_mph: number;
+  /** Registry classification (truck / trailer / other) — present now
+   *  that /vehicles is registry-backed.  Lets callers auto-resolve the
+   *  inspection template from the picked vehicle. */
+  vehicle_type?: string;
 }
 
 const STATUS_DOT: Record<string, string> = {

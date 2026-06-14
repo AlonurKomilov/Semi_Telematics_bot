@@ -63,6 +63,10 @@ export function NewInspectionDialog({ onCreated, onClose }: Props) {
   const [driverOverridden, setDriverOverridden] = useState(false);
   const [inspectionType, setInspectionType] = useState<InspectionType>('weekly');
   const [vehicleType, setVehicleType] = useState<VehicleType>('truck');
+  // Sticky once the user picks the template by hand — auto-resolve from
+  // the registry only until then.
+  const [typeOverridden, setTypeOverridden] = useState(false);
+  const [autoResolvedType, setAutoResolvedType] = useState(false);
   const [dueDays, setDueDays] = useState(7);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +115,32 @@ export function NewInspectionDialog({ onCreated, onClose }: Props) {
     if (driverId == null) return null;
     return drivers?.drivers.find(d => d.user_id === driverId) ?? null;
   }, [driverId, drivers]);
+
+  // Auto-resolve the inspection template from the picked vehicle's
+  // registry type — pick a trailer and the trailer DOT checklist is
+  // selected automatically.  ('other' has no template, so it stays on
+  // truck.)  A manual change to the dropdown makes the choice sticky.
+  const typeByVehicle = useMemo(() => {
+    const out: Record<string, VehicleType> = {};
+    for (const v of vehicles) {
+      const t = (v as { vehicle_type?: string }).vehicle_type;
+      if (v.name && (t === 'truck' || t === 'trailer')) {
+        out[v.name.toLowerCase()] = t;
+      }
+    }
+    return out;
+  }, [vehicles]);
+
+  useEffect(() => {
+    if (typeOverridden) { setAutoResolvedType(false); return; }
+    const t = typeByVehicle[vehicleName.trim().toLowerCase()];
+    if (t) {
+      setVehicleType(t);
+      setAutoResolvedType(true);
+    } else {
+      setAutoResolvedType(false);
+    }
+  }, [vehicleName, typeByVehicle, typeOverridden]);
 
   const submit = async () => {
     if (!vehicleName.trim()) {
@@ -237,20 +267,27 @@ export function NewInspectionDialog({ onCreated, onClose }: Props) {
           </select>
         </label>
 
-        {/* Vehicle type — picks which template the items snapshot from */}
+        {/* Vehicle type — picks which template the items snapshot from.
+            Auto-resolved from the picked vehicle's registry type; the
+            operator can still override. */}
         <label className="block text-xs">
           <span className="block text-muted-foreground mb-1">
             {t('inspections.new.template')}
           </span>
           <select
             value={vehicleType}
-            onChange={e => setVehicleType(e.target.value as VehicleType)}
+            onChange={e => { setVehicleType(e.target.value as VehicleType); setTypeOverridden(true); }}
             disabled={saving}
             className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm"
           >
             <option value="truck">{t('inspections.tab_truck')}</option>
             <option value="trailer">{t('inspections.tab_trailer')}</option>
           </select>
+          {autoResolvedType && (
+            <span className="mt-1 block text-2xs text-muted-foreground">
+              Set from the vehicle’s registry type — change it if needed.
+            </span>
+          )}
         </label>
 
         {/* Due period */}
