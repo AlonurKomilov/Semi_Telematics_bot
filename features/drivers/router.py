@@ -45,7 +45,7 @@ from interfaces.api.deps import (
 )
 from adapters.storage import Role
 from adapters.storage.drivers import VALID_DOC_TYPES
-from capabilities.iam.permissions import can
+from capabilities.permissions.roles import can
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/drivers", tags=["drivers"])

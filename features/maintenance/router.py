@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 
 from interfaces.api.deps import get_current_user, require_permission, get_tenant_db, get_platform_db, get_user_vehicle_nums, paginate, resolve_user_id, get_user_company_codes, filter_by_allowed_companies
-from capabilities.iam.permissions import can
+from capabilities.permissions.roles import can
 from features.maintenance.service import has_maintenance_access, spawn_recurring_if_completed
 
 logger = logging.getLogger(__name__)

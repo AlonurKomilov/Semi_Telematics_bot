@@ -5,7 +5,7 @@ from telegram.ext import ContextTypes
 from capabilities.localization.i18n import t
 
 from adapters.storage import Role
-from capabilities.iam.permissions import role_display
+from capabilities.permissions.roles import role_display
 from adapters.samsara.client import populate_company_display
 from capabilities.formatting import (
     format_help,
@@ -25,7 +25,7 @@ from interfaces.bot.auth import _get_user
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show role-aware help — lists features the current user can access."""
-    from capabilities.iam.permissions import get_permissions
+    from capabilities.permissions.roles import get_permissions
     user, tid, sys_owner = await _get_user(update)
 
     if sys_owner and not user:

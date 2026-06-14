@@ -612,7 +612,7 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
             profile_lines.append(f"- Timezone: {uc['timezone']}")
         # Dynamic permission guidance from ROLE_PERMISSIONS
         if uc.get("role"):
-            from capabilities.iam.permissions import build_role_guidance
+            from capabilities.permissions.roles import build_role_guidance
             guidance = build_role_guidance(uc["role"])
             profile_lines.append(f"\n{guidance}")
         user_parts.append("\n".join(profile_lines) + "\n\n")

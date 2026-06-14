@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from capabilities.iam.permissions import can
+from capabilities.permissions.roles import can
 from adapters.storage import Role
 
 # ── Task type registry (SSOT used by both bot and API) ────────────────────────

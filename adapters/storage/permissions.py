@@ -129,7 +129,7 @@ class PermissionsMixin:
 
     async def seed_account_permissions(self, account_id: int) -> int:
         """Seed default permissions for a new account. Returns rows inserted."""
-        from capabilities.iam.permissions import ROLE_PERMISSIONS
+        from capabilities.permissions.roles import ROLE_PERMISSIONS
         now = self._now()
         inserted = 0
         async with self.transaction():

@@ -30,7 +30,7 @@ from telegram.ext import ContextTypes
 
 from adapters.storage import Role
 from adapters.storage.object_store import get_object_store_for_account
-from capabilities.iam.permissions import can
+from capabilities.permissions.roles import can
 from features.maintenance.service import has_maintenance_access
 from features.work_orders.storage import (
     resolve_company_folder, safe_attachment_name, work_order_folder,

@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 
 from interfaces.api.deps import require_permission, require_permission_any, get_user_company_codes, validate_company_access, filter_by_allowed_companies, filter_by_assigned_trucks
-from capabilities.iam.permissions import can as _can
+from capabilities.permissions.roles import can as _can
 from infra.services import get_client
 from capabilities.telemetry.service import (
     get_vehicle_health as _svc_vehicle_health,

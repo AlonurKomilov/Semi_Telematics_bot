@@ -25,7 +25,7 @@ class Role(str, Enum):
     # people-management and money-management halves of the business.
     # They have their own subdomains (hr.4truck.us / accounting.4truck.us),
     # their own sidebar nav (interfaces/dashboard/src/shells/nav/),
-    # and their own permission defaults (see capabilities/iam/permissions.py).
+    # and their own permission defaults (see capabilities/permissions/permissions.py).
     HR          = "hr"
     ACCOUNTING  = "accounting"
     DRIVER      = "driver"
@@ -59,7 +59,7 @@ class Account:
     timezone: str = "America/New_York"
     alert_routing_mode: str = "single_group"
     # CSV of disabled module ids (Fleet/Dispatch/Safety/HR/Accounting);
-    # empty = all modules on.  See capabilities/iam/modules.py.
+    # empty = all modules on.  See capabilities/permissions/modules.py.
     disabled_modules: str = ""
 
 @dataclass

@@ -39,7 +39,7 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from capabilities.iam.permissions import can
+from capabilities.permissions.roles import can
 from features.pti import service as pti_service
 from features.pti.templates import (
     STANDARD_DOT_TRAILER_ITEMS,

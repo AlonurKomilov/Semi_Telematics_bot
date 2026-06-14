@@ -238,7 +238,7 @@ def _require_system_owner(user: dict = Depends(_billing_admin)) -> dict:
     matches the user's Telegram id against the ``SYSTEM_OWNER_IDS`` env
     var — only the 4truck operators on that allowlist may grant comp.
     """
-    from capabilities.iam.permissions import is_system_owner
+    from capabilities.permissions.roles import is_system_owner
     try:
         tg_id = int(user["sub"])
     except (KeyError, TypeError, ValueError):

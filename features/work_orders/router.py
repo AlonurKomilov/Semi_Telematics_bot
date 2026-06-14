@@ -33,7 +33,7 @@ from interfaces.api.deps import (
     get_user_vehicle_nums, require_permission, resolve_user_id,
     get_user_company_codes, filter_by_allowed_companies,
 )
-from capabilities.iam.permissions import can_for_account, Role
+from capabilities.permissions.roles import can_for_account, Role
 from features.work_orders.storage import (
     resolve_company_folder, safe_attachment_name, work_order_folder,
 )

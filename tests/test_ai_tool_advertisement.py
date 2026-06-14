@@ -16,8 +16,8 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 import pytest
 
 from adapters.storage import Database
-import capabilities.iam.permissions as perms_mod
-from capabilities.iam.permissions import ACCOUNT_WIDE_TOOLS
+import capabilities.permissions.roles as perms_mod
+from capabilities.permissions.roles import ACCOUNT_WIDE_TOOLS
 from capabilities.ai.tools.registry import (
     filter_tools_for_role,
     get_anthropic_tools,

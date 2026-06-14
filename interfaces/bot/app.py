@@ -19,7 +19,7 @@ from telegram.constants import ParseMode
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from capabilities.iam.permissions import SYSTEM_OWNER_IDS
+from capabilities.permissions.roles import SYSTEM_OWNER_IDS
 from capabilities.localization.i18n import t
 
 import interfaces.bot.config as _cfg
@@ -77,7 +77,7 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_audit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show recent audit log entries."""
-    from capabilities.iam.permissions import can
+    from capabilities.permissions.roles import can
     msg = update.message
     if msg is None:
         return

@@ -42,7 +42,7 @@ async def system_app(pg_db, monkeypatch):
     non_op = await db.create_user(900002, acct_a.id, role=Role.OWNER)
 
     # Allowlist only the operator's telegram_id.
-    import capabilities.iam.permissions as perms
+    import capabilities.permissions.roles as perms
     monkeypatch.setattr(perms, "SYSTEM_OWNER_IDS", {op.telegram_id})
 
     op_token = create_jwt(op.telegram_id, acct_a.id, "owner")

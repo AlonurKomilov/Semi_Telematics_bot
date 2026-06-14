@@ -11,7 +11,7 @@ from jose import JWTError
 
 from interfaces.api.auth import AUTH_COOKIE_NAME, decode_jwt, is_jti_revoked
 from infra.platform import get_router as _get_router
-from capabilities.iam.permissions import get_account_permissions
+from capabilities.permissions.roles import get_account_permissions
 from adapters.storage import Role
 
 _log = logging.getLogger(__name__)
@@ -428,7 +428,7 @@ async def require_system_owner(user: dict = Depends(get_current_user)) -> dict:
     fleet, force-sync) behind a single env-flip without leaking the
     surface to every paying tenant.
     """
-    from capabilities.iam.permissions import is_system_owner
+    from capabilities.permissions.roles import is_system_owner
     try:
         tg_id = int(user.get("sub", 0))
     except (TypeError, ValueError):

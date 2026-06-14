@@ -19,7 +19,7 @@ import pytest
 
 from adapters.storage import Database
 from capabilities.ai.intelligence import _check_tool_permission
-import capabilities.iam.permissions as perms_mod
+import capabilities.permissions.roles as perms_mod
 
 
 @pytest.fixture(autouse=True)

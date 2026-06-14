@@ -538,7 +538,7 @@ async def migrate_seed_role_permissions(conn) -> None:
         if not (await cur.fetchone()):
             return
 
-        from capabilities.iam.permissions import ROLE_PERMISSIONS
+        from capabilities.permissions.roles import ROLE_PERMISSIONS
 
         cur = await conn.execute("SELECT id FROM accounts WHERE is_active = 1")
         accounts = [r[0] for r in await cur.fetchall()]

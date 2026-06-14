@@ -21,7 +21,7 @@ from telegram import Update
 from telegram.ext import ContextTypes, Application
 from telegram.constants import ParseMode
 
-from capabilities.iam.permissions import can
+from capabilities.permissions.roles import can
 from adapters.samsara.client import populate_company_display
 from capabilities.reporting import compute_stats
 from features.vehicles.faults.report import generate_fault_report_pdf

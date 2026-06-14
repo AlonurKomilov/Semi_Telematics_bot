@@ -11,7 +11,7 @@ from telegram import (
 
 from capabilities.localization.i18n import LANGUAGE_NAMES, LANGUAGE_FLAGS, t
 from adapters.storage import Role
-from capabilities.iam.permissions import get_permissions, can_access_company_submenu
+from capabilities.permissions.roles import get_permissions, can_access_company_submenu
 from infra.context import get_company_display
 
 

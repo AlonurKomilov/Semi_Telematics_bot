@@ -415,7 +415,7 @@ async def _apply_module_mask(fs: FeatureSet, account_id: int) -> FeatureSet:
     """
     try:
         from infra.platform import get_platform_db
-        from capabilities.iam.modules import mask_disabled_modules
+        from capabilities.permissions.modules import mask_disabled_modules
         acct = await get_platform_db().get_account(account_id)
         disabled = getattr(acct, "disabled_modules", "") if acct else ""
         return mask_disabled_modules(fs, disabled)

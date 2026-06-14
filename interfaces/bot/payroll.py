@@ -9,7 +9,7 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
-from capabilities.iam.permissions import can
+from capabilities.permissions.roles import can
 from capabilities.localization.i18n import t
 from features.payroll import service as svc
 from infra.platform import get_platform_db

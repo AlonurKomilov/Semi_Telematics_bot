@@ -7,7 +7,7 @@ from capabilities.localization.i18n import t
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from capabilities.iam.permissions import can
+from capabilities.permissions.roles import can
 
 from interfaces.bot.config import logger
 from interfaces.bot.state import get_tenant_db

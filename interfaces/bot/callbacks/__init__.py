@@ -20,7 +20,7 @@ from capabilities.formatting import (
 )
 
 from adapters.storage import Role
-from capabilities.iam.permissions import role_display
+from capabilities.permissions.roles import role_display
 from interfaces.bot.config import SUPPORT_CONTACT
 from interfaces.bot.state import get_platform_db, get_tenant_db
 from interfaces.bot.keyboards import (
@@ -385,7 +385,7 @@ async def _vehicle_prompt(update, context):
     query = update.callback_query
     await query.answer()
     user = context.user_data["_db_user"]
-    from capabilities.iam.permissions import can
+    from capabilities.permissions.roles import can
     if not can(user.role, "can_vehicle_all"):
         await query.answer(t("access.no_access"), show_alert=True)
         return
@@ -498,7 +498,7 @@ async def _cmd_audit(update, context):
     query = update.callback_query
     await query.answer()
     user = context.user_data["_db_user"]
-    from capabilities.iam.permissions import can
+    from capabilities.permissions.roles import can
     if not can(user.role, "can_manage_users"):
         await query.answer(t("access.no_access"), show_alert=True)
         return
@@ -539,7 +539,7 @@ async def _cmd_invite_role(update, context):
         return
     context.user_data["_db_user"] = user
 
-    from capabilities.iam.permissions import can
+    from capabilities.permissions.roles import can
     if not can(user.role, "can_invite"):
         await query.answer(t("access.no_access"), show_alert=True)
         return
@@ -554,7 +554,7 @@ async def _cmd_invite_role(update, context):
     # Rank check mirrors validate_invite_role from the slash-command
     # path.  HR-tier (can_invite + low rank) can't invite Admin or
     # peer-tier; OWNER-via-invite is forbidden outright.
-    from capabilities.iam.permissions import validate_invite_role
+    from capabilities.permissions.roles import validate_invite_role
     ok, reason = validate_invite_role(user.role, invite_role)
     if not ok:
         msg = (

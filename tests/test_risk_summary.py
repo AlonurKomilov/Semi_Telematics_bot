@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from capabilities.iam.permissions import (
+from capabilities.permissions.roles import (
     FeatureSet, can,
 )
 from capabilities.reporting.audiences import (

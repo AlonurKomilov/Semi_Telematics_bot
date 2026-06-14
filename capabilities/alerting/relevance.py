@@ -7,7 +7,7 @@ match their job.  A Safety user shouldn't see a "Fuel" toggle; a
 Dispatcher shouldn't see "Health" or "Maintenance".
 
 The mapping is **derived from the existing FeatureSet permissions**
-(``capabilities/iam/permissions.py:ROLE_PERMISSIONS``) so it never
+(``capabilities/permissions/permissions.py:ROLE_PERMISSIONS``) so it never
 goes out of sync with what the role is otherwise allowed to do.
 
 This module exposes two things:
@@ -36,7 +36,7 @@ from __future__ import annotations
 from typing import Union
 
 from adapters.storage.models import Role
-from capabilities.iam.permissions import ROLE_PERMISSIONS, FeatureSet
+from capabilities.permissions.roles import ROLE_PERMISSIONS, FeatureSet
 
 
 # Mapping from canonical alert type → required permission(s).

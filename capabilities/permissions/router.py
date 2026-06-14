@@ -1,4 +1,8 @@
-"""API endpoints for managing role permissions per account."""
+"""API endpoints for managing role permissions per account.
+
+router.py is interface-layer code co-located with its domain
+(docs/FEATURES.md): ONLY router.py may import interfaces.api.deps.
+"""
 
 import json
 import logging
@@ -10,7 +14,7 @@ from pydantic import BaseModel
 
 from interfaces.api.deps import require_permission, get_platform_db, get_tenant_db
 from adapters.storage.models import Role
-from capabilities.iam.permissions import (
+from capabilities.permissions.roles import (
     ROLE_PERMISSIONS,
     FeatureSet,
     get_account_permissions,

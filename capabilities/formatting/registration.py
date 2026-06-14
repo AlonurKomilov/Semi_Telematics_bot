@@ -16,7 +16,7 @@ def format_help(company_codes: list[str] | None = None,
     role_line = ""
     acct_line = ""
     if user and account:
-        from capabilities.iam.permissions import role_display
+        from capabilities.permissions.roles import role_display
         role_line = f"\n  {role_display(user.role)}  ·  {account.name}\n"
     elif account:
         acct_line = f"\n  🏢 {account.name}\n"

@@ -26,7 +26,7 @@ from interfaces.api.deps import (
     active_view,
 )
 from adapters.storage import Role
-from capabilities.iam.permissions import can
+from capabilities.permissions.roles import can
 from features.vehicles.service import get_fleet_overview as _svc_fleet_overview
 from capabilities.telemetry.service import get_fleet_weather as _svc_fleet_weather
 from capabilities.telemetry import warehouse_reader as _wh_reader

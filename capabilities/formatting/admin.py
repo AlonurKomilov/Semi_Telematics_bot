@@ -150,7 +150,7 @@ def format_admin_dashboard(stats: dict, ext: dict | None = None,
             acct = d["account"]
             users = d["users"]
             companies = d["companies"]
-            from capabilities.iam.permissions import role_emoji
+            from capabilities.permissions.roles import role_emoji
             user_str = ", ".join(
                 f"{role_emoji(u.role)}{u.linked_label}"
                 for u in users[:5]
@@ -172,7 +172,7 @@ def format_admin_dashboard(stats: dict, ext: dict | None = None,
 
 def format_admin_account_detail(acct, companies, users) -> str:
     """Detailed view of a single account for system owner."""
-    from capabilities.iam.permissions import role_display
+    from capabilities.permissions.roles import role_display
     lines = [
         "━━━━━━━━━━━━━━━━━━━",
         f"  🏢  <b>{acct.name}</b>",

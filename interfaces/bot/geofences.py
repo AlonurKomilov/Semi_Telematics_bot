@@ -9,7 +9,7 @@ from features.geofencing.service import get_platform_geofences
 from telegram import Update
 from telegram.ext import ContextTypes, Application
 
-from capabilities.iam.permissions import can
+from capabilities.permissions.roles import can
 from adapters.samsara.client import populate_company_display
 
 from interfaces.bot.config import logger

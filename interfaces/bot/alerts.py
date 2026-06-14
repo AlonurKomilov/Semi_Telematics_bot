@@ -6,7 +6,7 @@ from capabilities.localization.i18n import t
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from capabilities.iam.permissions import can
+from capabilities.permissions.roles import can
 from capabilities.alerting.service import filter_alerts_by_access
 from interfaces.bot.config import ALERT_INTERVAL
 from interfaces.bot.state import get_user_company_codes, get_platform_db, get_tenant_db

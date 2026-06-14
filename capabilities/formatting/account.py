@@ -5,7 +5,7 @@ from capabilities.formatting.helpers import _t
 
 def format_account_info(account, companies, user) -> str:
     """Companies overview for the Companies sub-menu."""
-    from capabilities.iam.permissions import role_display
+    from capabilities.permissions.roles import role_display
     lines = [
         "━━━━━━━━━━━━━━━━━━━",
         f"  {_t('company.header').replace('{account}', account.name)}",
@@ -23,7 +23,7 @@ def format_account_info(account, companies, user) -> str:
 
 def format_users_list(users, account_name: str) -> str:
     """List all users for /users command."""
-    from capabilities.iam.permissions import role_display
+    from capabilities.permissions.roles import role_display
     lines = [
         "━━━━━━━━━━━━━━━━━━━",
         f"  {_t('team.header').replace('{account}', account_name)}",

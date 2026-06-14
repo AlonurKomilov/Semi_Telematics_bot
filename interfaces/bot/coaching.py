@@ -11,7 +11,7 @@ from telegram.ext import ContextTypes
 
 from features.coaching import service as svc
 from features.coaching.service import CoachingDisabledError
-from capabilities.iam.permissions import can
+from capabilities.permissions.roles import can
 from capabilities.localization.i18n import t
 from infra.platform import get_platform_db
 

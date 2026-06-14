@@ -15,7 +15,7 @@ import capabilities.ai as ai
 from capabilities.ai import _chat_histories
 from capabilities.ai.registry import DEFAULT_LOCATION
 from capabilities.ai.usage import build_user_ai_context, log_ai_usage as _log_ai_usage_fn, parse_ai_suggestions as _parse_suggestions
-from capabilities.iam.permissions import is_management_role
+from capabilities.permissions.roles import is_management_role
 from interfaces.api.deps import require_permission, require_permission_any, get_current_user, get_platform_db, get_tenant_db
 from interfaces.api.rate_limit import limiter
 

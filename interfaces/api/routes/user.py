@@ -14,8 +14,8 @@ from interfaces.api.deps import (
     get_tenant_db,
     require_permission,
 )
-from capabilities.iam.permissions import get_account_permissions
-from capabilities.iam.modules import enabled_modules as _enabled_modules
+from capabilities.permissions.roles import get_account_permissions
+from capabilities.permissions.modules import enabled_modules as _enabled_modules
 from capabilities.localization.tz import effective_tz_for_user, IANA_OPTIONS
 from adapters.storage import Role
 
@@ -135,7 +135,7 @@ async def user_me(
         "coaching_enabled": bool(getattr(acct, "coaching_enabled", False)),
         # Enabled department modules (Fleet/Dispatch/Safety/HR/Accounting).
         # Drives module-aware sidebar filtering; Core + Account admin are
-        # always on and not listed.  See capabilities/iam/modules.py.
+        # always on and not listed.  See capabilities/permissions/modules.py.
         "enabled_modules": _enabled_modules(getattr(acct, "disabled_modules", "")),
     }
 

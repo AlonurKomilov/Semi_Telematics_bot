@@ -10,7 +10,7 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
 from adapters.storage import Role
-from capabilities.iam.permissions import can
+from capabilities.permissions.roles import can
 from infra.context import get_company_display
 from capabilities.formatting import format_vehicle_detail, format_vehicle_picker
 from capabilities.reporting import generate_vehicle_detail_pdf

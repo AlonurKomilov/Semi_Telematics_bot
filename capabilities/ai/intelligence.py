@@ -26,7 +26,7 @@ from capabilities.ai.tools import (  # noqa: E402,F401
     get_anthropic_tools as _get_anthropic_tools,
     AI_TOOLS,  # backward compat re-export
 )
-from capabilities.iam.permissions import TOOL_PERMISSIONS, ACCOUNT_WIDE_TOOLS, VEHICLE_SPECIFIC_TOOLS
+from capabilities.permissions.roles import TOOL_PERMISSIONS, ACCOUNT_WIDE_TOOLS, VEHICLE_SPECIFIC_TOOLS
 
 logger = logging.getLogger("bot.ai")
 
@@ -473,10 +473,10 @@ async def _check_tool_permission(
             from adapters.storage import Role
             role = Role(user_role)
             if account_id is not None:
-                from capabilities.iam.permissions import get_account_permissions
+                from capabilities.permissions.roles import get_account_permissions
                 perms = await get_account_permissions(role, int(account_id))
             else:
-                from capabilities.iam.permissions import get_permissions
+                from capabilities.permissions.roles import get_permissions
                 perms = get_permissions(role)
             if not any(getattr(perms, p, False) for p in req_perms):
                 return {"error": f"Access denied: your role ({user_role}) cannot use {tool_name}."}
@@ -922,7 +922,7 @@ async def ask_agent(question: str, fleet_context: dict,
             profile_lines.append(f"- Timezone: {uc['timezone']}")
         # Dynamic permission guidance from ROLE_PERMISSIONS (with per-account override)
         if uc.get("role"):
-            from capabilities.iam.permissions import build_role_guidance_for_account
+            from capabilities.permissions.roles import build_role_guidance_for_account
             _db = user_context.get("_db")
             _account_id = account_id or 0
             guidance = await build_role_guidance_for_account(_db, _account_id, uc["role"])

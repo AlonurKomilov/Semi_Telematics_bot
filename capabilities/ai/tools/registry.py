@@ -63,7 +63,7 @@ async def filter_tools_for_role(
     account-wide aggregate tools are dropped too, since the gate blocks them
     for that user anyway — no point advertising them.
     """
-    from capabilities.iam.permissions import TOOL_PERMISSIONS, ACCOUNT_WIDE_TOOLS
+    from capabilities.permissions.roles import TOOL_PERMISSIONS, ACCOUNT_WIDE_TOOLS
 
     all_schemas = get_all_tool_schemas()
     if not role_str:
@@ -72,10 +72,10 @@ async def filter_tools_for_role(
         from adapters.storage import Role
         role = Role(role_str)
         if account_id is not None:
-            from capabilities.iam.permissions import get_account_permissions
+            from capabilities.permissions.roles import get_account_permissions
             perms = await get_account_permissions(role, int(account_id))
         else:
-            from capabilities.iam.permissions import get_permissions
+            from capabilities.permissions.roles import get_permissions
             perms = get_permissions(role)
     except (ValueError, KeyError, ImportError):
         return all_schemas

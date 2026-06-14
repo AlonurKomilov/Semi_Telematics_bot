@@ -10,7 +10,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from adapters.storage import Role
-from capabilities.iam.permissions import can, is_management_role
+from capabilities.permissions.roles import can, is_management_role
 
 from interfaces.bot.config import logger
 from interfaces.bot.state import get_client, get_platform_db, get_tenant_db

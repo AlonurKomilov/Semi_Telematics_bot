@@ -149,7 +149,7 @@ async def test_cache_entry_carries_expiry_timestamp(app_client):
     when the worker that holds it never sees the invalidation
     signal."""
     s = app_client
-    from capabilities.iam.permissions import (
+    from capabilities.permissions.roles import (
         get_account_permissions, _permissions_cache, _PERMS_CACHE_TTL_S,
     )
     import time as _time
@@ -178,7 +178,7 @@ async def test_invalidate_drops_account_entries_only(app_client):
     account's entries — never bleed into other accounts' cache.
     Protects against a buggy refactor that broadens the predicate."""
     s = app_client
-    from capabilities.iam.permissions import (
+    from capabilities.permissions.roles import (
         get_account_permissions, invalidate_permissions_cache,
         _permissions_cache,
     )
@@ -199,7 +199,7 @@ async def test_stale_cache_entry_is_re_resolved(app_client):
     """An entry past its TTL gets re-resolved from DB on next read —
     not served stale.  This is the multi-worker safety net."""
     s = app_client
-    from capabilities.iam.permissions import (
+    from capabilities.permissions.roles import (
         get_account_permissions, _permissions_cache,
     )
     import time as _time
@@ -314,7 +314,7 @@ async def test_account_a_override_does_not_affect_account_b(app_client):
     A's Fleet role MUST NOT change what Account B's Fleet users see.
     Verified end-to-end across DB + cache + resolution path."""
     s = app_client
-    from capabilities.iam.permissions import get_account_permissions
+    from capabilities.permissions.roles import get_account_permissions
 
     # Account A: flip Fleet's can_faults to False
     await s["client"].put(

@@ -3,7 +3,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from capabilities.iam.permissions import is_system_owner
+from capabilities.permissions.roles import is_system_owner
 
 from infra.context import set_tenant_display
 from interfaces.bot.config import SUPPORT_CONTACT
@@ -142,7 +142,7 @@ def _require_registered(func):
         # ignore admin customizations.  Cheap on cache hit; awaits a
         # single DB read on first miss per (account, role) tuple.
         try:
-            from capabilities.iam.permissions import prime_account_permissions
+            from capabilities.permissions.roles import prime_account_permissions
             await prime_account_permissions(user.account_id, user.role)
         except Exception:
             # Best-effort: a DB hiccup here shouldn't block the handler;

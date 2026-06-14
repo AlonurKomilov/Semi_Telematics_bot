@@ -7,7 +7,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from adapters.storage import Role
-from capabilities.iam.permissions import can
+from capabilities.permissions.roles import can
 from adapters.samsara.client import populate_company_display
 from capabilities.formatting import format_events_dashboard
 from features.events.service import filter_events_by_access as _filter_events_by_access, get_events as _svc_get_events

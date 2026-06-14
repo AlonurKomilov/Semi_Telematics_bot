@@ -5,7 +5,7 @@ from telegram.ext import ContextTypes
 from capabilities.localization.i18n import t
 
 from adapters.storage import Role
-from capabilities.iam.permissions import can, role_display, validate_invite_role
+from capabilities.permissions.roles import can, role_display, validate_invite_role
 from capabilities.formatting import (
     format_account_info,
     format_invite_created,

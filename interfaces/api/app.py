@@ -23,7 +23,7 @@ from features.overview import router as overview_routes
 from interfaces.api.routes import user as user_routes
 from interfaces.api.routes import admin as admin_routes
 from interfaces.api.routes import system as system_routes
-from interfaces.api.routes import permissions as permissions_routes
+from capabilities.permissions import router as permissions_routes
 from interfaces.api.routes import webhooks as webhooks_routes
 # Hub + platform-capability routers live WITH their domain:
 from capabilities.alerting import router as alerts

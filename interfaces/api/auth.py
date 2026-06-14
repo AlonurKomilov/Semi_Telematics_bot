@@ -993,7 +993,7 @@ async def auth_system_telegram_login(
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
 
-    from capabilities.iam.permissions import is_system_owner
+    from capabilities.permissions.roles import is_system_owner
     if not is_system_owner(body.id):
         raise HTTPException(
             status_code=403,
@@ -1067,7 +1067,7 @@ async def auth_system_telegram_init(request: Request, body: AuthRequest):
     if not tg_id:
         raise HTTPException(status_code=401, detail="Invalid user data")
 
-    from capabilities.iam.permissions import is_system_owner
+    from capabilities.permissions.roles import is_system_owner
     if not is_system_owner(int(tg_id)):
         raise HTTPException(
             status_code=403,

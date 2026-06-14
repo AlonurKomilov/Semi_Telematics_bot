@@ -8,7 +8,7 @@ import pytest_asyncio
 os.environ.setdefault("ENCRYPTION_KEY", "")
 
 from adapters.storage import Database, Role, User
-from capabilities.iam.permissions import get_permissions
+from capabilities.permissions.roles import get_permissions
 from capabilities.formatting import format_event_alert, format_events_dashboard
 from capabilities.reporting import generate_events_csv
 
@@ -95,7 +95,7 @@ class TestEventsPermissions:
     def test_dispatcher_sees_events(self):
         # Dispatchers were granted can_events_all/can_events_vehicle in the
         # IAM refactor — they need safety-event visibility to react to
-        # mid-shift deviations.  See capabilities/iam/permissions.py
+        # mid-shift deviations.  See capabilities/permissions/permissions.py
         # comment on the DISPATCHER block.
         perms = get_permissions(Role.DISPATCHER)
         assert perms.can_events_all is True

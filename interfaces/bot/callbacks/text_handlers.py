@@ -2,7 +2,7 @@
 
 
 from adapters.storage import Role
-from capabilities.iam.permissions import role_display
+from capabilities.permissions.roles import role_display
 from capabilities.formatting import format_invite_created
 
 from interfaces.bot.state import get_platform_db

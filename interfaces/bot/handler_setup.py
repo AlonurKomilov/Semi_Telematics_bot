@@ -308,7 +308,7 @@ async def _cmd_system_start(update, _context):
     surface — anyone who reaches it should already know why they're
     here.
     """
-    from capabilities.iam.permissions import is_system_owner
+    from capabilities.permissions.roles import is_system_owner
     tid = update.effective_user.id if update.effective_user else 0
     if is_system_owner(tid):
         await update.message.reply_text(

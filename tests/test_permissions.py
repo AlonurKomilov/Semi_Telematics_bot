@@ -5,7 +5,7 @@ import pytest
 from unittest.mock import patch
 
 from adapters.storage import Role
-from capabilities.iam.permissions import (
+from capabilities.permissions.roles import (
     FeatureSet,
     get_permissions,
     can,
@@ -141,7 +141,7 @@ class TestSystemOwner:
 
     def test_system_owner_check(self):
         with patch.dict(os.environ, {"SYSTEM_OWNER_IDS": "111,222"}):
-            from capabilities.iam.permissions import _parse_system_owners
+            from capabilities.permissions.roles import _parse_system_owners
             ids = _parse_system_owners()
             assert 111 in ids
             assert 222 in ids
@@ -149,7 +149,7 @@ class TestSystemOwner:
 
     def test_empty_system_owners(self):
         with patch.dict(os.environ, {"SYSTEM_OWNER_IDS": ""}):
-            from capabilities.iam.permissions import _parse_system_owners
+            from capabilities.permissions.roles import _parse_system_owners
             ids = _parse_system_owners()
             assert len(ids) == 0
 
@@ -227,7 +227,7 @@ class TestPermSsotDriftDetection:
     def test_every_flag_appears_in_dashboard_perm_groups(self):
         import os
         import re
-        from capabilities.iam.permissions import FeatureSet
+        from capabilities.permissions.roles import FeatureSet
 
         repo_root = os.path.dirname(os.path.dirname(__file__))
         tsx_path = os.path.join(

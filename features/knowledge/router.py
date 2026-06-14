@@ -29,7 +29,7 @@ from adapters.storage.knowledge import (
     KB_CATEGORIES, KB_DESCRIPTION_MAX_LEN, KB_TAGS_MAX_LEN,
     KB_TITLE_MAX_LEN, normalize_tags, validate_media_url,
 )
-from capabilities.iam.permissions import (
+from capabilities.permissions.roles import (
     is_kb_approver_role, is_kb_author_role,
 )
 from features.knowledge.service import can_view_article as _can_view_article

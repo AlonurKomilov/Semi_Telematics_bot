@@ -3,7 +3,7 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from adapters.storage import Role
-from capabilities.iam.permissions import can
+from capabilities.permissions.roles import can
 
 from interfaces.bot.state import get_tenant_db
 from interfaces.bot.keyboards import back_kb, parking_events_kb, parking_history_kb

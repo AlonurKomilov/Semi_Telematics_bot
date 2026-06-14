@@ -13,7 +13,7 @@ from typing import Optional
 
 from interfaces.api.deps import require_permission, get_current_db_user, get_tenant_db, get_platform_db, paginate, resolve_user_id
 from adapters.storage.models import Role
-from capabilities.iam.permissions import validate_role_change, role_rank
+from capabilities.permissions.roles import validate_role_change, role_rank
 from capabilities.scoring.rules import get_default_rules as _get_default_rules
 
 logger = logging.getLogger(__name__)
@@ -1952,7 +1952,7 @@ async def get_all_role_guidance(
 
     # Return the hardcoded defaults merged with any overrides so callers
     # can see every role with its active guidance in one response.
-    from capabilities.iam.permissions import Role as RoleEnum, build_role_guidance
+    from capabilities.permissions.roles import Role as RoleEnum, build_role_guidance
     result = {}
     for role in RoleEnum:
         result[role.value] = {
@@ -1970,7 +1970,7 @@ async def set_role_guidance(
     platform_db=Depends(get_platform_db),
 ):
     """Set a custom AI guidance override for a role in this account."""
-    from capabilities.iam.permissions import Role as RoleEnum
+    from capabilities.permissions.roles import Role as RoleEnum
     valid_roles = {r.value for r in RoleEnum}
     if role not in valid_roles:
         raise HTTPException(status_code=422, detail=f"Unknown role '{role}'. Valid: {sorted(valid_roles)}")
