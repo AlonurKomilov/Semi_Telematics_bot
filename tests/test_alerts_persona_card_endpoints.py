@@ -5,7 +5,7 @@ EscalationStatusCard, and AccountAlertSummary:
 
   GET /safety/events/summary          — events today/week aggregate
   GET /coaching/assignments/count     — open-backlog count
-  GET /admin/escalations              — past-due + breached + by_persona
+  GET /alerts/escalations              — past-due + breached + by_persona
   GET /alerts/aggregate               — by_type / by_severity histogram
 
 The safety/coaching endpoints depend on warehouse / coaching service
@@ -91,14 +91,14 @@ async def test_alerts_aggregate_window_default(app_client):
     assert r.json()["days"] == 30
 
 
-# ── /admin/escalations ────────────────────────────────────────────
+# ── /alerts/escalations ────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_escalations_shape_empty_account(app_client):
     s = app_client
     r = await s["client"].get(
-        "/api/admin/escalations", headers=_hdr(s["owner_token"]),
+        "/api/alerts/escalations", headers=_hdr(s["owner_token"]),
     )
     assert r.status_code == 200
     body = r.json()
@@ -116,7 +116,7 @@ async def test_escalations_driver_blocked(app_client):
     a real owner response (the UI hides the card on 403)."""
     s = app_client
     r = await s["client"].get(
-        "/api/admin/escalations", headers=_hdr(s["driver_token"]),
+        "/api/alerts/escalations", headers=_hdr(s["driver_token"]),
     )
     assert r.status_code == 403
 

@@ -21,7 +21,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from interfaces.api.routes import health
 from features.overview import router as overview_routes
 from interfaces.api.routes import user as user_routes
-from interfaces.api.routes import admin as admin_routes
+from features.settings import router as settings_routes
+from capabilities.telemetry import router as telemetry_routes
+from capabilities.jobs import router as jobs_routes
 from interfaces.api.routes import system as system_routes
 from capabilities.permissions import router as permissions_routes
 from interfaces.api.routes import webhooks as webhooks_routes
@@ -390,7 +392,9 @@ def create_api() -> FastAPI:
         app.include_router(reports_routes.router, prefix=prefix)
         app.include_router(reports_routes.user_router, prefix=prefix)
         app.include_router(costs_routes.router, prefix=prefix)
-        app.include_router(admin_routes.router, prefix=prefix)
+        app.include_router(settings_routes.router, prefix=prefix)
+        app.include_router(telemetry_routes.router, prefix=prefix)
+        app.include_router(jobs_routes.router, prefix=prefix)
         app.include_router(system_routes.router, prefix=prefix)
         app.include_router(permissions_routes.router, prefix=prefix)
         app.include_router(maintenance_routes.router, prefix=prefix)

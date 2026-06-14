@@ -232,7 +232,7 @@ class TestPermSsotDriftDetection:
         repo_root = os.path.dirname(os.path.dirname(__file__))
         tsx_path = os.path.join(
             repo_root,
-            "interfaces/dashboard/src/pages/admin/RolePermissions.tsx",
+            "interfaces/dashboard/src/features/settings/RolePermissions.tsx",
         )
         with open(tsx_path) as f:
             content = f.read()
@@ -253,6 +253,6 @@ class TestPermSsotDriftDetection:
 
         assert not missing, (
             f"FeatureSet flags missing from dashboard's PERM_GROUPS: {sorted(missing)}\n"
-            "Add them to interfaces/dashboard/src/pages/admin/RolePermissions.tsx "
+            "Add them to interfaces/dashboard/src/features/settings/RolePermissions.tsx "
             "so admins can customize them per account."
         )

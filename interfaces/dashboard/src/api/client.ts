@@ -147,7 +147,7 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}, timeoutMs 
  * whole page.
  *
  *   try {
- *     await apiJSON('/admin/escalations');
+ *     await apiJSON('/alerts/escalations');
  *   } catch (e) {
  *     if (e instanceof ApiError && e.status === 403) return null;
  *     throw e;

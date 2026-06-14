@@ -1,7 +1,7 @@
 /**
  * Owner/admin oversight card — past-due + breached escalation counts.
  *
- * Pulls /admin/escalations once on mount (refreshes when refocused);
+ * Pulls /alerts/escalations once on mount (refreshes when refocused);
  * one server-aggregated number per concept means no client-side
  * arithmetic and no walking the queue.  The by_persona breakdown
  * surfaces "which team is sitting on the backlog" so an owner can
@@ -38,7 +38,7 @@ function useEscalations() {
     queryKey: ['admin', 'escalations'],
     queryFn: async () => {
       try {
-        return await apiJSON<EscalationSummary>('/admin/escalations');
+        return await apiJSON<EscalationSummary>('/alerts/escalations');
       } catch (e) {
         if (e instanceof ApiError && (e.status === 403 || e.status === 404)) {
           return null;

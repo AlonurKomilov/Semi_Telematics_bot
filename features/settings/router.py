@@ -1,5 +1,15 @@
-"""Admin API endpoints — users, companies, invites, audit log, settings, schedules,
-scorecard rules + pillar caps (driver-facing scorecards live under /safety)."""
+"""Settings feature router — the account-governance API surface.
+
+Serves the Settings components: Team Management (users), Companies,
+Invites, Working Hours, Audit Log, Account Settings (timezone, bot
+config), Forum Routing, and per-role AI guidance.  Keeps the historical
+``/admin`` URL prefix so endpoints are unchanged.
+
+router.py is interface-layer code co-located with its feature
+(docs/FEATURES.md): ONLY router.py may import interfaces.api.deps.
+Diagnostics moved out 2026-06-11: warehouse-status -> capabilities/
+telemetry/router.py, jobs -> capabilities/jobs/router.py, escalations ->
+capabilities/alerting/router.py (/alerts/escalations)."""
 
 import asyncio
 import json
@@ -1994,148 +2004,6 @@ async def delete_role_guidance(
     return {"status": "ok", "role": role}
 
 
-# ── Warehouse diagnostics ─────────────────────────────────────
-#
-# Surfaces the row counts + freshness of every warehouse table for the
-# caller's account. Used during the WAREHOUSE_READS_ENABLED rollout to
-# verify that the ingestor is populating the tables before flipping the
-# read flag, and afterwards to verify that the data stays fresh. Also
-# reports the current value of WAREHOUSE_READS_ENABLED so ops can
-# confirm the flag is set correctly per pod.
-
-_WAREHOUSE_TABLES: list[tuple[str, str | None]] = [
-    # (table_name, ts_column or None if the table has no timestamp)
-    ("vehicle_state",             "fetched_at"),
-    ("vehicle_health_snapshot",   "fetched_at"),
-    ("vehicle_fault_snapshot",    "fetched_at"),
-    ("fleet_weather_snapshot",    "fetched_at"),
-    ("fleet_efficiency_snapshot", "fetched_at"),
-    ("safety_event_log",          "occurred_at"),
-    ("driver_efficiency_daily",   "snapshot_date"),
-    ("vehicle_telemetry_hourly",  "hour_bucket"),
-    ("geofence_definitions",      "fetched_at"),
-]
-
-
-@router.get("/warehouse-status")
-async def warehouse_status(
-    user: dict = Depends(require_permission("can_manage_account")),
-    tenant=Depends(get_tenant_db),
-):
-    """Per-table row count + most-recent-row timestamp for the caller's
-    account warehouse. Exposes ``warehouse_reads_enabled`` so ops can
-    verify the env var is set on the pod handling the request.
-
-    Designed as the pre-flight check before flipping
-    ``WAREHOUSE_READS_ENABLED=1`` in production: if every table has rows
-    and the timestamps are within the expected ingestor cadence (60s /
-    5min / hourly), the flag is safe to flip.
-    """
-    from infra import config as _cfg
-
-    account_id = user["account_id"]
-    tables: list[dict] = []
-
-    for name, ts_col in _WAREHOUSE_TABLES:
-        entry: dict = {"table": name}
-        try:
-            count_row = await tenant.read_one(
-                f"SELECT COUNT(*) AS n FROM {name} WHERE account_id = ?",
-                (account_id,),
-            )
-            entry["rows"] = int(count_row["n"]) if count_row else 0
-        except Exception as e:
-            # Table may not exist yet on a freshly-installed tenant DB
-            # that hasn't run the warehouse migrations. Surface it as a
-            # diagnostic rather than failing the whole endpoint.
-            entry["rows"] = 0
-            entry["error"] = str(e)[:200]
-            tables.append(entry)
-            continue
-
-        if ts_col and entry["rows"] > 0:
-            try:
-                ts_row = await tenant.read_one(
-                    f"SELECT MAX({ts_col}) AS ts FROM {name} "
-                    f"WHERE account_id = ?",
-                    (account_id,),
-                )
-                entry["last_seen"] = ts_row["ts"] if ts_row else None
-            except Exception:
-                entry["last_seen"] = None
-
-        tables.append(entry)
-
-    populated = sum(1 for t in tables if t.get("rows", 0) > 0)
-    return {
-        "account_id": account_id,
-        "warehouse_reads_enabled": bool(getattr(_cfg, "WAREHOUSE_READS_ENABLED", False)),
-        "tables": tables,
-        "summary": {
-            "total":     len(tables),
-            "populated": populated,
-            "empty":     len(tables) - populated,
-        },
-    }
-
-
-# ── Job queue diagnostics ───────────────────────────
-#
-# Read-only endpoints that surface the state of the ARQ job queue.
-# Used by ops to:
-#   * verify a freshly-enqueued job is being picked up by a worker
-#   * poll a long-running job (PDF generation, report export) from the
-#     dashboard without holding an HTTP connection open
-#   * confirm the `/admin/jobs/enqueue/{name}` admin trigger for the
-#     pre-warm fanout actually queued work
-#
-# Job results are JSON; the queue itself never holds binary payloads.
-# Any large artifact (PDF, CSV) is written to object storage and the
-# job result holds the URL.
-
-@router.get("/jobs/{job_id}")
-async def job_status(
-    job_id: str,
-    user: dict = Depends(require_permission("can_manage_account")),
-):
-    """Look up an ARQ background job by id.
-
-    Returns the job's current status (deferred / queued / in_progress /
-    complete / not_found), enqueue + start + finish times, and the
-    job result when complete.
-
-    Permission: ``can_manage_account`` — ARQ doesn't natively scope
-    jobs to tenants so we restrict status access to admins. If you add
-    user-facing async jobs (e.g. dashboard "Generate report" button),
-    enforce ownership inside the job's result by stamping the requester
-    on enqueue.
-    """
-    from infra import jobs as _jobs
-    info = await _jobs.get_job_status(job_id)
-    if info is None:
-        raise HTTPException(404, f"Job {job_id} not found or queue unavailable")
-    return info
-
-
-@router.post("/jobs/prewarm-scorecards")
-async def trigger_prewarm_scorecards(
-    days: int = Query(7, ge=1, le=90),
-    user: dict = Depends(require_permission("can_manage_account")),
-):
-    """Manually fire the scorecards cache pre-warm fanout for the
-    caller's account. Useful for ops to re-warm the cache after a
-    schema/rules change without waiting for the 06:00 cron.
-
-    Returns ``{job_id}`` of the per-account precompute job. Poll
-    ``GET /admin/jobs/{job_id}`` for status.
-    """
-    from infra import jobs as _jobs
-    job = await _jobs.enqueue("precompute_scorecards", user["account_id"], days)
-    if job is None:
-        raise HTTPException(503, "Job queue unavailable — is the ARQ worker running?")
-    return {"job_id": job.job_id, "function": "precompute_scorecards", "account_id": user["account_id"], "days": days}
-
-
 # ── Account timezone (single source of truth for cron + display) ───
 #
 # Per-user override lives on ``users.timezone`` and is set via the
@@ -2453,75 +2321,3 @@ async def disconnect_forum_routing(
     return {"ok": True, "was_connected": True, "chat_id": group.chat_id}
 
 
-# ── Escalations summary ──────────────────────────────────────
-
-
-@router.get("/escalations")
-async def escalation_summary(
-    user: dict = Depends(require_permission("can_alerts_all")),
-    tenant_db=Depends(get_tenant_db),
-):
-    """Owner/admin oversight: how many active alerts are past their
-    re-escalation window or have hit the max-attempts cap.
-
-    Computed from ``alert_history`` (one row per logical alert) and
-    the env-tuned re-escalation knobs.  ``past_due`` means the alert
-    is older than ``REESCALATE_AFTER_MINUTES`` and unacked (the
-    pipeline is currently re-pinging it).  ``breached`` means it hit
-    ``REESCALATE_MAX_ATTEMPTS`` and the pipeline stopped paging — the
-    alert is still in the dashboard queue but no longer interrupting
-    operators.  Both counts are CRITICAL/WARNING only.
-
-    The ``by_persona`` map groups past_due counts by the persona that
-    owns each alert_type (per ``capabilities.alerting.persona_mapping``)
-    so the EscalationStatusCard can drill the owner directly into
-    "Dispatch has 5 alerts past due" without scanning the queue.
-    """
-    from datetime import datetime, timezone, timedelta
-    from infra.config import (
-        REESCALATE_AFTER_MINUTES, REESCALATE_MAX_ATTEMPTS,
-    )
-    from capabilities.alerting import persona_mapping
-
-    account_id = user["account_id"]
-    rows = await tenant_db.get_active_alert_history_for_account(account_id)
-
-    now = datetime.now(timezone.utc)
-    cutoff_minutes = max(REESCALATE_AFTER_MINUTES, 0)
-    cutoff = now - timedelta(minutes=cutoff_minutes)
-
-    past_due = 0
-    breached = 0
-    by_persona: dict[str, int] = {}
-    for r in rows:
-        sev = (r.get("severity") or "").lower()
-        if sev not in ("critical", "warning"):
-            continue
-        # `last_seen` is the latest re-fire timestamp — use it as the
-        # age anchor so a chronic alert that fired again 5 minutes ago
-        # isn't flagged "past_due" just because its first_seen is old.
-        last_seen = r.get("last_seen") or r.get("first_seen") or ""
-        try:
-            ts = datetime.fromisoformat(last_seen.replace("Z", "+00:00"))
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-        except Exception:
-            continue
-        reesc = int(r.get("reescalate_count") or 0)
-        is_past_due = cutoff_minutes > 0 and ts < cutoff
-        if is_past_due:
-            past_due += 1
-            persona = persona_mapping.persona_for_alert(r.get("alert_type") or "")
-            by_persona[persona] = by_persona.get(persona, 0) + 1
-        if reesc >= REESCALATE_MAX_ATTEMPTS:
-            breached += 1
-
-    return {
-        "past_due_count":   past_due,
-        "breached_count":   breached,
-        "by_persona":       by_persona,
-        # Knobs returned so the UI can render a "older than 60m" label
-        # without reading env from the browser.
-        "reescalate_after_minutes": REESCALATE_AFTER_MINUTES,
-        "reescalate_max_attempts":  REESCALATE_MAX_ATTEMPTS,
-    }
