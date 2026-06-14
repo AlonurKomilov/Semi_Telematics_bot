@@ -11,11 +11,12 @@
  * Remove  → DELETE /vehicles/registry/{id}  (soft delete)
  */
 
-import { useEffect, useState } from 'react';
-import { Loader2, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Loader2, Sparkles, Trash2 } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
+import { toneClasses } from '../../lib/status';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle,
@@ -50,11 +51,16 @@ const EMPTY: Draft = {
 };
 
 export default function VehicleManageDialog({
-  open, vehicle, onClose, onSaved,
+  open, vehicle, fleet = [], onClose, onSaved,
 }: {
   open: boolean;
   /** The row being edited, or null to create a new one. */
   vehicle: Vehicle | null;
+  /** The account's current fleet (registry-backed /vehicles list).
+   *  Powers the unit-number autocomplete + "already in your fleet"
+   *  detection so the operator doesn't re-add a vehicle Samsara
+   *  already knows. */
+  fleet?: Vehicle[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -62,29 +68,82 @@ export default function VehicleManageDialog({
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState('');
+  // When the operator typing a NEW unit hits one that already exists,
+  // they can promote the dialog to edit that row (pre-filled from its
+  // Samsara details) instead of creating a duplicate.
+  const [promoted, setPromoted] = useState<Vehicle | null>(null);
+  const [pulling, setPulling] = useState(false);
 
-  const editId = vehicle?.registry_id ?? null;
+  const target = vehicle ?? promoted;
+  const editId = target?.registry_id ?? null;
   const isEdit = editId != null;
 
   useEffect(() => {
     if (!open) return;
     setError('');
-    if (vehicle) {
+    if (!vehicle) setPromoted(null);
+  }, [open, vehicle]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (target) {
       setDraft({
-        unit_number: vehicle.name ?? '',
-        vehicle_type: vehicle.vehicle_type ?? 'truck',
-        company_code: vehicle.company ?? vehicle._org ?? '',
-        vin: vehicle.vin ?? '',
-        plate_number: vehicle.license_plate ?? vehicle.licensePlate ?? '',
-        make: vehicle.make ?? '',
-        model: vehicle.model ?? '',
-        year: vehicle.year ? String(vehicle.year) : '',
+        unit_number: target.name ?? '',
+        vehicle_type: target.vehicle_type ?? 'truck',
+        company_code: target.company ?? target._org ?? '',
+        vin: target.vin ?? '',
+        plate_number: target.license_plate ?? target.licensePlate ?? '',
+        make: target.make ?? '',
+        model: target.model ?? '',
+        year: target.year ? String(target.year) : '',
         notes: '',
       });
     } else {
       setDraft(EMPTY);
     }
-  }, [open, vehicle]);
+  }, [open, target]);
+
+  // In create mode, does the typed unit already exist in the fleet?
+  const existingMatch = useMemo(() => {
+    if (isEdit) return null;
+    const u = draft.unit_number.trim().toLowerCase();
+    if (!u) return null;
+    return fleet.find((v) => (v.name ?? '').trim().toLowerCase() === u) ?? null;
+  }, [isEdit, draft.unit_number, fleet]);
+
+  // Pull the matched vehicle's full Samsara spec and switch to editing
+  // it — the comfort helper: VIN / make / model / plate fill in.
+  const pullExisting = async () => {
+    if (!existingMatch || pulling) return;
+    setPulling(true);
+    setError('');
+    try {
+      const name = existingMatch.name ?? '';
+      const company = existingMatch.company ?? existingMatch._org ?? '';
+      const qs = company ? `?company=${encodeURIComponent(company)}` : '';
+      const detail = await apiJSON<Vehicle>(
+        `/vehicles/${encodeURIComponent(name)}${qs}`,
+      );
+      // The detail endpoint returns "N/A" for static fields a Samsara
+      // plan doesn't expose — scrub those to empty so they don't land
+      // as literal "N/A" in the form.
+      const clean = (s?: string | null) => (s && s !== 'N/A' ? s : '');
+      setPromoted({
+        ...detail,
+        vin: clean(detail.vin),
+        make: clean(detail.make),
+        model: clean(detail.model),
+        license_plate: clean(detail.license_plate ?? detail.licensePlate),
+        // Carry the registry_id from the fleet row (the detail endpoint
+        // is keyed by name; the registry id rides on the list row).
+        registry_id: existingMatch.registry_id,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load details');
+    } finally {
+      setPulling(false);
+    }
+  };
 
   const set = (k: keyof Draft) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
@@ -153,7 +212,19 @@ export default function VehicleManageDialog({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Unit number</label>
-              <Input value={draft.unit_number} onChange={set('unit_number')} placeholder="247" required autoFocus />
+              <Input
+                value={draft.unit_number} onChange={set('unit_number')}
+                placeholder="247" required autoFocus
+                list={isEdit ? undefined : 'fleet-units'}
+                autoComplete="off"
+              />
+              {!isEdit && (
+                <datalist id="fleet-units">
+                  {fleet.map((v) => (
+                    <option key={`${v.company}-${v.name}`} value={v.name ?? ''} />
+                  ))}
+                </datalist>
+              )}
             </div>
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Type</label>
@@ -190,6 +261,27 @@ export default function VehicleManageDialog({
             <label className="block text-xs text-muted-foreground mb-1">Notes</label>
             <Input value={draft.notes} onChange={set('notes')} placeholder="optional" />
           </div>
+
+          {/* Already-in-fleet helper: the typed unit matches a vehicle
+              Samsara already reports.  Offer to pull its details and
+              edit it rather than create a duplicate (which would 409). */}
+          {existingMatch && (
+            <div className={`${toneClasses('info')} rounded px-2.5 py-2 text-2xs flex items-center justify-between gap-2`}>
+              <span>
+                Unit <span className="font-medium">{existingMatch.name}</span> is
+                already in your fleet
+                {existingMatch.company ? ` (${existingMatch.company})` : ''} —
+                pull its details to edit instead of adding a duplicate.
+              </span>
+              <Button
+                type="button" variant="outline" size="xs"
+                onClick={pullExisting} disabled={pulling}
+              >
+                {pulling ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                Use its details
+              </Button>
+            </div>
+          )}
 
           {error && <p className="text-xs text-danger">{error}</p>}
 
