@@ -21,8 +21,8 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Bell, BellOff, CheckCircle2 } from 'lucide-react';
-import { apiJSON } from '../api/client';
-import { PageHeader, ErrorState, CardSkeleton } from '../components/shell';
+import { apiJSON } from '@/api/client';
+import { PageHeader, ErrorState, CardSkeleton } from '@/components/shell';
 
 interface AlertPrefsResponse {
   alerts_on: boolean;

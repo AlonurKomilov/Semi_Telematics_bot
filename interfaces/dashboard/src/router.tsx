@@ -55,7 +55,7 @@ function lazyWithReload<T extends { default: React.ComponentType<unknown> }>(
 // Using lazyWithReload so a stale-hash chunk request (post-deploy
 // browser cache miss) auto-recovers by reloading instead of dying
 // on ``Failed to fetch dynamically imported module``.
-const Overview         = lazyWithReload(() => import('./pages/Overview'));
+const Overview         = lazyWithReload(() => import('./features/overview/Overview'));
 // Phase 1 of the role-shell migration moved these pages out of role-
 // named folders (pages/fleet/, pages/safety/, pages/dispatch/) into
 // feature-named folders so the directory structure stops competing
@@ -86,19 +86,19 @@ const CostReports      = lazyWithReload(() => import('./features/reports/CostRep
 // page.  Loaded as a single chunk.
 const Inspections      = lazyWithReload(() => import('./features/inspections/Inspections'));
 const KnowledgeBase    = lazyWithReload(() => import('./features/knowledge/KnowledgeBase'));
-const TeamManagement   = lazyWithReload(() => import('./pages/admin/TeamManagement'));
-const Companies        = lazyWithReload(() => import('./pages/admin/Companies'));
+const TeamManagement   = lazyWithReload(() => import('./features/settings/TeamManagement'));
+const Companies        = lazyWithReload(() => import('./features/settings/Companies'));
 const Integrations     = lazyWithReload(() => import('./features/integrations/Integrations'));
-const AuditLog         = lazyWithReload(() => import('./pages/admin/AuditLog'));
-const Settings         = lazyWithReload(() => import('./pages/admin/Settings'));
+const AuditLog         = lazyWithReload(() => import('./features/settings/AuditLog'));
+const Settings         = lazyWithReload(() => import('./features/settings/Settings'));
 const Profile          = lazyWithReload(() => import('./pages/Profile'));
-const MyNotifications  = lazyWithReload(() => import('./pages/MyNotifications'));
-const Storage          = lazyWithReload(() => import('./pages/admin/Storage'));
-const WorkHours        = lazyWithReload(() => import('./pages/admin/WorkHours'));
-const Invites          = lazyWithReload(() => import('./pages/admin/Invites'));
-const RolePermissions  = lazyWithReload(() => import('./pages/admin/RolePermissions'));
-const ScorecardRules   = lazyWithReload(() => import('./pages/admin/ScorecardRules'));
-const Billing          = lazyWithReload(() => import('./pages/admin/Billing'));
+const MyNotifications  = lazyWithReload(() => import('./features/alerts/MyNotifications'));
+const Storage          = lazyWithReload(() => import('./features/settings/Storage'));
+const WorkHours        = lazyWithReload(() => import('./features/settings/WorkHours'));
+const Invites          = lazyWithReload(() => import('./features/settings/Invites'));
+const RolePermissions  = lazyWithReload(() => import('./features/settings/RolePermissions'));
+const ScorecardRules   = lazyWithReload(() => import('./features/driver-scorecards/ScorecardRules'));
+const Billing          = lazyWithReload(() => import('./features/billing/Billing'));
 const Payroll          = lazyWithReload(() => import('./features/payroll/Payroll'));
 const Coaching         = lazyWithReload(() => import('./features/coaching/Coaching'));
 const Drivers          = lazyWithReload(() => import('./features/drivers/Drivers'));
