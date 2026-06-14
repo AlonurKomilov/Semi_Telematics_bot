@@ -272,6 +272,16 @@ PROVIDER_CATALOG: dict[str, ProviderCatalogEntry] = {
             # 20 req/min globally per token.  A driver/truck sync
             # at 15 minutes is plenty fresh for HR + fleet uses,
             # and leaves headroom for orders + work-order pulls.
+            #
+            # NOT YET HONOURED BY A SCHEDULER.  These intervals are the
+            # intended auto-sync cadence, but today the only runner is
+            # the manual "Sync now" button (the dashboard shows "manual"
+            # next to each toggle, not the interval).  Option A — wire an
+            # APScheduler job that calls
+            # capabilities.integrations.datatruck.sync.sync_resource per
+            # enabled capability on these cadences — turns the intervals
+            # real; at that point drop the "manual" relabel in the
+            # dashboard's FeatureToggleList.
             Capability.TMS_DRIVERS_SYNC:     {"enabled": True,  "interval_min": 15},
             Capability.TMS_TRUCKS_SYNC:      {"enabled": True,  "interval_min": 15},
             Capability.TMS_TRAILERS_SYNC:    {"enabled": False, "interval_min": 60},

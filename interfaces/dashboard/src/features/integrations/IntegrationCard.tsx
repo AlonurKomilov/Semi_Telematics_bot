@@ -934,6 +934,18 @@ function FeatureToggleList({
         const def = defaults[cap] ?? {};
         const cadenceLabel = formatCadence(t.cron || t.interval_sec || t.interval_min || t.interval_hour ? t : def);
         const isBackfill = cap === 'history_backfill';
+        // TMS sync capabilities (tms_*) carry an interval in the
+        // catalog, but no scheduler job runs them yet — the only path
+        // today is the manual "Sync now" button in the DatatruckSyncPanel.
+        // Showing "every 15 min" would promise an auto-refresh that
+        // doesn't happen, so we render "manual" instead.
+        //
+        // FUTURE (option A): once an APScheduler job calls
+        // capabilities.integrations.datatruck.sync.sync_resource on each
+        // capability's catalog cadence, delete this branch so the real
+        // "every 15 min" label shows again — the cadence data is already
+        // correct, it just isn't honoured by any runner yet.
+        const isTmsSync = cap.startsWith('tms_');
         return (
           <li key={cap} className="flex items-center gap-3 text-sm">
             <label className="flex items-center gap-2 flex-1 cursor-pointer">
@@ -950,7 +962,15 @@ function FeatureToggleList({
               />
               <span>{capabilityLabel(cap)}</span>
             </label>
-            {cadenceLabel && !isBackfill && (
+            {isTmsSync && (
+              <span
+                className="text-2xs text-muted-foreground italic"
+                title="Runs when you click Sync now — scheduled auto-sync is coming."
+              >
+                manual
+              </span>
+            )}
+            {cadenceLabel && !isBackfill && !isTmsSync && (
               <span className="text-2xs text-muted-foreground">{cadenceLabel}</span>
             )}
             {/* The history_backfill row used to host an inline "Run
