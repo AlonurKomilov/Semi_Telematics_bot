@@ -52,7 +52,7 @@ export default function OnboardingBanner({
       hint: vehicleCount > 0
         ? `${vehicleCount} vehicle${vehicleCount !== 1 ? 's' : ''} synced`
         : 'Add a company with your Samsara API key',
-      href: '/admin/companies',
+      href: '/companies',
       done: vehicleCount > 0,
     },
     {
@@ -61,7 +61,7 @@ export default function OnboardingBanner({
       hint: userCount > 1
         ? `${userCount} member${userCount !== 1 ? 's' : ''}`
         : 'Drivers, dispatchers, safety managers',
-      href: '/admin/invites',
+      href: '/invites',
       done: userCount > 1,
     },
     {
@@ -70,7 +70,7 @@ export default function OnboardingBanner({
       hint: scorecardRulesCustomized
         ? 'Customised'
         : 'Defaults work — tune for your team',
-      href: '/admin/scorecard-rules',
+      href: '/scorecard-rules',
       done: scorecardRulesCustomized,
     },
     {

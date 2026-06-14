@@ -586,7 +586,7 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
     return (
       <div className={`${toneClasses('info')} mb-3 rounded px-2 py-1.5 text-2xs`}>
         No companies yet.{' '}
-        <Link to="/admin/companies" className="underline font-medium">
+        <Link to="/companies" className="underline font-medium">
           Add one on the Companies page
         </Link>
         , then return here to set its API key.
@@ -727,7 +727,7 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
               The link closes the "how do I add a 6th company?" gap —
               without it the operator has to already know the split. */}
           <Link
-            to="/admin/companies"
+            to="/companies"
             className="text-2xs text-muted-foreground hover:text-foreground flex items-center gap-1"
             title="Create the company on the Companies page — it appears here for its API key"
           >

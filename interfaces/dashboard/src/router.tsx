@@ -219,33 +219,44 @@ export default function AppRouter() {
         {/* Knowledge Base */}
         <Route path="knowledge" element={L(<KnowledgeBase />)} />
 
-        {/* Admin */}
-        <Route path="admin/users" element={L(<P perm="can_manage_users"><TeamManagement /></P>)} />
-        <Route path="admin/companies" element={L(<P perm="can_manage_companies"><Companies /></P>)} />
-        <Route path="admin/integrations" element={L(<P perm="can_manage_integrations"><Integrations /></P>)} />
-        <Route path="admin/audit" element={L(<P perm="can_manage_users"><AuditLog /></P>)} />
-        <Route path="admin/work-hours" element={L(<P perm="can_manage_work_hours"><WorkHours /></P>)} />
-        <Route path="admin/invites" element={L(<P perm="can_invite"><Invites /></P>)} />
-        <Route path="admin/settings" element={L(<P perm="can_manage_account"><Settings /></P>)} />
+        {/* Account / Settings pages — clean top-level paths (the
+            meaningless /admin/* prefix was retired 2026-06-11).  Each
+            old /admin/* URL keeps a redirect below so bookmarks survive. */}
+        <Route path="team" element={L(<P perm="can_manage_users"><TeamManagement /></P>)} />
+        <Route path="companies" element={L(<P perm="can_manage_companies"><Companies /></P>)} />
+        <Route path="integrations" element={L(<P perm="can_manage_integrations"><Integrations /></P>)} />
+        <Route path="audit" element={L(<P perm="can_manage_users"><AuditLog /></P>)} />
+        <Route path="work-hours" element={L(<P perm="can_manage_work_hours"><WorkHours /></P>)} />
+        <Route path="invites" element={L(<P perm="can_invite"><Invites /></P>)} />
+        <Route path="settings" element={L(<P perm="can_manage_account"><Settings /></P>)} />
         {/* Personal preferences — accessible to every authenticated
             user regardless of role. */}
         <Route path="profile" element={L(<Profile />)} />
         <Route path="notifications" element={L(<MyNotifications />)} />
-        <Route path="admin/storage"  element={L(<P perm="can_manage_storage"><Storage /></P>)} />
-        <Route path="admin/permissions" element={L(<P perm="can_manage_permissions"><RolePermissions /></P>)} />
-        {/* Modules folded into the Permissions matrix (department
-            switches on the section headers); redirect the old URL. */}
-        <Route path="admin/modules" element={<Navigate to="/admin/permissions" replace />} />
-        <Route path="admin/scorecard-rules" element={L(<P perm="can_manage_account"><ScorecardRules /></P>)} />
-        {/* Legacy admin alias — the template editor moved INSIDE the
-            Inspections page (it's a fleet-ops responsibility, not an
-            account setting).  Keep the URL as a redirect so existing
-            bookmarks still work. */}
+        <Route path="storage"  element={L(<P perm="can_manage_storage"><Storage /></P>)} />
+        <Route path="permissions" element={L(<P perm="can_manage_permissions"><RolePermissions /></P>)} />
+        <Route path="scorecard-rules" element={L(<P perm="can_manage_account"><ScorecardRules /></P>)} />
+        <Route path="billing" element={L(<P perm="can_manage_billing"><Billing /></P>)} />
+
+        {/* Legacy /admin/* redirects — kept so existing bookmarks and
+            deep links resolve.  /admin/modules folded into Permissions;
+            /admin/inspection-template moved inside the Inspections page. */}
+        <Route path="admin/users" element={<Navigate to="/team" replace />} />
+        <Route path="admin/companies" element={<Navigate to="/companies" replace />} />
+        <Route path="admin/integrations" element={<Navigate to="/integrations" replace />} />
+        <Route path="admin/audit" element={<Navigate to="/audit" replace />} />
+        <Route path="admin/work-hours" element={<Navigate to="/work-hours" replace />} />
+        <Route path="admin/invites" element={<Navigate to="/invites" replace />} />
+        <Route path="admin/settings" element={<Navigate to="/settings" replace />} />
+        <Route path="admin/storage" element={<Navigate to="/storage" replace />} />
+        <Route path="admin/permissions" element={<Navigate to="/permissions" replace />} />
+        <Route path="admin/scorecard-rules" element={<Navigate to="/scorecard-rules" replace />} />
+        <Route path="admin/billing" element={<Navigate to="/billing" replace />} />
+        <Route path="admin/modules" element={<Navigate to="/permissions" replace />} />
         <Route
           path="admin/inspection-template"
           element={<Navigate to="/inspections?tab=template" replace />}
         />
-        <Route path="admin/billing" element={L(<P perm="can_manage_billing"><Billing /></P>)} />
         <Route path="payroll" element={L(<P perm="can_payroll_admin"><Payroll /></P>)} />
         <Route path="coaching" element={L(<P perm="can_coaching_admin"><Coaching /></P>)} />
         <Route path="workforce/drivers" element={L(<P perm="can_manage_driver_docs"><Drivers /></P>)} />

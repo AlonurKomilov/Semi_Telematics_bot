@@ -130,7 +130,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // Working Hours has been folded into Team Management → Working
   // Hours tab.  Sidebar entry removed so operators don't see two
   // doors to the same config (Team Management nav entry covers it).
-  // The route /admin/work-hours still resolves via a Navigate
+  // The route /work-hours still resolves via a Navigate
   // redirect in router.tsx for any legacy bookmark.
 
   // ── ACCOUNTING (money) ────────────────────────────────────────────
@@ -144,20 +144,20 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // ── ACCOUNT ADMIN (always on for owner/admin) ─────────────────────
   // Invites is reached via the Team Management page tab now (navHidden),
   // but stays in the catalog so HR's onboarding entry + the route resolve.
-  { id: 'invites',          labelKey: 'nav.invites',          path: '/admin/invites',         icon: Link,          modules: ['hr', 'account'], tier: 'role', permission: ['can_invite'], navGroup: 'people', navHidden: true },
-  { id: 'team_management',  labelKey: 'nav.team_management',  path: '/admin/users',           icon: Users,         modules: ['account'], tier: 'system', permission: ['can_manage_users'], navGroup: 'settings' },
+  { id: 'invites',          labelKey: 'nav.invites',          path: '/invites',         icon: Link,          modules: ['hr', 'account'], tier: 'role', permission: ['can_invite'], navGroup: 'people', navHidden: true },
+  { id: 'team_management',  labelKey: 'nav.team_management',  path: '/team',           icon: Users,         modules: ['account'], tier: 'system', permission: ['can_manage_users'], navGroup: 'settings' },
   // Billing — accounting owns the relationship; the owner always has it.
-  { id: 'billing',          labelKey: 'nav.billing',          path: '/admin/billing',         icon: CreditCard,    modules: ['accounting', 'account'], tier: 'role', permission: ['can_manage_billing'], navGroup: 'account' },
-  { id: 'companies',        labelKey: 'nav.companies',        path: '/admin/companies',       icon: Building2,     modules: ['account'], tier: 'system', permission: ['can_manage_companies'], navGroup: 'settings' },
-  { id: 'integrations',     labelKey: 'nav.integrations',     path: '/admin/integrations',    icon: Plug,          modules: ['account'], tier: 'system', permission: ['can_manage_integrations'], navGroup: 'settings' },
-  { id: 'storage',          labelKey: 'nav.storage',          path: '/admin/storage',         icon: Cloud,         modules: ['account'], tier: 'system', permission: ['can_manage_storage'], navGroup: 'settings' },
-  { id: 'settings',         labelKey: 'nav.settings',         path: '/admin/settings',        icon: SettingsIcon,  modules: ['account'], tier: 'system', permission: ['can_manage_account'], navGroup: 'settings' },
-  { id: 'role_permissions', labelKey: 'nav.role_permissions', path: '/admin/permissions',     icon: Shield,        modules: ['account'], tier: 'system', permission: ['can_manage_permissions'], navGroup: 'settings' },
+  { id: 'billing',          labelKey: 'nav.billing',          path: '/billing',         icon: CreditCard,    modules: ['accounting', 'account'], tier: 'role', permission: ['can_manage_billing'], navGroup: 'account' },
+  { id: 'companies',        labelKey: 'nav.companies',        path: '/companies',       icon: Building2,     modules: ['account'], tier: 'system', permission: ['can_manage_companies'], navGroup: 'settings' },
+  { id: 'integrations',     labelKey: 'nav.integrations',     path: '/integrations',    icon: Plug,          modules: ['account'], tier: 'system', permission: ['can_manage_integrations'], navGroup: 'settings' },
+  { id: 'storage',          labelKey: 'nav.storage',          path: '/storage',         icon: Cloud,         modules: ['account'], tier: 'system', permission: ['can_manage_storage'], navGroup: 'settings' },
+  { id: 'settings',         labelKey: 'nav.settings',         path: '/settings',        icon: SettingsIcon,  modules: ['account'], tier: 'system', permission: ['can_manage_account'], navGroup: 'settings' },
+  { id: 'role_permissions', labelKey: 'nav.role_permissions', path: '/permissions',     icon: Shield,        modules: ['account'], tier: 'system', permission: ['can_manage_permissions'], navGroup: 'settings' },
   // Scorecard Rules is the Scorecards feature's CONFIG component — reached
   // via the Rules tab on /driver-scorecards (navHidden keeps the route +
   // deep links alive without a second sidebar entry).
-  { id: 'scorecard_rules',  labelKey: 'nav.scorecard_rules',  path: '/admin/scorecard-rules', icon: Trophy,        modules: ['account'], tier: 'system', permission: ['can_manage_account'], navGroup: 'governance', navHidden: true },
-  { id: 'audit_log',        labelKey: 'nav.audit_log',        path: '/admin/audit',           icon: ClipboardList, modules: ['account'], tier: 'system', permission: ['can_manage_users'], navGroup: 'settings' },
+  { id: 'scorecard_rules',  labelKey: 'nav.scorecard_rules',  path: '/scorecard-rules', icon: Trophy,        modules: ['account'], tier: 'system', permission: ['can_manage_account'], navGroup: 'governance', navHidden: true },
+  { id: 'audit_log',        labelKey: 'nav.audit_log',        path: '/audit',           icon: ClipboardList, modules: ['account'], tier: 'system', permission: ['can_manage_users'], navGroup: 'settings' },
 ];
 
 /** Display metadata for the 5 toggleable department modules (Core +

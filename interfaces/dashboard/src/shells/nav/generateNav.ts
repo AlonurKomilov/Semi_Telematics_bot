@@ -99,7 +99,7 @@ export function generateNav(
       let parentItem: NavItem | undefined;
       let rest = items;
       if (g.collapsible) {
-        parentItem = items.find((i) => i.path === '/admin/settings');
+        parentItem = items.find((i) => i.path === '/settings');
         if (parentItem) rest = items.filter((i) => i !== parentItem);
       }
       groups.push({ titleKey: g.titleKey, items: rest, collapsible: g.collapsible, parentItem });
