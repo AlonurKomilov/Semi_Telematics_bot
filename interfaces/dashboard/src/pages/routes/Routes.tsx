@@ -4,7 +4,7 @@ import { Route as RouteIcon } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useLeafletMap } from '../../hooks/useLeafletMap';
 import { usePoiLayers } from '../../hooks/usePoiLayers';
-import PoiLayerPanel from '../../components/PoiLayerPanel';
+import PoiLayerPanel from '@/features/live-map/PoiLayerPanel';
 import { PageHeader } from '../../components/shell';
 import type { RouteReplayResponse, DispatchVehicle, DispatchVehiclesResponse, RoutePoint } from '../../types';
 import type L from 'leaflet';

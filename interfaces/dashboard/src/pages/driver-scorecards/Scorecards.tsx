@@ -9,7 +9,7 @@ import {
 import { apiJSON, apiJSONSlow } from '../../api/client';
 import { toneClasses, toneText, chartColor, type Tone } from '../../lib/status';
 import DataTable from '../../components/DataTable';
-import DriverInsights from '../../components/DriverInsights';
+import DriverInsights from '@/features/driver-scorecards/DriverInsights';
 import {
   PageHeader,
   EmptyState,

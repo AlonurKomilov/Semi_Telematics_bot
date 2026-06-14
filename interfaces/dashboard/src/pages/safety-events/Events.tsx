@@ -6,7 +6,7 @@ import { AlertTriangle, Zap, RotateCcw, MoveHorizontal, Truck, OctagonX, Trendin
 import { apiJSON } from '../../api/client';
 import { toneClasses, type Tone } from '../../lib/status';
 import DataTable from '../../components/DataTable';
-import EventVideoModal from '../../components/EventVideoModal';
+import EventVideoModal from '@/features/safety-events/EventVideoModal';
 import {
   PageHeader,
   EmptyState,

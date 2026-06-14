@@ -9,11 +9,11 @@
 
 import { useState } from 'react';
 import type L from 'leaflet';
-import { POI_GROUPS } from '../config/poiLayers';
-import type { PoiLayerDef } from '../config/poiLayers';
-import type { UsePoiLayersResult, PoiFeature } from '../hooks/usePoiLayers';
-import { usePermissions } from '../hooks/usePermissions';
-import { apiFetch } from '../api/client';
+import { POI_GROUPS } from '@/config/poiLayers';
+import type { PoiLayerDef } from '@/config/poiLayers';
+import type { UsePoiLayersResult, PoiFeature } from '@/hooks/usePoiLayers';
+import { usePermissions } from '@/hooks/usePermissions';
+import { apiFetch } from '@/api/client';
 import CustomLayerEditor from './CustomLayerEditor';
 
 interface PoiLayerPanelProps {

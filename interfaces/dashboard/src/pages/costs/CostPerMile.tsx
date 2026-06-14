@@ -13,7 +13,7 @@ import {
 import type { CPMVehicle, CPMResponse, AnyColumn } from '../../types';
 
 // recharts is ~120 KB gzipped — defer it so the table paints first.
-const CpmChart = lazy(() => import('../../components/CpmChart'));
+const CpmChart = lazy(() => import('@/features/costs/CpmChart'));
 
 const cols: AnyColumn[] = [
   { key: 'vehicle_name', label: 'Vehicle', sortable: true },

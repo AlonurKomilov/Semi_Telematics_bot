@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { AlertTriangle, Sparkles, Lightbulb } from 'lucide-react';
-import { toneClasses, toneText, type Tone } from '../lib/status';
-import type { CompositeScorecard, ScoreEventBreakdown } from '../types';
+import { toneClasses, toneText, type Tone } from '@/lib/status';
+import type { CompositeScorecard, ScoreEventBreakdown } from '@/types';
 
 // ── Risk band ─────────────────────────────────────────────────
 //

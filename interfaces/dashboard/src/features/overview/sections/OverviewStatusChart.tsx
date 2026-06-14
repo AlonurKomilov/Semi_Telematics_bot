@@ -12,7 +12,7 @@
 import { lazy, Suspense } from 'react';
 import type { OverviewSectionProps } from './_shared/types';
 
-const FleetStatusChart = lazy(() => import('../../../components/FleetStatusChart'));
+const FleetStatusChart = lazy(() => import('@/features/overview/FleetStatusChart'));
 
 export default function OverviewStatusChart({ stats }: OverviewSectionProps) {
   const f = stats.fleet || {};

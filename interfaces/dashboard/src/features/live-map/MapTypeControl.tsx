@@ -17,7 +17,7 @@
  */
 
 import { useState } from 'react';
-import type { MapType } from '../hooks/useLeafletMap';
+import type { MapType } from '@/hooks/useLeafletMap';
 
 interface MapTypeControlProps {
   mapType: MapType;

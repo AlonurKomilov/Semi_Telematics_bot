@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X, Download, Truck, User, MapPin, Gauge, Clock, Loader2 } from 'lucide-react';
-import { apiJSON } from '../api/client';
-import { toneClasses } from '../lib/status';
-import type { SafetyEvent } from '../types';
+import { apiJSON } from '@/api/client';
+import { toneClasses } from '@/lib/status';
+import type { SafetyEvent } from '@/types';
 
 interface VideoUrlResponse {
   event_id: string;

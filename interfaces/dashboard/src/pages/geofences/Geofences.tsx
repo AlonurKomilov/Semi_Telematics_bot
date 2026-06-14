@@ -6,7 +6,7 @@ import { usePermissions } from '../../hooks/usePermissions';
 import { useShellConfig } from '../../hooks/useShellConfig';
 import { useLeafletMap } from '../../hooks/useLeafletMap';
 import { usePoiLayers } from '../../hooks/usePoiLayers';
-import PoiLayerPanel from '../../components/PoiLayerPanel';
+import PoiLayerPanel from '@/features/live-map/PoiLayerPanel';
 import { PageHeader, EmptyState } from '../../components/shell';
 import type { GeofenceFeature, GeofencesResponse } from '../../types';
 import type L from 'leaflet';

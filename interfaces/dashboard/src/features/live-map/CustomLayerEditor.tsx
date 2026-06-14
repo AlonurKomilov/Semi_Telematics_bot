@@ -20,9 +20,9 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type L from 'leaflet';
-import { apiFetch, apiJSON } from '../api/client';
-import type { PoiLayerDef } from '../config/poiLayers';
-import { CUSTOM_LAYER_SWATCHES } from '../config/mapColors';
+import { apiFetch, apiJSON } from '@/api/client';
+import type { PoiLayerDef } from '@/config/poiLayers';
+import { CUSTOM_LAYER_SWATCHES } from '@/config/mapColors';
 
 /** Curated emoji list shown in the icon picker — kept short on purpose. */
 const ICON_CHOICES = ['📍', '⛽', '🅿️', '🛒', '🍔', '🔧', '🛏️', '🚿', '🏪', '🚛', '⚖️', '🛣️', '🗂️'];
