@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Turnstile minimal test</title>
+  <!-- Pure-HTML Turnstile probe: NO React, NO app code, NO other
+       third-party scripts.  If the widget fails here too, the app
+       code is exonerated and the failure is environment-level
+       (zone-injected challenge JS, network, browser).  Safe to leave
+       deployed: it only renders a captcha and prints the outcome. -->
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 560px; margin: 60px auto; padding: 0 16px; }
+    pre  { background: #f3f4f6; padding: 12px; border-radius: 8px; white-space: pre-wrap; }
+    .ok  { color: #15803d; } .err { color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <h1>Turnstile minimal test</h1>
+  <p>Raw widget, implicit render, zero app code. Outcome appears below.</p>
+
+  <div class="cf-turnstile"
+       data-sitekey="0x4AAAAAADjKy7Jfxzs4Cqqk"
+       data-theme="light"
+       data-callback="onTurnstileOk"
+       data-error-callback="onTurnstileErr"
+       data-expired-callback="onTurnstileExpired"></div>
+
+  <pre id="log">waiting for widget…</pre>
+
+  <script>
+    const logEl = document.getElementById('log');
+    let first = true;
+    function log(msg, cls) {
+      if (first) { logEl.textContent = ''; first = false; }
+      const line = document.createElement('div');
+      if (cls) line.className = cls;
+      line.textContent = new Date().toISOString().slice(11, 19) + '  ' + msg;
+      logEl.appendChild(line);
+    }
+    function onTurnstileOk(token) {
+      log('SUCCESS — token: ' + token.slice(0, 32) + '…', 'ok');
+    }
+    function onTurnstileErr(code) {
+      log('ERROR — code: ' + (code || 'unknown'), 'err');
+      return true; /* tell api.js we handled it (suppress its rethrow) */
+    }
+    function onTurnstileExpired() {
+      log('token expired — widget will refresh');
+    }
+  </script>
+</body>
+</html>

@@ -4307,3 +4307,42 @@ async def migrate_users_assigned_work_hours_id(conn) -> None:
         logger.info(
             "Migration 101: users.assigned_work_hours_id likely already exists — %s", e,
         )
+
+
+@_register("104_platform_audit_log")
+async def migrate_platform_audit_log(conn) -> None:
+    """Create ``platform_audit_log`` — system-tier event trail.
+
+    Unlike the per-tenant ``audit_log`` (which requires an existing
+    ``account_id`` and is shown inside the customer dashboard), this
+    table records PLATFORM events: account creation (operator, web
+    self-serve, or Telegram bot), suspend/unsuspend, deletion requests.
+    ``account_id`` is nullable so events about not-yet-created or
+    already-purged accounts still have a home.
+
+    ``actor`` is a free-form identity string ("operator:12345",
+    "self-serve", "bot:67890") — richer than a bare tg_id because the
+    same human can act through different channels.
+    """
+    try:
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS platform_audit_log (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                event       TEXT    NOT NULL,
+                account_id  INTEGER,
+                actor       TEXT    NOT NULL DEFAULT '',
+                details     TEXT    NOT NULL DEFAULT '',
+                created_at  TEXT    NOT NULL
+            )
+            """
+        )
+        await conn.commit()
+        logger.info("Migration 104: platform_audit_log table ready")
+    except Exception as e:
+        logger.error("Migration 104 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise

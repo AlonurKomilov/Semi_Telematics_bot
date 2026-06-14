@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Mail, ArrowLeft } from 'lucide-react';
 import { apiJSON } from '../api/client';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import TurnstileWidget from '../components/TurnstileWidget';
 
 /**
  * Password-reset request page.
@@ -14,6 +15,10 @@ import { Input } from '../components/ui/input';
  * so the success view doesn't reveal account existence to a probing
  * attacker — we always say "if an account exists, a link is on its
  * way", never "no such email."
+ *
+ * Turnstile-gated: this endpoint emails arbitrary addresses, so bots
+ * here burn our sender reputation.  The widget renders only when the
+ * server reports a configured site key.
  */
 export default function ForgotPassword() {
   const { t } = useTranslation();
@@ -21,6 +26,21 @@ export default function ForgotPassword() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileResetNonce, setTurnstileResetNonce] = useState(0);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/config');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.turnstile_site_key) setTurnstileSiteKey(data.turnstile_site_key);
+        }
+      } catch { /* no captcha — backend skips verification too */ }
+    })();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,13 +49,18 @@ export default function ForgotPassword() {
     try {
       await apiJSON('/auth/forgot-password', {
         method: 'POST',
-        body: { email },
+        body: { email, turnstile_token: turnstileToken || null },
       });
       setSubmitted(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('auth.forgot_failed'));
     } finally {
       setSubmitting(false);
+      // Tokens are single-use — refresh the challenge for a retry.
+      if (turnstileSiteKey) {
+        setTurnstileToken('');
+        setTurnstileResetNonce((n) => n + 1);
+      }
     }
   };
 
@@ -78,13 +103,29 @@ export default function ForgotPassword() {
               required
               autoFocus
             />
+            {turnstileSiteKey && (
+              <TurnstileWidget
+                siteKey={turnstileSiteKey}
+                onToken={setTurnstileToken}
+                onExpire={() => setTurnstileToken('')}
+                resetNonce={turnstileResetNonce}
+              />
+            )}
             {error && <p className="text-destructive text-xs">{error}</p>}
             <Button
               type="submit"
-              disabled={submitting || !email}
+              disabled={
+                submitting ||
+                !email ||
+                (!!turnstileSiteKey && !turnstileToken)
+              }
               className="w-full"
             >
-              {submitting ? '...' : t('auth.send_reset_link')}
+              {submitting
+                ? '...'
+                : turnstileSiteKey && !turnstileToken
+                  ? 'Verifying…'
+                  : t('auth.send_reset_link')}
             </Button>
             <div className="pt-2 text-center">
               <Link

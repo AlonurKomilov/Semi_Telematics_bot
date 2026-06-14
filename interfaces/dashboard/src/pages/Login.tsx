@@ -5,20 +5,29 @@ import { setToken } from '../api/client';
 import { apiJSON } from '../api/client';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import TurnstileWidget from '../components/TurnstileWidget';
 import { toneClasses, toneText } from '../lib/status';
 import type { TelegramLoginData } from '../types';
 
 type Mode = 'login' | 'register';
+// Within the Register tab, the operator picks between two distinct flows:
+//   "invite"      — redeem an invite code from an existing account admin.
+//   "new-company" — start a brand-new company; backend grants a 14-day
+//                   trial and emails a verification link.  No JWT until
+//                   the link is clicked.
+type RegisterKind = 'invite' | 'new-company';
 
 export default function Login() {
   const { t } = useTranslation();
   const { loginWithTelegram, loginWithEmail, registerWithEmail } = useAuth();
   const containerRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<Mode>('login');
+  const [registerKind, setRegisterKind] = useState<RegisterKind>('invite');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
+  const [companyName, setCompanyName] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -31,6 +40,11 @@ export default function Login() {
   // inbox; we render a green callout instead of redirecting.
   const [registeredEmail, setRegisteredEmail] = useState('');
   const [botUsername, setBotUsername] = useState('4truckBot');
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
+  // Incremented after every register submit attempt — Turnstile tokens
+  // are single-use, so the widget must issue a fresh one before retry.
+  const [turnstileResetNonce, setTurnstileResetNonce] = useState(0);
   const [botId, setBotId] = useState('');
   const [widgetKey, setWidgetKey] = useState(0);
   const [showDisconnect, setShowDisconnect] = useState(false);
@@ -46,6 +60,19 @@ export default function Login() {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
+  }, []);
+
+  // Honour ?mode= and ?kind= so the landing-page CTA can deep-link
+  // directly into "Register → Start a new company".  Both params are
+  // optional; unrecognised values fall back to defaults.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedMode = params.get('mode');
+    const requestedKind = params.get('kind');
+    if (requestedMode === 'register') setMode('register');
+    if (requestedKind === 'new-company' || requestedKind === 'invite') {
+      setRegisterKind(requestedKind);
+    }
   }, []);
 
   // Start bot-login flow
@@ -182,6 +209,7 @@ export default function Login() {
           fetchedBot = data.bot_username || fetchedBot;
           setBotUsername(fetchedBot);
           if (data.bot_id) setBotId(data.bot_id);
+          if (data.turnstile_site_key) setTurnstileSiteKey(data.turnstile_site_key);
         }
       } catch { /* use fallback */ }
 
@@ -221,10 +249,35 @@ export default function Login() {
     try {
       if (mode === 'login') {
         await loginWithEmail(email, password, rememberMe);
+      } else if (registerKind === 'new-company') {
+        // Self-serve company signup: hits /auth/register-account which
+        // creates the account, auto-grants a 14-day comp trial, and
+        // ships a verification link.  Mirrors the invite-flow contract
+        // below — no JWT is returned; the user must verify email first.
+        const result = await apiJSON<{
+          status: string;
+          verification_required?: boolean;
+          email?: string;
+          message?: string;
+          trial?: { days: number; expires_at: string } | null;
+        }>('/auth/register-account', {
+          method: 'POST',
+          body: {
+            company_name: companyName,
+            email,
+            password,
+            display_name: displayName,
+            turnstile_token: turnstileToken || null,
+          },
+        });
+        if (result?.verification_required) {
+          setRegisteredEmail(result.email || email);
+          setMode('login');
+        }
       } else {
-        // Registration no longer auto-signs-in — the API returns the
-        // verification-required envelope and we render the "check
-        // your inbox" notice instead of redirecting.
+        // Invite-code registration — existing /auth/register path.
+        // Returns the same verification-required envelope; rendering
+        // logic shared with the new-company branch above.
         const result = await apiJSON<{
           status: string;
           verification_required?: boolean;
@@ -237,17 +290,14 @@ export default function Login() {
             password,
             display_name: displayName,
             invite_code: inviteCode,
+            turnstile_token: turnstileToken || null,
           },
         });
         if (result?.verification_required) {
           setRegisteredEmail(result.email || email);
-          // Drop into login mode so the user knows what to do next.
           setMode('login');
-          // Fall through — don't throw.  The notice block on the
-          // form will render via registeredEmail.
         } else {
-          // Legacy / unexpected response shape — fall back to the
-          // old auto-login path so existing callers keep working.
+          // Legacy fallback — older API responded with a JWT envelope.
           await registerWithEmail(email, password, displayName, inviteCode);
         }
       }
@@ -265,6 +315,14 @@ export default function Login() {
       }
     } finally {
       setLoading(false);
+      // Register submits consume the Turnstile token whether the API
+      // call succeeded or not — ask the widget for a fresh challenge
+      // so a retry doesn't POST a burnt token (Cloudflare rejects
+      // those as timeout-or-duplicate).
+      if (mode === 'register' && turnstileSiteKey) {
+        setTurnstileToken('');
+        setTurnstileResetNonce((n) => n + 1);
+      }
     }
   };
 
@@ -306,19 +364,75 @@ export default function Login() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === 'register' && (
             <>
+              {/* Sub-toggle: pick the registration flavour.  Default
+                  is "invite" (existing behaviour) so an emailed invite
+                  link still drops the recipient onto the right form
+                  without an extra click. */}
+              <div className="flex rounded-md border border-border overflow-hidden text-xs">
+                <button
+                  type="button"
+                  onClick={() => { setRegisterKind('invite'); setError(''); }}
+                  className={`flex-1 px-3 py-2 transition ${
+                    registerKind === 'invite'
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  {t('auth.register_have_invite', 'I have an invite')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setRegisterKind('new-company'); setError(''); }}
+                  className={`flex-1 px-3 py-2 transition border-l border-border ${
+                    registerKind === 'new-company'
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  {t('auth.register_new_company', 'Start a new company')}
+                </button>
+              </div>
+
+              {registerKind === 'new-company' && (
+                <Input
+                  type="text"
+                  placeholder={t('auth.company_name', 'Company name — e.g. Premier Trucking Group Inc')}
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  required
+                />
+              )}
+
               <Input
                 type="text"
                 placeholder={t('auth.display_name')}
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
               />
-              <Input
-                type="text"
-                placeholder={t('auth.invite_code')}
-                value={inviteCode}
-                onChange={(e) => setInviteCode(e.target.value)}
-                required
-              />
+
+              {registerKind === 'invite' && (
+                <Input
+                  type="text"
+                  placeholder={t('auth.invite_code')}
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value)}
+                  required
+                />
+              )}
+
+              {registerKind === 'new-company' && (
+                <div className="rounded-md border border-ok/30 bg-ok/5 p-3 text-xs">
+                  <p className="font-medium text-foreground">
+                    {t('auth.trial_callout_title', '14-day free trial')}
+                  </p>
+                  <p className="text-muted-foreground mt-1">
+                    {t(
+                      'auth.trial_callout_body',
+                      'Full access to every feature for 14 days. No card required — switch to a paid plan or let the trial lapse.',
+                    )}
+                  </p>
+                </div>
+              )}
               {/* Invite preview callout — only renders when the
                   /auth/invite-preview probe succeeds.  Gives the
                   recipient a trust anchor ("you're being invited to
@@ -326,7 +440,7 @@ export default function Login() {
                   burn the single-use code.  If they expected a
                   different account/role, they can stop here and ask
                   out-of-band without consuming the invite. */}
-              {invitePreview && (
+              {registerKind === 'invite' && invitePreview && (
                 <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">
                   <p className="font-medium text-foreground">
                     {invitePreview.inviter_display_name} invited you to{' '}
@@ -359,6 +473,19 @@ export default function Login() {
             required
             minLength={8}
           />
+
+          {/* Turnstile widget renders only when the server told us a
+              site key is configured.  Required on the register tab
+              (both invite + new-company flows) so bots can't spam
+              account creation or invite-code redemption. */}
+          {mode === 'register' && turnstileSiteKey && (
+            <TurnstileWidget
+              siteKey={turnstileSiteKey}
+              onToken={setTurnstileToken}
+              onExpire={() => setTurnstileToken('')}
+              resetNonce={turnstileResetNonce}
+            />
+          )}
 
           {mode === 'login' && (
             <div className="flex items-center justify-between">
@@ -405,10 +532,22 @@ export default function Login() {
 
           <Button
             type="submit"
-            disabled={loading}
+            disabled={
+              loading ||
+              // Hold the register submit until Turnstile hands us a
+              // token — otherwise the POST goes out with token=null
+              // and bounces off the 403 captcha gate.
+              (mode === 'register' && !!turnstileSiteKey && !turnstileToken)
+            }
             className="w-full"
           >
-            {loading ? '...' : mode === 'login' ? 'Sign In' : 'Create Account'}
+            {loading
+              ? '...'
+              : mode === 'login'
+                ? 'Sign In'
+                : turnstileSiteKey && !turnstileToken
+                  ? 'Verifying…'
+                  : 'Create Account'}
           </Button>
         </form>
 
@@ -546,9 +685,13 @@ export default function Login() {
         )}
 
         <p className="text-xs text-muted-foreground mt-4 text-center">
-          {mode === 'register'
-            ? 'Ask your company admin for an invite code.'
-            : 'Sign in with your email or Telegram account.'}
+          {mode === 'register' && registerKind === 'invite' && (
+            'Ask your company admin for an invite code.'
+          )}
+          {mode === 'register' && registerKind === 'new-company' && (
+            'No card required. Pick a paid plan within 14 days to keep your fleet on.'
+          )}
+          {mode === 'login' && 'Sign in with your email or Telegram account.'}
         </p>
       </div>
     </div>

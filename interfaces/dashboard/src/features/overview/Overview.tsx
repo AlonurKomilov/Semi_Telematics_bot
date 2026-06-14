@@ -55,7 +55,7 @@ export default function Overview() {
     dataUpdatedAt,
   } = useQuery<DashboardStats>({
     queryKey: ['dashboard-stats'],
-    queryFn: () => apiJSON<DashboardStats>('/fleet/overview/stats'),
+    queryFn: () => apiJSON<DashboardStats>('/overview/stats'),
   });
   const errorMsg =
     queryError instanceof Error

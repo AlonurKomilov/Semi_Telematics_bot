@@ -87,7 +87,7 @@ export default function RiskSummary() {
 
   useEffect(() => {
     // Fetch vehicles for autocomplete
-    apiJSON<{ vehicles: { name: string; company?: string }[] }>('/fleet/overview')
+    apiJSON<{ vehicles: { name: string; company?: string }[] }>('/vehicles/overview')
       .then((r) => {
         const seen = new Set<string>();
         const opts = (r.vehicles || [])

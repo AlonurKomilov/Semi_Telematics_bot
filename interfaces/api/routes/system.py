@@ -22,6 +22,7 @@ endpoints directly rather than wrapping them here.
 from __future__ import annotations
 
 import logging
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -32,8 +33,328 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/system", tags=["system"])
 
+# RFC 5322 simplified — same pattern the auth router uses for self-signup.
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
+
 
 # ── Accounts ────────────────────────────────────────────────────
+
+
+class CompGrantSpec(BaseModel):
+    """Optional comp/trial grant included with an operator account create."""
+    months: int = Field(..., ge=1, le=24, description="Grant duration in whole months")
+    reason: str = Field(default="", max_length=500)
+
+
+class CreateAccountRequest(BaseModel):
+    company_name: str = Field(..., min_length=2, max_length=100)
+    owner_email:  str = Field(..., min_length=5, max_length=255)
+    owner_display_name: str = Field(default="", max_length=120)
+    # If ``password`` is omitted, the operator is telling us to email the
+    # owner a password-set link instead of provisioning a credential up-front.
+    # The link reuses the existing password-reset token machinery so the
+    # owner picks their own password on first login.
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+    # Optional comp grant applied right after creation — operator can hand a
+    # paid customer 3/6/12 free months in one click, or skip and the account
+    # falls back to whatever the default tier provides.
+    grant_comp: CompGrantSpec | None = None
+
+
+@router.post("/accounts", status_code=201)
+async def operator_create_account(
+    body: CreateAccountRequest,
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Operator-driven tenant account creation.
+
+    Replaces the curl/SQL workflow used to bootstrap a new customer.
+    Always emails-the-owner: either a verification link (when ``password``
+    is provided) or a password-set link (when it isn't), so the operator
+    never sees the credential and the owner controls the first login.
+
+    Optional ``grant_comp`` applies a comp through ``now + months * 30d``
+    in the same audit trail as the standalone ``/billing/comp/grant``
+    endpoint — handy for sales-driven free trials.
+    """
+    from interfaces.api.auth import _hash_password
+    from adapters.storage import Role
+
+    if not _EMAIL_RE.match(body.owner_email):
+        raise HTTPException(status_code=422, detail="Invalid owner email")
+
+    existing = await platform_db.get_user_by_email(body.owner_email)
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail="Email already registered to another user",
+        )
+
+    operator_tg = int(_user.get("telegram_id") or 0)
+
+    # Account row + permission/PTI seeds are atomic inside
+    # ``create_account`` — a seed failure rolls everything back, so a
+    # 500 here never leaves a half-provisioned tenant.
+    try:
+        account = await platform_db.create_account(body.company_name)
+    except ValueError as e:
+        # Case-insensitive company-name collision.
+        raise HTTPException(status_code=409, detail=str(e))
+
+    # Owner user.  When the operator supplied a password we hash it; when
+    # they didn't we mint a throw-away hash and immediately follow up
+    # with a password-reset token so the user picks the real credential.
+    if body.password:
+        pw_hash = _hash_password(body.password)
+        provisioned_password = True
+    else:
+        import secrets
+        pw_hash = _hash_password(secrets.token_urlsafe(32))
+        provisioned_password = False
+
+    owner = await platform_db.create_user_with_email(
+        email=body.owner_email,
+        password_hash=pw_hash,
+        account_id=account.id,
+        role=Role.OWNER,
+        display_name=body.owner_display_name or body.owner_email.split("@")[0],
+    )
+
+    comp_applied = None
+    if body.grant_comp:
+        from datetime import datetime, timezone, timedelta
+        expires = datetime.now(timezone.utc) + timedelta(days=30 * body.grant_comp.months)
+        expires_iso = expires.isoformat()
+        try:
+            await platform_db.grant_comp(
+                account.id,
+                expires_at=expires_iso,
+                reason=body.grant_comp.reason or f"Operator-granted {body.grant_comp.months}-month comp",
+                actor_user_id=operator_tg,
+            )
+            comp_applied = {"months": body.grant_comp.months, "expires_at": expires_iso}
+        except Exception:
+            logger.exception(
+                "Comp grant failed for new account %s — account created, comp skipped",
+                account.id,
+            )
+
+    # Email the owner.  Both branches use the password-reset machinery:
+    # when ``provisioned_password`` is True we still send a "set password
+    # if you want to change it" message; when False the link is the only
+    # way to log in.  Tokens last 24h so an operator who creates an
+    # account on Friday afternoon gives the owner the weekend.
+    reset_token = None
+    invite_sent = False
+    try:
+        reset_token = await platform_db.create_password_reset_token(
+            owner.id, ttl_hours=24,
+        )
+        from capabilities.notifications.email import send_email
+        from infra.config import settings as _settings
+        base = getattr(_settings, "dashboard_base_url", "https://dash.4truck.us")
+        link = f"{base}/reset-password?token={reset_token}"
+        subject = (
+            "Your 4truck account is ready"
+            if provisioned_password
+            else "Set your 4truck password"
+        )
+        body_text = (
+            f"Hi {owner.display_name or 'there'},\n\n"
+            f"An account for {account.name} has been created on 4truck.\n\n"
+            f"{'Set or change your password here:' if provisioned_password else 'Set your password to log in:'}\n"
+            f"{link}\n\n"
+            "This link is valid for 24 hours.\n"
+        )
+        await send_email(body.owner_email, subject, body_text)
+        invite_sent = True
+    except Exception:
+        logger.exception(
+            "Owner-invite email failed for new account %s — operator must follow up manually",
+            account.id,
+        )
+
+    logger.info(
+        "Operator %s created account id=%s name=%r owner=%s comp=%s invite_sent=%s",
+        operator_tg, account.id, account.name, body.owner_email,
+        bool(comp_applied), invite_sent,
+    )
+
+    try:
+        await platform_db.add_platform_audit(
+            "account_created",
+            account_id=account.id,
+            actor=f"operator:{operator_tg}",
+            details=(
+                f"name={account.name!r} owner={body.owner_email} "
+                f"comp={comp_applied['months'] if comp_applied else 0}mo "
+                f"invite_sent={invite_sent}"
+            ),
+        )
+    except Exception:
+        logger.exception("platform audit write failed for account %s", account.id)
+
+    return {
+        "account_id":          account.id,
+        "name":                account.name,
+        "slug":                account.slug,
+        "owner_user_id":       owner.id,
+        "owner_email":         body.owner_email,
+        "provisioned_password": provisioned_password,
+        "invite_email_sent":   invite_sent,
+        "comp":                comp_applied,
+    }
+
+
+# ── Account lifecycle: suspend / unsuspend ──────────────────────
+
+
+class SuspendRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=500)
+
+
+async def _notify_account_contacts(platform_db, account_id: int, send_fn, **kwargs):
+    """Email every owner (and the billing email) about a lifecycle event.
+
+    Best-effort: a mail failure never aborts the lifecycle action.
+    Deduplicates addresses so an owner who is also the billing contact
+    gets one email, not two.
+    """
+    targets: set[str] = set()
+    try:
+        cur = await platform_db._db.execute(
+            "SELECT email FROM users "
+            "WHERE account_id = ? AND role = 'owner' AND email IS NOT NULL",
+            (account_id,),
+        )
+        targets.update(dict(r)["email"] for r in await cur.fetchall())
+        sub = await platform_db.get_subscription(account_id)
+        if sub and sub.get("billing_email"):
+            targets.add(sub["billing_email"])
+    except Exception:
+        logger.exception("lifecycle notify: recipient lookup failed acct=%s", account_id)
+    for addr in targets:
+        try:
+            send_fn(to=addr, **kwargs)
+        except Exception:
+            logger.exception("lifecycle notify: send to %s failed", addr)
+
+
+@router.post("/accounts/{account_id}/suspend")
+async def operator_suspend_account(
+    account_id: int,
+    body: SuspendRequest,
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Suspend a tenant: blocks ALL logins, kills active sessions.
+
+    Reversible via the unsuspend endpoint.  Data is untouched.  The
+    reason is mandatory — it lands in the audit trail and in the
+    notification email, so "suspended by mistake" support calls can be
+    resolved by reading the row.
+    """
+    acct = await platform_db.get_account(account_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    operator_tg = int(_user.get("telegram_id") or 0)
+    ok = await platform_db.suspend_account(
+        account_id, reason=body.reason, operator_tg_id=operator_tg,
+    )
+    if not ok:
+        raise HTTPException(status_code=409, detail="Account is already suspended")
+
+    # Kill live sessions — suspension must take effect NOW, not when
+    # the JWTs expire.
+    revoked = await platform_db.revoke_account_sessions(account_id)
+    from interfaces.api.auth import mark_jti_revoked
+    for row in revoked:
+        try:
+            await mark_jti_revoked(row["jti"], row.get("expires_at"))
+        except Exception:
+            logger.exception("suspend: denylist push failed jti=%s", row.get("jti"))
+
+    try:
+        await platform_db.add_platform_audit(
+            "account_suspended",
+            account_id=account_id,
+            actor=f"operator:{operator_tg}",
+            details=f"reason={body.reason!r} sessions_revoked={len(revoked)}",
+        )
+    except Exception:
+        logger.exception("suspend: audit write failed acct=%s", account_id)
+
+    from capabilities.notifications.lifecycle_emails import send_account_suspended_email
+    await _notify_account_contacts(
+        platform_db, account_id, send_account_suspended_email,
+        account_name=acct.name, reason=body.reason,
+    )
+
+    return {
+        "status": "suspended",
+        "account_id": account_id,
+        "sessions_revoked": len(revoked),
+    }
+
+
+@router.post("/accounts/{account_id}/unsuspend")
+async def operator_unsuspend_account(
+    account_id: int,
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Reverse a suspension.  Refuses when the account is in the
+    owner-driven deletion grace — the owner must cancel that flow
+    themselves (or the operator clears it at the DB level after a
+    support conversation)."""
+    acct = await platform_db.get_account(account_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    lc = await platform_db.get_account_lifecycle(account_id)
+    if lc and lc.get("deleted_at"):
+        raise HTTPException(
+            status_code=409,
+            detail="Account is in deletion grace — the owner must cancel "
+                   "the deletion; unsuspend alone won't restore access.",
+        )
+
+    ok = await platform_db.unsuspend_account(account_id)
+    if not ok:
+        raise HTTPException(status_code=409, detail="Account is not suspended")
+
+    operator_tg = int(_user.get("telegram_id") or 0)
+    try:
+        await platform_db.add_platform_audit(
+            "account_unsuspended",
+            account_id=account_id,
+            actor=f"operator:{operator_tg}",
+        )
+    except Exception:
+        logger.exception("unsuspend: audit write failed acct=%s", account_id)
+
+    from capabilities.notifications.lifecycle_emails import send_account_unsuspended_email
+    await _notify_account_contacts(
+        platform_db, account_id, send_account_unsuspended_email,
+        account_name=acct.name,
+    )
+
+    return {"status": "active", "account_id": account_id}
+
+
+@router.get("/accounts/{account_id}/lifecycle")
+async def operator_account_lifecycle(
+    account_id: int,
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Lifecycle state for the operator console's Account-state card."""
+    lc = await platform_db.get_account_lifecycle(account_id)
+    if not lc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return lc
 
 
 @router.get("/accounts")

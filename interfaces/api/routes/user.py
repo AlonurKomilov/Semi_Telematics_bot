@@ -629,3 +629,202 @@ async def update_preferences(
 
     await platform_db.update_user(db_user.id, **updates)
     return {"ok": True, "updated": list(updates.keys())}
+
+
+# ── Account lifecycle: owner self-delete (90-day grace) ─────────────
+#
+# Three-step flow, all owner-gated:
+#   1. POST /user/account/delete/request  → 6-digit code emailed
+#   2. POST /user/account/delete/confirm  → code consumed, account
+#      deactivated, purge scheduled at +90d, all sessions revoked
+#   3. POST /user/account/delete/cancel   → within the grace window,
+#      restores the account (owner can still log in during grace —
+#      see the role-aware gate in auth.mint_session_token)
+#
+# GET /user/account/lifecycle feeds the dashboard's Danger Zone card.
+
+import logging as _logging
+
+_lifecycle_log = _logging.getLogger("api.user.lifecycle")
+
+
+def _require_owner(user: dict) -> None:
+    if user.get("role") != "owner":
+        raise HTTPException(
+            status_code=403,
+            detail="Only the account owner can manage account deletion.",
+        )
+
+
+@router.get("/account/lifecycle")
+async def account_lifecycle(
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Lifecycle state for the current account — drives the Danger
+    Zone card (idle / deletion-pending + countdown)."""
+    lc = await platform_db.get_account_lifecycle(user["account_id"])
+    if not lc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    # Suspension audit fields are operator-internal; the customer only
+    # needs the booleans + dates that drive their UI.
+    return {
+        "account_id":   lc["account_id"],
+        "name":         lc["name"],
+        "is_active":    lc["is_active"],
+        "suspended":    bool(lc["suspended_at"]),
+        "deleted_at":   lc["deleted_at"],
+        "purge_at":     lc["purge_at"],
+    }
+
+
+@router.post("/account/delete/request")
+async def account_delete_request(
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Step 1: mint + email the 6-digit confirmation code."""
+    _require_owner(user)
+    db_user = await get_current_db_user(user, platform_db)
+    if not db_user or not db_user.email:
+        raise HTTPException(
+            status_code=422,
+            detail="Your profile has no verified email — add one in "
+                   "Profile settings before deleting the account.",
+        )
+
+    lc = await platform_db.get_account_lifecycle(user["account_id"])
+    if lc and lc.get("deleted_at"):
+        raise HTTPException(
+            status_code=409, detail="Deletion is already scheduled.",
+        )
+
+    code = await platform_db.create_deletion_code(
+        user["account_id"], db_user.id, ttl_minutes=15,
+    )
+    acct = await platform_db.get_account(user["account_id"])
+    from capabilities.notifications.lifecycle_emails import send_deletion_code_email
+    sent = send_deletion_code_email(
+        to=db_user.email, code=code,
+        account_name=acct.name if acct else "",
+        recipient_name=db_user.display_name or "",
+    )
+    return {
+        "status": "code_sent",
+        "email": db_user.email,
+        "expires_minutes": 15,
+        "email_sent": sent,
+    }
+
+
+class DeleteConfirmRequest(BaseModel):
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+@router.post("/account/delete/confirm")
+async def account_delete_confirm(
+    body: DeleteConfirmRequest,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Step 2: verify the code, schedule the purge, revoke sessions."""
+    _require_owner(user)
+    db_user = await get_current_db_user(user, platform_db)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    ok = await platform_db.consume_deletion_code(
+        user["account_id"], db_user.id, body.code.strip(),
+    )
+    if not ok:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid or expired code. Request a new one and try again.",
+        )
+
+    purge_at = await platform_db.request_account_deletion(
+        user["account_id"], owner_tg_id=db_user.id, grace_days=90,
+    )
+    if purge_at is None:
+        raise HTTPException(status_code=409, detail="Deletion already scheduled.")
+
+    # Kill every session in the account.  The owner can sign back in
+    # during the grace window (mint_session_token allows role=owner) —
+    # everyone else is locked out immediately.
+    revoked = await platform_db.revoke_account_sessions(user["account_id"])
+    from interfaces.api.auth import mark_jti_revoked
+    for row in revoked:
+        try:
+            await mark_jti_revoked(row["jti"], row.get("expires_at"))
+        except Exception:
+            _lifecycle_log.exception("delete-confirm: denylist push failed")
+
+    try:
+        await platform_db.add_platform_audit(
+            "account_deletion_requested",
+            account_id=user["account_id"],
+            actor=f"owner:{db_user.id}",
+            details=f"purge_at={purge_at} sessions_revoked={len(revoked)}",
+        )
+    except Exception:
+        _lifecycle_log.exception("delete-confirm: audit write failed")
+
+    acct = await platform_db.get_account(user["account_id"])
+    if db_user.email:
+        from capabilities.notifications.lifecycle_emails import (
+            send_deletion_confirmed_email,
+        )
+        try:
+            send_deletion_confirmed_email(
+                to=db_user.email,
+                account_name=acct.name if acct else "",
+                purge_at=purge_at,
+            )
+        except Exception:
+            _lifecycle_log.exception("delete-confirm: email failed")
+
+    return {
+        "status": "deletion_scheduled",
+        "purge_at": purge_at,
+        "grace_days": 90,
+        "sessions_revoked": len(revoked),
+    }
+
+
+@router.post("/account/delete/cancel")
+async def account_delete_cancel(
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Step 3 (optional): reactivate within the grace window."""
+    _require_owner(user)
+    db_user = await get_current_db_user(user, platform_db)
+
+    ok = await platform_db.cancel_account_deletion(user["account_id"])
+    if not ok:
+        raise HTTPException(
+            status_code=409, detail="No deletion is pending for this account.",
+        )
+
+    try:
+        await platform_db.add_platform_audit(
+            "account_deletion_cancelled",
+            account_id=user["account_id"],
+            actor=f"owner:{db_user.id if db_user else 0}",
+        )
+    except Exception:
+        _lifecycle_log.exception("delete-cancel: audit write failed")
+
+    acct = await platform_db.get_account(user["account_id"])
+    if db_user and db_user.email:
+        from capabilities.notifications.lifecycle_emails import (
+            send_deletion_cancelled_email,
+        )
+        try:
+            send_deletion_cancelled_email(
+                to=db_user.email, account_name=acct.name if acct else "",
+            )
+        except Exception:
+            _lifecycle_log.exception("delete-cancel: email failed")
+
+    return {"status": "reactivated", "account_id": user["account_id"]}

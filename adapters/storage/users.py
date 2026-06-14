@@ -375,6 +375,35 @@ class UsersMixin:
             "user_id": row["user_id"],
         }
 
+    async def revoke_account_sessions(self, account_id: int) -> list[dict]:
+        """Revoke every active session for every user in one account.
+
+        Used by account suspend and owner-initiated deletion: both must
+        kill existing logins immediately, not just block new ones.
+        Returns the revoked rows ({jti, expires_at}) so the caller can
+        fan them out to the Redis denylist.
+        """
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        cur = await self._db.execute(
+            """SELECT s.id, s.jti, s.expires_at
+                 FROM user_sessions s
+                 JOIN users u ON u.id = s.user_id
+                WHERE u.account_id = ? AND s.revoked_at IS NULL""",
+            (account_id,),
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+        if not rows:
+            return []
+        await self._db.execute(
+            """UPDATE user_sessions SET revoked_at = ?
+                WHERE revoked_at IS NULL
+                  AND user_id IN (SELECT id FROM users WHERE account_id = ?)""",
+            (now_iso, account_id),
+        )
+        await self._db.commit()
+        return rows
+
     async def revoke_other_user_sessions(
         self, user_id: int, current_jti: str,
     ) -> list[dict]:

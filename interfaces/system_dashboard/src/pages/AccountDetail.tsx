@@ -119,6 +119,11 @@ export default function AccountDetailPage() {
           )}
         </Card>
 
+        {/* Suspend / unsuspend + deletion-grace visibility.  Lives
+            above the debug actions because it's the operator's
+            biggest lever on a tenant. */}
+        <AccountStateCard accountId={accountId} />
+
         {/* Manual triggers that mirror the scheduler jobs but run
             RIGHT NOW for debugging.  Each action shows its server
             response inline so the operator can confirm the change
@@ -608,5 +613,135 @@ function BillingEmailEditor({
         </p>
       )}
     </div>
+  );
+}
+
+// Suspend / unsuspend + deletion-grace state.  Self-loading: fetches
+// /system/accounts/:id/lifecycle on mount and after every action, so
+// it never goes stale relative to the parent's billing-centric load().
+function AccountStateCard({ accountId }: { accountId: number }) {
+  interface Lifecycle {
+    is_active: boolean;
+    suspended_at: string | null;
+    suspended_reason: string | null;
+    suspended_by: number | null;
+    deleted_at: string | null;
+    purge_at: string | null;
+  }
+  const [lc, setLc] = useState<Lifecycle | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const load = () => {
+    apiJSON<Lifecycle>(`/system/accounts/${accountId}/lifecycle`)
+      .then(setLc)
+      .catch(() => setErr('Failed to load lifecycle state'));
+  };
+  useEffect(() => { load(); }, [accountId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const suspend = async () => {
+    const reason = prompt(
+      'Suspend this account?\n\nEvery login is blocked and all active '
+      + 'sessions are revoked immediately. Enter a reason (required, '
+      + 'lands in the audit log + customer email):',
+    );
+    if (!reason || reason.trim().length < 3) return;
+    setBusy(true);
+    setErr('');
+    try {
+      await apiJSON(`/system/accounts/${accountId}/suspend`, {
+        method: 'POST',
+        body: { reason: reason.trim() },
+      });
+      load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Suspend failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const unsuspend = async () => {
+    if (!confirm('Reactivate this account? Logins are re-enabled immediately.')) return;
+    setBusy(true);
+    setErr('');
+    try {
+      await apiJSON(`/system/accounts/${accountId}/unsuspend`, { method: 'POST' });
+      load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Unsuspend failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const suspended = !!lc?.suspended_at;
+  const deletionPending = !!lc?.deleted_at;
+
+  return (
+    <Card
+      title="Account state"
+      actions={
+        lc && !deletionPending ? (
+          suspended ? (
+            <button
+              onClick={unsuspend}
+              disabled={busy}
+              className="text-xs px-3 py-1 bg-ok/15 text-ok border border-ok/40 rounded hover:bg-ok/25 disabled:opacity-50"
+            >
+              {busy ? '…' : 'Unsuspend'}
+            </button>
+          ) : (
+            <button
+              onClick={suspend}
+              disabled={busy}
+              className="text-xs px-3 py-1 bg-danger/15 text-danger border border-danger/40 rounded hover:bg-danger/25 disabled:opacity-50"
+            >
+              {busy ? '…' : 'Suspend'}
+            </button>
+          )
+        ) : undefined
+      }
+    >
+      {!lc && !err && <p className="text-sm text-slate-500">Loading…</p>}
+      {err && <p className="text-xs text-danger">{err}</p>}
+      {lc && (
+        <dl className="text-sm space-y-1.5">
+          <Row
+            label="Status"
+            value={
+              deletionPending ? 'deletion pending'
+              : suspended ? 'suspended'
+              : lc.is_active ? 'active' : 'inactive'
+            }
+            accent={
+              deletionPending ? 'text-danger'
+              : suspended ? 'text-warn'
+              : 'text-ok'
+            }
+          />
+          {suspended && (
+            <>
+              <Row label="Suspended at" value={lc.suspended_at?.slice(0, 19).replace('T', ' ') || '—'} />
+              <Row label="Reason" value={lc.suspended_reason || '—'} />
+              <Row label="By operator" value={String(lc.suspended_by ?? '—')} />
+            </>
+          )}
+          {deletionPending && (
+            <>
+              <Row label="Deletion requested" value={lc.deleted_at?.slice(0, 10) || '—'} />
+              <Row label="Hard purge on" value={lc.purge_at?.slice(0, 10) || '—'} accent="text-danger" />
+            </>
+          )}
+        </dl>
+      )}
+      {deletionPending && (
+        <p className="text-xs text-slate-500 mt-3">
+          Owner-driven deletion is in its retention window (FMCSA
+          recordkeeping). Only the owner can cancel it from their
+          dashboard — unsuspend won't restore access.
+        </p>
+      )}
+    </Card>
   );
 }

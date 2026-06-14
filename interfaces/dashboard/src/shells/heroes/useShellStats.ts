@@ -2,7 +2,7 @@
  * Shared stats hook for shell hero strips.
  *
  * All three per-role hero strips (FleetHero / DispatchHero /
- * SafetyHero) draw from the same ``/fleet/overview/stats`` endpoint —
+ * SafetyHero) draw from the same ``/overview/stats`` endpoint —
  * each hero just emphasizes different fields.  Using one shared hook
  * means the React Query cache is hit once per dashboard session
  * regardless of which persona is active; switching persona doesn't
@@ -21,7 +21,7 @@ import type { DashboardStats } from '../../types';
 export function useShellStats() {
   return useQuery<DashboardStats>({
     queryKey: ['shell', 'overview-stats'],
-    queryFn: () => apiJSON<DashboardStats>('/fleet/overview/stats'),
+    queryFn: () => apiJSON<DashboardStats>('/overview/stats'),
     // 60s stale matches Overview.tsx's policy.  The hero is persistent
     // background context, not a tab the user actively watches, so a
     // minute of staleness is fine; eyes-on-the-data live in the page

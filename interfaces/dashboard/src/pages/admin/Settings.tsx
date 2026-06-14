@@ -15,6 +15,7 @@ import { TIMEZONE_OPTIONS, timezoneLabelWithTime } from '../../utils/timezones';
 import { useNow } from '../../hooks/useNow';
 import { rollupByDisplayLabel } from '../../features/ai/helpers';
 import ForumRoutingSection from './ForumRoutingSection';
+import DangerZoneSection from './DangerZoneSection';
 import { toneClasses } from '../../lib/status';
 
 const ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'driver'];
@@ -496,6 +497,9 @@ export default function Settings() {
           <p className="text-muted-foreground text-sm">No schedules configured.</p>
         )}
       </section>
+
+      {/* Owner-only account deletion — renders nothing for other roles. */}
+      <DangerZoneSection />
     </div>
   );
 }

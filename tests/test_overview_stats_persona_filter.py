@@ -1,5 +1,5 @@
 """Integration test for the persona-aware pending_alerts count on
-/api/fleet/overview/stats.
+/api/overview/stats.
 
 Bug observed in production: every operational role (Safety, Dispatcher,
 Fleet, HR) saw the same account-wide count on their Overview hero
@@ -121,7 +121,7 @@ async def test_owner_default_view_sees_only_owner_admin_alerts(overview_app):
     s = overview_app
     expected = s["counts"]["system"] + s["counts"]["reescalate"]
     r = await s["client"].get(
-        "/api/fleet/overview/stats", headers=_hdr(s["tokens"]["owner"]),
+        "/api/overview/stats", headers=_hdr(s["tokens"]["owner"]),
     )
     assert r.status_code == 200
     body = r.json()
@@ -136,7 +136,7 @@ async def test_admin_default_view_sees_only_owner_admin_alerts(overview_app):
     s = overview_app
     expected = s["counts"]["system"] + s["counts"]["reescalate"]
     r = await s["client"].get(
-        "/api/fleet/overview/stats", headers=_hdr(s["tokens"]["admin"]),
+        "/api/overview/stats", headers=_hdr(s["tokens"]["admin"]),
     )
     assert r.json()["pending_alerts"] == expected
 
@@ -150,7 +150,7 @@ async def test_owner_with_view_as_fleet_sees_fleet_count(overview_app):
     s = overview_app
     expected = s["counts"]["faults"] + s["counts"]["health"]
     r = await s["client"].get(
-        "/api/fleet/overview/stats",
+        "/api/overview/stats",
         headers={**_hdr(s["tokens"]["owner"]), "X-View-As": "fleet"},
     )
     body = r.json()
@@ -163,7 +163,7 @@ async def test_owner_with_view_as_safety_sees_safety_count(overview_app):
     s = overview_app
     expected = s["counts"]["events"] + s["counts"]["camera"]
     r = await s["client"].get(
-        "/api/fleet/overview/stats",
+        "/api/overview/stats",
         headers={**_hdr(s["tokens"]["owner"]), "X-View-As": "safety"},
     )
     assert r.json()["pending_alerts"] == expected
@@ -178,7 +178,7 @@ async def test_non_switchable_role_view_as_is_ignored(overview_app):
     s = overview_app
     safety_expected = s["counts"]["events"] + s["counts"]["camera"]
     r = await s["client"].get(
-        "/api/fleet/overview/stats",
+        "/api/overview/stats",
         headers={**_hdr(s["tokens"]["safety"]), "X-View-As": "fleet"},
     )
     assert r.json()["pending_alerts"] == safety_expected
@@ -191,7 +191,7 @@ async def test_safety_sees_only_safety_persona_alerts(overview_app):
     s = overview_app
     expected = s["counts"]["events"] + s["counts"]["camera"]
     r = await s["client"].get(
-        "/api/fleet/overview/stats", headers=_hdr(s["tokens"]["safety"]),
+        "/api/overview/stats", headers=_hdr(s["tokens"]["safety"]),
     )
     body = r.json()
     assert body["pending_alerts"] == expected
@@ -205,7 +205,7 @@ async def test_dispatcher_sees_only_dispatcher_persona_alerts(overview_app):
     s = overview_app
     expected = s["counts"]["geofence"] + s["counts"]["parking"] + s["counts"]["fuel"]
     r = await s["client"].get(
-        "/api/fleet/overview/stats", headers=_hdr(s["tokens"]["dispatcher"]),
+        "/api/overview/stats", headers=_hdr(s["tokens"]["dispatcher"]),
     )
     assert r.json()["pending_alerts"] == expected
 
@@ -216,7 +216,7 @@ async def test_fleet_sees_only_fleet_persona_alerts(overview_app):
     s = overview_app
     expected = s["counts"]["faults"] + s["counts"]["health"]
     r = await s["client"].get(
-        "/api/fleet/overview/stats", headers=_hdr(s["tokens"]["fleet"]),
+        "/api/overview/stats", headers=_hdr(s["tokens"]["fleet"]),
     )
     assert r.json()["pending_alerts"] == expected
 
@@ -227,7 +227,7 @@ async def test_hr_sees_only_hr_persona_alerts(overview_app):
     s = overview_app
     expected = s["counts"]["doc_expiry"]
     r = await s["client"].get(
-        "/api/fleet/overview/stats", headers=_hdr(s["tokens"]["hr"]),
+        "/api/overview/stats", headers=_hdr(s["tokens"]["hr"]),
     )
     assert r.json()["pending_alerts"] == expected
 
@@ -244,9 +244,9 @@ async def test_persona_filter_does_not_change_fleet_counts(overview_app):
     is that the ``fleet`` substructure (vehicle counts) is identical."""
     s = overview_app
     safety_r = await s["client"].get(
-        "/api/fleet/overview/stats", headers=_hdr(s["tokens"]["safety"]),
+        "/api/overview/stats", headers=_hdr(s["tokens"]["safety"]),
     )
     owner_r = await s["client"].get(
-        "/api/fleet/overview/stats", headers=_hdr(s["tokens"]["owner"]),
+        "/api/overview/stats", headers=_hdr(s["tokens"]["owner"]),
     )
     assert safety_r.json().get("fleet") == owner_r.json().get("fleet")

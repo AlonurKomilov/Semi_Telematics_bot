@@ -46,7 +46,7 @@ export default function Routes() {
 
   // Load vehicle list
   useEffect(() => {
-    apiJSON<DispatchVehiclesResponse>('/fleet/routes')
+    apiJSON<DispatchVehiclesResponse>('/routes')
       .then((d) => setVehicles(d.vehicles || []))
       .catch(() => {});
   }, []);
@@ -99,7 +99,7 @@ export default function Routes() {
     setRoute(null);
     try {
       const data = await apiJSON<RouteReplayResponse>(
-        `/fleet/routes/${encodeURIComponent(vehicleName)}?date=${date}`,
+        `/routes/${encodeURIComponent(vehicleName)}?date=${date}`,
       );
       setRoute(data);
       const Leaf = window.L as typeof L;

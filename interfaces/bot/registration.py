@@ -277,6 +277,20 @@ async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     [t('register.name_invalid')])
         return
 
+    # Throttle account creation per Telegram id — 1/hour.  Without
+    # this any unregistered TG user could script /register and mint
+    # hundreds of tenant accounts (each seeding permissions + PTI
+    # templates).  Redis-backed, fails open on Redis outage; the
+    # web-signup path has Turnstile for the same job.
+    from infra.cache import rate_limit_check
+    if not await rate_limit_check(f"bot_register:{tid}", 3600, 1):
+        await _show(update, context, [
+            "⏳ You just created an account.  Please wait an hour "
+            "before registering another company.",
+        ])
+        logger.info(f"Bot /register throttled for TG user {tid}")
+        return
+
     try:
         platform = get_platform_db()
         account = await platform.create_account(company_name)
@@ -288,6 +302,16 @@ async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
             display_name=tg_name,
         )
         logger.info(f"New account: '{company_name}' by TG user {tid}")
+
+        try:
+            await platform.add_platform_audit(
+                "account_created",
+                account_id=account.id,
+                actor=f"bot:{tid}",
+                details=f"name={company_name!r}",
+            )
+        except Exception:
+            logger.exception("platform audit write failed for account %s", account.id)
 
         text = format_register_success(company_name)
         text += (

@@ -9,7 +9,7 @@
  * a glance instead of toggling between the Geofences page and the
  * map.
  *
- * Reads ``/fleet/geofences`` (same endpoint as the standalone
+ * Reads ``/geofences`` (same endpoint as the standalone
  * Geofences page) so the data is consistent.  Permission-gated by
  * ``can_geofence_all`` / ``can_geofence_vehicle`` — overlay silently
  * no-ops when the user lacks geofence access, so layouts can
@@ -60,7 +60,7 @@ export default function GeofenceBoundariesLayer({
       }
     }
 
-    apiJSON<GeofencesResponse>('/fleet/geofences')
+    apiJSON<GeofencesResponse>('/geofences')
       .then((data) => {
         if (cancelled || !leafletMap.current) return;
         const group = Leaf.layerGroup();
@@ -81,7 +81,7 @@ export default function GeofenceBoundariesLayer({
         layerRef.current = group;
       })
       .catch(() => {
-        // /fleet/geofences may 403 for users without geofence access
+        // /geofences may 403 for users without geofence access
         // even though the client-side ``hasGeofencePerm`` check
         // passed (account-level permission overrides) — silently
         // skip rather than blowing up the map.

@@ -7,6 +7,11 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="64x64" href="/favicon-64.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <!-- Cloudflare Turnstile script.  TurnstileWidget.tsx renders the
+         actual challenge only when GET /auth/config returns a non-
+         empty turnstile_site_key, so the script load is a cheap no-op
+         on instances where Turnstile is disabled. -->
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   </head>
   <body class="bg-gray-950 text-gray-100">
     <div id="root"></div>

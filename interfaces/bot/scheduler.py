@@ -270,3 +270,77 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         hours=1, args=[app], id="warehouse_geofence_definitions",
         max_instances=1, coalesce=True,
     )
+
+    # ── Account-lifecycle housekeeping ─────────────────────────────
+    # Daily at 04:10 UTC: hard-purge accounts whose 90-day deletion
+    # grace has elapsed, warn accounts ~7 days out, and drop expired
+    # deletion-confirmation codes.  All three live in one job so a
+    # single failure surface covers the whole lifecycle tail.
+    async def _account_lifecycle_housekeeping(_app):
+        from datetime import datetime, timezone
+        from infra.platform import get_platform_db
+        try:
+            db = get_platform_db()
+
+            # 1. Hard purge — point of no return.  Each account logs an
+            #    audit row BEFORE the data vanishes (the row itself has
+            #    account_id NULLed context preserved in details).
+            now_iso = (
+                datetime.now(timezone.utc).isoformat(timespec="seconds")
+                .replace("+00:00", "Z")
+            )
+            for acct_id in await db.list_accounts_pending_purge(before_iso=now_iso):
+                lc = await db.get_account_lifecycle(acct_id)
+                name = lc["name"] if lc else "?"
+                deleted = await db.purge_account_data(acct_id)
+                total = sum(deleted.values())
+                try:
+                    await db.add_platform_audit(
+                        "account_purged",
+                        account_id=None,  # the row is gone; keep id in details
+                        actor="scheduler",
+                        details=f"account_id={acct_id} name={name!r} rows={total}",
+                    )
+                except Exception:
+                    logger.exception("purge: audit write failed acct=%s", acct_id)
+                logger.info(
+                    "Account %s (%r) purged: %d rows across %d tables",
+                    acct_id, name, total, len(deleted),
+                )
+
+            # 2. Purge warnings — accounts erasing within 7 days.  The
+            #    job runs daily and the window is (now, now+7d], so an
+            #    account gets roughly one warning per day for its final
+            #    week; acceptable cadence for a destructive deadline.
+            from capabilities.notifications.lifecycle_emails import (
+                send_purge_warning_email,
+            )
+            for row in await db.list_accounts_purging_within(days=7):
+                cur = await db._db.execute(
+                    "SELECT email FROM users "
+                    "WHERE account_id = ? AND role = 'owner' AND email IS NOT NULL",
+                    (row["id"],),
+                )
+                for r in await cur.fetchall():
+                    try:
+                        send_purge_warning_email(
+                            to=dict(r)["email"],
+                            account_name=row["name"],
+                            purge_at=row["purge_at"],
+                        )
+                    except Exception:
+                        logger.exception("purge-warning email failed acct=%s", row["id"])
+
+            # 3. Expired deletion codes — dead weight, not a security
+            #    risk; swept for hygiene.
+            n = await db.cleanup_expired_deletion_codes()
+            if n:
+                logger.info("Cleaned up %d expired deletion code(s)", n)
+        except Exception:
+            logger.exception("account_lifecycle_housekeeping failed")
+
+    scheduler.add_job(
+        _account_lifecycle_housekeeping, "cron",
+        hour=4, minute=10, args=[app], id="account_lifecycle_housekeeping",
+        max_instances=1, coalesce=True,
+    )

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { apiJSON, ApiError } from '../api/client';
 import MetricsCard from '../components/MetricsCard';
+import NewAccountModal from '../components/NewAccountModal';
 import type { AccountListItem, SystemStats } from '../types';
 
 function usd(cents: number): string {
@@ -29,6 +30,8 @@ export default function Accounts() {
   const [statusFilter, setStatusFilter] = useState('');
   const [tierFilter, setTierFilter] = useState('');
   const [compFilter, setCompFilter] = useState<'' | 'yes' | 'no'>('');
+  const [showNewModal, setShowNewModal] = useState(false);
+  const navigate = useNavigate();
 
   const load = () => {
     setLoading(true);
@@ -112,7 +115,21 @@ export default function Accounts() {
                 className="bg-accent text-white text-xs px-3 py-1.5 rounded hover:bg-accent/90">
           Apply
         </button>
+        <button onClick={() => setShowNewModal(true)}
+                className="bg-ok/15 text-ok border border-ok/40 text-xs px-3 py-1.5 rounded hover:bg-ok/25 ml-auto">
+          + New account
+        </button>
       </div>
+
+      {showNewModal && (
+        <NewAccountModal
+          onClose={() => setShowNewModal(false)}
+          onCreated={(accountId) => {
+            setShowNewModal(false);
+            navigate(`/accounts/${accountId}`);
+          }}
+        />
+      )}
 
       {error && (
         <div className="mb-4 bg-danger/10 border border-danger/40 text-danger text-sm rounded px-3 py-2">

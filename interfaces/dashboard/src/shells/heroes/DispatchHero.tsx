@@ -9,7 +9,7 @@
  *
  * Hides chips for fields the user doesn't have permission to see —
  * same gating as FleetHero (server-side permission filter on
- * /fleet/overview/stats).
+ * /overview/stats).
  */
 import { useShellStats } from './useShellStats';
 import HeroChip from './HeroChip';

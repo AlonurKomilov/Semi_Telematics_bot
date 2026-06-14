@@ -8,7 +8,7 @@
  * ignores the rest.
  *
  * Keeping a single shared fetch (vs per-section useQuery) is the
- * right call here because /fleet/overview/stats returns the whole
+ * right call here because /overview/stats returns the whole
  * KPI bundle in one shot — there's no value in N small requests when
  * the backend already returns everything together.
  */

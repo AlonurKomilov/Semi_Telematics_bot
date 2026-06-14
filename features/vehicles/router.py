@@ -10,6 +10,9 @@ URL structure:
     GET /api/vehicles/{name}/health       subsystem — battery, oil, DEF, …
     GET /api/vehicles/{name}/faults       active DTCs
     GET /api/vehicles/{name}/timeline     hourly telemetry roll-up (warehouse)
+    GET /api/vehicles/overview            fleet snapshot (was /fleet/overview)
+    GET /api/vehicles/weather             cabin/ambient sensors (was /fleet/weather)
+    GET /api/vehicles/utilization-summary per-vehicle utilization
 """
 # router.py is interface-layer code co-located with its feature
 # (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
@@ -26,13 +29,17 @@ from interfaces.api.deps import (
     validate_company_access,
     filter_by_allowed_companies,
     filter_by_assigned_trucks,
+    require_permission,
     paginate,
 )
 from features.vehicles.service import (
     get_fleet_overview as _svc_fleet_overview,
     get_vehicle_detail as _svc_vehicle_detail,
 )
-from capabilities.telemetry.service import get_vehicle_health as _svc_vehicle_health
+from capabilities.telemetry.service import (
+    get_vehicle_health as _svc_vehicle_health,
+    get_fleet_weather as _svc_fleet_weather,
+)
 from capabilities.telemetry import warehouse_reader as _wh_reader
 from features.location.service import classify_vehicle_status
 from infra.platform import get_tenant_db as _get_tenant_db
@@ -318,6 +325,112 @@ async def vehicles_list(
     }
 
 
+@router.get("/overview")
+async def fleet_overview(
+    company: str | None = Query(None, description="Filter by company code"),
+    user: dict = Depends(require_permission("can_faults")),
+):
+    """Fleet snapshot — vehicles with status, location, faults.
+
+    URL history: was GET /fleet/overview before 2026-06-11."""
+    allowed = await get_user_company_codes(user)
+    validate_company_access(allowed, company)
+    async def _live():
+        return await _svc_fleet_overview(user["account_id"], company=company)
+    vehicles = await _wh_reader.get_current_vehicles(
+        user["account_id"], company=company, samsara_fallback=_live,
+    )
+    vehicles = filter_by_allowed_companies(vehicles, allowed)
+    vehicles = await filter_by_assigned_trucks(vehicles, user)
+    return {"vehicles": vehicles, "count": len(vehicles)}
+
+
+@router.get("/weather")
+async def fleet_weather(
+    user: dict = Depends(require_permission("can_faults")),
+):
+    """Ambient temperature readings from vehicle sensors.
+
+    URL history: was GET /fleet/weather before 2026-06-11."""
+    vehicles = await _svc_fleet_weather(user["account_id"])
+    vehicles = await filter_by_assigned_trucks(vehicles, user)
+
+    items = []
+    temps: list[float] = []
+    for v in vehicles:
+        w = v.get("_weather", {})
+        temp_f = w.get("temp_f")
+        entry = {
+            "name": v.get("name", "?"),
+            "company": v.get("_org", ""),
+            "temp_f": round(temp_f, 1) if temp_f is not None else None,
+            "temp_c": round(w["temp_c"], 1) if w.get("temp_c") is not None else None,
+            "baro_inhg": round(w["baro_inhg"], 2) if w.get("baro_inhg") is not None else None,
+            "temp_time": w.get("temp_time"),
+            "location": v.get("location", {}).get("reverseGeo", {}).get("formattedLocation", ""),
+        }
+        items.append(entry)
+        if temp_f is not None:
+            temps.append(temp_f)
+
+    summary = {}
+    if temps:
+        summary = {
+            "avg_f": round(sum(temps) / len(temps), 1),
+            "min_f": round(min(temps), 1),
+            "max_f": round(max(temps), 1),
+            "freezing_count": sum(1 for t in temps if t <= 32),
+            "hot_count": sum(1 for t in temps if t >= 95),
+            "reporting_count": len(temps),
+        }
+
+    return {"vehicles": items, "count": len(items), "summary": summary}
+
+
+@router.get("/utilization-summary")
+async def fleet_utilization_summary(
+    days: int = Query(30, ge=7, le=365),
+    user: dict = Depends(require_permission_any("can_faults", "can_vehicle_all", "can_vehicle_vehicle")),
+):
+    """Per-vehicle utilization across the entire visible fleet.
+
+    Backs the Vehicles page utilization card.  Filters down to the
+    caller's visible vehicles so drivers see only their own row and
+    operators see everything in their company allow-list.
+    """
+    allowed = await get_user_company_codes(user)
+    rows = await _wh_reader.get_account_utilization_summary(
+        user["account_id"], days=days,
+    )
+    if not rows:
+        return {"days": days, "vehicles": []}
+
+    # Cross-reference against the visible-vehicles list so callers
+    # don't see utilization for trucks outside their allow-list / not
+    # in their assigned-trucks set.  Hot path is the dashboard so the
+    # extra fetch is acceptable; the filter is in-memory.
+    visible = await _wh_reader.get_current_vehicles(user["account_id"])
+    visible = filter_by_allowed_companies(visible, allowed)
+    visible = await filter_by_assigned_trucks(visible, user)
+    name_by_vid: dict[str, dict] = {
+        str(v.get("id") or ""): v for v in visible if v.get("id")
+    }
+
+    enriched: list[dict] = []
+    for r in rows:
+        vid = str(r.get("vehicle_id") or "")
+        meta = name_by_vid.get(vid)
+        if not meta:
+            continue
+        enriched.append({
+            **r,
+            "vehicle_name":   meta.get("name") or "",
+            "company_code":   meta.get("_org") or meta.get("company_code") or "",
+        })
+    enriched.sort(key=lambda r: float(r.get("utilization_pct") or 0), reverse=True)
+    return {"days": days, "vehicles": enriched}
+
+
 @router.get("/{vehicle_name}")
 async def vehicle_detail(
     vehicle_name: str,
@@ -536,142 +649,3 @@ async def vehicle_usage(
         "summary":    summary,
         "series":     series,
     }
-
-
-@router.get("/utilization-summary")
-async def fleet_utilization_summary(
-    days: int = Query(30, ge=7, le=365),
-    user: dict = Depends(require_permission_any("can_faults", "can_vehicle_all", "can_vehicle_vehicle")),
-):
-    """Per-vehicle utilization across the entire visible fleet.
-
-    Backs the Vehicles page utilization card.  Filters down to the
-    caller's visible vehicles so drivers see only their own row and
-    operators see everything in their company allow-list.
-    """
-    allowed = await get_user_company_codes(user)
-    rows = await _wh_reader.get_account_utilization_summary(
-        user["account_id"], days=days,
-    )
-    if not rows:
-        return {"days": days, "vehicles": []}
-
-    # Cross-reference against the visible-vehicles list so callers
-    # don't see utilization for trucks outside their allow-list / not
-    # in their assigned-trucks set.  Hot path is the dashboard so the
-    # extra fetch is acceptable; the filter is in-memory.
-    visible = await _wh_reader.get_current_vehicles(user["account_id"])
-    visible = filter_by_allowed_companies(visible, allowed)
-    visible = await filter_by_assigned_trucks(visible, user)
-    name_by_vid: dict[str, dict] = {
-        str(v.get("id") or ""): v for v in visible if v.get("id")
-    }
-
-    enriched: list[dict] = []
-    for r in rows:
-        vid = str(r.get("vehicle_id") or "")
-        meta = name_by_vid.get(vid)
-        if not meta:
-            continue
-        enriched.append({
-            **r,
-            "vehicle_name":   meta.get("name") or "",
-            "company_code":   meta.get("_org") or meta.get("company_code") or "",
-        })
-    enriched.sort(key=lambda r: float(r.get("utilization_pct") or 0), reverse=True)
-    return {"days": days, "vehicles": enriched}
-
-
-# ═══ Fleet-prefixed vehicle surfaces (historical /fleet URLs) ═══════
-# /fleet/overview (the vehicle list) + /fleet/weather (cabin/ambient
-# sensor readings) are Vehicle-feature data; URLs unchanged.
-from interfaces.api.deps import (  # noqa: F811
-    get_user_company_codes, filter_by_allowed_companies,
-    filter_by_assigned_trucks, validate_company_access,
-    require_permission,
-)
-from features.vehicles.service import get_fleet_overview as _svc_fleet_overview
-from capabilities.telemetry.service import get_fleet_weather as _svc_fleet_weather
-from capabilities.telemetry import warehouse_reader as _wh_reader
-
-fleet_router = APIRouter(prefix="/fleet", tags=["fleet"])
-
-
-@fleet_router.get("/overview")
-async def fleet_overview(
-    company: str | None = Query(None, description="Filter by company code"),
-    user: dict = Depends(require_permission("can_faults")),
-):
-    """Fleet snapshot — vehicles with status, location, faults."""
-    allowed = await get_user_company_codes(user)
-    validate_company_access(allowed, company)
-    async def _live():
-        return await _svc_fleet_overview(user["account_id"], company=company)
-    vehicles = await _wh_reader.get_current_vehicles(
-        user["account_id"], company=company, samsara_fallback=_live,
-    )
-    vehicles = filter_by_allowed_companies(vehicles, allowed)
-    vehicles = await filter_by_assigned_trucks(vehicles, user)
-    return {"vehicles": vehicles, "count": len(vehicles)}
-
-
-
-
-@fleet_router.get("/weather")
-async def fleet_weather(
-    user: dict = Depends(require_permission("can_faults")),
-):
-    """Ambient temperature readings from vehicle sensors."""
-    vehicles = await _svc_fleet_weather(user["account_id"])
-    vehicles = await filter_by_assigned_trucks(vehicles, user)
-
-    items = []
-    temps: list[float] = []
-    for v in vehicles:
-        w = v.get("_weather", {})
-        temp_f = w.get("temp_f")
-        entry = {
-            "name": v.get("name", "?"),
-            "company": v.get("_org", ""),
-            "temp_f": round(temp_f, 1) if temp_f is not None else None,
-            "temp_c": round(w["temp_c"], 1) if w.get("temp_c") is not None else None,
-            "baro_inhg": round(w["baro_inhg"], 2) if w.get("baro_inhg") is not None else None,
-            "temp_time": w.get("temp_time"),
-            "location": v.get("location", {}).get("reverseGeo", {}).get("formattedLocation", ""),
-        }
-        items.append(entry)
-        if temp_f is not None:
-            temps.append(temp_f)
-
-    summary = {}
-    if temps:
-        summary = {
-            "avg_f": round(sum(temps) / len(temps), 1),
-            "min_f": round(min(temps), 1),
-            "max_f": round(max(temps), 1),
-            "freezing_count": sum(1 for t in temps if t <= 32),
-            "hot_count": sum(1 for t in temps if t >= 95),
-            "reporting_count": len(temps),
-        }
-
-    return {"vehicles": items, "count": len(items), "summary": summary}
-
-
-
-
-fleet_legacy_router = APIRouter(tags=["fleet"], include_in_schema=False)
-
-
-@fleet_legacy_router.get("/overview/fleet")
-async def _legacy_fleet_overview(
-    company: str | None = Query(None, description="Filter by company code"),
-    user: dict = Depends(require_permission("can_faults")),
-):
-    return await fleet_overview(company=company, user=user)
-
-
-@fleet_legacy_router.get("/weather/fleet")
-async def _legacy_fleet_weather(
-    user: dict = Depends(require_permission("can_faults")),
-):
-    return await fleet_weather(user=user)

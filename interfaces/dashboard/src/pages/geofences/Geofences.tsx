@@ -127,7 +127,7 @@ export default function Geofences() {
   };
 
   const fetchGeofences = async (Leaf?: typeof L) => {
-    const data = await apiJSON<GeofencesResponse>('/fleet/geofences');
+    const data = await apiJSON<GeofencesResponse>('/geofences');
     const features = data.features || [];
     setGeofences(features);
     const leaf = Leaf ?? window.L;
@@ -282,7 +282,7 @@ export default function Geofences() {
     const zoneRole = isOwner ? form.zone_role : undefined;
     setSaving(true);
     try {
-      await apiJSON('/fleet/geofences', {
+      await apiJSON('/geofences', {
         method: 'POST',
         body: {
           name: form.name.trim(),
@@ -308,7 +308,7 @@ export default function Geofences() {
   const handleDelete = async (zoneId: number) => {
     setDeletingId(zoneId);
     try {
-      const res = await apiFetch(`/fleet/geofences/${zoneId}`, { method: 'DELETE' });
+      const res = await apiFetch(`/geofences/${zoneId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
       if (selected?.properties?.id === zoneId) { setSelected(null); setPanelMode('list'); }
       await fetchGeofences();

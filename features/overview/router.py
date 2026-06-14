@@ -1,4 +1,8 @@
-"""Overview stats API — the landing page's aggregated numbers."""
+"""Overview stats API — the landing page's aggregated numbers.
+
+URL history: served at /fleet/overview/stats (with a /dashboard/stats
+alias) until 2026-06-11; now /overview/stats, no aliases.
+"""
 
 # router code is interface-layer, co-located with its owner
 # (docs/FEATURES.md): ONLY router files import interfaces.api.deps.
@@ -28,7 +32,7 @@ from capabilities.telemetry.service import get_fleet_weather as _svc_fleet_weath
 from capabilities.telemetry import warehouse_reader as _wh_reader
 from features.location.service import classify_vehicle_status, get_fleet_for_map
 
-router = APIRouter(prefix="/fleet", tags=["fleet"])
+router = APIRouter(prefix="/overview", tags=["overview"])
 
 
 # ── overview/stats per-account TTL cache ─────────────────────────────────────
@@ -77,7 +81,7 @@ def _stats_cache_put(key: tuple, value: dict) -> None:
 
 
 
-@router.get("/overview/stats")
+@router.get("/stats")
 async def overview_stats(
     company: str | None = Query(None),
     user: dict = Depends(get_current_user),
@@ -267,17 +271,3 @@ async def overview_stats(
     if cache_key is not None:
         _stats_cache_put(cache_key, result)
     return result
-
-
-
-
-legacy_router = APIRouter(tags=["fleet"], include_in_schema=False)
-
-
-@legacy_router.get("/dashboard/stats")
-async def _legacy_dashboard_stats(
-    company: str | None = Query(None),
-    user: dict = Depends(get_current_user),
-    tenant_db=Depends(get_tenant_db),
-):
-    return await overview_stats(company=company, user=user, tenant_db=tenant_db)

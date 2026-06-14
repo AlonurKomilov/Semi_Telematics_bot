@@ -13,38 +13,50 @@ logger = logging.getLogger(__name__)
 class AccountsMixin:
 
     async def create_account(self, name: str, tier: str = "free") -> Account:
-        """Create a new subscriber account."""
-        now = self._now()
-        slug = self._make_slug(name)
+        """Create a new subscriber account.
+
+        Raises ``ValueError`` when ``name`` collides case-insensitively
+        with an existing account — two tenants named "Acme Inc" would be
+        indistinguishable in every operator/support surface, so the
+        caller must pick a variant.
+
+        The account insert + permission seed + PTI-template seed run in
+        ONE transaction: a failure in any seed rolls the account row
+        back, so a half-provisioned tenant (login works, permissions
+        missing) can never exist.
+        """
+        clean = (name or "").strip()
         cur = await self._db.execute(
-            "INSERT INTO accounts (name, slug, tier, created_at) VALUES (?, ?, ?, ?)",
-            (name, slug, tier, now),
+            "SELECT id FROM accounts WHERE LOWER(name) = LOWER(?)",
+            (clean,),
         )
-        await self._db.commit()
-        acct = Account(id=cur.lastrowid, name=name, slug=slug,
-                       tier=tier, is_active=True, created_at=now)
-        # Seed default role permissions for the new account
-        try:
-            await self.seed_account_permissions(acct.id)
-        except Exception as e:
-            logger.warning("Could not seed default permissions for account %d: %s", acct.id, e)
-        # Seed Standard DOT PTI templates (truck + trailer) for the new
-        # account.  The one-time migration 060 backfill covers existing
-        # tenants; this hook covers every account created after the
-        # migration ran.
-        try:
-            from features.pti.templates import (
-                STANDARD_DOT_TRUCK_ITEMS,
-                STANDARD_DOT_TRAILER_ITEMS,
+        if await cur.fetchone():
+            raise ValueError(
+                f"An account named '{clean}' already exists. "
+                "Choose a different company name."
             )
+
+        now = self._now()
+        slug = self._make_slug(clean)
+        from features.pti.templates import (
+            STANDARD_DOT_TRUCK_ITEMS,
+            STANDARD_DOT_TRAILER_ITEMS,
+        )
+        async with self.transaction():
+            cur = await self._db.execute(
+                "INSERT INTO accounts (name, slug, tier, created_at) VALUES (?, ?, ?, ?)",
+                (clean, slug, tier, now),
+            )
+            account_id = cur.lastrowid
+            # Seeds run inside the same transaction — their internal
+            # ``commit()`` calls are no-ops on the pool proxy; the
+            # surrounding BEGIN/COMMIT owns the lifecycle.
+            await self.seed_account_permissions(account_id)
             await self.seed_account_pti_templates(
-                acct.id, STANDARD_DOT_TRUCK_ITEMS, STANDARD_DOT_TRAILER_ITEMS,
+                account_id, STANDARD_DOT_TRUCK_ITEMS, STANDARD_DOT_TRAILER_ITEMS,
             )
-        except Exception as e:
-            logger.warning(
-                "Could not seed PTI templates for account %d: %s", acct.id, e,
-            )
-        return acct
+        return Account(id=account_id, name=clean, slug=slug,
+                       tier=tier, is_active=True, created_at=now)
 
     async def get_account(self, account_id: int) -> Optional[Account]:
         cur = await self._db.execute(
@@ -118,6 +130,50 @@ class AccountsMixin:
         )
         rows = await cur.fetchall()
         return [self._row_to_account(r) for r in rows]
+
+    # ── Platform audit trail ────────────────────────────────────────
+
+    async def add_platform_audit(
+        self,
+        event: str,
+        *,
+        account_id: int | None = None,
+        actor: str = "",
+        details: str = "",
+    ) -> None:
+        """Append a system-tier audit row (account created / suspended / …).
+
+        Best-effort by contract: callers wrap this in try/except (or rely
+        on it being after their own commit) — an audit-write failure must
+        never abort the business action it describes.
+        """
+        await self._db.execute(
+            """
+            INSERT INTO platform_audit_log
+                (event, account_id, actor, details, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (event, account_id, actor, details, self._now()),
+        )
+        await self._db.commit()
+
+    async def list_platform_audit(
+        self, *, event: str = "", limit: int = 100,
+    ) -> list[dict]:
+        """Newest-first platform audit rows, optionally filtered by event."""
+        if event:
+            cur = await self._db.execute(
+                "SELECT * FROM platform_audit_log WHERE event = ? "
+                "ORDER BY id DESC LIMIT ?",
+                (event, limit),
+            )
+        else:
+            cur = await self._db.execute(
+                "SELECT * FROM platform_audit_log ORDER BY id DESC LIMIT ?",
+                (limit,),
+            )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
 
     # ── Account lifecycle: suspend / soft-delete / purge ──────────
 
@@ -380,6 +436,78 @@ class AccountsMixin:
         )
         await self._db.commit()
         return True
+
+    async def purge_account_data(self, account_id: int) -> dict[str, int]:
+        """Hard-delete EVERY row belonging to one account, then the account.
+
+        The terminal step of the 90-day deletion grace — irreversible.
+        Discovers tenant tables dynamically (every table with an
+        ``account_id`` column) so a new feature's table can't be missed.
+        ``users`` and ``companies`` are deleted AFTER the dynamic loop
+        because other tables hold FKs into them (invites.created_by,
+        authorized_chats.added_by, …); the ``accounts`` row goes last.
+
+        Returns {table_name: rows_deleted} for the audit log.
+        """
+        cur = await self._db.execute(
+            """
+            SELECT DISTINCT table_name
+              FROM information_schema.columns
+             WHERE column_name = 'account_id'
+            """
+        )
+        tables = [dict(r)["table_name"] for r in await cur.fetchall()]
+
+        deferred = {"users", "companies", "accounts"}
+        deleted: dict[str, int] = {}
+        for t in tables:
+            if t in deferred:
+                continue
+            try:
+                cur = await self._db.execute(
+                    f"DELETE FROM {t} WHERE account_id = ?", (account_id,)
+                )
+                if cur.rowcount:
+                    deleted[t] = cur.rowcount
+            except Exception as e:
+                logger.warning("purge: DELETE FROM %s failed for account %s: %s",
+                               t, account_id, e)
+        for t in ("users", "companies"):
+            try:
+                cur = await self._db.execute(
+                    f"DELETE FROM {t} WHERE account_id = ?", (account_id,)
+                )
+                if cur.rowcount:
+                    deleted[t] = cur.rowcount
+            except Exception as e:
+                logger.warning("purge: DELETE FROM %s failed for account %s: %s",
+                               t, account_id, e)
+        cur = await self._db.execute(
+            "DELETE FROM accounts WHERE id = ?", (account_id,)
+        )
+        if cur.rowcount:
+            deleted["accounts"] = cur.rowcount
+        await self._db.commit()
+        return deleted
+
+    async def list_accounts_purging_within(self, *, days: int) -> list[dict]:
+        """Accounts whose purge lands within ``days`` from now — for the
+        warning email the scheduler sends ahead of the hard delete."""
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        lo = now.isoformat(timespec="seconds").replace("+00:00", "Z")
+        hi = (now + timedelta(days=days)).isoformat(timespec="seconds").replace("+00:00", "Z")
+        cur = await self._db.execute(
+            """
+            SELECT id, name, purge_at, delete_requested_by
+              FROM accounts
+             WHERE deleted_at IS NOT NULL
+               AND purge_at > ? AND purge_at <= ?
+             ORDER BY purge_at
+            """,
+            (lo, hi),
+        )
+        return [dict(r) for r in await cur.fetchall()]
 
     async def cleanup_expired_deletion_codes(self) -> int:
         """Daily housekeeping: drop expired codes.

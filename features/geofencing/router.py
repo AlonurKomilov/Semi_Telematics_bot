@@ -3,6 +3,8 @@
 Geofences are part of fleet operations, so they live under /fleet/geofences
 to match the sidebar grouping. Legacy /map/geofences aliases are kept hidden
 from the schema for backwards-compat with old bookmarks.
+
+URL history: was /fleet/geofences (+legacy /map/geofences) until 2026-06-11; now /geofences.
 """
 # router.py is interface-layer code co-located with its feature
 # (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
@@ -27,7 +29,7 @@ from interfaces.api.deps import (
 from features.geofencing.geometry import geofence_shape_type as _geofence_shape_type
 from interfaces.bot.state import get_tenant_db
 
-router = APIRouter(prefix="/fleet/geofences", tags=["geofences"])
+router = APIRouter(prefix="/geofences", tags=["geofences"])
 
 _MILES_TO_METERS = 1609.344
 
@@ -211,30 +213,3 @@ async def delete_geofence(
     if not ok:
         raise HTTPException(status_code=500, detail="Failed to delete zone")
     return {"deleted": zone_id}
-
-
-legacy_router = APIRouter(prefix="/map/geofences", tags=["geofences"], include_in_schema=False)
-
-
-@legacy_router.get("")
-async def _legacy_list_geofences(
-    company: str | None = Query(None),
-    user: dict = Depends(require_permission_any("can_geofence_all", "can_geofence_vehicle")),
-):
-    return await list_geofences(company=company, user=user)
-
-
-@legacy_router.post("", status_code=201)
-async def _legacy_create_geofence(
-    body: GeofenceCreateRequest,
-    user: dict = Depends(require_permission("can_geofence_all")),
-):
-    return await create_geofence(body=body, user=user)
-
-
-@legacy_router.delete("/{zone_id}", status_code=200)
-async def _legacy_delete_geofence(
-    zone_id: int,
-    user: dict = Depends(require_permission("can_geofence_all")),
-):
-    return await delete_geofence(zone_id=zone_id, user=user)

@@ -1,7 +1,7 @@
 /**
  * Owner / Admin overlay: account-wide utilisation density heatmap.
  *
- * Pulls /fleet/utilisation/heatmap?days=30 — server-aggregated parking
+ * Pulls /parking/utilisation/heatmap?days=30 — server-aggregated parking
  * event points weighted by duration_hours.  Renders as a blue/green
  * heat layer that fades into the base map (distinct from Safety's
  * red/orange incident heatmap so a viewer can have BOTH on simultaneously
@@ -61,7 +61,7 @@ export default function UtilisationHeatmap({
     async function refresh() {
       try {
         const data = await apiJSON<{ points: Array<[number, number, number]> }>(
-          `/fleet/utilisation/heatmap?days=${DAYS}`,
+          `/parking/utilisation/heatmap?days=${DAYS}`,
         );
         if (cancelled || !leafletMap.current) return;
         clearHeat();

@@ -282,8 +282,44 @@ async def mint_session_token(
     (legacy paths that don't have a backing DB user — e.g. the
     SSO-only owner fallback) we still mint the token but skip the
     session insert.
+
+    Account-lifecycle gate lives here because this is the single choke
+    point every login flow funnels through: a suspended account blocks
+    EVERY role; an account in the 90-day deletion grace blocks every
+    role EXCEPT the owner, who must still be able to sign in to hit
+    "Reactivate account" on the dashboard.
     """
     from datetime import datetime, timezone
+
+    if account_id and account_id > 0:
+        try:
+            lc = await db.get_account_lifecycle(account_id)
+        except Exception:
+            lc = None  # lifecycle read failure must not lock everyone out
+        if lc:
+            if lc.get("suspended_at"):
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error_code": "account_suspended",
+                        "message": (
+                            "This account has been suspended. "
+                            "Contact support if you believe this is a mistake."
+                        ),
+                    },
+                )
+            if lc.get("deleted_at") and role != "owner":
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error_code": "account_deletion_pending",
+                        "message": (
+                            "This account is scheduled for deletion. "
+                            "Only the account owner can sign in to reactivate it."
+                        ),
+                    },
+                )
+
     jti = secrets.token_urlsafe(16)
     token = create_jwt(
         telegram_id, account_id, role,
@@ -791,6 +827,7 @@ async def auth_config(request: Request):
                         "bot_username": account.bot_username,
                         "bot_id": acct_bot_id,
                         "signup_base_url": signup_base,
+                        "turnstile_site_key": (os.getenv("TURNSTILE_SITE_KEY") or "").strip(),
                     }
         except Exception as e:
             logging.getLogger("api.auth").debug("JWT account lookup failed, falling through: %s", e)
@@ -813,6 +850,7 @@ async def auth_config(request: Request):
                     "bot_username": acct.bot_username,
                     "bot_id": acct_bot_id,
                     "signup_base_url": signup_base,
+                    "turnstile_site_key": (os.getenv("TURNSTILE_SITE_KEY") or "").strip(),
                 }
     except Exception as e:
         logging.getLogger("api.auth").debug("Could not look up fallback account bot: %s", e)
@@ -832,6 +870,7 @@ async def auth_config(request: Request):
         "bot_username": login_username or global_bot_username or "4truckBot",
         "bot_id": _bot_id,
         "signup_base_url": signup_base,
+        "turnstile_site_key": (os.getenv("TURNSTILE_SITE_KEY") or "").strip(),
     }
 
 
@@ -1197,6 +1236,9 @@ class EmailRegisterRequest(BaseModel):
     # ``remember_me: true`` explicitly when it wants the long session;
     # other clients have to opt-in too.
     remember_me: bool = False
+    # Cloudflare Turnstile widget token (see RegisterAccountRequest for
+    # the dev/test bypass rationale).
+    turnstile_token: str | None = None
 
 
 def _validate_password_strength(password: str) -> None:
@@ -1388,6 +1430,18 @@ async def auth_email_register(request: Request, response: Response, body: EmailR
     from infra.platform import get_platform_db
     db = get_platform_db()
 
+    # Turnstile gate runs first so a bot can't even probe whether an
+    # email or invite code is in the DB before solving the challenge.
+    from infra.turnstile import verify_turnstile
+    if not await verify_turnstile(
+        body.turnstile_token,
+        remote_ip=_client_ip(request),
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Captcha verification failed. Please try again.",
+        )
+
     # Validate email format
     if not _EMAIL_RE.match(body.email):
         raise HTTPException(status_code=422, detail="Invalid email address")
@@ -1490,6 +1544,12 @@ async def auth_email_register(request: Request, response: Response, body: EmailR
 
 class ForgotPasswordRequest(BaseModel):
     email: str
+    # Cloudflare Turnstile token — forgot-password sends email to any
+    # address the caller types, so without a captcha a bot can burn our
+    # sender reputation by spraying reset mails at strangers.  Optional
+    # at the schema level; the verifier skips when TURNSTILE_SECRET_KEY
+    # is unset (dev / self-host).
+    turnstile_token: str | None = None
 
 
 class ResetPasswordRequest(BaseModel):
@@ -1514,6 +1574,20 @@ async def auth_forgot_password(request: Request, body: ForgotPasswordRequest):
     """
     from infra.platform import get_platform_db
     db = get_platform_db()
+
+    # Captcha gate ahead of any DB/email work — this endpoint mails
+    # arbitrary addresses, so bots here cost us sender reputation, not
+    # just compute.
+    from infra.turnstile import verify_turnstile
+    if not await verify_turnstile(
+        body.turnstile_token,
+        remote_ip=_client_ip(request),
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Captcha verification failed. Please try again.",
+        )
+
     email = (body.email or "").strip().lower()
 
     if email and _EMAIL_RE.match(email):
@@ -1759,34 +1833,61 @@ class RegisterAccountRequest(BaseModel):
     email: str
     password: str = Field(..., min_length=8, max_length=128)
     display_name: str = ""
+    # Cloudflare Turnstile widget token.  Optional at the schema level
+    # so dev / self-host environments without a Cloudflare account can
+    # POST without a token; the server-side verifier is the gate, and
+    # it returns True (skip) when ``TURNSTILE_SECRET_KEY`` is unset.
+    turnstile_token: str | None = None
 
 
-@router.post("/register-account", response_model=AuthResponse)
+# Auto-trial length for self-serve company signups.  90 days for the
+# operator-side soft-delete grace already encoded elsewhere; 14 days is
+# the industry-standard self-trial window (Stripe, GitHub teams, etc.)
+# and is short enough that an inactive signup falls off paid telemetry
+# quickly but long enough for a fleet operator to evaluate the dashboard
+# across a full payroll/dispatch cycle.
+_AUTO_TRIAL_DAYS = 14
+
+
+@router.post("/register-account")
 @limiter.limit("5/minute")
-async def auth_register_account(request: Request, response: Response, body: RegisterAccountRequest):
-    """Register a new company account via web at 4truck.us.
+async def auth_register_account(request: Request, body: RegisterAccountRequest):
+    """Self-serve company signup via 4truck.us.
 
-    Creates an account and an owner user with email/password credentials.
-    The owner can then configure their Telegram bot in admin settings.
-    No Telegram interaction required for initial registration.
+    The public counterpart to ``POST /system/accounts`` (operator-only).
+    Creates an account + owner user, auto-grants a 14-day comp trial,
+    and ships an email-verification link.  **No JWT is issued until the
+    owner verifies their email** — same security posture as
+    ``/auth/register`` (the invite-based flow), so the two public
+    signup paths can't be played against each other to bypass
+    verification.
     """
     from infra.platform import get_platform_db
     db = get_platform_db()
 
-    # Validate email format
+    # Turnstile first — bots that auto-fill the form should not even
+    # reach the email-exists check (which leaks "email is registered"
+    # via the 409 status code).
+    from infra.turnstile import verify_turnstile
+    if not await verify_turnstile(
+        body.turnstile_token,
+        remote_ip=_client_ip(request),
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Captcha verification failed. Please try again.",
+        )
+
     if not _EMAIL_RE.match(body.email):
         raise HTTPException(status_code=422, detail="Invalid email address")
 
-    # Check if email already taken
     existing = await db.get_user_by_email(body.email)
     if existing:
         raise HTTPException(status_code=409, detail="Email already registered")
 
     try:
-        # Create account
         account = await db.create_account(body.company_name)
 
-        # Create owner user with email+password (telegram_id=0 for web-only users)
         pw_hash = _hash_password(body.password)
         user = await db.create_user_with_email(
             email=body.email,
@@ -1795,26 +1896,90 @@ async def auth_register_account(request: Request, response: Response, body: Regi
             role=database.Role.OWNER,
             display_name=body.display_name or body.email.split("@")[0],
         )
-
-        token = await mint_session_token(
-            db, request,
-            user_id=user.id, telegram_id=user.telegram_id,
-            account_id=user.account_id, role=user.role.value,
-            remember_me=True,  # account owners always get the long session
+    except ValueError as e:
+        # Company-name collision — surfaced as a conflict the form can
+        # render inline, not a generic 500.
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        logging.getLogger("api.auth").error(
+            "Account registration failed: %s", e, exc_info=True,
         )
-        _set_auth_cookie(response, token, remember_me=True)
-        return AuthResponse(
-            access_token=token,
-            user={
-                "telegram_id": user.telegram_id,
-                "name": user.display_name or body.email.split("@")[0],
-                "role": user.role.value,
-                "account_id": user.account_id,
-            },
+        raise HTTPException(
+            status_code=500,
+            detail="Registration failed. Please try again.",
+        )
+
+    try:
+        await db.add_platform_audit(
+            "account_created",
+            account_id=account.id,
+            actor="self-serve",
+            details=f"name={account.name!r} owner={body.email} ip={_client_ip(request)}",
+        )
+    except Exception:
+        logging.getLogger("api.auth").exception(
+            "platform audit write failed for account %s", account.id,
+        )
+
+    # 14-day auto-trial via the existing comp machinery.  actor_user_id=0
+    # marks the row as system-generated in comp_history so an operator
+    # browsing the comp audit log can tell self-serve trials apart from
+    # sales-driven grants.  Failure is non-fatal — the account still
+    # exists, the owner can still verify and log in, they just won't
+    # have trial premium features until an operator grants comp
+    # manually.
+    trial_expires_iso: str | None = None
+    try:
+        from datetime import datetime, timezone, timedelta
+        expires = datetime.now(timezone.utc) + timedelta(days=_AUTO_TRIAL_DAYS)
+        trial_expires_iso = expires.isoformat()
+        await db.grant_comp(
+            account.id,
+            expires_at=trial_expires_iso,
+            reason=f"{_AUTO_TRIAL_DAYS}-day auto trial",
+            actor_user_id=0,
         )
     except Exception as e:
-        logging.getLogger("api.auth").error("Account registration failed: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Registration failed. Please try again.")
+        trial_expires_iso = None
+        logging.getLogger("api.auth").warning(
+            "Auto-trial comp grant failed for new account %s: %s",
+            account.id, e,
+        )
+
+    # Email verification gate — same as /auth/register (the invite path).
+    # No JWT minted, no cookie set; the user MUST click the link before
+    # they can sign in.  Blocks the "spam signup → use the app" path.
+    try:
+        verify_token = await db.create_email_verification_token(
+            user.id, body.email,
+        )
+        from capabilities.notifications.auth_emails import (
+            send_verification_email,
+        )
+        send_verification_email(
+            to=body.email, token=verify_token,
+            recipient_name=user.display_name or "",
+        )
+    except Exception as e:
+        logging.getLogger("api.auth").warning(
+            "verification email mint/send failed for %s: %s",
+            body.email, e,
+        )
+
+    return {
+        "status": "registered",
+        "verification_required": True,
+        "email": body.email,
+        "account_id": account.id,
+        "trial": {
+            "days": _AUTO_TRIAL_DAYS,
+            "expires_at": trial_expires_iso,
+        } if trial_expires_iso else None,
+        "message": (
+            "Account created. Check your inbox for the verification link, "
+            f"then sign in. Your {_AUTO_TRIAL_DAYS}-day trial is already running."
+        ),
+    }
 
 
 # ══════════════════════════════════════════════════════════════════

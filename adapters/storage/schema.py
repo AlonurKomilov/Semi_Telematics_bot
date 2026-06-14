@@ -253,6 +253,15 @@ async def create_tables(conn) -> None:
             created_at      TEXT    NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS platform_audit_log (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            event       TEXT    NOT NULL,
+            account_id  INTEGER,
+            actor       TEXT    NOT NULL DEFAULT '',
+            details     TEXT    NOT NULL DEFAULT '',
+            created_at  TEXT    NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS account_deletion_codes (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id   INTEGER NOT NULL UNIQUE REFERENCES accounts(id),

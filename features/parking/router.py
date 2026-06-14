@@ -1,4 +1,7 @@
-"""Parking safety API endpoints."""
+"""Parking safety API endpoints.
+
+URL history: the utilisation heatmap was /fleet/utilisation/heatmap until 2026-06-11; now /parking/utilisation/heatmap.
+"""
 # router.py is interface-layer code co-located with its feature
 # (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
 # service/alert/tool/signal modules never do.
@@ -177,10 +180,7 @@ async def parking_map_image(
 # feature's data — parking_events) ════════════════════════════════
 from interfaces.api.deps import require_permission  # noqa: F811
 
-fleet_router = APIRouter(prefix="/fleet", tags=["fleet"])
-
-
-@fleet_router.get("/utilisation/heatmap")
+@router.get("/utilisation/heatmap")
 async def fleet_utilisation_heatmap(
     days: int = Query(30, ge=1, le=90),
     user: dict = Depends(require_permission("can_vehicle_all")),

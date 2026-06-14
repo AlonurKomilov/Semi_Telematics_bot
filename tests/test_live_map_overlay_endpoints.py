@@ -2,7 +2,7 @@
 
 Covers:
   GET /api/maintenance/due-locations  — Fleet's MaintenanceMarkersLayer
-  GET /api/fleet/utilisation/heatmap  — Owner/Admin's UtilisationHeatmap
+  GET /api/parking/utilisation/heatmap  — Owner/Admin's UtilisationHeatmap
 
 Both endpoints are server-aggregated counts/points for map overlays —
 the frontend never fetches the raw rows for performance reasons, so
@@ -131,14 +131,14 @@ async def test_maintenance_due_locations_driver_scope_returns_empty_when_no_truc
     assert r.json() == {"items": [], "count": 0}
 
 
-# ── /fleet/utilisation/heatmap ───────────────────────────────────
+# ── /parking/utilisation/heatmap ───────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_utilisation_heatmap_empty_account(app_client):
     s = app_client
     r = await s["client"].get(
-        "/api/fleet/utilisation/heatmap", headers=_hdr(s["tokens"]["owner"]),
+        "/api/parking/utilisation/heatmap", headers=_hdr(s["tokens"]["owner"]),
     )
     assert r.status_code == 200
     body = r.json()
@@ -182,7 +182,7 @@ async def test_utilisation_heatmap_skips_zero_coord_and_zero_duration(app_client
     )
 
     r = await s["client"].get(
-        "/api/fleet/utilisation/heatmap?days=30",
+        "/api/parking/utilisation/heatmap?days=30",
         headers=_hdr(s["tokens"]["owner"]),
     )
     assert r.status_code == 200
@@ -212,7 +212,7 @@ async def test_utilisation_heatmap_caps_weight_at_24h(app_client):
         location_class="safe",
     )
     r = await s["client"].get(
-        "/api/fleet/utilisation/heatmap", headers=_hdr(s["tokens"]["owner"]),
+        "/api/parking/utilisation/heatmap", headers=_hdr(s["tokens"]["owner"]),
     )
     body = r.json()
     assert body["count"] == 1
@@ -225,7 +225,7 @@ async def test_utilisation_heatmap_driver_blocked(app_client):
     on this status (UtilisationHeatmap is Owner/Admin only)."""
     s = app_client
     r = await s["client"].get(
-        "/api/fleet/utilisation/heatmap", headers=_hdr(s["tokens"]["driver"]),
+        "/api/parking/utilisation/heatmap", headers=_hdr(s["tokens"]["driver"]),
     )
     assert r.status_code == 403
 
@@ -234,7 +234,7 @@ async def test_utilisation_heatmap_driver_blocked(app_client):
 async def test_utilisation_heatmap_days_param_roundtrips(app_client):
     s = app_client
     r = await s["client"].get(
-        "/api/fleet/utilisation/heatmap?days=7",
+        "/api/parking/utilisation/heatmap?days=7",
         headers=_hdr(s["tokens"]["owner"]),
     )
     assert r.json()["days"] == 7

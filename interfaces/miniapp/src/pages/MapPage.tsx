@@ -338,7 +338,7 @@ export function MapPage({ active, userPerms, onNavigate }: Props) {
 
   async function loadGeofences(layer: L.LayerGroup) {
     try {
-      const data = await apiJSON<{ features: GeofenceFeature[] }>('/api/fleet/geofences');
+      const data = await apiJSON<{ features: GeofenceFeature[] }>('/api/geofences');
       layer.clearLayers();
 
       const style = { color: '#5eaaf0', weight: 2, opacity: 0.6, fillOpacity: 0.1 };
@@ -393,7 +393,7 @@ export function MapPage({ active, userPerms, onNavigate }: Props) {
     try {
       const encoded = encodeURIComponent(primary.name);
       const data = await apiJSON<{ points: { lat: number; lng: number; speed_mph: number; time: string }[] }>(
-        `/api/fleet/routes/${encoded}`
+        `/api/routes/${encoded}`
       );
       const pts = data.points ?? [];
       if (pts.length < 2) {

@@ -52,13 +52,13 @@ export default function VehicleHealth({ vehicleName, company }: VehicleSectionPr
     staleTime: 60_000,
   });
 
-  // Cabin weather lives in the fleet-wide /fleet/weather feed.  No
+  // Cabin weather lives in the fleet-wide /vehicles/weather feed.  No
   // per-vehicle endpoint, so we filter the response by name.  Same
   // permission gate as health (it surfaces alongside).
   const { data: weather } = useQuery<CabinWeather | null>({
     queryKey: ['vehicle-cabin-weather', vehicleName],
     queryFn: async () => {
-      const d = await apiJSON<FleetWeatherResponse>('/fleet/weather');
+      const d = await apiJSON<FleetWeatherResponse>('/vehicles/weather');
       const entry = (d.vehicles || []).find((w) => w.name === vehicleName);
       return entry
         ? {
