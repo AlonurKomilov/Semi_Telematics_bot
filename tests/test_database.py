@@ -83,10 +83,23 @@ class TestAccounts:
         assert all(a.id != acct.id for a in active)
 
     @pytest.mark.asyncio
-    async def test_slug_uniqueness(self, db):
+    async def test_duplicate_account_name_rejected(self, db):
+        # Account names are unique case-insensitively — two tenants named
+        # the same would be indistinguishable in operator/support surfaces,
+        # so create_account refuses the collision (callers surface it as a
+        # 409 the signup form renders inline).
+        await db.create_account("My Fleet")
+        with pytest.raises(ValueError, match="already exists"):
+            await db.create_account("my fleet")  # case-insensitive collision
+
+    @pytest.mark.asyncio
+    async def test_slug_has_unique_suffix(self, db):
+        # Slugs carry a random suffix so even similar names never collide
+        # at the slug level (independent of the name-uniqueness rule).
         a1 = await db.create_account("My Fleet")
-        a2 = await db.create_account("My Fleet")
-        assert a1.slug != a2.slug  # hash suffix prevents collision
+        a2 = await db.create_account("My Fleet 2")
+        assert a1.slug != a2.slug
+        assert a1.slug.startswith("my-fleet-")
 
 
 # ══════════════════════════════════════════════════════════════════
