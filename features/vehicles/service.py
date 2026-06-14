@@ -64,9 +64,29 @@ async def get_fleet_overview(
     # Lazy import avoids circular dependency
     # (warehouse_reader → telemetry.service → vehicles.service)
     from capabilities.telemetry import warehouse_reader as _wh
-    return await _wh.get_current_vehicles(
+    live = await _wh.get_current_vehicles(
         account_id, company=company, samsara_fallback=_live,
     )
+
+    # Registry overlay — the Vehicle registry in our DB is the single
+    # source of truth; Samsara/live state ENRICHES it.  Every active
+    # registry vehicle shows (including trailers + manual trucks with
+    # no telematics); live data is matched onto them.  When the
+    # account has no registry rows yet (un-backfilled edge case) we
+    # return the live list unchanged — zero behaviour change until the
+    # migration-105 backfill / ingestor populates the registry.
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        return live
+    try:
+        registry = await tenant.list_vehicles(
+            account_id, company_code=company,
+        )
+    except Exception:
+        return live
+    if not registry:
+        return live
+    return _wh.merge_registry_with_live(registry, live)
 
 
 async def get_vehicle_detail(

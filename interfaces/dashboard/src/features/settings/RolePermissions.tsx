@@ -106,6 +106,7 @@ const PERM_GROUPS: PermGroup[] = [
       { allKey: 'can_location_map', vehicleKey: 'can_location_vehicle', label: 'Live Map', scoped: true },
       { key: 'can_manage_poi_layers', label: 'Manage POI Layers', indented: true },
       { allKey: 'can_vehicle_all',  vehicleKey: 'can_vehicle_vehicle',  label: 'Vehicles', scoped: true },
+      { key: 'can_manage_vehicles', label: 'Manage Vehicles', indented: true, description: 'Add / edit / remove vehicles in the registry (trucks + trailers, with or without telematics)' },
       { allKey: 'can_geofence_all', vehicleKey: 'can_geofence_vehicle', label: 'Geofences', scoped: true },
       { key: 'can_manage_driver_docs', label: 'Drivers', description: 'Driver list + document management' },
       { key: 'can_driver_docs_own',    label: 'View Own Documents', indented: true },

@@ -248,6 +248,34 @@ async def ingest_vehicle_state(account_id: int) -> int:
         len(odometer_by_vehicle_id),
         len(engine_hours_by_vehicle_id),
     )
+
+    # Keep the Vehicle registry (our SSOT) complete: every Samsara
+    # vehicle this tick saw is upserted into ``vehicles`` (source=
+    # samsara).  ``upsert_from_integration`` refreshes the spec +
+    # telematics_ref but preserves any operator-set vehicle_type /
+    # status / notes.  Best-effort — a registry hiccup must never
+    # poison the live-state ingest, so we swallow.  This is what makes
+    # a newly-added Samsara truck appear in the registry within 60s
+    # and is the ongoing guarantee behind the migration-105 backfill.
+    try:
+        registry_rows = [
+            {
+                "company_code":   v.get("_org") or "",
+                "unit_number":    v.get("name") or "",
+                "telematics_ref": str(v.get("id") or ""),
+                "vin":            "" if v.get("vin") in (None, "N/A") else v.get("vin"),
+                "make":           "" if v.get("make") in (None, "N/A") else v.get("make"),
+                "model":          "" if v.get("model") in (None, "N/A") else v.get("model"),
+                "year":           None if v.get("year") in (None, "N/A") else v.get("year"),
+                "plate_number":   "" if v.get("license_plate") in (None, "N/A") else v.get("license_plate"),
+            }
+            for v in fleet
+        ]
+        await tenant.upsert_from_integration(
+            account_id, registry_rows, source="samsara",
+        )
+    except Exception as e:
+        logger.debug("registry upsert from ingest skipped acct=%d: %s", account_id, e)
     # Reconcile billing quantity with the freshly-ingested activity.
     # The provider only PATCHes Stripe when the active-vehicle count
     # actually changed, so most ingests are no-ops; failures here must

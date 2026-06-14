@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Truck } from 'lucide-react';
+import { Pencil, Plus, Truck } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
+import { Button } from '../../components/ui/button';
 import {
   PageHeader,
   EmptyState,
@@ -16,9 +17,15 @@ import {
   useLoadingStage,
 } from '../../components/shell';
 import { useShellConfig } from '../../hooks/useShellConfig';
+import { usePermissions } from '../../hooks/usePermissions';
 import type { Vehicle, VehiclesResponse } from '../../types';
 import type { AnyColumn } from '../../types';
 import UtilizationSummary from './UtilizationSummary';
+import VehicleManageDialog from './VehicleManageDialog';
+
+const TYPE_LABEL: Record<string, string> = {
+  truck: 'Truck', trailer: 'Trailer', other: 'Other',
+};
 
 // Personas that benefit from the 30-day utilization roll-up at the top
 // of the Vehicles page.  Drivers + Dispatch don't need it (drivers care
@@ -30,6 +37,11 @@ const STATUS_OPTIONS: readonly StatusFilter[] = ['all', 'moving', 'idle', 'stopp
 
 const ALL_COLUMNS: AnyColumn[] = [
   { key: 'name', label: 'Vehicle' },
+  {
+    key: 'vehicle_type',
+    label: 'Type',
+    render: (v) => TYPE_LABEL[(v as string) || 'truck'] ?? 'Truck',
+  },
   { key: 'company', label: 'Company' },
   {
     key: 'status',
@@ -72,7 +84,7 @@ const ALL_COLUMNS: AnyColumn[] = [
 // fields a fleet manager, dispatcher, safety, HR, or accounting user
 // all need to recognize a truck.
 const UNIVERSAL_COLUMN_KEYS = new Set([
-  'name', 'company', 'status', 'address',
+  'name', 'vehicle_type', 'company', 'status', 'address',
 ]);
 
 // Per-persona column visibility.  Mirrors the strict-binding rule from
@@ -100,6 +112,11 @@ export default function Vehicles() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const navigate = useNavigate();
   const { persona } = useShellConfig();
+  const { has } = usePermissions();
+  const canManage = has('can_manage_vehicles');
+
+  // null = closed; {vehicle:null} = create; {vehicle:row} = edit.
+  const [dialog, setDialog] = useState<{ vehicle: Vehicle | null } | null>(null);
 
   const columns = useMemo(() => {
     const extras = PERSONA_EXTRA_COLUMNS[persona] ?? PERSONA_EXTRA_COLUMNS.owner ?? [];
@@ -107,8 +124,31 @@ export default function Vehicles() {
       ...UNIVERSAL_COLUMN_KEYS,
       ...extras,
     ]);
-    return ALL_COLUMNS.filter((c) => allowed.has(c.key));
-  }, [persona]);
+    const cols = ALL_COLUMNS.filter((c) => allowed.has(c.key));
+    if (!canManage) return cols;
+    // Edit affordance — only for operators who can manage vehicles, and
+    // only on rows that exist in the registry (registry_id present).
+    return [
+      ...cols,
+      {
+        key: '_edit',
+        label: '',
+        render: (_v: unknown, row: Record<string, unknown>) => {
+          const r = row as unknown as Vehicle;
+          if (r.registry_id == null) return null;
+          return (
+            <Button
+              type="button" variant="ghost" size="xs"
+              onClick={(e) => { e.stopPropagation(); setDialog({ vehicle: r }); }}
+              title="Edit this vehicle"
+            >
+              <Pencil size={12} />
+            </Button>
+          );
+        },
+      } as AnyColumn,
+    ];
+  }, [persona, canManage]);
 
   const {
     data,
@@ -152,11 +192,22 @@ export default function Vehicles() {
         title={t('vehicles.page_title')}
         description={t('vehicles.page_description')}
         actions={
-          <LastUpdated
-            fetchedAt={dataUpdatedAt}
-            isFetching={isFetching}
-            onRefresh={refetch}
-          />
+          <div className="flex items-center gap-2">
+            {canManage && (
+              <Button
+                type="button" variant="outline" size="sm"
+                onClick={() => setDialog({ vehicle: null })}
+              >
+                <Plus size={14} />
+                Add vehicle
+              </Button>
+            )}
+            <LastUpdated
+              fetchedAt={dataUpdatedAt}
+              isFetching={isFetching}
+              onRefresh={refetch}
+            />
+          </div>
         }
       />
 
@@ -227,6 +278,15 @@ export default function Vehicles() {
               : '';
             navigate(`/vehicles/${encodeURIComponent(name)}${qs}`);
           }}
+        />
+      )}
+
+      {dialog && (
+        <VehicleManageDialog
+          open
+          vehicle={dialog.vehicle}
+          onClose={() => setDialog(null)}
+          onSaved={() => refetch()}
         />
       )}
     </div>

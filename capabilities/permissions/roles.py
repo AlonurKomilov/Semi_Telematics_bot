@@ -88,6 +88,7 @@ class FeatureSet:
     can_invite: bool = False         # /invite
     can_manage_users: bool = False   # /users, /setrole, /remove
     can_manage_companies: bool = False    # /addcompany, /removecompany
+    can_manage_vehicles: bool = False     # add/edit/remove vehicles in the registry
     can_manage_account: bool = False # /account settings (general config)
     # Settings components — granular delegation flags so account
     # administration can be split across roles (each Settings component
@@ -151,7 +152,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_vehicle_all=True, can_vehicle_vehicle=True,
         can_alerts_all=True, can_alerts_vehicle=True,
         can_invite=True, can_manage_users=True,
-        can_manage_companies=True, can_manage_account=True,
+        can_manage_companies=True, can_manage_vehicles=True, can_manage_account=True,
         can_manage_permissions=True, can_manage_integrations=True,
         can_manage_storage=True, can_manage_work_hours=True,
         can_rolling_stopped=True,
@@ -181,7 +182,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_vehicle_all=True, can_vehicle_vehicle=True,
         can_alerts_all=True, can_alerts_vehicle=True,
         can_invite=True, can_manage_users=True,
-        can_manage_companies=False, can_manage_account=False,
+        can_manage_companies=False, can_manage_vehicles=True, can_manage_account=False,
         can_manage_permissions=False, can_manage_integrations=False,
         can_manage_storage=False, can_manage_work_hours=False,
         can_rolling_stopped=True,
@@ -210,7 +211,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_vehicle_all=True, can_vehicle_vehicle=True,
         can_alerts_all=True, can_alerts_vehicle=True,
         can_invite=False, can_manage_users=False,
-        can_manage_companies=False, can_manage_account=False,
+        can_manage_companies=False, can_manage_vehicles=True, can_manage_account=False,
         can_rolling_stopped=False,
         can_geofence_all=True, can_geofence_vehicle=True,
         can_digest=True,
@@ -674,6 +675,7 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_invite": "invite users",
     "can_manage_users": "manage users",
     "can_manage_companies": "manage companies",
+    "can_manage_vehicles": "manage vehicles",
     "can_manage_account": "account settings",
     "can_manage_permissions": "role permissions matrix",
     "can_manage_integrations": "telematics integrations",

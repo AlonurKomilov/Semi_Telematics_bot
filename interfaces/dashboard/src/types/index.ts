@@ -158,6 +158,15 @@ export interface Vehicle {
   engine_hours?: number | null;
   /** ISO timestamp of the engine-hours reading. */
   engine_hours_time?: string | null;
+  /** Registry classification — drives the Type column.  'truck' for
+   *  any live row the registry overlay didn't tag. */
+  vehicle_type?: string;
+  /** Where the row came from: 'manual' (operator added), 'samsara'
+   *  (synced from telematics), 'datatruck' (Phase 2). */
+  source?: string;
+  /** Registry row id for the manage UI's edit/delete.  Null for a
+   *  live-only vehicle the registry hasn't caught yet. */
+  registry_id?: number | null;
 }
 
 export interface VehicleLocation {

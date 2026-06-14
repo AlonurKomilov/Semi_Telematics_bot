@@ -535,5 +535,39 @@ async def create_tables(conn) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_datatruck_work_orders_account
             ON datatruck_work_orders(account_id, synced_at);
+
+        -- ── Vehicle registry (adapters/storage/vehicles_registry.py) ──
+        -- The single source of truth for vehicles, owned in OUR DB.
+        -- Integrations (Samsara live state, Datatruck TMS) ENRICH rows
+        -- here; they don't define the fleet.  A vehicle exists because
+        -- the account added it (source='manual') or an integration
+        -- synced it (source='samsara'|'datatruck').  Trailers and
+        -- not-yet-telemetered trucks live here with no live-state match.
+        -- UNIQUE(account_id, company_code, unit_number) mirrors
+        -- vehicle_state's key so the live-state enrichment join is 1:1.
+        CREATE TABLE IF NOT EXISTS vehicles (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            company_code    TEXT    NOT NULL DEFAULT '',
+            unit_number     TEXT    NOT NULL,
+            vehicle_type    TEXT    NOT NULL DEFAULT 'truck',
+            vin             TEXT    NOT NULL DEFAULT '',
+            plate_number    TEXT    NOT NULL DEFAULT '',
+            make            TEXT    NOT NULL DEFAULT '',
+            model           TEXT    NOT NULL DEFAULT '',
+            year            INTEGER,
+            status          TEXT    NOT NULL DEFAULT 'active',
+            source          TEXT    NOT NULL DEFAULT 'manual',
+            telematics_ref  TEXT    NOT NULL DEFAULT '',
+            notes           TEXT    NOT NULL DEFAULT '',
+            is_active       INTEGER NOT NULL DEFAULT 1,
+            created_at      TEXT    NOT NULL DEFAULT '',
+            updated_at      TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, company_code, unit_number)
+        );
+        CREATE INDEX IF NOT EXISTS idx_vehicles_account
+            ON vehicles(account_id, is_active);
+        CREATE INDEX IF NOT EXISTS idx_vehicles_type
+            ON vehicles(account_id, vehicle_type);
     """)
     await conn.commit()

@@ -1,0 +1,297 @@
+"""Vehicle registry CRUD mixin — the single source of truth for vehicles.
+
+A vehicle exists because the account *owns* it, in OUR Postgres DB —
+not because Samsara happens to report it.  Integrations enrich rows
+here (Samsara live state, Datatruck TMS) but do not define the fleet.
+Trailers and not-yet-telemetered trucks live here just like any other
+vehicle, with no live-state match.
+
+Identity / dedup: ``UNIQUE(account_id, company_code, unit_number)`` —
+the same key ``vehicle_state`` uses, so the live-state enrichment join
+in ``warehouse_reader`` is 1:1.
+
+``source`` records who created the row:
+  * ``manual``    — the operator added it on the Vehicles page.
+  * ``samsara``   — the 60s ingestor saw it in Samsara and upserted it.
+  * ``datatruck`` — (Phase 2) projected from the datatruck_* sync tables.
+
+Tenant isolation is the ``account_id`` filter on every query (and
+Postgres RLS when ``ENABLE_RLS=1``).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    class _MixinBase:
+        """Typing stub — provided by the concrete Database at runtime."""
+        _db: Any
+        def transaction(self) -> Any: ...
+        async def read_all(self, sql: str, params: tuple = ()) -> list: ...
+        async def read_one(self, sql: str, params: tuple = ()) -> Any: ...
+        @staticmethod
+        def _now() -> str: ...
+else:
+    _MixinBase = object
+
+
+# The promoted columns an upsert/update touches, in stable order.
+_FIELDS = (
+    "company_code", "unit_number", "vehicle_type", "vin", "plate_number",
+    "make", "model", "year", "status", "source", "telematics_ref", "notes",
+)
+
+_VALID_TYPES = ("truck", "trailer", "other")
+
+
+@dataclass
+class Vehicle:
+    id: int
+    account_id: int
+    company_code: str
+    unit_number: str
+    vehicle_type: str
+    vin: str
+    plate_number: str
+    make: str
+    model: str
+    year: int | None
+    status: str
+    source: str
+    telematics_ref: str
+    notes: str
+    is_active: bool
+    created_at: str
+    updated_at: str
+
+
+def _row_to_vehicle(r) -> Vehicle:
+    return Vehicle(
+        id=r[0], account_id=r[1], company_code=r[2] or "",
+        unit_number=r[3] or "", vehicle_type=r[4] or "truck",
+        vin=r[5] or "", plate_number=r[6] or "", make=r[7] or "",
+        model=r[8] or "", year=r[9], status=r[10] or "active",
+        source=r[11] or "manual", telematics_ref=r[12] or "",
+        notes=r[13] or "", is_active=bool(r[14]),
+        created_at=r[15] or "", updated_at=r[16] or "",
+    )
+
+
+_SELECT = (
+    "SELECT id, account_id, company_code, unit_number, vehicle_type, vin, "
+    "plate_number, make, model, year, status, source, telematics_ref, "
+    "notes, is_active, created_at, updated_at FROM vehicles"
+)
+
+
+class VehiclesRegistryMixin(_MixinBase):
+
+    # ── Create ────────────────────────────────────────────────────
+
+    async def add_vehicle(
+        self,
+        account_id: int,
+        *,
+        unit_number: str,
+        vehicle_type: str = "truck",
+        company_code: str = "",
+        vin: str = "",
+        plate_number: str = "",
+        make: str = "",
+        model: str = "",
+        year: Optional[int] = None,
+        status: str = "active",
+        source: str = "manual",
+        telematics_ref: str = "",
+        notes: str = "",
+    ) -> int:
+        """Create a vehicle.  Returns the new row id.
+
+        Raises ``ValueError`` on a blank unit_number or an unknown
+        vehicle_type — the route maps these to a 400.
+        """
+        unit_number = (unit_number or "").strip()
+        if not unit_number:
+            raise ValueError("unit_number is required")
+        if vehicle_type not in _VALID_TYPES:
+            raise ValueError(
+                f"vehicle_type must be one of {_VALID_TYPES}",
+            )
+        now = self._now()
+        cur = await self._db.execute(
+            """INSERT INTO vehicles
+               (account_id, company_code, unit_number, vehicle_type, vin,
+                plate_number, make, model, year, status, source,
+                telematics_ref, notes, is_active, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
+            (
+                account_id, company_code, unit_number, vehicle_type, vin,
+                plate_number, make, model, year, status, source,
+                telematics_ref, notes, now, now,
+            ),
+        )
+        await self._db.commit()
+        return cur.lastrowid
+
+    # ── Read ──────────────────────────────────────────────────────
+
+    async def list_vehicles(
+        self,
+        account_id: int,
+        *,
+        vehicle_type: Optional[str] = None,
+        company_code: Optional[str] = None,
+        include_inactive: bool = False,
+    ) -> list[Vehicle]:
+        """All registry vehicles for an account, newest first.  Filters
+        are optional; ``include_inactive`` surfaces soft-deleted rows
+        for an audit view."""
+        clauses = ["account_id = ?"]
+        params: list[Any] = [account_id]
+        if not include_inactive:
+            clauses.append("is_active = 1")
+        if vehicle_type:
+            clauses.append("vehicle_type = ?")
+            params.append(vehicle_type)
+        if company_code:
+            clauses.append("company_code = ?")
+            params.append(company_code)
+        rows = await self.read_all(
+            f"{_SELECT} WHERE {' AND '.join(clauses)} "
+            "ORDER BY unit_number, id",
+            tuple(params),
+        )
+        return [_row_to_vehicle(r) for r in rows]
+
+    async def get_vehicle(
+        self, account_id: int, vehicle_id: int,
+    ) -> Vehicle | None:
+        row = await self.read_one(
+            f"{_SELECT} WHERE id = ? AND account_id = ?",
+            (vehicle_id, account_id),
+        )
+        return _row_to_vehicle(row) if row else None
+
+    async def count_vehicles(self, account_id: int) -> int:
+        """Active-row count — the registry-first read path uses this to
+        decide whether to take the registry spine or fall back to the
+        legacy pure-Samsara path on an un-backfilled account."""
+        row = await self.read_one(
+            "SELECT COUNT(*) FROM vehicles "
+            "WHERE account_id = ? AND is_active = 1",
+            (account_id,),
+        )
+        return int(row[0] or 0) if row else 0
+
+    # ── Update ────────────────────────────────────────────────────
+
+    async def update_vehicle(
+        self, account_id: int, vehicle_id: int, **fields: Any,
+    ) -> bool:
+        """Partial update — only the keys present in ``fields`` (and in
+        ``_FIELDS``) are written.  Returns True when a row changed."""
+        sets: list[str] = []
+        params: list[Any] = []
+        for key in _FIELDS:
+            if key in fields and fields[key] is not None:
+                if key == "vehicle_type" and fields[key] not in _VALID_TYPES:
+                    raise ValueError(
+                        f"vehicle_type must be one of {_VALID_TYPES}",
+                    )
+                sets.append(f"{key} = ?")
+                params.append(fields[key])
+        if not sets:
+            return False
+        sets.append("updated_at = ?")
+        params.extend([self._now(), vehicle_id, account_id])
+        cur = await self._db.execute(
+            f"UPDATE vehicles SET {', '.join(sets)} "
+            "WHERE id = ? AND account_id = ?",
+            tuple(params),
+        )
+        await self._db.commit()
+        return cur.rowcount > 0
+
+    async def deactivate_vehicle(
+        self, account_id: int, vehicle_id: int,
+    ) -> bool:
+        """Soft delete — keeps history intact (maintenance, fuel, etc.
+        still reference the unit by name).  Returns True if a row
+        flipped."""
+        cur = await self._db.execute(
+            "UPDATE vehicles SET is_active = 0, status = 'inactive', "
+            "updated_at = ? WHERE id = ? AND account_id = ?",
+            (self._now(), vehicle_id, account_id),
+        )
+        await self._db.commit()
+        return cur.rowcount > 0
+
+    # ── Integration upsert (backfill + ongoing sync) ──────────────
+
+    async def upsert_from_integration(
+        self,
+        account_id: int,
+        rows: list[dict[str, Any]],
+        *,
+        source: str,
+    ) -> int:
+        """Idempotent bulk upsert keyed on
+        ``(account_id, company_code, unit_number)``.
+
+        Used by (a) the migration-105 backfill from ``vehicle_state``
+        and (b) the 60s ingestor as it sees Samsara vehicles, and
+        (later) the Datatruck projection.  Integration-owned columns
+        (spec + telematics_ref) refresh on conflict, but
+        ``vehicle_type`` and operator-set ``status``/``notes`` are
+        PRESERVED — an operator who reclassified a unit or added a note
+        keeps it across syncs.  Rows without a unit_number are skipped.
+
+        Returns the number of rows written.
+        """
+        if not rows:
+            return 0
+        now = self._now()
+        written = 0
+        async with self.transaction():
+            for r in rows:
+                unit = str(r.get("unit_number") or "").strip()
+                if not unit:
+                    continue
+                await self._db.execute(
+                    """INSERT INTO vehicles
+                       (account_id, company_code, unit_number, vehicle_type,
+                        vin, plate_number, make, model, year, status, source,
+                        telematics_ref, notes, is_active, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                       ON CONFLICT(account_id, company_code, unit_number)
+                       DO UPDATE SET
+                           vin            = excluded.vin,
+                           plate_number   = excluded.plate_number,
+                           make           = excluded.make,
+                           model          = excluded.model,
+                           year           = excluded.year,
+                           source         = excluded.source,
+                           telematics_ref = excluded.telematics_ref,
+                           is_active      = 1,
+                           updated_at     = excluded.updated_at""",
+                    (
+                        account_id,
+                        str(r.get("company_code") or ""),
+                        unit,
+                        str(r.get("vehicle_type") or "truck"),
+                        str(r.get("vin") or ""),
+                        str(r.get("plate_number") or ""),
+                        str(r.get("make") or ""),
+                        str(r.get("model") or ""),
+                        r.get("year"),
+                        str(r.get("status") or "active"),
+                        source,
+                        str(r.get("telematics_ref") or ""),
+                        str(r.get("notes") or ""),
+                        now, now,
+                    ),
+                )
+                written += 1
+        return written

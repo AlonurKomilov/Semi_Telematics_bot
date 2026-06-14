@@ -21,7 +21,8 @@ URL structure:
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from interfaces.api.deps import (
     require_permission_any,
@@ -145,8 +146,12 @@ def _simplify(v: dict) -> dict:
     """Flatten a fleet overview vehicle into the consistent API shape."""
     loc = v.get("location", {})
     speed = _extract_speed(v)
-    status = classify_vehicle_status(v)
-    engine_state = _derive_engine_state(status)
+    # Registry vehicles with no telematics match (trailers, manual
+    # trucks) carry a marker so we don't mis-classify a GPS-less row
+    # as "stopped" — they get an explicit "no_telemetry" status.
+    no_telemetry = bool(v.get("_no_telemetry"))
+    status = "no_telemetry" if no_telemetry else classify_vehicle_status(v)
+    engine_state = "" if no_telemetry else _derive_engine_state(status)
     address = (
         loc.get("reverseGeo", {}).get("formattedLocation")
         or loc.get("address")
@@ -158,6 +163,15 @@ def _simplify(v: dict) -> dict:
         "id": v.get("id"),
         "name": v.get("name", ""),
         "company": v.get("_org", ""),
+        # Registry fields — drive the Type column + source hint on the
+        # Vehicles page.  Default to truck/samsara for any live row the
+        # registry overlay didn't tag (steady state: none).
+        "vehicle_type": v.get("vehicle_type", "truck"),
+        "source": v.get("source", "samsara"),
+        # Registry row id for the manage UI's edit/delete; null for a
+        # live-only vehicle the registry hasn't caught yet (then the
+        # edit affordance is disabled until the next ingest registers it).
+        "registry_id": v.get("_registry_id"),
         "latitude": loc.get("latitude"),
         "longitude": loc.get("longitude"),
         "speed_mph": speed,
@@ -649,3 +663,120 @@ async def vehicle_usage(
         "summary":    summary,
         "series":     series,
     }
+
+
+# ── Registry management (add / edit / remove vehicles) ───────────
+#
+# The vehicle registry in our DB is the single source of truth.  These
+# write endpoints let an operator add a truck or trailer by hand —
+# including equipment Samsara doesn't report — and are gated by the
+# delegatable ``can_manage_vehicles`` permission (Owner/Admin/Fleet by
+# default; grantable to any role via the Permissions matrix).  Reads
+# come through the merged ``GET /vehicles/`` list, which already carries
+# ``vehicle_type`` / ``source`` / ``registry_id`` per row.
+
+_manage_vehicles = require_permission("can_manage_vehicles")
+
+
+class VehicleCreate(BaseModel):
+    unit_number: str = Field(..., min_length=1, max_length=64)
+    vehicle_type: str = Field("truck")
+    company_code: str = Field("", max_length=64)
+    vin: str = Field("", max_length=64)
+    plate_number: str = Field("", max_length=32)
+    make: str = Field("", max_length=64)
+    model: str = Field("", max_length=64)
+    year: int | None = Field(None, ge=1900, le=2100)
+    notes: str = Field("", max_length=500)
+
+
+class VehicleUpdate(BaseModel):
+    unit_number: str | None = Field(None, min_length=1, max_length=64)
+    vehicle_type: str | None = None
+    company_code: str | None = Field(None, max_length=64)
+    vin: str | None = Field(None, max_length=64)
+    plate_number: str | None = Field(None, max_length=32)
+    make: str | None = Field(None, max_length=64)
+    model: str | None = Field(None, max_length=64)
+    year: int | None = Field(None, ge=1900, le=2100)
+    status: str | None = None
+    notes: str | None = Field(None, max_length=500)
+
+
+def _vehicle_to_dict(v) -> dict:
+    return {
+        "id": v.id, "company_code": v.company_code,
+        "unit_number": v.unit_number, "vehicle_type": v.vehicle_type,
+        "vin": v.vin, "plate_number": v.plate_number, "make": v.make,
+        "model": v.model, "year": v.year, "status": v.status,
+        "source": v.source, "notes": v.notes,
+    }
+
+
+@router.post("/")
+async def create_vehicle(
+    body: VehicleCreate,
+    user: dict = Depends(_manage_vehicles),
+):
+    """Add a vehicle to the registry by hand (truck, trailer, or other).
+    Works with no telematics — the row stands on its own and is enriched
+    later if an integration matches it."""
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    try:
+        vid = await tenant.add_vehicle(
+            account_id,
+            unit_number=body.unit_number,
+            vehicle_type=body.vehicle_type,
+            company_code=body.company_code,
+            vin=body.vin, plate_number=body.plate_number,
+            make=body.make, model=body.model, year=body.year,
+            notes=body.notes, source="manual",
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        # UNIQUE(account_id, company_code, unit_number) collision, etc.
+        raise HTTPException(409, f"could not add vehicle: {e}")
+    v = await tenant.get_vehicle(account_id, vid)
+    return _vehicle_to_dict(v)
+
+
+@router.put("/registry/{vehicle_id}")
+async def update_registry_vehicle(
+    vehicle_id: int,
+    body: VehicleUpdate,
+    user: dict = Depends(_manage_vehicles),
+):
+    """Edit a registry vehicle's spec / type / status."""
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    try:
+        ok = await tenant.update_vehicle(account_id, vehicle_id, **fields)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not ok:
+        raise HTTPException(404, "vehicle not found")
+    return _vehicle_to_dict(await tenant.get_vehicle(account_id, vehicle_id))
+
+
+@router.delete("/registry/{vehicle_id}")
+async def delete_registry_vehicle(
+    vehicle_id: int,
+    user: dict = Depends(_manage_vehicles),
+):
+    """Soft-delete a registry vehicle.  History (maintenance, fuel,
+    inspections referencing the unit by name) is untouched."""
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    ok = await tenant.deactivate_vehicle(account_id, vehicle_id)
+    if not ok:
+        raise HTTPException(404, "vehicle not found")
+    return {"deactivated": True, "id": vehicle_id}

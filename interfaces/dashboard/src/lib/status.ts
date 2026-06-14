@@ -64,6 +64,10 @@ const STATUS_TONE: Record<string, Tone> = {
   idle: 'warn',
   stopped: 'danger', inactive: 'danger', offline: 'danger',
   off: 'neutral', unknown: 'neutral',
+  // Registry vehicle with no telematics match (trailer / not-yet-
+  // equipped truck) — neutral, not red: it's a deliberate state, not
+  // a fault.
+  no_telemetry: 'neutral',
   // Task / work-order lifecycle.  Urgency progression reads as
   // info → warn → danger so an operator can tell the severity at a
   // glance: pending=info (scheduled, no action needed), due_soon=warn

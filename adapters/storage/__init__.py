@@ -80,6 +80,7 @@ from .storage_sync import StorageSyncMixin
 from .ai_chat import AIChatHistoryMixin
 from .account_integrations import AccountIntegrationsMixin, AccountIntegration  # noqa: F401
 from .datatruck import DatatruckStorageMixin
+from .vehicles_registry import VehiclesRegistryMixin, Vehicle  # noqa: F401
 from .platform import PlatformDB
 
 
@@ -121,6 +122,7 @@ class Database(
     StorageSyncMixin,
     AIChatHistoryMixin,
     DatatruckStorageMixin,
+    VehiclesRegistryMixin,
     _DatabaseCore,
 ):
     """Async Postgres wrapper with typed helpers.

@@ -4244,6 +4244,94 @@ async def migrate_datatruck_tables_rls(conn) -> None:
     logger.info("Migration 103: RLS enabled on %d datatruck tables", enabled)
 
 
+@_register("105_vehicles_registry")
+async def migrate_vehicles_registry(conn) -> None:
+    """Backfill the ``vehicles`` registry from ``vehicle_state`` and
+    apply its RLS policy.
+
+    The ``vehicles`` table is created by ``schema.create_tables`` (runs
+    before migrations every boot), so it exists here on fresh + upgrade.
+
+    Two steps:
+
+    1. **Backfill** — one registry row per existing ``vehicle_state``
+       row (``source='samsara'``, ``vehicle_type='truck'``,
+       ``telematics_ref=vehicle_id``).  ``ON CONFLICT DO NOTHING`` keeps
+       it idempotent and never clobbers a row the operator added by
+       hand.  This makes every account's registry mirror its current
+       fleet so the registry-first read shows no change on day one.
+
+       Best-effort under RLS: ``vehicle_state`` carries the
+       tenant_isolation policy (migration 057), so the cross-account
+       ``SELECT`` here needs ``row_security = off``.  If that can't be
+       set (FORCE RLS + non-superuser), the backfill may read zero rows
+       — that's fine: the 60s ingestor's
+       ``upsert_from_integration(source='samsara')`` repopulates the
+       registry within a minute, and the registry-first read falls back
+       to the legacy Samsara path while the registry is empty.  So the
+       one-time backfill is a convenience, not a correctness dependency.
+
+    2. **RLS** — apply the same tenant_isolation policy the other tenant
+       tables use, gated by ENABLE_RLS.  Done AFTER the backfill so the
+       INSERT isn't blocked by the table's own WITH CHECK.
+    """
+    import os
+
+    # ── Step 1: backfill (best-effort, idempotent) ──
+    # A single auto-committed INSERT…SELECT.  No explicit transaction /
+    # SET LOCAL row_security: the migration ``conn`` is the raw pool
+    # proxy (no ``transaction()`` method), and under the default
+    # ENABLE_RLS=off this reads every account's vehicle_state freely.
+    # If FORCE RLS is on, the cross-account SELECT may return nothing —
+    # that's fine: the 60s ingestor's upsert_from_integration repopulates
+    # the registry within a minute, so the backfill is a convenience,
+    # not a correctness dependency.
+    try:
+        now = __import__("datetime").datetime.now(
+            __import__("datetime").timezone.utc,
+        ).isoformat()
+        await conn.execute(
+            """
+            INSERT INTO vehicles
+                (account_id, company_code, unit_number, vehicle_type,
+                 vin, plate_number, make, model, year, status, source,
+                 telematics_ref, notes, is_active, created_at, updated_at)
+            SELECT account_id, company_code, vehicle_name, 'truck',
+                   '', '', '', '', NULL, 'active', 'samsara',
+                   vehicle_id, '', 1, ?, ?
+              FROM vehicle_state
+             WHERE vehicle_name <> ''
+            ON CONFLICT(account_id, company_code, unit_number)
+            DO NOTHING
+            """,
+            (now, now),
+        )
+        logger.info("Migration 105: vehicles registry backfilled from vehicle_state")
+    except Exception as e:
+        # Non-fatal — the ingestor self-heals the registry on the next
+        # tick.  Log and continue to the RLS step.
+        logger.warning("Migration 105: backfill skipped (%s)", e)
+
+    # ── Step 2: RLS policy (gated) ──
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        logger.info("Migration 105: ENABLE_RLS not set; RLS policy skipped")
+        return
+    try:
+        await conn.execute("ALTER TABLE vehicles ENABLE ROW LEVEL SECURITY")
+        await conn.execute("ALTER TABLE vehicles FORCE ROW LEVEL SECURITY")
+        await conn.execute("DROP POLICY IF EXISTS tenant_isolation ON vehicles")
+        await conn.execute(
+            """
+            CREATE POLICY tenant_isolation ON vehicles
+            USING       (account_id::text = current_setting('app.account_id', true))
+            WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+            """
+        )
+        logger.info("Migration 105: RLS enabled on vehicles")
+    except Exception as e:
+        logger.warning("Migration 105: vehicles RLS skipped (%s)", e)
+
+
 @_register("100_users_dnd_enabled")
 async def migrate_users_dnd_enabled(conn) -> None:
     """Add ``users.dnd_enabled`` — single per-user toggle that controls

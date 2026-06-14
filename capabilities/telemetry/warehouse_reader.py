@@ -111,6 +111,92 @@ def _warehouse_row_to_overview(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _registry_only_overview(v: Any) -> dict[str, Any]:
+    """Synthesize a fleet-overview dict for a registry vehicle that has
+    NO live-state match (a trailer, or a truck without telematics).
+
+    Carries the static spec the operator entered plus a
+    ``_no_telemetry`` marker so ``_simplify`` renders status
+    ``"no_telemetry"`` instead of mis-classifying a GPS-less row as
+    "stopped".  Empty location/fuel/fault dicts keep the downstream
+    extractors happy (they all tolerate ``{}``)."""
+    return {
+        "id":   f"registry:{v.id}",
+        "name": v.unit_number,
+        "_org": v.company_code,
+        "vin":           v.vin or "N/A",
+        "make":          v.make or "N/A",
+        "model":         v.model or "N/A",
+        "year":          v.year if v.year is not None else "N/A",
+        "license_plate": v.plate_number or "N/A",
+        "location": {},
+        "fuel": {}, "def_level": {},
+        "odometer": {}, "engine_hours_reading": {},
+        "fault_codes": {},
+        "vehicle_type": v.vehicle_type,
+        "source": v.source,
+        "_registry_id": v.id,
+        "_no_telemetry": True,
+    }
+
+
+def merge_registry_with_live(
+    registry: list[Any],
+    live: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Overlay the vehicle registry (SSOT) onto the live-state list.
+
+    The registry is the spine: every active registry vehicle appears,
+    enriched with its live telematics when a match exists, or as a
+    ``_no_telemetry`` row when it doesn't (trailers, manual trucks).
+    Live vehicles NOT yet in the registry are still appended so nothing
+    Samsara reports ever disappears before the ingestor registers it.
+
+    Match priority: ``telematics_ref`` → live ``id`` (exact), else
+    ``(company_code, unit_number)`` case-insensitive.  Each live row's
+    ``vehicle_type``/``source`` are taken from the registry entry.
+    """
+    by_id: dict[str, dict] = {}
+    by_unit: dict[tuple[str, str], dict] = {}
+    for ov in live:
+        vid = str(ov.get("id") or "")
+        if vid:
+            by_id[vid] = ov
+        key = (str(ov.get("_org") or "").lower(),
+               str(ov.get("name") or "").lower())
+        by_unit[key] = ov
+
+    out: list[dict[str, Any]] = []
+    consumed: set[int] = set()
+    for v in registry:
+        match = None
+        if v.telematics_ref and v.telematics_ref in by_id:
+            match = by_id[v.telematics_ref]
+        else:
+            match = by_unit.get(
+                (v.company_code.lower(), v.unit_number.lower()),
+            )
+        if match is not None:
+            consumed.add(id(match))
+            enriched = dict(match)
+            enriched["vehicle_type"] = v.vehicle_type
+            enriched["source"] = v.source
+            enriched["_registry_id"] = v.id
+            out.append(enriched)
+        else:
+            out.append(_registry_only_overview(v))
+
+    # Append live vehicles the registry hasn't caught yet (safety —
+    # after backfill + ongoing ingest this is empty in steady state).
+    for ov in live:
+        if id(ov) not in consumed:
+            extra = dict(ov)
+            extra.setdefault("vehicle_type", "truck")
+            extra.setdefault("source", "samsara")
+            out.append(extra)
+    return out
+
+
 async def get_current_vehicles(
     account_id: int,
     *,
