@@ -271,3 +271,98 @@ def test_can_manage_vehicles_default_roles():
     assert ROLE_PERMISSIONS[Role.FLEET].can_manage_vehicles is True
     assert ROLE_PERMISSIONS[Role.SAFETY].can_manage_vehicles is False
     assert ROLE_PERMISSIONS[Role.DRIVER].can_manage_vehicles is False
+
+
+# ── Datatruck → registry projection (Phase 2-A) ───────────────
+
+
+@pytest.mark.asyncio
+async def test_projection_fills_vin_on_samsara_row_by_unit(db):
+    """The key reconciliation: a Samsara-sourced truck has unit '247'
+    but vin='' (the warehouse doesn't track VIN).  Datatruck has the
+    same unit WITH the VIN and no company scoping.  Projection must
+    enrich the existing row (fill the VIN) — NOT create a duplicate."""
+    await db.upsert_from_integration(
+        42, [{"company_code": "PTG", "unit_number": "247",
+              "telematics_ref": "sam_99"}], source="samsara",
+    )
+    n = await db.project_external_vehicles(
+        42,
+        [{"unit_number": "247", "vin": "3AKJJHDR7VSXC469",
+          "plate_number": "PXF8448", "make": "Freightliner"}],
+        vehicle_type="truck", source="datatruck",
+    )
+    assert n == 1
+    rows = await db.list_vehicles(42)
+    assert len(rows) == 1                      # NOT duplicated
+    v = rows[0]
+    assert v.vin == "3AKJJHDR7VSXC469"         # VIN filled in
+    assert v.plate_number == "PXF8448"
+    assert v.source == "samsara"               # source preserved
+    assert v.telematics_ref == "sam_99"        # samsara link preserved
+
+
+@pytest.mark.asyncio
+async def test_projection_matches_by_vin_exact(db):
+    await db.add_vehicle(42, unit_number="OLD-NAME", vin="VINMATCH1",
+                         company_code="PTG")
+    # Datatruck reports a different unit label but the SAME vin.
+    n = await db.project_external_vehicles(
+        42, [{"unit_number": "247", "vin": "VINMATCH1", "make": "Volvo"}],
+        vehicle_type="truck", source="datatruck",
+    )
+    assert n == 1
+    rows = await db.list_vehicles(42)
+    assert len(rows) == 1                       # matched by VIN, no dup
+    assert rows[0].make == "Volvo"              # empty make filled
+    assert rows[0].unit_number == "OLD-NAME"    # existing unit untouched
+
+
+@pytest.mark.asyncio
+async def test_projection_inserts_net_new_trailer(db):
+    """A Datatruck trailer Samsara never reports → brand-new registry
+    row, typed trailer, source datatruck."""
+    n = await db.project_external_vehicles(
+        42, [{"unit_number": "SS006414", "vin": "3H3V", "plate_number": "594147T"}],
+        vehicle_type="trailer", source="datatruck",
+    )
+    assert n == 1
+    v = (await db.list_vehicles(42, vehicle_type="trailer"))[0]
+    assert v.unit_number == "SS006414"
+    assert v.source == "datatruck"
+    assert v.vin == "3H3V"
+
+
+@pytest.mark.asyncio
+async def test_projection_does_not_clobber_operator_edits(db):
+    """Operator hand-corrected the make; a later Datatruck sync must
+    not overwrite a non-empty field."""
+    vid = await db.add_vehicle(42, unit_number="247", make="CORRECTED",
+                               vin="VIN9")
+    await db.project_external_vehicles(
+        42, [{"unit_number": "247", "vin": "VIN9", "make": "datatruck-make"}],
+        vehicle_type="truck", source="datatruck",
+    )
+    v = await db.get_vehicle(42, vid)
+    assert v.make == "CORRECTED"   # non-empty field preserved
+
+
+@pytest.mark.asyncio
+async def test_projection_ambiguous_unit_inserts_rather_than_guess(db):
+    """Two trucks named '103' in different companies (a legal Samsara
+    state).  A Datatruck '103' with no VIN match is ambiguous — we
+    must NOT guess which to enrich; insert a distinct row instead."""
+    await db.upsert_from_integration(
+        42,
+        [{"company_code": "A", "unit_number": "103"},
+         {"company_code": "B", "unit_number": "103"}],
+        source="samsara",
+    )
+    await db.project_external_vehicles(
+        42, [{"unit_number": "103", "vin": "NEWVIN"}],
+        vehicle_type="truck", source="datatruck",
+    )
+    rows = [v for v in await db.list_vehicles(42) if v.unit_number == "103"]
+    # Two samsara + one datatruck (company_code='') = three rows.
+    assert len(rows) == 3
+    assert any(v.source == "datatruck" and v.vin == "NEWVIN" for v in rows)

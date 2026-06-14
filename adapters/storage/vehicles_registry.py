@@ -230,6 +230,111 @@ class VehiclesRegistryMixin(_MixinBase):
 
     # ── Integration upsert (backfill + ongoing sync) ──────────────
 
+    async def project_external_vehicles(
+        self,
+        account_id: int,
+        rows: list[dict[str, Any]],
+        *,
+        vehicle_type: str,
+        source: str,
+    ) -> int:
+        """Project a TMS/integration vehicle list (Datatruck trucks or
+        trailers) onto the registry, reconciling against vehicles that
+        may already exist from another source.
+
+        Why this differs from ``upsert_from_integration`` (which keys
+        strictly on company_code+unit_number): a Datatruck vehicle has
+        the VIN/plate/make Samsara's warehouse lacks, but NO company
+        scoping (the Datatruck token is account-wide).  A naive insert
+        would duplicate every truck Samsara already registered.
+
+        Match priority per incoming row:
+          1. **VIN exact** — unambiguous; the same physical asset.
+          2. **Unique unit_number** across the account (case-insensitive)
+             — when exactly one registry row carries that unit.  More
+             than one (the legal "two trucks named 103 in different
+             orgs" case) is ambiguous, so we don't guess.
+          3. **No match** → insert a new row (source=given, the given
+             vehicle_type).
+
+        On a match we ENRICH — fill only the spec fields the existing
+        row is missing (this is how a Datatruck sync backfills the VIN
+        onto a Samsara-sourced truck) without clobbering operator edits,
+        the existing ``source``, ``vehicle_type``, ``status`` or notes.
+
+        Returns the number of rows inserted-or-enriched.
+        """
+        if not rows:
+            return 0
+        existing = await self.list_vehicles(account_id)
+        by_vin: dict[str, Vehicle] = {}
+        by_unit: dict[str, list[Vehicle]] = {}
+        for v in existing:
+            if v.vin:
+                by_vin.setdefault(v.vin.strip().upper(), v)
+            by_unit.setdefault(v.unit_number.strip().lower(), []).append(v)
+
+        _SPEC_FILL = ("vin", "plate_number", "make", "model", "year")
+        now = self._now()
+        written = 0
+        async with self.transaction():
+            for r in rows:
+                unit = str(r.get("unit_number") or "").strip()
+                if not unit:
+                    continue
+                vin = str(r.get("vin") or "").strip()
+
+                match: Vehicle | None = None
+                if vin and vin.upper() in by_vin:
+                    match = by_vin[vin.upper()]
+                else:
+                    candidates = by_unit.get(unit.lower(), [])
+                    if len(candidates) == 1:
+                        match = candidates[0]
+
+                if match is not None:
+                    # Enrich: fill only empty spec fields.
+                    sets: list[str] = []
+                    params: list[Any] = []
+                    for f in _SPEC_FILL:
+                        incoming = r.get(f)
+                        cur = getattr(match, f)
+                        empty = cur in (None, "", 0)
+                        if empty and incoming not in (None, ""):
+                            sets.append(f"{f} = ?")
+                            params.append(incoming)
+                    if sets:
+                        sets.append("updated_at = ?")
+                        params.extend([now, match.id, account_id])
+                        await self._db.execute(
+                            f"UPDATE vehicles SET {', '.join(sets)} "
+                            "WHERE id = ? AND account_id = ?",
+                            tuple(params),
+                        )
+                        written += 1
+                    continue
+
+                # No match → insert new.
+                await self._db.execute(
+                    """INSERT INTO vehicles
+                       (account_id, company_code, unit_number, vehicle_type,
+                        vin, plate_number, make, model, year, status, source,
+                        telematics_ref, notes, is_active, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                       ON CONFLICT(account_id, company_code, unit_number)
+                       DO NOTHING""",
+                    (
+                        account_id, str(r.get("company_code") or ""), unit,
+                        vehicle_type, vin,
+                        str(r.get("plate_number") or ""),
+                        str(r.get("make") or ""), str(r.get("model") or ""),
+                        r.get("year"), str(r.get("status") or "active"),
+                        source, "", "", now, now,
+                    ),
+                )
+                written += 1
+        return written
+
     async def upsert_from_integration(
         self,
         account_id: int,

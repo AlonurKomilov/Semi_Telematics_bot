@@ -232,6 +232,10 @@ class ResourceSpec:
     stats_method: str
     max_pages: int
     params_factory: Callable[[], dict] | None = None
+    # When set ('truck' | 'trailer'), each synced page is ALSO projected
+    # into the Vehicle registry (the SSOT) as this type.  None for non-
+    # vehicle resources (drivers / orders / work_orders).
+    registry_vehicle_type: str | None = None
 
 
 RESOURCES: dict[str, ResourceSpec] = {
@@ -251,6 +255,7 @@ RESOURCES: dict[str, ResourceSpec] = {
             upsert_method="upsert_datatruck_trucks",
             stats_method="datatruck_trucks_stats",
             max_pages=30,
+            registry_vehicle_type="truck",
         ),
         ResourceSpec(
             name="trailers", path="trailers/list/",
@@ -259,6 +264,7 @@ RESOURCES: dict[str, ResourceSpec] = {
             upsert_method="upsert_datatruck_trailers",
             stats_method="datatruck_trailers_stats",
             max_pages=30,
+            registry_vehicle_type="trailer",
         ),
         ResourceSpec(
             name="orders", path="orders/",
@@ -399,6 +405,22 @@ async def sync_resource(
             records = page.get("results") or []
             normalized = [spec.normalize(r) for r in records if isinstance(r, dict)]
             status["records_written"] += await upsert(account_id, normalized)
+            # Project trucks/trailers into the Vehicle registry (SSOT)
+            # so Datatruck-synced equipment appears on the Vehicles page
+            # — reconciled against Samsara/manual rows by VIN, else unit.
+            # Best-effort: a registry hiccup must not fail the TMS sync.
+            if spec.registry_vehicle_type:
+                try:
+                    await tenant.project_external_vehicles(
+                        account_id, normalized,
+                        vehicle_type=spec.registry_vehicle_type,
+                        source="datatruck",
+                    )
+                except Exception as e:
+                    logger.debug(
+                        "datatruck registry projection skipped acct=%d: %s",
+                        account_id, e,
+                    )
             status["pages_done"] += 1
             # Per-page heartbeat keeps the 5-min staleness timer fed
             # on slow tenants (rate gate can stretch a big sync).
