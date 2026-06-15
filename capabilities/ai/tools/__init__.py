@@ -20,7 +20,7 @@ from features.vehicles.efficiency import tool as efficiency               # noqa
 from features.events import tool as events                                # noqa: F401
 from capabilities.ai.tools import maintenance as maintenance              # noqa: F401
 from capabilities.ai.tools import geo as geo                              # noqa: F401
-from features.vehicles.cameras import tool as camera                      # noqa: F401
+from features.cameras import tool as camera                      # noqa: F401
 from capabilities.ai.tools import odometer as odometer                    # noqa: F401
 from capabilities.ai.tools import drivers as drivers                      # noqa: F401
 from capabilities.ai.tools import knowledge as knowledge                  # noqa: F401

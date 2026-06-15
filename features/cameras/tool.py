@@ -44,7 +44,7 @@ async def check_vehicle_camera(tool_args: dict, samsara_client,
         # Snapshot frames come through the media service (the SSOT
         # accessor) — it merges companies and rides the same cached
         # MultiCompanyClient pool (breaker + rate-limit retries).
-        from capabilities.media.service import get_dashcam_snapshots as _svc_snaps
+        from .service import get_dashcam_snapshots as _svc_snaps
         snaps = await _svc_snaps(account_id, days=3)
         match = [
             s for s in snaps

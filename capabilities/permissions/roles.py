@@ -940,6 +940,19 @@ ACCOUNT_WIDE_TOOLS: frozenset[str] = frozenset({
     "get_alert_history",
 })
 
+# Account-wide tools that have been taught to FILTER their results to a
+# caller's effective vehicle scope (company/vehicle-restricted users).  For a
+# scoped user the gate ALLOWS these (instead of blocking) and the orchestrator
+# injects the allowed-vehicle set as ``tool_args["_scope_vehicles"]``; the tool
+# returns only that subset.  Account-wide tools NOT in this set stay blocked
+# for scoped users — so coverage grows safely, one tool at a time.
+SCOPE_AWARE_TOOLS: frozenset[str] = frozenset({
+    "get_idle_vehicles",
+    "get_rolling_stopped",
+    "search_vehicles",
+    "get_alert_history",
+})
+
 # Tools that accept a vehicle_name param and must enforce driver vehicle isolation.
 VEHICLE_SPECIFIC_TOOLS: frozenset[str] = frozenset({
     "get_vehicle_faults", "get_vehicle_detail", "get_vehicle_location",

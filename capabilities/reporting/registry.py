@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-from features.vehicles.cameras.report import generate_camera_check_pdf
+from features.cameras.report import generate_camera_check_pdf
 from features.vehicles.efficiency.report import generate_fleet_efficiency_pdf
 from features.vehicles.faults.report import generate_fault_report_pdf
 from features.vehicles.fuel.report import generate_fuel_report_pdf

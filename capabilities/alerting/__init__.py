@@ -36,7 +36,7 @@ from features.vehicles.fuel.alert import (         # noqa: F401
 )
 
 # ── cameras ──────────────────────────────────────────────────────
-from features.vehicles.cameras.alert import (      # noqa: F401
+from features.cameras.alert import (      # noqa: F401
     check_camera_alerts,
 )
 

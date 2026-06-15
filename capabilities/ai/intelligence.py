@@ -26,7 +26,9 @@ from capabilities.ai.tools import (  # noqa: E402,F401
     get_anthropic_tools as _get_anthropic_tools,
     AI_TOOLS,  # backward compat re-export
 )
-from capabilities.permissions.roles import TOOL_PERMISSIONS, ACCOUNT_WIDE_TOOLS, VEHICLE_SPECIFIC_TOOLS
+from capabilities.permissions.roles import (
+    TOOL_PERMISSIONS, ACCOUNT_WIDE_TOOLS, VEHICLE_SPECIFIC_TOOLS, SCOPE_AWARE_TOOLS,
+)
 
 logger = logging.getLogger("bot.ai")
 
@@ -433,16 +435,32 @@ def _build_agent_user_prompt(
     return "".join(parts)
 
 
+def _scoped_vehicle_set(user_context: dict | None, user_role: str | None) -> list | None:
+    """The caller's effective allowed-vehicle list, or ``None`` if unrestricted.
+
+    Reads the resolved ``scoped_vehicle_nums`` (set at the AI entry point from
+    the Vehicle Access SSOT).  Back-compat: when that key is absent we derive a
+    driver's set from their assigned trucks, so callers predating the scope
+    plumbing keep driver isolation.
+    """
+    if user_context is None:
+        return None
+    if "scoped_vehicle_nums" in user_context:
+        return user_context["scoped_vehicle_nums"]
+    if user_role == "driver":
+        trucks = user_context.get("vehicle_nums") or []
+        if not trucks and user_context.get("vehicle_num"):
+            trucks = [user_context["vehicle_num"]]
+        return [t for t in trucks if t]
+    return None
+
+
 def _effective_scoped_flag(user_context: dict | None, user_role: str | None) -> bool:
     """True if the caller is vehicle/company-restricted — used to drop
-    fleet-wide tools from what the model is advertised.  Mirrors the scope
-    determination in ``_check_tool_permission`` so advertisement and gate agree.
+    fleet-wide tools from what the model is advertised.  Mirrors the gate's
+    scope determination so advertisement and gate agree.
     """
-    if not user_context:
-        return False
-    if "scoped_vehicle_nums" in user_context:
-        return user_context["scoped_vehicle_nums"] is not None
-    return user_role == "driver"
+    return _scoped_vehicle_set(user_context, user_role) is not None
 
 
 async def _check_tool_permission(
@@ -489,15 +507,7 @@ async def _check_tool_permission(
     # vehicle-scoped, and company-scoped users alike.  Back-compat: when the
     # key is absent we fall back to a driver's assigned trucks, so callers
     # that predate the scope plumbing keep their driver isolation.
-    scoped: list | None = None
-    if user_context is not None:
-        if "scoped_vehicle_nums" in user_context:
-            scoped = user_context["scoped_vehicle_nums"]
-        elif user_role == "driver":
-            trucks = user_context.get("vehicle_nums") or []
-            if not trucks and user_context.get("vehicle_num"):
-                trucks = [user_context["vehicle_num"]]
-            scoped = [t for t in trucks if t]
+    scoped = _scoped_vehicle_set(user_context, user_role)
 
     if scoped is not None:
         allowed_set = {t.strip().lower() for t in scoped if t}
@@ -522,7 +532,10 @@ async def _check_tool_permission(
                         f" not '{tool_args.get('vehicle_name')}'."
                     ),
                 }
-        if tool_name in ACCOUNT_WIDE_TOOLS:
+        if tool_name in ACCOUNT_WIDE_TOOLS and tool_name not in SCOPE_AWARE_TOOLS:
+            # Scope-aware account-wide tools are allowed — they filter their
+            # own results to the caller's vehicles (scope injected at execute).
+            # Tools not yet scope-aware stay blocked (the safe default).
             return {
                 "error": (
                     f"Access denied: {tool_name} returns fleet-wide data"
@@ -750,6 +763,7 @@ async def _run_anthropic_agent(
                 result = await _execute_tool(
                     tool_name, tool_args, samsara_client,
                     account_id=account_id, db=db,
+                    scope_vehicles=_scoped_vehicle_set(user_context, user_role),
                 )
             except Exception as e:
                 result = {"error": f"Tool execution failed: {e}"}
@@ -1066,6 +1080,7 @@ async def ask_agent(question: str, fleet_context: dict,
                     result = await _execute_tool(
                         tool_name, tool_args, samsara_client,
                         account_id=account_id, db=db,
+                        scope_vehicles=_scoped_vehicle_set(user_context, user_role),
                     )
                     tool_results.append({"tool": tool_name, "args": tool_args, "data": result})
 

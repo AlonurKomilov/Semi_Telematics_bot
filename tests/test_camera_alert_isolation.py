@@ -19,7 +19,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from dataclasses import dataclass
 
 from adapters.storage import Role
-from features.vehicles.cameras.alert import _issues_for_subscriber
+# Load the alerting hub before importing a feature's alert module in
+# isolation.  Feature alert modules import ``capabilities.alerting.registry``
+# for the @register_alert_source decorator, and the hub's __init__ imports
+# them back to re-export their check_* helpers — a latent cycle that's
+# harmless in the running app (the hub always loads first) but bites a test
+# whose very first import is the feature module.
+import capabilities.alerting  # noqa: F401  (load hub first)
+from features.cameras.alert import _issues_for_subscriber
 
 
 @dataclass

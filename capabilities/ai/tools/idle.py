@@ -69,6 +69,15 @@ async def get_idle_vehicles(tool_args: dict, samsara_client,
     include_safe = bool(tool_args.get("include_safe") or False)
     company = (tool_args.get("company") or "").strip()
 
+    # Vehicle-Access scope: for a company/vehicle-restricted caller the
+    # orchestrator injects the allowed vehicle names; we return only those.
+    # ``None`` = unrestricted; an (even empty) set = filter to exactly it.
+    scope = tool_args.get("_scope_vehicles")
+    scope_set = (
+        {str(v).strip().lower() for v in scope if v}
+        if scope is not None else None
+    )
+
     events = await db.get_active_parking_events(
         account_id, attention_only=not include_safe,
     )
@@ -80,6 +89,10 @@ async def get_idle_vehicles(tool_args: dict, samsara_client,
         if dur < min_hours:
             continue
         if company and (ev.get("company_code") or "").upper() != company.upper():
+            continue
+        if scope_set is not None and (
+            (ev.get("vehicle_name") or "").strip().lower() not in scope_set
+        ):
             continue
         filtered.append(ev)
 

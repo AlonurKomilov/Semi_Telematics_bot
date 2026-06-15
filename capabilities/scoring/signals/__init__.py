@@ -11,7 +11,7 @@ so the registry maps key → module, not key → one function.  Adding a
 signal = add the module + one entry here.
 """
 
-from features.vehicles.cameras import signal as cameras
+from features.cameras import signal as cameras
 from features.vehicles.efficiency import signal as efficiency
 from features.vehicles.fuel import signal as fuel
 from . import maintenance

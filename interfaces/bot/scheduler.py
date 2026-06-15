@@ -53,7 +53,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     import features.vehicles.faults.alert        # noqa: F401  fault_check
     import features.vehicles.health.alert        # noqa: F401  health_check
     import features.vehicles.fuel.alert          # noqa: F401  fuel_check
-    import features.vehicles.cameras.alert       # noqa: F401  camera_check
+    import features.cameras.alert       # noqa: F401  camera_check
     import features.events.alert                 # noqa: F401  events_check
     import capabilities.alerting.dnd             # noqa: F401  dnd_delivery
     import capabilities.alerting.escalation      # noqa: F401  critical_reescalate

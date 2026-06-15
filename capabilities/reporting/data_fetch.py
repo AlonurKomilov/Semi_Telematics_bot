@@ -33,7 +33,7 @@ from capabilities.reporting import compute_stats
 from features.vehicles.faults.report import generate_fault_report_pdf
 from features.vehicles.fuel.report import generate_fuel_report_pdf
 from features.vehicles.efficiency.report import generate_fleet_efficiency_pdf
-from features.vehicles.cameras.report import generate_camera_check_pdf
+from features.cameras.report import generate_camera_check_pdf
 from features.vehicles.health.report import generate_vehicle_health_pdf
 from capabilities.telemetry.service import (
     get_vehicles_with_faults as _svc_vehicles_with_faults,

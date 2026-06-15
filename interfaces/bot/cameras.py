@@ -22,7 +22,7 @@ What's still here:
   call ``reply_dashboard_redirect``.
 * Re-exports of ``_gather_snapshots`` / ``_analyze_snapshot`` /
   ``_save_camera_results`` / ``_save_camera_image`` from
-  ``capabilities/media`` — the **camera alerts pipeline** (cameras.py
+  ``features/cameras`` — the **camera alerts pipeline** (cameras.py
   scheduled job) and ``capabilities/reporting/data_fetch.py`` import
   these via this module.  Removing them would break the
   scheduler-driven alert path, which we explicitly want to keep
@@ -36,11 +36,11 @@ from telegram.ext import ContextTypes
 from interfaces.bot.helpers import reply_dashboard_redirect
 from interfaces.bot.auth import _require_registered
 
-# Re-export camera helpers from their canonical home in capabilities/media.
+# Re-export camera helpers from their canonical home in features/cameras.
 # scheduled_reports.py / capabilities/reporting/data_fetch.py import these as
 # ``interfaces.bot.cameras._gather_snapshots`` etc., so the names stay
 # stable here even though every interactive command path has been cut.
-from capabilities.media.service import (  # noqa: F401
+from features.cameras.service import (  # noqa: F401
     gather_snapshots as _gather_snapshots,
     analyze_snapshot as _analyze_snapshot,
     save_camera_results as _save_camera_results,

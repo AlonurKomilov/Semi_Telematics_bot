@@ -99,7 +99,7 @@ async def _check_cameras_account(
     bot_app: Application, account_id: int, subs: list, is_warmup: bool,
 ):
     """Process camera alerts for a single account."""
-    from capabilities.media.service import gather_snapshots, analyze_snapshot, save_camera_results
+    from .service import gather_snapshots, analyze_snapshot, save_camera_results
     import capabilities.ai as ai
 
     await ai.ensure_account_model(account_id)

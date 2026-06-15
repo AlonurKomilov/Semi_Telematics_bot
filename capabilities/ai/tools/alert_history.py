@@ -80,6 +80,17 @@ async def get_alert_history(tool_args: dict, samsara_client,
         status=status, severity=severity,
     )
 
+    # Vehicle-Access scope: a company/vehicle-restricted caller only sees
+    # alerts for their own vehicles (orchestrator injects the allowed set;
+    # None = unrestricted, even-empty = restrict to exactly it).
+    scope = tool_args.get("_scope_vehicles")
+    if scope is not None:
+        scope_set = {str(v).strip().lower() for v in scope if v}
+        rows = [
+            r for r in rows
+            if (r.get("vehicle_name") or "").strip().lower() in scope_set
+        ]
+
     return {
         "count": len(rows),
         "filters": {

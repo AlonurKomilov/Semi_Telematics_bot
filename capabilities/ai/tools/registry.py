@@ -170,11 +170,23 @@ def invalidate_tool_cache(account_id: int | None = None):
 async def execute_tool(tool_name: str, tool_args: dict,
                        samsara_client,
                        account_id: int | None = None,
-                       db=None) -> dict:
-    """Execute a registered tool by name. Returns result dict."""
+                       db=None,
+                       scope_vehicles: list | None = None) -> dict:
+    """Execute a registered tool by name. Returns result dict.
+
+    ``scope_vehicles`` is the caller's effective allowed-vehicle set (None =
+    unrestricted).  For a scope-aware account-wide tool we inject it as
+    ``tool_args["_scope_vehicles"]`` so the tool filters its results to those
+    vehicles — letting a company/vehicle-restricted user get *their own*
+    fleet rollups instead of being blocked outright.
+    """
     handler = get_tool_handler(tool_name)
     if not handler:
         return {"error": f"Unknown tool: {tool_name}"}
+    if scope_vehicles is not None:
+        from capabilities.permissions.roles import SCOPE_AWARE_TOOLS
+        if tool_name in SCOPE_AWARE_TOOLS:
+            tool_args = {**tool_args, "_scope_vehicles": list(scope_vehicles)}
     try:
         return await handler(tool_args, samsara_client,
                              account_id=account_id, db=db)
