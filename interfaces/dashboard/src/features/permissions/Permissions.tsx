@@ -197,7 +197,7 @@ type Edits = Record<string, Record<string, boolean>>;
 
 interface Change { role: RoleId; label: string; from: string; to: string; granted: boolean }
 
-export default function RolePermissions() {
+export default function Permissions() {
   const { t } = useTranslation();
   const { refreshPermissions } = useRoleView();
   const { user: authUser, refreshUser } = useAuth();

@@ -96,7 +96,7 @@ const MyNotifications  = lazyWithReload(() => import('./features/alerts/MyNotifi
 const Storage          = lazyWithReload(() => import('./features/storage/Storage'));
 const WorkHours        = lazyWithReload(() => import('./features/settings/WorkHours'));
 const Invites          = lazyWithReload(() => import('./features/settings/Invites'));
-const RolePermissions  = lazyWithReload(() => import('./features/permissions/RolePermissions'));
+const Permissions      = lazyWithReload(() => import('./features/permissions/Permissions'));
 const ScorecardRules   = lazyWithReload(() => import('./features/driver-scorecards/ScorecardRules'));
 const Billing          = lazyWithReload(() => import('./features/billing/Billing'));
 const Payroll          = lazyWithReload(() => import('./features/payroll/Payroll'));
@@ -234,7 +234,7 @@ export default function AppRouter() {
         <Route path="profile" element={L(<Profile />)} />
         <Route path="notifications" element={L(<MyNotifications />)} />
         <Route path="storage"  element={L(<P perm="can_manage_storage"><Storage /></P>)} />
-        <Route path="permissions" element={L(<P perm="can_manage_permissions"><RolePermissions /></P>)} />
+        <Route path="permissions" element={L(<P perm="can_manage_permissions"><Permissions /></P>)} />
         <Route path="scorecard-rules" element={L(<P perm="can_manage_account"><ScorecardRules /></P>)} />
         <Route path="billing" element={L(<P perm="can_manage_billing"><Billing /></P>)} />
 

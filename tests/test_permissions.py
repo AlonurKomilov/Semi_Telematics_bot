@@ -213,13 +213,13 @@ class TestPermSsotDriftDetection:
     dashboard's Role Permissions admin UI.
 
     Every flag in ``FeatureSet`` must be customizable from the
-    dashboard's RolePermissions.tsx ``PERM_GROUPS`` constant.  When a
+    dashboard's Permissions.tsx ``PERM_GROUPS`` constant.  When a
     new flag is added to ``permissions.py`` but the admin UI is not
     updated, this test fails — preventing the regression that was
     found 2026-05-19 (4 flags were defined but invisible in the UI).
 
     A flag is considered "exposed" when its string name appears as a
-    quoted literal inside the PERM_GROUPS array of RolePermissions.tsx.
+    quoted literal inside the PERM_GROUPS array of Permissions.tsx.
     This is a substring match rather than an AST parse so the test
     works against the .tsx source without a TS toolchain.
     """
@@ -232,7 +232,7 @@ class TestPermSsotDriftDetection:
         repo_root = os.path.dirname(os.path.dirname(__file__))
         tsx_path = os.path.join(
             repo_root,
-            "interfaces/dashboard/src/features/permissions/RolePermissions.tsx",
+            "interfaces/dashboard/src/features/permissions/Permissions.tsx",
         )
         with open(tsx_path) as f:
             content = f.read()
@@ -245,7 +245,7 @@ class TestPermSsotDriftDetection:
             content,
             re.DOTALL,
         )
-        assert block, "Could not locate PERM_GROUPS in RolePermissions.tsx"
+        assert block, "Could not locate PERM_GROUPS in Permissions.tsx"
         groups_src = block.group(1)
 
         flag_names = [f.name for f in FeatureSet.__dataclass_fields__.values()]
@@ -253,6 +253,6 @@ class TestPermSsotDriftDetection:
 
         assert not missing, (
             f"FeatureSet flags missing from dashboard's PERM_GROUPS: {sorted(missing)}\n"
-            "Add them to interfaces/dashboard/src/features/permissions/RolePermissions.tsx "
+            "Add them to interfaces/dashboard/src/features/permissions/Permissions.tsx "
             "so admins can customize them per account."
         )
