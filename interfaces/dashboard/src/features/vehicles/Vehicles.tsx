@@ -17,7 +17,7 @@ import {
   useLoadingStage,
 } from '../../components/shell';
 import { useShellConfig } from '../../hooks/useShellConfig';
-import { usePermissions } from '../../hooks/usePermissions';
+import { useRoleView } from '../../context/RoleViewContext';
 import type { Vehicle, VehiclesResponse } from '../../types';
 import type { AnyColumn } from '../../types';
 import UtilizationSummary from './UtilizationSummary';
@@ -112,8 +112,16 @@ export default function Vehicles() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const navigate = useNavigate();
   const { persona } = useShellConfig();
-  const { has } = usePermissions();
-  const canManage = has('can_manage_vehicles');
+  // Gate on the ACTIVE VIEW's permission (viewHas), not the logged-in
+  // user's own (has).  Otherwise an Owner previewing the Fleet persona
+  // keeps Owner powers and still sees Add/Edit even when Manage
+  // Vehicles is unchecked for Fleet — a misleading preview.  viewHas
+  // resolves to the previewed persona's permission for an Owner/Admin
+  // who's switched view, and to the real user's own permission
+  // otherwise (so an actual Fleet user is gated correctly too).  The
+  // backend still enforces can_manage_vehicles on every write.
+  const { viewHas } = useRoleView();
+  const canManage = viewHas('can_manage_vehicles');
 
   // null = closed; {vehicle:null} = create; {vehicle:row} = edit.
   const [dialog, setDialog] = useState<{ vehicle: Vehicle | null } | null>(null);
