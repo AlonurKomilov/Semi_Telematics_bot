@@ -19,7 +19,7 @@ import { useEffect, useRef } from 'react';
 import type L from 'leaflet';
 import { apiJSON } from '../../../api/client';
 import { HEATMAP_GRADIENT } from '../../../config/mapColors';
-import { usePermissions } from '../../../hooks/usePermissions';
+import { useViewPermissions } from '../../../hooks/useViewPermissions';
 import type { LiveMapSectionProps } from './_shared/types';
 
 const DAYS = 30;
@@ -29,7 +29,7 @@ export default function UtilisationHeatmap({
   leafletMap,
   isReady,
 }: LiveMapSectionProps) {
-  const { has } = usePermissions();
+  const { has } = useViewPermissions();
   const hasAccess = has('can_vehicle_all');
   const layerRef = useRef<L.Layer | null>(null);
 

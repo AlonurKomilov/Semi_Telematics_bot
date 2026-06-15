@@ -23,7 +23,7 @@
 import { useEffect, useRef } from 'react';
 import type L from 'leaflet';
 import { apiJSON } from '../../../api/client';
-import { usePermissions } from '../../../hooks/usePermissions';
+import { useViewPermissions } from '../../../hooks/useViewPermissions';
 import { GEOFENCE } from '../../../config/mapColors';
 import type { GeofencesResponse, GeofenceFeature } from '../../../types';
 import type { LiveMapSectionProps } from './_shared/types';
@@ -42,7 +42,7 @@ export default function GeofenceBoundariesLayer({
   leafletMap,
   isReady,
 }: LiveMapSectionProps) {
-  const { has } = usePermissions();
+  const { has } = useViewPermissions();
   const hasGeofencePerm = has('can_geofence_all') || has('can_geofence_vehicle');
   const layerRef = useRef<L.LayerGroup | null>(null);
 

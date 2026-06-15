@@ -11,7 +11,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiJSON } from '../../../api/client';
 import { CardSkeleton } from '../../../components/shell';
-import { usePermissions } from '../../../hooks/usePermissions';
+import { useViewPermissions } from '../../../hooks/useViewPermissions';
 import type { HealthData, HealthResponse } from '../../../types';
 import { toneClasses } from '../../../lib/status';
 import { Row } from './_shared/Row';
@@ -37,7 +37,7 @@ interface FleetWeatherResponse {
 }
 
 export default function VehicleHealth({ vehicleName, company }: VehicleSectionProps) {
-  const { has } = usePermissions();
+  const { has } = useViewPermissions();
   const hasHealthPerm = has('can_health');
 
   const { data: health, isLoading: healthLoading } = useQuery<HealthResponse | null>({

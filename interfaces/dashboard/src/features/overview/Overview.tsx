@@ -18,7 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Truck } from 'lucide-react';
 import { apiJSON } from '../../api/client';
-import { usePermissions } from '../../hooks/usePermissions';
+import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { useShellConfig } from '../../hooks/useShellConfig';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -36,7 +36,7 @@ import DriverOverview from './DriverOverview';
 
 export default function Overview() {
   const navigate = useNavigate();
-  const { has } = usePermissions();
+  const { has } = useViewPermissions();
   const { user } = useAuth();
   // Page is the ONE place that reads persona; sections receive
   // pre-resolved config via sectionProps so they stay

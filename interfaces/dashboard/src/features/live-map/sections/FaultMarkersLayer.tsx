@@ -20,7 +20,7 @@
  */
 import { useEffect, useRef } from 'react';
 import type L from 'leaflet';
-import { usePermissions } from '../../../hooks/usePermissions';
+import { useViewPermissions } from '../../../hooks/useViewPermissions';
 import { MAP_STATUS } from '../../../config/mapColors';
 import type { LiveMapSectionProps } from './_shared/types';
 
@@ -37,7 +37,7 @@ export default function FaultMarkersLayer({
   isReady,
   vehicles,
 }: LiveMapSectionProps) {
-  const { has } = usePermissions();
+  const { has } = useViewPermissions();
   const hasFaultsPerm = has('can_faults');
   const layerRef = useRef<L.LayerGroup | null>(null);
 

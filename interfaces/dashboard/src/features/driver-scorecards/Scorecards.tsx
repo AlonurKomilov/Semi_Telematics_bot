@@ -19,7 +19,7 @@ import {
   useLoadingStage,
 } from '../../components/shell';
 import { useShellConfig } from '../../hooks/useShellConfig';
-import { usePermissions } from '../../hooks/usePermissions';
+import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { blocksForPersona } from '../../features/driver-scorecards/personaConfig';
 import { ScorecardRulesPanel } from './ScorecardRules';
 import type {
@@ -594,7 +594,7 @@ export default function Scorecards() {
   const blocks = blocksForPersona(persona);
   // Scorecard Rules is this feature's CONFIG component (docs/FEATURES.md)
   // — hosted as a Rules tab for admins; the scoreboard stays the default.
-  const { has } = usePermissions();
+  const { has } = useViewPermissions();
   const canRules = has('can_manage_account');
   const [pageTab, setPageTab] = useState<'scoreboard' | 'rules'>('scoreboard');
   // Default 30 days — matches Events, RiskSummary and Reports so the

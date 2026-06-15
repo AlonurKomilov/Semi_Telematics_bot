@@ -20,7 +20,7 @@
  */
 import { useEffect, useRef } from 'react';
 import type L from 'leaflet';
-import { usePermissions } from '../../../hooks/usePermissions';
+import { useViewPermissions } from '../../../hooks/useViewPermissions';
 import { COMPANY_PALETTE } from '../../../config/mapColors';
 import type { LiveMapSectionProps } from './_shared/types';
 
@@ -41,7 +41,7 @@ export default function CompanyColorPartition({
   isReady,
   vehicles,
 }: LiveMapSectionProps) {
-  const { has } = usePermissions();
+  const { has } = useViewPermissions();
   const hasMultiCompanyScope =
     has('can_manage_companies') || has('can_vehicle_all');
   const layerRef = useRef<L.LayerGroup | null>(null);

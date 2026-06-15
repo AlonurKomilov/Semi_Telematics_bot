@@ -21,7 +21,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type L from 'leaflet';
 import { apiJSON } from '../../../api/client';
-import { usePermissions } from '../../../hooks/usePermissions';
+import { useViewPermissions } from '../../../hooks/useViewPermissions';
 import { MAP_STATUS, POPUP_LINK } from '../../../config/mapColors';
 import type { LiveMapSectionProps } from './_shared/types';
 
@@ -47,7 +47,7 @@ export default function MaintenanceMarkersLayer({
   isReady,
   vehicles,
 }: LiveMapSectionProps) {
-  const { has } = usePermissions();
+  const { has } = useViewPermissions();
   const hasAccess =
     has('can_maintenance_all') || has('can_maintenance_vehicle');
   const [dueRows, setDueRows] = useState<DueRow[]>([]);

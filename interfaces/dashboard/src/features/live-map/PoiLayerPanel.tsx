@@ -12,7 +12,7 @@ import type L from 'leaflet';
 import { POI_GROUPS } from '@/config/poiLayers';
 import type { PoiLayerDef } from '@/config/poiLayers';
 import type { UsePoiLayersResult, PoiFeature } from '@/hooks/usePoiLayers';
-import { usePermissions } from '@/hooks/usePermissions';
+import { useViewPermissions } from '@/hooks/useViewPermissions';
 import { apiFetch } from '@/api/client';
 import CustomLayerEditor from './CustomLayerEditor';
 
@@ -74,7 +74,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
     brandFilters, toggleBrand, presentBrands, allFeatures,
     effectiveLayers, refreshCustomLayers,
   } = poiHook;
-  const { has } = usePermissions();
+  const { has } = useViewPermissions();
   const canManage = has('can_manage_poi_layers');
 
   // Collapsed by default — the live-map opens cleaner; the user

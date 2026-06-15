@@ -18,7 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiJSON } from '../../../api/client';
 import { CardSkeleton } from '../../../components/shell';
-import { usePermissions } from '../../../hooks/usePermissions';
+import { useViewPermissions } from '../../../hooks/useViewPermissions';
 import { formatAIResponse } from '../../../utils/formatAI';
 import type {
   AIDiagnoseResponse,
@@ -29,7 +29,7 @@ import type {
 import type { VehicleSectionProps } from './_shared/types';
 
 export default function VehicleFaults({ vehicleName, company }: VehicleSectionProps) {
-  const { has } = usePermissions();
+  const { has } = useViewPermissions();
   const navigate = useNavigate();
   const hasFaultsPerm = has('can_faults');
 

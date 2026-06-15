@@ -18,7 +18,7 @@
 import { useEffect, useRef } from 'react';
 import type L from 'leaflet';
 import { apiJSON } from '../../../api/client';
-import { usePermissions } from '../../../hooks/usePermissions';
+import { useViewPermissions } from '../../../hooks/useViewPermissions';
 import type { LiveMapSectionProps } from './_shared/types';
 
 export default function SafetyEventOverlay({
@@ -26,7 +26,7 @@ export default function SafetyEventOverlay({
   isReady,
   heatOn,
 }: LiveMapSectionProps) {
-  const { has } = usePermissions();
+  const { has } = useViewPermissions();
   const hasEventsPerm = has('can_events_all') || has('can_events_vehicle');
   const layerRef = useRef<L.Layer | null>(null);
 

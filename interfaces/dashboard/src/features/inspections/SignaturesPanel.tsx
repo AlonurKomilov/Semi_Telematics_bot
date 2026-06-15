@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { PenLine } from 'lucide-react';
 import { apiJSON } from '../../api/client';
-import { usePermissions } from '../../hooks/usePermissions';
+import { useViewPermissions } from '../../hooks/useViewPermissions';
 import type { PTIInspectionDetail } from '../../types';
 import { SignaturePad } from './SignaturePad';
 
@@ -74,7 +74,7 @@ function SignatureBox({
 
 export function SignaturesPanel({ inspection: ins, onSigned }: Props) {
   const { t } = useTranslation();
-  const { has } = usePermissions();
+  const { has } = useViewPermissions();
   const [signing, setSigning] = useState(false);
   const [saving, setSaving] = useState(false);
 

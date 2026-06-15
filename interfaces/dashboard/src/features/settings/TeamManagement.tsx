@@ -18,7 +18,7 @@ import {
   TableSkeleton,
 } from '../../components/shell';
 import { toneClasses } from '../../lib/status';
-import { usePermissions } from '../../hooks/usePermissions';
+import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { InvitesPanel } from './Invites';
 import { WorkHoursPanel } from './WorkHours';
 import type { AdminUser, AnyColumn } from '../../types';
@@ -230,7 +230,7 @@ export default function TeamManagement() {
   // lives under one nav entry.  Gated on can_manage_work_hours —
   // the Settings component's own delegation flag.
   const [pageTab, setPageTab] = useState<'members' | 'invites' | 'working-hours'>('members');
-  const { has } = usePermissions();
+  const { has } = useViewPermissions();
   const canInvite = has('can_invite');
   const canManageWorkHours = has('can_manage_work_hours');
 

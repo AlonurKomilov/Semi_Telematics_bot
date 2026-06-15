@@ -34,7 +34,7 @@ import {
   X, ExternalLink, Truck, BarChart3, GraduationCap, Video,
 } from 'lucide-react';
 import { apiJSON, ApiError } from '../../../api/client';
-import { usePermissions } from '../../../hooks/usePermissions';
+import { useViewPermissions } from '../../../hooks/useViewPermissions';
 import { useAlertsSelection } from '../_shared/AlertsSelectionContext';
 import {
   TypeBadge, SeverityDot,
@@ -125,7 +125,7 @@ function DrawerHeader({ alert, onClose }: {
 
 function DrawerBody({ alert }: { alert: Alert }) {
   const { t } = useTranslation();
-  const { has, hasAny } = usePermissions();
+  const { has, hasAny } = useViewPermissions();
   const description = formatAlertDescription(
     alert as Alert & { last_detail?: string; message?: string },
   );

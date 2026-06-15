@@ -19,7 +19,7 @@
 import { useEffect, useRef } from 'react';
 import type L from 'leaflet';
 import { apiJSON } from '../../../api/client';
-import { usePermissions } from '../../../hooks/usePermissions';
+import { useViewPermissions } from '../../../hooks/useViewPermissions';
 import { MAP_STATUS, POPUP_LINK } from '../../../config/mapColors';
 import type { ParkingEventsResponse } from '../../../types';
 import type { LiveMapSectionProps } from './_shared/types';
@@ -30,7 +30,7 @@ export default function UnsafeParkingMarkers({
   leafletMap,
   isReady,
 }: LiveMapSectionProps) {
-  const { has } = usePermissions();
+  const { has } = useViewPermissions();
   const hasAccess =
     has('can_alerts_all') || has('can_alerts_vehicle') || has('can_vehicle_all');
   const layerRef = useRef<L.LayerGroup | null>(null);

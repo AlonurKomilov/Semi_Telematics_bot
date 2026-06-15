@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MapPin, Plus } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
-import { usePermissions } from '../../hooks/usePermissions';
+import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { useShellConfig } from '../../hooks/useShellConfig';
 import { useLeafletMap } from '../../hooks/useLeafletMap';
 import { usePoiLayers } from '../../hooks/usePoiLayers';
@@ -65,7 +65,7 @@ const DEFAULT_FORM: AddZoneForm = {
 
 export default function Geofences() {
   const { t } = useTranslation();
-  const { has, role } = usePermissions();
+  const { has, role } = useViewPermissions();
   const canManage = has('can_geofence_all');
   const { isOwner } = useShellConfig();
 

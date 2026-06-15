@@ -10,12 +10,12 @@
  * concern).  Layout-wise this section lives in Fleet + Safety
  * persona layouts.
  */
-import { usePermissions } from '../../../hooks/usePermissions';
+import { useViewPermissions } from '../../../hooks/useViewPermissions';
 import { VehicleInspectionsCard } from '../VehicleInspectionsCard';
 import type { VehicleSectionProps } from './_shared/types';
 
 export default function VehicleInspections({ vehicleName }: VehicleSectionProps) {
-  const { has } = usePermissions();
+  const { has } = useViewPermissions();
   if (!has('can_inspections_all')) return null;
   return (
     <div className="mt-6 lg:col-span-2">
