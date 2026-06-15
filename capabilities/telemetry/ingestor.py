@@ -1181,7 +1181,7 @@ async def ingest_fleet_weather(account_id: int) -> int:
         logger.exception("ingest_fleet_weather: get_fleet_weather failed acct=%d", account_id)
         return 0
     rows = [_weather_to_snapshot_row(v) for v in weather]
-    n = await tenant.upsert_fleet_weather_snapshots(account_id, rows)
+    n = await tenant.upsert_aggregate_weather_snapshots(account_id, rows)
     logger.info("ingest_fleet_weather acct=%d persisted=%d", account_id, n)
     return n
 
@@ -1216,7 +1216,7 @@ async def ingest_fleet_efficiency(account_id: int, *, days: int = 7) -> int:
     except Exception:
         logger.exception("ingest_fleet_efficiency: get_fleet_efficiency failed acct=%d days=%d", account_id, days)
         return 0
-    n = await tenant.upsert_fleet_efficiency_snapshot(
+    n = await tenant.upsert_aggregate_efficiency_snapshot(
         account_id, window_days=days, company_code="", payload=payload,
     )
     logger.info("ingest_fleet_efficiency acct=%d days=%d rows=%d", account_id, days, n)

@@ -4200,6 +4200,61 @@ async def migrate_settings_component_flags(conn) -> None:
         raise
 
 
+@_register("106_rename_fleet_aggregate_snapshots")
+async def migrate_rename_fleet_snapshots(conn) -> None:
+    """Rename the two fleet-wide aggregate snapshot tables to
+    ``aggregate_*`` for naming consistency with the rest of the
+    fleet→vehicle/aggregate rename.
+
+    ``ALTER TABLE … RENAME`` (not copy) is deliberate: in Postgres the
+    tenant_isolation RLS policy (applied to the old names by migration
+    057) **and** the indexes follow the table through a rename
+    automatically — no policy rewrite, no data copy, no downtime.
+
+    Ordering: registered after the creating migration (which makes
+    ``fleet_*_snapshot``) and after 057 (which RLS-es them), so on a
+    fresh DB the old-named table exists *with its policy* by the time
+    this runs, and the rename carries the policy + indexes onto the new
+    name.  On an existing DB the populated table is renamed in place
+    (these are ephemeral 10–30 min snapshots, so even the brief instant
+    is invisible — the next ingest writes to the new name).
+
+    Idempotent: a table already renamed (old name absent) is skipped,
+    so re-runs and fresh installs both converge.
+
+    Rollback note: this codebase has no down-migration framework.  To
+    revert, ``git revert`` the code commit AND add a reverse-rename
+    migration — or just let the ingestor repopulate, since the data is
+    ephemeral.  (This is the DB-table caveat I flagged before stage 4.)
+    """
+    renames = [
+        ("fleet_weather_snapshot",    "aggregate_weather_snapshot"),
+        ("fleet_efficiency_snapshot", "aggregate_efficiency_snapshot"),
+    ]
+    for old, new in renames:
+        try:
+            cur = await conn.execute(f"SELECT to_regclass('{old}')")
+            row = await cur.fetchone()
+            if not row or row[0] is None:
+                continue  # already renamed / never created — idempotent
+            await conn.execute(f"ALTER TABLE {old} RENAME TO {new}")
+            logger.info("Migration 106: renamed %s → %s", old, new)
+        except Exception as e:
+            logger.warning("Migration 106: rename %s skipped (%s)", old, e)
+
+    # Tidy the one explicitly-named index so it matches the new table.
+    try:
+        cur = await conn.execute("SELECT to_regclass('idx_fleet_weather_company')")
+        row = await cur.fetchone()
+        if row and row[0] is not None:
+            await conn.execute(
+                "ALTER INDEX idx_fleet_weather_company "
+                "RENAME TO idx_aggregate_weather_company"
+            )
+    except Exception as e:
+        logger.warning("Migration 106: index rename skipped (%s)", e)
+
+
 @_register("103_datatruck_tables_rls")
 async def migrate_datatruck_tables_rls(conn) -> None:
     """Apply the tenant_isolation RLS policy to the five

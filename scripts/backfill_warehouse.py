@@ -73,20 +73,20 @@ async def _run_for(account_id: int, *, skip_events: bool, skip_efficiency: bool)
     except Exception:
         logger.exception("  vehicle_fault_snapshot   FAILED \u2014 continuing")
 
-    # Weather (10min in prod) \u2014 fleet_weather_snapshot powers Weather page.
+    # Weather (10min in prod) \u2014 aggregate_weather_snapshot powers Weather page.
     try:
         n = await ingest_fleet_weather(account_id)
-        logger.info("  fleet_weather_snapshot   %d rows", n)
+        logger.info("  aggregate_weather_snapshot   %d rows", n)
     except Exception:
-        logger.exception("  fleet_weather_snapshot   FAILED \u2014 continuing")
+        logger.exception("  aggregate_weather_snapshot   FAILED \u2014 continuing")
 
-    # Fleet efficiency (30min in prod) \u2014 fleet_efficiency_snapshot
+    # Fleet efficiency (30min in prod) \u2014 aggregate_efficiency_snapshot
     # powers Cost-per-Mile + Scorecards.
     try:
         n = await ingest_fleet_efficiency(account_id, days=7)
-        logger.info("  fleet_efficiency_snapshot %d rows", n)
+        logger.info("  aggregate_efficiency_snapshot %d rows", n)
     except Exception:
-        logger.exception("  fleet_efficiency_snapshot FAILED \u2014 continuing")
+        logger.exception("  aggregate_efficiency_snapshot FAILED \u2014 continuing")
 
     # Geofences (1h in prod) \u2014 geofence_definitions powers map overlays.
     try:

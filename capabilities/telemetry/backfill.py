@@ -13,7 +13,7 @@ Idempotency / dedup guarantees:
       and the writer uses ``ON CONFLICT … DO UPDATE`` — re-running
       refreshes the row, never creates a second one.
     * ``vehicle_state`` / ``vehicle_health_snapshot`` /
-      ``vehicle_fault_snapshot`` / ``fleet_weather_snapshot`` are
+      ``vehicle_fault_snapshot`` / ``aggregate_weather_snapshot`` are
       keyed on ``vehicle_id`` and ``ON CONFLICT DO UPDATE`` —
       snapshot-style, latest value wins.
 

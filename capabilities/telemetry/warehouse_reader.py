@@ -502,9 +502,9 @@ async def get_fleet_weather(
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         return await samsara_fallback() if samsara_fallback else []
-    rows = await tenant.get_fleet_weather_snapshots(account_id, company=company)
+    rows = await tenant.get_aggregate_weather_snapshots(account_id, company=company)
     if not rows and samsara_fallback is not None:
-        logger.info("warehouse cold (fleet_weather_snapshot empty) for acct=%d \u2014 using live", account_id)
+        logger.info("warehouse cold (aggregate_weather_snapshot empty) for acct=%d \u2014 using live", account_id)
         return await samsara_fallback()
     return rows
 
@@ -533,11 +533,11 @@ async def get_fleet_efficiency(
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         return await samsara_fallback() if samsara_fallback else []
-    payload = await tenant.get_fleet_efficiency_snapshot(
+    payload = await tenant.get_aggregate_efficiency_snapshot(
         account_id, window_days=days, company_code="",
     )
     if not payload and samsara_fallback is not None:
-        logger.info("warehouse cold (fleet_efficiency_snapshot empty) for acct=%d days=%d \u2014 using live", account_id, days)
+        logger.info("warehouse cold (aggregate_efficiency_snapshot empty) for acct=%d days=%d \u2014 using live", account_id, days)
         return await samsara_fallback()
     if company:
         payload = [r for r in payload if (r.get("_org") or r.get("company_code")) == company]

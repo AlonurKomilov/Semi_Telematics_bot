@@ -39,7 +39,7 @@ async def get_fleet_weather(
 ) -> list[dict]:
     """Fetch ambient temperature readings from vehicle sensors.
 
-    Warehouse-first: reads ``fleet_weather_snapshot`` (5-min-fresh) when
+    Warehouse-first: reads ``aggregate_weather_snapshot`` (5-min-fresh) when
     WAREHOUSE_READS_ENABLED=1, falls back to live Samsara otherwise.
     """
     await prepare_companies(account_id)
@@ -61,7 +61,7 @@ async def get_fleet_efficiency(
 ) -> list[dict]:
     """Fetch combined vehicle + driver efficiency data.
 
-    Warehouse-first: reads ``fleet_efficiency_snapshot`` (hourly fresh)
+    Warehouse-first: reads ``aggregate_efficiency_snapshot`` (hourly fresh)
     when WAREHOUSE_READS_ENABLED=1, falls back to live Samsara otherwise.
     """
     await prepare_companies(account_id)

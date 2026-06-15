@@ -1840,9 +1840,9 @@ class WarehouseMixin(_MixinBase):
         )
         return {row[0] for row in await cur.fetchall()}
 
-    # ── fleet_weather_snapshot ─────────────────────────────
+    # ── aggregate_weather_snapshot ─────────────────────────────
 
-    async def upsert_fleet_weather_snapshots(
+    async def upsert_aggregate_weather_snapshots(
         self,
         account_id: int,
         rows: Iterable[dict[str, Any]],
@@ -1867,7 +1867,7 @@ class WarehouseMixin(_MixinBase):
         if values:
             await self._db.executemany(
                 """
-                INSERT INTO fleet_weather_snapshot (
+                INSERT INTO aggregate_weather_snapshot (
                     vehicle_id, account_id, vehicle_name, company_code,
                     temp_f, raw_json, captured_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -1887,14 +1887,14 @@ class WarehouseMixin(_MixinBase):
         if seen:
             placeholders = ",".join("?" * len(seen))
             await self._db.execute(
-                f"DELETE FROM fleet_weather_snapshot "
+                f"DELETE FROM aggregate_weather_snapshot "
                 f"WHERE account_id = ? AND vehicle_id NOT IN ({placeholders})",
                 (account_id, *seen),
             )
         await self._db.commit()
         return len(values)
 
-    async def get_fleet_weather_snapshots(
+    async def get_aggregate_weather_snapshots(
         self,
         account_id: int,
         *,
@@ -1908,7 +1908,7 @@ class WarehouseMixin(_MixinBase):
         cur = await self._db.execute(
             f"""
             SELECT raw_json, vehicle_name, company_code, temp_f
-            FROM fleet_weather_snapshot
+            FROM aggregate_weather_snapshot
             WHERE {' AND '.join(where)}
             ORDER BY temp_f ASC
             """,
@@ -1926,9 +1926,9 @@ class WarehouseMixin(_MixinBase):
             out.append(d)
         return out
 
-    # ── fleet_efficiency_snapshot ──────────────────────────
+    # ── aggregate_efficiency_snapshot ──────────────────────────
 
-    async def upsert_fleet_efficiency_snapshot(
+    async def upsert_aggregate_efficiency_snapshot(
         self,
         account_id: int,
         *,
@@ -1939,7 +1939,7 @@ class WarehouseMixin(_MixinBase):
         ts = _now_iso()
         await self._db.execute(
             """
-            INSERT INTO fleet_efficiency_snapshot (
+            INSERT INTO aggregate_efficiency_snapshot (
                 account_id, window_days, company_code,
                 payload_json, captured_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?)
@@ -1956,7 +1956,7 @@ class WarehouseMixin(_MixinBase):
         await self._db.commit()
         return len(payload)
 
-    async def get_fleet_efficiency_snapshot(
+    async def get_aggregate_efficiency_snapshot(
         self,
         account_id: int,
         *,
@@ -1965,7 +1965,7 @@ class WarehouseMixin(_MixinBase):
     ) -> list[dict[str, Any]]:
         cur = await self._db.execute(
             """
-            SELECT payload_json FROM fleet_efficiency_snapshot
+            SELECT payload_json FROM aggregate_efficiency_snapshot
             WHERE account_id = ? AND window_days = ? AND company_code = ?
             """,
             (account_id, int(window_days), str(company_code or "")),
