@@ -8,7 +8,7 @@ URL history: was /fleet/geofences (+legacy /map/geofences) until 2026-06-11; now
 """
 # router.py is interface-layer code co-located with its feature
 # (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
-# service/alert/tool/signal modules never do.
+# service/alert/ai_tool/signal modules never do.
 
 
 from __future__ import annotations

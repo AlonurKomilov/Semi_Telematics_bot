@@ -17,7 +17,7 @@ Drive ships, only the factory function changes; this code is unchanged.
 """
 # router.py is interface-layer code co-located with its feature
 # (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
-# service/alert/tool/signal modules never do.
+# service/alert/ai_tool/signal modules never do.
 
 
 from __future__ import annotations

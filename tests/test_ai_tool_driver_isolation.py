@@ -57,7 +57,16 @@ class TestDriverOmittedVehicleName:
             result = await _check_tool_permission(tool, {}, "owner", {})
             assert result is None
 
-    async def test_driver_still_blocked_on_account_wide_tools(self):
-        result = await _check_tool_permission("get_alert_history", {}, "driver", DRIVER_CTX)
-        assert result is not None
-        assert "fleet-wide" in result["error"]
+    async def test_driver_scope_aware_tool_allowed_role_denied_tool_blocked(self):
+        # get_alert_history is now SCOPE-AWARE: a driver is allowed it and the
+        # results are filtered to their assigned vehicle (better than the old
+        # blanket block — drivers have can_alerts_vehicle for their own truck).
+        assert await _check_tool_permission(
+            "get_alert_history", {}, "driver", DRIVER_CTX,
+        ) is None
+        # A fleet-only tool the driver has NO permission for is still denied.
+        denied = await _check_tool_permission(
+            "get_drivers_list", {}, "driver", DRIVER_CTX,
+        )
+        assert denied is not None
+        assert "cannot use" in denied["error"]

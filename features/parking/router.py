@@ -4,7 +4,7 @@ URL history: the utilisation heatmap was /fleet/utilisation/heatmap until 2026-0
 """
 # router.py is interface-layer code co-located with its feature
 # (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
-# service/alert/tool/signal modules never do.
+# service/alert/ai_tool/signal modules never do.
 
 
 import os

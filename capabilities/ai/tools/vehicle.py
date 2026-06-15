@@ -4,25 +4,25 @@ from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
 from features.vehicles.service import (
-    get_vehicles_overview as _svc_fleet,
+    get_vehicles_overview as _svc_vehicles,
     get_vehicle_detail as _svc_detail,
 )
 from capabilities.telemetry.service import get_engine_states as _svc_engine_states
 
 
-def _apply_scope(fleet: list[dict], tool_args: dict) -> list[dict]:
-    """Restrict a fleet list to the caller's Vehicle-Access scope.
+def _apply_scope(vehicles: list[dict], tool_args: dict) -> list[dict]:
+    """Restrict a vehicle list to the caller's Vehicle-Access scope.
 
     The orchestrator injects ``_scope_vehicles`` for company/vehicle-restricted
     users (``None`` = unrestricted; an even-empty list = restrict to exactly
     it).  Keeps only vehicles whose name is in the allowed set so a scoped user
-    never sees another company's trucks in fleet-wide results.
+    never sees another company's trucks in account-wide results.
     """
     scope = tool_args.get("_scope_vehicles")
     if scope is None:
-        return fleet
+        return vehicles
     allowed = {str(x).strip().lower() for x in scope if x}
-    return [v for v in fleet if (v.get("name") or "").strip().lower() in allowed]
+    return [v for v in vehicles if (v.get("name") or "").strip().lower() in allowed]
 
 
 @register_tool({
@@ -121,7 +121,7 @@ async def get_rolling_stopped(tool_args: dict, samsara_client,
                               account_id: int | None = None, db=None) -> dict:
     if account_id is None:
         return {"error": "This tool requires account context."}
-    fleet = _apply_scope(await _svc_fleet(account_id), tool_args)
+    vehicles = _apply_scope(await _svc_vehicles(account_id), tool_args)
     engine_states = await _svc_engine_states(account_id)
     # Index engine states by vehicle ID
     state_by_id: dict[str, str] = {}
@@ -131,7 +131,7 @@ async def get_rolling_stopped(tool_args: dict, samsara_client,
         val = eng.get("value", "Off") if isinstance(eng, dict) else "Off"
         state_by_id[vid] = val
     rolling, idling, off = [], [], []
-    for v in fleet:
+    for v in vehicles:
         vid = v.get("id", "")
         name = v.get("name", "?")
         loc = v.get("location", {})
@@ -194,7 +194,7 @@ async def search_vehicles(tool_args: dict, samsara_client,
 
     if account_id is None:
         return {"error": "This tool requires account context."}
-    fleet = _apply_scope(await _svc_fleet(account_id), tool_args)
+    vehicles = _apply_scope(await _svc_vehicles(account_id), tool_args)
 
     # Only fetch engine states when status filter is requested
     state_by_id: dict[str, str] = {}
@@ -207,7 +207,7 @@ async def search_vehicles(tool_args: dict, samsara_client,
             state_by_id[vid] = val
 
     results = []
-    for v in fleet:
+    for v in vehicles:
         name = v.get("name", "")
         loc = v.get("location", {})
         city_str = loc.get("reverseGeo", {}).get("formattedLocation", "").lower()

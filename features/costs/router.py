@@ -1,7 +1,7 @@
 """Costs API endpoints — fuel cost tracking + cost-per-mile."""
 # router.py is interface-layer code co-located with its feature
 # (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
-# service/alert/tool/signal modules never do.
+# service/alert/ai_tool/signal modules never do.
 
 
 from fastapi import APIRouter, Depends, Query

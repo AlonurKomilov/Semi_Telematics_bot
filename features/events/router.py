@@ -2,7 +2,7 @@
 
 router.py is interface-layer code co-located with its feature
 (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
-service/alert/tool/signal never do.  Paths keep the historical
+service/alert/ai_tool/signal never do.  Paths keep the historical
 ``/safety`` prefix so URLs (and the frontend) are unchanged.
 """
 
