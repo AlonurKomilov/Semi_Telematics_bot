@@ -23,7 +23,7 @@ import {
   type Priority,
 } from './badges';
 import TypePicker from './TypePicker';
-import { VehiclePicker, MilesPicker, HoursPicker, DaysPicker, type FleetVehicle } from './pickers';
+import { VehiclePicker, MilesPicker, HoursPicker, DaysPicker, type VehicleSummary } from './pickers';
 import { CalendarMonth } from './CalendarMonth';
 import { toneClasses } from '@/lib/status';
 import { ServiceHistoryModal } from './ServiceHistoryModal';
@@ -378,14 +378,14 @@ export default function Tasks() {
   // Walks all pages — backend caps page_size at 200, so the picker
   // used to silently truncate on fleets >200 vehicles.  Sequential
   // paging keeps the simple-fleet case (<200) at one round-trip.
-  const { data: fleetData, isLoading: fleetLoading } = useQuery({
-    queryKey: ['maintenance-fleet-vehicles'],
+  const { data: vehiclesData, isLoading: fleetLoading } = useQuery({
+    queryKey: ['maintenance-vehicles'],
     queryFn: async () => {
-      const all: FleetVehicle[] = [];
+      const all: VehicleSummary[] = [];
       let page = 1;
       while (true) {
         const res = await apiJSON<{
-          vehicles: FleetVehicle[];
+          vehicles: VehicleSummary[];
           total_pages: number;
         }>(`/vehicles?page_size=200&page=${page}`);
         all.push(...(res.vehicles ?? []));
@@ -396,7 +396,7 @@ export default function Tasks() {
     },
     enabled: showAdd,
   });
-  const fleetVehicles = fleetData?.vehicles ?? [];
+  const vehicleList = vehiclesData?.vehicles ?? [];
 
   // Templates dropdown — fetched whenever the add form is open so
   // applying a template doesn't need an extra round-trip.  Same cache
@@ -1389,10 +1389,10 @@ export default function Tasks() {
                 {fleetLoading && (
                   <span className="text-xs text-muted-foreground">Loading…</span>
                 )}
-                {!fleetLoading && fleetVehicles.length === 0 && (
+                {!fleetLoading && vehicleList.length === 0 && (
                   <span className="text-xs text-muted-foreground">No vehicles found.</span>
                 )}
-                {fleetVehicles.map(v => {
+                {vehicleList.map(v => {
                   const on = fMultiVehicles.has(v.name);
                   return (
                     <button
@@ -1431,7 +1431,7 @@ export default function Tasks() {
               <span className="block text-xs text-muted-foreground mb-1">Vehicle</span>
               <VehiclePicker
                 value={fVehicle}
-                vehicles={fleetVehicles}
+                vehicles={vehicleList}
                 loading={fleetLoading}
                 onChange={(name, vehicle) => {
                   setFVehicle(name);

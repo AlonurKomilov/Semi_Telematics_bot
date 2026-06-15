@@ -119,7 +119,7 @@ function UserAvatar({ userId, name, size = 48, active = true }: { userId: number
   );
 }
 
-interface FleetVehicle {
+interface VehicleSummary {
   name: string;
   company?: string;
 }
@@ -317,8 +317,8 @@ export default function TeamManagement() {
   }, [usersError]);
 
   // Truck autocomplete — cached for 60s as configured globally; harmless if it fails.
-  const { data: fleetData } = useQuery({
-    queryKey: ['admin-users-fleet-vehicles'],
+  const { data: vehiclesData } = useQuery({
+    queryKey: ['admin-users-vehicles'],
     // Fetch ALL vehicles — picker needs the complete list so "Select
     // All" actually selects all.  Backend caps page_size at 200
     // (interfaces/api/routes/vehicles.py:221 ``le=200``) so we
@@ -328,11 +328,11 @@ export default function TeamManagement() {
     // <200 vehicles → single round-trip; the loop only fires a
     // second/third request for the rare 200+ fleet.
     queryFn: async () => {
-      const all: FleetVehicle[] = [];
+      const all: VehicleSummary[] = [];
       let page = 1;
       while (true) {
         const res = await apiJSON<{
-          vehicles: FleetVehicle[];
+          vehicles: VehicleSummary[];
           total_pages: number;
         }>(`/vehicles?page_size=200&page=${page}`);
         all.push(...(res.vehicles ?? []));
@@ -342,7 +342,7 @@ export default function TeamManagement() {
       return { vehicles: all };
     },
   });
-  const fleetVehicles = fleetData?.vehicles ?? [];
+  const vehicleList = vehiclesData?.vehicles ?? [];
 
   // Working Hours catalog — fetched so the drawer Settings tab can
   // render the schedule dropdown (admin assigns a user to one of
@@ -429,16 +429,16 @@ export default function TeamManagement() {
 
   // Vehicles filtered by selected companies
   const companyFilteredVehicles = useMemo(() => {
-    if (unrestricted) return fleetVehicles;
+    if (unrestricted) return vehicleList;
     if (editCompanyIds.length === 0) return [];
     const selectedCodes = new Set(
       allCompanies.filter(c => editCompanyIds.includes(c.id)).map(c => c.code.toUpperCase())
     );
-    return fleetVehicles.filter(v => {
+    return vehicleList.filter(v => {
       const vCompany = (v.company || '').toUpperCase();
       return selectedCodes.has(vCompany);
     });
-  }, [fleetVehicles, unrestricted, editCompanyIds, allCompanies]);
+  }, [vehicleList, unrestricted, editCompanyIds, allCompanies]);
 
   // Sync editVehicles when selecting a user
   useEffect(() => {
@@ -522,7 +522,7 @@ export default function TeamManagement() {
         // the company isolation when the operator later widens the
         // user's role.
         const carrierCodes = new Set(
-          fleetVehicles
+          vehicleList
             .filter(v => uniqueTrucks.includes(v.name) && v.company)
             .map(v => (v.company as string).toUpperCase()),
         );
@@ -979,20 +979,20 @@ export default function TeamManagement() {
                                     ? 'Pick the vehicles this user can access:'
                                     : `${editVehicles.length} selected`}
                                 </p>
-                                {fleetVehicles.length > 0 && (
+                                {vehicleList.length > 0 && (
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      if (editVehicles.length === fleetVehicles.length) setEditVehicles([]);
-                                      else setEditVehicles(fleetVehicles.map(v => v.name));
+                                      if (editVehicles.length === vehicleList.length) setEditVehicles([]);
+                                      else setEditVehicles(vehicleList.map(v => v.name));
                                     }}
                                     className="text-3xs text-primary hover:text-primary/80 uppercase tracking-wider"
                                   >
-                                    {editVehicles.length === fleetVehicles.length ? 'Deselect All' : 'Select All'}
+                                    {editVehicles.length === vehicleList.length ? 'Deselect All' : 'Select All'}
                                   </button>
                                 )}
                               </div>
-                              {fleetVehicles.length === 0 ? (
+                              {vehicleList.length === 0 ? (
                                 <p className="text-xs text-muted-foreground italic py-4 text-center bg-muted/30 rounded-lg">No vehicles found</p>
                               ) : (
                                 <>
@@ -1011,7 +1011,7 @@ export default function TeamManagement() {
                                   </div>
                                   <div className="space-y-1.5 max-h-64 overflow-y-auto">
                                     {(() => {
-                                      const filtered = fleetVehicles
+                                      const filtered = vehicleList
                                         .filter(v => !vehicleQuery.trim() || v.name.toLowerCase().includes(vehicleQuery.toLowerCase()));
                                       if (filtered.length === 0) {
                                         return (

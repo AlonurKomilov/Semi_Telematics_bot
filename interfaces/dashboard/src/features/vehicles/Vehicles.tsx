@@ -158,7 +158,7 @@ export default function Vehicles() {
     refetch,
     dataUpdatedAt,
   } = useQuery<VehiclesResponse>({
-    queryKey: ['fleet-vehicles', statusFilter],
+    queryKey: ['vehicles', statusFilter],
     queryFn: () => {
       const params = new URLSearchParams();
       if (statusFilter !== 'all') params.set('status', statusFilter);

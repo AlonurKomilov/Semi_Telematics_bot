@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { VehiclePicker, type FleetVehicle } from '@/features/maintenance/pickers';
+import { VehiclePicker, type VehicleSummary } from '@/features/maintenance/pickers';
 import { Link as LinkIcon, Plus, Trash2, Copy, Check, Loader2, TimerReset, Search, Mail, Send, ChevronDown, AlertCircle, ShieldAlert } from 'lucide-react';
 import {
   DropdownMenu,
@@ -119,9 +119,9 @@ export function InvitesPanel() {
   const [role, setRole] = useState('fleet');
   const [truckNum, setTruckNum] = useState('');
   // Selected vehicle for driver invites — picker writes the vehicle
-  // name to truckNum on select; we mirror the FleetVehicle here so
+  // name to truckNum on select; we mirror the VehicleSummary here so
   // re-opening the dialog can pre-select the same row visually.
-  const [pickedVehicle, setPickedVehicle] = useState<FleetVehicle | null>(null);
+  const [pickedVehicle, setPickedVehicle] = useState<VehicleSummary | null>(null);
 
   // Fleet vehicles for the picker (driver role only).  Walks all
   // pages — backend caps page_size at 200 so for fleets >200 a
@@ -131,11 +131,11 @@ export function InvitesPanel() {
   const { data: vehiclesData, isLoading: vehiclesLoading } = useQuery({
     queryKey: ['invite-vehicle-picker'],
     queryFn: async () => {
-      const all: FleetVehicle[] = [];
+      const all: VehicleSummary[] = [];
       let page = 1;
       while (true) {
         const res = await apiJSON<{
-          vehicles: FleetVehicle[];
+          vehicles: VehicleSummary[];
           total_pages: number;
         }>(`/vehicles?page_size=200&page=${page}`);
         all.push(...(res.vehicles ?? []));
@@ -146,7 +146,7 @@ export function InvitesPanel() {
     },
     staleTime: 60_000,
   });
-  const fleetVehicles = vehiclesData?.vehicles ?? [];
+  const vehicleList = vehiclesData?.vehicles ?? [];
   const [hours, setHours] = useState(24);
   const [creating, setCreating] = useState(false);
   // Send-via channel for the create form.  Three options:
@@ -1250,7 +1250,7 @@ export function InvitesPanel() {
                       setTruckNum(name);
                       setPickedVehicle(vehicle);
                     }}
-                    vehicles={fleetVehicles}
+                    vehicles={vehicleList}
                     loading={vehiclesLoading}
                   />
                   <p className="text-2xs text-muted-foreground mt-1">

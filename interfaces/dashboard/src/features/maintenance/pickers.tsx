@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-export interface FleetVehicle {
+export interface VehicleSummary {
   name: string;
   company: string;
   status: string;
@@ -25,8 +25,8 @@ export function VehiclePicker({
   loading: fleetLoading,
 }: {
   value: string;
-  onChange: (name: string, vehicle: FleetVehicle | null) => void;
-  vehicles: FleetVehicle[];
+  onChange: (name: string, vehicle: VehicleSummary | null) => void;
+  vehicles: VehicleSummary[];
   loading: boolean;
 }) {
   const [query, setQuery] = useState(value);
@@ -49,7 +49,7 @@ export function VehiclePicker({
   // a row, which is confusing and breaks the React key.
   const deduped = (() => {
     const seen = new Set<string>();
-    const out: FleetVehicle[] = [];
+    const out: VehicleSummary[] = [];
     for (const v of vehicles) {
       const key = `${(v.company || '').toLowerCase()}::${(v.name || '').toLowerCase()}`;
       if (!seen.has(key)) {
@@ -68,7 +68,7 @@ export function VehiclePicker({
       )
     : deduped;
 
-  const select = (v: FleetVehicle) => {
+  const select = (v: VehicleSummary) => {
     setQuery(v.name);
     setOpen(false);
     onChange(v.name, v);

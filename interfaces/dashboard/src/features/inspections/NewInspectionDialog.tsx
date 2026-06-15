@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { X, AlertTriangle } from 'lucide-react';
 import { apiJSON } from '../../api/client';
-import { VehiclePicker, type FleetVehicle } from '../maintenance/pickers';
+import { VehiclePicker, type VehicleSummary } from '../maintenance/pickers';
 
 /**
  * Fleet-driven ad-hoc inspection creation.
@@ -37,7 +37,7 @@ interface DriversResponse {
 }
 
 interface VehiclesResponse {
-  vehicles: FleetVehicle[];
+  vehicles: VehicleSummary[];
 }
 
 interface Props {

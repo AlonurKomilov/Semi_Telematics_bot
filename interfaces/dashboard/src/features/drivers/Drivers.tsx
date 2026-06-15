@@ -523,11 +523,11 @@ function VehiclesTab({
   const [adding, setAdding] = useState(false);
   const [endingId, setEndingId] = useState<number | null>(null);
 
-  const { data: fleetData } = useQuery({
-    queryKey: ['drivers-fleet-vehicles'],
+  const { data: vehiclesData } = useQuery({
+    queryKey: ['drivers-vehicles'],
     queryFn: () => apiJSON<{ vehicles: Array<{ name: string }> }>('/vehicles'),
   });
-  const fleetNames = (fleetData?.vehicles ?? []).map((v) => v.name);
+  const fleetNames = (vehiclesData?.vehicles ?? []).map((v) => v.name);
 
   const add = async () => {
     if (!vehicleName.trim()) return;

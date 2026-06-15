@@ -33,7 +33,7 @@ function pct(n: number) {
 
 export default function UtilizationSummary() {
   const { data, isLoading } = useQuery<UtilizationResponse>({
-    queryKey: ['fleet-utilization', 30],
+    queryKey: ['vehicle-utilization', 30],
     queryFn: () => apiJSON<UtilizationResponse>('/vehicles/utilization-summary?days=30'),
     staleTime: 10 * 60_000,
   });
