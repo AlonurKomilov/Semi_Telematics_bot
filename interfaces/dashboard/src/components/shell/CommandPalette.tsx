@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import type { Permissions } from '../../types';
+import { useRoleView } from '../../context/RoleViewContext';
 import { ROUTE_ENTRIES, type RouteEntry } from './routeRegistry';
 
 interface CommandPaletteProps {
@@ -26,23 +26,24 @@ function score(entry: RouteEntry, q: string): number {
 export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const perms = user?.permissions ?? ({} as Partial<Permissions>);
+  // Persona-aware: a command is offered only if the ACTIVE VIEW can run
+  // it (viewHasAny), so an Owner/Admin previewing another persona doesn't
+  // get ⌘K shortcuts that persona lacks.  Falls back to the real user's
+  // permissions when not previewing.
+  const { viewHasAny } = useRoleView();
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
 
   const visibleEntries = useMemo(() => {
-    const hasAny = (flags: string | string[]) => {
-      const list = Array.isArray(flags) ? flags : [flags];
-      return list.some((f) => !!perms[f as keyof Permissions]);
-    };
     return ROUTE_ENTRIES.filter((e) => {
       if (e.path === '/payroll' && user?.payroll_enabled === false) return false;
       if (e.path === '/coaching' && user?.coaching_enabled === false) return false;
       if (!e.permission) return true;
-      return hasAny(e.permission);
+      const flags = Array.isArray(e.permission) ? e.permission : [e.permission];
+      return viewHasAny(...flags);
     });
-  }, [perms, user]);
+  }, [viewHasAny, user]);
 
   const matches = useMemo(() => {
     if (!query.trim()) return visibleEntries.slice(0, 12);
