@@ -88,15 +88,18 @@ const PERM_GROUPS: PermGroup[] = [
       // Components are FLAT siblings (Invites / Working Hours / Audit Log
       // were lifted from under Team Management); the Team Management page
       // still HOSTS some as tabs — UI hosting ≠ taxonomy.
+      // Standalone System-tier governance features — their backend lives in
+      // capabilities/ (like Alerts↔capabilities/alerting).  NOT Settings
+      // components: consumed account-wide, each with its own page.
+      { key: 'can_manage_permissions',  label: 'Permissions', description: 'This role matrix — the owner always keeps it' },
+      { key: 'can_manage_integrations', label: 'Integrations', description: 'Telematics connections (Samsara, Datatruck)' },
+      { key: 'can_manage_storage',      label: 'Storage', description: 'File-storage backend & quota' },
       { header: 'Settings', description: 'account administration — each component has its own permission' },
       { key: 'can_manage_account',     label: 'General settings', indented: true, description: 'The Settings page itself — timezone, bot + forum routing; also rides: department modules, Scorecard Rules' },
       { key: 'can_manage_users',       label: 'Team Management', indented: true, description: 'Members, roles, data scope — also gates the Audit Log' },
-      { key: 'can_manage_permissions', label: 'Permissions', indented: true, description: 'This matrix — the owner always keeps it' },
       { key: 'can_invite',             label: 'Send Invites', indented: true },
       { key: 'can_manage_companies',   label: 'Manage Companies', indented: true },
       { key: 'can_manage_work_hours',  label: 'Working Hours', indented: true },
-      { key: 'can_manage_integrations', label: 'Integrations', indented: true },
-      { key: 'can_manage_storage',     label: 'Storage', indented: true },
     ],
   },
   {

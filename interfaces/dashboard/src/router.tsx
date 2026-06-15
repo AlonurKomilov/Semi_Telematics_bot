@@ -93,10 +93,10 @@ const AuditLog         = lazyWithReload(() => import('./features/settings/AuditL
 const Settings         = lazyWithReload(() => import('./features/settings/Settings'));
 const Profile          = lazyWithReload(() => import('./pages/Profile'));
 const MyNotifications  = lazyWithReload(() => import('./features/alerts/MyNotifications'));
-const Storage          = lazyWithReload(() => import('./features/settings/Storage'));
+const Storage          = lazyWithReload(() => import('./features/storage/Storage'));
 const WorkHours        = lazyWithReload(() => import('./features/settings/WorkHours'));
 const Invites          = lazyWithReload(() => import('./features/settings/Invites'));
-const RolePermissions  = lazyWithReload(() => import('./features/settings/RolePermissions'));
+const RolePermissions  = lazyWithReload(() => import('./features/permissions/RolePermissions'));
 const ScorecardRules   = lazyWithReload(() => import('./features/driver-scorecards/ScorecardRules'));
 const Billing          = lazyWithReload(() => import('./features/billing/Billing'));
 const Payroll          = lazyWithReload(() => import('./features/payroll/Payroll'));

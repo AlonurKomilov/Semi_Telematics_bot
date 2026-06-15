@@ -149,10 +149,10 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // Billing — accounting owns the relationship; the owner always has it.
   { id: 'billing',          labelKey: 'nav.billing',          path: '/billing',         icon: CreditCard,    modules: ['accounting', 'account'], tier: 'role', permission: ['can_manage_billing'], navGroup: 'account' },
   { id: 'companies',        labelKey: 'nav.companies',        path: '/companies',       icon: Building2,     modules: ['account'], tier: 'system', permission: ['can_manage_companies'], navGroup: 'settings' },
-  { id: 'integrations',     labelKey: 'nav.integrations',     path: '/integrations',    icon: Plug,          modules: ['account'], tier: 'system', permission: ['can_manage_integrations'], navGroup: 'settings' },
-  { id: 'storage',          labelKey: 'nav.storage',          path: '/storage',         icon: Cloud,         modules: ['account'], tier: 'system', permission: ['can_manage_storage'], navGroup: 'settings' },
+  { id: 'integrations',     labelKey: 'nav.integrations',     path: '/integrations',    icon: Plug,          modules: ['account'], tier: 'system', permission: ['can_manage_integrations'], navGroup: 'account' },
+  { id: 'storage',          labelKey: 'nav.storage',          path: '/storage',         icon: Cloud,         modules: ['account'], tier: 'system', permission: ['can_manage_storage'], navGroup: 'account' },
   { id: 'settings',         labelKey: 'nav.settings',         path: '/settings',        icon: SettingsIcon,  modules: ['account'], tier: 'system', permission: ['can_manage_account'], navGroup: 'settings' },
-  { id: 'role_permissions', labelKey: 'nav.role_permissions', path: '/permissions',     icon: Shield,        modules: ['account'], tier: 'system', permission: ['can_manage_permissions'], navGroup: 'settings' },
+  { id: 'role_permissions', labelKey: 'nav.role_permissions', path: '/permissions',     icon: Shield,        modules: ['account'], tier: 'system', permission: ['can_manage_permissions'], navGroup: 'account' },
   // Scorecard Rules is the Scorecards feature's CONFIG component — reached
   // via the Rules tab on /driver-scorecards (navHidden keeps the route +
   // deep links alive without a second sidebar entry).
