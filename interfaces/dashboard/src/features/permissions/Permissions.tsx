@@ -348,12 +348,21 @@ export default function Permissions() {
   // Render one matrix row.  `collapse` adds an expand/collapse chevron to
   // a parent feature that has sub-rows.
   const renderRow = (f: PermFlag, collapse?: { isCollapsed: boolean; onToggle: () => void }): ReactNode => {
-    const chevron = collapse ? (
-      <button type="button" onClick={collapse.onToggle} className="text-muted-foreground hover:text-foreground shrink-0 -ml-1"
-        aria-label={collapse.isCollapsed ? 'Expand' : 'Collapse'}>
-        {collapse.isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-      </button>
-    ) : null;
+    // Always reserve the chevron's width on a top-level row so EVERY feature
+    // label lines up at the same x — collapsible features show the chevron,
+    // simple features (no components) show an empty spacer.  Without this the
+    // left edge looks ragged ("why does this one have an arrow and that one
+    // doesn't?").
+    const chevronSlot = (
+      <span className="w-4 shrink-0 flex items-center justify-center -ml-1">
+        {collapse && (
+          <button type="button" onClick={collapse.onToggle} className="text-muted-foreground hover:text-foreground"
+            aria-label={collapse.isCollapsed ? 'Expand' : 'Collapse'}>
+            {collapse.isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+          </button>
+        )}
+      </span>
+    );
 
     // A feature/header that OWNS components starts a new visual block, so it
     // gets the top divider.  Its component rows (``indented``) drop the
@@ -364,7 +373,7 @@ export default function Permissions() {
         <tr className="border-t border-border hover:bg-muted/20">
           <td colSpan={1 + ROLES.length} className="px-3 py-2 sticky left-0 bg-card z-10">
             <div className="flex items-center gap-1.5">
-              {chevron}
+              {chevronSlot}
               <span className="text-sm font-medium">{f.header}</span>
               {f.description && <span className="text-2xs text-muted-foreground ml-2">{f.description}</span>}
             </div>
@@ -380,7 +389,7 @@ export default function Permissions() {
               a group hanging off the feature above. */}
           <div className={f.indented ? 'border-l-2 border-border pl-3 py-1.5' : ''}>
             <div className="flex items-center gap-1.5">
-              {chevron}
+              {!f.indented && chevronSlot}
               <span className={f.indented ? 'text-muted-foreground' : 'font-medium'}>{f.label}</span>
               {isScoped(f) && <span className="text-2xs text-muted-foreground" title="Scoped feature — checkbox = full access">*</span>}
             </div>
