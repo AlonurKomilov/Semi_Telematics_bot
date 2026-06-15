@@ -5,7 +5,14 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
 
 - **Colour = token, never literal.** No `#hex` in components. No raw
   Tailwind palette (`text-green-500`, `bg-amber-100`). Use the semantic
-  tokens (`bg-card`, `text-muted-foreground`, `bg-primary`, …).
+  tokens (`bg-card`, `text-muted-foreground`, `bg-primary`, …). This
+  includes `index.html` — its only allowed literal is the body's
+  always-dark splash `bg`; the body text is `text-foreground`.
+- **Declare text colour — never inherit it.** Any text-on-surface element
+  (inputs, buttons, chips) sets `text-foreground` / the matching
+  `*-foreground`; `bg-<x>` and `text-<x>-foreground` travel together. A
+  control with a `bg`/`placeholder` but no value colour inherits the body
+  default and goes invisible on the light theme — verify **both** themes.
 - **Status/severity = a tone, via the helper.** Import from
   [`src/lib/status.ts`](src/lib/status.ts): `statusClasses(status)`,
   `toneClasses('danger')`, `toneText('warn')`. Add new statuses to the

@@ -54,6 +54,31 @@ oklch or a hex equivalent.
 | `muted-foreground` | Secondary / labels / metadata |
 | `*-foreground` | On-colour text (e.g. `primary-foreground` on `bg-primary`) |
 
+### Declare colour — never inherit it ⭐
+
+**Every element that renders text on its own surface must set an explicit
+foreground token.** Don't rely on the inherited `color` — inheritance pulls
+whatever some ancestor last set, and that ancestor may not flip with the
+theme.
+
+Why this matters (a real bug this rule exists to prevent): `<body>` carries
+an always-dark splash background, so its text default was historically a
+raw near-white. Form controls (`Input`, `Textarea`) declared a `bg` and a
+`placeholder:` colour but **no value colour** — so the typed text inherited
+near-white. On the **dark** theme (dark field) it was visible; on the
+**light** theme (white field) it was white-on-white — invisible. The field
+looked empty even though text was there.
+
+Rules that fall out of this:
+- A form control / button / chip / any text-on-surface element **declares
+  `text-foreground`** (or the matching `*-foreground`), never inherits.
+- A `bg-<surface>` and its `text-<surface>-foreground` travel **together**
+  — `bg-popover` ⇒ `text-popover-foreground`, `bg-primary` ⇒
+  `text-primary-foreground`. Setting one without the other is the smell.
+- **Check both themes.** A colour can be fine in one and invisible (or
+  low-contrast) in the other. "Works in dark" is *not* "works" — eyeball
+  light **and** dark before calling a surface done.
+
 ### Identity & interaction
 | Token | Use |
 |---|---|
@@ -289,9 +314,19 @@ This doc governs `dashboard` only.
   — mono is for machine identifiers (IDs/IPs/hashes/code) only.
 - ❌ No hardcoded radius (`rounded-[10px]`, `rounded-4xl`).
 - ❌ No re-implemented primitives — use `ui/*` and `shell/*`.
+- ❌ No **inherited** text colour on a surface — declare `text-foreground`
+  / the matching `*-foreground`. `bg-<x>` and `text-<x>-foreground` travel
+  together (see §2 "Declare colour"). A control with a `bg`/`placeholder`
+  but no value colour is the classic light-theme-invisible bug.
+- ❌ No raw palette in **`index.html`** either (it's in scope). The body's
+  always-dark splash `bg` is the one allowed literal — its text is a token
+  (`text-foreground`). A raw near-white default there is what made input
+  text invisible on light.
 - ✅ Colour comes from a token; status from a tone; spacing from the 4px
   scale; radius from `--radius`; type from the Geist scale (incl. 2xs/3xs)
   at a §4 role combo; icons from lucide at a standard step.
+- ✅ Verified in **both** themes — light and dark — before shipping a new
+  surface. Low contrast in one theme is a bug even if the other looks fine.
 
 When unsure, grep for an existing screen that does the same thing and
 copy its tokens.

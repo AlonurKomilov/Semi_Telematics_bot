@@ -13,7 +13,13 @@
          on instances where Turnstile is disabled. -->
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   </head>
-  <body class="bg-gray-950 text-gray-100">
+  <!-- bg-gray-950 is an intentional always-dark splash so dark-theme
+       users don't see a white flash before React applies the theme
+       class.  text-foreground (not a raw palette) so any component
+       that inherits its colour stays visible in BOTH themes — a raw
+       near-white default here is what made form-input text invisible
+       on the light theme. -->
+  <body class="bg-gray-950 text-foreground">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

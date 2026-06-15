@@ -353,16 +353,27 @@ export default function Permissions() {
     // simple features (no components) show an empty spacer.  Without this the
     // left edge looks ragged ("why does this one have an arrow and that one
     // doesn't?").
-    const chevronSlot = (
-      <span className="w-4 shrink-0 flex items-center justify-center -ml-1">
-        {collapse && (
-          <button type="button" onClick={collapse.onToggle} className="text-muted-foreground hover:text-foreground"
-            aria-label={collapse.isCollapsed ? 'Expand' : 'Collapse'}>
-            {collapse.isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-          </button>
-        )}
+    // Visible chevron (text-foreground, not the faint muted tone) for
+    // collapsible rows; an equal-width empty spacer keeps labels aligned on
+    // simple rows.  The whole label area below is the click target — the arrow
+    // is just the affordance — so users don't have to hit the tiny icon.
+    const chevronSlot = collapse ? (
+      <span className="w-4 shrink-0 flex items-center justify-center -ml-1 text-foreground">
+        {collapse.isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
       </span>
+    ) : (
+      <span className="w-4 shrink-0 -ml-1" aria-hidden />
     );
+    const clickableProps = collapse
+      ? {
+          onClick: collapse.onToggle,
+          role: 'button' as const,
+          tabIndex: 0,
+          onKeyDown: (e: React.KeyboardEvent) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); collapse.onToggle(); }
+          },
+        }
+      : {};
 
     // A feature/header that OWNS components starts a new visual block, so it
     // gets the top divider.  Its component rows (``indented``) drop the
@@ -372,7 +383,7 @@ export default function Permissions() {
       return (
         <tr className="border-t border-border hover:bg-muted/20">
           <td colSpan={1 + ROLES.length} className="px-3 py-2 sticky left-0 bg-card z-10">
-            <div className="flex items-center gap-1.5">
+            <div className={`flex items-center gap-1.5 ${collapse ? 'cursor-pointer select-none' : ''}`} {...clickableProps}>
               {chevronSlot}
               <span className="text-sm font-medium">{f.header}</span>
               {f.description && <span className="text-2xs text-muted-foreground ml-2">{f.description}</span>}
@@ -388,7 +399,7 @@ export default function Permissions() {
               vertical padding so adjacent rails touch) makes the rows read as
               a group hanging off the feature above. */}
           <div className={f.indented ? 'border-l-2 border-border pl-3 py-1.5' : ''}>
-            <div className="flex items-center gap-1.5">
+            <div className={`flex items-center gap-1.5 ${collapse ? 'cursor-pointer select-none' : ''}`} {...clickableProps}>
               {!f.indented && chevronSlot}
               <span className={f.indented ? 'text-muted-foreground' : 'font-medium'}>{f.label}</span>
               {isScoped(f) && <span className="text-2xs text-muted-foreground" title="Scoped feature — checkbox = full access">*</span>}

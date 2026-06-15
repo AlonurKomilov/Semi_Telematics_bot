@@ -186,8 +186,29 @@ export default function Login() {
     return () => { cancelled = true; };
   }, [inviteCode]);
 
+  // Fetch public auth config ONCE on mount — bot identity + Turnstile
+  // site key.  Decoupled from the Telegram widget container because the
+  // Register tab needs ``turnstileSiteKey`` even though it renders no
+  // widget (the widget is Sign-In-only now).
   useEffect(() => {
-    // Telegram Login Widget callback
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/config');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.bot_username) setBotUsername(data.bot_username);
+          if (data.bot_id) setBotId(data.bot_id);
+          if (data.turnstile_site_key) setTurnstileSiteKey(data.turnstile_site_key);
+        }
+      } catch { /* fall back to defaults */ }
+    })();
+  }, []);
+
+  // Inject the Telegram Login Widget — only when its container is
+  // mounted (Sign In tab).  Re-runs when the bot username resolves or
+  // the user returns to Sign In (``mode`` in deps), so switching tabs
+  // back and forth always leaves a populated widget.
+  useEffect(() => {
     window.__onTelegramAuth = async (tgUser: TelegramLoginData) => {
       try {
         await loginWithTelegram(tgUser, rememberMe);
@@ -196,37 +217,22 @@ export default function Login() {
       }
     };
 
-    // Fetch bot username, then inject Telegram Login Widget
     const el = containerRef.current;
-    if (!el) return;
+    if (!el) return;  // register tab: no widget container, nothing to inject
 
-    (async () => {
-      let fetchedBot = botUsername;
-      try {
-        const res = await fetch('/api/auth/config');
-        if (res.ok) {
-          const data = await res.json();
-          fetchedBot = data.bot_username || fetchedBot;
-          setBotUsername(fetchedBot);
-          if (data.bot_id) setBotId(data.bot_id);
-          if (data.turnstile_site_key) setTurnstileSiteKey(data.turnstile_site_key);
-        }
-      } catch { /* use fallback */ }
-
-      el.innerHTML = '';
-      const script = document.createElement('script');
-      script.src = 'https://telegram.org/js/telegram-widget.js?22';
-      script.async = true;
-      script.setAttribute('data-telegram-login', fetchedBot);
-      script.setAttribute('data-size', 'large');
-      script.setAttribute('data-radius', '8');
-      script.setAttribute('data-onauth', '__onTelegramAuth(user)');
-      script.setAttribute('data-request-access', 'write');
-      el.appendChild(script);
-    })();
+    el.innerHTML = '';
+    const script = document.createElement('script');
+    script.src = 'https://telegram.org/js/telegram-widget.js?22';
+    script.async = true;
+    script.setAttribute('data-telegram-login', botUsername);
+    script.setAttribute('data-size', 'large');
+    script.setAttribute('data-radius', '8');
+    script.setAttribute('data-onauth', '__onTelegramAuth(user)');
+    script.setAttribute('data-request-access', 'write');
+    el.appendChild(script);
 
     return () => { delete window.__onTelegramAuth; };
-  }, [loginWithTelegram, rememberMe, widgetKey]);
+  }, [loginWithTelegram, rememberMe, widgetKey, botUsername, mode]);
 
   /** Guide the user to disconnect their Telegram Login Widget session.
    *
@@ -551,6 +557,11 @@ export default function Login() {
           </Button>
         </form>
 
+        {/* Telegram + bot-login are SIGN-IN methods, not registration
+            methods — showing "Log in as Allen" while someone is creating
+            a new account is confusing.  Gate the whole block to login. */}
+        {mode === 'login' && (
+        <>
         {/* Divider */}
         <div className="flex items-center my-5">
           <div className="flex-1 border-t border-border" />
@@ -682,6 +693,8 @@ export default function Login() {
               <span>✅</span> Login approved — redirecting...
             </p>
           </div>
+        )}
+        </>
         )}
 
         <p className="text-xs text-muted-foreground mt-4 text-center">

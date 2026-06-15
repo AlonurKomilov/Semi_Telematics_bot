@@ -2018,7 +2018,8 @@ async def auth_invite_preview(request: Request, code: str):
         raise HTTPException(status_code=404, detail="Invite not found")
     # Cleanup the same way redeem_invite normalises it
     norm = code.upper().strip()
-    db = database._db
+    from infra.platform import get_platform_db
+    db = get_platform_db()
     if db is None:
         raise HTTPException(status_code=500, detail="Database unavailable")
     invite = await db.get_invite(norm)
@@ -2062,7 +2063,8 @@ async def _decline_invite_impl(request: Request, token: str) -> None:
     if not token:
         return
     norm = token.upper().strip()
-    db = database._db
+    from infra.platform import get_platform_db
+    db = get_platform_db()
     if db is None:
         return
     invite = await db.get_invite(norm)
