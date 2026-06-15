@@ -355,13 +355,17 @@ export default function Permissions() {
       </button>
     ) : null;
 
+    // A feature/header that OWNS components starts a new visual block, so it
+    // gets the top divider.  Its component rows (``indented``) drop the
+    // divider and gain a left rail instead — they read as a group hanging
+    // off the feature above, not as separate features.
     if (isHeader(f)) {
       return (
-        <tr className="border-t border-border">
-          <td colSpan={1 + ROLES.length} className="px-3 pt-2 pb-1 sticky left-0 bg-card z-10">
-            <div className="flex items-center gap-1">
+        <tr className="border-t border-border hover:bg-muted/20">
+          <td colSpan={1 + ROLES.length} className="px-3 py-2 sticky left-0 bg-card z-10">
+            <div className="flex items-center gap-1.5">
               {chevron}
-              <span className="text-xs font-semibold">{f.header}</span>
+              <span className="text-sm font-medium">{f.header}</span>
               {f.description && <span className="text-2xs text-muted-foreground ml-2">{f.description}</span>}
             </div>
           </td>
@@ -369,14 +373,19 @@ export default function Permissions() {
       );
     }
     return (
-      <tr className="border-t border-border hover:bg-muted/20">
-        <td className={`py-1.5 sticky left-0 bg-card z-10 ${f.indented ? 'pl-7 pr-3' : 'px-3'}`}>
-          <div className="flex items-center gap-1.5">
-            {chevron}
-            <span className={f.indented ? 'text-muted-foreground' : ''}>{f.label}</span>
-            {isScoped(f) && <span className="text-2xs text-muted-foreground" title="Scoped feature — checkbox = full access">*</span>}
+      <tr className={`${f.indented ? '' : 'border-t border-border'} hover:bg-muted/20`}>
+        <td className={`sticky left-0 bg-card z-10 ${f.indented ? 'pl-4 pr-3' : 'px-3 py-1.5'}`}>
+          {/* Indented component: a continuous left rail (the cell carries no
+              vertical padding so adjacent rails touch) makes the rows read as
+              a group hanging off the feature above. */}
+          <div className={f.indented ? 'border-l-2 border-border pl-3 py-1.5' : ''}>
+            <div className="flex items-center gap-1.5">
+              {chevron}
+              <span className={f.indented ? 'text-muted-foreground' : 'font-medium'}>{f.label}</span>
+              {isScoped(f) && <span className="text-2xs text-muted-foreground" title="Scoped feature — checkbox = full access">*</span>}
+            </div>
+            {f.description && <div className="text-2xs text-muted-foreground/70 mt-0.5">{f.description}</div>}
           </div>
-          {f.description && <div className="text-2xs text-muted-foreground/70 mt-0.5">{f.description}</div>}
         </td>
         {ROLES.map((role) => {
           const on = isGranted(role, f);
@@ -571,8 +580,8 @@ export default function Permissions() {
 function FragmentGroup({ title, control, children }: { title: string; control?: ReactNode; children: ReactNode }) {
   return (
     <>
-      <tr className="bg-muted/30">
-        <td colSpan={1 + ROLES.length} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <tr className="bg-muted/50 border-t-2 border-border">
+        <td colSpan={1 + ROLES.length} className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           <div className="flex items-center gap-2">
             <span>{title}</span>
             {control}
