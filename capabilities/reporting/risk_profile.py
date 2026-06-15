@@ -56,8 +56,8 @@ class RiskProfile:
     pending_tasks: list[dict] = field(default_factory=list)
 
     # Fleet comparison
-    fleet_median: Optional[float] = None
-    fleet_percentile: Optional[float] = None  # subject's percentile within fleet (0-100)
+    aggregate_median: Optional[float] = None
+    aggregate_percentile: Optional[float] = None  # subject's percentile within fleet (0-100)
     fleet_size: int = 0
 
     # Vehicle/driver enrichment (optional metadata blocks)
@@ -219,8 +219,8 @@ async def build_risk_profile(
         for c in cards
         if (score := _card_score(c)) is not None
     ]
-    fleet_median = statistics.median(population) if population else None
-    fleet_percentile = (
+    aggregate_median = statistics.median(population) if population else None
+    aggregate_percentile = (
         _percentile(float(total_score), population)
         if total_score is not None and population else None
     )
@@ -302,7 +302,7 @@ async def build_risk_profile(
         events=safety,
         overdue_tasks=overdue,
         pending_tasks=pending,
-        fleet_median=fleet_median,
-        fleet_percentile=fleet_percentile,
+        aggregate_median=aggregate_median,
+        aggregate_percentile=aggregate_percentile,
         fleet_size=len(population),
     )

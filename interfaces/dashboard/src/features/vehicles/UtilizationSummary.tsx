@@ -41,11 +41,11 @@ export default function UtilizationSummary() {
   if (isLoading || !data || data.vehicles.length === 0) return null;
 
   const rows = data.vehicles;
-  const fleetDriveH = rows.reduce((a, r) => a + (r.drive_hours || 0), 0);
-  const fleetIdleH = rows.reduce((a, r) => a + (r.idle_hours || 0), 0);
-  const fleetMiles = rows.reduce((a, r) => a + (r.total_miles || 0), 0);
-  const dutyH = fleetDriveH + fleetIdleH;
-  const fleetUtilPct = dutyH > 0 ? (fleetDriveH / dutyH) * 100 : 0;
+  const aggregateDriveH = rows.reduce((a, r) => a + (r.drive_hours || 0), 0);
+  const aggregateIdleH = rows.reduce((a, r) => a + (r.idle_hours || 0), 0);
+  const aggregateMiles = rows.reduce((a, r) => a + (r.total_miles || 0), 0);
+  const dutyH = aggregateDriveH + aggregateIdleH;
+  const fleetUtilPct = dutyH > 0 ? (aggregateDriveH / dutyH) * 100 : 0;
 
   const top = rows.slice(0, 3);
   // Sort ascending for the underutilized list — already DESC from the
@@ -70,15 +70,15 @@ export default function UtilizationSummary() {
         </div>
         <div className="bg-muted/40 border border-border rounded-md p-3">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total miles</div>
-          <div className="mt-1 text-lg font-semibold tabular-nums">{Math.round(fleetMiles).toLocaleString()}</div>
+          <div className="mt-1 text-lg font-semibold tabular-nums">{Math.round(aggregateMiles).toLocaleString()}</div>
         </div>
         <div className="bg-muted/40 border border-border rounded-md p-3">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Drive hours</div>
-          <div className="mt-1 text-lg font-semibold tabular-nums">{Math.round(fleetDriveH).toLocaleString()}</div>
+          <div className="mt-1 text-lg font-semibold tabular-nums">{Math.round(aggregateDriveH).toLocaleString()}</div>
         </div>
         <div className="bg-muted/40 border border-border rounded-md p-3">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Idle hours</div>
-          <div className="mt-1 text-lg font-semibold tabular-nums">{Math.round(fleetIdleH).toLocaleString()}</div>
+          <div className="mt-1 text-lg font-semibold tabular-nums">{Math.round(aggregateIdleH).toLocaleString()}</div>
         </div>
       </div>
 

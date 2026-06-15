@@ -61,10 +61,10 @@ export default function CostPerMile() {
       .then((d) => {
         setVehicles(d.vehicles || []);
         setFleet({
-          avg_cpm: d.fleet_avg_cpm,
-          avg_mpg: d.fleet_avg_mpg,
-          total_miles: d.fleet_total_miles,
-          total_cost: d.fleet_total_cost,
+          avg_cpm: d.aggregate_avg_cpm,
+          avg_mpg: d.aggregate_avg_mpg,
+          total_miles: d.aggregate_total_miles,
+          total_cost: d.aggregate_total_cost,
         });
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed'))

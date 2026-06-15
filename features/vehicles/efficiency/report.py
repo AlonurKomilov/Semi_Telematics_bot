@@ -49,7 +49,7 @@ def generate_fleet_efficiency_pdf(
     with_driver = [v for v in vehicles if v.get("_driver_name")]
     total_fuel = sum(v["_fuel_gal"] for v in with_driver if v.get("_fuel_gal"))
     fuel_miles = sum(v.get("_miles", 0) for v in with_driver)
-    fleet_mpg = fuel_miles / total_fuel if total_fuel > 0 else 0
+    aggregate_mpg = fuel_miles / total_fuel if total_fuel > 0 else 0
 
     ncols = 8
     row1 = [[
@@ -60,7 +60,7 @@ def generate_fleet_efficiency_pdf(
         _mini_stat(styles, f"{total_drv:,.1f}h", "Driving", C_GREEN),
         _mini_stat(styles, f"{total_idle:,.1f}h", "Idle", C_IDLE),
         _mini_stat(styles, f"{avg_drv_pct:.0f}%", "Avg Driving", C_GREEN),
-        _mini_stat(styles, f"{fleet_mpg:.1f}", "Fleet MPG", C_EFF_GREEN),
+        _mini_stat(styles, f"{aggregate_mpg:.1f}", "Fleet MPG", C_EFF_GREEN),
     ]]
     t1 = Table(row1, colWidths=[page_w / ncols] * ncols, rowHeights=[52])
     t1.setStyle(TableStyle([

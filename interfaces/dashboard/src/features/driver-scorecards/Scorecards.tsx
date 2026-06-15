@@ -975,7 +975,7 @@ export default function Scorecards() {
           // that confuses what the user is looking at.
           rank={displayCards.findIndex((c) => c.driver_id === detail.driver_id) + 1}
           total={displayCards.length}
-          fleetAvg={stats.avgScore}
+          aggregateAvg={stats.avgScore}
           days={days}
           onClose={() => setDetail(null)}
         />
@@ -998,11 +998,11 @@ function KpiCard({ label, value, sub, color }: { label: string; value: string; s
   );
 }
 
-function DetailDrawer({ card, rank, total, fleetAvg, days, onClose }: {
+function DetailDrawer({ card, rank, total, aggregateAvg, days, onClose }: {
   card: CompositeScorecard;
   rank: number;
   total: number;
-  fleetAvg: number;
+  aggregateAvg: number;
   /** Page-level date range (in days) — propagates to the trend chart
       and the period-comparison cells inside DriverInsights so the
       drawer always reflects the same window the user picked at the top. */
@@ -1019,7 +1019,7 @@ function DetailDrawer({ card, rank, total, fleetAvg, days, onClose }: {
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const delta = card.score - fleetAvg;
+  const delta = card.score - aggregateAvg;
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex justify-end" onClick={onClose}>
@@ -1070,7 +1070,7 @@ function DetailDrawer({ card, rank, total, fleetAvg, days, onClose }: {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Fleet avg</span>
-              <span className="font-semibold tabular-nums">{fleetAvg}</span>
+              <span className="font-semibold tabular-nums">{aggregateAvg}</span>
               <span
                 className="text-2xs font-bold tabular-nums"
                 style={{ color: delta >= 0 ? 'var(--ok)' : 'var(--danger)' }}

@@ -108,7 +108,7 @@ def generate_efficiency_csv(
     avg_idle_pct = 100 - avg_drv_pct if total_eng > 0 else 0
     with_fuel = [v for v in vehicles if v.get("_fuel_gal")]
     total_fuel = sum(v["_fuel_gal"] for v in with_fuel)
-    fleet_mpg = round(sum(v.get("_miles", 0) for v in with_fuel) / total_fuel, 1) if total_fuel > 0 else _NA
+    aggregate_mpg = round(sum(v.get("_miles", 0) for v in with_fuel) / total_fuel, 1) if total_fuel > 0 else _NA
     writer.writerow([])
     writer.writerow([
         "TOTALS", "", f"{len(vehicles)} trucks",
@@ -116,7 +116,7 @@ def generate_efficiency_csv(
         round(total_drv, 1), round(total_idle, 1),
         f"{avg_drv_pct}%", f"{avg_idle_pct}%",
         round(total_fuel, 1) if total_fuel else _NA,
-        fleet_mpg, "", "", "", "", "",
+        aggregate_mpg, "", "", "", "", "",
     ])
 
     return _to_buf(sio)
@@ -637,8 +637,8 @@ def generate_risk_summary_csv(profile, *, audience: str = "owner") -> io.BytesIO
     writer.writerow(["Window (days)", profile.days])
     writer.writerow(["Total score", profile.total_score if profile.total_score is not None else _NA])
     writer.writerow(["Tier", profile.tier or _NA])
-    writer.writerow(["Fleet median", profile.fleet_median if profile.fleet_median is not None else _NA])
-    writer.writerow(["Fleet percentile", profile.fleet_percentile if profile.fleet_percentile is not None else _NA])
+    writer.writerow(["Fleet median", profile.aggregate_median if profile.aggregate_median is not None else _NA])
+    writer.writerow(["Fleet percentile", profile.aggregate_percentile if profile.aggregate_percentile is not None else _NA])
     writer.writerow(["Fleet size", profile.fleet_size])
     writer.writerow([])
 

@@ -788,8 +788,8 @@ export interface FuelSummaryVehicle {
 export interface FuelSummaryResponse {
   vehicles: FuelSummaryVehicle[];
   count: number;
-  fleet_total_cost: number;
-  fleet_total_gallons: number;
+  aggregate_total_cost: number;
+  aggregate_total_gallons: number;
 }
 
 export interface CPMVehicle {
@@ -805,10 +805,10 @@ export interface CPMVehicle {
 export interface CPMResponse {
   vehicles: CPMVehicle[];
   count: number;
-  fleet_avg_cpm: number;
-  fleet_avg_mpg: number;
-  fleet_total_miles: number;
-  fleet_total_cost: number;
+  aggregate_avg_cpm: number;
+  aggregate_avg_mpg: number;
+  aggregate_total_miles: number;
+  aggregate_total_cost: number;
 }
 
 // ── Admin ────────────────────────────────────────────────────

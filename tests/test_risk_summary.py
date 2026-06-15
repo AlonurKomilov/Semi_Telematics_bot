@@ -129,8 +129,8 @@ def _fake_profile(subject_type: str = "vehicle") -> RiskProfile:
         pending_tasks=[
             {"task_type": "Oil change", "due_date": "2025-02-01", "vehicle_name": "TRK-7"},
         ],
-        fleet_median=75.0,
-        fleet_percentile=70.0,
+        aggregate_median=75.0,
+        aggregate_percentile=70.0,
         fleet_size=12,
         vehicle_meta={"make": "Volvo", "model": "VNL", "year": 2022, "vin": "1XKAD49X3KJ123456"},
         driver_meta={"name": "Bob Driver", "driver_id": "drv-bob-9876"},

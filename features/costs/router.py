@@ -104,8 +104,8 @@ async def cost_per_mile(
     return {
         "vehicles": items,
         "count": len(items),
-        "fleet_avg_cpm": fleet["fleet_cpm"],
-        "fleet_avg_mpg": fleet["fleet_mpg"],
-        "fleet_total_miles": fleet["fleet_miles"],
-        "fleet_total_cost": fleet["fleet_cost"],
+        "aggregate_avg_cpm": fleet["aggregate_cpm"],
+        "aggregate_avg_mpg": fleet["aggregate_mpg"],
+        "aggregate_total_miles": fleet["aggregate_miles"],
+        "aggregate_total_cost": fleet["aggregate_cost"],
     }

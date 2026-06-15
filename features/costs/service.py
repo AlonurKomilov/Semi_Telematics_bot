@@ -35,22 +35,22 @@ def compute_fleet_cpm(fuel_summary: list[dict]) -> tuple[list[dict], dict]:
     """Compute CPM for every vehicle and fleet-wide averages.
 
     Returns (vehicle_results, fleet_summary) where fleet_summary has:
-        fleet_cost, fleet_miles, fleet_gallons, fleet_cpm, fleet_mpg.
+        aggregate_cost, aggregate_miles, aggregate_gallons, aggregate_cpm, aggregate_mpg.
     """
     results = [compute_vehicle_cpm(row) for row in fuel_summary]
 
-    fleet_cost = sum(r["cost"] for r in results)
-    fleet_miles = sum(r["miles"] for r in results)
-    fleet_gallons = sum(r["gallons"] for r in results)
-    fleet_cpm = fleet_cost / fleet_miles if fleet_miles > 0 else 0
-    fleet_mpg = fleet_miles / fleet_gallons if fleet_gallons > 0 else 0
+    aggregate_cost = sum(r["cost"] for r in results)
+    aggregate_miles = sum(r["miles"] for r in results)
+    aggregate_gallons = sum(r["gallons"] for r in results)
+    aggregate_cpm = aggregate_cost / aggregate_miles if aggregate_miles > 0 else 0
+    aggregate_mpg = aggregate_miles / aggregate_gallons if aggregate_gallons > 0 else 0
 
     fleet = {
-        "fleet_cost": round(fleet_cost, 2),
-        "fleet_miles": round(fleet_miles),
-        "fleet_gallons": round(fleet_gallons, 1),
-        "fleet_cpm": round(fleet_cpm, 2),
-        "fleet_mpg": round(fleet_mpg, 1),
+        "aggregate_cost": round(aggregate_cost, 2),
+        "aggregate_miles": round(aggregate_miles),
+        "aggregate_gallons": round(aggregate_gallons, 1),
+        "aggregate_cpm": round(aggregate_cpm, 2),
+        "aggregate_mpg": round(aggregate_mpg, 1),
     }
     return results, fleet
 
@@ -63,9 +63,9 @@ def summarize_fuel_entries(rows: list[dict]) -> dict:
     used by both bot/fuel_costs.py and api/costs.py.
     """
     items: list[dict] = []
-    fleet_cost = 0.0
-    fleet_gallons = 0.0
-    fleet_miles = 0.0
+    aggregate_cost = 0.0
+    aggregate_gallons = 0.0
+    aggregate_miles = 0.0
 
     for r in rows:
         total_cost = r.get("total_cost") or 0
@@ -76,9 +76,9 @@ def summarize_fuel_entries(rows: list[dict]) -> dict:
         miles = last_odo - first_odo if last_odo > first_odo else 0
         mpg = miles / total_gal if total_gal > 0 and miles > 0 else 0
 
-        fleet_cost += total_cost
-        fleet_gallons += total_gal
-        fleet_miles += miles
+        aggregate_cost += total_cost
+        aggregate_gallons += total_gal
+        aggregate_miles += miles
 
         items.append({
             "vehicle_name": r.get("vehicle_name", ""),
@@ -96,7 +96,7 @@ def summarize_fuel_entries(rows: list[dict]) -> dict:
     return {
         "vehicles": items,
         "count": len(items),
-        "fleet_total_cost": round(fleet_cost, 2),
-        "fleet_total_gallons": round(fleet_gallons, 1),
-        "fleet_total_miles": round(fleet_miles),
+        "aggregate_total_cost": round(aggregate_cost, 2),
+        "aggregate_total_gallons": round(aggregate_gallons, 1),
+        "aggregate_total_miles": round(aggregate_miles),
     }

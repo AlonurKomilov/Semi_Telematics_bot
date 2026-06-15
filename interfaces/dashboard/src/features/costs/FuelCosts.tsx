@@ -56,8 +56,8 @@ export default function FuelCosts() {
   const [tab, setTab] = useState<'entries' | 'summary'>('entries');
   const [entries, setEntries] = useState<FuelEntry[]>([]);
   const [summaryData, setSummaryData] = useState<FuelSummaryVehicle[]>([]);
-  const [fleetCost, setFleetCost] = useState(0);
-  const [fleetGallons, setFleetGallons] = useState(0);
+  const [aggregateCost, setAggregateCost] = useState(0);
+  const [aggregateGallons, setAggregateGallons] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -82,8 +82,8 @@ export default function FuelCosts() {
       apiJSON<FuelSummaryResponse>('/costs/fuel/summary')
         .then((d) => {
           setSummaryData(d.vehicles || []);
-          setFleetCost(d.fleet_total_cost);
-          setFleetGallons(d.fleet_total_gallons);
+          setAggregateCost(d.aggregate_total_cost);
+          setAggregateGallons(d.aggregate_total_gallons);
         })
         .catch((e) => setError(e instanceof Error ? e.message : 'Failed'))
         .finally(() => setLoading(false));
@@ -204,16 +204,16 @@ export default function FuelCosts() {
         <div className="grid grid-cols-3 gap-4 mb-4">
           <div className="bg-card border border-border rounded-lg p-4">
             <p className="text-xs text-muted-foreground">Total Spent</p>
-            <p className="text-xl font-bold">${fleetCost.toLocaleString()}</p>
+            <p className="text-xl font-bold">${aggregateCost.toLocaleString()}</p>
           </div>
           <div className="bg-card border border-border rounded-lg p-4">
             <p className="text-xs text-muted-foreground">Total Gallons</p>
-            <p className="text-xl font-bold">{fleetGallons.toLocaleString()}</p>
+            <p className="text-xl font-bold">{aggregateGallons.toLocaleString()}</p>
           </div>
           <div className="bg-card border border-border rounded-lg p-4">
             <p className="text-xs text-muted-foreground">Avg $/Gallon</p>
             <p className="text-xl font-bold">
-              ${fleetGallons > 0 ? (fleetCost / fleetGallons).toFixed(3) : '—'}
+              ${aggregateGallons > 0 ? (aggregateCost / aggregateGallons).toFixed(3) : '—'}
             </p>
           </div>
         </div>

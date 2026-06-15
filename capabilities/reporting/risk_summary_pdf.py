@@ -123,10 +123,10 @@ def _render_score_gauge(story, styles, profile: RiskProfile) -> None:
     story.append(Spacer(1, 6))
 
     # Mini-stats row: percentile + fleet size + window
-    pct = profile.fleet_percentile if profile.fleet_percentile is not None else "—"
+    pct = profile.aggregate_percentile if profile.aggregate_percentile is not None else "—"
     median = (
-        f"{profile.fleet_median:.0f}"
-        if isinstance(profile.fleet_median, (int, float)) else "—"
+        f"{profile.aggregate_median:.0f}"
+        if isinstance(profile.aggregate_median, (int, float)) else "—"
     )
     cells = [[
         _mini_stat(styles, str(pct), "Fleet percentile", C_ACCENT),
@@ -312,16 +312,16 @@ def _render_maintenance(story, styles, profile: RiskProfile) -> None:
 
 
 def _render_comparison(story, styles, profile: RiskProfile) -> None:
-    if profile.fleet_median is None or profile.total_score is None:
+    if profile.aggregate_median is None or profile.total_score is None:
         return
     _section_header(story, styles, "FLEET COMPARISON")
 
-    delta = float(profile.total_score) - float(profile.fleet_median)
+    delta = float(profile.total_score) - float(profile.aggregate_median)
     direction = "above" if delta >= 0 else "below"
-    pct = profile.fleet_percentile if profile.fleet_percentile is not None else 0
+    pct = profile.aggregate_percentile if profile.aggregate_percentile is not None else 0
     text = (
         f"This subject scored <b>{profile.total_score}</b> versus the fleet "
-        f"median of <b>{profile.fleet_median:.0f}</b> "
+        f"median of <b>{profile.aggregate_median:.0f}</b> "
         f"({abs(delta):.1f} points {direction}). "
         f"Ranked at the <b>{pct}th</b> percentile across "
         f"{profile.fleet_size} subjects in the {profile.days}-day window."

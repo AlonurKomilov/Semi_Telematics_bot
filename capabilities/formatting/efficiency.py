@@ -39,7 +39,7 @@ def format_fleet_efficiency(
     with_driver = [v for v in vehicles if v.get("_driver_name")]
     total_fuel = sum(v["_fuel_gal"] for v in with_driver if v.get("_fuel_gal"))
     fuel_miles = sum(v.get("_miles", 0) for v in with_driver)
-    fleet_mpg = fuel_miles / total_fuel if total_fuel > 0 else 0
+    aggregate_mpg = fuel_miles / total_fuel if total_fuel > 0 else 0
 
     lines = [
         "━━━━━━━━━━━━━━━━━━━",
@@ -52,7 +52,7 @@ def format_fleet_efficiency(
         f"🚗 {total_drive:,.1f}h drive  ·  🅿️ {total_idle:,.1f}h idle",
         f"  🛣  <b>{total_miles:,}</b> mi  ·  "
         f"📈 {avg_drive_pct:.0f}% driving  ·  "
-        f"⛽ {fleet_mpg:.1f} MPG",
+        f"⛽ {aggregate_mpg:.1f} MPG",
         "",
         "  ── ── ── ── ── ── ── ──",
         "",
