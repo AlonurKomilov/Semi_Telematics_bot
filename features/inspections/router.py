@@ -13,7 +13,7 @@ Three logical groups:
     submissions.  Account owners + admins inherit it via the default
     role grants.
 
-All write paths go through ``features.pti.service`` rather than
+All write paths go through ``features.inspections.service`` rather than
 the storage mixin directly so business rules (required items,
 required media, status transitions) can't be bypassed by hitting an
 endpoint with crafted payloads.
@@ -40,8 +40,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from capabilities.permissions.roles import can
-from features.pti import service as pti_service
-from features.pti.templates import (
+from features.inspections import service as pti_service
+from features.inspections.templates import (
     STANDARD_DOT_TRAILER_ITEMS,
     STANDARD_DOT_TRUCK_ITEMS,
     VALID_ITEM_STATUSES,
@@ -775,7 +775,7 @@ async def ai_check_media(
     flow.
     """
     import capabilities.ai as ai
-    from features.pti import ai_review
+    from features.inspections import ai_review
     from adapters.storage.object_store import get_object_store_for_account
 
     ins = await _require_visible_inspection(inspection_id, user, tenant_db)
@@ -1331,7 +1331,7 @@ async def download_report(
     """
     import asyncio
     from adapters.storage.object_store import get_object_store_for_account
-    from features.pti import pdf as pti_pdf
+    from features.inspections import pdf as pti_pdf
 
     ins = await _require_visible_inspection(inspection_id, user, tenant_db)
     detail = await tenant_db.get_inspection_detail(

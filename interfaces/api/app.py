@@ -48,7 +48,7 @@ from features.events import router as events_routes
 from features.costs import router as costs_routes
 from features.maintenance import router as maintenance_routes
 from features.work_orders import router as work_orders_routes
-from features.pti import router as inspections_routes
+from features.inspections import router as inspections_routes
 from features.knowledge import router as knowledge_routes
 from features.payroll import router as payroll_routes
 from features.coaching import router as coaching_routes

@@ -38,7 +38,7 @@ class AccountsMixin:
 
         now = self._now()
         slug = self._make_slug(clean)
-        from features.pti.templates import (
+        from features.inspections.templates import (
             STANDARD_DOT_TRUCK_ITEMS,
             STANDARD_DOT_TRAILER_ITEMS,
         )

@@ -26,9 +26,9 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from adapters.storage import Role
-from features.pti import service as pti_service
-from features.pti.service import _items_missing_media, _summarize_items
-from features.pti.templates import STANDARD_DOT_TRUCK_ITEMS
+from features.inspections import service as pti_service
+from features.inspections.service import _items_missing_media, _summarize_items
+from features.inspections.templates import STANDARD_DOT_TRUCK_ITEMS
 
 
 # ── Item-type gate helpers (pure, no DB) ───────────────────────────

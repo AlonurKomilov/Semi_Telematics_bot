@@ -74,7 +74,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
 
     from interfaces.bot.scheduled_reports import send_scheduled_reports
     from capabilities.scorecards.jobs import take_daily_scorecard_snapshots
-    from features.pti.jobs import (
+    from features.inspections.jobs import (
         job_pti_spawn_weekly,
         job_pti_remind_due_soon,
         job_pti_escalate_overdue,

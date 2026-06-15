@@ -28,7 +28,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from features.pti.templates import (
+from features.inspections.templates import (
     DEFECT_ITEM_STATUSES,
     OOS_ITEM_STATUSES,
     STANDARD_DOT_TRAILER_ITEMS,
@@ -844,7 +844,7 @@ async def reset_template_to_default(
     inspection_type: str = "weekly",
 ) -> int:
     """Wraps ``tenant_db.reset_template_to_default`` with the right
-    default item list pulled from ``features.pti.templates``.
+    default item list pulled from ``features.inspections.templates``.
 
     Routes call this rather than the storage method directly so the
     item list source of truth stays in one place.

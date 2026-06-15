@@ -26,6 +26,7 @@ from features.vehicles.faults import ai_tool as faults                       # n
 from features.vehicles import ai_tool as vehicles_tools                       # noqa: F401
 from features.location import ai_tool as location_tools                       # noqa: F401
 from features.vehicles.health import ai_tool as health                       # noqa: F401
+from features.overview import ai_tool as overview                            # noqa: F401
 from features.vehicles.fuel import ai_tool as fuel                           # noqa: F401
 from features.vehicles.efficiency import ai_tool as efficiency               # noqa: F401
 from features.events import ai_tool as events                                # noqa: F401
@@ -37,7 +38,7 @@ from features.knowledge import ai_tool as knowledge                          # n
 from features.parking import ai_tool as parking                              # noqa: F401
 from features.alerts import ai_tool as alerts                                # noqa: F401
 from features.work_orders import ai_tool as work_orders                      # noqa: F401
-from features.pti import ai_tool as pti                                      # noqa: F401
+from features.inspections import ai_tool as pti                                      # noqa: F401
 
 # Role-neutral alias
 AI_TOOLS = get_all_tool_schemas()

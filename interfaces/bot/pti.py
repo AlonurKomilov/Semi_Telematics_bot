@@ -37,7 +37,7 @@ from adapters.storage import Role
 from infra.bot_registry import get_app_for_account
 from infra.services import get_tenant_db, get_platform_db
 from interfaces.bot.config import WEBAPP_URL
-from features.pti.formatter import (
+from features.inspections.formatter import (
     inspection_summary,
     reminder_body,
 )

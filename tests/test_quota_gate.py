@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import pytest
 from fastapi import HTTPException
 
-from features.pti.router import _check_quota_or_413
+from features.inspections.router import _check_quota_or_413
 
 
 @pytest.fixture
