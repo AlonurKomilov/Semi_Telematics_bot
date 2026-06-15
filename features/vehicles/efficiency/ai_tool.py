@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
+from capabilities.ai.tools.scope import filter_to_scope
 from capabilities.telemetry.service import (
     get_driver_efficiency as _svc_drv_eff,
     get_fleet_efficiency as _svc_fleet_eff,
@@ -92,7 +93,9 @@ async def get_efficiency_summary(tool_args: dict, samsara_client,
     days = tool_args.get("days", 7)
     if account_id is None:
         return {"error": "This tool requires account context."}
-    eff = await _svc_fleet_eff(account_id, days=days)
+    eff = filter_to_scope(
+        await _svc_fleet_eff(account_id, days=days), tool_args, key="name",
+    )
     return {
         "period_days": days,
         "vehicle_count": len(eff),

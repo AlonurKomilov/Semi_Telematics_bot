@@ -1,8 +1,8 @@
-"""Work-orders tool — wraps the shop-invoice / work-order table.
+"""Work-orders AI tool — recent shop visits / work orders.
 
-Answers "what was the last repair on Truck 231", "total shop spend
-this quarter", "any open work orders" — sourced from the manually-
-entered work-order records the dashboard's Work Orders page maintains.
+Vehicle-specific (optional vehicle_name), so driver/scope isolation is
+enforced by the gate, which requires a scoped caller to name an allowed
+vehicle before this runs.
 """
 
 from __future__ import annotations

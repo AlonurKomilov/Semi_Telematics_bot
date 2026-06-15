@@ -1,8 +1,7 @@
-"""Driver-inspections tool — wraps DVIR pre/post-trip records.
+"""PTI / DVIR AI tool — recent driver vehicle inspections.
 
-Answers "any failed inspections this week", "trucks with open
-defects", "did Truck 231 pass its last inspection".  Driven by the
-``driver_inspections`` table the driver app populates.
+Vehicle-specific (optional vehicle_name), so driver/scope isolation is
+enforced by the gate (a scoped caller must name an allowed vehicle).
 """
 
 from __future__ import annotations

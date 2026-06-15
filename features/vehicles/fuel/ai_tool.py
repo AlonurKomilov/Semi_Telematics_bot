@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
+from capabilities.ai.tools.scope import filter_to_scope
 from capabilities.telemetry.service import get_low_fuel_vehicles as _svc_low_fuel
 
 
@@ -27,7 +28,9 @@ async def get_low_fuel_vehicles(tool_args: dict, samsara_client,
     threshold = tool_args.get("threshold", 20)
     if account_id is None:
         return {"error": "This tool requires account context."}
-    low = await _svc_low_fuel(account_id, threshold=threshold)
+    low = filter_to_scope(
+        await _svc_low_fuel(account_id, threshold=threshold), tool_args, key="name",
+    )
     return {
         "threshold_pct": threshold,
         "count": len(low),
@@ -129,6 +132,7 @@ async def get_fuel_cost_summary(tool_args: dict, samsara_client,
     start_date = tool_args.get("start_date")
     end_date = tool_args.get("end_date")
     summary = await db.get_fuel_summary(account_id, start_date=start_date, end_date=end_date)
+    summary = filter_to_scope(summary, tool_args, key="vehicle_name")
     if not summary:
         return {"result": "No fuel entries recorded for this account."}
     result_items = []

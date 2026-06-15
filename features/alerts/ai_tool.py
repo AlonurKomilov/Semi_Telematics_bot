@@ -1,13 +1,14 @@
-"""Alert-history tool — wraps the alert_history acknowledgment table.
+"""Alerts AI tool — recent alert history.
 
-Lets the AI agent answer "any alerts last week?", "which truck alerts
-the most?", "any unacknowledged alerts right now?" — the same data
-that drives the dashboard's /alerts page, just queryable from chat.
+Account-wide, so it filters its results to the caller's Vehicle-Access scope
+via the shared helper (a company/vehicle-restricted user sees only their own
+vehicles' alerts).
 """
 
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
+from capabilities.ai.tools.scope import filter_to_scope
 
 
 @register_tool({
@@ -80,16 +81,8 @@ async def get_alert_history(tool_args: dict, samsara_client,
         status=status, severity=severity,
     )
 
-    # Vehicle-Access scope: a company/vehicle-restricted caller only sees
-    # alerts for their own vehicles (orchestrator injects the allowed set;
-    # None = unrestricted, even-empty = restrict to exactly it).
-    scope = tool_args.get("_scope_vehicles")
-    if scope is not None:
-        scope_set = {str(v).strip().lower() for v in scope if v}
-        rows = [
-            r for r in rows
-            if (r.get("vehicle_name") or "").strip().lower() in scope_set
-        ]
+    # Vehicle-Access scope: only the caller's own vehicles' alerts.
+    rows = filter_to_scope(rows, tool_args)
 
     return {
         "count": len(rows),

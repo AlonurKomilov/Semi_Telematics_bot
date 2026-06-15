@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
+from capabilities.ai.tools.scope import filter_to_scope
 from features.events.service import get_events as _svc_events
 
 
@@ -84,6 +85,8 @@ async def get_events_summary(tool_args: dict, samsara_client,
     if account_id is None:
         return {"error": "This tool requires account context."}
     events = await _svc_events(account_id, days=days)
+    # Scope to the caller's vehicles before aggregating.
+    events = filter_to_scope(events, tool_args, key="vehicle_name")
     # Counts by type
     by_type: dict[str, int] = {}
     by_driver: dict[str, int] = {}

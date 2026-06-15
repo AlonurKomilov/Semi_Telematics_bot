@@ -1,14 +1,13 @@
-"""Idle-vehicles tool — wraps the parking-event tracker.
+"""Parking AI tool — long-idle / parked vehicles (wraps the parking tracker).
 
-Surfaces "which trucks have been sitting in unsafe / unknown locations
-for N+ days" to the AI agent.  The same data drives the dashboard's
-Parking page; this tool gives the chat side a way to answer
-"which truck was off 10 days?" without the agent inventing data.
+Co-located with the parking feature.  Account-wide, so it filters its results
+to the caller's Vehicle-Access scope via the shared ``scope_vehicle_set``.
 """
 
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
+from capabilities.ai.tools.scope import scope_vehicle_set
 
 
 @register_tool({
@@ -69,14 +68,9 @@ async def get_idle_vehicles(tool_args: dict, samsara_client,
     include_safe = bool(tool_args.get("include_safe") or False)
     company = (tool_args.get("company") or "").strip()
 
-    # Vehicle-Access scope: for a company/vehicle-restricted caller the
-    # orchestrator injects the allowed vehicle names; we return only those.
-    # ``None`` = unrestricted; an (even empty) set = filter to exactly it.
-    scope = tool_args.get("_scope_vehicles")
-    scope_set = (
-        {str(v).strip().lower() for v in scope if v}
-        if scope is not None else None
-    )
+    # Vehicle-Access scope: company/vehicle-restricted callers only see their
+    # own vehicles.  None = unrestricted; empty set = none (fail-closed).
+    scope_set = scope_vehicle_set(tool_args)
 
     events = await db.get_active_parking_events(
         account_id, attention_only=not include_safe,

@@ -54,7 +54,7 @@ class TestGateVehicleAccessScope:
 
     async def test_company_scoped_blocked_from_fleetwide_tools(self):
         ctx = {"role": "fleet", "scoped_vehicle_nums": ["B-1", "B-2"]}
-        blocked = await _check_tool_permission("get_account_stats", {}, "fleet", ctx)
+        blocked = await _check_tool_permission("get_drivers_list", {}, "fleet", ctx)
         assert blocked is not None
         assert "account-wide" in blocked["error"]
 
@@ -80,7 +80,7 @@ class TestGateVehicleAccessScope:
         assert await _check_tool_permission(
             "get_vehicle_detail", {"vehicle_name": "B-1"}, "fleet", ctx,
         ) is not None
-        assert await _check_tool_permission("get_account_stats", {}, "fleet", ctx) is not None
+        assert await _check_tool_permission("get_drivers_list", {}, "fleet", ctx) is not None
 
 
 # ── Resolver: Vehicle Access (All / Company / Vehicle) → vehicle set ─────────

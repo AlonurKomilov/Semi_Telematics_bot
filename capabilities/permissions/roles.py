@@ -951,6 +951,15 @@ SCOPE_AWARE_TOOLS: frozenset[str] = frozenset({
     "get_rolling_stopped",
     "search_vehicles",
     "get_alert_history",
+    "get_maintenance_summary",
+    "get_weather",
+    "get_driver_hos_status",
+    "get_low_fuel_vehicles",
+    "get_fuel_cost_summary",
+    "get_vehicle_health",
+    "get_account_stats",
+    "get_efficiency_summary",
+    "get_events_summary",
 })
 
 # Tools that accept a vehicle_name param and must enforce driver vehicle isolation.

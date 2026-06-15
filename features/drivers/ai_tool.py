@@ -1,13 +1,50 @@
-"""Driver HOS / duty-status tool — wraps the driver_hos_status cache.
+"""Driver AI tools — roster list and hours-of-service status.
 
-Answers "who's out of hours", "how many hours does X have left",
-"which drivers are on-duty right now" from the locally-cached HOS
-table the sync job refreshes from Samsara.  No live API call.
+``get_driver_hos_status`` carries each driver's assigned truck, so it filters
+to the caller's Vehicle-Access scope (by ``truck_num``).  ``get_drivers_list``
+has no vehicle dimension on the roster record, so it is not scope-filtered and
+remains blocked for scoped users by the gate.
 """
 
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
+from capabilities.ai.tools.scope import filter_to_scope
+
+
+@register_tool({
+    "name": "get_drivers_list",
+    "description": (
+        "Get the list of all active drivers in the fleet: name, ID, "
+        "and contact info. Useful for answering 'who are our drivers?' "
+        "or finding which driver is assigned to a vehicle."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+    },
+})
+async def get_drivers_list(tool_args: dict, samsara_client,
+                           account_id: int | None = None, db=None) -> dict:
+    if account_id is None:
+        return {"error": "This tool requires account context."}
+    from features.drivers.service import get_drivers as _svc_drivers
+    drivers = await _svc_drivers(account_id)
+    # Filter to active drivers only
+    active = [d for d in drivers if not d.get("deactivatedAtMs")]
+    return {
+        "driver_count": len(active),
+        "drivers": [
+            {
+                "name": d.get("name"),
+                "id": d.get("id"),
+                "username": d.get("username", ""),
+                "phone": d.get("phone", ""),
+            }
+            for d in active[:50]
+        ],
+    }
 
 
 def _fmt_seconds(secs: int | None) -> str:
@@ -65,6 +102,8 @@ async def get_driver_hos_status(tool_args: dict, samsara_client,
     status_q = (tool_args.get("status_filter") or "").strip().lower()
 
     rows = await db.get_driver_hos_status(account_id)
+    # Scope to the caller's vehicles (by the driver's assigned truck).
+    rows = filter_to_scope(rows, tool_args, key="truck_num")
 
     filtered: list[dict] = []
     for r in rows:

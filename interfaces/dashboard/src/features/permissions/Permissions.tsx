@@ -80,8 +80,9 @@ const PERM_GROUPS: PermGroup[] = [
       { allKey: 'can_risk_report_all', vehicleKey: 'can_risk_report_own', label: 'Risk Summary', scoped: true, indented: true },
       { key: 'can_cost_reports', label: 'Cost Reports', indented: true },
       { key: 'can_digest',       label: 'Scheduled Reports', indented: true },
-      { key: 'can_rolling_stopped', label: 'AI: Engine-state Lookup', description: 'AI-only: "what\'s rolling / idling / off right now?"' },
-      { key: 'can_ai_chat', label: 'AI Chat', description: 'AI assistant chat + fleet summary' },
+      { header: 'AI', description: 'the AI assistant + its tools below' },
+      { key: 'can_ai_chat', label: 'AI Chat', indented: true, description: 'AI assistant chat + fleet summary' },
+      { key: 'can_rolling_stopped', label: 'Engine-state Lookup', indented: true, description: 'AI-only: "what\'s rolling / idling / off right now?"' },
       // Settings is ONE System-tier feature whose components each carry
       // their own permission — account administration can be held by one
       // role or delegated piecemeal (e.g. HR gets Invites without Users).

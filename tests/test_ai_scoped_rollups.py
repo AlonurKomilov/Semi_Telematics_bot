@@ -16,9 +16,9 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 import pytest
 
 from capabilities.ai.intelligence import _check_tool_permission
-from capabilities.ai.tools.idle import get_idle_vehicles
-from capabilities.ai.tools.alert_history import get_alert_history
-from capabilities.ai.tools import vehicle as _veh_mod
+from features.parking.ai_tool import get_idle_vehicles
+from features.alerts.ai_tool import get_alert_history
+from features.vehicles import ai_tool as _veh_mod
 from capabilities.ai.tools.registry import execute_tool
 
 
@@ -49,7 +49,7 @@ class TestGateAllowsScopeAwareTools:
 
     async def test_non_scope_aware_account_wide_tool_still_blocked(self):
         ctx = {"role": "fleet", "scoped_vehicle_nums": ["B-1"]}
-        blocked = await _check_tool_permission("get_account_stats", {}, "fleet", ctx)
+        blocked = await _check_tool_permission("get_drivers_list", {}, "fleet", ctx)
         assert blocked is not None
         assert "account-wide" in blocked["error"]
 
@@ -109,10 +109,14 @@ class TestExecuteToolInjection:
 
 # ── Batch 2: the four scope-aware tools, gate + per-tool filtering ───────────
 
-_SCOPE_AWARE = ["get_idle_vehicles", "get_rolling_stopped",
-                "search_vehicles", "get_alert_history"]
-_NOT_YET = ["get_drivers_list", "get_driver_hos_status",
-            "get_maintenance_summary", "get_weather"]
+_SCOPE_AWARE = ["get_idle_vehicles", "get_rolling_stopped", "search_vehicles",
+                "get_alert_history", "get_maintenance_summary", "get_weather",
+                "get_driver_hos_status", "get_low_fuel_vehicles",
+                "get_fuel_cost_summary", "get_vehicle_health", "get_account_stats",
+                "get_efficiency_summary", "get_events_summary"]
+# Only account-wide tool still not scope-aware: the driver roster has no
+# vehicle field, so scoping it needs a driver→company mapping (follow-up).
+_NOT_YET = ["get_drivers_list"]
 
 
 @pytest.mark.asyncio
@@ -192,3 +196,41 @@ class TestBatch2ToolFilters:
         ])
         res = await get_alert_history({}, None, account_id=1, db=db)
         assert res["count"] == 2
+
+
+# ── Rollup tools: aggregation must respect scope (re-aggregate over subset) ──
+
+
+@pytest.mark.asyncio
+class TestRollupScopeFilter:
+    async def test_events_summary_aggregates_only_scoped_vehicles(self, monkeypatch):
+        import features.events.ai_tool as _events_mod
+
+        async def fake_events(account_id, days=7):
+            return [
+                {"vehicle_name": "B-1", "event_name": "harsh_brake",
+                 "driver_name": "X", "g_force": 1.0},
+                {"vehicle_name": "A-3", "event_name": "crash",
+                 "driver_name": "Y", "g_force": 2.0},
+            ]
+
+        monkeypatch.setattr(_events_mod, "_svc_events", fake_events)
+        res = await _events_mod.get_events_summary(
+            {"_scope_vehicles": ["B-1"]}, None, account_id=1, db=None,
+        )
+        assert res["total_events"] == 1                  # only B-1 counted
+        assert "crash" not in res["events_by_type"]      # A-3's event excluded
+        assert all(e["vehicle"] == "B-1" for e in res["most_severe"])
+
+    async def test_events_summary_unscoped_counts_all(self, monkeypatch):
+        import features.events.ai_tool as _events_mod
+
+        async def fake_events(account_id, days=7):
+            return [
+                {"vehicle_name": "B-1", "event_name": "harsh_brake", "g_force": 1.0},
+                {"vehicle_name": "A-3", "event_name": "crash", "g_force": 2.0},
+            ]
+
+        monkeypatch.setattr(_events_mod, "_svc_events", fake_events)
+        res = await _events_mod.get_events_summary({}, None, account_id=1, db=None)
+        assert res["total_events"] == 2

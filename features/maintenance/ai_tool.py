@@ -1,8 +1,14 @@
-"""Maintenance tools: truck maintenance and account-wide summary."""
+"""Maintenance AI tools — per-vehicle tasks and account-wide summary.
+
+``get_maintenance_summary`` is account-wide, so it filters its tasks to the
+caller's Vehicle-Access scope (via the shared helper) before aggregating —
+a company-restricted manager gets a summary of *their own* vehicles.
+"""
 
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
+from capabilities.ai.tools.scope import filter_to_scope
 
 
 @register_tool({
@@ -65,6 +71,8 @@ async def get_maintenance_summary(tool_args: dict, samsara_client,
     if not db or account_id is None:
         return {"error": "Maintenance data not available in this context"}
     tasks = await db.get_maintenance_tasks(account_id)
+    # Scope to the caller's vehicles before aggregating.
+    tasks = filter_to_scope(tasks, tool_args)
     pending = [t for t in tasks if t.get("status") == "pending"]
     overdue = [t for t in tasks if t.get("status") == "overdue"]
     # By type

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
+from capabilities.ai.tools.scope import filter_to_scope
 from capabilities.telemetry.service import get_vehicle_health as _svc_health
 from features.vehicles.service import get_vehicles_overview as _svc_fleet
 
@@ -24,7 +25,7 @@ async def get_vehicle_health(tool_args: dict, samsara_client,
                              account_id: int | None = None, db=None) -> dict:
     if account_id is None:
         return {"error": "This tool requires account context."}
-    health = await _svc_health(account_id)
+    health = filter_to_scope(await _svc_health(account_id), tool_args, key="name")
     return {
         "total_vehicles": len(health),
         "vehicles_with_alerts": sum(1 for v in health if v.get("_health_alerts")),
@@ -62,7 +63,7 @@ async def get_account_stats(tool_args: dict, samsara_client,
                             account_id: int | None = None, db=None) -> dict:
     if account_id is None:
         return {"error": "This tool requires account context."}
-    fleet = await _svc_fleet(account_id)
+    fleet = filter_to_scope(await _svc_fleet(account_id), tool_args, key="name")
     faulted = []
     critical = []
     for v in fleet:
@@ -80,7 +81,7 @@ async def get_account_stats(tool_args: dict, samsara_client,
     try:
         if account_id is None:
             return {"error": "This tool requires account context."}
-        health = await _svc_health(account_id)
+        health = filter_to_scope(await _svc_health(account_id), tool_args, key="name")
         alerts = sum(1 for v in health if v.get("_health_alerts"))
     except Exception:
         alerts = 0

@@ -1,4 +1,8 @@
-"""Knowledge base tool: query fleet team's uploaded documents and SOPs."""
+"""Knowledge-base AI tool — search uploaded SOPs, policies, and documents.
+
+Account-scoped reads (``account_id``) with no per-vehicle dimension; open to
+all roles (no feature-flag gate), so no Vehicle-Access filtering applies.
+"""
 
 from __future__ import annotations
 

@@ -11,25 +11,33 @@ from capabilities.ai.tools.registry import (                              # noqa
     execute_tool,
 )
 
-# Import domain modules so @register_tool decorators run
+# Pre-load the alerting capability FIRST.  Some feature packages' ``__init__``
+# transitively touch it (e.g. ``features.parking`` → ``ai_vision`` →
+# ``capabilities.alerting.pipeline``), and ``capabilities.alerting.__init__``
+# in turn imports those features — a latent cycle that only breaks when a
+# feature is imported before alerting is loaded.  Loading alerting here matches
+# normal app-startup order so the feature ``ai_tool`` imports below resolve.
+import capabilities.alerting  # noqa: F401,E402
+
+# Import feature ``ai_tool`` modules so their @register_tool decorators run.
+# Every tool definition lives in its feature (features/<x>/ai_tool.py); this
+# package keeps only the mechanism (registry + scope helper) and this hub.
 from features.vehicles.faults import ai_tool as faults                       # noqa: F401
-from capabilities.ai.tools import vehicle as vehicle                      # noqa: F401
+from features.vehicles import ai_tool as vehicles_tools                       # noqa: F401
+from features.location import ai_tool as location_tools                       # noqa: F401
 from features.vehicles.health import ai_tool as health                       # noqa: F401
 from features.vehicles.fuel import ai_tool as fuel                           # noqa: F401
 from features.vehicles.efficiency import ai_tool as efficiency               # noqa: F401
 from features.events import ai_tool as events                                # noqa: F401
-from capabilities.ai.tools import maintenance as maintenance              # noqa: F401
-from capabilities.ai.tools import geo as geo                              # noqa: F401
+from features.maintenance import ai_tool as maintenance                      # noqa: F401
+from features.geofencing import ai_tool as geofencing                        # noqa: F401
 from features.cameras import ai_tool as camera                      # noqa: F401
-from capabilities.ai.tools import odometer as odometer                    # noqa: F401
-from capabilities.ai.tools import drivers as drivers                      # noqa: F401
-from capabilities.ai.tools import knowledge as knowledge                  # noqa: F401
-from capabilities.ai.tools import idle as idle                            # noqa: F401
-from capabilities.ai.tools import hos as hos                              # noqa: F401
-from capabilities.ai.tools import alert_history as alert_history          # noqa: F401
-from capabilities.ai.tools import work_orders as work_orders              # noqa: F401
-from capabilities.ai.tools import inspections as inspections              # noqa: F401
-from capabilities.ai.tools import history as history                      # noqa: F401
+from features.drivers import ai_tool as drivers                              # noqa: F401
+from features.knowledge import ai_tool as knowledge                          # noqa: F401
+from features.parking import ai_tool as parking                              # noqa: F401
+from features.alerts import ai_tool as alerts                                # noqa: F401
+from features.work_orders import ai_tool as work_orders                      # noqa: F401
+from features.pti import ai_tool as pti                                      # noqa: F401
 
 # Role-neutral alias
 AI_TOOLS = get_all_tool_schemas()
