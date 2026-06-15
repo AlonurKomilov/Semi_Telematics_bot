@@ -14,10 +14,10 @@ from __future__ import annotations
 
 import pytest
 
-from capabilities.scoring.engine import Scorecard, score
-from capabilities.scoring.rules import get_default_rules
-from capabilities.scoring.signals import vehicle_efficiency as veh_signals
-from features.events.signal import from_events_by_vehicle
+from capabilities.scorecards.engine import Scorecard, score
+from capabilities.scorecards.rules import get_default_rules
+from capabilities.scorecards.signals import vehicle_efficiency as veh_signals
+from features.events.scoring_signal import from_events_by_vehicle
 
 
 # ── Engine: subject abstraction ──────────────────────────────────────
@@ -132,7 +132,7 @@ class TestServiceAliases:
 
     @pytest.mark.asyncio
     async def test_alias_signature_matches(self):
-        from capabilities.scoring import service
+        from capabilities.scorecards import service
         # Both entrypoints must be callable and async; the alias is a
         # one-liner forwarder.
         assert callable(service.evaluate_drivers)

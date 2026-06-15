@@ -56,7 +56,7 @@ class TestGateVehicleAccessScope:
         ctx = {"role": "fleet", "scoped_vehicle_nums": ["B-1", "B-2"]}
         blocked = await _check_tool_permission("get_account_stats", {}, "fleet", ctx)
         assert blocked is not None
-        assert "fleet-wide" in blocked["error"]
+        assert "account-wide" in blocked["error"]
 
     async def test_vehicle_scoped_restricted_to_picked_vehicle(self):
         ctx = {"role": "admin", "scoped_vehicle_nums": ["001"]}

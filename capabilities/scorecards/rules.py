@@ -1,7 +1,7 @@
 """Built-in default scoring rules.
 
 Each rule is a pure function over the merged ``signals`` dict produced by
-``capabilities.scoring.signals.collect_all``.  The ``condition`` callable
+``capabilities.scorecards.signals.collect_all``.  The ``condition`` callable
 returns the number of times the rule fires for the window; the engine
 multiplies that by ``points`` (clamped by ``cap``) — *legacy flat path*.
 

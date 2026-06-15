@@ -149,7 +149,7 @@ def _build_metrics() -> bool:
     )
 
     # Scoring service stage timings — already structured-logged in
-    # capabilities/scoring/service.py. Promoting to a histogram so
+    # capabilities/scorecards/service.py. Promoting to a histogram so
     # Grafana can plot them next to /api/safety/scorecards/composite
     # request latency.
     SCORECARD_STAGE = Histogram(

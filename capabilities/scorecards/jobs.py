@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
-from capabilities.scoring.service import evaluate_subjects
+from capabilities.scorecards.service import evaluate_subjects
 from infra.services import get_platform_db, get_tenant_db
 from capabilities.alerting.registry import register_alert_source
 

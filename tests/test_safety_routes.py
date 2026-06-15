@@ -71,7 +71,7 @@ async def safety_app(pg_db, monkeypatch):
         ]
 
     monkeypatch.setattr(
-        "capabilities.scoring.router._svc_driver_efficiency",
+        "capabilities.scorecards.router._svc_driver_efficiency",
         _fake_efficiency,
     )
 
@@ -173,7 +173,7 @@ class TestScorecardsRoute:
             return ["T-101", "T-202"]
 
         monkeypatch.setattr(
-            "capabilities.scoring.router.get_user_vehicle_nums",
+            "capabilities.scorecards.router.get_user_vehicle_nums",
             _fake_truck_nums,
         )
         async with AsyncClient(
@@ -331,7 +331,7 @@ class TestPillarShapeContract:
     async def test_response_carries_both_legacy_and_pillar_blocks(
         self, safety_app, monkeypatch,
     ):
-        # The composite endpoint goes through capabilities.scoring.service.
+        # The composite endpoint goes through capabilities.scorecards.service.
         # Stub it directly so the test focuses on response *shape*, not on
         # the (separately tested) scoring engine.
         async def _fake_evaluate(account_id, **_kw):
@@ -372,7 +372,7 @@ class TestPillarShapeContract:
                 "insufficient_data": False,
             }]
         monkeypatch.setattr(
-            "capabilities.scoring.router._svc_evaluate_subjects",
+            "capabilities.scorecards.router._svc_evaluate_subjects",
             _fake_evaluate,
         )
         async with AsyncClient(

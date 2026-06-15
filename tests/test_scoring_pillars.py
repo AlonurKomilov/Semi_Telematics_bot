@@ -1,12 +1,12 @@
 """Pillar accumulator + insufficient-data tests."""
 from __future__ import annotations
 
-from capabilities.scoring.engine import (
+from capabilities.scorecards.engine import (
     MIN_DRIVE_HOURS_FOR_RANKING,
     PILLAR_CAPS,
     score,
 )
-from capabilities.scoring.rules import (
+from capabilities.scorecards.rules import (
     PILLAR_COMPLIANCE,
     PILLAR_EFFICIENCY,
     PILLAR_SAFETY,

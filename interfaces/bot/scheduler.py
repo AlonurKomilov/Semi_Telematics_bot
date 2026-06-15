@@ -62,7 +62,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     import interfaces.bot.maintenance            # noqa: F401  maintenance_* (x4)
     import features.drivers.documents.alert      # noqa: F401  driver_doc_expiry_check
     import interfaces.bot.driver_samsara_sync    # noqa: F401  driver_samsara_sync
-    import capabilities.scoring.jobs             # noqa: F401  scorecard_drop_alerts
+    import capabilities.scorecards.jobs             # noqa: F401  scorecard_drop_alerts
 
     for src in alert_sources():
         scheduler.add_job(
@@ -73,7 +73,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         )
 
     from interfaces.bot.scheduled_reports import send_scheduled_reports
-    from capabilities.scoring.jobs import take_daily_scorecard_snapshots
+    from capabilities.scorecards.jobs import take_daily_scorecard_snapshots
     from features.pti.jobs import (
         job_pti_spawn_weekly,
         job_pti_remind_due_soon,

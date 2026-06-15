@@ -146,7 +146,7 @@ async def get_rolling_stopped(tool_args: dict, samsara_client,
         else:
             off.append(entry)
     return {
-        "total": len(fleet),
+        "total": len(vehicles),
         "rolling": len(rolling),
         "idling": len(idling),
         "off": len(off),

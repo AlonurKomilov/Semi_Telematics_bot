@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from capabilities.scoring.service import evaluate_subjects
+from capabilities.scorecards.service import evaluate_subjects
 from infra.platform import get_tenant_db
 
 logger = logging.getLogger(__name__)

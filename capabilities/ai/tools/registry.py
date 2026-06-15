@@ -84,7 +84,7 @@ async def filter_tools_for_role(
     for tool_def in all_schemas:
         name = tool_def["name"]
         if scoped and name in ACCOUNT_WIDE_TOOLS:
-            continue  # the gate blocks fleet-wide tools for scoped users
+            continue  # the gate blocks account-wide tools for scoped users
         required = TOOL_PERMISSIONS.get(name)
         if required is None:
             filtered.append(tool_def)
@@ -178,7 +178,7 @@ async def execute_tool(tool_name: str, tool_args: dict,
     unrestricted).  For a scope-aware account-wide tool we inject it as
     ``tool_args["_scope_vehicles"]`` so the tool filters its results to those
     vehicles — letting a company/vehicle-restricted user get *their own*
-    fleet rollups instead of being blocked outright.
+    account-wide rollups instead of being blocked outright.
     """
     handler = get_tool_handler(tool_name)
     if not handler:

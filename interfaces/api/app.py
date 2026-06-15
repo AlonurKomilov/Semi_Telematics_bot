@@ -31,7 +31,7 @@ from interfaces.api.routes import webhooks as webhooks_routes
 from capabilities.alerting import router as alerts
 from capabilities.reporting import router as reports_routes
 from capabilities.ai import router as ai_routes
-from capabilities.scoring import router as scorecards_routes
+from capabilities.scorecards import router as scorecards_routes
 from capabilities.billing import router as billing_routes
 from capabilities.integrations import router as integrations_routes
 from capabilities.storage import router as storage_routes

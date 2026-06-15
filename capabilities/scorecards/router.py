@@ -14,7 +14,7 @@ from interfaces.api.deps import require_permission, require_permission_any, get_
 from infra.services import get_client
 from capabilities.telemetry.service import get_driver_efficiency as _svc_driver_efficiency
 from features.events.severity import classify_event_severity as _classify_severity
-from capabilities.scoring.service import evaluate_subjects as _svc_evaluate_subjects
+from capabilities.scorecards.service import evaluate_subjects as _svc_evaluate_subjects
 import infra.cache as _redis_cache
 
 router = APIRouter(prefix="/safety", tags=["safety"])
@@ -1010,7 +1010,7 @@ async def get_subject_score_events(
 # Extracted from the governance router — these endpoints belong to THIS
 # domain (docs/FEATURES.md feature→component tree).  URLs unchanged.
 from pydantic import BaseModel, Field
-from capabilities.scoring.rules import get_default_rules as _get_default_rules
+from capabilities.scorecards.rules import get_default_rules as _get_default_rules
 from interfaces.api.deps import require_permission, get_tenant_db  # noqa: F811
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -1122,7 +1122,7 @@ async def get_pillar_caps(
     tenant=Depends(get_tenant_db),
 ):
     """Pillar cap weights for this account (defaults 50/25/25 when no override)."""
-    from capabilities.scoring.engine import PILLAR_CAPS
+    from capabilities.scorecards.engine import PILLAR_CAPS
     raw = await tenant.get_account_setting(
         user["account_id"], tenant.KEY_SCORECARD_PILLAR_CAPS, "",
     )
@@ -1165,7 +1165,7 @@ async def reset_pillar_caps(
     tenant=Depends(get_tenant_db),
 ):
     """Remove pillar cap override — reverts to built-in defaults (50/25/25)."""
-    from capabilities.scoring.engine import PILLAR_CAPS
+    from capabilities.scorecards.engine import PILLAR_CAPS
     await tenant.set_account_setting(
         user["account_id"], tenant.KEY_SCORECARD_PILLAR_CAPS, "",
     )

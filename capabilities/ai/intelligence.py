@@ -56,7 +56,7 @@ _TOOL_LABELS: dict[str, str] = {
     "get_vehicle_odometer":   "Reading odometer",
     "search_vehicles":        "Searching vehicles",
     "search_knowledge_base":  "Searching knowledge base",
-    "get_account_stats":      "Getting fleet stats",
+    "get_account_stats":      "Getting account stats",
     "get_idle_vehicles":      "Checking long-idle vehicles",
     "get_driver_hos_status":  "Reading driver hours",
     "get_alert_history":      "Reviewing alert history",
@@ -93,16 +93,16 @@ async def build_context(account_id: int,
     snapshot: dict = {}
 
     try:
-        fleet = await _svc_vehicles_overview(account_id)
+        vehicles = await _svc_vehicles_overview(account_id)
         if _vehicle_set:
-            fleet = [
-                v for v in fleet
+            vehicles = [
+                v for v in vehicles
                 if v.get("name", "").lower() in _vehicle_set
             ]
 
-        snapshot["total_vehicles"] = len(fleet)
+        snapshot["total_vehicles"] = len(vehicles)
         snapshot["vehicles"] = []
-        for v in fleet[:50]:
+        for v in vehicles[:50]:
             entry: dict = {
                 "name": v.get("name", "?"),
                 "company": v.get("_org", "?"),
@@ -134,7 +134,7 @@ async def build_context(account_id: int,
                 }
             snapshot["vehicles"].append(entry)
     except Exception as e:
-        logger.error(f"AI fleet snapshot failed: {e}")
+        logger.error(f"AI vehicle snapshot failed: {e}")
         snapshot["error"] = str(e)
 
     # Health data
@@ -327,7 +327,7 @@ async def diagnose_faults(vehicle_name: str,
                           action="diagnosis")
 
 
-async def generate_summary(fleet_data: dict,
+async def generate_summary(vehicle_data: dict,
                            account_id: int | None = None,
                            language: str = "en",
                            user_context: dict | None = None,
@@ -338,12 +338,12 @@ async def generate_summary(fleet_data: dict,
     """
     prompt = "Generate a morning fleet status briefing from this data."
     return await generate(prompt, system=SUMMARY_SYSTEM,
-                          context_data=fleet_data, account_id=account_id,
+                          context_data=vehicle_data, account_id=account_id,
                           language=language, user_context=user_context,
                           action="summary")
 
 
-async def ask_ai(question: str, fleet_context: dict,
+async def ask_ai(question: str, vehicle_context: dict,
                  user_id: int | None = None,
                  account_id: int | None = None,
                  language: str = "en",
@@ -354,7 +354,7 @@ async def ask_ai(question: str, fleet_context: dict,
     Returns ``(answer_text, usage)``.
     """
     return await generate(question, system=ASSISTANT_SYSTEM,
-                          context_data=fleet_context, user_id=user_id,
+                          context_data=vehicle_context, user_id=user_id,
                           account_id=account_id, language=language,
                           user_context=user_context,
                           action="question")
@@ -365,7 +365,7 @@ async def ask_ai(question: str, fleet_context: dict,
 
 def _build_agent_user_prompt(
     question: str,
-    fleet_context: dict | None,
+    vehicle_context: dict | None,
     user_context: dict | None,
     history: list | None,
 ) -> str:
@@ -398,16 +398,16 @@ def _build_agent_user_prompt(
                 f"\n- You MUST ONLY query data for your assigned trucks."
                 f"\n- NEVER look up, mention, or reveal data about any other truck."
                 f"\n- When calling any tool, always use vehicle_name for one of your assigned trucks."
-                f"\n- Do NOT call fleet-wide tools (fleet summary, all trucks, etc.)."
-                f"\n- If the user asks about another truck or fleet totals, politely decline."
+                f"\n- Do NOT call account-wide tools (whole-account summaries, all trucks, etc.)."
+                f"\n- If the user asks about another truck or account-wide totals, politely decline."
             )
         parts.append("\n".join(profile_lines) + "\n\n")
 
-    if fleet_context:
-        data_str = json.dumps(fleet_context, separators=(',', ':'), default=str)
+    if vehicle_context:
+        data_str = json.dumps(vehicle_context, separators=(',', ':'), default=str)
         if len(data_str) > 30000:
             data_str = data_str[:30000] + "\n... (truncated)"
-        parts.append(f"Fleet snapshot:\n```\n{data_str}\n```\n\n")
+        parts.append(f"Vehicle snapshot:\n```\n{data_str}\n```\n\n")
 
     parts.append(
         "You have access to tools that can fetch live data from Samsara. "
@@ -415,7 +415,7 @@ def _build_agent_user_prompt(
         "driver efficiency, driver scorecards, safety events, maintenance, "
         "fuel costs, rolling/stopped status, or cameras. "
         "For safety events, always state the time period checked. "
-        "For camera checks, only check one truck at a time — for fleet-wide "
+        "For camera checks, only check one truck at a time — for account-wide "
         "camera checks, direct the user to the Camera Check menu. "
         "If the snapshot already has enough info, answer directly without "
         "calling tools.\n\n"
@@ -457,7 +457,7 @@ def _scoped_vehicle_set(user_context: dict | None, user_role: str | None) -> lis
 
 def _effective_scoped_flag(user_context: dict | None, user_role: str | None) -> bool:
     """True if the caller is vehicle/company-restricted — used to drop
-    fleet-wide tools from what the model is advertised.  Mirrors the gate's
+    account-wide tools from what the model is advertised.  Mirrors the gate's
     scope determination so advertisement and gate agree.
     """
     return _scoped_vehicle_set(user_context, user_role) is not None
@@ -538,7 +538,7 @@ async def _check_tool_permission(
             # Tools not yet scope-aware stay blocked (the safe default).
             return {
                 "error": (
-                    f"Access denied: {tool_name} returns fleet-wide data"
+                    f"Access denied: {tool_name} returns account-wide data"
                     f" outside your access scope."
                 ),
             }
@@ -547,7 +547,7 @@ async def _check_tool_permission(
 
 async def _run_anthropic_agent(
     question: str,
-    fleet_context: dict,
+    vehicle_context: dict,
     samsara_client,
     model_name: str,
     model_info: dict,
@@ -579,7 +579,7 @@ async def _run_anthropic_agent(
     creds = _get_credentials()
     if not project or not creds:
         text, usage = await ask_ai(
-            question, fleet_context, user_id=user_id,
+            question, vehicle_context, user_id=user_id,
             account_id=account_id, language=language,
             user_context=user_context,
         )
@@ -592,7 +592,7 @@ async def _run_anthropic_agent(
 
     # Cache + history lookups mirror the Gemini path.
     has_history = bool(user_id and (user_id, account_id or 0) in _chat_histories)
-    snap_h = _snapshot_hash(fleet_context) if not has_history else ""
+    snap_h = _snapshot_hash(vehicle_context) if not has_history else ""
     ck = _cache_key(
         question, snap_h, model_name,
         account_id=account_id or 0,
@@ -622,7 +622,7 @@ async def _run_anthropic_agent(
         )
 
     history = _chat_histories.get((user_id or 0, account_id or 0)) if user_id else None
-    user_prompt = _build_agent_user_prompt(question, fleet_context, user_context, history)
+    user_prompt = _build_agent_user_prompt(question, vehicle_context, user_context, history)
 
     url = _anthropic_url(location, project, anthropic_model_id)
     messages: list[dict] = [{"role": "user", "content": user_prompt}]
@@ -680,7 +680,7 @@ async def _run_anthropic_agent(
             )
             logger.warning("Anthropic agent call failed, falling back: %s", e)
             text, usage = await ask_ai(
-                question, fleet_context, user_id=user_id,
+                question, vehicle_context, user_id=user_id,
                 account_id=account_id, language=language,
                 user_context=user_context,
             )
@@ -790,7 +790,7 @@ async def _run_anthropic_agent(
     return {"text": final_text, "tool_results": tool_results, "usage": usage_out}
 
 
-async def ask_agent(question: str, fleet_context: dict,
+async def ask_agent(question: str, vehicle_context: dict,
                     samsara_client,
                     user_id: int | None = None,
                     account_id: int | None = None,
@@ -809,7 +809,7 @@ async def ask_agent(question: str, fleet_context: dict,
         # other ask_agent return path produces.  Previously dropped
         # the tuple straight into the response, which JSON-serialised
         # the usage dict alongside the text and broke clients.
-        text, usage = await ask_ai(question, fleet_context, user_id=user_id,
+        text, usage = await ask_ai(question, vehicle_context, user_id=user_id,
                                account_id=account_id, language=language,
                                user_context=user_context)
         return {"text": text, "tool_results": [], "usage": usage}
@@ -831,7 +831,7 @@ async def ask_agent(question: str, fleet_context: dict,
     # own loop instead of falling through to text-only ``ask_ai``.
     if _api_type == "anthropic":
         return await _run_anthropic_agent(
-            question, fleet_context, samsara_client,
+            question, vehicle_context, samsara_client,
             model_name=cur_model_name, model_info=_info,
             user_id=user_id, account_id=account_id, db=db,
             language=language, user_context=user_context,
@@ -840,7 +840,7 @@ async def ask_agent(question: str, fleet_context: dict,
 
     # openai_compat / mistral_raw → no FC support; degrade to chat-only.
     if _api_type != "gemini":
-        text, usage = await ask_ai(question, fleet_context, user_id=user_id,
+        text, usage = await ask_ai(question, vehicle_context, user_id=user_id,
                                account_id=account_id, language=language,
                                user_context=user_context)
         return {"text": text, "tool_results": [], "usage": usage}
@@ -848,7 +848,7 @@ async def ask_agent(question: str, fleet_context: dict,
     model, cur_model_name, _ = get_model_for_user(user_id, account_id)
 
     has_history = bool(user_id and (user_id, account_id or 0) in _chat_histories)
-    snap_h = _snapshot_hash(fleet_context) if not has_history else ""
+    snap_h = _snapshot_hash(vehicle_context) if not has_history else ""
     ck = _cache_key(
         question, snap_h, cur_model_name,
         account_id=account_id or 0,
@@ -952,16 +952,16 @@ async def ask_agent(question: str, fleet_context: dict,
                 f"\n- You MUST ONLY query data for your assigned trucks."
                 f"\n- NEVER look up, mention, or reveal data about any other truck."
                 f"\n- When calling any tool, always use vehicle_name for one of your assigned trucks."
-                f"\n- Do NOT call fleet-wide tools (fleet summary, all trucks, etc.)."
-                f"\n- If the user asks about another truck or fleet totals, politely decline."
+                f"\n- Do NOT call account-wide tools (whole-account summaries, all trucks, etc.)."
+                f"\n- If the user asks about another truck or account-wide totals, politely decline."
             )
         parts.append("\n".join(profile_lines) + "\n\n")
 
-    if fleet_context:
-        data_str = json.dumps(fleet_context, separators=(',', ':'), default=str)
+    if vehicle_context:
+        data_str = json.dumps(vehicle_context, separators=(',', ':'), default=str)
         if len(data_str) > 30000:
             data_str = data_str[:30000] + "\n... (truncated)"
-        parts.append(f"Fleet snapshot:\n```\n{data_str}\n```\n\n")
+        parts.append(f"Vehicle snapshot:\n```\n{data_str}\n```\n\n")
 
     parts.append(
         "You have access to tools that can fetch live data from Samsara. "
@@ -969,7 +969,7 @@ async def ask_agent(question: str, fleet_context: dict,
         "driver efficiency, driver scorecards, safety events, maintenance, "
         "fuel costs, rolling/stopped status, or cameras. "
         "For safety events, always state the time period checked. "
-        "For camera checks, only check one truck at a time — for fleet-wide "
+        "For camera checks, only check one truck at a time — for account-wide "
         "camera checks, direct the user to the Camera Check menu. "
         "If the snapshot already has enough info, answer directly without "
         "calling tools.\n\n"
@@ -1118,7 +1118,7 @@ async def ask_agent(question: str, fleet_context: dict,
                     _cache_put(ck, text)
                 return {"text": text, "tool_results": tool_results, "usage": usage}
 
-            text, usage = await ask_ai(question, fleet_context, user_id=user_id,
+            text, usage = await ask_ai(question, vehicle_context, user_id=user_id,
                                    account_id=account_id, language=language,
                                    user_context=user_context)
             return {"text": text, "tool_results": tool_results, "usage": usage}
@@ -1135,19 +1135,19 @@ async def ask_agent(question: str, fleet_context: dict,
                 await asyncio.sleep(wait)
                 continue
             logger.warning(f"Agent mode failed, falling back: {e}")
-            text, usage = await ask_ai(question, fleet_context, user_id=user_id,
+            text, usage = await ask_ai(question, vehicle_context, user_id=user_id,
                                    account_id=account_id, language=language,
                                    user_context=user_context)
             return {"text": text, "tool_results": tool_results, "usage": usage}
 
     logger.warning(f"Agent exhausted retries, falling back: {last_exc}")
-    text, usage = await ask_ai(question, fleet_context, user_id=user_id,
+    text, usage = await ask_ai(question, vehicle_context, user_id=user_id,
                            account_id=account_id, language=language,
                            user_context=user_context)
     return {"text": text, "tool_results": tool_results, "usage": usage}
 
 
-async def ask_agent_stream(question: str, fleet_context: dict,
+async def ask_agent_stream(question: str, vehicle_context: dict,
                            samsara_client,
                            user_id: int | None = None,
                            account_id: int | None = None,
@@ -1174,7 +1174,7 @@ async def ask_agent_stream(question: str, fleet_context: dict,
     async def _run():
         try:
             result = await ask_agent(
-                question, fleet_context, samsara_client,
+                question, vehicle_context, samsara_client,
                 user_id=user_id, account_id=account_id,
                 db=db, language=language, user_context=user_context,
                 event_callback=_callback,

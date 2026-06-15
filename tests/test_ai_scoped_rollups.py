@@ -51,7 +51,7 @@ class TestGateAllowsScopeAwareTools:
         ctx = {"role": "fleet", "scoped_vehicle_nums": ["B-1"]}
         blocked = await _check_tool_permission("get_account_stats", {}, "fleet", ctx)
         assert blocked is not None
-        assert "fleet-wide" in blocked["error"]
+        assert "account-wide" in blocked["error"]
 
     async def test_unrestricted_user_unaffected(self):
         ctx = {"role": "fleet", "scoped_vehicle_nums": None}
@@ -128,7 +128,7 @@ class TestGateBatch2:
         for tool in _NOT_YET:
             blocked = await _check_tool_permission(tool, {}, "owner", ctx)
             assert blocked is not None, tool
-            assert "fleet-wide" in blocked["error"], tool
+            assert "account-wide" in blocked["error"], tool
 
 
 class _FakeAlertDB:
@@ -155,7 +155,7 @@ class TestBatch2ToolFilters:
         async def fake_states(account_id):
             return []
 
-        monkeypatch.setattr(_veh_mod, "_svc_fleet", fake_fleet)
+        monkeypatch.setattr(_veh_mod, "_svc_vehicles", fake_fleet)
         monkeypatch.setattr(_veh_mod, "_svc_engine_states", fake_states)
         res = await _veh_mod.get_rolling_stopped(
             {"_scope_vehicles": ["B-1"]}, None, account_id=1,
@@ -167,7 +167,7 @@ class TestBatch2ToolFilters:
         async def fake_fleet(account_id):
             return _fleet()
 
-        monkeypatch.setattr(_veh_mod, "_svc_fleet", fake_fleet)
+        monkeypatch.setattr(_veh_mod, "_svc_vehicles", fake_fleet)
         res = await _veh_mod.search_vehicles(
             {"_scope_vehicles": ["B-1"]}, None, account_id=1,
         )

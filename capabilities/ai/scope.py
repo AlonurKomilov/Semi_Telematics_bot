@@ -73,20 +73,20 @@ async def resolve_vehicle_scope(
     allowed = {c.strip().upper() for c in company_codes if c}
     try:
         from features.vehicles.service import get_vehicles_overview
-        fleet = await get_vehicles_overview(account_id)
+        vehicles = await get_vehicles_overview(account_id)
     except Exception as e:
-        # Fail CLOSED: a company-restricted user whose fleet we can't read
+        # Fail CLOSED: a company-restricted user whose vehicles we can't read
         # gets an empty scope (the gate blocks everything) rather than a
         # silent cross-company leak.
         logger.warning(
-            "AI scope: fleet overview failed acct=%s (failing closed): %s",
+            "AI scope: vehicle overview failed acct=%s (failing closed): %s",
             account_id, e,
         )
         return []
 
     names = [
         v.get("name")
-        for v in fleet
+        for v in vehicles
         if str(v.get("company_code") or v.get("_org") or "").strip().upper() in allowed
         and v.get("name")
     ]

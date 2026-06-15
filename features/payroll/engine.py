@@ -8,7 +8,7 @@ import logging
 from datetime import date, datetime, timezone
 from typing import Optional
 
-from capabilities.scoring.service import evaluate_subjects
+from capabilities.scorecards.service import evaluate_subjects
 from infra.services import get_tenant_db
 
 from .models import (
