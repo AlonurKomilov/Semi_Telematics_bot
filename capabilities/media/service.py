@@ -21,14 +21,14 @@ async def get_fleet_for_cameras(
 ) -> list[dict]:
     """Fetch fleet overview for camera truck selection.
 
-    Routes through ``vehicles.service.get_fleet_overview`` so the read
+    Routes through ``vehicles.service.get_vehicles_overview`` so the read
     is warehouse-first with live-Samsara fallback (same SSOT pattern as
     every other fleet read).
     """
     from features.vehicles.service import (
-        get_fleet_overview as _svc_fleet_overview,
+        get_vehicles_overview as _svc_vehicles_overview,
     )
-    return await _svc_fleet_overview(account_id, company=company)
+    return await _svc_vehicles_overview(account_id, company=company)
 
 
 # ── Gather snapshots from all companies ──────────────────────────

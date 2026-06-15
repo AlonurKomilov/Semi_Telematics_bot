@@ -53,7 +53,7 @@ def _enabled() -> bool:
 
 def _warehouse_row_to_overview(row: dict[str, Any]) -> dict[str, Any]:
     """Reshape a ``vehicle_state`` row back into the nested layout the
-    live ``client.get_fleet_overview()`` produces, so downstream
+    live ``client.get_vehicles_overview()`` produces, so downstream
     ``_simplify`` / ``_normalize_detail`` helpers in the fleet routes
     continue to work unchanged when the flag flips.
 
@@ -206,7 +206,7 @@ async def get_current_vehicles(
 ) -> list[dict[str, Any]]:
     """Return the current per-vehicle snapshot.
 
-    Shape mirrors the live ``client.get_fleet_overview()`` keys the
+    Shape mirrors the live ``client.get_vehicles_overview()`` keys the
     callers already handle, so flipping the flag is invisible to them.
 
     ``samsara_fallback`` is a no-arg async callable that yields the

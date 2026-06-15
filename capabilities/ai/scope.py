@@ -72,8 +72,8 @@ async def resolve_vehicle_scope(
 
     allowed = {c.strip().upper() for c in company_codes if c}
     try:
-        from features.vehicles.service import get_fleet_overview
-        fleet = await get_fleet_overview(account_id)
+        from features.vehicles.service import get_vehicles_overview
+        fleet = await get_vehicles_overview(account_id)
     except Exception as e:
         # Fail CLOSED: a company-restricted user whose fleet we can't read
         # gets an empty scope (the gate blocks everything) rather than a

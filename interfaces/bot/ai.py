@@ -163,7 +163,7 @@ async def _dtcs_from_ack(account_id: int, ack_id: int) -> list[dict]:
     return dtcs
 
 
-async def _gather_fleet_snapshot(account_id: int,
+async def _gather_vehicles_snapshot(account_id: int,
                                  vehicle_num: str | None = None) -> dict:
     """Build a compact fleet data snapshot for AI context.
 
@@ -323,7 +323,7 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
         if user.role == Role.DRIVER and user.truck_num:
             vehicle_filter = user.truck_num
 
-        snapshot = await _gather_fleet_snapshot(
+        snapshot = await _gather_vehicles_snapshot(
             user.account_id, vehicle_num=vehicle_filter,
         )
         samsara = await get_client(user.account_id)
@@ -438,7 +438,7 @@ async def cmd_ai_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user.role == Role.DRIVER and user.truck_num:
             vehicle_filter = user.truck_num
 
-        snapshot = await _gather_fleet_snapshot(
+        snapshot = await _gather_vehicles_snapshot(
             user.account_id, vehicle_num=vehicle_filter,
         )
         # generate_summary() passes action="summary" through generate(),

@@ -329,7 +329,7 @@ class _StubClient:
         self._events = events or []
         self._eff = eff or []
 
-    async def get_fleet_overview(self):
+    async def get_vehicles_overview(self):
         return self._fleet
 
     async def get_events(self, days: int = 7):

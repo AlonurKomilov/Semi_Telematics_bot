@@ -17,7 +17,7 @@ from capabilities.reporting import generate_vehicle_detail_pdf
 from features.vehicles.faults.report import generate_critical_report_pdf
 from features.vehicles.service import (
     prepare_companies, get_company_codes as _get_company_codes,
-    get_fleet_overview as _svc_fleet_overview,
+    get_vehicles_overview as _svc_vehicles_overview,
     get_vehicle_detail as _svc_vehicle_detail,
 )
 from capabilities.telemetry.service import get_vehicles_with_faults as _svc_with_faults
@@ -288,7 +288,7 @@ async def show_vehicle_list(update, context, user, company_filter, page=0):
 
     await _show_loading(update, context, t('vehicle.loading_list'))
     try:
-        vehicles = await _svc_fleet_overview(user.account_id, company=company_filter)
+        vehicles = await _svc_vehicles_overview(user.account_id, company=company_filter)
         if not vehicles:
             label = company_filter or t('common.all_companies')
             await _show(update, context,

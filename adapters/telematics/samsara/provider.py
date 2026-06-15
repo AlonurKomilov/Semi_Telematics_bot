@@ -303,8 +303,8 @@ class SamsaraProvider:
 
     # ── Live state ────────────────────────────────────────────────
 
-    async def get_fleet_overview(self) -> list[dict[str, Any]]:
-        return await self._client.get_fleet_overview()
+    async def get_vehicles_overview(self) -> list[dict[str, Any]]:
+        return await self._client.get_vehicles_overview()
 
     async def get_safety_events(self, *, days: int = 2) -> list[dict[str, Any]]:
         """Samsara's safety events come from ``get_events``.  The

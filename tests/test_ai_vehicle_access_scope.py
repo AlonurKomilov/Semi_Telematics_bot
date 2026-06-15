@@ -125,7 +125,7 @@ class TestResolveVehicleScope:
                 {"name": "B-2", "_org": "B"},
             ]
         monkeypatch.setattr(
-            "features.vehicles.service.get_fleet_overview", fake_fleet,
+            "features.vehicles.service.get_vehicles_overview", fake_fleet,
         )
         scope = await resolve_vehicle_scope(
             _FakeDB(company_codes=["B"]), 1, 10, "fleet",
@@ -136,7 +136,7 @@ class TestResolveVehicleScope:
         async def boom(account_id):
             raise RuntimeError("warehouse down")
         monkeypatch.setattr(
-            "features.vehicles.service.get_fleet_overview", boom,
+            "features.vehicles.service.get_vehicles_overview", boom,
         )
         scope = await resolve_vehicle_scope(
             _FakeDB(company_codes=["B"]), 1, 10, "fleet",

@@ -373,11 +373,11 @@ class TestAIKeyboard:
 # ══════════════════════════════════════════════════════════════════
 
 class TestFleetSnapshot:
-    """_gather_fleet_snapshot data shape."""
+    """_gather_vehicles_snapshot data shape."""
 
     @pytest.mark.asyncio
     async def test_snapshot_structure(self):
-        from interfaces.bot.ai import _gather_fleet_snapshot
+        from interfaces.bot.ai import _gather_vehicles_snapshot
 
         mock_fleet = [
             {
@@ -404,20 +404,20 @@ class TestFleetSnapshot:
         ]
 
         mock_client = AsyncMock()
-        mock_client.get_fleet_overview.return_value = mock_fleet
+        mock_client.get_vehicles_overview.return_value = mock_fleet
         mock_client.get_vehicle_health.return_value = mock_health
         mock_client.get_driver_efficiency.return_value = []
         mock_client.get_fleet_weather.return_value = []
 
         with patch("infra.services.get_client", return_value=mock_client), \
              patch("infra.services.get_tenant_db", new_callable=AsyncMock), \
-             patch("features.vehicles.service.get_fleet_overview",
+             patch("features.vehicles.service.get_vehicles_overview",
                    new=AsyncMock(return_value=mock_fleet)), \
              patch("capabilities.telemetry.service.get_vehicle_health",
                    new=AsyncMock(return_value=mock_health)), \
              patch("features.events.service.get_events",
                    new=AsyncMock(return_value=[])):
-            snapshot = await _gather_fleet_snapshot(account_id=1)
+            snapshot = await _gather_vehicles_snapshot(account_id=1)
 
         assert snapshot["total_vehicles"] == 2
         assert snapshot["faulted_count"] == 1
@@ -429,7 +429,7 @@ class TestFleetSnapshot:
 
     @pytest.mark.asyncio
     async def test_snapshot_filters_by_truck(self):
-        from interfaces.bot.ai import _gather_fleet_snapshot
+        from interfaces.bot.ai import _gather_vehicles_snapshot
 
         mock_fleet = [
             {"id": "v1", "name": "101", "_org": "CO1",
@@ -439,20 +439,20 @@ class TestFleetSnapshot:
         ]
 
         mock_client = AsyncMock()
-        mock_client.get_fleet_overview.return_value = mock_fleet
+        mock_client.get_vehicles_overview.return_value = mock_fleet
         mock_client.get_vehicle_health.return_value = []
         mock_client.get_driver_efficiency.return_value = []
         mock_client.get_fleet_weather.return_value = []
 
         with patch("infra.services.get_client", return_value=mock_client), \
              patch("infra.services.get_tenant_db", new_callable=AsyncMock), \
-             patch("features.vehicles.service.get_fleet_overview",
+             patch("features.vehicles.service.get_vehicles_overview",
                    new=AsyncMock(return_value=mock_fleet)), \
              patch("capabilities.telemetry.service.get_vehicle_health",
                    new=AsyncMock(return_value=[])), \
              patch("features.events.service.get_events",
                    new=AsyncMock(return_value=[])):
-            snapshot = await _gather_fleet_snapshot(
+            snapshot = await _gather_vehicles_snapshot(
                 account_id=1, vehicle_num="101"
             )
 

@@ -93,9 +93,9 @@ async def report_fuel_levels(
         # endpoint (that's a single-tenant SamsaraClient method).  The
         # warehouse fallback wants the same enriched vehicle list shape
         # that ``get_current_vehicles`` would have returned — which is
-        # exactly what ``get_fleet_overview`` produces (vehicles +
+        # exactly what ``get_vehicles_overview`` produces (vehicles +
         # _fuel/_def/_faults/_location attached per vehicle).
-        return await client.get_fleet_overview(company=company)
+        return await client.get_vehicles_overview(company=company)
 
     vehicles = await _wh.get_current_vehicles(
         user["account_id"], company=company, samsara_fallback=_live,

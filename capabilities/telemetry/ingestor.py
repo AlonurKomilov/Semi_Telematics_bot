@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 def _vehicle_overview_to_state_row(v: dict[str, Any]) -> dict[str, Any]:
-    """Reshape a ``client.get_fleet_overview()`` entry into the columns
+    """Reshape a ``client.get_vehicles_overview()`` entry into the columns
     the ``vehicle_state`` table expects.  Kept tiny + pure so it's
     trivially testable without a Samsara stub."""
     loc = v.get("location") or {}
@@ -179,9 +179,9 @@ async def ingest_vehicle_state(account_id: int) -> int:
         return 0
 
     try:
-        fleet = await client.get_fleet_overview()
+        fleet = await client.get_vehicles_overview()
     except Exception:
-        logger.exception("ingest_vehicle_state: get_fleet_overview failed acct=%d", account_id)
+        logger.exception("ingest_vehicle_state: get_vehicles_overview failed acct=%d", account_id)
         return 0
 
     # Fetch current odometer + cumulative engine-hours for every active

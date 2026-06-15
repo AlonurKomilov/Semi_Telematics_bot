@@ -177,7 +177,7 @@ async def check_unsafe_parking(app: Application):
                 continue
 
             try:
-                from features.vehicles.service import get_fleet_overview as _svc_fleet
+                from features.vehicles.service import get_vehicles_overview as _svc_fleet
                 with _obs.time_block(acct_timings, "samsara_fetch"):
                     vehicles, engine_data = await asyncio.gather(
                         _svc_fleet(account.id),

@@ -39,7 +39,7 @@ from capabilities.telemetry.service import (
     get_vehicles_with_faults as _svc_vehicles_with_faults,
 )
 from features.vehicles.service import (
-    get_fleet_overview as _svc_fleet_overview,
+    get_vehicles_overview as _svc_vehicles_overview,
     prepare_companies as _prepare_companies,
 )
 
@@ -48,7 +48,7 @@ async def _fetch_faults(
     account_id: int, company: Optional[str], days: int,  # noqa: ARG001 — days unused
 ) -> tuple[io.BytesIO, str, str]:
     faulted, total, breakdown = await _svc_vehicles_with_faults(account_id)
-    all_fleet = await _svc_fleet_overview(account_id)
+    all_fleet = await _svc_vehicles_overview(account_id)
     # Apply company filter to the faulted list only — the fleet overview
     # is still useful as background context even when filtering.
     if company:
@@ -72,7 +72,7 @@ async def _fetch_faults(
 async def _fetch_fuel(
     account_id: int, company: Optional[str], days: int,  # noqa: ARG001
 ) -> tuple[io.BytesIO, str, str]:
-    vehicles = await _svc_fleet_overview(account_id)
+    vehicles = await _svc_vehicles_overview(account_id)
     if company:
         vehicles = [v for v in vehicles if (v.get("_org") or "").upper() == company.upper()]
     pdf_buf = await asyncio.to_thread(generate_fuel_report_pdf, vehicles, company)
@@ -84,7 +84,7 @@ async def _fetch_health(
     account_id: int, company: Optional[str], days: int,  # noqa: ARG001
 ) -> tuple[io.BytesIO, str, str]:
     faulted, total, _breakdown = await _svc_vehicles_with_faults(account_id)
-    all_fleet = await _svc_fleet_overview(account_id)
+    all_fleet = await _svc_vehicles_overview(account_id)
     if company:
         all_fleet = [v for v in all_fleet if (v.get("_org") or "").upper() == company.upper()]
         faulted = [v for v in faulted if (v.get("_org") or "").upper() == company.upper()]
@@ -99,7 +99,7 @@ async def _fetch_health(
 async def _fetch_efficiency(
     account_id: int, company: Optional[str], days: int,
 ) -> tuple[io.BytesIO, str, str]:
-    vehicles = await _svc_fleet_overview(account_id)
+    vehicles = await _svc_vehicles_overview(account_id)
     if company:
         vehicles = [v for v in vehicles if (v.get("_org") or "").upper() == company.upper()]
     pdf_buf = await asyncio.to_thread(

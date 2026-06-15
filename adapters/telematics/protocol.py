@@ -139,7 +139,7 @@ class TelematicsProvider(Protocol):
 
     # ── Live state ────────────────────────────────────────────────
 
-    async def get_fleet_overview(self) -> list[dict[str, Any]]:
+    async def get_vehicles_overview(self) -> list[dict[str, Any]]:
         """Current snapshot of every vehicle in the fleet.
 
         Shape: list of dicts whose required keys are

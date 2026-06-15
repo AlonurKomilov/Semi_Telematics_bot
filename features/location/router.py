@@ -21,7 +21,7 @@ from interfaces.api.deps import (
     filter_by_assigned_trucks,
 )
 from infra.services import get_client
-from features.location.service import classify_vehicle_status, get_fleet_for_map
+from features.location.service import classify_vehicle_status, get_vehicles_for_map
 
 router = APIRouter(prefix="/map", tags=["map"])
 
@@ -40,10 +40,10 @@ async def map_vehicles(
     """
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
-    # get_fleet_for_map merges real CAN-bus engineStates onto each vehicle
+    # get_vehicles_for_map merges real CAN-bus engineStates onto each vehicle
     # so classify_vehicle_status can distinguish On/Idle/Off authoritatively
     # rather than guessing from speed.
-    vehicles = await get_fleet_for_map(user["account_id"], company=company)
+    vehicles = await get_vehicles_for_map(user["account_id"], company=company)
     vehicles = filter_by_allowed_companies(vehicles, allowed)
     vehicles = await filter_by_assigned_trucks(vehicles, user)
     features = []
@@ -62,7 +62,7 @@ async def map_vehicles(
         speed_mph = loc.get("speedMilesPerHour")
         speed = float(speed_mph if speed_mph is not None else (loc.get("speed") or 0))
         status = classify_vehicle_status(v)
-        # Prefer real engineState merged in by get_fleet_for_map; only fall
+        # Prefer real engineState merged in by get_vehicles_for_map; only fall
         # back to deriving it from status when the Samsara plan or a transient
         # error left the field empty.
         engine_state = v.get("engineState") or (

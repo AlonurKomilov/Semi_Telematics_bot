@@ -53,7 +53,7 @@ async def overview_app(pg_db, monkeypatch):
     async def _empty_fleet(_account_id, company=None):
         return []
     import features.overview.router as fleet_mod
-    monkeypatch.setattr(fleet_mod, "get_fleet_for_map", _empty_fleet)
+    monkeypatch.setattr(fleet_mod, "get_vehicles_for_map", _empty_fleet)
 
     # Per-process cache leak across tests — drain before each.
     fleet_mod._stats_cache.clear()

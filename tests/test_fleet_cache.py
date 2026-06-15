@@ -84,8 +84,8 @@ async def test_samsara_called_on_cold_cache(mock_redis):
     with (
         patch("features.vehicles.router._redis", mock_redis),
         patch("capabilities.telemetry.warehouse_reader._enabled", return_value=False),
-        patch("features.vehicles.service.get_fleet_overview", fake_fleet_overview),
-        patch("features.vehicles.router._svc_fleet_overview", fake_fleet_overview),
+        patch("features.vehicles.service.get_vehicles_overview", fake_fleet_overview),
+        patch("features.vehicles.router._svc_vehicles_overview", fake_fleet_overview),
     ):
         from features.vehicles.router import vehicles_list  # noqa: F401
         # Invoke the cache-aware helper directly

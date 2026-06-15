@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 
 from interfaces.api.deps import require_permission_any, get_user_vehicle_nums
 from features.routes.service import total_route_miles, get_vehicle_gps_history
-from features.vehicles.service import get_fleet_overview as _svc_fleet_overview
+from features.vehicles.service import get_vehicles_overview as _svc_vehicles_overview
 
 router = APIRouter(prefix="/routes", tags=["routes"])
 
@@ -99,7 +99,7 @@ async def routes_vehicles(
     user: dict = Depends(require_permission_any("can_route_all", "can_route_vehicle")),
 ):
     """Vehicle picker list for route replay (used by frontend dropdown)."""
-    overview = await _svc_fleet_overview(user["account_id"])
+    overview = await _svc_vehicles_overview(user["account_id"])
     vehicles = [
         {"id": v.get("id"), "name": v.get("name", ""), "company": v.get("_org", "")}
         for v in overview

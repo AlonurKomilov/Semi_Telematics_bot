@@ -741,7 +741,7 @@ class SamsaraClient:
 
     # ── Combined: Enriched Vehicle Data ──────────────────────────
 
-    async def get_fleet_overview(self) -> list[dict]:
+    async def get_vehicles_overview(self) -> list[dict]:
         """
         Build an enriched list of **active** vehicles by merging:
         vehicle info + fault codes + GPS + fuel.
@@ -839,7 +839,7 @@ class SamsaraClient:
         """
         Get enriched data for a single vehicle by truck name/number.
 
-        Unlike get_fleet_overview(), this searches ALL vehicles (including
+        Unlike get_vehicles_overview(), this searches ALL vehicles (including
         those without a gateway) so direct truck lookups always work.
         """
         vehicles_raw = await self.get_vehicles()
@@ -873,7 +873,7 @@ class SamsaraClient:
 
             vid = v["id"]
             loc = loc_by_id.get(vid, {})
-            # Normalise speed / address keys (see get_fleet_overview)
+            # Normalise speed / address keys (see get_vehicles_overview)
             if "speedMilesPerHour" not in loc and "speed" in loc:
                 loc["speedMilesPerHour"] = loc["speed"]
             if "address" not in loc:
@@ -901,7 +901,7 @@ class SamsaraClient:
 
     async def get_vehicles_with_faults(self) -> tuple[list[dict], int]:
         """Return (vehicles_with_active_DTCs, total_active_vehicles)."""
-        fleet = await self.get_fleet_overview()
+        fleet = await self.get_vehicles_overview()
         total = len(fleet)
         result = []
         for v in fleet:
@@ -918,7 +918,7 @@ class SamsaraClient:
 
     async def get_low_fuel_vehicles(self, threshold: int = 20) -> list[dict]:
         """Return vehicles with fuel level below the threshold %."""
-        fleet = await self.get_fleet_overview()
+        fleet = await self.get_vehicles_overview()
         low = []
         for v in fleet:
             fuel = v.get("fuel", {})
@@ -943,7 +943,7 @@ class SamsaraClient:
         - ``baro_inhg``: barometric pressure in inHg
         - ``baro_time``: ISO timestamp
         """
-        fleet = await self.get_fleet_overview()
+        fleet = await self.get_vehicles_overview()
         if not fleet:
             return []
 
@@ -1033,7 +1033,7 @@ class SamsaraClient:
         oil pressure, engine load, seatbelt, engine RPM.
         Returns enriched vehicle dicts with _health sub-dict.
         """
-        fleet = await self.get_fleet_overview()
+        fleet = await self.get_vehicles_overview()
         if not fleet:
             return []
 
@@ -1462,7 +1462,7 @@ class SamsaraClient:
             "obdOdometerMeters", start, end=end,
         )
 
-        fleet = await self.get_fleet_overview()
+        fleet = await self.get_vehicles_overview()
         active_names = {v["name"].lower() for v in fleet}
 
         odo_by_id: dict[str, list] = {}
@@ -1542,7 +1542,7 @@ class SamsaraClient:
             "obdEngineSeconds,obdOdometerMeters", start, end=end,
         )
 
-        fleet = await self.get_fleet_overview()
+        fleet = await self.get_vehicles_overview()
         active_names = {v["name"].lower() for v in fleet}
 
         results: list[dict] = []
@@ -2143,14 +2143,14 @@ class MultiCompanyClient:
 
     # ── fleet overview ───────────────────────────────────────────
 
-    async def get_fleet_overview(self, company: str | None = None) -> list[dict]:
+    async def get_vehicles_overview(self, company: str | None = None) -> list[dict]:
         cache_key = f"fleet_overview:{company or 'all'}"
         cached = await self._cache_get(cache_key)
         if cached is not None:
             return cached
 
         async def _fn(c):
-            return await c.get_fleet_overview()
+            return await c.get_vehicles_overview()
 
         per_co = await self._run_per_company(_fn, company=company)
         combined = []

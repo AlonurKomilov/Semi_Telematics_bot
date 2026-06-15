@@ -34,11 +34,11 @@ async def get_fleet_for_geofence_check(
 ) -> list[dict]:
     """Fetch fleet overview for geofence proximity checks.
 
-    Warehouse-first via vehicles.service.get_fleet_overview (60s-fresh) —
+    Warehouse-first via vehicles.service.get_vehicles_overview (60s-fresh) —
     geofence proximity tolerates the small lag and avoids hammering Samsara
     every check cycle.
     """
-    from features.vehicles.service import get_fleet_overview as _svc
+    from features.vehicles.service import get_vehicles_overview as _svc
     return await _svc(account_id, company=company)
 
 

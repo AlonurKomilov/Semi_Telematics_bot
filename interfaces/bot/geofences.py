@@ -193,7 +193,7 @@ async def _check_geofences_account(bot_app: Application, account):
     """Process platform geofence events for a single account.
 
     - Zone definitions: platform DB (not Samsara)
-    - Vehicle GPS: Samsara get_fleet_overview() — lat/lng only
+    - Vehicle GPS: Samsara get_vehicles_overview() — lat/lng only
     - Notifications: filtered by zone.notify_roles + driver isolation
     - Maintenance cross-reference: appended to entry alerts
     """

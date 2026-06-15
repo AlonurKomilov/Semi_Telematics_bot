@@ -34,7 +34,7 @@ from interfaces.api.deps import (
     paginate,
 )
 from features.vehicles.service import (
-    get_fleet_overview as _svc_fleet_overview,
+    get_vehicles_overview as _svc_vehicles_overview,
     get_vehicle_detail as _svc_vehicle_detail,
 )
 from capabilities.telemetry.service import (
@@ -261,7 +261,7 @@ async def vehicles_list(
         cached = await _redis.get(cache_key)
         if cached is not None:
             return cached
-        data = await _svc_fleet_overview(user["account_id"], company=company)
+        data = await _svc_vehicles_overview(user["account_id"], company=company)
         await _redis.cache_set(cache_key, data, ttl=_FLEET_CACHE_TTL)
         return data
 
@@ -350,7 +350,7 @@ async def fleet_overview(
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
     async def _live():
-        return await _svc_fleet_overview(user["account_id"], company=company)
+        return await _svc_vehicles_overview(user["account_id"], company=company)
     vehicles = await _wh_reader.get_current_vehicles(
         user["account_id"], company=company, samsara_fallback=_live,
     )
@@ -546,7 +546,7 @@ async def vehicle_faults(
     """Active fault codes for a specific vehicle."""
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
-    overview = await _svc_fleet_overview(user["account_id"], company=company)
+    overview = await _svc_vehicles_overview(user["account_id"], company=company)
     overview = filter_by_allowed_companies(overview, allowed)
     overview = await filter_by_assigned_trucks(overview, user)
     name_lower = vehicle_name.lower()

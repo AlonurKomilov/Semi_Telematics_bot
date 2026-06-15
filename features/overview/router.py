@@ -27,10 +27,10 @@ from interfaces.api.deps import (
 )
 from adapters.storage import Role
 from capabilities.permissions.roles import can
-from features.vehicles.service import get_fleet_overview as _svc_fleet_overview
+from features.vehicles.service import get_vehicles_overview as _svc_vehicles_overview
 from capabilities.telemetry.service import get_fleet_weather as _svc_fleet_weather
 from capabilities.telemetry import warehouse_reader as _wh_reader
-from features.location.service import classify_vehicle_status, get_fleet_for_map
+from features.location.service import classify_vehicle_status, get_vehicles_for_map
 
 router = APIRouter(prefix="/overview", tags=["overview"])
 
@@ -38,7 +38,7 @@ router = APIRouter(prefix="/overview", tags=["overview"])
 # ── overview/stats per-account TTL cache ─────────────────────────────────────
 # The stats endpoint is hit by every Hero strip on every open dashboard, plus
 # the Overview page itself.  N concurrent users on one account would otherwise
-# each pay the full cost of (a) get_fleet_for_map + (b) three DB reads, even
+# each pay the full cost of (a) get_vehicles_for_map + (b) three DB reads, even
 # though the result is identical for everyone sharing the same role and
 # company filter.  A 15s in-process cache collapses that to one underlying
 # fetch per cache window per (account, role, company, companies-allowed)
@@ -141,7 +141,7 @@ async def overview_stats(
     # urgency, not by stored status.  A pending task that's still
     # 50,000 mi from due isn't "Maintenance due", it's scheduled.
     overview, pending_alerts, all_parked, maint_tasks = await asyncio.gather(
-        get_fleet_for_map(account_id, company=company),
+        get_vehicles_for_map(account_id, company=company),
         tenant_db.get_pending_alerts(account_id) if fetch_alerts else asyncio.sleep(0, result=[]),
         tenant_db.get_active_parking_events(account_id, attention_only=False) if fetch_parking else asyncio.sleep(0, result=[]),
         tenant_db.get_maintenance_tasks(account_id) if fetch_maintenance else asyncio.sleep(0, result=[]),

@@ -48,8 +48,8 @@ async def _sync_vehicle_count(account_id: int, platform_db) -> int | None:
     Returns the live count, or None if Samsara is unavailable.
     """
     try:
-        from features.vehicles.service import get_fleet_overview
-        vehicles = await get_fleet_overview(account_id)
+        from features.vehicles.service import get_vehicles_overview
+        vehicles = await get_vehicles_overview(account_id)
         count = len(vehicles)
         await platform_db.update_subscription(account_id, vehicle_count=count)
         return count

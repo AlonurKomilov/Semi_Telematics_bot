@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 
-from features.vehicles.service import get_fleet_overview
+from features.vehicles.service import get_vehicles_overview
 from infra.services import get_client
 
 
@@ -20,7 +20,7 @@ def classify_vehicle_status(vehicle: dict) -> str:
     Used by both bot/maps.py (PNG rendering) and api/routes/maps.py (GeoJSON).
 
     Prefers the authoritative CAN-bus ``engineState`` value when present
-    (merged in by ``get_fleet_for_map`` from /fleet/vehicles/stats?types=
+    (merged in by ``get_vehicles_for_map`` from /fleet/vehicles/stats?types=
     engineStates).  Falls back to a speed-only heuristic for vehicles whose
     Samsara plan doesn't expose engineStates or for paths that don't merge
     that data (e.g. ``features.location`` consumers other than the map).
@@ -91,7 +91,7 @@ async def _get_engine_states_by_id(account_id: int) -> dict[str, str]:
     return by_id
 
 
-async def get_fleet_for_map(
+async def get_vehicles_for_map(
     account_id: int,
     company: str | None = None,
 ) -> list[dict]:
@@ -103,7 +103,7 @@ async def get_fleet_for_map(
     overview list and ``classify_vehicle_status`` falls back to speed-only.
     """
     overview, engine_by_id = await asyncio.gather(
-        get_fleet_overview(account_id, company=company),
+        get_vehicles_overview(account_id, company=company),
         _get_engine_states_by_id(account_id),
     )
     if engine_by_id:

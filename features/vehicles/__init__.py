@@ -3,6 +3,6 @@
 from features.vehicles.service import (  # noqa: F401
     prepare_companies,
     get_company_codes,
-    get_fleet_overview,
+    get_vehicles_overview,
     get_vehicle_detail,
 )

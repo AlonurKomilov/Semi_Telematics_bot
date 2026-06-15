@@ -148,10 +148,10 @@ def test_provider_provider_id_is_samsara():
 @pytest.mark.asyncio
 async def test_get_fleet_overview_proxies_to_underlying_client():
     stub = MagicMock()
-    stub.get_fleet_overview = AsyncMock(return_value=[{"id": "v1", "name": "103"}])
+    stub.get_vehicles_overview = AsyncMock(return_value=[{"id": "v1", "name": "103"}])
     provider = SamsaraProvider(stub)
-    vehicles = await provider.get_fleet_overview()
-    stub.get_fleet_overview.assert_awaited_once()
+    vehicles = await provider.get_vehicles_overview()
+    stub.get_vehicles_overview.assert_awaited_once()
     assert vehicles == [{"id": "v1", "name": "103"}]
 
 

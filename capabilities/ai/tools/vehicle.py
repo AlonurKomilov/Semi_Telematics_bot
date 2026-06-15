@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
 from features.vehicles.service import (
-    get_fleet_overview as _svc_fleet,
+    get_vehicles_overview as _svc_fleet,
     get_vehicle_detail as _svc_detail,
 )
 from capabilities.telemetry.service import get_engine_states as _svc_engine_states

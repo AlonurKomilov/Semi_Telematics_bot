@@ -1,7 +1,7 @@
 """Tests for the four IntegrationCard fixes:
 
   * Fix A — ``SamsaraProvider.test_connection`` uses ``/me`` instead
-    of ``get_fleet_overview`` so it's fast even while a backfill is
+    of ``get_vehicles_overview`` so it's fast even while a backfill is
     hammering the rate-limited stats endpoints.
   * Fix B — The route wraps ``test_connection`` in
     ``asyncio.wait_for(timeout=12)`` and returns HTTP 504 with a
@@ -90,7 +90,7 @@ def _install_fake_session(monkeypatch, responses: dict[str, _FakeResponse]):
 @pytest.mark.asyncio
 async def test_test_connection_probes_each_company_with_direct_me_call(monkeypatch):
     """The probe must hit ``/me`` exactly once per configured company
-    and never call ``get_org_id`` / ``get_fleet_overview`` (which
+    and never call ``get_org_id`` / ``get_vehicles_overview`` (which
     would route through the breaker + retry stack we're trying to
     bypass)."""
     from adapters.telematics.samsara.provider import SamsaraProvider
@@ -100,8 +100,8 @@ async def test_test_connection_probes_each_company_with_direct_me_call(monkeypat
     company_a.base_url = "https://api.samsara.com"
     company_a.get_org_id = AsyncMock(side_effect=AssertionError(
         "lean probe must NOT call get_org_id"))
-    company_a.get_fleet_overview = AsyncMock(side_effect=AssertionError(
-        "lean probe must NOT call get_fleet_overview"))
+    company_a.get_vehicles_overview = AsyncMock(side_effect=AssertionError(
+        "lean probe must NOT call get_vehicles_overview"))
 
     company_b = MagicMock()
     company_b.api_key = "tok_b"

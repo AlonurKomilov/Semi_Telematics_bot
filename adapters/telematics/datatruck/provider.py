@@ -8,7 +8,7 @@ protocol means the dashboard rendering, the test-connection route,
 the per-account credential storage, and the integration health
 recorder all work unchanged.
 
-The telematics methods (``get_fleet_overview``, ``get_safety_events``,
+The telematics methods (``get_vehicles_overview``, ``get_safety_events``,
 ``get_vehicle_health``, ``get_vehicle_faults``, ``get_stats_history``)
 return empty results — Datatruck's API doesn't expose them, and the
 catalog doesn't claim them in ``supported_capabilities``, so the
@@ -125,7 +125,7 @@ class DatatruckProvider:
     # them.  Implemented anyway so the runtime ``isinstance`` check
     # against the protocol passes and tests can mock-check shape.
 
-    async def get_fleet_overview(self) -> list[dict[str, Any]]:
+    async def get_vehicles_overview(self) -> list[dict[str, Any]]:
         return []
 
     async def get_safety_events(self) -> list[dict[str, Any]]:

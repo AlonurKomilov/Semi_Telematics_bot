@@ -45,7 +45,7 @@ async def get_company_codes(account_id: int) -> list[str]:
     return [c.code for c in companies]
 
 
-async def get_fleet_overview(
+async def get_vehicles_overview(
     account_id: int,
     company: str | None = None,
 ) -> list[dict]:
@@ -59,7 +59,7 @@ async def get_fleet_overview(
     client = await get_client(account_id)
 
     async def _live():
-        return await client.get_fleet_overview(company=company)
+        return await client.get_vehicles_overview(company=company)
 
     # Lazy import avoids circular dependency
     # (warehouse_reader → telemetry.service → vehicles.service)

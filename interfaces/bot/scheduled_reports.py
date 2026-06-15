@@ -39,7 +39,7 @@ from infra.isolation import SCHEDULED_REPORTS_JOB_TIMEOUT, run_account_job
 from infra.services import get_tenant_db as _get_tenant_db_rls
 from features.vehicles.service import (
     prepare_companies,
-    get_fleet_overview as _svc_fleet_overview,
+    get_vehicles_overview as _svc_vehicles_overview,
 )
 from capabilities.telemetry.service import (
     get_vehicles_with_faults as _svc_vehicles_with_faults,

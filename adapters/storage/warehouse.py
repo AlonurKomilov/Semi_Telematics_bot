@@ -96,7 +96,7 @@ class WarehouseMixin(_MixinBase):
     ) -> int:
         """Bulk upsert (full overwrite) of current vehicle snapshot.
 
-        Caller passes the ``get_fleet_overview()`` result already
+        Caller passes the ``get_vehicles_overview()`` result already
         reshaped into the warehouse columns (the ingestor does the
         mapping; keeping the SQL dumb makes it trivially testable).
         Returns the number of rows touched.
