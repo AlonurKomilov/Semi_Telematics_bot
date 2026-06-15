@@ -89,6 +89,11 @@ export default function IntegrationCard({
   const [testResult, setTestResult] = useState<ActionFeedback>(null);
   const [triggering, setTriggering] = useState(false);
   const [triggerResult, setTriggerResult] = useState<ActionFeedback>(null);
+  // Operator-selectable history window for the account-wide backfill.
+  // The shared BackfillRequest accepts 1–90 days; we expose the three
+  // common presets.  Only meaningful for providers that declare
+  // history_backfill (Samsara) — never rendered on a TMS card.
+  const [backfillDays, setBackfillDays] = useState(30);
 
   // Collapse state: when the page grows past a single integration,
   // the densely-rendered toggles + companies + actions per card
@@ -348,22 +353,26 @@ export default function IntegrationCard({
       {!isComingSoon && integration && (
         <div className="mt-4 border-t border-border pt-3">
           {/* Provenance line: when the last full backfill landed,
-              relative + absolute UTC.  Always rendered so operators
-              can distinguish "never backfilled" (data freshness
-              unknown) from "fresh today" — silently hiding the
-              line would leave operators guessing about staleness. */}
-          <p className="mb-3 text-2xs text-muted-foreground">
-            Last history backfill:{' '}
-            {integration.last_backfill_at
-              ? formatBackfillTimestamp(integration.last_backfill_at)
-              : (
-                <span className="italic">
-                  {backfillRunning
-                    ? 'in progress — first run, please wait'
-                    : 'never — calendar projection may be empty'}
-                </span>
-              )}
-          </p>
+              relative + absolute UTC.  Lets operators distinguish
+              "never backfilled" (data freshness unknown) from "fresh
+              today".  Gated on history_backfill — a TMS provider
+              (Datatruck) has no historical telemetry to replay, so the
+              line would be a meaningless "never" there.  Mirror of the
+              Run-all button's gate below so the two appear together. */}
+          {entry.capabilities.includes('history_backfill') && (
+            <p className="mb-3 text-2xs text-muted-foreground">
+              Last history backfill:{' '}
+              {integration.last_backfill_at
+                ? formatBackfillTimestamp(integration.last_backfill_at)
+                : (
+                  <span className="italic">
+                    {backfillRunning
+                      ? 'in progress — first run, please wait'
+                      : 'never — calendar projection may be empty'}
+                  </span>
+                )}
+            </p>
+          )}
 
           {/* Per-company key matrix — canonical place to manage
               Samsara API keys.  Replaces the API Key column that
@@ -434,7 +443,11 @@ export default function IntegrationCard({
               size="sm"
               onClick={handleTest}
               disabled={testing}
-              title="Probe every company's Samsara /me endpoint"
+              title={
+                entry.kind === 'tms'
+                  ? `Test the ${entry.display_name} connection`
+                  : "Probe every company's connection"
+              }
             >
               {testing ? (
                 <Loader2 size={14} className="animate-spin" />
@@ -452,40 +465,58 @@ export default function IntegrationCard({
                 providers (Datatruck) have no historical telemetry to
                 replay, so the button would be a misleading no-op. */}
             {entry.capabilities.includes('history_backfill') && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => handleTrigger(30)}
-                disabled={triggering || backfillRunning}
-                title={
-                  backfillRunning && backfillStatus
-                    ? `Backfill in progress · ${backfillStatus.days_done ?? 0}/${backfillStatus.days_total ?? backfillStatus.days_requested ?? 30} days`
-                    : integration.last_backfill_at
-                      ? `Last completed ${formatBackfillTimestamp(integration.last_backfill_at)}. Click to re-run for every company.`
-                      : 'Run a 30-day history backfill across every company'
-                }
-              >
-                {(triggering || backfillRunning) ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : integration.last_backfill_at ? (
-                  <Check size={14} />
-                ) : (
-                  <RefreshCw size={14} />
-                )}
-                {backfillRunning && backfillStatus
-                  ? `Running · ${backfillStatus.days_done ?? 0}/${backfillStatus.days_total ?? backfillStatus.days_requested ?? 30}`
-                  : triggering ? 'Queuing…'
-                  : integration.last_backfill_at ? 'Refresh history'
-                  : 'Run all (30 days)'}
-              </Button>
+              <>
+                {/* History-window picker for the account-wide backfill.
+                    The chosen value flows into the Run-all click below.
+                    Disabled while a run is in flight so the operator
+                    can't change the window mid-backfill. */}
+                <select
+                  value={backfillDays}
+                  onChange={(e) => setBackfillDays(Number(e.target.value))}
+                  disabled={triggering || backfillRunning}
+                  className="bg-muted border border-border rounded text-xs text-foreground px-2 py-1.5 focus:outline-none focus:border-ring disabled:opacity-50"
+                  title="How many days of history to replay across every company"
+                  aria-label="History window"
+                >
+                  <option value={7}>Last 7 days</option>
+                  <option value={30}>Last 30 days</option>
+                  <option value={90}>Last 90 days</option>
+                </select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleTrigger(backfillDays)}
+                  disabled={triggering || backfillRunning}
+                  title={
+                    backfillRunning && backfillStatus
+                      ? `Backfill in progress · ${backfillStatus.days_done ?? 0}/${backfillStatus.days_total ?? backfillStatus.days_requested ?? backfillDays} days`
+                      : integration.last_backfill_at
+                        ? `Last completed ${formatBackfillTimestamp(integration.last_backfill_at)}. Click to re-run the last ${backfillDays} days for every company.`
+                        : `Run a ${backfillDays}-day history backfill across every company`
+                  }
+                >
+                  {(triggering || backfillRunning) ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : integration.last_backfill_at ? (
+                    <Check size={14} />
+                  ) : (
+                    <RefreshCw size={14} />
+                  )}
+                  {backfillRunning && backfillStatus
+                    ? `Running · ${backfillStatus.days_done ?? 0}/${backfillStatus.days_total ?? backfillStatus.days_requested ?? backfillDays}`
+                    : triggering ? 'Queuing…'
+                    : integration.last_backfill_at ? 'Refresh history'
+                    : `Run all (${backfillDays} days)`}
+                </Button>
+              </>
             )}
             <Button
               type="button"
               variant="destructive"
               size="sm"
               onClick={() => setShowDisconnect(true)}
-              title="Disconnect the integration — does not delete per-company keys"
+              title="Disconnect the integration — your synced data is kept"
             >
               <X size={14} />
               Disconnect

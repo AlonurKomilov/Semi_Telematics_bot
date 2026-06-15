@@ -215,12 +215,18 @@ export async function resetBackfillStatus(
 /** Queue one resource's sync (drivers / trucks / trailers / orders /
  *  work_orders).  Fire-and-forget — poll ``getDatatruckSyncStatus``
  *  to watch progress.  409s when a run is already in flight or the
- *  resource's toggle is disabled. */
+ *  resource's toggle is disabled.
+ *
+ *  ``days`` is an optional history window (1–365) applied server-side
+ *  to date-ranged resources (orders, work_orders); roster resources
+ *  ignore it.  Omit it for the provider default. */
 export async function triggerDatatruckSync(
   resource: string,
+  days?: number,
 ): Promise<{ state: string; resource: string }> {
+  const qs = days ? `?days=${days}` : '';
   return apiJSON<{ state: string; resource: string }>(
-    `${BASE}/datatruck/sync/${encodeURIComponent(resource)}`,
+    `${BASE}/datatruck/sync/${encodeURIComponent(resource)}${qs}`,
     { method: 'POST' },
   );
 }

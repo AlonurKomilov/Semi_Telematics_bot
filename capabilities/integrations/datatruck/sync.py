@@ -209,13 +209,34 @@ def _norm_work_order(rec: dict[str, Any]) -> dict[str, Any]:
 # ── Resource registry ─────────────────────────────────────────────
 
 
-def _work_order_params() -> dict[str, str]:
-    """Rolling window for the work-orders endpoint, which requires
-    ``from_date`` / ``to_date``.  90 days back covers a quarter of
-    shop history; 7 forward catches pre-scheduled work."""
+def _work_order_params(days: int | None = None) -> dict[str, str]:
+    """Rolling window for the work-orders endpoint, which REQUIRES
+    ``from_date`` / ``to_date``.  Defaults to 90 days back (a quarter
+    of shop history) when the operator hasn't chosen a window; 7
+    forward catches pre-scheduled work."""
+    today = datetime.now(timezone.utc).date()
+    back = days or 90
+    return {
+        "from_date": (today - timedelta(days=back)).isoformat(),
+        "to_date":   (today + timedelta(days=7)).isoformat(),
+    }
+
+
+def _order_params(days: int | None = None) -> dict[str, str] | None:
+    """Optional recency window for the orders endpoint.
+
+    Orders has no *required* date range — it paginates newest-first
+    under a 50-page cap — so the default (``days=None``) sends no
+    filter and behaves exactly as before.  When the operator picks a
+    window we pass ``from_date``/``to_date`` (same keys the work-orders
+    endpoint proves the API honours) so a mature tenant can pull just
+    recent loads instead of spending the whole page cap on old history.
+    """
+    if not days:
+        return None
     today = datetime.now(timezone.utc).date()
     return {
-        "from_date": (today - timedelta(days=90)).isoformat(),
+        "from_date": (today - timedelta(days=days)).isoformat(),
         "to_date":   (today + timedelta(days=7)).isoformat(),
     }
 
@@ -231,7 +252,10 @@ class ResourceSpec:
     upsert_method: str
     stats_method: str
     max_pages: int
-    params_factory: Callable[[], dict] | None = None
+    # Builds the query params for a run, given the operator-chosen
+    # history window (days, or None for "no window / provider default").
+    # None here means the resource takes no params at all (roster lists).
+    params_factory: Callable[[int | None], dict | None] | None = None
     # When set ('truck' | 'trailer'), each synced page is ALSO projected
     # into the Vehicle registry (the SSOT) as this type.  None for non-
     # vehicle resources (drivers / orders / work_orders).
@@ -276,8 +300,10 @@ RESOURCES: dict[str, ResourceSpec] = {
             # A mature tenant's full order book (17k+) never fits one
             # run by design — the status shows synced-vs-upstream so
             # the cap is visible, and repeated runs converge if the
-            # API returns newest-first.
+            # API returns newest-first.  A chosen history window narrows
+            # the pull to recent loads so the cap goes further.
             max_pages=50,
+            params_factory=_order_params,
         ),
         ResourceSpec(
             name="work_orders", path="work-orders/",
@@ -349,8 +375,15 @@ async def sync_resource(
     resource: str,
     *,
     triggered_by: int = 0,
+    days: int | None = None,
 ) -> dict[str, Any]:
     """Run one resource's sync to completion (or its page cap).
+
+    ``days`` is the operator-chosen history window: for date-ranged
+    resources (orders, work_orders) it narrows the pull to the last N
+    days; roster resources (drivers/trucks/trailers) ignore it.  None
+    means "provider default" (work_orders falls back to 90 days, orders
+    to no filter), preserving the prior behaviour.
 
     Returns the final status dict (also left in Redis for pollers).
     Never raises on upstream errors — failures land in the returned
@@ -396,7 +429,7 @@ async def sync_resource(
         client = provider.client  # type: ignore[attr-defined]
         upsert = getattr(tenant, spec.upsert_method)
 
-        params = spec.params_factory() if spec.params_factory else None
+        params = spec.params_factory(days) if spec.params_factory else None
         async for page in client.iter_pages(
             spec.path, params, max_pages=spec.max_pages,
         ):

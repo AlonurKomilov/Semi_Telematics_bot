@@ -25,7 +25,7 @@ import asyncio
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from infra.platform import get_platform_db
 from infra.services import get_telematics_client
@@ -120,6 +120,12 @@ async def sync_preview(user: dict = Depends(_owner_only)):
 @router.post("/datatruck/sync/{resource}")
 async def trigger_sync(
     resource: str,
+    days: int | None = Query(
+        None, ge=1, le=365,
+        description="History window in days for date-ranged resources "
+        "(orders, work_orders).  Roster resources ignore it.  Omit for "
+        "the provider default (work_orders: 90d, orders: no filter).",
+    ),
     user: dict = Depends(_owner_only),
 ):
     """Queue one resource's sync (fire-and-forget).
@@ -128,6 +134,9 @@ async def trigger_sync(
     the integration to be connected with the matching capability
     toggle enabled, and refuses a duplicate while a run for the same
     resource is in flight (Redis-backed preflight, multi-worker safe).
+
+    ``days`` is an optional history window applied to date-ranged
+    resources (orders, work_orders); roster syncs ignore it.
 
     Returns ``{state: "queued", resource}`` immediately; the dashboard
     polls ``GET /datatruck/sync-status`` to watch progress.
@@ -173,7 +182,7 @@ async def trigger_sync(
         # status + Redis record, so this wrapper only exists to keep
         # the GC-safe spawner's signature happy.
         await sync_resource(
-            account_id, resource, triggered_by=triggered_by,
+            account_id, resource, triggered_by=triggered_by, days=days,
         )
 
     spawn_background(_run())

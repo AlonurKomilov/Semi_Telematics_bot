@@ -358,11 +358,11 @@ export default function Permissions() {
     // simple rows.  The whole label area below is the click target — the arrow
     // is just the affordance — so users don't have to hit the tiny icon.
     const chevronSlot = collapse ? (
-      <span className="w-4 shrink-0 flex items-center justify-center -ml-1 text-foreground">
-        {collapse.isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+      <span className="w-5 h-5 shrink-0 -ml-0.5 flex items-center justify-center rounded-md border border-border bg-muted text-foreground">
+        {collapse.isCollapsed ? <ChevronRight size={14} strokeWidth={2.5} /> : <ChevronDown size={14} strokeWidth={2.5} />}
       </span>
     ) : (
-      <span className="w-4 shrink-0 -ml-1" aria-hidden />
+      <span className="w-5 shrink-0 -ml-0.5" aria-hidden />
     );
     const clickableProps = collapse
       ? {

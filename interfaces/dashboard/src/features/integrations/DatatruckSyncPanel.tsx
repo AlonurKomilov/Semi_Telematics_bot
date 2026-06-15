@@ -27,10 +27,18 @@ import { DATATRUCK_RESOURCE_LABELS, formatSyncTimestamp } from './labels';
 
 type Feedback = { kind: 'success' | 'error' | 'info'; message: string } | null;
 
+// Resources that accept a history window server-side.  Roster lists
+// (drivers/trucks/trailers) always sync in full, so the window picker
+// doesn't apply to them — we send ``days`` only for these.
+const DATE_RANGED = new Set(['orders', 'work_orders']);
+
 export default function DatatruckSyncPanel() {
   const qc = useQueryClient();
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [triggering, setTriggering] = useState<Set<string>>(new Set());
+  // History window for the date-ranged resources, mirroring the
+  // Samsara card's backfill picker so both integrations read the same.
+  const [windowDays, setWindowDays] = useState(30);
 
   const { data, isLoading, error } = useQuery<DatatruckSyncStatusResponse>({
     queryKey: ['datatruck-sync-status'],
@@ -50,8 +58,16 @@ export default function DatatruckSyncPanel() {
     setTriggering((prev) => new Set(prev).add(resource));
     setFeedback(null);
     try {
-      await triggerDatatruckSync(resource);
-      setFeedback({ kind: 'info', message: `${resource}: sync queued` });
+      // Only the date-ranged resources take a window; roster lists are
+      // always full, so we don't send a misleading ``days`` for them.
+      const days = DATE_RANGED.has(resource) ? windowDays : undefined;
+      await triggerDatatruckSync(resource, days);
+      setFeedback({
+        kind: 'info',
+        message: days
+          ? `${resource}: sync queued · last ${days} days`
+          : `${resource}: sync queued`,
+      });
       qc.invalidateQueries({ queryKey: ['datatruck-sync-status'] });
     } catch (e) {
       setFeedback({
@@ -92,6 +108,21 @@ export default function DatatruckSyncPanel() {
           <Database size={12} />
           Synced data
         </span>
+        {/* History window for orders & work orders.  Mirrors the
+            Samsara card's backfill picker so both cards read the same.
+            Driver/truck/trailer rosters always sync in full and ignore
+            this. */}
+        <select
+          value={windowDays}
+          onChange={(e) => setWindowDays(Number(e.target.value))}
+          className="bg-muted border border-border rounded text-2xs text-foreground px-1.5 py-1 focus:outline-none focus:border-ring"
+          title="History window for orders & work orders. Driver, truck and trailer rosters always sync in full."
+          aria-label="Sync history window"
+        >
+          <option value={7}>Last 7 days</option>
+          <option value={30}>Last 30 days</option>
+          <option value={90}>Last 90 days</option>
+        </select>
       </div>
       <ul className="divide-y divide-border">
         {DATATRUCK_RESOURCE_LABELS.map(([key, label]) => (
