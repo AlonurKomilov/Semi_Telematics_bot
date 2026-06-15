@@ -33,9 +33,9 @@ from capabilities.telemetry.service import get_fleet_efficiency as _svc_fleet_ef
         "DO NOT use this for 'which trucks are stopped/parked N days' "
         "or 'what vehicle hasn't moved' — those questions are about "
         "long-idle vehicles parked at unsafe locations, which "
-        "``get_idle_vehicles`` answers directly.  If the user's "
+        "``get_parked_vehicles`` answers directly.  If the user's "
         "previous turn asked about stopped/parked/idle vehicles and "
-        "they then say 'N days', keep calling get_idle_vehicles with "
+        "they then say 'N days', keep calling get_parked_vehicles with "
         "min_days=N — don't switch to this tool just because it "
         "accepts a ``days`` parameter."
     ),

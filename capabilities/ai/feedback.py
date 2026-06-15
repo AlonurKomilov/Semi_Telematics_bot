@@ -380,7 +380,7 @@ async def flip_last_response_as_thumbs_up(
 # Catches the failure mode where the AI refuses a question that an
 # available tool could have answered.  Recurring example: user asks
 # "what vehicle was stopped 3 days without driving?", AI answers
-# "I only have real-time data" without calling get_idle_vehicles.
+# "I only have real-time data" without calling get_parked_vehicles.
 #
 # Pure regex + keyword match — no LLM call, microsecond latency.
 # Deliberately covers only refusal-when-tool-existed.  Failure
@@ -454,7 +454,7 @@ _REFUSAL_PHRASES_BY_LANG: dict[str, tuple[str, ...]] = {
 # of being conservative is silent misses, not false positives, so
 # err toward fewer keywords if unsure.
 _TOOL_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "get_idle_vehicles": (
+    "get_parked_vehicles": (
         "stopped", "not driving", "without driving", "haven't moved",
         "hasn't moved", "long-idle", "long idle", "sitting", "parked for",
         "off the road", "out of service", "been parked",

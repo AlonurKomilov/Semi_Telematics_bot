@@ -11,7 +11,7 @@ from capabilities.ai.tools.scope import scope_vehicle_set
 
 
 @register_tool({
-    "name": "get_idle_vehicles",
+    "name": "get_parked_vehicles",
     "description": (
         "List vehicles that have been parked / stopped / not driving "
         "for at least the requested number of days.  Returns vehicle "
@@ -59,7 +59,7 @@ from capabilities.ai.tools.scope import scope_vehicle_set
         "required": [],
     },
 })
-async def get_idle_vehicles(tool_args: dict, samsara_client,
+async def get_parked_vehicles(tool_args: dict, samsara_client,
                             account_id: int | None = None, db=None) -> dict:
     if not db or account_id is None:
         return {"error": "Parking data not available in this context"}

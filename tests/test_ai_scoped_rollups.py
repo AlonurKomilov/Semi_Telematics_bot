@@ -4,7 +4,7 @@ For a company/vehicle-restricted user, account-wide tools that have been made
 *scope-aware* (listed in ``SCOPE_AWARE_TOOLS``) are no longer blocked: the
 orchestrator injects the caller's allowed vehicles as ``_scope_vehicles`` and
 the tool returns only that subset.  Account-wide tools NOT yet scope-aware stay
-blocked (safe default).  ``get_idle_vehicles`` is the first upgraded tool.
+blocked (safe default).  ``get_parked_vehicles`` is the first upgraded tool.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 import pytest
 
 from capabilities.ai.intelligence import _check_tool_permission
-from features.parking.ai_tool import get_idle_vehicles
+from features.parking.ai_tool import get_parked_vehicles
 from features.alerts.ai_tool import get_alert_history
 from features.vehicles import ai_tool as _veh_mod
 from capabilities.ai.tools.registry import execute_tool
@@ -44,8 +44,8 @@ def _events():
 class TestGateAllowsScopeAwareTools:
     async def test_scope_aware_tool_allowed_for_scoped_user(self):
         ctx = {"role": "fleet", "scoped_vehicle_nums": ["B-1"]}
-        # get_idle_vehicles is account-wide AND scope-aware → not blocked.
-        assert await _check_tool_permission("get_idle_vehicles", {}, "fleet", ctx) is None
+        # get_parked_vehicles is account-wide AND scope-aware → not blocked.
+        assert await _check_tool_permission("get_parked_vehicles", {}, "fleet", ctx) is None
 
     async def test_non_scope_aware_account_wide_tool_still_blocked(self):
         ctx = {"role": "fleet", "scoped_vehicle_nums": ["B-1"]}
@@ -55,18 +55,18 @@ class TestGateAllowsScopeAwareTools:
 
     async def test_unrestricted_user_unaffected(self):
         ctx = {"role": "fleet", "scoped_vehicle_nums": None}
-        assert await _check_tool_permission("get_idle_vehicles", {}, "fleet", ctx) is None
+        assert await _check_tool_permission("get_parked_vehicles", {}, "fleet", ctx) is None
         assert await _check_tool_permission("get_account_stats", {}, "fleet", ctx) is None
 
 
-# ── Tool: get_idle_vehicles filters to the injected scope ────────────────────
+# ── Tool: get_parked_vehicles filters to the injected scope ────────────────────
 
 
 @pytest.mark.asyncio
 class TestIdleVehiclesScopeFilter:
     async def test_filters_to_allowed_vehicles(self):
         db = _FakeParkingDB(_events())
-        res = await get_idle_vehicles(
+        res = await get_parked_vehicles(
             {"_scope_vehicles": ["B-1"], "min_days": 1}, None, account_id=1, db=db,
         )
         assert res["count"] == 1
@@ -74,12 +74,12 @@ class TestIdleVehiclesScopeFilter:
 
     async def test_no_scope_returns_all(self):
         db = _FakeParkingDB(_events())
-        res = await get_idle_vehicles({"min_days": 1}, None, account_id=1, db=db)
+        res = await get_parked_vehicles({"min_days": 1}, None, account_id=1, db=db)
         assert res["count"] == 2
 
     async def test_empty_scope_fails_closed(self):
         db = _FakeParkingDB(_events())
-        res = await get_idle_vehicles(
+        res = await get_parked_vehicles(
             {"_scope_vehicles": [], "min_days": 1}, None, account_id=1, db=db,
         )
         assert res["count"] == 0
@@ -93,7 +93,7 @@ class TestExecuteToolInjection:
     async def test_scope_injected_causes_filtering(self):
         db = _FakeParkingDB(_events())
         res = await execute_tool(
-            "get_idle_vehicles", {"min_days": 1}, None,
+            "get_parked_vehicles", {"min_days": 1}, None,
             account_id=1, db=db, scope_vehicles=["B-1"],
         )
         assert res["count"] == 1  # injection filtered out A-3
@@ -101,7 +101,7 @@ class TestExecuteToolInjection:
     async def test_no_scope_no_filtering(self):
         db = _FakeParkingDB(_events())
         res = await execute_tool(
-            "get_idle_vehicles", {"min_days": 1}, None,
+            "get_parked_vehicles", {"min_days": 1}, None,
             account_id=1, db=db,  # scope_vehicles defaults to None
         )
         assert res["count"] == 2
@@ -109,7 +109,7 @@ class TestExecuteToolInjection:
 
 # ── Batch 2: the four scope-aware tools, gate + per-tool filtering ───────────
 
-_SCOPE_AWARE = ["get_idle_vehicles", "get_rolling_stopped", "search_vehicles",
+_SCOPE_AWARE = ["get_parked_vehicles", "get_rolling_stopped", "search_vehicles",
                 "get_alert_history", "get_maintenance_summary", "get_weather",
                 "get_driver_hos_status", "get_low_fuel_vehicles",
                 "get_fuel_cost_summary", "get_vehicle_health", "get_account_stats",

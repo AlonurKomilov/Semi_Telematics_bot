@@ -294,7 +294,7 @@ async def get_vehicle_odometer(tool_args: dict, samsara_client,
                     "fleet-wide history isn't supported here because "
                     "the row count explodes; for fleet questions use "
                     "the per-vehicle tools (get_account_stats, "
-                    "get_idle_vehicles, get_efficiency_summary)."
+                    "get_parked_vehicles, get_efficiency_summary)."
                 ),
             },
             "days": {

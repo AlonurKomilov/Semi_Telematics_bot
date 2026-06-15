@@ -920,7 +920,7 @@ TOOL_PERMISSIONS: dict[str, list[str] | None] = {
     "get_drivers_list":         ["can_vehicle_all"],                           # all except driver
     "search_vehicles":          ["can_vehicle_all"],                           # all except driver
     "search_knowledge_base":    None,                                        # all roles
-    "get_idle_vehicles":        ["can_vehicle_all"],                           # owner/admin/dispatcher/fleet/safety — not driver (fleet-wide)
+    "get_parked_vehicles":        ["can_vehicle_all"],                           # owner/admin/dispatcher/fleet/safety — not driver (fleet-wide)
     "get_driver_hos_status":    ["can_vehicle_all"],                           # owner/admin/dispatcher/fleet/safety — HR concern, not driver-facing
     "get_alert_history":        ["can_alerts_all", "can_alerts_vehicle"],         # owner/admin/fleet/safety/driver(own)
     "get_recent_work_orders":   ["can_maintenance_all", "can_maintenance_vehicle"],  # owner/admin/fleet/safety/driver(own)
@@ -936,7 +936,7 @@ ACCOUNT_WIDE_TOOLS: frozenset[str] = frozenset({
     "get_events_summary", "get_maintenance_summary",
     "get_fuel_cost_summary", "get_rolling_stopped",
     "get_drivers_list", "search_vehicles",
-    "get_idle_vehicles", "get_driver_hos_status",
+    "get_parked_vehicles", "get_driver_hos_status",
     "get_alert_history",
 })
 
@@ -947,7 +947,7 @@ ACCOUNT_WIDE_TOOLS: frozenset[str] = frozenset({
 # returns only that subset.  Account-wide tools NOT in this set stay blocked
 # for scoped users — so coverage grows safely, one tool at a time.
 SCOPE_AWARE_TOOLS: frozenset[str] = frozenset({
-    "get_idle_vehicles",
+    "get_parked_vehicles",
     "get_rolling_stopped",
     "search_vehicles",
     "get_alert_history",

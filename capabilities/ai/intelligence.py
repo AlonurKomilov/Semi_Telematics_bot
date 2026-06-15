@@ -57,7 +57,7 @@ _TOOL_LABELS: dict[str, str] = {
     "search_vehicles":        "Searching vehicles",
     "search_knowledge_base":  "Searching knowledge base",
     "get_account_stats":      "Getting account stats",
-    "get_idle_vehicles":      "Checking long-idle vehicles",
+    "get_parked_vehicles":    "Checking parked vehicles",
     "get_driver_hos_status":  "Reading driver hours",
     "get_alert_history":      "Reviewing alert history",
     "get_recent_work_orders": "Looking up shop visits",

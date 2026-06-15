@@ -116,7 +116,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   { id: 'parking', labelKey: 'nav.parking', path: '/parking', icon: ParkingSquare, modules: ['dispatch', 'fleet', 'safety'], tier: 'role', permission: ['can_parking_all', 'can_parking_vehicle'], navGroup: 'operations' },
 
   // ── SAFETY (behaviour + incidents) ────────────────────────────────
-  { id: 'safety_events', labelKey: 'nav.safety_events', path: '/safety-events', icon: AlertTriangle, modules: ['safety', 'hr'], tier: 'role', permission: ['can_events_all', 'can_events_vehicle'], navGroup: 'monitoring' },
+  { id: 'events', labelKey: 'nav.events', path: '/safety-events', icon: AlertTriangle, modules: ['safety', 'hr'], tier: 'role', permission: ['can_events_all', 'can_events_vehicle'], navGroup: 'monitoring' },
   { id: 'cameras',       labelKey: 'nav.cameras',       path: '/cameras',       icon: Camera,        modules: ['safety', 'fleet'], tier: 'role', permission: ['can_cameras'], navGroup: 'monitoring' },
   // Scorecards are a Safety/coaching capability — surfaced only when the
   // Safety or HR department is on.  A Fleet-only or Dispatch-only company
