@@ -12,8 +12,8 @@ from __future__ import annotations
 import html
 import logging
 
-from capabilities.notifications.auth_emails import _auth_base, _company_name
-from capabilities.notifications.email import is_email_configured, send_email
+from capabilities.email.auth_emails import _auth_base, _company_name
+from capabilities.email.smtp import is_email_configured, send_email
 
 logger = logging.getLogger(__name__)
 

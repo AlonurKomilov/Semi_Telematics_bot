@@ -1,4 +1,6 @@
-"""Settings · Working Hours — account work-hours schedules (DND service in capabilities/work_hours/).
+"""Settings · Working Hours — account work-hours schedules.  The schedules
+feed the DND / quiet-hours gate, which lives in capabilities/alerting/
+(on_shift.py · dnd.py).  CRUD here is a thin pass-through to tenant_db.
 
 router.py is interface-layer code co-located with its feature
 (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps.
@@ -27,7 +29,7 @@ router = APIRouter(prefix="/admin", tags=["settings"])
 
 
 # ── Working Hours (Team Management component — schedules also feed
-#    the DND gate via capabilities/work_hours/service.py) ──────────
+#    feed the DND gate in capabilities/alerting/) ──────────
 # ── Work Hours ─────────────────────────────────────────────
 
 class ScheduleCreate(BaseModel):

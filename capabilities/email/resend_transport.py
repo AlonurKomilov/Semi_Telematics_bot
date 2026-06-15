@@ -2,7 +2,7 @@
 
 Why a separate transport
 ------------------------
-The shared SMTP mailer at ``capabilities/notifications/email.py`` covers
+The shared SMTP mailer at ``capabilities/email/smtp.py`` covers
 auth flows (verify, password reset, lockout) via stdlib ``smtplib`` —
 that's fine for those because we don't need bounce-state visibility,
 and the auth recipient already has an account.

@@ -379,7 +379,7 @@ async def send_scheduled_reports(app: Application):
                                 recipient, verified,
                             )
                         else:
-                            from capabilities.notifications.email import send_email
+                            from capabilities.email.smtp import send_email
                             if tg_payload is None:
                                 pdf_buf.seek(0)
                                 tg_payload = pdf_buf.read()

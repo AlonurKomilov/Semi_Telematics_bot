@@ -151,7 +151,7 @@ async def operator_create_account(
         reset_token = await platform_db.create_password_reset_token(
             owner.id, ttl_hours=24,
         )
-        from capabilities.notifications.email import send_email
+        from capabilities.email.smtp import send_email
         from infra.config import settings as _settings
         base = getattr(_settings, "dashboard_base_url", "https://dash.4truck.us")
         link = f"{base}/reset-password?token={reset_token}"
@@ -286,7 +286,7 @@ async def operator_suspend_account(
     except Exception:
         logger.exception("suspend: audit write failed acct=%s", account_id)
 
-    from capabilities.notifications.lifecycle_emails import send_account_suspended_email
+    from capabilities.email.lifecycle_emails import send_account_suspended_email
     await _notify_account_contacts(
         platform_db, account_id, send_account_suspended_email,
         account_name=acct.name, reason=body.reason,
@@ -335,7 +335,7 @@ async def operator_unsuspend_account(
     except Exception:
         logger.exception("unsuspend: audit write failed acct=%s", account_id)
 
-    from capabilities.notifications.lifecycle_emails import send_account_unsuspended_email
+    from capabilities.email.lifecycle_emails import send_account_unsuspended_email
     await _notify_account_contacts(
         platform_db, account_id, send_account_unsuspended_email,
         account_name=acct.name,

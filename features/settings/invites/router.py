@@ -138,8 +138,8 @@ async def create_invite(
         # 2. SMTP must be configured.  Refuse 503 BEFORE create so
         #    we don't ship "sent_to_email NOT NULL + email_sent_at
         #    NULL" rows that lie about being email-channel.
-        from capabilities.notifications.email import is_email_configured
-        from capabilities.notifications.resend_transport import is_resend_api_enabled
+        from capabilities.email.smtp import is_email_configured
+        from capabilities.email.resend_transport import is_resend_api_enabled
         # Either provider satisfies the gate.  Resend-only deploys
         # (no SMTP relay) used to hit a misleading 503 about SMTP
         # being unconfigured; the OR honours both providers and the
@@ -181,7 +181,7 @@ async def create_invite(
     email_status = None
     if recipient:
         try:
-            from capabilities.notifications.auth_emails import send_invite_email_async
+            from capabilities.email.auth_emails import send_invite_email_async
             account = await platform_db.get_account(user["account_id"])
             account_name = (account.name if account else "your team") or "your team"
             sent, resend_email_id = await send_invite_email_async(
@@ -298,7 +298,7 @@ async def resend_invite_email_endpoint(
     # bucket needs it).  This re-orders from the earlier shape where
     # rate-check ran first — the design vet flagged this so the
     # per-recipient bucket can engage on resend too.
-    from capabilities.notifications.email import is_email_configured
+    from capabilities.email.smtp import is_email_configured
     if not is_email_configured():
         raise HTTPException(
             status_code=503,
@@ -362,7 +362,7 @@ async def resend_invite_email_endpoint(
     account = await platform_db.get_account(user["account_id"])
     account_name = (account.name if account else "your team") or "your team"
     try:
-        from capabilities.notifications.auth_emails import send_invite_email_async
+        from capabilities.email.auth_emails import send_invite_email_async
         sent, resend_email_id = await send_invite_email_async(
             to=invite.sent_to_email,
             code=invite.code,

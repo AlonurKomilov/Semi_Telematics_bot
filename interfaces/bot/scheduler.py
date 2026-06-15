@@ -312,7 +312,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
             #    job runs daily and the window is (now, now+7d], so an
             #    account gets roughly one warning per day for its final
             #    week; acceptable cadence for a destructive deadline.
-            from capabilities.notifications.lifecycle_emails import (
+            from capabilities.email.lifecycle_emails import (
                 send_purge_warning_email,
             )
             for row in await db.list_accounts_purging_within(days=7):

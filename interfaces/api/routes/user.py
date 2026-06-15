@@ -199,7 +199,7 @@ async def set_credentials(
         token = await platform_db.create_email_verification_token(
             db_user.id, body.email,
         )
-        from capabilities.notifications.auth_emails import (
+        from capabilities.email.auth_emails import (
             send_verification_email,
         )
         send_verification_email(
@@ -703,7 +703,7 @@ async def account_delete_request(
         user["account_id"], db_user.id, ttl_minutes=15,
     )
     acct = await platform_db.get_account(user["account_id"])
-    from capabilities.notifications.lifecycle_emails import send_deletion_code_email
+    from capabilities.email.lifecycle_emails import send_deletion_code_email
     sent = send_deletion_code_email(
         to=db_user.email, code=code,
         account_name=acct.name if acct else "",
@@ -771,7 +771,7 @@ async def account_delete_confirm(
 
     acct = await platform_db.get_account(user["account_id"])
     if db_user.email:
-        from capabilities.notifications.lifecycle_emails import (
+        from capabilities.email.lifecycle_emails import (
             send_deletion_confirmed_email,
         )
         try:
@@ -817,7 +817,7 @@ async def account_delete_cancel(
 
     acct = await platform_db.get_account(user["account_id"])
     if db_user and db_user.email:
-        from capabilities.notifications.lifecycle_emails import (
+        from capabilities.email.lifecycle_emails import (
             send_deletion_cancelled_email,
         )
         try:

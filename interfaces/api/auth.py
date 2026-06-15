@@ -1351,7 +1351,7 @@ async def auth_email_login(request: Request, response: Response, body: EmailLogi
         if lock_state.get("locked_until"):
             # Best-effort heads-up to the legitimate user.
             try:
-                from capabilities.notifications.auth_emails import (
+                from capabilities.email.auth_emails import (
                     send_lockout_notice,
                 )
                 client_ip = _client_ip(request)
@@ -1516,7 +1516,7 @@ async def auth_email_register(request: Request, response: Response, body: EmailR
         verify_token = await db.create_email_verification_token(
             user.id, body.email,
         )
-        from capabilities.notifications.auth_emails import (
+        from capabilities.email.auth_emails import (
             send_verification_email,
         )
         send_verification_email(
@@ -1595,7 +1595,7 @@ async def auth_forgot_password(request: Request, body: ForgotPasswordRequest):
         if user and user.password_hash:
             try:
                 token = await db.create_password_reset_token(user.id)
-                from capabilities.notifications.auth_emails import (
+                from capabilities.email.auth_emails import (
                     send_password_reset_email,
                 )
                 send_password_reset_email(
@@ -1717,7 +1717,7 @@ async def auth_resend_verification(
                 token = await db.create_email_verification_token(
                     user.id, email,
                 )
-                from capabilities.notifications.auth_emails import (
+                from capabilities.email.auth_emails import (
                     send_verification_email,
                 )
                 send_verification_email(
@@ -1953,7 +1953,7 @@ async def auth_register_account(request: Request, body: RegisterAccountRequest):
         verify_token = await db.create_email_verification_token(
             user.id, body.email,
         )
-        from capabilities.notifications.auth_emails import (
+        from capabilities.email.auth_emails import (
             send_verification_email,
         )
         send_verification_email(

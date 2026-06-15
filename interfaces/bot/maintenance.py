@@ -521,7 +521,7 @@ async def _notify_account_admins(app: Application, account_id: int, text: str,
     overdue evidence.  Email is best-effort and never blocks the rest
     of the fan-out.
     """
-    from capabilities.notifications import is_email_configured, send_email
+    from capabilities.email import is_email_configured, send_email
     smtp_on = is_email_configured()
 
     try:

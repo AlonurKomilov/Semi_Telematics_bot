@@ -22,7 +22,7 @@ import logging
 import os
 from typing import Optional
 
-from capabilities.notifications.email import is_email_configured, send_email
+from capabilities.email.smtp import is_email_configured, send_email
 
 logger = logging.getLogger(__name__)
 
@@ -544,7 +544,7 @@ async def send_invite_email_async(
         "X-Entity-Ref-ID": f"invite-{code}",
     }
 
-    from capabilities.notifications.resend_transport import (
+    from capabilities.email.resend_transport import (
         is_resend_api_enabled, send_invite_via_resend,
     )
     if is_resend_api_enabled() and invites_from:
