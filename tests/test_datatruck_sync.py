@@ -18,6 +18,8 @@ from capabilities.integrations.datatruck.sync import (
     _norm_order,
     _norm_truck,
     _norm_work_order,
+    _order_params,
+    _work_order_params,
 )
 
 
@@ -89,7 +91,84 @@ def test_norm_work_order_vehicle_unit_extraction():
         "total_cost": 480.25,
     })
     assert out["vehicle_unit"] == "247"
+    assert out["vehicle_type"] == "truck"   # the WO is on a truck
     assert out["number"] == "3"  # falls back to id
+
+
+def test_norm_work_order_vendor_string_does_not_echo_name_as_phone():
+    # List shape: vendor is a bare name string (no contact dict).  The phone
+    # must NOT become the vendor name — it stays blank unless a top-level
+    # phone field exists.
+    out = _norm_work_order({"id": 7, "vendor": "Flying J", "truck": "247"})
+    assert out["vendor_name"] == "Flying J"
+    assert out["vendor_phone"] == ""        # was the bug: echoed "Flying J"
+
+
+def test_norm_work_order_rounds_money_to_cents():
+    out = _norm_work_order({
+        "id": 8, "total_price": 426.9899, "tax_total_price": 12.3456,
+        "work_order_tasks": [
+            {"custom_task": "Battery", "parts_price": 132.9900,
+             "parts_quantity": 4, "total_price": 531.9600},
+        ],
+    })
+    assert out["total_cost"] == 426.99
+    assert out["tax_amount"] == 12.35
+    assert out["line_items"][0]["unit_cost"] == 132.99
+    assert out["line_items"][0]["total"] == 531.96
+
+
+def test_norm_work_order_v2_detail_shape():
+    """Pin the mapping against the live v2 detail serializer — most
+    importantly that ``number`` (WO id) and ``invoice_id`` are distinct,
+    the vendor object is unwrapped, and line items are normalized."""
+    rec = {
+        "id": 1599, "number": "WO-00991", "invoice_id": "46478",
+        "status": "completed", "note": "steer tires", "notes": [],
+        "payment_type": "efs", "tax_total_price": 92.48,
+        "total_price": 1270.44, "odometer": 0.0,
+        "scheduled_on_date": "2026-06-09T00:00:00Z", "due_date": "2026-07-09",
+        "location": "PO Box 1597, Calhoun, GA 30703-1597",
+        "truck": {"id": 38, "unit_number": "204", "plate_number": "PXF7499"},
+        "trailer": None,
+        "vendor": {"id": 1263, "name": "Interstate Tire & Lube, Inc.",
+                   "contact_number": "(706) 625-5600",
+                   "email": "accounts@interstatetireandlube.com"},
+        "work_order_tasks": [
+            {"id": 3699, "task": None, "custom_task": "TIRE DISPOSAL FEE",
+             "parts_price": 10.0, "parts_quantity": 2, "labor_price": 0.0,
+             "labor_hours": 1, "total_price": 20.0},
+        ],
+    }
+    out = _norm_work_order(rec)
+    assert out["external_id"] == "1599"
+    assert out["number"] == "WO-00991"
+    assert out["invoice_number"] == "46478"     # invoice_id, NOT number
+    assert out["vehicle_unit"] == "204"         # truck.unit_number
+    assert out["vendor_name"] == "Interstate Tire & Lube, Inc."
+    assert out["vendor_phone"] == "(706) 625-5600"
+    assert out["vendor_address"] == "PO Box 1597, Calhoun, GA 30703-1597"
+    assert out["payment_method"] == "efs"
+    assert out["note"] == "steer tires"         # the string, not the [] array
+    assert out["tax_amount"] == 92.48
+    assert out["total_cost"] == 1270.44
+    assert out["opened_at"] == "2026-06-09T00:00:00Z"
+    assert len(out["line_items"]) == 1
+    item = out["line_items"][0]
+    assert item["name"] == "TIRE DISPOSAL FEE"
+    assert item["quantity"] == 2.0
+    assert item["unit_cost"] == 10.0
+    assert item["total"] == 20.0
+
+
+def test_norm_work_order_trailer_unit():
+    """When the WO is on a trailer, the unit comes from ``trailer``."""
+    out = _norm_work_order({
+        "id": 1601, "truck": None,
+        "trailer": {"id": 9, "unit_number": "TL645015"},
+    })
+    assert out["vehicle_unit"] == "TL645015"
+    assert out["vehicle_type"] == "trailer"   # the WO is on a trailer
 
 
 def test_every_resource_normalizer_survives_empty_record():
@@ -279,6 +358,105 @@ async def test_sync_resource_unknown_resource_raises():
     from capabilities.integrations.datatruck.sync import sync_resource
     with pytest.raises(ValueError, match="unknown datatruck resource"):
         await sync_resource(42, "nonexistent")
+
+
+# ── History window (days selector) ────────────────────────────
+
+
+def test_order_params_window():
+    from datetime import datetime, timedelta, timezone
+    # No window → no filter, preserving the prior full-pagination path.
+    assert _order_params(None) is None
+    assert _order_params(0) is None
+    today = datetime.now(timezone.utc).date()
+    p = _order_params(7)
+    assert p["from_date"] == (today - timedelta(days=7)).isoformat()
+    assert p["to_date"] == (today + timedelta(days=7)).isoformat()
+
+
+def test_work_order_params_window_defaults_to_90():
+    from datetime import datetime, timedelta, timezone
+    today = datetime.now(timezone.utc).date()
+    # No window → the prior 90-day default.
+    assert _work_order_params()["from_date"] == (
+        today - timedelta(days=90)
+    ).isoformat()
+    # Chosen window narrows the lookback.
+    assert _work_order_params(30)["from_date"] == (
+        today - timedelta(days=30)
+    ).isoformat()
+
+
+@pytest.mark.asyncio
+async def test_sync_resource_passes_days_window_to_date_ranged(monkeypatch):
+    """A chosen ``days`` reaches the orders endpoint as from/to params."""
+    from datetime import datetime, timedelta, timezone
+
+    from capabilities.integrations.datatruck import sync as sync_mod
+
+    db = MagicMock()
+    db.get_account_integration = AsyncMock(return_value=_integration_stub())
+    monkeypatch.setattr(sync_mod, "get_platform_db", lambda: db)
+
+    tenant = MagicMock()
+    tenant.upsert_datatruck_orders = AsyncMock(side_effect=lambda a, rows: len(rows))
+    monkeypatch.setattr(sync_mod, "get_tenant_db", AsyncMock(return_value=tenant))
+
+    captured: dict = {}
+    base = "https://premier.datatruck.io/api/v1/openapi/"
+
+    async def fake_iter_pages(path, params=None, *, max_pages=50):
+        captured["params"] = params
+        yield _page(base, count=1, results=[{"id": 1}], next_page=None)
+
+    client = MagicMock()
+    client.iter_pages = fake_iter_pages
+    provider = MagicMock()
+    provider.client = client
+    monkeypatch.setattr(
+        sync_mod, "get_telematics_client", AsyncMock(return_value=provider),
+    )
+    monkeypatch.setattr(sync_mod, "_publish", AsyncMock())
+
+    status = await sync_mod.sync_resource(42, "orders", days=7)
+    assert status["state"] == "completed"
+    today = datetime.now(timezone.utc).date()
+    assert captured["params"]["from_date"] == (today - timedelta(days=7)).isoformat()
+    assert captured["params"]["to_date"] == (today + timedelta(days=7)).isoformat()
+
+
+@pytest.mark.asyncio
+async def test_sync_resource_orders_without_window_sends_no_params(monkeypatch):
+    """Default (days=None) keeps the prior no-filter orders behaviour."""
+    from capabilities.integrations.datatruck import sync as sync_mod
+
+    db = MagicMock()
+    db.get_account_integration = AsyncMock(return_value=_integration_stub())
+    monkeypatch.setattr(sync_mod, "get_platform_db", lambda: db)
+
+    tenant = MagicMock()
+    tenant.upsert_datatruck_orders = AsyncMock(side_effect=lambda a, rows: len(rows))
+    monkeypatch.setattr(sync_mod, "get_tenant_db", AsyncMock(return_value=tenant))
+
+    captured: dict = {"params": "unset"}
+    base = "https://premier.datatruck.io/api/v1/openapi/"
+
+    async def fake_iter_pages(path, params=None, *, max_pages=50):
+        captured["params"] = params
+        yield _page(base, count=1, results=[{"id": 1}], next_page=None)
+
+    client = MagicMock()
+    client.iter_pages = fake_iter_pages
+    provider = MagicMock()
+    provider.client = client
+    monkeypatch.setattr(
+        sync_mod, "get_telematics_client", AsyncMock(return_value=provider),
+    )
+    monkeypatch.setattr(sync_mod, "_publish", AsyncMock())
+
+    status = await sync_mod.sync_resource(42, "orders")
+    assert status["state"] == "completed"
+    assert captured["params"] is None
 
 
 # ── Route preflight ───────────────────────────────────────────

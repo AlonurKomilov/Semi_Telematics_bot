@@ -765,7 +765,7 @@
     "ph_payment_method": "Net 30, Cash, AmEx…",
     "ph_notes": "Anything else worth recording — sublet work, warranty claims, follow-ups…",
     "ph_part_name": "e.g. Oil filter",
-    "ph_part_number": "FRAM-PH8A",
+    "ph_part_number": "",
     "add_part": "Add part",
     "no_parts": "No parts added. Click \"Add part\" to log line items.",
     "col_part": "Part",

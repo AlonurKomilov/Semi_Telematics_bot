@@ -95,6 +95,13 @@ def _as_float(value: Any) -> float | None:
         return None
 
 
+def _money(value: Any) -> float | None:
+    """Coerce to a 2-decimal money value (Datatruck sends 4-decimal prices);
+    keeps None when upstream omits the field."""
+    f = _as_float(value)
+    return round(f, 2) if f is not None else None
+
+
 def _first(rec: dict, *keys: str) -> Any:
     for k in keys:
         v = rec.get(k)
@@ -182,27 +189,100 @@ def _norm_order(rec: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _norm_task(t: dict[str, Any]) -> dict[str, Any]:
+    """Normalize one work-order line item (Datatruck ``work_order_tasks``).
+
+    ``task`` references a catalog task; ``custom_task`` is a free-text
+    one-off (the UI's "Task Name").  ``parts_price`` is per-unit, qty is
+    ``parts_quantity``, and ``total_price`` is the line total (parts +
+    labor).  Labor-only lines carry ``labor_price``/``labor_hours`` with
+    a zero parts price — kept so the row still shows on the WO.
+    """
+    return {
+        "name":        _as_text(
+            _first(t, "custom_task", "task", "name"), "name", "title",
+        ),
+        "quantity":    _as_float(_first(t, "parts_quantity", "quantity", "qty")) or 0.0,
+        # Datatruck sends 4-decimal prices; money rounds to cents.
+        "unit_cost":   _money(_first(t, "parts_price", "unit_cost", "price")) or 0.0,
+        "labor_price": _money(_first(t, "labor_price")) or 0.0,
+        "labor_hours": _as_float(_first(t, "labor_hours")) or 0.0,
+        "total":       _money(_first(t, "total_price", "total")) or 0.0,
+    }
+
+
 def _norm_work_order(rec: dict[str, Any]) -> dict[str, Any]:
+    """Normalize a Datatruck work order.
+
+    Field names match the v2 detail serializer (live-verified
+    2026-06-16) with defensive fallbacks for the openapi list shape.
+    Note the WO **number** ("WO-00991") and the **invoice id** ("46478")
+    are distinct fields — the module's ``invoice_number`` maps from
+    ``invoice_id``, never the WO number.
+    """
+    tasks_raw = (
+        rec.get("work_order_tasks")
+        or rec.get("line_items")
+        or rec.get("tasks")
+        or []
+    )
+    line_items = [_norm_task(t) for t in tasks_raw if isinstance(t, dict)]
+    # The WO carries EITHER a ``truck`` or a ``trailer`` (the other is None);
+    # in the v2 detail each is a dict ({unit_number, plate_number, …}), in the
+    # list shape it can be a bare string.  Capture which kind it is so the WO
+    # links to the right registry vehicle (a truck "103" and a trailer "103"
+    # are different assets), and pull the unit_number from the dict — falling
+    # back to the string only when that's all upstream gives us.
+    _truck = rec.get("truck")
+    _trailer = rec.get("trailer")
+    _vehicle = _truck or _trailer or _first(rec, "vehicle", "unit")
+    _vendor = rec.get("vendor")
     return {
         "external_id":  _as_id(rec.get("id")),
         "number":       _as_text(_first(
             rec, "number", "work_order_number", "workOrderNumber",
         )) or _as_id(rec.get("id")),
         "status":       _as_text(_first(rec, "status", "state"), "name"),
-        "vehicle_unit": _as_text(
-            _first(rec, "truck", "vehicle", "unit"),
-            "unit_number", "number", "name",
-        ),
+        "vehicle_unit": _as_text(_vehicle, "unit_number", "number", "name"),
+        "vehicle_type": "truck" if _truck else ("trailer" if _trailer else ""),
         "opened_at":    _as_text(_first(
-            rec, "opened_at", "created_at", "createdAt", "date",
+            rec, "scheduled_on_date", "opened_at", "created_at",
+            "createdAt", "date",
         )),
         "closed_at":    _as_text(_first(
-            rec, "closed_at", "completed_at", "completedAt",
+            rec, "closed_at", "completed_at", "completedAt", "due_date",
         )),
-        "total_cost":   _as_float(_first(
-            rec, "total_cost", "totalCost", "total", "cost",
+        "total_cost":   _money(_first(
+            rec, "total_price", "total_cost", "totalCost", "total", "cost",
         )),
-        "payload":      rec,
+        # ── Enrichment promoted onto the Work Orders module ──
+        "invoice_number": _as_text(_first(
+            rec, "invoice_id", "invoice_number", "invoiceId",
+        )),
+        "vendor_name":    _as_text(
+            _first(rec, "vendor", "vendor_name", "vendorName"),
+            "name", "company_name",
+        ),
+        "vendor_address": _as_text(_first(
+            rec, "location", "vendor_location", "address",
+        )),
+        # Only a vendor DICT carries a phone; when ``vendor`` is a bare name
+        # string, look for a top-level phone instead of echoing the name.
+        "vendor_phone":   (
+            _as_text(_vendor, "contact_number", "phone", "phone_number")
+            if isinstance(_vendor, dict)
+            else _as_text(_first(rec, "vendor_phone", "contact_number", "phone"))
+        ),
+        "payment_method": _as_text(_first(
+            rec, "payment_type", "payment_method", "paymentType",
+        )),
+        "note":           _as_text(_first(rec, "note")),
+        "tax_amount":     _money(_first(
+            rec, "tax_total_price", "tax_amount", "tax",
+        )),
+        "odometer":       _as_float(rec.get("odometer")),
+        "line_items":     line_items,
+        "payload":        rec,
     }
 
 
@@ -260,6 +340,10 @@ class ResourceSpec:
     # into the Vehicle registry (the SSOT) as this type.  None for non-
     # vehicle resources (drivers / orders / work_orders).
     registry_vehicle_type: str | None = None
+    # When True, each synced page is ALSO projected into the module
+    # ``work_orders`` table (the SSOT) so synced shop invoices land on
+    # the Work Orders page beside hand-entered ones.
+    project_work_orders: bool = False
 
 
 RESOURCES: dict[str, ResourceSpec] = {
@@ -313,6 +397,7 @@ RESOURCES: dict[str, ResourceSpec] = {
             stats_method="datatruck_work_orders_stats",
             max_pages=30,
             params_factory=_work_order_params,
+            project_work_orders=True,
         ),
     )
 }
@@ -452,6 +537,19 @@ async def sync_resource(
                 except Exception as e:
                     logger.debug(
                         "datatruck registry projection skipped acct=%d: %s",
+                        account_id, e,
+                    )
+            # Project work orders into the module work_orders table (SSOT)
+            # so synced shop invoices appear on the Work Orders page.
+            # Best-effort: a projection hiccup must not fail the TMS sync.
+            if spec.project_work_orders:
+                try:
+                    await tenant.project_external_work_orders(
+                        account_id, normalized, source="datatruck",
+                    )
+                except Exception as e:
+                    logger.debug(
+                        "datatruck work-order projection skipped acct=%d: %s",
                         account_id, e,
                     )
             status["pages_done"] += 1
