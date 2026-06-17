@@ -52,25 +52,22 @@ const ROLE_KEYS = [
 //   • useShellConfig    — the hook itself owns these comparisons
 //   • RoleViewContext   — owns the view-switching machinery
 //   • Sidebar           — filters nav by the auth user's real role
-//   • admin/Invites     — `role` is the form state of the invite being
+//   • settings/Invites  — `role` is the form state of the invite being
 //                         drafted, not the current user's persona
-//   • admin/Users       — `selected.role` is the row of the user being
-//                         edited; `roleFilter` is a chip filter
-//   • admin/WorkHours   — `target_role` is a field on schedule rows
+//   • settings/WorkHours — `target_role` is a field on schedule rows
 //   • ai/Chat           — `msg.role === 'user'` is the chat message
 //                         author (user vs. model), not a persona
-//   • admin/RolePermissions — `role` is the matrix's role COLUMN (the row
+//   • permissions/Permissions — `role` is the matrix's role COLUMN (the row
 //                         of permissions being edited) + the owner-lockout
 //                         protected check; not the current user's persona
 const ALLOWLIST = new Set([
   'src/hooks/useShellConfig.ts',
   'src/context/RoleViewContext.tsx',
   'src/components/Sidebar.tsx',
-  'src/pages/admin/Invites.tsx',
-  'src/pages/admin/Users.tsx',
-  'src/pages/admin/WorkHours.tsx',
-  'src/pages/ai/Chat.tsx',
-  'src/pages/admin/RolePermissions.tsx',
+  'src/features/settings/Invites.tsx',
+  'src/features/settings/WorkHours.tsx',
+  'src/features/ai/Chat.tsx',
+  'src/features/permissions/Permissions.tsx',
 ]);
 
 // Match BOTH === and !== so an "if (role !== 'owner')" check is
