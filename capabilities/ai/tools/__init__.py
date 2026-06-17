@@ -36,7 +36,7 @@ from features.cameras import ai_tool as camera                      # noqa: F401
 from features.drivers import ai_tool as drivers                              # noqa: F401
 from features.knowledge import ai_tool as knowledge                          # noqa: F401
 from features.parking import ai_tool as parking                              # noqa: F401
-from features.alerts import ai_tool as alerts                                # noqa: F401
+from capabilities.alerting import ai_tool as alerts                          # noqa: F401
 from features.work_orders import ai_tool as work_orders                      # noqa: F401
 from features.inspections import ai_tool as pti                                      # noqa: F401
 

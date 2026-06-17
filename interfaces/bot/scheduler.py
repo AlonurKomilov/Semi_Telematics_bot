@@ -271,6 +271,22 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         max_instances=1, coalesce=True,
     )
 
+    # ── Integration-health probes ──────────────────────────────────
+    # Every 15 min: probe each active account × connected integration's
+    # ``test_connection`` and record the result on ``account_integrations``,
+    # so an upstream token revocation surfaces as an Error badge on the
+    # dashboard within 15 min without an owner clicking "Test connection".
+    # Bounded by the per-account semaphore (5) + a 12s per-probe timeout;
+    # no DB write when the status is unchanged.
+    from capabilities.integrations.telematics_health import (
+        job_run_integration_health_checks,
+    )
+    scheduler.add_job(
+        job_run_integration_health_checks, "interval",
+        minutes=15, args=[app], id="integration_health_checks",
+        max_instances=1, coalesce=True,
+    )
+
     # ── Account-lifecycle housekeeping ─────────────────────────────
     # Daily at 04:10 UTC: hard-purge accounts whose 90-day deletion
     # grace has elapsed, warn accounts ~7 days out, and drop expired

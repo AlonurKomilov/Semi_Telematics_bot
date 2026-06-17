@@ -21,7 +21,7 @@ import pytest
 
 from adapters.storage.account_integrations import AccountIntegration
 from adapters.telematics.protocol import ConnectionStatus
-from capabilities import telematics_health
+from capabilities.integrations import telematics_health
 
 
 def _integration(

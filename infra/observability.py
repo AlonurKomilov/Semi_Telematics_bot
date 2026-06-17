@@ -92,7 +92,7 @@ BILLING_COMP_SWEEP: Any = _STUB
 # Resend invite-email webhook events — sibling to BILLING_WEBHOOK_EVENTS
 # so the Stripe and Resend webhooks share a dashboarding pattern.
 EMAIL_WEBHOOK_EVENTS: Any = _STUB
-# Telematics-provider health probes (capabilities/telematics_health.py).
+# Telematics-provider health probes (capabilities/integrations/telematics_health.py).
 # Cardinality bounded: a handful of providers × {ok, error, timeout}.
 INTEGRATION_HEALTH: Any = _STUB
 # Telematics history-backfill runs (capabilities/telemetry/history_backfill.py).
@@ -300,7 +300,7 @@ def record_integration_health_check(provider: str, status: str) -> None:
     """One telematics-provider health probe.
 
     ``status`` ∈ {``ok``, ``error``, ``timeout``}.  Called by
-    ``capabilities/telematics_health.py`` after each per-account probe;
+    ``capabilities/integrations/telematics_health.py`` after each per-account probe;
     safe before metrics init (stub no-ops).
     """
     INTEGRATION_HEALTH.labels(

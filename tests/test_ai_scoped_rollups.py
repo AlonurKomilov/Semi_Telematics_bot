@@ -17,7 +17,7 @@ import pytest
 
 from capabilities.ai.intelligence import _check_tool_permission
 from features.parking.ai_tool import get_parked_vehicles
-from features.alerts.ai_tool import get_alert_history
+from capabilities.alerting.ai_tool import get_alert_history
 from features.vehicles import ai_tool as _veh_mod
 from capabilities.ai.tools.registry import execute_tool
 
