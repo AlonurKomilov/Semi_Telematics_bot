@@ -61,6 +61,7 @@ class WorkOrderCreate(BaseModel):
     zero so a driver can submit a photo-first draft and the manager
     fills in numbers later."""
     vehicle_name: str = Field(..., min_length=1)
+    vehicle_type: str = Field("", pattern=r"^(truck|trailer|)$")
     company_code: str = ""
     vehicle_id: str = ""
     vendor_name: str = ""
@@ -82,6 +83,7 @@ class WorkOrderCreate(BaseModel):
 
 class WorkOrderUpdate(BaseModel):
     vehicle_name: Optional[str] = Field(None, min_length=1)
+    vehicle_type: Optional[str] = Field(None, pattern=r"^(truck|trailer|)$")
     company_code: Optional[str] = None
     vehicle_id: Optional[str] = None
     vendor_name: Optional[str] = None

@@ -52,6 +52,20 @@ function MoneyCell({ value }: { value: unknown }) {
   );
 }
 
+// Source provenance cell.  'manual' (or empty) reads as a quiet dash;
+// any integration source ('datatruck') gets an info pill so synced
+// rows are distinguishable from hand-entered ones at a glance.
+function SourceCell({ value }: { value: unknown }) {
+  const v = String(value || 'manual').toLowerCase();
+  if (v === 'manual') return <span className="text-muted-foreground">—</span>;
+  const label = v.charAt(0).toUpperCase() + v.slice(1);
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${toneClasses('info')}`}>
+      {label}
+    </span>
+  );
+}
+
 const columns: AnyColumn[] = [
   { key: 'id', label: '#', sortable: true, render: (v) => <span className="font-mono text-xs text-muted-foreground">{`#${v}`}</span> },
   { key: 'vehicle_name', label: 'Vehicle', sortable: true },
@@ -63,6 +77,10 @@ const columns: AnyColumn[] = [
   { key: 'total_cost', label: 'Total', sortable: true, render: (v) => <MoneyCell value={v} /> },
   { key: 'status', label: 'Status', sortable: true, render: (v) => <Pill value={v} palette={STATUS_TONE} /> },
   { key: 'payment_status', label: 'Payment', sortable: true, render: (v) => <Pill value={v} palette={PAYMENT_TONE} /> },
+  // Provenance — synced rows (Datatruck) read alongside hand-entered
+  // ones, so the operator needs an at-a-glance "where did this come
+  // from".  Manual rows show a muted dash to keep the column quiet.
+  { key: 'source', label: 'Source', sortable: true, render: (v) => <SourceCell value={v} /> },
   // Invoice number is the operator's primary cross-reference to their
   // own bookkeeping system — surface it as a distinct column.
   { key: 'invoice_number', label: 'Invoice #', render: (v) => (v ? <span className="font-mono text-xs">{String(v)}</span> : <span className="text-muted-foreground">—</span>) },

@@ -1534,6 +1534,8 @@ async def migrate_work_orders_skeleton(conn) -> None:
                 payment_status           TEXT    NOT NULL DEFAULT 'unpaid',
                 status                   TEXT    NOT NULL DEFAULT 'draft',
                 notes                    TEXT    NOT NULL DEFAULT '',
+                source                   TEXT    NOT NULL DEFAULT 'manual',
+                external_id             TEXT    NOT NULL DEFAULT '',
                 created_by               BIGINT  NOT NULL,
                 created_at               TEXT    NOT NULL,
                 updated_at               TEXT    NOT NULL DEFAULT ''
@@ -1542,6 +1544,14 @@ async def migrate_work_orders_skeleton(conn) -> None:
                 ON work_orders(account_id, vehicle_name, service_date DESC);
             CREATE INDEX IF NOT EXISTS idx_work_orders_status
                 ON work_orders(account_id, status);
+            -- One synced work order per (account, source, external id).
+            -- Partial so the many manual rows (external_id='') aren't
+            -- forced unique against each other — only integration-sourced
+            -- rows are deduped.  This is what makes the Datatruck
+            -- projection idempotent across re-syncs.
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_work_orders_external
+                ON work_orders(account_id, source, external_id)
+                WHERE external_id <> '';
 
             CREATE TABLE IF NOT EXISTS work_order_parts (
                 id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4385,6 +4395,71 @@ async def migrate_vehicles_registry(conn) -> None:
         logger.info("Migration 105: RLS enabled on vehicles")
     except Exception as e:
         logger.warning("Migration 105: vehicles RLS skipped (%s)", e)
+
+
+@_register("107_work_orders_source")
+async def migrate_work_orders_source(conn) -> None:
+    """Add ``source`` + ``external_id`` to ``work_orders`` so synced
+    integration work orders (Datatruck) live on the same page as the
+    operator's hand-entered shop invoices.
+
+    The Work Orders module table is the SSOT; an integration ENRICHES it
+    (``source='datatruck'``, ``external_id`` = the upstream id) rather
+    than defining a parallel store — the same inversion the vehicle
+    registry uses.  Existing rows default to ``source='manual'`` so the
+    page is unchanged until a sync projects rows in.
+
+    Idempotent: each ADD COLUMN is guarded (re-runs no-op on the
+    "duplicate column" error), and the partial unique index dedupes
+    synced rows without constraining the empty-``external_id`` manual
+    rows against each other.
+    """
+    for col_name, col_def in (
+        ("source", "TEXT NOT NULL DEFAULT 'manual'"),
+        ("external_id", "TEXT NOT NULL DEFAULT ''"),
+    ):
+        try:
+            await conn.execute(
+                f"ALTER TABLE work_orders ADD COLUMN {col_name} {col_def}"
+            )
+            await conn.commit()
+            logger.info("Migration 107: added work_orders.%s", col_name)
+        except Exception:
+            pass  # column already exists
+    try:
+        await conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_work_orders_external
+                ON work_orders(account_id, source, external_id)
+                WHERE external_id <> ''
+            """
+        )
+        await conn.commit()
+        logger.info("Migration 107: work_orders external-ref index ready")
+    except Exception as e:
+        logger.warning("Migration 107: work_orders external index skipped (%s)", e)
+
+
+@_register("108_work_orders_vehicle_type")
+async def migrate_work_orders_vehicle_type(conn) -> None:
+    """Add ``work_orders.vehicle_type`` (``truck`` | ``trailer`` | '').
+
+    A work order is performed on a specific asset, and a truck "103" and a
+    trailer "103" are different vehicles — the type lets the WO link to the
+    right registry asset and lets the form show a Truck/Trailer selector.
+    Synced Datatruck WOs set it from whichever of ``truck``/``trailer`` the
+    upstream record carries; hand-entered WOs default to '' (unset).
+
+    Idempotent: ADD COLUMN no-ops on the duplicate-column error on re-run.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE work_orders ADD COLUMN vehicle_type TEXT NOT NULL DEFAULT ''"
+        )
+        await conn.commit()
+        logger.info("Migration 108: added work_orders.vehicle_type")
+    except Exception as e:
+        logger.info("Migration 108: work_orders.vehicle_type likely exists — %s", e)
 
 
 @_register("100_users_dnd_enabled")

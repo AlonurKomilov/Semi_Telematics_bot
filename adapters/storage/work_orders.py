@@ -9,7 +9,7 @@ for the file-system layout shared by every storage backend.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 
 class WorkOrdersMixin:
@@ -21,6 +21,7 @@ class WorkOrdersMixin:
         vehicle_name: str, vendor_name: str,
         *,
         vehicle_id: str = "",
+        vehicle_type: str = "",
         vendor_address: str = "",
         vendor_phone: str = "",
         service_date: Optional[str] = None,
@@ -41,15 +42,15 @@ class WorkOrdersMixin:
         cur = await self._db.execute(
             """INSERT INTO work_orders
                (account_id, company_code, vehicle_id, vehicle_name,
-                vendor_name, vendor_address, vendor_phone,
+                vehicle_type, vendor_name, vendor_address, vendor_phone,
                 service_date, odometer_at_service, engine_hours_at_service,
                 labor_cost, parts_cost, tax_amount, total_cost,
                 invoice_number, payment_method, payment_status,
                 status, notes, created_by, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, company_code, vehicle_id, vehicle_name,
-             vendor_name, vendor_address, vendor_phone,
+             vehicle_type, vendor_name, vendor_address, vendor_phone,
              service_date, odometer_at_service, engine_hours_at_service,
              labor_cost, parts_cost, tax_amount, total_cost,
              invoice_number, payment_method, payment_status,
@@ -57,6 +58,301 @@ class WorkOrdersMixin:
         )
         await self._db.commit()
         return cur.lastrowid
+
+    async def _wo_vehicle_resolver(
+        self, account_id: int,
+        vehicle_lookup: dict[str, tuple[str, str]] | None,
+    ) -> dict[str, tuple[str, str]]:
+        """plate/unit (lower) → (canonical unit, type).  Prefer a caller-
+        supplied lookup (built live by the sync engine); else read the
+        synced datatruck_trucks/trailers tables."""
+        if vehicle_lookup is not None:
+            return vehicle_lookup
+        resolver: dict[str, tuple[str, str]] = {}
+        for tbl, vtype in (("datatruck_trucks", "truck"),
+                           ("datatruck_trailers", "trailer")):
+            try:
+                rc = await self._db.execute(
+                    f"SELECT unit_number, plate_number FROM {tbl} "
+                    "WHERE account_id = ?", (account_id,),
+                )
+                for vrow in (dict(x) for x in await rc.fetchall()):
+                    unit = str(vrow.get("unit_number") or "").strip()
+                    if not unit:
+                        continue
+                    for key in (unit, str(vrow.get("plate_number") or "").strip()):
+                        if key:
+                            resolver.setdefault(key.lower(), (unit, vtype))
+            except Exception:
+                pass
+        return resolver
+
+    async def project_external_work_orders(
+        self,
+        account_id: int,
+        rows: list[dict[str, Any]],
+        *,
+        source: str = "datatruck",
+        vehicle_lookup: dict[str, tuple[str, str]] | None = None,
+    ) -> int:
+        """Project integration work orders (Datatruck) onto the module
+        ``work_orders`` table so synced shop invoices appear on the Work
+        Orders page beside the operator's hand-entered ones.
+
+        The module table is the SSOT; the integration ENRICHES it — the
+        same inversion the vehicle registry uses.  Reconciled on
+        ``(account_id, source, external_id)``:
+
+          * **new** external id → INSERT the full Datatruck record
+            (vehicle, vendor, location, invoice #, payment type, tax,
+            total, the note, and its line items), tagged ``source`` +
+            ``external_id``, ``status='submitted'`` (a real upstream
+            invoice, not a local draft).
+          * **known** external id → REFRESH the Datatruck-owned header
+            fields (vehicle, vendor, invoice #, date, tax, totals).
+            Operator workflow fields (``status``, ``payment_status``,
+            ``notes``) and the line-item ``parts`` are seeded once on
+            insert and then PRESERVED, so a re-sync never clobbers what
+            the operator changed.
+
+        Accepts the sync normalizer's enriched work-order shape
+        (``external_id``, ``vehicle_unit``, ``invoice_number``,
+        ``vendor_name``, ``vendor_address``, ``vendor_phone``,
+        ``payment_method``, ``note``, ``tax_amount``, ``total_cost``,
+        ``line_items``).  Rows without an external id are skipped.
+
+        Returns the number of rows inserted-or-refreshed.
+        """
+        if not rows:
+            return 0
+        # Resolver: a WO references the asset by plate (the list shape) or by
+        # unit; either way we want the canonical UNIT number on the page (not
+        # the plate) and the truck-vs-trailer type.  The sync engine passes a
+        # ready ``vehicle_lookup`` (built live from the rosters, no separate
+        # trucks/trailers sync required).  Absent it, fall back to whatever's
+        # in the synced datatruck_trucks/trailers tables; empty → keep the raw
+        # value (graceful fallback).
+        resolver = await self._wo_vehicle_resolver(account_id, vehicle_lookup)
+        cur = await self._db.execute(
+            "SELECT id, external_id FROM work_orders "
+            "WHERE account_id = ? AND source = ? AND external_id <> ''",
+            (account_id, source),
+        )
+        existing = {
+            str(r["external_id"]): r["id"]
+            for r in (dict(x) for x in await cur.fetchall())
+        }
+
+        now = self._now()
+        written = 0
+        async with self.transaction():
+            for r in rows:
+                ext = str(r.get("external_id") or "").strip()
+                if not ext:
+                    continue
+
+                def _f(key: str) -> float:
+                    v = r.get(key)
+                    return float(v) if v not in (None, "") else 0.0
+
+                _raw_unit = str(r.get("vehicle_unit") or "")
+                _resolved = resolver.get(_raw_unit.strip().lower())
+                vehicle_name = _resolved[0] if _resolved else _raw_unit
+                vehicle_type = (
+                    str(r.get("vehicle_type") or "")
+                    or (_resolved[1] if _resolved else "")
+                )
+                invoice_number = str(r.get("invoice_number") or "")
+                vendor_name = str(r.get("vendor_name") or "")
+                vendor_address = str(r.get("vendor_address") or "")
+                vendor_phone = str(r.get("vendor_phone") or "")
+                payment_method = str(r.get("payment_method") or "")
+                service_date = str(r.get("opened_at") or "") or None
+                odometer = r.get("odometer")
+                odometer = float(odometer) if odometer not in (None, "") else None
+                total = _f("total_cost")
+                tax = _f("tax_amount")
+                items = r.get("line_items") or []
+                # Each line item is stored as a part row carrying its FULL
+                # line total (parts + labor for that line), mirroring
+                # Datatruck's "WO Line Items" table.  The header therefore
+                # rolls ALL line totals into parts_cost and leaves
+                # labor_cost at 0 — otherwise the dashboard, which computes
+                # Total = labor_cost + Σ(part rows) + tax, would count the
+                # labor lines twice (once in the rows, once in labor_cost).
+                # With labor_cost=0 the recomputed Total equals Datatruck's
+                # own total_price (subtotal + tax).
+                parts_cost = round(
+                    sum(it.get("total") or 0.0 for it in items), 2,
+                )
+                labor_cost = 0.0
+                # Seed the initial payment status from Datatruck's
+                # balance / paid_amount (the only payment signal the
+                # openapi token can see — payment_type/invoice live in the
+                # v2 detail view it can't reach).  paid when the balance is
+                # cleared or the paid amount covers the total; else unpaid.
+                # Seeded on INSERT only — the operator owns it afterward.
+                _bal = r.get("balance")
+                _paid = r.get("paid_amount")
+                payment_status = "unpaid"
+                if total and total > 0:
+                    if _bal not in (None, "") and float(_bal) <= 0.005:
+                        payment_status = "paid"
+                    elif _paid not in (None, "") and float(_paid) + 0.005 >= total:
+                        payment_status = "paid"
+
+                wo_id = existing.get(ext)
+                if wo_id is not None:
+                    # Refresh Datatruck-owned fields only.
+                    await self._db.execute(
+                        "UPDATE work_orders SET vehicle_name = ?, "
+                        "vehicle_type = ?, "
+                        "invoice_number = ?, vendor_name = ?, "
+                        "vendor_address = ?, vendor_phone = ?, "
+                        "payment_method = ?, service_date = ?, "
+                        "odometer_at_service = ?, labor_cost = ?, "
+                        "parts_cost = ?, tax_amount = ?, total_cost = ?, "
+                        "updated_at = ? WHERE id = ? AND account_id = ?",
+                        (vehicle_name, vehicle_type, invoice_number, vendor_name,
+                         vendor_address, vendor_phone, payment_method,
+                         service_date, odometer, labor_cost, parts_cost,
+                         tax, total, now, wo_id, account_id),
+                    )
+                    written += 1
+                    continue
+
+                # New synced invoice — seed the full record.  ON CONFLICT
+                # guards against an upstream page repeating an id within
+                # one batch (the pre-loaded map can't see same-tx inserts).
+                await self._db.execute(
+                    """INSERT INTO work_orders
+                       (account_id, company_code, vehicle_id, vehicle_name,
+                        vehicle_type, vendor_name, vendor_address, vendor_phone,
+                        service_date, odometer_at_service,
+                        engine_hours_at_service,
+                        labor_cost, parts_cost, tax_amount, total_cost,
+                        invoice_number, payment_method, payment_status,
+                        status, notes, source, external_id,
+                        created_by, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT (account_id, source, external_id)
+                       WHERE external_id <> '' DO NOTHING""",
+                    (account_id, "", "", vehicle_name,
+                     vehicle_type, vendor_name, vendor_address, vendor_phone,
+                     service_date, odometer, None,
+                     labor_cost, parts_cost, tax, total,
+                     invoice_number, payment_method, payment_status,
+                     "submitted", str(r.get("note") or ""), source, ext,
+                     0, now, now),
+                )
+                # Resolve the freshly-inserted id and seed its line items.
+                cur2 = await self._db.execute(
+                    "SELECT id FROM work_orders "
+                    "WHERE account_id = ? AND source = ? AND external_id = ?",
+                    (account_id, source, ext),
+                )
+                new_row = await cur2.fetchone()
+                if new_row and items:
+                    new_id = dict(new_row)["id"]
+                    for it in items:
+                        await self._db.execute(
+                            """INSERT INTO work_order_parts
+                               (work_order_id, part_name, part_number,
+                                quantity, unit_cost, total_cost,
+                                warranty_months, notes)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (new_id, str(it.get("name") or ""), "",
+                             it.get("quantity") or 0.0,
+                             it.get("unit_cost") or 0.0,
+                             it.get("total") or 0.0, 0, ""),
+                        )
+                written += 1
+        return written
+
+    async def plan_external_work_orders(
+        self,
+        account_id: int,
+        rows: list[dict[str, Any]],
+        *,
+        source: str = "datatruck",
+        vehicle_lookup: dict[str, tuple[str, str]] | None = None,
+    ) -> dict[str, Any]:
+        """Read-only dry-run of ``project_external_work_orders``.
+
+        Keyed on ``external_id`` (the stable upstream id), so each
+        incoming WO is either ``new`` (insert) or ``update`` (refresh the
+        Datatruck-owned fields on a row already synced).  No duplicate
+        class — the external id is unambiguous.
+        """
+        # Pull the CURRENT stored values for the Datatruck-owned fields so
+        # an update can show before → after, not just "will update".
+        cur = await self._db.execute(
+            "SELECT external_id, vendor_name, invoice_number, vehicle_name, "
+            "payment_method, total_cost FROM work_orders "
+            "WHERE account_id = ? AND source = ? AND external_id <> ''",
+            (account_id, source),
+        )
+        existing = {
+            str(dict(x)["external_id"]): dict(x) for x in await cur.fetchall()
+        }
+        resolver = await self._wo_vehicle_resolver(account_id, vehicle_lookup)
+
+        def _num(v: Any) -> float:
+            try:
+                return round(float(v), 2) if v not in (None, "") else 0.0
+            except (TypeError, ValueError):
+                return 0.0
+
+        new: list[dict] = []
+        update: list[dict] = []
+        for r in rows:
+            ext = str(r.get("external_id") or "").strip()
+            if not ext:
+                continue
+            raw_unit = str(r.get("vehicle_unit") or "")
+            resolved = resolver.get(raw_unit.strip().lower())
+            vehicle = resolved[0] if resolved else raw_unit
+            base = {
+                "external_id": ext,
+                "number": str(r.get("number") or ""),
+                "vendor": str(r.get("vendor_name") or ""),
+                "vehicle": vehicle,
+                "total": r.get("total_cost"),
+            }
+            if ext not in existing:
+                new.append(base)
+                continue
+            # Compute per-field before → after on the refreshed fields.
+            cur_row = existing[ext]
+            pairs = [
+                ("Vendor", cur_row.get("vendor_name"), r.get("vendor_name")),
+                ("Vehicle", cur_row.get("vehicle_name"), vehicle),
+                ("Invoice #", cur_row.get("invoice_number"), r.get("invoice_number")),
+                ("Payment", cur_row.get("payment_method"), r.get("payment_method")),
+            ]
+            changes: list[dict] = []
+            for field, was, now in pairs:
+                was_s, now_s = str(was or ""), str(now or "")
+                if was_s != now_s:
+                    changes.append({"field": field, "from": was_s, "to": now_s})
+            was_t, now_t = _num(cur_row.get("total_cost")), _num(r.get("total_cost"))
+            if abs(was_t - now_t) > 0.005:
+                changes.append({
+                    "field": "Total", "from": f"{was_t:.2f}", "to": f"{now_t:.2f}",
+                })
+            update.append({**base, "changes": changes})
+
+        changed = sum(1 for u in update if u["changes"])
+        return {
+            "kind": "work_orders",
+            "new": new,
+            "update": update,
+            "counts": {
+                "new": len(new), "update": len(update),
+                "changed": changed, "total": len(new) + len(update),
+            },
+        }
 
     async def get_work_order(
         self, work_order_id: int, account_id: int = 0,
@@ -113,7 +409,7 @@ class WorkOrdersMixin:
         successful update.
         """
         allowed = {
-            "company_code", "vehicle_id", "vehicle_name",
+            "company_code", "vehicle_id", "vehicle_name", "vehicle_type",
             "vendor_name", "vendor_address", "vendor_phone",
             "service_date", "odometer_at_service", "engine_hours_at_service",
             "labor_cost", "parts_cost", "tax_amount", "total_cost",

@@ -1310,6 +1310,8 @@ export interface WorkOrder {
   company_code: string;
   vehicle_id: string;
   vehicle_name: string;
+  /** Asset class for this work order: 'truck' | 'trailer' | '' (unset). */
+  vehicle_type: string;
   vendor_name: string;
   vendor_address: string;
   vendor_phone: string;
@@ -1327,6 +1329,11 @@ export interface WorkOrder {
   /** draft / submitted / paid / void */
   status: string;
   notes: string;
+  /** Provenance: 'manual' (hand-entered) or an integration id like
+   *  'datatruck'.  Drives the Source column badge on the list. */
+  source?: string;
+  /** Upstream id for integration-sourced rows; '' for manual. */
+  external_id?: string;
   created_by: number;
   created_at: string;
   updated_at: string;

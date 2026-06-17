@@ -1,0 +1,264 @@
+"""Datatruck → Work Orders module projection.
+
+``project_external_work_orders`` lands synced shop invoices on the same
+``work_orders`` table the operator's hand-entered ones live in, tagged
+``source='datatruck'`` and keyed by ``external_id``.  These pin the
+contract the Work Orders page relies on: synced rows show up with their
+full Datatruck detail (vendor, invoice, line items), re-syncs don't
+duplicate, Datatruck-owned fields refresh while operator workflow fields
+are preserved, and the partial unique index never constrains the many
+manual rows against each other.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+# Shape mirrors capabilities.integrations.datatruck.sync._norm_work_order
+# (enriched from the live v2 detail serializer).
+_WO_ROWS = [
+    {
+        "external_id": "1001", "number": "WO-1", "invoice_number": "INV-1001",
+        "vehicle_unit": "T100", "vendor_name": "Roadside Repair Co",
+        "vendor_address": "100 Example Rd, Springfield, IL 62701",
+        "vendor_phone": "(555) 010-0100", "payment_method": "efs",
+        "note": "front brake job", "opened_at": "2026-06-09T00:00:00Z",
+        # Internally consistent: Σ line totals (109) + tax (15) = total (124).
+        # The second line is labor-only (parts_price 0) — the case that used
+        # to double-count once labor_cost was added on top of the part rows.
+        "tax_amount": 15.0, "total_cost": 124.0,
+        "line_items": [
+            {"name": "TIRE DISPOSAL FEE", "quantity": 2.0, "unit_cost": 10.0,
+             "labor_price": 0.0, "labor_hours": 1.0, "total": 20.0},
+            {"name": "Labor", "quantity": 1.0, "unit_cost": 0.0,
+             "labor_price": 89.0, "labor_hours": 1.0, "total": 89.0},
+        ],
+    },
+    {
+        "external_id": "1002", "number": "WO-2", "invoice_number": "INV-2002",
+        "vehicle_unit": "TR200", "vendor_name": "Cross-Country Truck Service",
+        "opened_at": "2026-06-11T00:00:00Z", "total_cost": 120.5,
+        "line_items": [],
+    },
+]
+
+
+@pytest.mark.asyncio
+async def test_project_inserts_full_datatruck_detail(db):
+    n = await db.project_external_work_orders(42, _WO_ROWS, source="datatruck")
+    assert n == 2
+    rows = await db.list_work_orders(42)
+    assert len(rows) == 2
+    by_ext = {r["external_id"]: r for r in rows}
+    wo = by_ext["1001"]
+    assert wo["source"] == "datatruck"
+    assert wo["vehicle_name"] == "T100"
+    # invoice_number maps from invoice_id, NOT the WO number.
+    assert wo["invoice_number"] == "INV-1001"
+    assert wo["vendor_name"] == "Roadside Repair Co"
+    assert wo["vendor_address"] == "100 Example Rd, Springfield, IL 62701"
+    assert wo["vendor_phone"] == "(555) 010-0100"
+    assert wo["payment_method"] == "efs"
+    assert wo["notes"] == "front brake job"
+    # REAL columns (float4) → compare with tolerance.
+    assert wo["tax_amount"] == pytest.approx(15.0, rel=1e-5)
+    assert wo["total_cost"] == pytest.approx(124.0, rel=1e-5)
+    # Header roll-up: part rows carry the full per-line totals, so
+    # parts_cost = Σ(line totals) and labor_cost stays 0 to avoid the
+    # dashboard double-counting labor (see test_synced_total_no_double_count).
+    assert wo["parts_cost"] == pytest.approx(109.0)
+    assert wo["labor_cost"] == pytest.approx(0.0)
+    # Real upstream invoice, not a local draft.
+    assert wo["status"] == "submitted"
+
+
+@pytest.mark.asyncio
+async def test_synced_total_no_double_count(db):
+    """The dashboard recomputes Total = labor_cost + Σ(part rows) + tax.
+    That must equal Datatruck's own total_price — i.e. labor lines are
+    NOT counted twice (the bug that showed $1,208.87 for a $609 WO)."""
+    await db.project_external_work_orders(42, [_WO_ROWS[0]], source="datatruck")
+    wo = (await db.list_work_orders(42))[0]
+    parts = await db.list_work_order_parts(wo["id"])
+    dashboard_total = (
+        wo["labor_cost"] + sum(p["total_cost"] for p in parts) + wo["tax_amount"]
+    )
+    assert dashboard_total == pytest.approx(wo["total_cost"], rel=1e-5)
+    assert wo["labor_cost"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_project_creates_line_item_parts(db):
+    await db.project_external_work_orders(42, _WO_ROWS, source="datatruck")
+    wo = {r["external_id"]: r for r in await db.list_work_orders(42)}["1001"]
+    parts = await db.list_work_order_parts(wo["id"])
+    assert len(parts) == 2
+    disposal = next(p for p in parts if p["part_name"] == "TIRE DISPOSAL FEE")
+    assert disposal["quantity"] == 2.0
+    assert disposal["unit_cost"] == 10.0
+    assert disposal["total_cost"] == 20.0
+
+
+@pytest.mark.asyncio
+async def test_project_is_idempotent_and_refreshes(db):
+    await db.project_external_work_orders(42, _WO_ROWS, source="datatruck")
+    updated = [
+        {**_WO_ROWS[0], "total_cost": 999.0, "vehicle_unit": "T100A",
+         "vendor_name": "New Vendor"},
+        _WO_ROWS[1],
+    ]
+    n = await db.project_external_work_orders(42, updated, source="datatruck")
+    assert n == 2
+    rows = await db.list_work_orders(42)
+    assert len(rows) == 2  # refreshed in place, not duplicated
+    wo = {r["external_id"]: r for r in rows}["1001"]
+    assert wo["total_cost"] == 999.0
+    assert wo["vehicle_name"] == "T100A"
+    assert wo["vendor_name"] == "New Vendor"
+    # Parts are seeded once — a re-sync must not duplicate them.
+    parts = await db.list_work_order_parts(wo["id"])
+    assert len(parts) == 2
+
+
+@pytest.mark.asyncio
+async def test_project_preserves_operator_workflow_fields(db):
+    await db.project_external_work_orders(42, [_WO_ROWS[0]], source="datatruck")
+    row = (await db.list_work_orders(42))[0]
+    # Operator marks it paid, voids the draft status, edits the note.
+    await db.update_work_order(
+        row["id"], 42, payment_status="paid", status="void",
+        notes="reconciled in books",
+    )
+    # A re-sync refreshes Datatruck fields but keeps the operator's.
+    await db.project_external_work_orders(42, [_WO_ROWS[0]], source="datatruck")
+    refreshed = (await db.list_work_orders(42))[0]
+    assert refreshed["payment_status"] == "paid"
+    assert refreshed["status"] == "void"
+    assert refreshed["notes"] == "reconciled in books"
+
+
+@pytest.mark.asyncio
+async def test_project_skips_rows_without_external_id(db):
+    n = await db.project_external_work_orders(
+        42, [{"invoice_number": "no-id", "vehicle_unit": "X"}],
+        source="datatruck",
+    )
+    assert n == 0
+    assert await db.list_work_orders(42) == []
+
+
+@pytest.mark.asyncio
+async def test_manual_rows_unconstrained_by_external_index(db):
+    # Two manual rows (external_id='') must coexist — the partial unique
+    # index applies only to non-empty external_id.
+    await db.add_work_order(42, "", "221", "Vendor A")
+    await db.add_work_order(42, "", "305", "Vendor B")
+    rows = await db.list_work_orders(42)
+    assert len(rows) == 2
+    assert all((r.get("source") or "manual") == "manual" for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_project_resolves_plate_to_unit_and_vehicle_type(db):
+    # The list-shape sync hands us the asset by PLATE; the synced fleet
+    # tables carry the plate→unit mapping.  The page must show the canonical
+    # UNIT number (not the plate) and learn truck-vs-trailer.
+    await db.upsert_datatruck_trucks(42, [
+        {"external_id": "tk-1", "unit_number": "T100", "plate_number": "ABC123"},
+    ])
+    await db.upsert_datatruck_trailers(42, [
+        {"external_id": "tr-1", "unit_number": "TR200", "plate_number": "XYZ789"},
+    ])
+    rows = [
+        {"external_id": "5001", "vehicle_unit": "ABC123", "vendor_name": "V",
+         "total_cost": 10.0, "line_items": []},
+        {"external_id": "5002", "vehicle_unit": "XYZ789", "vendor_name": "V",
+         "total_cost": 10.0, "line_items": []},
+    ]
+    await db.project_external_work_orders(42, rows, source="datatruck")
+    by_ext = {r["external_id"]: r for r in await db.list_work_orders(42)}
+    assert by_ext["5001"]["vehicle_name"] == "T100"      # plate → unit
+    assert by_ext["5001"]["vehicle_type"] == "truck"
+    assert by_ext["5002"]["vehicle_name"] == "TR200"
+    assert by_ext["5002"]["vehicle_type"] == "trailer"
+
+
+@pytest.mark.asyncio
+async def test_project_keeps_explicit_vehicle_type_and_unresolved_unit(db):
+    # No synced fleet → the raw value is kept (graceful fallback), and an
+    # explicit vehicle_type from the detail shape wins.
+    rows = [{"external_id": "6001", "vehicle_unit": "T999",
+             "vehicle_type": "truck", "vendor_name": "V",
+             "total_cost": 10.0, "line_items": []}]
+    await db.project_external_work_orders(42, rows, source="datatruck")
+    wo = (await db.list_work_orders(42))[0]
+    assert wo["vehicle_name"] == "T999"
+    assert wo["vehicle_type"] == "truck"
+
+
+@pytest.mark.asyncio
+async def test_project_derives_payment_status_from_balance(db):
+    """payment_type/invoice live only in the v2 detail (token can't reach
+    it), so payment status is seeded from the openapi balance/paid_amount:
+    cleared balance → paid, outstanding → unpaid."""
+    paid = {**_WO_ROWS[0], "external_id": "2001",
+            "balance": 0.0, "paid_amount": 124.0}
+    unpaid = {**_WO_ROWS[0], "external_id": "2002",
+              "balance": 124.0, "paid_amount": 0.0}
+    await db.project_external_work_orders(42, [paid, unpaid], source="datatruck")
+    rows = {r["external_id"]: r for r in await db.list_work_orders(42)}
+    assert rows["2001"]["payment_status"] == "paid"
+    assert rows["2002"]["payment_status"] == "unpaid"
+
+
+@pytest.mark.asyncio
+async def test_project_is_tenant_scoped(db):
+    await db.project_external_work_orders(42, [_WO_ROWS[0]], source="datatruck")
+    # Same external id, different account → a separate row, not a clash.
+    await db.project_external_work_orders(99, [_WO_ROWS[0]], source="datatruck")
+    assert len(await db.list_work_orders(42)) == 1
+    assert len(await db.list_work_orders(99)) == 1
+
+
+@pytest.mark.asyncio
+async def test_plan_work_orders_new_vs_update(db):
+    # 1001 already synced → update; a fresh id → new.  Read-only: no write.
+    await db.project_external_work_orders(42, [_WO_ROWS[0]], source="datatruck")
+    rows = [
+        {"external_id": "1001", "number": "WO-1", "vendor_name": "V",
+         "vehicle_unit": "T100", "total_cost": 10.0},
+        {"external_id": "9999", "number": "WO-9", "vendor_name": "V2",
+         "vehicle_unit": "T200", "total_cost": 20.0},
+    ]
+    before = len(await db.list_work_orders(42))
+    diff = await db.plan_external_work_orders(42, rows)
+    assert diff["counts"]["new"] == 1
+    assert diff["counts"]["update"] == 1
+    assert diff["new"][0]["external_id"] == "9999"
+    # The update row carries a before → after diff for the changed fields.
+    upd = diff["update"][0]
+    changed = {c["field"]: (c["from"], c["to"]) for c in upd["changes"]}
+    assert changed["Vendor"] == ("Roadside Repair Co", "V")
+    assert changed["Total"] == ("124.00", "10.00")
+    assert diff["counts"]["changed"] == 1
+    assert len(await db.list_work_orders(42)) == before  # no write
+
+
+@pytest.mark.asyncio
+async def test_project_resolves_via_passed_lookup_without_roster_sync(db):
+    # No datatruck_trucks/trailers synced — a lookup passed by the engine
+    # (built live from the rosters) resolves plate→unit + type.  Values are
+    # lists, matching how the map round-trips through the JSON preview cache.
+    lookup = {"abc123": ["T100", "truck"], "xyz789": ["TR200", "trailer"]}
+    rows = [
+        {"external_id": "6001", "vehicle_unit": "ABC123", "vendor_name": "V",
+         "total_cost": 10.0, "line_items": []},
+        {"external_id": "6002", "vehicle_unit": "XYZ789", "vendor_name": "V2",
+         "total_cost": 20.0, "line_items": []},
+    ]
+    await db.project_external_work_orders(42, rows, vehicle_lookup=lookup)
+    got = {r["external_id"]: r for r in await db.list_work_orders(42)}
+    assert got["6001"]["vehicle_name"] == "T100"
+    assert got["6001"]["vehicle_type"] == "truck"
+    assert got["6002"]["vehicle_name"] == "TR200"
+    assert got["6002"]["vehicle_type"] == "trailer"

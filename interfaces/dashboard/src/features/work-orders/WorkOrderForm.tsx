@@ -23,6 +23,7 @@ import type {
 
 const blankWorkOrder = (): Partial<WorkOrder> => ({
   vehicle_name: '',
+  vehicle_type: '',
   company_code: '',
   vendor_name: '',
   vendor_address: '',
@@ -294,8 +295,19 @@ export default function WorkOrderForm() {
               value={wo.vehicle_name || ''}
               onChange={e => setField('vehicle_name', e.target.value)}
               placeholder={t('work_orders_page.ph_vehicle')}
-              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
             />
+          </Field>
+          <Field label={t('work_orders_page.field_vehicle_type')}>
+            <select
+              value={wo.vehicle_type || ''}
+              onChange={e => setField('vehicle_type', e.target.value)}
+              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
+            >
+              <option value="">{t('work_orders_page.vehicle_type_unset')}</option>
+              <option value="truck">{t('work_orders_page.vehicle_type_truck')}</option>
+              <option value="trailer">{t('work_orders_page.vehicle_type_trailer')}</option>
+            </select>
           </Field>
           <Field label={t('work_orders_page.field_service_date')}>
             <input
