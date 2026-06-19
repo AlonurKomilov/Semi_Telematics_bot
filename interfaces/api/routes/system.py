@@ -525,6 +525,31 @@ async def retention_contract(
     }
 
 
+@router.get("/retention/orphans/{account_id}")
+async def retention_orphan_report(
+    account_id: int,
+    grace_days: int = Query(7, ge=1, le=90),
+    _user: dict = Depends(require_system_owner),
+):
+    """Report-only, server-local orphan-file scan for one account.
+
+    Lists files under the account's LOCAL object-store subtree that no DB
+    row references (leaked blobs from deleted parents).  DELETES NOTHING —
+    this is the audit to review before any deletion is enabled, and it
+    never touches the customer's external cloud (their Google Drive).
+    """
+    from dataclasses import asdict
+
+    from capabilities.storage.orphans import scan_account_orphans
+    from infra.platform import get_tenant_db
+
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="account not found")
+    report = await scan_account_orphans(tenant, account_id, grace_days=grace_days)
+    return asdict(report)
+
+
 # ── Metrics snapshot ─────────────────────────────────────────────
 
 
