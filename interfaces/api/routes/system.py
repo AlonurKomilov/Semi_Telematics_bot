@@ -483,6 +483,48 @@ async def system_stats(
     }
 
 
+# ── Data retention contract ──────────────────────────────────────
+
+
+@router.get("/retention")
+async def retention_contract(
+    _user: dict = Depends(require_system_owner),
+):
+    """The live data-retention contract for the operator console.
+
+    Returns every registered retention target, the keep-window it
+    resolves to (the MAX across the features that declare a need), its
+    scope, and which features need it.  Read-only by design: the windows
+    are code-owned contracts (e.g. ``safety_events`` at 3y is a compliance
+    number), so this surface is observability — not configuration.
+    """
+    from capabilities.retention import discover
+    from capabilities.retention.registry import resolve
+
+    discover()
+    targets = [
+        {
+            "key":       r.target.key,
+            "label":     r.target.label,
+            "scope":     r.target.scope,
+            "keep_days": r.keep_days,
+            "needs": [
+                {"feature": n.feature, "keep_days": n.keep_days, "reason": n.reason}
+                for n in sorted(r.needs, key=lambda n: n.feature)
+            ],
+        }
+        for r in sorted(resolve(), key=lambda x: (x.target.scope, x.target.key))
+    ]
+    return {
+        "job": {
+            "id": "data_retention",
+            "schedule": "02:00 UTC daily",
+            "scope": "all active accounts (server-side; never the customer's external cloud)",
+        },
+        "targets": targets,
+    }
+
+
 # ── Metrics snapshot ─────────────────────────────────────────────
 
 

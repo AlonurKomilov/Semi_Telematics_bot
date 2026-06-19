@@ -293,3 +293,28 @@ export interface AIFeedbackResponse {
   limit: number;
   offset: number;
 }
+
+// ── Data retention contract (read-only operator view) ──────────────
+
+export interface RetentionNeed {
+  feature: string;
+  keep_days: number;
+  reason: string;
+}
+
+export interface RetentionTarget {
+  key: string;
+  label: string;
+  scope: 'tenant' | 'platform';
+  keep_days: number;
+  needs: RetentionNeed[];
+}
+
+export interface RetentionContract {
+  job: {
+    id: string;
+    schedule: string;
+    scope: string;
+  };
+  targets: RetentionTarget[];
+}
