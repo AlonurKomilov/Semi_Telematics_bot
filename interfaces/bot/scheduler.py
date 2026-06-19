@@ -340,12 +340,13 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
             for acct_id in await db.list_accounts_pending_purge(before_iso=now_iso):
                 lc = await db.get_account_lifecycle(acct_id)
                 name = lc["name"] if lc else "?"
-                # Delete the account's stored files (disk + Google Drive)
-                # BEFORE purge_account_data drops the rows that hold its
-                # storage backend choice + Drive credentials — otherwise
-                # the right backend can't be resolved and the blobs (incl.
-                # driver-licence PII) would orphan forever.  Best-effort:
-                # a file-cleanup failure must not block the DB purge.
+                # Reclaim the account's SERVER-LOCAL files before
+                # purge_account_data drops the rows that hold its storage
+                # backend choice — otherwise the right backend can't be
+                # resolved and local blobs would orphan forever.  Files in
+                # the customer's own Google Drive are deliberately left
+                # intact (their cloud, their data).  Best-effort: a
+                # file-cleanup failure must not block the DB purge.
                 files_purged = 0
                 try:
                     from adapters.storage.object_store import purge_account_files

@@ -168,10 +168,11 @@ class ObjectStore(Protocol):
         ...
 
     def purge_account(self) -> int:
-        """Delete EVERY file belonging to this store's account — the
-        terminal step of an account hard-purge.  Returns the count
-        removed.  Cloud-tier backends (Hybrid) may implement this as a
-        coroutine; ``purge_account_files`` awaits the result either way."""
+        """Delete this store's account files that live on OUR server — the
+        terminal step of an account hard-purge.  Server-local ONLY: a
+        backend whose files live in the customer's own external cloud
+        (Google Drive) is a no-op here, because that cloud data is theirs
+        to keep and isn't ours to erase.  Returns the count removed."""
         ...
 
     def url(self, bucket: str, key: str) -> str:
@@ -523,16 +524,21 @@ def reset_object_store() -> None:
 
 
 async def purge_account_files(account_id: int, tenant_db) -> int:
-    """Delete ALL of an account's stored files (disk + any cloud tier).
+    """Delete an account's files that live on OUR server — the file-side
+    counterpart of ``purge_account_data``.
 
-    The file-side counterpart of ``purge_account_data`` — call it BEFORE
-    the DB rows that hold the account's storage backend choice + Drive
-    credentials are deleted, so the correct backend can still be resolved.
+    Server-local ONLY by policy: files stored in the customer's own
+    external cloud (their Google Drive) are NEVER deleted, even on account
+    hard-purge — that cloud data is theirs to keep.  Each backend enforces
+    this (disk removes its local subtree; gdrive is a no-op; hybrid removes
+    only the local subtree).
 
-    Best-effort and fully isolated: it never raises into the purge loop.
-    Returns the number of files removed (0 on any failure or nothing to
-    purge).  Backends with a cloud tier may return a coroutine; both the
-    sync (disk / gdrive) and async (hybrid) shapes are handled here.
+    Call it BEFORE the DB rows that hold the account's storage backend
+    choice + Drive credentials are deleted, so the correct backend can
+    still be resolved.  Best-effort and fully isolated: never raises into
+    the purge loop.  Returns the number of local files removed (0 on any
+    failure or nothing to purge).  Backends may be sync or async; both
+    shapes are handled here.
     """
     import inspect
     try:

@@ -69,6 +69,39 @@ class _AsyncFakeStore:
         return 7
 
 
+def test_gdrive_purge_account_never_touches_customer_drive():
+    """Policy: the customer's own Google Drive is never deleted from, even
+    on account purge — purge_account is a no-op that makes no Drive call."""
+    from adapters.storage.object_store_gdrive import GDriveObjectStore
+
+    class _ExplodingService:
+        def files(self):  # any Drive API access is a policy violation
+            raise AssertionError("purge_account must not call the customer's Drive")
+
+    store = GDriveObjectStore(_ExplodingService(), "root-folder-123", account_id=1)
+    assert store.purge_account() == 0  # nothing on our side; Drive untouched
+
+
+def test_hybrid_purge_account_only_touches_local_disk():
+    """Policy: hybrid purge reclaims local disk only and never connects to
+    the customer's Drive."""
+    from adapters.storage.object_store_hybrid import HybridObjectStore
+
+    h = HybridObjectStore.__new__(HybridObjectStore)  # bypass __init__ (needs tenant_db)
+
+    class _Disk:
+        def purge_account(self):
+            return 3
+
+    def _drive_boom():
+        raise AssertionError("hybrid purge must not reach the customer's Drive")
+
+    h._disk = _Disk()
+    h._drive_or_none = _drive_boom  # would raise if purge tried to connect Drive
+
+    assert h.purge_account() == 3  # local only
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fake,expected", [(_SyncFakeStore(), 5), (_AsyncFakeStore(), 7)])
 async def test_purge_account_files_handles_sync_and_async(monkeypatch, fake, expected):
