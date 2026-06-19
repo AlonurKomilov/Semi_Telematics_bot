@@ -221,6 +221,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         job_aggregate_telemetry_hourly,
         job_snapshot_vehicle_state,
         job_aggregate_metrics_daily,
+        job_prune_telemetry_history,
         job_ingest_vehicle_health,
         job_ingest_vehicle_faults,
         job_ingest_fleet_weather,
@@ -259,20 +260,31 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         minutes=5, args=[app], id="warehouse_state_snapshot",
         max_instances=1, coalesce=True,
     )
+    # ``timezone="UTC"`` is REQUIRED here: the scheduler runs in the
+    # server's local zone (e.g. CEST/UTC+2), so a bare ``hour=0`` fires at
+    # 00:05 LOCAL = 22:05 UTC — BEFORE UTC midnight — and the aggregator's
+    # "yesterday UTC" then resolves two days back, leaving the daily
+    # roll-up perpetually ~1 day stale.  Pinning the trigger to UTC makes
+    # 00:05 land just after UTC midnight so it aggregates the just-closed
+    # UTC day.  (The 5-min snapshot above is an interval job — tz-agnostic.)
     scheduler.add_job(
         job_aggregate_metrics_daily, "cron",
-        hour=0, minute=5, args=[app], id="warehouse_metrics_daily",
+        hour=0, minute=5, timezone="UTC", args=[app], id="warehouse_metrics_daily",
         max_instances=1, coalesce=True,
     )
-    # NOTE: ``job_prune_telemetry_history`` (HISTORY_PRUNE, 02:00 UTC) was
-    # dropped in the same refactor and is INTENTIONALLY left unscheduled
-    # here for now: its first run would delete every vehicle_state_snapshot
-    # row older than 7 days — i.e. the entire frozen 5/24–6/8 history that
-    # currently backs back-dated work orders — BEFORE that odometer is
-    # carried into the 730-day EOD tier (vehicle_metrics_daily.odometer_eod
-    # is still empty).  Re-enable it only AFTER a one-time
-    # ``backfill_aggregations`` run has populated odometer_eod from the
-    # existing snapshots, so the long history survives the prune.
+    # HISTORY_PRUNE (02:00 UTC): trims vehicle_state_snapshot (7d),
+    # vehicle_telemetry_hourly (90d), vehicle_metrics_daily (730d).  Safe
+    # to run now that the 730-day EOD tier is populated — the Samsara
+    # backfill's chained aggregations carried odometer_eod across the
+    # existing snapshot history (verified: 732 daily rows hold an
+    # odometer_eod through the current window), so back-dated work orders
+    # keep their reach after the 7-day raw snapshots are pruned.  UTC-
+    # pinned for the same reason as the daily roll-up above.
+    scheduler.add_job(
+        job_prune_telemetry_history, "cron",
+        hour=2, minute=0, timezone="UTC", args=[app], id="warehouse_history_prune",
+        max_instances=1, coalesce=True,
+    )
     scheduler.add_job(
         job_ingest_vehicle_health, "interval",
         minutes=5, args=[app], id="warehouse_vehicle_health",
