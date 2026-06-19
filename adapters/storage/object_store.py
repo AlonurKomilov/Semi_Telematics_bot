@@ -167,6 +167,13 @@ class ObjectStore(Protocol):
     def delete(self, bucket: str, key: str) -> bool:
         ...
 
+    def purge_account(self) -> int:
+        """Delete EVERY file belonging to this store's account — the
+        terminal step of an account hard-purge.  Returns the count
+        removed.  Cloud-tier backends (Hybrid) may implement this as a
+        coroutine; ``purge_account_files`` awaits the result either way."""
+        ...
+
     def url(self, bucket: str, key: str) -> str:
         """Return the URL/relative-path form (without writing).  Same
         shape as ``put`` returns."""
@@ -314,6 +321,31 @@ class DiskObjectStore:
         except Exception as e:
             logger.debug("DiskObjectStore.delete failed for %s/%s: %s", bucket, key, e)
             return False
+
+    def purge_account(self) -> int:
+        """Delete the account's entire on-disk subtree — the terminal,
+        irreversible step of an account hard-purge.  Returns the number of
+        files removed (0 if nothing was there).
+
+        Refuses on the platform store (``account_id is None``) so we can
+        never wipe the shared ``data/system/cache`` tree.
+        """
+        if self._account_id is None:
+            return 0
+        import shutil
+        prefix = self._account_prefix()  # "account-{id}"
+        if os.path.isabs(self._root):
+            acct_root = os.path.join(self._root, prefix)
+        else:
+            acct_root = os.path.join(self._PROJECT_ROOT, self._root, prefix)
+        if not os.path.isdir(acct_root):
+            return 0
+        n = sum(len(files) for _, _, files in os.walk(acct_root))
+        shutil.rmtree(acct_root, ignore_errors=True)
+        logger.info(
+            "DiskObjectStore.purge_account: removed %d file(s) under %s", n, acct_root,
+        )
+        return n
 
     def url(self, bucket: str, key: str) -> str:
         # Project-relative path that the FastAPI static mount serves.
@@ -488,3 +520,42 @@ def reset_object_store() -> None:
     global _store
     _store = None
     _per_account_stores.clear()
+
+
+async def purge_account_files(account_id: int, tenant_db) -> int:
+    """Delete ALL of an account's stored files (disk + any cloud tier).
+
+    The file-side counterpart of ``purge_account_data`` — call it BEFORE
+    the DB rows that hold the account's storage backend choice + Drive
+    credentials are deleted, so the correct backend can still be resolved.
+
+    Best-effort and fully isolated: it never raises into the purge loop.
+    Returns the number of files removed (0 on any failure or nothing to
+    purge).  Backends with a cloud tier may return a coroutine; both the
+    sync (disk / gdrive) and async (hybrid) shapes are handled here.
+    """
+    import inspect
+    try:
+        store = await get_object_store_for_account(account_id, tenant_db)
+    except Exception:
+        logger.warning(
+            "purge_account_files: could not resolve store for acct=%s",
+            account_id, exc_info=True,
+        )
+        return 0
+    fn = getattr(store, "purge_account", None)
+    if fn is None:
+        return 0
+    try:
+        res = fn()
+        if inspect.isawaitable(res):
+            res = await res
+        n = int(res or 0)
+    except Exception:
+        logger.warning(
+            "purge_account_files: purge failed for acct=%s", account_id, exc_info=True,
+        )
+        n = 0
+    # The account is gone — drop any cached backend handle for it.
+    invalidate_object_store_for_account(account_id)
+    return n

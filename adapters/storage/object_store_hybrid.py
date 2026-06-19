@@ -182,6 +182,18 @@ class HybridObjectStore:
             drive_ok = drive.delete(bucket, key)
         return disk_ok or drive_ok
 
+    async def purge_account(self) -> int:
+        """Purge the account's local subtree AND its Drive subtree — the
+        terminal step of an account hard-purge.  Connects Drive lazily so
+        an account that selected hybrid but never finished the Drive
+        connection still has its local files removed.  Returns the total
+        files removed across both tiers."""
+        n = self._disk.purge_account()
+        drive = await self._drive_or_none()
+        if drive is not None:
+            n += drive.purge_account()
+        return n
+
     def url(self, bucket: str, key: str) -> str:
         """Always returns the disk URL — the file's location immediately
         after a put.  Once the worker syncs the row, the *media row's*

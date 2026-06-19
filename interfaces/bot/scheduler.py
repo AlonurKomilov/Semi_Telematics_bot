@@ -340,6 +340,21 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
             for acct_id in await db.list_accounts_pending_purge(before_iso=now_iso):
                 lc = await db.get_account_lifecycle(acct_id)
                 name = lc["name"] if lc else "?"
+                # Delete the account's stored files (disk + Google Drive)
+                # BEFORE purge_account_data drops the rows that hold its
+                # storage backend choice + Drive credentials — otherwise
+                # the right backend can't be resolved and the blobs (incl.
+                # driver-licence PII) would orphan forever.  Best-effort:
+                # a file-cleanup failure must not block the DB purge.
+                files_purged = 0
+                try:
+                    from adapters.storage.object_store import purge_account_files
+                    from infra.platform import get_tenant_db
+                    tdb = await get_tenant_db(acct_id)
+                    if tdb is not None:
+                        files_purged = await purge_account_files(acct_id, tdb)
+                except Exception:
+                    logger.exception("purge: file cleanup failed acct=%s", acct_id)
                 deleted = await db.purge_account_data(acct_id)
                 total = sum(deleted.values())
                 try:
@@ -347,13 +362,16 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
                         "account_purged",
                         account_id=None,  # the row is gone; keep id in details
                         actor="scheduler",
-                        details=f"account_id={acct_id} name={name!r} rows={total}",
+                        details=(
+                            f"account_id={acct_id} name={name!r} "
+                            f"rows={total} files={files_purged}"
+                        ),
                     )
                 except Exception:
                     logger.exception("purge: audit write failed acct=%s", acct_id)
                 logger.info(
-                    "Account %s (%r) purged: %d rows across %d tables",
-                    acct_id, name, total, len(deleted),
+                    "Account %s (%r) purged: %d rows across %d tables, %d file(s)",
+                    acct_id, name, total, len(deleted), files_purged,
                 )
 
             # 2. Purge warnings — accounts erasing within 7 days.  The

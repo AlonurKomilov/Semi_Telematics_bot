@@ -233,6 +233,26 @@ class GDriveObjectStore:
             logger.debug("GDrive delete failed for %s/%s: %s", bucket, key, e)
             return False
 
+    def purge_account(self) -> int:
+        """Delete the account's entire Drive subtree — the terminal step
+        of an account hard-purge.  Deleting the account's root folder
+        cascades Drive-side to every nested folder + file.  Returns 1 on
+        success, 0 if there's nothing to delete or the call fails.
+        """
+        if not self._root_folder_id:
+            return 0
+        try:
+            self._service.files().delete(fileId=self._root_folder_id).execute()
+            self._folder_cache.clear()
+            return 1
+        except Exception as e:
+            self.last_error = str(e)
+            logger.warning(
+                "GDriveObjectStore.purge_account failed for acct=%s: %s",
+                self._account_id, e,
+            )
+            return 0
+
     def url(self, bucket: str, key: str) -> str:
         """Return the ``webViewLink`` for the file (opens in Drive UI).
 
