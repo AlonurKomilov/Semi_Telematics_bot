@@ -202,6 +202,35 @@ async def run_comp_expiry_sweep(_app=None, *, now: datetime | None = None) -> di
                 "run_comp_expiry_sweep: notify_comp_expired failed acct=%d", acct_id,
             )
 
+    # Expire elapsed Pro trials → downgrade to free.  Distinct mechanism
+    # from comps: self-serve trials use status='trialing' + trial_ends_at
+    # (see BillingMixin.start_trial), so they need their own sweep.  The
+    # owner keeps access; they just drop to free-tier limits.
+    trials_downgraded = 0
+    try:
+        downgraded = await platform_db.expire_due_trials(before_iso=now.isoformat())
+        trials_downgraded = len(downgraded)
+        for r in downgraded:
+            try:
+                await platform_db.add_platform_audit(
+                    "trial_expired",
+                    account_id=r["account_id"],
+                    actor="scheduler",
+                    details="14-day pro trial elapsed — downgraded to free",
+                )
+            except Exception:
+                logger.exception(
+                    "run_comp_expiry_sweep: trial-expiry audit failed acct=%s",
+                    r["account_id"],
+                )
+        if trials_downgraded:
+            logger.info(
+                "run_comp_expiry_sweep: downgraded %d expired trial(s)",
+                trials_downgraded,
+            )
+    except Exception:
+        logger.exception("run_comp_expiry_sweep: expire_due_trials failed")
+
     # Send expiring-soon reminders to comps still in their window
     try:
         accounts = await platform_db.list_accounts(active_only=True)
@@ -209,7 +238,7 @@ async def run_comp_expiry_sweep(_app=None, *, now: datetime | None = None) -> di
         logger.exception("run_comp_expiry_sweep: list_accounts failed")
         return {
             "expired": len(expired_ids), "expired_notified": expired_notified,
-            "reminded": 0, "checked": 0,
+            "trials_downgraded": trials_downgraded, "reminded": 0, "checked": 0,
         }
 
     reminded = 0
@@ -253,6 +282,7 @@ async def run_comp_expiry_sweep(_app=None, *, now: datetime | None = None) -> di
     return {
         "expired":           len(expired_ids),
         "expired_notified":  expired_notified,
+        "trials_downgraded": trials_downgraded,
         "reminded":          reminded,
         "checked":           len(accounts),
     }

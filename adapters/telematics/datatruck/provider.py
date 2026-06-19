@@ -81,7 +81,7 @@ class DatatruckProvider:
         if not sub or not tok:
             raise ValueError(
                 "datatruck requires both 'company_subdomain' "
-                "(e.g. 'premier') and 'api_token' in credentials",
+                "(e.g. 'acme') and 'api_token' in credentials",
             )
         client = DatatruckClient(company_subdomain=sub, api_token=tok)
         instance = cls(client)

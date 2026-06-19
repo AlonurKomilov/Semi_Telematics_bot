@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import type { MaintenanceTask } from '../../types';
 import { statusTone, toneClasses, type Tone } from '../../lib/status';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDay } from '../../utils/datetime';
 
 export const PRIORITY_OPTIONS = ['low', 'medium', 'high', 'critical'] as const;
 export type Priority = typeof PRIORITY_OPTIONS[number];
@@ -213,6 +215,7 @@ export function DueDateChip({
   status?: string;
   recurDays?: number | null;
 }) {
+  const tz = useTimezone();
   if (!value) return <EmptyDueCell />;
   // Pin bare YYYY-MM-DD to local midnight; otherwise Date() treats it
   // as UTC midnight, which renders one day early in negative timezones
@@ -223,7 +226,7 @@ export function DueDateChip({
   if (Number.isNaN(due.getTime())) {
     return <EmptyDueCell />;
   }
-  const dateStr = due.toLocaleDateString();
+  const dateStr = formatDay(due, { timeZone: tz });
 
   // Closed ticket → frozen pill, no urgency arithmetic.
   if (isClosed(status)) {

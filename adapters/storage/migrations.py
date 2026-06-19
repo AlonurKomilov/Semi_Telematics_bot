@@ -1536,6 +1536,7 @@ async def migrate_work_orders_skeleton(conn) -> None:
                 notes                    TEXT    NOT NULL DEFAULT '',
                 source                   TEXT    NOT NULL DEFAULT 'manual',
                 external_id             TEXT    NOT NULL DEFAULT '',
+                assigned_to                 TEXT    NOT NULL DEFAULT '',
                 created_by               BIGINT  NOT NULL,
                 created_at               TEXT    NOT NULL,
                 updated_at               TEXT    NOT NULL DEFAULT ''
@@ -4110,6 +4111,8 @@ async def migrate_vehicle_metrics_daily(conn) -> None:
             avg_fuel_pct        REAL,
             harsh_event_count   INTEGER NOT NULL DEFAULT 0,
             fault_count_eod     INTEGER NOT NULL DEFAULT 0,
+            odometer_eod        REAL,
+            engine_hours_eod    REAL,
             ingested_at         TEXT    NOT NULL DEFAULT '',
             UNIQUE(account_id, vehicle_id, day_utc)
         );
@@ -4462,6 +4465,47 @@ async def migrate_work_orders_vehicle_type(conn) -> None:
         logger.info("Migration 108: work_orders.vehicle_type likely exists — %s", e)
 
 
+@_register("109_companies_mc_dot")
+async def migrate_companies_mc_dot(conn) -> None:
+    """Add ``companies.mc_number`` + ``usdot_number``.
+
+    MC and USDOT are immutable federal carrier identifiers — far stabler
+    than names — so an account's Companies become the SSOT join key for
+    matching integration records (e.g. a Datatruck work order's
+    ``mc_number``) to the right sub-company.  Reusable by any future
+    integration / FMCSA-style feature.
+
+    Idempotent: each ADD COLUMN no-ops on the duplicate-column error.
+    """
+    for col in ("mc_number", "usdot_number"):
+        try:
+            await conn.execute(
+                f"ALTER TABLE companies ADD COLUMN {col} TEXT NOT NULL DEFAULT ''"
+            )
+            await conn.commit()
+            logger.info("Migration 109: added companies.%s", col)
+        except Exception:
+            pass  # column already exists
+
+
+@_register("110_work_orders_assigned_to")
+async def migrate_work_orders_assigned_to(conn) -> None:
+    """Add ``work_orders.assigned_to`` — the person a work order is assigned
+    to.  Synced Datatruck WOs fill it from the upstream ``assigned_to``
+    name; hand-entered ones default to '' and the operator can set it.
+
+    Idempotent: ADD COLUMN no-ops on the duplicate-column error.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE work_orders ADD COLUMN assigned_to TEXT NOT NULL DEFAULT ''"
+        )
+        await conn.commit()
+        logger.info("Migration 110: added work_orders.assigned_to")
+    except Exception as e:
+        logger.info("Migration 110: work_orders.assigned_to likely exists — %s", e)
+
+
 @_register("100_users_dnd_enabled")
 async def migrate_users_dnd_enabled(conn) -> None:
     """Add ``users.dnd_enabled`` — single per-user toggle that controls
@@ -4564,3 +4608,310 @@ async def migrate_platform_audit_log(conn) -> None:
         except Exception:
             pass
         raise
+
+
+@_register("111_metrics_daily_eod_readings")
+async def migrate_metrics_daily_eod_readings(conn) -> None:
+    """Add ``odometer_eod`` / ``engine_hours_eod`` to ``vehicle_metrics_daily``.
+
+    The 5-minute ``vehicle_state_snapshot`` table is pruned at 7 days, so
+    back-dated work orders could only resolve an odometer "as of" a date
+    within the last week.  ``vehicle_metrics_daily`` is kept 730 days but
+    only stored miles-per-day, not a cumulative odometer.  These two
+    columns carry the end-of-day reading into the long-retention tier so
+    the as-of lookup reaches ~2 years back (accruing forward from now;
+    pre-existing daily rows stay NULL because their source snapshots are
+    already pruned).
+
+    Idempotent: each ADD COLUMN no-ops on the duplicate-column error.
+    """
+    for col in ("odometer_eod", "engine_hours_eod"):
+        try:
+            await conn.execute(
+                f"ALTER TABLE vehicle_metrics_daily ADD COLUMN {col} REAL"
+            )
+            await conn.commit()
+            logger.info("Migration 111: added vehicle_metrics_daily.%s", col)
+        except Exception as e:
+            logger.info(
+                "Migration 111: vehicle_metrics_daily.%s likely exists — %s",
+                col, e,
+            )
+
+
+@_register("112_driver_applications")
+async def migrate_driver_applications(conn) -> None:
+    """Driver-recruiting intake: recruitment_links + driver_applications.
+
+    ``recruitment_links`` — one row per shareable recruiting link an
+    account creates (the token in /apply/<token> resolves to the
+    account).  Reusable: many applicants submit through one link.
+
+    ``driver_applications`` — one row per submitted application.  Most of
+    the 8-step form is stored as JSON blobs (the form data is naturally
+    nested); a handful of columns are promoted out for searching/sorting
+    (name, email, status) and SSN/DOB are encrypted-at-rest (infra.crypto
+    → TEXT, not plaintext).  Uploaded docs live in the object store; only
+    their ids are stored here (``docs_json``) — never base64 in the DB.
+
+    Idempotent: CREATE TABLE / INDEX IF NOT EXISTS.
+    """
+    try:
+        await conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS recruitment_links (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id  INTEGER NOT NULL REFERENCES accounts(id),
+                token       TEXT    NOT NULL UNIQUE,
+                label       TEXT    NOT NULL DEFAULT '',
+                source      TEXT    NOT NULL DEFAULT '',
+                created_by  INTEGER REFERENCES users(id),
+                is_active   INTEGER NOT NULL DEFAULT 1,
+                created_at  TEXT    NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS driver_applications (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id        INTEGER NOT NULL REFERENCES accounts(id),
+                link_token        TEXT    NOT NULL,
+                reference         TEXT    NOT NULL,
+                status            TEXT    NOT NULL DEFAULT 'submitted',
+                -- promoted for list/search (the rest live in *_json)
+                first_name        TEXT    NOT NULL DEFAULT '',
+                last_name         TEXT    NOT NULL DEFAULT '',
+                email             TEXT    NOT NULL DEFAULT '',
+                phone             TEXT    NOT NULL DEFAULT '',
+                city              TEXT    NOT NULL DEFAULT '',
+                state             TEXT    NOT NULL DEFAULT '',
+                cdl_state         TEXT    NOT NULL DEFAULT '',
+                cdl_class         TEXT    NOT NULL DEFAULT '',
+                position_type     TEXT    NOT NULL DEFAULT '',
+                years_cdl         TEXT    NOT NULL DEFAULT '',
+                -- encrypted PII (infra.crypto → base64 TEXT)
+                dob_enc           TEXT,
+                ssn_enc           TEXT,
+                -- nested step data
+                gate_json             TEXT NOT NULL DEFAULT '{}',
+                personal_json         TEXT NOT NULL DEFAULT '{}',
+                address_history_json  TEXT NOT NULL DEFAULT '[]',
+                cdl_json              TEXT NOT NULL DEFAULT '{}',
+                experience_json       TEXT NOT NULL DEFAULT '{}',
+                employment_json       TEXT NOT NULL DEFAULT '[]',
+                incidents_json        TEXT NOT NULL DEFAULT '{}',
+                position_json         TEXT NOT NULL DEFAULT '{}',
+                consents_json         TEXT NOT NULL DEFAULT '{}',
+                docs_json             TEXT NOT NULL DEFAULT '{}',
+                -- signature + certification audit trail
+                sig_mode          TEXT NOT NULL DEFAULT '',
+                sig_name          TEXT NOT NULL DEFAULT '',
+                sig_date          TEXT NOT NULL DEFAULT '',
+                sig_object_id     TEXT,
+                disclosure_version TEXT NOT NULL DEFAULT '',
+                -- lifecycle / recruiter
+                recruiter_notes      TEXT NOT NULL DEFAULT '',
+                reviewed_by          INTEGER REFERENCES users(id),
+                converted_to_user_id INTEGER REFERENCES users(id),
+                submit_ip            TEXT NOT NULL DEFAULT '',
+                submitted_at         TEXT NOT NULL,
+                created_at           TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_recruitment_links_account
+                ON recruitment_links(account_id);
+            CREATE INDEX IF NOT EXISTS idx_driver_apps_account_status
+                ON driver_applications(account_id, status);
+            CREATE INDEX IF NOT EXISTS idx_driver_apps_token
+                ON driver_applications(link_token);
+            """
+        )
+        await conn.commit()
+        logger.info("Migration 112: recruitment_links + driver_applications ready")
+    except Exception as e:
+        logger.error("Migration 112 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
+@_register("113_invites_source_application")
+async def migrate_invites_source_application(conn) -> None:
+    """Link an invite back to the driver application it was minted from.
+
+    Hiring an applicant (``/recruitment/applications/{id}/convert``) mints a
+    driver invite, but the new user doesn't exist until that invite is
+    REDEEMED.  Stamping the source application id on the invite lets
+    ``redeem_invite`` complete the round-trip — set the application's
+    ``converted_to_user_id`` once the driver actually onboards — so the
+    record shows which application became which driver.
+
+    Idempotent: ADD COLUMN no-ops on the duplicate-column error on re-run.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE invites ADD COLUMN source_application_id INTEGER"
+        )
+        await conn.commit()
+        logger.info("Migration 113: added invites.source_application_id")
+    except Exception as e:
+        logger.info("Migration 113: invites.source_application_id likely exists — %s", e)
+
+
+@_register("114_recruitment_links_expires_at")
+async def migrate_recruitment_links_expires_at(conn) -> None:
+    """Add ``recruitment_links.expires_at`` (ISO-8601, nullable).
+
+    Public apply links used to live forever until manually revoked — a
+    leaked or stale-campaign link kept ingesting applicant PII unmonitored.
+    ``expires_at`` lets a link auto-close; NULL means never expires, so
+    pre-existing links are unaffected (backward compatible).
+    ``resolve_recruitment_link`` rejects a token once it's past expiry.
+
+    Idempotent: ADD COLUMN no-ops on the duplicate-column error on re-run.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE recruitment_links ADD COLUMN expires_at TEXT"
+        )
+        await conn.commit()
+        logger.info("Migration 114: added recruitment_links.expires_at")
+    except Exception as e:
+        logger.info("Migration 114: recruitment_links.expires_at likely exists — %s", e)
+
+
+@_register("115_recruitment_notifications")
+async def migrate_recruitment_notifications(conn) -> None:
+    """In-app notifications + per-user channel prefs for recruiting.
+
+    ``recruitment_notifications`` is one row PER RECIPIENT (fan-out target
+    is every account user holding ``can_recruit_applicants``), powering the
+    dashboard channel + the unread badge.  ``recruitment_notify_prefs``
+    stores each user's chosen delivery channels (telegram / email /
+    dashboard) — mirroring the ``digest_subscriptions.delivery_channels``
+    comma-list pattern.  A missing prefs row means "all channels" (the
+    sensible default for someone who can already see the applications).
+
+    Idempotent: CREATE TABLE IF NOT EXISTS.
+    """
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS recruitment_notifications (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL REFERENCES accounts(id),
+                user_id         INTEGER NOT NULL REFERENCES users(id),
+                application_id  INTEGER REFERENCES driver_applications(id),
+                reference       TEXT    NOT NULL DEFAULT '',
+                kind            TEXT    NOT NULL DEFAULT 'application_submitted',
+                title           TEXT    NOT NULL DEFAULT '',
+                body            TEXT    NOT NULL DEFAULT '',
+                is_read         INTEGER NOT NULL DEFAULT 0,
+                created_at      TEXT    NOT NULL
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_recruit_notif_inbox
+                ON recruitment_notifications(account_id, user_id, is_read, id)
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS recruitment_notify_prefs (
+                user_id     INTEGER PRIMARY KEY REFERENCES users(id),
+                account_id  INTEGER NOT NULL REFERENCES accounts(id),
+                channels    TEXT    NOT NULL DEFAULT 'telegram,email,dashboard',
+                updated_at  TEXT    NOT NULL
+            )
+        """)
+        await conn.commit()
+        logger.info("Migration 115: created recruitment_notifications + recruitment_notify_prefs")
+    except Exception as e:
+        logger.error("Migration 115 failed: %s", e, exc_info=True)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        raise
+
+
+@_register("116_application_vetting_and_purge_fix")
+async def migrate_application_vetting(conn) -> None:
+    """Pre-hire vetting checklist + a retention/purge correctness fix.
+
+    1. ``driver_applications.vetting_json`` — records that each FMCSA query
+       (PSP / MVR / Clearinghouse, + optional drug/background) was run, by
+       whom and when.  The 'approved' status gate enforces the required
+       checks so the pipeline stage is a real compliance gate, not a label.
+
+    2. Re-point ``recruitment_notifications.application_id`` FK to
+       ``ON DELETE CASCADE``.  The account purge (terminal step of the
+       90-day FMCSA grace) deletes tenant tables by ``account_id`` in an
+       arbitrary order; with the default RESTRICT, deleting
+       ``driver_applications`` while a notification still referenced it
+       would FAIL — leaving applicant PII un-purged past the legal window.
+       CASCADE lets the application delete carry its notifications with it.
+
+    Both steps idempotent.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE driver_applications ADD COLUMN vetting_json TEXT NOT NULL DEFAULT ''"
+        )
+        await conn.commit()
+        logger.info("Migration 116: added driver_applications.vetting_json")
+    except Exception as e:
+        logger.info("Migration 116: vetting_json likely exists — %s", e)
+    try:
+        await conn.execute(
+            "ALTER TABLE recruitment_notifications "
+            "DROP CONSTRAINT IF EXISTS recruitment_notifications_application_id_fkey"
+        )
+        await conn.execute(
+            "ALTER TABLE recruitment_notifications "
+            "ADD CONSTRAINT recruitment_notifications_application_id_fkey "
+            "FOREIGN KEY (application_id) REFERENCES driver_applications(id) ON DELETE CASCADE"
+        )
+        await conn.commit()
+        logger.info("Migration 116: recruitment_notifications.application_id → ON DELETE CASCADE")
+    except Exception as e:
+        logger.info("Migration 116: FK cascade alter skipped — %s", e)
+
+
+@_register("117_recruitment_link_view_count")
+async def migrate_recruitment_link_view_count(conn) -> None:
+    """``recruitment_links.view_count`` — top-of-funnel counter for the
+    per-link analytics (views → submissions → hires conversion).  Bumped
+    by the public apply page; submissions/hires are derived from
+    ``driver_applications`` at read time.  Idempotent ADD COLUMN."""
+    try:
+        await conn.execute(
+            "ALTER TABLE recruitment_links ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0"
+        )
+        await conn.commit()
+        logger.info("Migration 117: added recruitment_links.view_count")
+    except Exception as e:
+        logger.info("Migration 117: view_count likely exists — %s", e)
+
+
+@_register("118_application_ssn_hash")
+async def migrate_application_ssn_hash(conn) -> None:
+    """``driver_applications.ssn_hash`` — a KEYED, per-account blind index
+    of the SSN (HMAC, see infra.crypto.blind_index) for recruiter-side
+    re-applicant detection.  It is one-way (the SSN is NOT recoverable from
+    it) and never leaves the server.  Detection NEVER blocks the public
+    form — it only flags prior matches for the recruiter.  Idempotent."""
+    try:
+        await conn.execute(
+            "ALTER TABLE driver_applications ADD COLUMN ssn_hash TEXT"
+        )
+        await conn.commit()
+        logger.info("Migration 118: added driver_applications.ssn_hash")
+    except Exception as e:
+        logger.info("Migration 118: ssn_hash likely exists — %s", e)
+    try:
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_driver_app_ssn_hash "
+            "ON driver_applications(account_id, ssn_hash)"
+        )
+        await conn.commit()
+        logger.info("Migration 118: created idx_driver_app_ssn_hash")
+    except Exception as e:
+        logger.info("Migration 118: ssn_hash index skipped — %s", e)

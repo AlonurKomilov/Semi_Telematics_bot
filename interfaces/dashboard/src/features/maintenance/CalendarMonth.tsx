@@ -2,6 +2,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import type { MaintenanceTask } from '../../types';
 import { toneClasses } from '../../lib/status';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDay } from '../../utils/datetime';
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -61,6 +63,7 @@ export function CalendarMonth({
   tasks: MaintenanceTask[];
   onTaskClick: (t: MaintenanceTask) => void;
 }) {
+  const tz = useTimezone();
   const [viewDate, setViewDate] = useState<Date>(() => new Date());
   // Day-detail popover state — when a day has more than 3 tasks, the
   // operator clicks "+ N more" and the full list opens here.  ``null``
@@ -305,8 +308,9 @@ export function CalendarMonth({
             <div className="flex items-start justify-between mb-3">
               <div>
                 <h3 className="text-base font-semibold">
-                  {dayDetail.date.toLocaleDateString(undefined, {
-                    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+                  {formatDay(dayDetail.date, {
+                    timeZone: tz,
+                    intl: { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' },
                   })}
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">

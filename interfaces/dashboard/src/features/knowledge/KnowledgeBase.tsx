@@ -41,7 +41,8 @@ import {
   EmptyState,
   ErrorState,
 } from '../../components/shell';
-import { formatRelative } from '../../utils/datetime';
+import { formatDate, formatRelative } from '../../utils/datetime';
+import { useTimezone } from '../../hooks/useTimezone';
 
 interface KBArticle {
   id: number;
@@ -582,6 +583,9 @@ export default function KnowledgeBase() {
                     <option value="fleet">{t('knowledge.target_fleet')}</option>
                     <option value="safety">{t('knowledge.target_safety')}</option>
                     <option value="dispatcher">{t('knowledge.target_dispatcher')}</option>
+                    <option value="hr">{t('knowledge.target_hr')}</option>
+                    <option value="accounting">{t('knowledge.target_accounting')}</option>
+                    <option value="recruiter">{t('knowledge.target_recruiter')}</option>
                     <option value="driver">{t('knowledge.target_driver')}</option>
                   </select>
                 </div>
@@ -821,6 +825,7 @@ function ArticleCard({
   getCatLabel, mediaLinkLabel, MediaIcon, onEdit, onDelete,
   onApprove, onReject, onToggleBookmark, t,
 }: CardProps) {
+  const tz = useTimezone();
   const bookmarked = Boolean(a.is_bookmarked);
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden hover:border-border transition-colors">
@@ -867,15 +872,15 @@ function ArticleCard({
                 {t('knowledge.chip_private')}
               </span>
             )}
-            <span title={new Date(a.created_at).toLocaleString()}>
-              {formatRelative(a.created_at)}
+            <span title={formatDate(a.created_at, { timeZone: tz })}>
+              {formatRelative(a.created_at, { timeZone: tz })}
             </span>
             {a.updated_at && a.updated_at !== a.created_at && (
               <span
-                title={new Date(a.updated_at).toLocaleString()}
+                title={formatDate(a.updated_at, { timeZone: tz })}
                 className="opacity-75"
               >
-                {t('knowledge.edited_at', 'edited')} {formatRelative(a.updated_at)}
+                {t('knowledge.edited_at', 'edited')} {formatRelative(a.updated_at, { timeZone: tz })}
               </span>
             )}
             {a.creator_name && (

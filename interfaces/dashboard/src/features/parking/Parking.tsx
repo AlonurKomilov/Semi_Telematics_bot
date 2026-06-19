@@ -16,6 +16,8 @@ import {
 } from '../../components/shell';
 import type { ParkingEvent, ParkingEventsResponse, AnyColumn } from '../../types';
 import { toneClasses, type Tone } from '../../lib/status';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate } from '../../utils/datetime';
 
 /* ── Badge helpers ─────────────────────────────────────────── */
 
@@ -58,7 +60,8 @@ function mapsUrl(lat: number, lng: number): string {
 
 /* ── History table columns ─────────────────────────────────── */
 
-const historyColumns: AnyColumn[] = [
+function makeHistoryColumns(tz: string): AnyColumn[] {
+  return [
   { key: 'vehicle_name', label: 'Vehicle' },
   { key: 'company_code', label: 'Company' },
   {
@@ -80,19 +83,21 @@ const historyColumns: AnyColumn[] = [
   {
     key: 'first_stopped',
     label: 'Stopped At',
-    render: (v) => v ? new Date(v as string).toLocaleString() : '—',
+    render: (v) => v ? formatDate(v as string, { timeZone: tz }) : '—',
   },
   {
     key: 'last_checked',
     label: 'Resolved',
-    render: (v) => v ? new Date(v as string).toLocaleString() : '—',
+    render: (v) => v ? formatDate(v as string, { timeZone: tz }) : '—',
   },
-];
+  ];
+}
 
 /* ── Main Component ────────────────────────────────────────── */
 
 export default function Parking() {
   const { t } = useTranslation();
+  const tz = useTimezone();
   const qc = useQueryClient();
   const [tab, setTab] = useState<'active' | 'history'>('active');
   const [error, setError] = useState('');
@@ -281,7 +286,7 @@ export default function Parking() {
                           {formatDuration(ev.duration_hours)}
                         </span>
                         <span className="text-muted-foreground ml-2">
-                          (since {new Date(ev.first_stopped).toLocaleString()})
+                          (since {formatDate(ev.first_stopped, { timeZone: tz })})
                         </span>
                       </p>
                     </div>
@@ -345,7 +350,7 @@ export default function Parking() {
         )
       ) : (
         <DataTable
-          columns={historyColumns}
+          columns={makeHistoryColumns(tz)}
           data={events as unknown as Record<string, unknown>[]}
           searchKey="vehicle_name"
         />

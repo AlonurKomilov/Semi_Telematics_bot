@@ -20,6 +20,8 @@ import {
 } from '../../components/shell';
 import { useShellConfig } from '../../hooks/useShellConfig';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate } from '../../utils/datetime';
 import { blocksForPersona } from '../../features/driver-scorecards/personaConfig';
 import { ScorecardRulesPanel } from './ScorecardRules';
 import type {
@@ -587,6 +589,7 @@ function makeColumns(
 
 export default function Scorecards() {
   const { t } = useTranslation();
+  const tz = useTimezone();
   // Persona composition: resolve the active persona's block set once at
   // the page wrapper (features/driver-scorecards/personaConfig.ts);
   // block components never read persona state themselves.
@@ -822,7 +825,7 @@ export default function Scorecards() {
             {relativeUpdated && (
               <span
                 className="text-3xs text-muted-foreground"
-                title={generatedAt ? new Date(generatedAt).toLocaleString() : undefined}
+                title={generatedAt ? formatDate(generatedAt, { timeZone: tz }) : undefined}
               >
                 {t('common.updated_prefix')} {relativeUpdated}
               </span>

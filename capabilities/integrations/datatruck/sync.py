@@ -216,7 +216,7 @@ def _norm_work_order(rec: dict[str, Any]) -> dict[str, Any]:
 
     Field names match the v2 detail serializer (live-verified
     2026-06-16) with defensive fallbacks for the openapi list shape.
-    Note the WO **number** ("WO-00991") and the **invoice id** ("46478")
+    Note the WO **number** ("WO-0001") and the **invoice id** ("INV-1001")
     are distinct fields — the module's ``invoice_number`` maps from
     ``invoice_id``, never the WO number.
     """
@@ -281,6 +281,19 @@ def _norm_work_order(rec: dict[str, Any]) -> dict[str, Any]:
             rec, "tax_total_price", "tax_amount", "tax",
         )),
         "odometer":       _as_float(rec.get("odometer")),
+        # Carrier MC number — the openapi list gives the bare number string;
+        # used to match the WO to one of the account's Companies (which own
+        # the MC/DOT) so the page shows the real company.
+        "mc_number":      _as_text(rec.get("mc_number"), "number", "company_name"),
+        # Who the WO is assigned to (openapi gives a name string; detail a
+        # nested user object — handle both).
+        "assigned_to":    _as_text(
+            rec.get("assigned_to"), "full_name", "name", "username",
+        ),
+        # Payment state (openapi-available): used to SEED payment_status
+        # since payment_type/invoice_id live only in the v2 detail view.
+        "balance":        _money(_first(rec, "balance", "balance_due")),
+        "paid_amount":    _money(rec.get("paid_amount")),
         "line_items":     line_items,
         "payload":        rec,
     }
@@ -344,6 +357,16 @@ class ResourceSpec:
     # ``work_orders`` table (the SSOT) so synced shop invoices land on
     # the Work Orders page beside hand-entered ones.
     project_work_orders: bool = False
+    # When set, each list record is RE-FETCHED from this per-id endpoint
+    # before normalizing, because the openapi list shape is leaner than
+    # the detail view (work orders: the list omits invoice id, payment
+    # type, vendor contact, location, and the unit number — all present
+    # in detail).  ``{id}`` is substituted with the record's ``id``.
+    detail_path_tmpl: str | None = None
+    # The product FEATURE this resource lands in (display grouping on the
+    # card's "Synced data" table).  Mirrors where the projector writes:
+    # trucks/trailers → Vehicles registry, work_orders → Work Orders, etc.
+    feature: str = ""
 
 
 RESOURCES: dict[str, ResourceSpec] = {
@@ -355,6 +378,7 @@ RESOURCES: dict[str, ResourceSpec] = {
             upsert_method="upsert_datatruck_drivers",
             stats_method="datatruck_drivers_stats",
             max_pages=30,
+            feature="Drivers",
         ),
         ResourceSpec(
             name="trucks", path="trucks/list/",
@@ -364,6 +388,7 @@ RESOURCES: dict[str, ResourceSpec] = {
             stats_method="datatruck_trucks_stats",
             max_pages=30,
             registry_vehicle_type="truck",
+            feature="Vehicles",
         ),
         ResourceSpec(
             name="trailers", path="trailers/list/",
@@ -373,6 +398,7 @@ RESOURCES: dict[str, ResourceSpec] = {
             stats_method="datatruck_trailers_stats",
             max_pages=30,
             registry_vehicle_type="trailer",
+            feature="Vehicles",
         ),
         ResourceSpec(
             name="orders", path="orders/",
@@ -388,6 +414,7 @@ RESOURCES: dict[str, ResourceSpec] = {
             # the pull to recent loads so the cap goes further.
             max_pages=50,
             params_factory=_order_params,
+            feature="Loads / Orders",
         ),
         ResourceSpec(
             name="work_orders", path="work-orders/",
@@ -398,6 +425,15 @@ RESOURCES: dict[str, ResourceSpec] = {
             max_pages=30,
             params_factory=_work_order_params,
             project_work_orders=True,
+            feature="Work Orders",
+            # NOTE: the richer v2 detail view (invoice id, payment type,
+            # location, vendor contact, unit number) is NOT reachable with
+            # an openapi token — it returns 401 (verified 2026-06-16:
+            # openapi tokens are scoped to /api/v1/openapi/ only, and the
+            # non-openapi v1 + all v2 routes reject them).  So detail-fetch
+            # stays OFF; we enrich purely from the openapi list.  To
+            # re-enable if a v2-scoped token is ever configured, set:
+            #   detail_path_tmpl="api/v2/truck/truck/work_order/{id}/detail/"
         ),
     )
 }
@@ -455,6 +491,332 @@ async def get_sync_status(account_id: int, resource: str) -> dict | None:
 # ── Engine ────────────────────────────────────────────────────────
 
 
+async def _enrich_with_detail(
+    client: Any, spec: "ResourceSpec", records: list[Any], status: dict,
+) -> list[dict]:
+    """Replace each list record with its richer per-id detail body.
+
+    Best-effort per record: a missing id or a failed/non-2xx detail
+    fetch falls back to the original list record so the row is never
+    dropped — it just keeps the leaner fields.
+
+    Observability: counts successes/failures into ``status`` and records
+    the first failure's HTTP code, so a run where the token can't reach
+    the detail endpoint is VISIBLE (``detail_failed`` > 0) instead of
+    silently blanking the rich fields.  A 401/403 here means the
+    integration token isn't scoped for the detail endpoint.
+    """
+    out: list[dict] = []
+    for r in records:
+        if not isinstance(r, dict):
+            continue
+        rid = r.get("id")
+        if rid in (None, ""):
+            out.append(r)
+            continue
+        try:
+            http, body = await client.get_path(
+                spec.detail_path_tmpl.format(id=rid),
+            )
+            if http < 400 and isinstance(body, dict):
+                out.append(body)
+                status["detail_ok"] = status.get("detail_ok", 0) + 1
+            else:
+                out.append(r)
+                status["detail_failed"] = status.get("detail_failed", 0) + 1
+                if not status.get("detail_error"):
+                    status["detail_error"] = (
+                        f"HTTP {http} from detail endpoint — the integration "
+                        "token may not be scoped for it"
+                    )
+                    logger.warning(
+                        "datatruck %s detail fetch HTTP %s for id=%s — "
+                        "token likely lacks detail scope; falling back to "
+                        "the lean list record",
+                        spec.name, http, rid,
+                    )
+        except Exception as e:
+            out.append(r)
+            status["detail_failed"] = status.get("detail_failed", 0) + 1
+            if not status.get("detail_error"):
+                status["detail_error"] = f"{type(e).__name__}: {str(e)[:120]}"
+            logger.debug(
+                "datatruck %s detail fetch failed id=%s: %s",
+                spec.name, rid, e,
+            )
+    return out
+
+
+async def _fetch_vehicle_lookup(account_id: int) -> dict[str, list[str]]:
+    """Plate/unit (lower) → ``[unit, type]`` map from the LIVE trucks +
+    trailers rosters, so a work-order's vehicle reference resolves to the
+    canonical unit number WITHOUT requiring (or writing to) a separate
+    trucks/trailers sync.  Read-only; nothing is stored.  Best-effort —
+    a roster fetch failure just yields a smaller map (the WO keeps its
+    raw plate).  Values are lists (not tuples) so the map round-trips
+    cleanly through the JSON preview cache."""
+    lookup: dict[str, list[str]] = {}
+    try:
+        provider = await get_telematics_client(account_id, _PROVIDER_ID)
+        client = provider.client  # type: ignore[attr-defined]
+    except Exception as e:
+        logger.debug("vehicle lookup: provider unavailable: %s", e)
+        return lookup
+    for res, vtype in (("trucks", "truck"), ("trailers", "trailer")):
+        spec = RESOURCES[res]
+        try:
+            async for page in client.iter_pages(
+                spec.path, None, max_pages=spec.max_pages,
+            ):
+                for raw in (page.get("results") or []):
+                    if not isinstance(raw, dict):
+                        continue
+                    n = spec.normalize(raw)
+                    unit = str(n.get("unit_number") or "").strip()
+                    if not unit:
+                        continue
+                    for key in (unit, str(n.get("plate_number") or "").strip()):
+                        if key:
+                            lookup.setdefault(key.lower(), [unit, vtype])
+        except Exception as e:
+            logger.debug("vehicle lookup fetch %s failed: %s", res, e)
+    return lookup
+
+
+async def _persist_rows(
+    account_id: int, spec: "ResourceSpec", normalized: list[dict], tenant: Any,
+    *, vehicle_lookup: dict | None = None,
+) -> int:
+    """Write one batch of normalized rows: upsert into the datatruck_*
+    snapshot, then project into the SSOT (vehicle registry / work-orders
+    module).  Projections are best-effort so a hiccup never fails the
+    sync.  ``vehicle_lookup`` (when given) lets the work-order projection
+    resolve plate→unit without a trucks/trailers sync.  Shared by the
+    streaming sync and the preview-apply path so both persist identically."""
+    written = await getattr(tenant, spec.upsert_method)(account_id, normalized)
+    if spec.registry_vehicle_type:
+        try:
+            await tenant.project_external_vehicles(
+                account_id, normalized,
+                vehicle_type=spec.registry_vehicle_type, source="datatruck",
+            )
+        except Exception as e:
+            logger.debug(
+                "datatruck registry projection skipped acct=%d: %s",
+                account_id, e,
+            )
+    if spec.project_work_orders:
+        try:
+            await tenant.project_external_work_orders(
+                account_id, normalized, source="datatruck",
+                vehicle_lookup=vehicle_lookup,
+            )
+        except Exception as e:
+            logger.debug(
+                "datatruck work-order projection skipped acct=%d: %s",
+                account_id, e,
+            )
+    return written
+
+
+async def fetch_normalized(
+    account_id: int, resource: str, *, days: int | None = None,
+) -> tuple[list[dict], int | None]:
+    """Fetch + normalize every page of a resource WITHOUT writing.
+
+    Backs the preview path: we pull the data, hand it to a planner to
+    compute the diff, and cache it so apply commits the very same rows.
+    Returns ``(rows, total_upstream)``.
+    """
+    spec = RESOURCES.get(resource)
+    if spec is None:
+        raise ValueError(f"unknown datatruck resource {resource!r}")
+    provider = await get_telematics_client(account_id, _PROVIDER_ID)
+    client = provider.client  # type: ignore[attr-defined]
+    params = spec.params_factory(days) if spec.params_factory else None
+    rows: list[dict] = []
+    total: int | None = None
+    async for page in client.iter_pages(
+        spec.path, params, max_pages=spec.max_pages,
+    ):
+        if total is None:
+            total = page.get("count")
+        records = page.get("results") or []
+        rows.extend(spec.normalize(r) for r in records if isinstance(r, dict))
+    return rows, total
+
+
+# ── Preview (plan → apply) ─────────────────────────────────────────
+#
+# Resources whose sync MERGES into a user-owned SSOT (the vehicle
+# registry, the work-orders module) support a dry-run: preview fetches +
+# diffs + caches the rows, the operator approves, then apply commits the
+# CACHED rows (no re-fetch, no staleness).  Roster-only resources
+# (drivers) and the huge append-only orders feed skip it.
+_PREVIEWABLE = ("trucks", "trailers", "work_orders")
+_PREVIEW_TTL_SEC = 600
+
+
+def _preview_key(account_id: int, resource: str, preview_id: str) -> str:
+    return f"datatruck_preview:{account_id}:{resource}:{preview_id}"
+
+
+async def _plan_diff(
+    tenant: Any, account_id: int, spec: "ResourceSpec", rows: list[dict],
+    *, vehicle_lookup: dict | None = None,
+) -> dict:
+    """Dispatch to the right read-only planner for the resource."""
+    if spec.registry_vehicle_type:
+        return await tenant.plan_external_vehicles(
+            account_id, rows, vehicle_type=spec.registry_vehicle_type,
+        )
+    if spec.project_work_orders:
+        return await tenant.plan_external_work_orders(
+            account_id, rows, source=_PROVIDER_ID, vehicle_lookup=vehicle_lookup,
+        )
+    return {"kind": "none", "counts": {"total": len(rows)}}
+
+
+async def _cache_preview(key: str, payload: dict) -> None:
+    if _redis.is_available():
+        try:
+            await _redis.cache_set(key, payload, ttl=_PREVIEW_TTL_SEC)
+        except Exception as e:
+            logger.debug("datatruck preview cache write failed: %s", e)
+
+
+async def run_preview(
+    account_id: int, resource: str, preview_id: str, *,
+    days: int | None = None, triggered_by: int = 0,
+) -> dict[str, Any]:
+    """Background worker: fetch + diff a previewable resource WITHOUT
+    writing, then cache the result + rows under ``preview_id``.
+
+    Runs in the background (the upstream fetch is rate-gated and can
+    outlast the 30s HTTP timeout), publishing ``running`` → ``ready`` /
+    ``failed`` to Redis so the dashboard polls for the diff.  The cached
+    ``rows`` are what ``apply_resource`` later commits.
+    """
+    key = _preview_key(account_id, resource, preview_id)
+    await _cache_preview(key, {
+        "state": "running", "resource": resource, "preview_id": preview_id,
+        "fetched": 0, "total_upstream": None, "diff": None, "error": None,
+    })
+    try:
+        if resource not in _PREVIEWABLE:
+            raise ValueError(f"{resource!r} does not support preview")
+        spec = RESOURCES[resource]
+        tenant = await get_tenant_db(account_id)
+        if tenant is None:
+            raise RuntimeError("tenant DB unavailable")
+        rows, total = await fetch_normalized(account_id, resource, days=days)
+        # Work orders reference the vehicle by plate/unit string; pull the
+        # rosters live (read-only) so the diff + apply show the canonical
+        # unit number, with no separate trucks/trailers sync needed.
+        vehicle_lookup = (
+            await _fetch_vehicle_lookup(account_id)
+            if spec.project_work_orders else None
+        )
+        diff = await _plan_diff(
+            tenant, account_id, spec, rows, vehicle_lookup=vehicle_lookup,
+        )
+        payload = {
+            "state": "ready", "resource": resource, "preview_id": preview_id,
+            "fetched": len(rows), "total_upstream": total, "diff": diff,
+            "error": None, "rows": rows, "days": days,
+            "vehicle_lookup": vehicle_lookup,
+        }
+    except Exception as e:
+        logger.exception(
+            "datatruck preview failed acct=%d resource=%s", account_id, resource,
+        )
+        payload = {
+            "state": "failed", "resource": resource, "preview_id": preview_id,
+            "fetched": 0, "total_upstream": None, "diff": None,
+            "error": str(e)[:300],
+        }
+    await _cache_preview(key, payload)
+    return payload
+
+
+async def get_preview(
+    account_id: int, resource: str, preview_id: str,
+) -> dict[str, Any]:
+    """Poll target: the cached preview MINUS the bulky ``rows`` (kept
+    server-side for apply).  ``pending`` until the worker writes its
+    first state; ``expired`` once the cache TTL lapses."""
+    if not _redis.is_available():
+        return {"state": "unavailable", "preview_id": preview_id}
+    cached = await _redis.get(_preview_key(account_id, resource, preview_id))
+    if not isinstance(cached, dict):
+        return {"state": "pending", "preview_id": preview_id}
+    # Strip the server-side-only bulk (the rows to apply, the roster map).
+    return {k: v for k, v in cached.items()
+            if k not in ("rows", "vehicle_lookup")}
+
+
+async def apply_resource(
+    account_id: int, resource: str, preview_id: str, *, triggered_by: int = 0,
+) -> dict[str, Any]:
+    """Commit a previously-previewed resource from its cached rows.
+
+    Reuses the sync status/heartbeat shape so the dashboard panel shows
+    the same queued→running→completed progression.  Never raises — a
+    missing/expired preview lands as ``state='failed'``.
+    """
+    started = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    status: dict[str, Any] = {
+        "state": "running", "resource": resource, "account_id": account_id,
+        "pages_done": 0, "records_written": 0, "total_upstream": None,
+        "started_at": started, "finished_at": None, "error": None,
+        "triggered_by": triggered_by, "applied_from_preview": preview_id,
+    }
+    await _publish(account_id, resource, status)
+    try:
+        spec = RESOURCES.get(resource)
+        if spec is None:
+            raise ValueError(f"unknown datatruck resource {resource!r}")
+        cached = None
+        if _redis.is_available():
+            cached = await _redis.get(_preview_key(account_id, resource, preview_id))
+        if not isinstance(cached, dict) or "rows" not in cached:
+            raise RuntimeError(
+                "preview expired or not found — re-run the preview and "
+                "apply again within 10 minutes",
+            )
+        tenant = await get_tenant_db(account_id)
+        if tenant is None:
+            raise RuntimeError("tenant DB unavailable")
+        rows = cached["rows"] or []
+        status["total_upstream"] = cached.get("total_upstream")
+        # Reuse the roster map the preview captured, so apply resolves the
+        # same plate→unit the operator saw (no re-fetch, no staleness).
+        status["records_written"] = await _persist_rows(
+            account_id, spec, rows, tenant,
+            vehicle_lookup=cached.get("vehicle_lookup"),
+        )
+        status["pages_done"] = 1
+        status["state"] = "completed"
+        # One-shot: drop the cache so a stale preview can't be re-applied.
+        if _redis.is_available():
+            try:
+                await _redis.delete(_preview_key(account_id, resource, preview_id))
+            except Exception:
+                pass
+    except Exception as e:
+        logger.exception(
+            "datatruck apply failed acct=%d resource=%s", account_id, resource,
+        )
+        status["state"] = "failed"
+        status["error"] = str(e)[:300]
+    finally:
+        status["finished_at"] = datetime.now(
+            timezone.utc,
+        ).isoformat(timespec="seconds")
+        await _publish(account_id, resource, status)
+    return status
+
+
 async def sync_resource(
     account_id: int,
     resource: str,
@@ -491,6 +853,13 @@ async def sync_resource(
         "finished_at": None,
         "error": None,
         "triggered_by": triggered_by,
+        # Per-id detail enrichment outcome (work orders).  detail_failed>0
+        # with a detail_error means the token can't reach the detail
+        # endpoint — the rich fields (invoice, payment, vendor contact)
+        # stay blank and we fell back to the lean list record.
+        "detail_ok": 0,
+        "detail_failed": 0,
+        "detail_error": None,
     }
     await _publish(account_id, resource, status)
 
@@ -512,7 +881,14 @@ async def sync_resource(
 
         provider = await get_telematics_client(account_id, _PROVIDER_ID)
         client = provider.client  # type: ignore[attr-defined]
-        upsert = getattr(tenant, spec.upsert_method)
+
+        # Work orders reference the vehicle by plate/unit string — pull the
+        # rosters live (read-only) once so the page shows the canonical unit
+        # number without a separate trucks/trailers sync.
+        wo_lookup = (
+            await _fetch_vehicle_lookup(account_id)
+            if spec.project_work_orders else None
+        )
 
         params = spec.params_factory(days) if spec.params_factory else None
         async for page in client.iter_pages(
@@ -521,37 +897,18 @@ async def sync_resource(
             if status["total_upstream"] is None:
                 status["total_upstream"] = page.get("count")
             records = page.get("results") or []
+            # Some resources (work orders) carry far more in their per-id
+            # detail view than the list serializer returns — re-fetch each
+            # record from detail before normalizing.  Costs one extra
+            # rate-gated GET per record; best-effort, so a failed detail
+            # fetch falls back to the (leaner) list record rather than
+            # dropping the row.
+            if spec.detail_path_tmpl:
+                records = await _enrich_with_detail(client, spec, records, status)
             normalized = [spec.normalize(r) for r in records if isinstance(r, dict)]
-            status["records_written"] += await upsert(account_id, normalized)
-            # Project trucks/trailers into the Vehicle registry (SSOT)
-            # so Datatruck-synced equipment appears on the Vehicles page
-            # — reconciled against Samsara/manual rows by VIN, else unit.
-            # Best-effort: a registry hiccup must not fail the TMS sync.
-            if spec.registry_vehicle_type:
-                try:
-                    await tenant.project_external_vehicles(
-                        account_id, normalized,
-                        vehicle_type=spec.registry_vehicle_type,
-                        source="datatruck",
-                    )
-                except Exception as e:
-                    logger.debug(
-                        "datatruck registry projection skipped acct=%d: %s",
-                        account_id, e,
-                    )
-            # Project work orders into the module work_orders table (SSOT)
-            # so synced shop invoices appear on the Work Orders page.
-            # Best-effort: a projection hiccup must not fail the TMS sync.
-            if spec.project_work_orders:
-                try:
-                    await tenant.project_external_work_orders(
-                        account_id, normalized, source="datatruck",
-                    )
-                except Exception as e:
-                    logger.debug(
-                        "datatruck work-order projection skipped acct=%d: %s",
-                        account_id, e,
-                    )
+            status["records_written"] += await _persist_rows(
+                account_id, spec, normalized, tenant, vehicle_lookup=wo_lookup,
+            )
             status["pages_done"] += 1
             # Per-page heartbeat keeps the 5-min staleness timer fed
             # on slow tenants (rate gate can stretch a big sync).
@@ -599,6 +956,7 @@ async def collect_sync_overview(account_id: int) -> dict[str, Any]:
                 ((toggles.get(spec.capability) or {}).get("enabled", False)),
             ),
             "capability": spec.capability,
+            "feature": spec.feature,
             "stored": stats,
             "sync": await get_sync_status(account_id, name),
         }

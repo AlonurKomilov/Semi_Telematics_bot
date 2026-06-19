@@ -28,7 +28,8 @@ export type Persona =
   | 'safety'
   | 'driver'
   | 'hr'
-  | 'accounting';
+  | 'accounting'
+  | 'recruiter';
 
 /**
  * A single section in a page layout.

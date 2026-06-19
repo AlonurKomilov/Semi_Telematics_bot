@@ -19,7 +19,9 @@ from interfaces.api.deps import (
     get_platform_db, paginate, resolve_user_id,
 )
 from adapters.storage.models import Role
-from capabilities.permissions.roles import validate_role_change, role_rank
+from capabilities.permissions.roles import (
+    validate_role_change, role_rank, ASSIGNABLE_ROLES_PATTERN,
+)
 from .service import _archive_driver_folders
 
 logger = logging.getLogger(__name__)
@@ -217,7 +219,7 @@ async def get_user_avatar(
 
 
 class RoleUpdate(BaseModel):
-    role: str = Field(..., pattern=r"^(owner|admin|fleet|safety|dispatcher|driver)$")
+    role: str = Field(..., pattern=ASSIGNABLE_ROLES_PATTERN)
 
 
 @router.put("/users/{user_id}/role")

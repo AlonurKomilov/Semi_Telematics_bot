@@ -63,6 +63,8 @@ async def create_tables(conn) -> None:
             display_name    TEXT    NOT NULL DEFAULT '',
             samsara_api_key TEXT    NOT NULL,
             active_days     INTEGER NOT NULL DEFAULT 30,
+            mc_number       TEXT    NOT NULL DEFAULT '',
+            usdot_number    TEXT    NOT NULL DEFAULT '',
             is_active       INTEGER NOT NULL DEFAULT 1,
             created_at      TEXT    NOT NULL,
             UNIQUE(account_id, code)
@@ -269,6 +271,84 @@ async def create_tables(conn) -> None:
             code_hash    TEXT    NOT NULL,
             expires_at   TEXT    NOT NULL,
             created_at   TEXT    NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS recruitment_links (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id  INTEGER NOT NULL REFERENCES accounts(id),
+            token       TEXT    NOT NULL UNIQUE,
+            label       TEXT    NOT NULL DEFAULT '',
+            source      TEXT    NOT NULL DEFAULT '',
+            created_by  INTEGER REFERENCES users(id),
+            is_active   INTEGER NOT NULL DEFAULT 1,
+            view_count  INTEGER NOT NULL DEFAULT 0,
+            created_at  TEXT    NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS driver_applications (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id        INTEGER NOT NULL REFERENCES accounts(id),
+            link_token        TEXT    NOT NULL,
+            reference         TEXT    NOT NULL,
+            status            TEXT    NOT NULL DEFAULT 'submitted',
+            first_name        TEXT    NOT NULL DEFAULT '',
+            last_name         TEXT    NOT NULL DEFAULT '',
+            email             TEXT    NOT NULL DEFAULT '',
+            phone             TEXT    NOT NULL DEFAULT '',
+            city              TEXT    NOT NULL DEFAULT '',
+            state             TEXT    NOT NULL DEFAULT '',
+            cdl_state         TEXT    NOT NULL DEFAULT '',
+            cdl_class         TEXT    NOT NULL DEFAULT '',
+            position_type     TEXT    NOT NULL DEFAULT '',
+            years_cdl         TEXT    NOT NULL DEFAULT '',
+            dob_enc           TEXT,
+            ssn_enc           TEXT,
+            gate_json             TEXT NOT NULL DEFAULT '{}',
+            personal_json         TEXT NOT NULL DEFAULT '{}',
+            address_history_json  TEXT NOT NULL DEFAULT '[]',
+            cdl_json              TEXT NOT NULL DEFAULT '{}',
+            experience_json       TEXT NOT NULL DEFAULT '{}',
+            employment_json       TEXT NOT NULL DEFAULT '[]',
+            incidents_json        TEXT NOT NULL DEFAULT '{}',
+            position_json         TEXT NOT NULL DEFAULT '{}',
+            consents_json         TEXT NOT NULL DEFAULT '{}',
+            docs_json             TEXT NOT NULL DEFAULT '{}',
+            sig_mode          TEXT NOT NULL DEFAULT '',
+            sig_name          TEXT NOT NULL DEFAULT '',
+            sig_date          TEXT NOT NULL DEFAULT '',
+            sig_object_id     TEXT,
+            disclosure_version TEXT NOT NULL DEFAULT '',
+            vetting_json         TEXT NOT NULL DEFAULT '',
+            ssn_hash             TEXT,
+            recruiter_notes      TEXT NOT NULL DEFAULT '',
+            reviewed_by          INTEGER REFERENCES users(id),
+            converted_to_user_id INTEGER REFERENCES users(id),
+            submit_ip            TEXT NOT NULL DEFAULT '',
+            submitted_at         TEXT NOT NULL,
+            created_at           TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS recruitment_notifications (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL REFERENCES accounts(id),
+            user_id         INTEGER NOT NULL REFERENCES users(id),
+            application_id  INTEGER REFERENCES driver_applications(id) ON DELETE CASCADE,
+            reference       TEXT    NOT NULL DEFAULT '',
+            kind            TEXT    NOT NULL DEFAULT 'application_submitted',
+            title           TEXT    NOT NULL DEFAULT '',
+            body            TEXT    NOT NULL DEFAULT '',
+            is_read         INTEGER NOT NULL DEFAULT 0,
+            created_at      TEXT    NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_recruit_notif_inbox
+            ON recruitment_notifications(account_id, user_id, is_read, id);
+
+        CREATE TABLE IF NOT EXISTS recruitment_notify_prefs (
+            user_id     INTEGER PRIMARY KEY REFERENCES users(id),
+            account_id  INTEGER NOT NULL REFERENCES accounts(id),
+            channels    TEXT    NOT NULL DEFAULT 'telegram,email,dashboard',
+            updated_at  TEXT    NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS audit_log (

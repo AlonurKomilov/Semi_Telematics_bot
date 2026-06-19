@@ -4,6 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardCheck, Plus, Search, X } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { toneClasses } from '../../lib/status';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDay } from '../../utils/datetime';
 import DataTable from '../../components/DataTable';
 import {
   PageHeader,
@@ -91,17 +93,14 @@ function DefectsCell({ row }: { row: PTIInspectionRow }) {
   );
 }
 
-function _formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+function _formatDate(iso: string | null, tz?: string): string {
+  return formatDay(iso, { timeZone: tz, intl: { year: 'numeric', month: 'short', day: 'numeric' } });
 }
 
 
 // ── Columns ───────────────────────────────────────────────────────
 
-const baseColumns: AnyColumn[] = [
+const buildColumns = (tz?: string): AnyColumn[] => [
   { key: 'user_id',       label: 'Driver', sortable: true,
     render: (v) => <span className="font-mono text-xs">user {String(v ?? '—')}</span> },
   { key: 'vehicle_name',  label: 'Vehicle', sortable: true,
@@ -109,15 +108,15 @@ const baseColumns: AnyColumn[] = [
   { key: 'inspection_type', label: 'Type', sortable: true,
     render: (v) => <span className="capitalize">{String(v ?? '—')}</span> },
   { key: 'submitted_at',  label: 'Submitted', sortable: true,
-    render: (v) => _formatDate(typeof v === 'string' ? v : null) },
+    render: (v) => _formatDate(typeof v === 'string' ? v : null, tz) },
   { key: 'due_by',        label: 'Due', sortable: true,
-    render: (v) => _formatDate(typeof v === 'string' ? v : null) },
+    render: (v) => _formatDate(typeof v === 'string' ? v : null, tz) },
   { key: 'defects_count', label: 'Defects',
     render: (_v, row) => <DefectsCell row={row as PTIInspectionRow} /> },
   { key: 'status',        label: 'Status', sortable: true,
     render: (_v, row) => <StatusChip row={row as PTIInspectionRow} /> },
   { key: 'reviewed_at',   label: 'Reviewed',
-    render: (v) => _formatDate(typeof v === 'string' ? v : null) },
+    render: (v) => _formatDate(typeof v === 'string' ? v : null, tz) },
 ];
 
 
@@ -130,6 +129,8 @@ type TopTab = 'submissions' | 'template';
 export default function Inspections() {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const tz = useTimezone();
+  const columns = useMemo(() => buildColumns(tz), [tz]);
   const [topTab, setTopTab] = useState<TopTab>(() => {
     // Honour ?tab=template so existing /admin/inspection-template
     // bookmarks land on the right tab via the alias redirect.
@@ -394,7 +395,7 @@ export default function Inspections() {
       ) : (
         <>
           <DataTable
-            columns={baseColumns}
+            columns={columns}
             data={rows as unknown as Record<string, unknown>[]}
             searchKey="vehicle_name"
             onRowClick={(row) => setSelected(row as unknown as PTIInspectionRow)}

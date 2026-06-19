@@ -45,6 +45,48 @@ _FIELDS = (
 
 _VALID_TYPES = ("truck", "trailer", "other")
 
+# Spec fields an integration sync may fill on an existing (matched) row.
+_SPEC_FILL = ("vin", "plate_number", "make", "model", "year")
+
+
+def _index_existing(existing: list["Vehicle"]) -> tuple[dict, dict, dict]:
+    """Build VIN / plate / unit lookups over the current registry, so a
+    planner and the projection match identically."""
+    by_vin: dict[str, Vehicle] = {}
+    by_plate: dict[str, Vehicle] = {}
+    by_unit: dict[str, list[Vehicle]] = {}
+    for v in existing:
+        if v.vin:
+            by_vin.setdefault(v.vin.strip().upper(), v)
+        if v.plate_number:
+            by_plate.setdefault(v.plate_number.strip().upper(), v)
+        by_unit.setdefault(v.unit_number.strip().lower(), []).append(v)
+    return by_vin, by_plate, by_unit
+
+
+def _match_existing(
+    r: dict[str, Any], by_vin: dict, by_plate: dict, by_unit: dict,
+) -> tuple["Vehicle | None", str]:
+    """Reconcile one incoming row against the registry indexes.
+
+    Priority: VIN exact → plate exact → unique unit number.  Returns
+    ``(vehicle, how)`` where ``how`` is ``'vin' | 'plate' | 'unit'`` on a
+    match, ``'ambiguous'`` when the unit exists on >1 row (can't safely
+    pick), or ``'none'`` when nothing matched.
+    """
+    vin = str(r.get("vin") or "").strip()
+    if vin and vin.upper() in by_vin:
+        return by_vin[vin.upper()], "vin"
+    plate = str(r.get("plate_number") or "").strip()
+    if plate and plate.upper() in by_plate:
+        return by_plate[plate.upper()], "plate"
+    cands = by_unit.get(str(r.get("unit_number") or "").strip().lower(), [])
+    if len(cands) == 1:
+        return cands[0], "unit"
+    if len(cands) > 1:
+        return None, "ambiguous"
+    return None, "none"
+
 
 @dataclass
 class Vehicle:
@@ -267,14 +309,8 @@ class VehiclesRegistryMixin(_MixinBase):
         if not rows:
             return 0
         existing = await self.list_vehicles(account_id)
-        by_vin: dict[str, Vehicle] = {}
-        by_unit: dict[str, list[Vehicle]] = {}
-        for v in existing:
-            if v.vin:
-                by_vin.setdefault(v.vin.strip().upper(), v)
-            by_unit.setdefault(v.unit_number.strip().lower(), []).append(v)
+        by_vin, by_plate, by_unit = _index_existing(existing)
 
-        _SPEC_FILL = ("vin", "plate_number", "make", "model", "year")
         now = self._now()
         written = 0
         async with self.transaction():
@@ -283,14 +319,7 @@ class VehiclesRegistryMixin(_MixinBase):
                 if not unit:
                     continue
                 vin = str(r.get("vin") or "").strip()
-
-                match: Vehicle | None = None
-                if vin and vin.upper() in by_vin:
-                    match = by_vin[vin.upper()]
-                else:
-                    candidates = by_unit.get(unit.lower(), [])
-                    if len(candidates) == 1:
-                        match = candidates[0]
+                match, _how = _match_existing(r, by_vin, by_plate, by_unit)
 
                 if match is not None:
                     # Enrich: fill only empty spec fields.
@@ -334,6 +363,76 @@ class VehiclesRegistryMixin(_MixinBase):
                 )
                 written += 1
         return written
+
+    async def plan_external_vehicles(
+        self,
+        account_id: int,
+        rows: list[dict[str, Any]],
+        *,
+        vehicle_type: str,
+    ) -> dict[str, Any]:
+        """Read-only dry-run of ``project_external_vehicles``.
+
+        Classifies each incoming row against the current registry using
+        the SAME matcher the projection uses, WITHOUT writing — so the
+        preview the operator approves is exactly what apply will do:
+
+          * ``new``     — no match → would be inserted.
+          * ``enrich``  — matched → would fill the listed empty fields.
+          * ``review``  — would insert, but the unit number already
+            exists on >1 vehicle (ambiguous) — a possible duplicate.
+          * unchanged   — matched, nothing to fill (counted only).
+        """
+        existing = await self.list_vehicles(account_id)
+        by_vin, by_plate, by_unit = _index_existing(existing)
+        new: list[dict] = []
+        enrich: list[dict] = []
+        review: list[dict] = []
+        unchanged = 0
+        for r in rows:
+            unit = str(r.get("unit_number") or "").strip()
+            if not unit:
+                continue
+            match, how = _match_existing(r, by_vin, by_plate, by_unit)
+            if match is not None:
+                fills = [
+                    f for f in _SPEC_FILL
+                    if getattr(match, f) in (None, "", 0)
+                    and r.get(f) not in (None, "")
+                ]
+                if fills:
+                    enrich.append({
+                        "unit": unit, "matched_unit": match.unit_number,
+                        "by": how, "fills": fills,
+                    })
+                else:
+                    unchanged += 1
+            else:
+                entry = {
+                    "unit": unit,
+                    "vin": str(r.get("vin") or ""),
+                    "plate": str(r.get("plate_number") or ""),
+                }
+                if how == "ambiguous":
+                    review.append({
+                        **entry,
+                        "reason": f"unit {unit!r} already exists on multiple "
+                        "vehicles — may be a duplicate",
+                    })
+                else:
+                    new.append(entry)
+        return {
+            "kind": "vehicles",
+            "vehicle_type": vehicle_type,
+            "new": new,
+            "enrich": enrich,
+            "review": review,
+            "counts": {
+                "new": len(new), "enrich": len(enrich),
+                "review": len(review), "unchanged": unchanged,
+                "total": len(new) + len(enrich) + len(review) + unchanged,
+            },
+        }
 
     async def upsert_from_integration(
         self,

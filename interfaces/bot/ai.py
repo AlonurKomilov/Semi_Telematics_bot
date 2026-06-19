@@ -14,7 +14,7 @@ from capabilities.permissions.roles import can, is_management_role
 
 from interfaces.bot.config import logger
 from interfaces.bot.state import get_client, get_platform_db, get_tenant_db
-from interfaces.bot.helpers import _show, _show_loading, escape_html
+from interfaces.bot.helpers import _show, _show_loading, _edit_active, escape_html
 from interfaces.bot.keyboards import back_kb
 from interfaces.bot.auth import _require_registered
 from capabilities.localization.i18n import t
@@ -306,10 +306,35 @@ async def cmd_ai_ask_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _show(update, context, [text], keyboard=kb)
 
 
+def _format_ai_progress(steps: list[str]) -> str:
+    """Render the live tool-call checklist shown while the agent works.
+
+    Completed steps get a ✓; the most recent gets a spinner.  Keeps the
+    user oriented during multi-tool answers instead of a static
+    "Thinking…".  When Bot API 10.1 rich drafts land in PTB, this same
+    step list maps directly onto a RichBlockThinking stream — the
+    progress model is already in the right shape.
+    """
+    lines = ["🤖  <i>Working on it…</i>", ""]
+    for s in steps[:-1]:
+        lines.append(f"  ✓ {escape_html(s)}")
+    if steps:
+        lines.append(f"  ⚙️ {escape_html(steps[-1])}…")
+    return "\n".join(lines)
+
+
 @_require_registered
 async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
                         question: str):
-    """Process the user's AI question and return the answer."""
+    """Process the user's AI question and return the answer.
+
+    Consumes ``ask_agent_stream`` so the user watches tool calls happen
+    live (progress edits) instead of a frozen "Thinking…".  The final
+    answer still ships as one message + keyboard — only the WAIT got
+    richer.  This is the PTB-independent groundwork for Bot API 10.1
+    ``sendRichMessageDraft`` streaming: swap the ``_edit_active`` progress
+    edits for rich drafts once PTB ships native support.
+    """
     user = context.user_data["_db_user"]
     user_ctx = await _build_user_context(user)
     lang = getattr(user, "language", "en") or "en"
@@ -353,7 +378,16 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
             user_id=update.effective_user.id,
         )
         _started = _t.monotonic()
-        result = await ai.ask_agent(
+        # Stream the agent: surface each tool call as a live progress
+        # tick instead of a frozen "Thinking…".  The generator yields
+        # {"type":"tool",...} per call and one {"type":"done",...} (or
+        # {"type":"error",...}) carrying the already-parsed reply +
+        # suggestions.
+        steps: list[str] = []
+        done_ev = None
+        stream_error = None
+        _last_edit = 0.0
+        async for ev in ai.ask_agent_stream(
             question, snapshot,
             samsara_client=samsara,
             user_id=update.effective_user.id,
@@ -361,10 +395,32 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
             db=tenant_db,
             language=lang,
             user_context=user_ctx,
-        )
+        ):
+            etype = ev.get("type")
+            if etype == "tool":
+                steps.append(ev.get("label") or ev.get("name") or "working")
+                # Throttle edits — Telegram rate-limits message edits and
+                # tool ticks can burst.  ~1/sec is smooth without risking
+                # 429s; the final answer renders regardless of ticks.
+                now = _t.monotonic()
+                if now - _last_edit > 0.8:
+                    _last_edit = now
+                    await _edit_active(
+                        update, context, _format_ai_progress(steps),
+                    )
+            elif etype == "done":
+                done_ev = ev
+            elif etype == "error":
+                stream_error = ev.get("message") or "AI error"
+
+        if done_ev is None:
+            raise RuntimeError(stream_error or "AI stream ended without a result")
+
         latency_ms = int((_t.monotonic() - _started) * 1000)
-        answer = result["text"]
-        tool_results = result.get("tool_results") or []
+        # The stream already parsed suggestions out of the reply.
+        clean_answer = done_ev.get("reply") or ""
+        suggestions = done_ev.get("suggestions") or []
+        tool_results = done_ev.get("tool_results") or []
         tool_success_count = sum(
             1 for tr in tool_results
             if not (isinstance(tr.get("data"), dict) and tr["data"].get("error"))
@@ -374,7 +430,7 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
         # "question_turn" so the two slices don't pollute each other.
         await _log_ai_usage(
             user.account_id, update.effective_user.id, "question_turn",
-            result.get("usage"),
+            done_ev.get("usage"),
             role=(user_ctx or {}).get("role"),
             latency_ms=latency_ms,
             tool_success_count=tool_success_count,
@@ -388,12 +444,9 @@ async def cmd_ai_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
         # dashboard.
         await ai.detect_unjustified_refusal_and_mark(
             user.account_id, update.effective_user.id,
-            question, answer, tool_results,
+            question, clean_answer, tool_results,
             language=lang,
         )
-
-        # Extract suggestion lines and remove them from the answer text
-        clean_answer, suggestions = _parse_suggestions(answer)
 
         text = (
             "━━━━━━━━━━━━━━━━━━━\n"

@@ -91,6 +91,9 @@ export const OVERVIEW_LAYOUTS: LayoutMap = {
   // persona-tuned via useShellConfig internally.
   hr: ['greeting', 'header', 'alert_strip', 'ai_summary'],
 
+  // Recruiter — personnel persona; mirrors HR's people-focused overview.
+  recruiter: ['greeting', 'header', 'alert_strip', 'ai_summary'],
+
   // Accounting — financial overview.  Drops status_grid +
   // status_chart + kpi_grid (vehicle-ops display) for the same
   // reason as HR.  Keeps greeting + header + AI narrative.

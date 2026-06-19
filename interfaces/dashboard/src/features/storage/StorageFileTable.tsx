@@ -6,6 +6,8 @@ import {
   RefreshCw, Loader2, AlertTriangle, RotateCcw, Clock,
 } from 'lucide-react';
 import { apiJSON } from '../../api/client';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate } from '../../utils/datetime';
 
 /**
  * Storage file-manager — the "needs sync" queue.
@@ -56,15 +58,13 @@ function formatBytes(n: number): string {
   return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
-function formatTs(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString();
+function formatTs(iso: string | null, tz?: string): string {
+  return formatDate(iso, { timeZone: tz });
 }
 
 export default function StorageFileTable() {
   const { t } = useTranslation();
+  const tz = useTimezone();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<Filter>('all');
   const [retrying, setRetrying] = useState<Set<number>>(new Set());
@@ -214,7 +214,7 @@ export default function StorageFileTable() {
                     <StatusChip row={r} />
                   </td>
                   <td className="px-3 py-2 text-xs text-muted-foreground tabular-nums">
-                    {formatTs(r.enqueued_at)}
+                    {formatTs(r.enqueued_at, tz)}
                   </td>
                   <td className="px-3 py-2 text-right">
                     {r.is_stuck ? (

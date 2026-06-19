@@ -13,21 +13,32 @@ import {
 } from '../../components/shell';
 import { toneClasses } from '../../lib/status';
 import type { CompanyInfo, AnyColumn } from '../../types';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDay } from '../../utils/datetime';
 
 // Columns no longer include the API Key — that lives on the
 // Integrations > Samsara card now.  Companies is back to being a
 // pure business-entity list (code, name, status, dates).
-const columns: AnyColumn[] = [
+const makeColumns = (tz: string): AnyColumn[] => [
   { key: 'code', label: 'Code', sortable: true },
   { key: 'display_name', label: 'Name', sortable: true },
-  { key: 'active_days', label: 'Active Days', sortable: true },
+  // MC / DOT are the federal carrier ids used to match synced records
+  // (e.g. Datatruck work orders) to this company.
+  { key: 'mc_number', label: 'MC #', render: (v) => v ? <span className="font-mono text-xs">{String(v)}</span> : <span className="text-muted-foreground">—</span> },
+  { key: 'usdot_number', label: 'DOT #', render: (v) => v ? <span className="font-mono text-xs">{String(v)}</span> : <span className="text-muted-foreground">—</span> },
+  // "Active window" = Samsara GPS-recency filter (a vehicle is active if
+  // seen within N days) — NOT a data-sync window.  Labelled (GPS) to keep
+  // it from reading like the Integration card's history-window picker.
+  { key: 'active_days', label: 'Active window (GPS)', sortable: true, render: (v) => <span title="A vehicle counts as active if Samsara has seen it within this many days — not a data-sync setting.">{`${v} days`}</span> },
   { key: 'is_active', label: 'Status', render: (v) => v ? <span className="text-ok">Active</span> : <span className="text-danger">Inactive</span> },
-  { key: 'created_at', label: 'Created', render: (v) => v ? new Date(String(v)).toLocaleDateString() : '—' },
+  { key: 'created_at', label: 'Created', render: (v) => v ? formatDay(String(v), { timeZone: tz }) : '—' },
 ];
 
 export default function Companies() {
   const { t } = useTranslation();
+  const tz = useTimezone();
   const qc = useQueryClient();
+  const columns = makeColumns(tz);
   const [error, setError] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [selected, setSelected] = useState<CompanyInfo | null>(null);
@@ -37,10 +48,14 @@ export default function Companies() {
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [days, setDays] = useState(30);
+  const [mc, setMc] = useState('');
+  const [dot, setDot] = useState('');
   const [saving, setSaving] = useState(false);
 
   const [editName, setEditName] = useState('');
   const [editDays, setEditDays] = useState(30);
+  const [editMc, setEditMc] = useState('');
+  const [editDot, setEditDot] = useState('');
 
   const { data, isLoading: loading, error: queryError } = useQuery({
     queryKey: ['admin-companies'],
@@ -56,8 +71,8 @@ export default function Companies() {
       // samsara_api_key intentionally omitted — the new flow is
       // "create the company, then set its key on the Integration
       // card."  The backend defaults the field to empty string.
-      await apiJSON('/admin/companies', { method: 'POST', body: { code, display_name: name || code, active_days: days } });
-      setShowAdd(false); setCode(''); setName(''); setDays(30);
+      await apiJSON('/admin/companies', { method: 'POST', body: { code, display_name: name || code, active_days: days, mc_number: mc.trim(), usdot_number: dot.trim() } });
+      setShowAdd(false); setCode(''); setName(''); setDays(30); setMc(''); setDot('');
       load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     finally { setSaving(false); }
@@ -69,6 +84,8 @@ export default function Companies() {
     const body: Record<string, unknown> = {};
     if (editName && editName !== selected.display_name) body.display_name = editName;
     if (editDays !== selected.active_days) body.active_days = editDays;
+    if (editMc.trim() !== (selected.mc_number || '')) body.mc_number = editMc.trim();
+    if (editDot.trim() !== (selected.usdot_number || '')) body.usdot_number = editDot.trim();
     if (Object.keys(body).length === 0) { setSaving(false); return; }
     try {
       await apiJSON('/admin/companies/' + selected.id, { method: 'PUT', body });
@@ -119,21 +136,31 @@ export default function Companies() {
       )}
 
       {showAdd && (
-        <form onSubmit={handleAdd} className="bg-card border border-border rounded-xl p-4 mb-6 grid grid-cols-4 gap-3">
+        <form onSubmit={handleAdd} className="bg-card border border-border rounded-xl p-4 mb-6 grid grid-cols-3 gap-3">
           <div>
             <label className="block text-xs text-muted-foreground mb-1">Code</label>
-            <input required value={code} onChange={e => setCode(e.target.value)} maxLength={20} placeholder="PTG" className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
+            <input required value={code} onChange={e => setCode(e.target.value)} maxLength={20} placeholder="PTG" className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring" />
             <p className="mt-1 text-2xs text-muted-foreground">Short label used in reports and alerts — e.g. PTG, OSY.</p>
           </div>
           <div>
             <label className="block text-xs text-muted-foreground mb-1">Display Name</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="Premier Trucking Group Inc" className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Acme Trucking Inc" className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring" />
             <p className="mt-1 text-2xs text-muted-foreground">The company's full legal or trading name.</p>
           </div>
           <div>
-            <label className="block text-xs text-muted-foreground mb-1">Active Days</label>
-            <input type="number" min={1} max={365} value={days} onChange={e => setDays(Number(e.target.value))} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
-            <p className="mt-1 text-2xs text-muted-foreground">A vehicle counts as active if seen within this many days.</p>
+            <label className="block text-xs text-muted-foreground mb-1">Active window (GPS)</label>
+            <input type="number" min={1} max={365} value={days} onChange={e => setDays(Number(e.target.value))} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring" />
+            <p className="mt-1 text-2xs text-muted-foreground">A vehicle is "active" if Samsara saw it within this many days — not a data-sync window.</p>
+          </div>
+          <div>
+            <label className="block text-xs text-muted-foreground mb-1">MC Number</label>
+            <input value={mc} onChange={e => setMc(e.target.value)} maxLength={40} placeholder="123456" className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring" />
+            <p className="mt-1 text-2xs text-muted-foreground">Federal MC number — matches synced records to this company.</p>
+          </div>
+          <div>
+            <label className="block text-xs text-muted-foreground mb-1">USDOT Number</label>
+            <input value={dot} onChange={e => setDot(e.target.value)} maxLength={40} placeholder="1234567" className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring" />
+            <p className="mt-1 text-2xs text-muted-foreground">USDOT number — immutable id, reusable across integrations.</p>
           </div>
           <div className="flex items-end">
             <button type="submit" disabled={saving} className="px-4 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition">
@@ -164,6 +191,7 @@ export default function Companies() {
         <DataTable columns={columns} data={companies as unknown as Record<string, unknown>[]} searchKey="display_name" onRowClick={(row) => {
           const c = row as unknown as CompanyInfo;
           setSelected(c); setEditName(c.display_name); setEditDays(c.active_days);
+          setEditMc(c.mc_number || ''); setEditDot(c.usdot_number || '');
         }} />
       )}
 
@@ -193,11 +221,19 @@ export default function Companies() {
             <div className="space-y-3">
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">Display Name</label>
-                <input value={editName} onChange={e => setEditName(e.target.value)} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
+                <input value={editName} onChange={e => setEditName(e.target.value)} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring" />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">Active Days</label>
-                <input type="number" min={1} max={365} value={editDays} onChange={e => setEditDays(Number(e.target.value))} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
+                <label className="block text-xs text-muted-foreground mb-1">Active window (GPS)</label>
+                <input type="number" min={1} max={365} value={editDays} onChange={e => setEditDays(Number(e.target.value))} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring" />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">MC Number</label>
+                <input value={editMc} onChange={e => setEditMc(e.target.value)} maxLength={40} placeholder="123456" className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring" />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">USDOT Number</label>
+                <input value={editDot} onChange={e => setEditDot(e.target.value)} maxLength={40} placeholder="1234567" className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring" />
               </div>
               <button onClick={handleUpdate} disabled={saving} className="w-full py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition">
                 {saving ? 'Saving...' : 'Update Company'}

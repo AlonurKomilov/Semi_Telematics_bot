@@ -33,7 +33,7 @@ import {
   LayoutDashboard, Bot, Bell, FileText, BookOpen,
   Map as MapIcon, Truck, MapPin, Wrench, Receipt, ClipboardCheck, ParkingSquare,
   Route, Trophy, AlertTriangle, Camera,
-  IdCard, GraduationCap, Link,
+  IdCard, GraduationCap, Link, UserPlus,
   Fuel, DollarSign, CreditCard,
   Users, Building2, Shield, Cloud, ClipboardList, Settings as SettingsIcon,
   Plug,
@@ -127,6 +127,9 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   { id: 'coaching', labelKey: 'nav.coaching', path: '/coaching', icon: GraduationCap, modules: ['hr', 'safety'], tier: 'role', permission: ['can_coaching_admin'], navGroup: 'people' },
   // Drivers (documents/compliance) — HR owns it; fleet + safety read it.
   { id: 'drivers', labelKey: 'nav.drivers', path: '/workforce/drivers', icon: IdCard, modules: ['hr', 'fleet', 'safety'], tier: 'shared', permission: ['can_manage_driver_docs'], navGroup: 'people' },
+  // Recruiting intake — recruiter sends an apply.* link, prospects submit
+  // FMCSA applications here; HR/recruiter triage + convert-to-driver.
+  { id: 'applications', labelKey: 'nav.applications', path: '/workforce/applications', icon: UserPlus, modules: ['hr'], tier: 'role', permission: ['can_recruit_applicants'], navGroup: 'people' },
   // Working Hours has been folded into Team Management → Working
   // Hours tab.  Sidebar entry removed so operators don't see two
   // doors to the same config (Team Management nav entry covers it).

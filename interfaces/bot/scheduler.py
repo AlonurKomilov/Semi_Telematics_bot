@@ -219,6 +219,8 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         job_ingest_safety_events,
         job_ingest_driver_efficiency_daily,
         job_aggregate_telemetry_hourly,
+        job_snapshot_vehicle_state,
+        job_aggregate_metrics_daily,
         job_ingest_vehicle_health,
         job_ingest_vehicle_faults,
         job_ingest_fleet_weather,
@@ -245,6 +247,32 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         minute=5, args=[app], id="warehouse_telemetry_hourly",
         max_instances=1, coalesce=True,
     )
+    # The 5-min vehicle-state HISTORY (vehicle_state_snapshot) + the
+    # nightly daily rollup (vehicle_metrics_daily).  These were dropped
+    # from the scheduler in the feature-centric refactor (3864e08), which
+    # silently froze all back-dated odometer/usage history at the last
+    # run — the current-state job kept the live map fresh, masking it.
+    # Cadences match the provider catalog (STATE_SNAPSHOT_HISTORY: 5 min,
+    # METRICS_DAILY: 00:05 UTC).
+    scheduler.add_job(
+        job_snapshot_vehicle_state, "interval",
+        minutes=5, args=[app], id="warehouse_state_snapshot",
+        max_instances=1, coalesce=True,
+    )
+    scheduler.add_job(
+        job_aggregate_metrics_daily, "cron",
+        hour=0, minute=5, args=[app], id="warehouse_metrics_daily",
+        max_instances=1, coalesce=True,
+    )
+    # NOTE: ``job_prune_telemetry_history`` (HISTORY_PRUNE, 02:00 UTC) was
+    # dropped in the same refactor and is INTENTIONALLY left unscheduled
+    # here for now: its first run would delete every vehicle_state_snapshot
+    # row older than 7 days — i.e. the entire frozen 5/24–6/8 history that
+    # currently backs back-dated work orders — BEFORE that odometer is
+    # carried into the 730-day EOD tier (vehicle_metrics_daily.odometer_eod
+    # is still empty).  Re-enable it only AFTER a one-time
+    # ``backfill_aggregations`` run has populated odometer_eod from the
+    # existing snapshots, so the long history survives the prune.
     scheduler.add_job(
         job_ingest_vehicle_health, "interval",
         minutes=5, args=[app], id="warehouse_vehicle_health",

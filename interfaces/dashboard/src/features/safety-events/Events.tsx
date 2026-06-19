@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import type { ElementType } from 'react';
 import { AlertTriangle, Zap, RotateCcw, MoveHorizontal, Truck, OctagonX, TrendingUp, Play } from 'lucide-react';
 import { apiJSON } from '../../api/client';
+import { formatDate } from '../../utils/datetime';
+import { useTimezone } from '../../hooks/useTimezone';
 import { toneClasses, type Tone } from '../../lib/status';
 import DataTable from '../../components/DataTable';
 import EventVideoModal from '@/features/safety-events/EventVideoModal';
@@ -107,15 +109,11 @@ const baseColumns: AnyColumn[] = [
       return g > 0 ? `${g}g` : '—';
     },
   },
-  {
-    key: 'time',
-    label: 'Time',
-    render: (v) => v ? new Date(v as string).toLocaleString() : '—',
-  },
 ];
 
 export default function Events() {
   const { t } = useTranslation();
+  const tz = useTimezone();
   // Default 30 days so the page lands with a full month of context;
   // matches the Scorecards / Risk Summary defaults.  Users still get
   // the 7 / 14 / 60 / 90 presets in the DateRangePresets menu.
@@ -132,6 +130,11 @@ export default function Events() {
   // columns array on every keystroke in the driver filter.
   const columns: AnyColumn[] = useMemo(() => [
     ...baseColumns,
+    {
+      key: 'time',
+      label: 'Time',
+      render: (v) => v ? formatDate(v as string, { timeZone: tz }) : '—',
+    },
     {
       key: 'video_url',
       label: 'Video',
@@ -158,7 +161,7 @@ export default function Events() {
         );
       },
     },
-  ], []);
+  ], [tz]);
 
  // React Query: cache events per (days, type, driver) tuple.
   // staleTime=60s — events ingest every 5 min so refetching on every

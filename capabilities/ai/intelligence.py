@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+from types import SimpleNamespace
 
 from capabilities.ai.cache import _cache_key, _cache_get, _cache_put, _snapshot_hash
 from capabilities.ai.chat import _chat_histories, _store_history
@@ -32,6 +34,13 @@ from capabilities.permissions.roles import (
 
 logger = logging.getLogger("bot.ai")
 
+# Live token/reasoning streaming for the Gemini agent path.  Default OFF:
+# when on, the model call switches to generate_content_stream and emits live
+# ``thinking`` (reasoning) + ``delta`` (answer) SSE events as they arrive.
+# Must be verified against live Vertex before enabling — toggle with
+# AI_STREAM_TOKENS=1.  The non-streaming path is otherwise unchanged.
+_STREAM_TOKENS = os.getenv("AI_STREAM_TOKENS", "").strip().lower() in ("1", "true", "yes", "on")
+
 # Human-readable labels for tool calls sent to streaming clients
 _TOOL_LABELS: dict[str, str] = {
     "get_vehicle_faults":     "Checking fault codes",
@@ -58,6 +67,7 @@ _TOOL_LABELS: dict[str, str] = {
     "search_knowledge_base":  "Searching knowledge base",
     "get_account_stats":      "Getting account stats",
     "get_parked_vehicles":    "Checking parked vehicles",
+    "get_undriven_vehicles":  "Checking undriven vehicles",
     "get_driver_hos_status":  "Reading driver hours",
     "get_alert_history":      "Reviewing alert history",
     "get_recent_work_orders": "Looking up shop visits",
@@ -545,6 +555,26 @@ async def _check_tool_permission(
     return None
 
 
+# Default agentic tool-call rounds per provider path: 1 initial model call plus
+# (N-1) tool re-calls.  These were hardcoded as ``range(4)`` / ``range(3)``;
+# lifting them here lets a model opt into a deeper loop via the registry
+# (``"max_tool_rounds": N``) — the knob a future reasoning/autonomous tier needs
+# to run longer without editing this file.  No model sets it today, so the loop
+# depth is unchanged.
+_DEFAULT_TOOL_ROUNDS_ANTHROPIC = 4
+_DEFAULT_TOOL_ROUNDS_GEMINI = 3
+
+
+def _resolve_tool_rounds(model_info: dict, default: int) -> int:
+    """Tool-call loop depth for a model: its registry ``max_tool_rounds`` or the
+    provider default.  Floored at 1 so a misconfigured value can never disable
+    the initial model call; a non-int value falls back to the default."""
+    try:
+        return max(1, int(model_info.get("max_tool_rounds", default)))
+    except (TypeError, ValueError):
+        return default
+
+
 async def _run_anthropic_agent(
     question: str,
     vehicle_context: dict,
@@ -573,6 +603,7 @@ async def _run_anthropic_agent(
     from capabilities.ai.registry import (
         _anthropic_url,
         _get_credentials,
+        model_temperature,
     )
 
     project = os.getenv("GOOGLE_CLOUD_PROJECT", "")
@@ -589,6 +620,8 @@ async def _run_anthropic_agent(
     location = model_info.get("locations", ["global"])[0]
     anthropic_model_id = model_info["anthropic_model_id"]
     max_tokens = min(model_info.get("max_output_tokens", 4096), 8192)
+    max_tool_rounds = _resolve_tool_rounds(model_info, _DEFAULT_TOOL_ROUNDS_ANTHROPIC)
+    _agent_temperature = model_temperature(model_info)
 
     # Cache + history lookups mirror the Gemini path.
     has_history = bool(user_id and (user_id, account_id or 0) in _chat_histories)
@@ -655,14 +688,14 @@ async def _run_anthropic_agent(
         return r.json()
 
     final_text = ""
-    for _round in range(4):  # 1 initial + up to 3 tool-use rounds
+    for _round in range(max_tool_rounds):  # 1 initial + (max_tool_rounds-1) tool-use rounds
         body = {
             "anthropic_version": "vertex-2023-10-16",
             "system": system_prompt,
             "messages": messages,
             "tools": tools,
             "max_tokens": max_tokens,
-            "temperature": 0.3,
+            "temperature": _agent_temperature,
             "top_p": 0.8,
         }
         _started = _t.monotonic()
@@ -790,6 +823,73 @@ async def _run_anthropic_agent(
     return {"text": final_text, "tool_results": tool_results, "usage": usage_out}
 
 
+async def _gemini_streamed_call(model, contents, tools, emit):
+    """Run a Gemini call via ``generate_content_stream``, emitting live
+    ``thinking`` (reasoning) and ``delta`` (answer) events through ``emit``,
+    and return a response-shaped object the agent loop consumes unchanged.
+
+    The synthesized response exposes ``.candidates[0].content`` (a real
+    ``Content`` so a tool turn can be re-fed verbatim), ``.usage_metadata``
+    (for ``_capture_usage``), and ``.text``.  Answer chunks are merged into a
+    single text part so the loop's first-text-part extraction returns the
+    *whole* reply, not just the first chunk.  Thought parts are streamed out
+    but deliberately kept out of the synthesized parts — they're reasoning,
+    not answer or re-feed content.
+    """
+    import asyncio as _a
+
+    from google.genai import types as _gt
+
+    loop = _a.get_running_loop()
+    answer: list[str] = []
+    fc_parts: list = []
+    usage_holder: dict = {"meta": None}
+
+    def _emit_blocking(ev: dict):
+        # Bridge the sync streaming thread back onto the event loop so the
+        # callback (which enqueues for the SSE generator) runs in order.
+        try:
+            _a.run_coroutine_threadsafe(emit(ev), loop).result()
+        except Exception:
+            pass
+
+    def _run():
+        for chunk in model.generate_content_stream(contents, tools=tools):
+            um = getattr(chunk, "usage_metadata", None)
+            if um is not None:
+                usage_holder["meta"] = um
+            for cand in (getattr(chunk, "candidates", None) or []):
+                content = getattr(cand, "content", None)
+                for p in (getattr(content, "parts", None) or []):
+                    if getattr(p, "function_call", None):
+                        fc_parts.append(p)
+                        continue
+                    try:
+                        txt = p.text
+                    except (ValueError, AttributeError):
+                        txt = None
+                    if not txt:
+                        continue
+                    if getattr(p, "thought", False):
+                        _emit_blocking({"type": "thinking", "text": txt})
+                    else:
+                        answer.append(txt)
+                        _emit_blocking({"type": "delta", "text": txt})
+
+    await _a.to_thread(_run)
+
+    full_text = "".join(answer)
+    parts = list(fc_parts)
+    if full_text:
+        parts.append(_gt.Part.from_text(text=full_text))
+    content = _gt.Content(role="model", parts=parts)
+    return SimpleNamespace(
+        candidates=[SimpleNamespace(content=content)],
+        usage_metadata=usage_holder["meta"],
+        text=full_text,
+    )
+
+
 async def ask_agent(question: str, vehicle_context: dict,
                     samsara_client,
                     user_id: int | None = None,
@@ -847,6 +947,11 @@ async def ask_agent(question: str, vehicle_context: dict,
 
     model, cur_model_name, _ = get_model_for_user(user_id, account_id)
 
+    from capabilities.ai.registry import MODEL_REGISTRY as _MODEL_REGISTRY
+    max_tool_rounds = _resolve_tool_rounds(
+        _MODEL_REGISTRY.get(cur_model_name, {}), _DEFAULT_TOOL_ROUNDS_GEMINI
+    )
+
     has_history = bool(user_id and (user_id, account_id or 0) in _chat_histories)
     snap_h = _snapshot_hash(vehicle_context) if not has_history else ""
     ck = _cache_key(
@@ -883,13 +988,29 @@ async def ask_agent(question: str, vehicle_context: dict,
     import time as _t
     _prompt_category = _classify_prompt(question)
 
+    # Live streaming gate: only for the Gemini path, only when a stream
+    # consumer is attached (event_callback), and only when the env flag is on.
+    # Off → the model call is the unchanged non-streaming generate_content.
+    _stream_on = _STREAM_TOKENS and event_callback is not None and _api_type == "gemini"
+
     async def _call_model_with_telemetry(*args, **kwargs):
-        """Wrap model.generate_content with timing + ai_usage row."""
+        """Wrap the model call with timing + ai_usage row.
+
+        When streaming is on, the call routes through ``_gemini_streamed_call``
+        (emits live thinking/delta events, returns a response-shaped object);
+        otherwise it's the unchanged ``generate_content`` in a thread.  Both
+        record one ai_usage attempt row.
+        """
         started = _t.monotonic()
         try:
-            resp = await asyncio.to_thread(
-                model.generate_content, *args, **kwargs,
-            )
+            if _stream_on:
+                resp = await _gemini_streamed_call(
+                    model, args[0], kwargs.get("tools"), event_callback,
+                )
+            else:
+                resp = await asyncio.to_thread(
+                    model.generate_content, *args, **kwargs,
+                )
             latency_ms = int((_t.monotonic() - started) * 1000)
             await _record_call(
                 account_id=account_id, user_id=user_id,
@@ -999,7 +1120,7 @@ async def ask_agent(question: str, vehicle_context: dict,
                 full_prompt, tools=tools,
             )
 
-            for _round in range(3):
+            for _round in range(max_tool_rounds):
                 if not response.candidates:
                     return {
                         "text": (

@@ -9,21 +9,23 @@
  *  2. Plain markdown/text → escape then convert markdown to HTML.
  */
 
-const RE_DANGEROUS_TAGS = /<\/?(script|style|iframe|object|embed|form|input|textarea|select|button|link|meta|base)\b[^>]*>/gi;
-const RE_EVENT_ATTRS = /\s+on\w+="[^"]*"/gi;
-const RE_EVENT_ATTRS2 = /\s+on\w+='[^']*'/gi;
-const RE_JS_HREF = /href\s*=\s*["']javascript:[^"']*["']/gi;
+import DOMPurify from 'dompurify';
 
 function looksLikeHTML(text: string): boolean {
   return /<(p|ul|ol|li|h[1-6]|div|br|strong|em|table|thead|tbody|tr|td|th)\b[^>]*>/i.test(text);
 }
 
+// Parser-based sanitisation via DOMPurify — replaces the previous hand-rolled
+// regex denylist, which a crafted payload could slip past (unquoted handlers
+// like `onload=alert(1)`, `<svg>`/`<math>` vectors, malformed/split tags).
+// This is a real trust boundary: user-controlled fleet data (company, vehicle
+// and driver names) is echoed back into AI answers and rendered via
+// dangerouslySetInnerHTML.  The `html` profile keeps every formatting tag we
+// emit (p, strong, em, h1-6, ul/ol/li, the table family, br, span, div) plus
+// the `class` attribute the styling relies on, and drops scripts, event
+// handlers, javascript: URLs, and SVG/MathML entirely.
 function sanitizeHTML(html: string): string {
-  return html
-    .replace(RE_DANGEROUS_TAGS, '')
-    .replace(RE_EVENT_ATTRS, '')
-    .replace(RE_EVENT_ATTRS2, '')
-    .replace(RE_JS_HREF, '');
+  return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
 }
 
 export function formatAIResponse(text: string): string {
@@ -130,6 +132,9 @@ export function formatAIResponse(text: string): string {
     i++;
   }
 
-  // Remove trailing line break
-  return out.join('').replace(/(<br\/>)+$/, '');
+  // Remove trailing line break, then sanitise the generated markup too —
+  // the markdown path HTML-escapes its input first, but running the final
+  // output through DOMPurify keeps a single sanitisation boundary for both
+  // paths (defense in depth).
+  return sanitizeHTML(out.join('').replace(/(<br\/>)+$/, ''));
 }

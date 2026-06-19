@@ -16,7 +16,7 @@ Layout::
     {COMPANY NAME}/work-orders/{YYYY}/{MM-month}/WO-{id}_truck{name}_{date}_{vendor}/
 
 The top-level segment is the *company display name* (e.g.
-``PREMIER TRUCKING GROUP INC``) rather than an opaque ``account-{id}``
+``ACME TRUCKING INC``) rather than an opaque ``account-{id}``
 prefix.  An account can own multiple companies, and each company's
 data lands under its own folder — so a user browsing their Drive sees
 their real business names instead of internal IDs.
@@ -143,7 +143,7 @@ def work_order_folder(
     ``company_folder`` is the already-sanitised company name produced
     by :func:`resolve_company_folder`.  Example output::
 
-        PREMIER TRUCKING GROUP INC/work-orders/2026/04-april/WO-00128_truck221_2026-04-12_BobsDieselShop
+        ACME TRUCKING INC/work-orders/2026/04-april/WO-00128_truck221_2026-04-12_BobsDieselShop
 
     ``service_date`` is the canonical "when did the work happen" — when
     absent (a draft created from a bot photo before the manager filled

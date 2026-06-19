@@ -1,5 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { ClipboardList, Send, CheckCircle2, Circle, type LucideIcon } from 'lucide-react';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate, formatDay } from '../../utils/datetime';
 import type { PTIInspectionDetail } from '../../types';
 
 /**
@@ -16,18 +18,14 @@ import type { PTIInspectionDetail } from '../../types';
  * timestamp and, for review, the reviewer's display name.
  */
 
-function _formatTs(iso: string | null | undefined): string {
+function _formatTs(iso: string | null | undefined, tz?: string): string {
   if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString();
+  return formatDate(iso, { timeZone: tz });
 }
 
-function _formatDate(iso: string | null | undefined): string {
+function _formatDate(iso: string | null | undefined, tz?: string): string {
   if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString();
+  return formatDay(iso, { timeZone: tz });
 }
 
 interface NodeProps {
@@ -75,6 +73,7 @@ interface Props {
 
 export function StatusTimeline({ inspection: ins }: Props) {
   const { t } = useTranslation();
+  const tz = useTimezone();
 
   const submitted = !!ins.submitted_at;
   const reviewed = ins.status === 'reviewed';
@@ -91,9 +90,9 @@ export function StatusTimeline({ inspection: ins }: Props) {
           reached
           Icon={ClipboardList}
           label={t('inspections.timeline.assigned')}
-          detail={_formatTs(ins.created_at)}
+          detail={_formatTs(ins.created_at, tz)}
           subtle={!submitted && dueDate
-            ? t('inspections.timeline.due', { date: _formatDate(dueDate) })
+            ? t('inspections.timeline.due', { date: _formatDate(dueDate, tz) })
             : undefined}
         />
         <div className={`${connectorBase} ${submitted ? 'bg-primary/60' : 'bg-border'}`} />
@@ -101,7 +100,7 @@ export function StatusTimeline({ inspection: ins }: Props) {
           reached={submitted}
           Icon={Send}
           label={t('inspections.timeline.submitted')}
-          detail={submitted ? _formatTs(ins.submitted_at) : t('inspections.timeline.pending')}
+          detail={submitted ? _formatTs(ins.submitted_at, tz) : t('inspections.timeline.pending')}
           subtle={submitted && ins.driver_name
             ? t('inspections.timeline.by', { name: ins.driver_name })
             : undefined}
@@ -111,7 +110,7 @@ export function StatusTimeline({ inspection: ins }: Props) {
           reached={reviewed}
           Icon={CheckCircle2}
           label={t('inspections.timeline.reviewed')}
-          detail={reviewed ? _formatTs(ins.reviewed_at) : t('inspections.timeline.pending')}
+          detail={reviewed ? _formatTs(ins.reviewed_at, tz) : t('inspections.timeline.pending')}
           subtle={reviewed && ins.reviewed_by_name
             ? t('inspections.timeline.by', { name: ins.reviewed_by_name })
             : undefined}

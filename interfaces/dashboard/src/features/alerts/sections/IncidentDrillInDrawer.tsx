@@ -40,6 +40,8 @@ import {
   TypeBadge, SeverityDot,
 } from '../_shared/components';
 import { formatAlertDescription } from '../../../utils/alertDescription';
+import { formatDate } from '../../../utils/datetime';
+import { useTimezone } from '../../../hooks/useTimezone';
 import type { Alert } from '../../../types';
 
 export default function IncidentDrillInDrawer() {
@@ -86,6 +88,7 @@ function DrawerHeader({ alert, onClose }: {
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const tz = useTimezone();
   return (
     <header className="px-5 py-4 border-b border-border flex items-start gap-3">
       <SeverityDot severity={alert.severity} />
@@ -101,7 +104,7 @@ function DrawerHeader({ alert, onClose }: {
         </h2>
         {alert.last_seen && (
           <p className="text-xs text-muted-foreground mt-0.5">
-            last seen {new Date(alert.last_seen).toLocaleString()}
+            last seen {formatDate(alert.last_seen, { timeZone: tz })}
             {(alert.occurrence_count ?? 1) > 1 && (
               <span className="ml-2 text-warn">
                 × {alert.occurrence_count}

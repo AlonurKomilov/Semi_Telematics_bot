@@ -13,7 +13,7 @@ import {
 import { apiJSON, ApiError } from '../../api/client';
 import type { InviteInfo, InvitesResponse } from '../../types';
 import DataTable from '../../components/DataTable';
-import RoleBadge, { ROLE_LABEL } from '../../components/RoleBadge';
+import RoleBadge, { ROLE_LABEL, ASSIGNABLE_ROLES } from '../../components/RoleBadge';
 import {
   PageHeader,
   EmptyState,
@@ -31,12 +31,14 @@ import {
 import { Button } from '../../components/ui/button';
 import type { AnyColumn } from '../../types';
 import { toneClasses, toneText, statusClasses } from '../../lib/status';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate } from '../../utils/datetime';
 
-// Role choices for the create-invite form.  Owner is intentionally
-// excluded — the rank-check on the server already forbids inviting
-// peers / superiors; this just keeps the dropdown tidy.  Reads
-// labels from the canonical ROLE_LABEL map in components/RoleBadge.tsx.
-const INVITABLE_ROLES = ['admin', 'fleet', 'safety', 'dispatcher', 'driver'] as const;
+// Role choices for the create-invite form — the shared assignable-role
+// list (owner excluded; the server rank-check forbids inviting peers /
+// superiors anyway).  Sourced from RoleBadge so new personas appear here
+// automatically.  Labels come from the canonical ROLE_LABEL map.
+const INVITABLE_ROLES = ASSIGNABLE_ROLES;
 
 // Default extension delta.  Surfaced as a single constant so the
 // request body, optimistic timestamp, toast text, and button tooltip
@@ -101,6 +103,7 @@ function StatusBadge({ invite }: { invite: InviteInfo }) {
  */
 export function InvitesPanel() {
   const { t } = useTranslation();
+  const tz = useTimezone();
   const [invites, setInvites] = useState<InviteInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -726,7 +729,7 @@ export function InvitesPanel() {
     {
       key: 'expires_at',
       label: 'Expires',
-      render: (v) => v ? new Date(v as string).toLocaleString() : '—',
+      render: (v) => v ? formatDate(v as string, { timeZone: tz }) : '—',
     },
     {
       key: '_status',

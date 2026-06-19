@@ -55,7 +55,8 @@ class TestSelfServeRegister:
         acct = await db.get_account(body["account_id"])
         assert acct is not None
 
-    async def test_auto_trial_comp_granted(self, api_app):
+    async def test_auto_trial_starts_real_pro_trial(self, api_app):
+        """Self-serve signup starts a REAL Pro trial (tier+status), not a comp."""
         app, db = api_app
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
@@ -71,11 +72,50 @@ class TestSelfServeRegister:
         assert body["trial"]["days"] == 14
         assert body["trial"]["expires_at"]
 
-        # Subscription row should reflect the comp grant.
+        # Subscription reflects a Pro trial — tier=pro, status=trialing,
+        # trial_ends_at set, full Pro vehicle allowance. NOT a comp.
         sub = await db.get_subscription(body["account_id"])
         assert sub is not None
-        assert sub.get("is_comped")
-        assert sub.get("comp_reason") == "14-day auto trial"
+        assert sub["tier"] == "pro"
+        assert sub["status"] == "trialing"
+        assert sub.get("trial_ends_at")
+        assert sub.get("base_vehicles") == 10  # pro features delivered
+        assert not sub.get("is_comped")  # trial is its own mechanism
+
+        # accounts.tier (what the operator list renders) is pro too.
+        acct = await db.get_account(body["account_id"])
+        assert acct.tier == "pro"
+
+    async def test_trial_expiry_downgrades_to_free(self, pg_db):
+        """When the window elapses, the trial drops back to free/active."""
+        acct = await pg_db.create_account("Expiring Trial Co")
+        await pg_db.start_trial(acct.id, tier="pro", days=14)
+        # Backdate the end so the sweep treats it as elapsed.
+        from datetime import datetime, timezone, timedelta
+        past = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        await pg_db.update_subscription(acct.id, trial_ends_at=past)
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        downgraded = await pg_db.expire_due_trials(before_iso=now_iso)
+        assert acct.id in [r["account_id"] for r in downgraded]
+
+        sub = await pg_db.get_subscription(acct.id)
+        assert sub["tier"] == "free"
+        assert sub["status"] == "active"
+        assert sub.get("trial_ends_at") is None
+        a = await pg_db.get_account(acct.id)
+        assert a.tier == "free"
+
+    async def test_trial_not_yet_expired_stays(self, pg_db):
+        """A trial still in its window is NOT swept."""
+        acct = await pg_db.create_account("Active Trial Co")
+        await pg_db.start_trial(acct.id, tier="pro", days=14)
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        downgraded = await pg_db.expire_due_trials(before_iso=now_iso)
+        assert acct.id not in [r["account_id"] for r in downgraded]
+        sub = await pg_db.get_subscription(acct.id)
+        assert sub["status"] == "trialing"
 
     async def test_rejects_duplicate_email(self, api_app):
         app, _ = api_app

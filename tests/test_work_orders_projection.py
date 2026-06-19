@@ -262,3 +262,86 @@ async def test_project_resolves_via_passed_lookup_without_roster_sync(db):
     assert got["6001"]["vehicle_type"] == "truck"
     assert got["6002"]["vehicle_name"] == "TR200"
     assert got["6002"]["vehicle_type"] == "trailer"
+
+
+# ── Company matching by MC / DOT ───────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_company_mc_dot_round_trip(db):
+    aid = (await db.create_account("MC Co")).id  # companies FK → accounts
+    c = await db.add_company(
+        aid, code="CFT", display_name="Cargo Freight Trucking Inc",
+        mc_number="100100", usdot_number="2002002",
+    )
+    assert c.mc_number == "100100"
+    got = (await db.get_account_companies(aid, active_only=False))[0]
+    assert got.mc_number == "100100"
+    assert got.usdot_number == "2002002"
+    # update one of them
+    await db.update_company(c.id, account_id=aid, mc_number="9999999")
+    again = await db.get_company_by_code(aid, "CFT")
+    assert again.mc_number == "9999999"
+
+
+@pytest.mark.asyncio
+async def test_project_matches_company_by_mc_number(db):
+    # The account owns the MC → a synced WO carrying that MC tags the company.
+    aid = (await db.create_account("MC Co")).id
+    await db.add_company(
+        aid, code="CFT", display_name="Cargo Freight Trucking Inc",
+        mc_number="100100", usdot_number="2002002",
+    )
+    rows = [{
+        "external_id": "7001", "mc_number": "100100", "vehicle_unit": "204",
+        "vendor_name": "V", "total_cost": 10.0, "line_items": [],
+    }]
+    await db.project_external_work_orders(aid, rows, source="datatruck")
+    wo = (await db.list_work_orders(aid))[0]
+    assert wo["company_code"] == "CFT"
+
+    # The preview surfaces the resolved company NAME (not just the number).
+    diff = await db.plan_external_work_orders(aid, rows)
+    assert diff["update"][0]["company"] == "Cargo Freight Trucking Inc"
+
+
+@pytest.mark.asyncio
+async def test_project_unmatched_mc_leaves_company_blank(db):
+    rows = [{
+        "external_id": "7002", "mc_number": "0000000", "vehicle_unit": "X",
+        "vendor_name": "V", "total_cost": 5.0, "line_items": [],
+    }]
+    await db.project_external_work_orders(42, rows, source="datatruck")
+    wo = (await db.list_work_orders(42))[0]
+    assert wo["company_code"] == ""   # no company owns that MC
+
+
+@pytest.mark.asyncio
+async def test_plan_detects_company_newly_matched(db):
+    # A WO synced before any company owned its MC has a blank company.
+    aid = (await db.create_account("Co")).id
+    rows = [{
+        "external_id": "8001", "mc_number": "555", "vehicle_unit": "T1",
+        "vendor_name": "V", "total_cost": 10.0, "line_items": [],
+    }]
+    await db.project_external_work_orders(aid, rows, source="datatruck")
+    assert (await db.list_work_orders(aid))[0]["company_code"] == ""
+
+    # Operator adds the company that owns MC 555 → the preview must now
+    # surface a Company change (so it isn't hidden as "no changes").
+    await db.add_company(aid, code="ACME", display_name="Acme Trucking Inc",
+                         mc_number="555")
+    diff = await db.plan_external_work_orders(aid, rows)
+    changed = {c["field"]: (c["from"], c["to"]) for c in diff["update"][0]["changes"]}
+    assert changed["Company"] == ("", "Acme Trucking Inc")
+    assert diff["counts"]["changed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_project_stores_assigned_to(db):
+    rows = [{
+        "external_id": "9100", "assigned_to": "Pat Driver", "vehicle_unit": "T1",
+        "vendor_name": "V", "total_cost": 5.0, "line_items": [],
+    }]
+    await db.project_external_work_orders(42, rows, source="datatruck")
+    assert (await db.list_work_orders(42))[0]["assigned_to"] == "Pat Driver"

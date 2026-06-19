@@ -141,6 +141,14 @@ class FeatureSet:
     # lets a driver complete + submit their own assigned vehicle.
     can_inspections_all: bool = False
     can_inspections_vehicle: bool = False
+    # Recruiting — driver-application intake.  ``can_recruit_applicants``
+    # gates the Applications dashboard + recruiting-link management;
+    # ``can_convert_to_driver`` is the narrower right to turn an approved
+    # applicant into a driver/invite WITHOUT the broad ``can_invite``
+    # (so a recruiter can hire without being granted full user-invite
+    # power).  The public applicant form needs neither — it's unauthed.
+    can_recruit_applicants: bool = False
+    can_convert_to_driver: bool = False
 
 
 # ─── Role → Permission Map ───────────────────────────────────────
@@ -175,6 +183,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_coaching_admin=True, can_coaching_view_own=True,
         can_manage_driver_docs=True, can_driver_docs_own=True,
         can_inspections_all=True, can_inspections_vehicle=True,
+        can_recruit_applicants=True, can_convert_to_driver=True,
     ),
     Role.ADMIN: FeatureSet(
         can_faults=True, can_fuel=True, can_cameras=True,
@@ -204,6 +213,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_coaching_admin=True, can_coaching_view_own=True,
         can_manage_driver_docs=True, can_driver_docs_own=True,
         can_inspections_all=True, can_inspections_vehicle=True,
+        can_recruit_applicants=True, can_convert_to_driver=True,
     ),
     Role.FLEET: FeatureSet(
         can_faults=True, can_fuel=True, can_cameras=True,
@@ -354,6 +364,45 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # never see other drivers' records.
         can_manage_driver_docs=False, can_driver_docs_own=True,
         can_inspections_all=False, can_inspections_vehicle=True,
+    ),
+    # RECRUITER — driver acquisition / onboarding.  Operationally a
+    # driver-equivalent baseline (no fleet ops / costs / admin) PLUS the
+    # two recruiting rights granted by default so the role is USABLE out of
+    # the box: can_recruit_applicants (the applications surface) and
+    # can_convert_to_driver (hire → driver invite).  Owners can still
+    # tighten or widen any flag per account from the Permissions matrix
+    # (e.g. revoke can_convert_to_driver for a screening-only recruiter).
+    # Hierarchy rank is 2 (not 1 like driver) so a matrix-granted
+    # can_invite actually lets the recruiter invite drivers.
+    Role.RECRUITER: FeatureSet(
+        can_faults=False, can_fuel=False,
+        can_efficiency=False, can_health=False,
+        can_vehicle_all=False, can_vehicle_vehicle=True,
+        can_alerts_all=False, can_alerts_vehicle=True,
+        can_invite=False, can_manage_users=False,
+        can_manage_companies=False, can_manage_account=False,
+        can_rolling_stopped=False,
+        can_geofence_all=False, can_geofence_vehicle=True,
+        can_digest=True,
+        can_maintenance_all=False, can_maintenance_vehicle=True,
+        can_work_orders_all=False, can_work_orders_vehicle=True,
+        can_parking_all=False, can_parking_vehicle=True,
+        can_scorecard_all=False, can_scorecard_vehicle=True,
+        can_location_map=False, can_location_vehicle=True,
+        can_fuel_cost=False,
+        can_route_all=False, can_route_vehicle=True,
+        can_cost_per_mile=False,
+        can_events_all=False, can_events_vehicle=True,
+        can_risk_report_all=False, can_risk_report_own=True,
+        can_payroll_admin=False, can_payroll_view_own=True,
+        can_coaching_admin=False, can_coaching_view_own=True,
+        can_manage_driver_docs=False, can_driver_docs_own=True,
+        can_inspections_all=False, can_inspections_vehicle=True,
+        # Recruiting IS the recruiter's defining function — granted by
+        # default so the role is usable out of the box.  Owners can
+        # narrow to screening-only by revoking can_convert_to_driver in
+        # the Permissions matrix.
+        can_recruit_applicants=True, can_convert_to_driver=True,
     ),
 }
 
@@ -639,6 +688,9 @@ ROLE_DISPLAY: dict[Role, str] = {
     Role.FLEET:      "🔧 Fleet",
     Role.SAFETY:      "🛡️ Safety",
     Role.DISPATCHER:  "📡 Dispatcher",
+    Role.HR:          "👥 HR",
+    Role.ACCOUNTING:  "💰 Accounting",
+    Role.RECRUITER:   "🤝 Recruiter",
     Role.DRIVER:      "🚛 Driver",
 }
 
@@ -648,6 +700,9 @@ ROLE_EMOJI: dict[Role, str] = {
     Role.FLEET:      "🔧",
     Role.SAFETY:      "🛡️",
     Role.DISPATCHER:  "📡",
+    Role.HR:          "👥",
+    Role.ACCOUNTING:  "💰",
+    Role.RECRUITER:   "🤝",
     Role.DRIVER:      "🚛",
 }
 
@@ -768,6 +823,26 @@ def build_role_guidance(role_str: str) -> str:
             "scorecards, compliance, live locations, routes, geofences, and alerts. "
             "This role has full operational visibility but cannot manage users or account settings."
         )
+    elif role == Role.HR:
+        lines.append(
+            "Focus on people: driver onboarding, qualification files, "
+            "trainings, working hours, payroll context. Avoid vehicle "
+            "telematics detail unless it relates to a driver's record."
+        )
+    elif role == Role.ACCOUNTING:
+        lines.append(
+            "Focus on money: costs, fuel spend, cost-per-mile, billing, "
+            "invoices, payroll figures. Avoid live operational telematics "
+            "unless it drives a cost number."
+        )
+    elif role == Role.RECRUITER:
+        lines.append(
+            "Focus on driver acquisition and onboarding: applicant "
+            "pipeline, driver qualification files (CDL, medical card, "
+            "DQF / 49 CFR Part 391), and inviting new drivers. Avoid "
+            "operational telematics, costs, and safety scoring unless it "
+            "relates to a candidate's qualification."
+        )
 
     return "\n".join(lines)
 
@@ -814,8 +889,26 @@ def can_access_company_submenu(role: Role) -> bool:
 
 ROLE_HIERARCHY: dict[str, int] = {
     "owner": 5, "admin": 4, "fleet": 3, "safety": 3,
-    "dispatcher": 2, "driver": 1,
+    # hr + accounting are department roles, peers of dispatcher: owner/
+    # admin can invite them; they can invite a driver (HR onboards
+    # drivers) but not each other or anyone higher.  Without these
+    # entries role_rank() fell back to 0, locking them out of inviting
+    # ANYONE (even a driver).
+    "dispatcher": 2, "hr": 2, "accounting": 2, "recruiter": 2, "driver": 1,
 }
+
+
+# ─── Role-string regex patterns for Pydantic ``Field(pattern=...)`` ──────
+#
+# Derived from the Role enum so a new role can NEVER desync a
+# hand-maintained alternation — the exact bug where adding hr/accounting/
+# recruiter left the change-role + invite endpoints rejecting them with a
+# 422.  ALL = every role; ASSIGNABLE = every role except owner (ownership
+# transfers via its own flow; owner is never invited or assigned here).
+ALL_ROLES_PATTERN: str = r"^(" + "|".join(r.value for r in Role) + r")$"
+ASSIGNABLE_ROLES_PATTERN: str = (
+    r"^(" + "|".join(r.value for r in Role if r is not Role.OWNER) + r")$"
+)
 
 
 def role_rank(role: Role | str) -> int:
@@ -920,7 +1013,8 @@ TOOL_PERMISSIONS: dict[str, list[str] | None] = {
     "get_drivers_list":         ["can_vehicle_all"],                           # all except driver
     "search_vehicles":          ["can_vehicle_all"],                           # all except driver
     "search_knowledge_base":    None,                                        # all roles
-    "get_parked_vehicles":        ["can_vehicle_all"],                           # owner/admin/dispatcher/fleet/safety — not driver (fleet-wide)
+    "get_parked_vehicles":        ["can_vehicle_all"],                           # owner/admin/dispatcher/fleet/safety — not driver (account-wide)
+    "get_undriven_vehicles":      ["can_vehicle_all"],                           # owner/admin/dispatcher/fleet/safety — not driver (account-wide)
     "get_driver_hos_status":    ["can_vehicle_all"],                           # owner/admin/dispatcher/fleet/safety — HR concern, not driver-facing
     "get_alert_history":        ["can_alerts_all", "can_alerts_vehicle"],         # owner/admin/fleet/safety/driver(own)
     "get_recent_work_orders":   ["can_maintenance_all", "can_maintenance_vehicle"],  # owner/admin/fleet/safety/driver(own)
@@ -936,7 +1030,7 @@ ACCOUNT_WIDE_TOOLS: frozenset[str] = frozenset({
     "get_events_summary", "get_maintenance_summary",
     "get_fuel_cost_summary", "get_rolling_stopped",
     "get_drivers_list", "search_vehicles",
-    "get_parked_vehicles", "get_driver_hos_status",
+    "get_parked_vehicles", "get_undriven_vehicles", "get_driver_hos_status",
     "get_alert_history",
 })
 
@@ -948,6 +1042,7 @@ ACCOUNT_WIDE_TOOLS: frozenset[str] = frozenset({
 # for scoped users — so coverage grows safely, one tool at a time.
 SCOPE_AWARE_TOOLS: frozenset[str] = frozenset({
     "get_parked_vehicles",
+    "get_undriven_vehicles",
     "get_rolling_stopped",
     "search_vehicles",
     "get_alert_history",

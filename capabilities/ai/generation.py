@@ -12,6 +12,8 @@ from capabilities.ai.registry import (
     _anthropic_url,
     _mistral_url,
     _get_credentials,
+    DEFAULT_TEMPERATURE,
+    model_temperature,
 )
 from capabilities.ai.cache import _cache_key, _cache_get, _cache_put, _snapshot_hash
 from capabilities.ai.chat import _chat_histories, _store_history
@@ -141,19 +143,22 @@ Rules:
   no tool plausibly covers either interpretation.
 - NEVER claim "I only have real-time data" or "I don't have historical \
   data" without first checking your tool list.  You have HISTORICAL \
-  tools for: idle / stopped / parked vehicles (get_parked_vehicles), \
-  alert history (get_alert_history), past shop visits \
-  (get_recent_work_orders), past inspections (get_recent_inspections), \
-  vehicle history (get_vehicle_history), driver hours-of-service \
-  (get_driver_hos_status).  When the user asks "what truck was \
-  stopped 3 days" / "which vehicles haven't moved" / "trucks not \
-  driving for N days" → call get_parked_vehicles with min_days=N.
+  tools for: vehicles not driven / not moved for N days \
+  (get_undriven_vehicles), vehicles parked at unsafe locations \
+  (get_parked_vehicles), alert history (get_alert_history), past shop \
+  visits (get_recent_work_orders), past inspections \
+  (get_recent_inspections), vehicle history (get_vehicle_history), \
+  driver hours-of-service (get_driver_hos_status).  When the user asks \
+  "what truck was stopped 3 days" / "which vehicles haven't moved" / \
+  "trucks not driving for N days" → call get_undriven_vehicles with \
+  min_days=N.  Use get_parked_vehicles only when they specifically ask \
+  about vehicles parked at unsafe / unknown locations.
 - FOLLOW-UP MESSAGES PRESERVE CONTEXT.  When the user's previous \
   message was about topic X and you asked a clarifying question, \
   their short reply is a PARAMETER for topic X — NOT a new question. \
   Example: user asks "what vehicle was stopped 3 days without \
   driving?" → you ask "how many days?" → user replies "3 days" → \
-  call get_parked_vehicles(min_days=3), NOT get_efficiency_summary \
+  call get_undriven_vehicles(min_days=3), NOT get_efficiency_summary \
   just because it also has a ``days`` parameter.  Re-read the prior \
   turn before picking a tool when the latest message is short.
 - If a tool returns an "error" field, you MUST report the error to the \
@@ -238,7 +243,7 @@ Rules:
 
 async def _generate_openai_compat(
     model_id: str, location: str, system: str, prompt: str,
-    max_tokens: int = 4096,
+    max_tokens: int = 4096, temperature: float = DEFAULT_TEMPERATURE,
 ) -> tuple[str, dict | None]:
     """Generate via the Vertex AI OpenAI-compatible endpoint."""
     import asyncio
@@ -260,7 +265,7 @@ async def _generate_openai_compat(
             {"role": "user", "content": prompt},
         ],
         "max_tokens": max_tokens,
-        "temperature": 0.3,
+        "temperature": temperature,
         "top_p": 0.8,
     }
 
@@ -302,7 +307,7 @@ async def _generate_openai_compat(
 
 async def _generate_anthropic(
     model_id: str, location: str, system: str, prompt: str,
-    max_tokens: int = 4096,
+    max_tokens: int = 4096, temperature: float = DEFAULT_TEMPERATURE,
 ) -> tuple[str, dict | None]:
     """Generate via Anthropic rawPredict on Vertex AI."""
     import asyncio
@@ -322,7 +327,7 @@ async def _generate_anthropic(
         "system": system,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_tokens,
-        "temperature": 0.3,
+        "temperature": temperature,
         "top_p": 0.8,
     }
 
@@ -360,6 +365,7 @@ async def _generate_anthropic(
 async def _generate_mistral_raw(
     model_id: str, publisher: str, location: str,
     system: str, prompt: str, max_tokens: int = 4096,
+    temperature: float = DEFAULT_TEMPERATURE,
 ) -> tuple[str, dict | None]:
     """Generate via Mistral rawPredict on Vertex AI."""
     import asyncio
@@ -381,7 +387,7 @@ async def _generate_mistral_raw(
             {"role": "user", "content": prompt},
         ],
         "max_tokens": max_tokens,
-        "temperature": 0.3,
+        "temperature": temperature,
         "top_p": 0.8,
     }
 
@@ -471,21 +477,22 @@ async def _generate_with_model(
             loc = location or info["locations"][0]
             max_tokens = min(info.get("max_output_tokens", 4096), 8192)
 
+            _temp = model_temperature(info)
             if api_type == "anthropic":
                 text, usage = await _generate_anthropic(
                     info["anthropic_model_id"], loc,
-                    system, user_content, max_tokens,
+                    system, user_content, max_tokens, _temp,
                 )
             elif api_type == "mistral_raw":
                 text, usage = await _generate_mistral_raw(
                     info["mistral_model_id"],
                     info.get("mistral_publisher", "mistralai"),
-                    loc, system, user_content, max_tokens,
+                    loc, system, user_content, max_tokens, _temp,
                 )
             else:
                 text, usage = await _generate_openai_compat(
                     info["maas_model_id"], loc,
-                    system, user_content, max_tokens,
+                    system, user_content, max_tokens, _temp,
                 )
         else:
             loc = location or info["locations"][0]
@@ -649,21 +656,22 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
         for attempt in range(max_retries + 1):
             started = _t.monotonic()
             try:
+                _temp = model_temperature(info)
                 if api_type == "anthropic":
                     text, usage = await _generate_anthropic(
                         info["anthropic_model_id"], location,
-                        system, user_content, max_tokens,
+                        system, user_content, max_tokens, _temp,
                     )
                 elif api_type == "mistral_raw":
                     text, usage = await _generate_mistral_raw(
                         info["mistral_model_id"],
                         info.get("mistral_publisher", "mistralai"),
-                        location, system, user_content, max_tokens,
+                        location, system, user_content, max_tokens, _temp,
                     )
                 else:
                     text, usage = await _generate_openai_compat(
                         info["maas_model_id"], location,
-                        system, user_content, max_tokens,
+                        system, user_content, max_tokens, _temp,
                     )
                 latency_ms = int((_t.monotonic() - started) * 1000)
                 await record_call_attempt(

@@ -37,6 +37,9 @@ const ROLE_LABELS: Record<string, string> = {
   fleet: 'Fleet',
   safety: 'Safety',
   dispatcher: 'Dispatcher',
+  hr: 'HR',
+  accounting: 'Accounting',
+  recruiter: 'Recruiter',
   driver: 'Driver',
 };
 

@@ -30,15 +30,21 @@ router = APIRouter(prefix="/admin", tags=["settings"])
 
 class CompanyCreate(BaseModel):
     code: str = Field(..., min_length=1, max_length=20)
-    samsara_api_key: str = Field(..., min_length=1)
+    # Samsara keys are managed on the Integration card now, so the key is
+    # optional here — a company can be created with just code + MC/DOT.
+    samsara_api_key: str = ""
     display_name: str = ""
     active_days: int = Field(30, ge=1, le=365)
+    mc_number: str = Field("", max_length=40)
+    usdot_number: str = Field("", max_length=40)
 
 
 class CompanyUpdate(BaseModel):
     display_name: Optional[str] = None
     samsara_api_key: Optional[str] = None
     active_days: Optional[int] = Field(None, ge=1, le=365)
+    mc_number: Optional[str] = Field(None, max_length=40)
+    usdot_number: Optional[str] = Field(None, max_length=40)
 
 
 @router.get("/companies")
@@ -58,6 +64,8 @@ async def list_companies(
                 "is_active": c.is_active,
                 "created_at": c.created_at,
                 "has_api_key": bool(c.samsara_api_key),
+                "mc_number": c.mc_number,
+                "usdot_number": c.usdot_number,
             }
             for c in companies
         ],
@@ -85,6 +93,8 @@ async def add_company(
         samsara_api_key=body.samsara_api_key,
         display_name=body.display_name or body.code,
         active_days=body.active_days,
+        mc_number=body.mc_number,
+        usdot_number=body.usdot_number,
     )
     # Drop the cached MultiCompanyClient so the new company is visible
     # to the next telematics call.  Without this, an owner who connected

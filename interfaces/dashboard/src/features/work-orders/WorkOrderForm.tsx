@@ -1,19 +1,22 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   FileText, Save, ArrowLeft, Trash2, Plus, Paperclip,
-  Receipt, X, Link as LinkIcon, Image as ImageIcon,
+  Receipt, X, Link as LinkIcon, Image as ImageIcon, Loader2,
 } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { PageHeader, ErrorState } from '../../components/shell';
 import { toneClasses } from '../../lib/status';
 import type {
   WorkOrder, WorkOrderDetail, WorkOrderPart, WorkOrderAttachment,
-  MaintenanceTask,
+  MaintenanceTask, CompanyInfo,
 } from '../../types';
+import { VehiclePicker, type VehicleSummary } from '../maintenance/pickers';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDay, todayInTimeZone } from '../../utils/datetime';
 
 // ── Empty-state factories ────────────────────────────────────────
 //
@@ -40,7 +43,34 @@ const blankWorkOrder = (): Partial<WorkOrder> => ({
   payment_status: 'unpaid',
   status: 'draft',
   notes: '',
+  assigned_to: '',
 });
+
+// Display an integer with thousands separators (e.g. 496483 → "496,483").
+// Empty when the value is null/undefined so the placeholder shows.
+const fmtInt = (n: number | null | undefined): string =>
+  n == null ? '' : n.toLocaleString('en-US');
+
+// Parse a possibly-formatted integer string back to a number — strips
+// commas/spaces and any stray non-digits.  Empty → null.
+const parseInt0 = (s: string): number | null => {
+  const digits = s.replace(/[^0-9]/g, '');
+  return digits ? Number(digits) : null;
+};
+
+// Format a YYYY-MM-DD (or ISO timestamp) as a numeric date in the
+// ACCOUNT's timezone (the single source of truth), routed through the
+// shared formatter.  A bare calendar date is anchored at noon UTC so a
+// tz conversion can never roll it to an adjacent day; a full timestamp
+// passes through and renders on its account-local day.
+const fmtDay = (s: string, tz?: string): string => {
+  if (!s) return s;
+  const v = s.length === 10 ? `${s}T12:00:00Z` : s;
+  return formatDay(v, {
+    timeZone: tz,
+    intl: { year: 'numeric', month: 'numeric', day: 'numeric' },
+  });
+};
 
 // ── Parts editor row state ──────────────────────────────────────
 //
@@ -76,6 +106,10 @@ export default function WorkOrderForm() {
   const { id: idParam } = useParams<{ id?: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  // Account-effective timezone is the single source of truth for every
+  // date the form reads or renders (what "today" is, how an as-of day
+  // is shown) — never the browser locale or UTC.
+  const tz = useTimezone();
   const isEdit = Boolean(idParam && idParam !== 'new');
   const workOrderId = isEdit ? Number(idParam) : null;
 
@@ -94,6 +128,184 @@ export default function WorkOrderForm() {
     queryFn: () => apiJSON<WorkOrderDetail>(`/work-orders/${workOrderId}`),
     enabled: isEdit,
   });
+
+  // Company roster for the picker — the WO stores a company_code; the
+  // form shows the full names and lets the operator set/change it.
+  const { data: companiesData } = useQuery<{ companies: CompanyInfo[] }>({
+    queryKey: ['admin-companies'],
+    queryFn: () => apiJSON<{ companies: CompanyInfo[] }>('/admin/companies'),
+    staleTime: 5 * 60_000,
+  });
+  const companies = companiesData?.companies ?? [];
+
+  // Account fleet for the Vehicle picker (registry-backed, already
+  // permission/company-scoped server-side).  Same paged shape +
+  // VehicleSummary the Maintenance picker uses, so picking a vehicle can
+  // auto-fill type / company / odometer / hours.
+  const { data: fleetData, isLoading: fleetLoading } = useQuery({
+    queryKey: ['fleet-vehicles'],
+    queryFn: async () => {
+      const all: VehicleSummary[] = [];
+      let page = 1;
+      while (true) {
+        const res = await apiJSON<{ vehicles: VehicleSummary[]; total_pages: number }>(
+          `/vehicles?page_size=200&page=${page}`,
+        );
+        all.push(...(res.vehicles ?? []));
+        if (page >= (res.total_pages ?? 1)) break;
+        page++;
+      }
+      return { vehicles: all };
+    },
+    staleTime: 60_000,
+  });
+  const fleetVehicles = fleetData?.vehicles ?? [];
+
+  // Small note under the odometer explaining where the reading came from.
+  const [asOfNote, setAsOfNote] = useState('');
+  // True while the as-of reading is being fetched — drives a "checking…"
+  // hint so the field doesn't look frozen during the round trip.
+  const [asOfLoading, setAsOfLoading] = useState(false);
+  // The picked vehicle's CURRENT reading — so a date with NO history can
+  // fall back to it instead of getting stuck on a previous date's value.
+  const [pickedCurrent, setPickedCurrent] =
+    useState<{ odometer: number | null; hours: number | null } | null>(null);
+  // Monotonic request id — newest as-of fetch wins (see fetchAsOf).
+  const asOfSeq = useRef(0);
+
+  // "Today" in the ACCOUNT's timezone — UTC here would flip the date a
+  // day early/late near midnight and wrongly decide whether a service
+  // date is "past".  Shared helper so every site agrees on "today".
+  const todayStr = () => todayInTimeZone(tz);
+
+  // Pull the odometer/engine-hours AS OF a date and apply them — so a
+  // back-dated WO shows the mileage the truck had then, not today's.
+  // ``current`` is the vehicle's present reading; when the date has no
+  // history we reset to it (never leave a stale other-date value).
+  const fetchAsOf = async (
+    name: string, date: string,
+    current: { odometer: number | null; hours: number | null } | null,
+  ) => {
+    if (!name.trim() || !date) return;
+    // Stale-guard: rapid date changes fire overlapping requests; only the
+    // newest one may apply its result (else a slow earlier reply clobbers
+    // the value the user actually picked).
+    const seq = ++asOfSeq.current;
+    const isStale = () => seq !== asOfSeq.current;
+    setAsOfLoading(true);
+    setAsOfNote('Checking reading for that date…');
+    try {
+      const r = await apiJSON<{
+        odometer_miles: number | null;
+        engine_hours: number | null;
+        as_of: string | null;
+        telematics_linked?: boolean;
+        coverage_start?: string | null;
+        coverage_end?: string | null;
+      }>(`/vehicles/${encodeURIComponent(name)}/reading-as-of?date=${date}`);
+      if (isStale()) return;
+      if (r.odometer_miles != null || r.engine_hours != null) {
+        setWo(prev => ({
+          ...prev,
+          odometer_at_service: r.odometer_miles != null
+            ? Math.round(r.odometer_miles) : prev.odometer_at_service,
+          engine_hours_at_service: r.engine_hours != null
+            ? Math.round(r.engine_hours) : prev.engine_hours_at_service,
+        }));
+        // Clarify when the reading we found is OLDER than the service
+        // date: the truck hasn't reported since ``as_of``, so every
+        // service date after it resolves to the same reading.  Without
+        // this the note ("as of 6/8") looks stuck/wrong next to a 6/15
+        // service date.
+        if (!r.as_of) {
+          setAsOfNote('');
+        } else if (r.as_of.slice(0, 10) === date) {
+          setAsOfNote(`Odometer/hours as of ${fmtDay(r.as_of, tz)}`);
+        } else {
+          setAsOfNote(
+            `Last reading before ${fmtDay(date, tz)}: ${fmtDay(r.as_of, tz)} `
+            + '(no newer telematics yet)',
+          );
+        }
+        return;
+      }
+      // No snapshot for that date.  Reset to the vehicle's CURRENT reading
+      // (so the field reflects THIS vehicle, never a stale earlier date),
+      // and explain WHY no historical reading exists.
+      const hasCurrent = current && (current.odometer != null || current.hours != null);
+      if (hasCurrent) {
+        setWo(prev => ({
+          ...prev,
+          odometer_at_service: current!.odometer != null
+            ? Math.round(current!.odometer) : prev.odometer_at_service,
+          engine_hours_at_service: current!.hours != null
+            ? Math.round(current!.hours) : prev.engine_hours_at_service,
+        }));
+      }
+      const tail = hasCurrent ? " — showing the vehicle's current reading." : '.';
+      let why: string;
+      if (r.telematics_linked === false) {
+        why = 'No telematics history for this vehicle — enter the odometer manually';
+      } else if (r.coverage_start && date < r.coverage_start.slice(0, 10)) {
+        // The date predates the earliest reading we hold.
+        why = `Only tracked since ${fmtDay(r.coverage_start, tz)}`;
+      } else {
+        why = 'No reading stored for that date';
+      }
+      setAsOfNote(why + tail);
+    } catch {
+      if (!isStale()) setAsOfNote('');
+    } finally {
+      if (!isStale()) setAsOfLoading(false);
+    }
+  };
+
+  // Service date change → re-pull the reading as of the new date for the
+  // selected vehicle (back-dated WOs).
+  const onServiceDateChange = (date: string) => {
+    setField('service_date', date || null);
+    if (wo.vehicle_name && date) fetchAsOf(wo.vehicle_name, date, pickedCurrent);
+    else setAsOfNote('');
+  };
+
+  // Vehicle field change.  Two cases:
+  //  • free typing (v === null) → only update the name, touch nothing else.
+  //  • explicit PICK (v set) → REFRESH the vehicle-derived fields to that
+  //    vehicle (overwrite, since the vehicle changed — picking B must not
+  //    leave A's odometer/company stuck).  A vehicle that reports no
+  //    odometer/hours clears those so a previous vehicle's reading never
+  //    lingers.  Service date defaults to today only if still unset.
+  const onVehiclePick = (name: string, v: VehicleSummary | null) => {
+    setWo(prev => {
+      const next: Partial<WorkOrder> = { ...prev, vehicle_name: name };
+      if (v) {
+        next.vehicle_type = v.vehicle_type || '';
+        next.company_code = v.company || '';
+        next.odometer_at_service = v.odometer_miles != null
+          ? Math.round(v.odometer_miles) : null;
+        next.engine_hours_at_service = v.engine_hours != null
+          ? Math.round(v.engine_hours) : null;
+        if (!prev.service_date) next.service_date = todayStr();
+      }
+      return next;
+    });
+    if (!v) {
+      // Free-typed name — no vehicle to anchor a current reading to.
+      setPickedCurrent(null);
+      return;
+    }
+    // Remember the vehicle's CURRENT reading so a date with no history
+    // can fall back to it (and never get stuck on an earlier date).
+    const current = {
+      odometer: v.odometer_miles ?? null,
+      hours: v.engine_hours ?? null,
+    };
+    setPickedCurrent(current);
+    // For a back-dated WO, refine odometer/hours to that date's reading.
+    const d = wo.service_date || todayStr();
+    if (d < todayStr()) fetchAsOf(name, d, current);
+    else setAsOfNote('');
+  };
 
   useEffect(() => {
     if (!detail) return;
@@ -290,12 +502,15 @@ export default function WorkOrderForm() {
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Field label={t('work_orders_page.field_vehicle')} required>
-            <input
-              type="text"
+            {/* Registry-backed picker — search any vehicle in the account
+                (permission/company-scoped); selecting one auto-fills type,
+                company, odometer + hours below.  Still free-typeable for a
+                vehicle that isn't in the registry yet. */}
+            <VehiclePicker
               value={wo.vehicle_name || ''}
-              onChange={e => setField('vehicle_name', e.target.value)}
-              placeholder={t('work_orders_page.ph_vehicle')}
-              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
+              onChange={onVehiclePick}
+              vehicles={fleetVehicles}
+              loading={fleetLoading}
             />
           </Field>
           <Field label={t('work_orders_page.field_vehicle_type')}>
@@ -313,7 +528,7 @@ export default function WorkOrderForm() {
             <input
               type="date"
               value={(wo.service_date || '').slice(0, 10)}
-              onChange={e => setField('service_date', e.target.value || null)}
+              onChange={e => onServiceDateChange(e.target.value)}
               className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
             />
           </Field>
@@ -328,20 +543,52 @@ export default function WorkOrderForm() {
           </Field>
           <Field label={t('work_orders_page.field_odometer')}>
             <input
-              type="number" min="0" step="1"
-              value={wo.odometer_at_service ?? ''}
-              onChange={e => setField('odometer_at_service', e.target.value ? Number(e.target.value) : null)}
+              type="text" inputMode="numeric"
+              value={fmtInt(wo.odometer_at_service)}
+              onChange={e => setField('odometer_at_service', parseInt0(e.target.value))}
               placeholder={t('work_orders_page.ph_odometer')}
-              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
             />
+            {asOfNote && (
+              <p className="mt-1 flex items-center gap-1 text-2xs text-muted-foreground">
+                {asOfLoading && <Loader2 size={12} className="animate-spin" />}
+                {asOfNote}
+              </p>
+            )}
           </Field>
           <Field label={t('work_orders_page.field_engine_hours')}>
             <input
-              type="number" min="0" step="1"
-              value={wo.engine_hours_at_service ?? ''}
-              onChange={e => setField('engine_hours_at_service', e.target.value ? Number(e.target.value) : null)}
+              type="text" inputMode="numeric"
+              value={fmtInt(wo.engine_hours_at_service)}
+              onChange={e => setField('engine_hours_at_service', parseInt0(e.target.value))}
               placeholder={t('work_orders_page.ph_engine_hours')}
-              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
+            />
+          </Field>
+          {/* Company — full names from the account's roster; stored as the
+              compact code (shown on the list).  Synced WOs are matched by
+              MC number, but the operator can set/override it here. */}
+          <Field label="Company">
+            <select
+              value={wo.company_code || ''}
+              onChange={e => setField('company_code', e.target.value)}
+              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
+            >
+              <option value="">— none —</option>
+              {companies.map(c => (
+                <option key={c.code} value={c.code}>
+                  {c.display_name || c.code}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Assigned to">
+            <input
+              type="text"
+              value={wo.assigned_to || ''}
+              onChange={e => setField('assigned_to', e.target.value)}
+              placeholder="e.g. Pat Driver"
+              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
             />
           </Field>
         </div>
@@ -691,6 +938,7 @@ function AttachmentRow({
   onDelete: () => void;
 }) {
   const { t } = useTranslation();
+  const tz = useTimezone();
   const isImage = attachment.content_type?.startsWith('image/');
   const handleDownload = async () => {
     try {
@@ -726,7 +974,7 @@ function AttachmentRow({
           {(attachment.file_size / 1024).toFixed(1)} KB
           {attachment.uploaded_by_name && ` · ${t('work_orders_page.uploaded_by', { name: attachment.uploaded_by_name })}`}
           {' · '}
-          {new Date(attachment.uploaded_at).toLocaleDateString()}
+          {formatDay(attachment.uploaded_at, { timeZone: tz })}
         </p>
       </div>
       <button

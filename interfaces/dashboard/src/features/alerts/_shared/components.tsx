@@ -8,6 +8,7 @@
  */
 import { CheckCircle2 } from 'lucide-react';
 import { statusTone, toneText } from '../../../lib/status';
+import { formatDate } from '../../../utils/datetime';
 import type { Alert } from '../../../types';
 
 export function TypeBadge({ type }: { type: string }) {
@@ -53,11 +54,11 @@ export function SeverityDot({ severity }: { severity?: string }) {
  * a self-cleared alert has no actor and reads "Auto-resolved".  Active
  * alerts render nothing here.
  */
-export function AckMarker({ alert }: { alert: Alert }) {
+export function AckMarker({ alert, tz }: { alert: Alert; tz?: string }) {
   if ((alert.status ?? 'active') === 'active') return null;
   const human = (alert.acknowledged_by ?? 0) > 0;
   const when = alert.acknowledged_at
-    ? new Date(alert.acknowledged_at).toLocaleString()
+    ? formatDate(alert.acknowledged_at, { timeZone: tz })
     : '';
   if (human) {
     const who = alert.acknowledged_by_name || 'user';

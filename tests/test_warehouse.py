@@ -425,3 +425,177 @@ class TestIngestor:
 # Silence unused-import warning for the SimpleNamespace helper that some
 # extensions of this module may add later.
 _ = SimpleNamespace
+
+
+# ── Reading as-of-date (back-dated work orders) ───────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_reading_as_of(tenant):
+    """Odometer/engine-hours as of a date = the latest snapshot at-or-
+    before end of that date, resolved from the unit name."""
+    await tenant.upsert_vehicle_state(1, [
+        {"vehicle_id": "v1", "vehicle_name": "204", "company_code": "A"},
+    ])
+    await tenant.upsert_vehicle_state_snapshots(1, [
+        {"vehicle_id": "v1", "captured_at": "2026-06-01T12:00:00Z",
+         "odometer_mi": 1000, "engine_hours": 100},
+        {"vehicle_id": "v1", "captured_at": "2026-06-10T12:00:00Z",
+         "odometer_mi": 1500, "engine_hours": 150},
+        {"vehicle_id": "v1", "captured_at": "2026-06-17T12:00:00Z",
+         "odometer_mi": 2000, "engine_hours": 200},
+    ])
+
+    # On the service date itself → that day's reading (not the latest).
+    r = await tenant.get_reading_as_of(1, "204", "2026-06-10")
+    assert r is not None
+    assert round(r["odometer_miles"]) == 1500
+    assert round(r["engine_hours"]) == 150
+
+    # Between readings → the most recent at-or-before.
+    r2 = await tenant.get_reading_as_of(1, "204", "2026-06-05")
+    assert round(r2["odometer_miles"]) == 1000
+
+    # Name match is case-insensitive.
+    assert (await tenant.get_reading_as_of(1, "204", "2026-06-17"))["odometer_miles"] == 2000
+
+    # No snapshot before the date → None (caller keeps current).
+    assert await tenant.get_reading_as_of(1, "204", "2026-05-01") is None
+    # Unknown vehicle → None.
+    assert await tenant.get_reading_as_of(1, "ghost", "2026-06-10") is None
+
+
+@pytest.mark.asyncio
+async def test_get_snapshot_coverage(tenant):
+    """Coverage window powers the "why is there no reading" note: linked
+    vs not, and how far back our odometer history reaches."""
+    await tenant.upsert_vehicle_state(1, [
+        {"vehicle_id": "v1", "vehicle_name": "204", "company_code": "A"},
+        # Telematics-linked but no odometer snapshots yet.
+        {"vehicle_id": "v2", "vehicle_name": "trailer-7", "company_code": "A"},
+    ])
+    await tenant.upsert_vehicle_state_snapshots(1, [
+        {"vehicle_id": "v1", "captured_at": "2026-06-01T12:00:00Z",
+         "odometer_mi": 1000, "engine_hours": 100},
+        {"vehicle_id": "v1", "captured_at": "2026-06-17T12:00:00Z",
+         "odometer_mi": 2000, "engine_hours": 200},
+    ])
+
+    cov = await tenant.get_snapshot_coverage(1, "204")
+    assert cov["telematics_linked"] is True
+    assert cov["coverage_start"][:10] == "2026-06-01"
+    assert cov["coverage_end"][:10] == "2026-06-17"
+
+    # Linked, but no odometer snapshots → linked True, window empty.
+    cov2 = await tenant.get_snapshot_coverage(1, "trailer-7")
+    assert cov2["telematics_linked"] is True
+    assert cov2["coverage_start"] is None
+
+    # Not in vehicle_state at all → not linked.
+    cov3 = await tenant.get_snapshot_coverage(1, "ghost")
+    assert cov3["telematics_linked"] is False
+    assert cov3["coverage_start"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_reading_as_of_daily_eod_fallback(tenant):
+    """Tier-2: a date older than the 7-day snapshot window resolves from
+    the long-retention daily EOD reading; recent dates still prefer the
+    precise snapshot."""
+    await tenant.upsert_vehicle_state(1, [
+        {"vehicle_id": "v1", "vehicle_name": "204", "company_code": "A"},
+    ])
+    # A precise snapshot only for a recent day.
+    await tenant.upsert_vehicle_state_snapshots(1, [
+        {"vehicle_id": "v1", "captured_at": "2026-06-16T12:00:00Z",
+         "odometer_mi": 5000, "engine_hours": 500},
+    ])
+    # Daily EOD rows reaching months back (snapshots long pruned).
+    await tenant.upsert_vehicle_metrics_daily(1, [
+        {"vehicle_id": "v1", "day_utc": "2026-03-10",
+         "odometer_eod": 1200, "engine_hours_eod": 120},
+        {"vehicle_id": "v1", "day_utc": "2026-04-10",
+         "odometer_eod": 1800, "engine_hours_eod": 180},
+    ])
+
+    # Old date, no snapshot → daily EOD (latest at-or-before).
+    r = await tenant.get_reading_as_of(1, "204", "2026-04-15")
+    assert round(r["odometer_miles"]) == 1800
+    assert round(r["engine_hours"]) == 180
+    assert r["as_of"] == "2026-04-10"
+
+    # Even older → the earlier daily row.
+    r2 = await tenant.get_reading_as_of(1, "204", "2026-03-20")
+    assert round(r2["odometer_miles"]) == 1200
+
+    # Recent date with a snapshot → precise snapshot wins (tier 1).
+    r3 = await tenant.get_reading_as_of(1, "204", "2026-06-16")
+    assert round(r3["odometer_miles"]) == 5000
+    assert r3["as_of"] == "2026-06-16T12:00:00Z"
+
+    # Before any history at all → None (caller keeps current).
+    assert await tenant.get_reading_as_of(1, "204", "2026-01-01") is None
+
+
+@pytest.mark.asyncio
+async def test_get_snapshot_coverage_spans_daily(tenant):
+    """Coverage reach is the UNION of snapshot + daily EOD tiers, so the
+    "Only tracked since…" note reflects the real ~2-year window."""
+    await tenant.upsert_vehicle_state(1, [
+        {"vehicle_id": "v1", "vehicle_name": "204", "company_code": "A"},
+    ])
+    await tenant.upsert_vehicle_state_snapshots(1, [
+        {"vehicle_id": "v1", "captured_at": "2026-06-16T12:00:00Z",
+         "odometer_mi": 5000, "engine_hours": 500},
+    ])
+    await tenant.upsert_vehicle_metrics_daily(1, [
+        {"vehicle_id": "v1", "day_utc": "2025-09-01",
+         "odometer_eod": 100, "engine_hours_eod": 10},
+    ])
+    cov = await tenant.get_snapshot_coverage(1, "204")
+    # Start reaches back to the daily tier; end is the fresh snapshot.
+    assert cov["coverage_start"][:10] == "2025-09-01"
+    assert cov["coverage_end"][:10] == "2026-06-16"
+
+
+@pytest.mark.asyncio
+async def test_aggregate_day_window_captures_eod(tenant):
+    """The daily aggregator banks the end-of-day odometer/engine-hours
+    (MAX over the day, since both are monotonic) into the long-retention
+    daily table — the heart of forward-accruing odometer history."""
+    from datetime import datetime as _dt, timezone as _tz
+    await tenant.upsert_vehicle_state(1, [
+        {"vehicle_id": "v1", "vehicle_name": "204", "company_code": "A"},
+    ])
+    # Three rising readings within one hour of one day.
+    await tenant.upsert_vehicle_state_snapshots(1, [
+        {"vehicle_id": "v1", "captured_at": "2026-06-15T12:00:00",
+         "odometer_mi": 1000, "engine_hours": 100, "engine_state": "moving",
+         "speed_mph": 50},
+        {"vehicle_id": "v1", "captured_at": "2026-06-15T12:30:00",
+         "odometer_mi": 1500, "engine_hours": 150, "engine_state": "moving",
+         "speed_mph": 55},
+        {"vehicle_id": "v1", "captured_at": "2026-06-15T12:55:00",
+         "odometer_mi": 2000, "engine_hours": 200, "engine_state": "idle",
+         "speed_mph": 0},
+    ])
+    day = _dt(2026, 6, 15, 0, 0, tzinfo=_tz.utc)
+    # Hourly rollup first (daily rows derive from the hourly table)…
+    await ingestor._aggregate_hour_window(
+        tenant, 1, _dt(2026, 6, 15, 12, 0, tzinfo=_tz.utc),
+    )
+    # …then the daily rollup, which also reads snapshots for EOD.
+    await ingestor._aggregate_day_window(tenant, 1, day)
+
+    cur = await tenant._db.execute(
+        "SELECT odometer_eod, engine_hours_eod FROM vehicle_metrics_daily "
+        "WHERE account_id = ? AND vehicle_id = ? AND day_utc = ?",
+        (1, "v1", "2026-06-15"),
+    )
+    row = dict(await cur.fetchone())
+    assert round(row["odometer_eod"]) == 2000
+    assert round(row["engine_hours_eod"]) == 200
+
+    # As-of for that date now resolves the banked EOD reading.
+    r = await tenant.get_reading_as_of(1, "204", "2026-06-15")
+    assert round(r["odometer_miles"]) == 2000

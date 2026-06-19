@@ -108,13 +108,13 @@ class TestDriverDocumentBucketParity:
         # Two docs in the same bucket — both should be re-pathed.
         await pg_db.add_document(
             account_id=acct.id, user_id=u.id, doc_type="cdl",
-            bucket="PREMIER TRUCKING/drivers/user-1",
+            bucket="ACME TRUCKING/drivers/user-1",
             object_key="cdl_a.pdf",
             drive_file_id=None, file_name="cdl_a.pdf", file_size=100,
         )
         await pg_db.add_document(
             account_id=acct.id, user_id=u.id, doc_type="medical_card",
-            bucket="PREMIER TRUCKING/drivers/user-1",
+            bucket="ACME TRUCKING/drivers/user-1",
             object_key="med_a.pdf",
             drive_file_id=None, file_name="med_a.pdf", file_size=200,
         )
@@ -128,8 +128,8 @@ class TestDriverDocumentBucketParity:
 
         moved = await pg_db.move_user_documents_bucket(
             u.id,
-            "PREMIER TRUCKING/drivers/user-1",
-            "PREMIER TRUCKING/drivers/_archive/2026-05-15/user-1",
+            "ACME TRUCKING/drivers/user-1",
+            "ACME TRUCKING/drivers/_archive/2026-05-15/user-1",
         )
         assert moved == 2
 

@@ -81,6 +81,9 @@ export const LIVE_MAP_LAYOUTS: LayoutMap = {
   // overlays — HR doesn't action vehicle ops, just sees context.
   hr: ['fleet_status', 'safety_heatmap'],
 
+  // Recruiter — personnel persona; same context view as HR.
+  recruiter: ['fleet_status', 'safety_heatmap'],
+
   // Accounting — base vehicle layer + company color partition.
   // No operational overlays (incidents, faults, parking); accounting
   // reviews cost outcomes.  The company dots make "which billing

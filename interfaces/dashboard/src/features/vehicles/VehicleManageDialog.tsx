@@ -245,11 +245,11 @@ export default function VehicleManageDialog({
             </div>
             <div>
               <label className="block text-xs text-muted-foreground mb-1">VIN</label>
-              <Input value={draft.vin} onChange={set('vin')} placeholder="3AKJJHDR7VSXC469" />
+              <Input value={draft.vin} onChange={set('vin')} placeholder="1HGTEST0000000001" />
             </div>
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Plate</label>
-              <Input value={draft.plate_number} onChange={set('plate_number')} placeholder="PXF8448" />
+              <Input value={draft.plate_number} onChange={set('plate_number')} placeholder="ABC1234" />
             </div>
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Make</label>

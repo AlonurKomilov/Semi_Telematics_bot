@@ -27,6 +27,20 @@ function _toDate(value: string | number | Date | null | undefined): Date | null 
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/** Today's calendar date as ``YYYY-MM-DD`` in the given timezone.
+ *
+ *  The single correct way to ask "what day is it for this account?" —
+ *  ``new Date().toISOString().slice(0,10)`` answers in UTC, which flips
+ *  the date a day early/late near midnight.  ``en-CA`` formats as
+ *  ``YYYY-MM-DD``.  Omitting ``tz`` falls back to the browser locale. */
+export function todayInTimeZone(tz?: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
 /** Format a timestamp as "Sep 14, 2026, 03:42 PM" in the given tz. */
 export function formatDate(
   value: string | number | Date | null | undefined,
@@ -49,25 +63,40 @@ export function formatDate(
   }
 }
 
-/** Date-only variant — "Sep 14, 2026". */
+/** Date-only variant — "Sep 14, 2026".
+ *
+ *  ``hour``/``minute`` are set to ``undefined`` to override ``formatDate``'s
+ *  date+time defaults (Intl ignores undefined options) — otherwise this
+ *  would leak the time, e.g. "Sep 14, 2026, 11:42 AM". */
 export function formatDay(
   value: string | number | Date | null | undefined,
   opts: FormatDateOptions = {},
 ): string {
   return formatDate(value, {
     timeZone: opts.timeZone,
-    intl: { year: 'numeric', month: 'short', day: '2-digit', ...(opts.intl ?? {}) },
+    intl: {
+      year: 'numeric', month: 'short', day: '2-digit',
+      hour: undefined, minute: undefined,
+      ...(opts.intl ?? {}),
+    },
   });
 }
 
-/** Time-only variant — "03:42 PM". */
+/** Time-only variant — "03:42 PM".
+ *
+ *  ``year``/``month``/``day`` set to ``undefined`` so this doesn't inherit
+ *  ``formatDate``'s date defaults and leak the date. */
 export function formatTime(
   value: string | number | Date | null | undefined,
   opts: FormatDateOptions = {},
 ): string {
   return formatDate(value, {
     timeZone: opts.timeZone,
-    intl: { hour: '2-digit', minute: '2-digit', ...(opts.intl ?? {}) },
+    intl: {
+      year: undefined, month: undefined, day: undefined,
+      hour: '2-digit', minute: '2-digit',
+      ...(opts.intl ?? {}),
+    },
   });
 }
 

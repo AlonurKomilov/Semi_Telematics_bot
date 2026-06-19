@@ -19,6 +19,7 @@ class InvitesMixin:
         truck_num: Optional[str] = None,
         hours: int = 24,
         recipient_email: Optional[str] = None,
+        source_application_id: Optional[int] = None,
     ) -> Invite:
         """Generate a one-time invite code.
 
@@ -65,10 +66,12 @@ class InvitesMixin:
         cur = await self._db.execute(
             """INSERT INTO invites
                (code, account_id, role, truck_num,
-                created_by, expires_at, created_at, sent_to_email)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                created_by, expires_at, created_at, sent_to_email,
+                source_application_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (code, account_id, role.value, truck_num,
-             created_by, exp_str, now_str, stored_email),
+             created_by, exp_str, now_str, stored_email,
+             source_application_id),
         )
         await self._db.commit()
         return Invite(
@@ -535,6 +538,33 @@ class InvitesMixin:
                 raise RuntimeError(
                     f"Invite {invite.id} race lost (revoked or "
                     f"redeemed in parallel after snapshot)"
+                )
+
+            # Recruitment round-trip: if this invite was minted by hiring a
+            # driver applicant, the driver now exists — stamp the
+            # application's ``converted_to_user_id`` so the record links to
+            # the user it became.  Done inline (not via
+            # mark_application_converted, which commits) to stay atomic with
+            # the redemption.  Best-effort: a missing recruitment table or a
+            # since-deleted application must not fail a valid redemption.
+            try:
+                lcur = await self._db.execute(
+                    "SELECT source_application_id FROM invites WHERE id = ?",
+                    (invite.id,),
+                )
+                lrow = await lcur.fetchone()
+                src_app = dict(lrow).get("source_application_id") if lrow else None
+                if src_app:
+                    await self._db.execute(
+                        "UPDATE driver_applications "
+                        "SET converted_to_user_id = ? "
+                        "WHERE id = ? AND account_id = ?",
+                        (user.id, src_app, invite.account_id),
+                    )
+            except Exception:
+                logger.warning(
+                    "redeem_invite: recruitment linkage skipped for invite %s",
+                    invite.id, exc_info=True,
                 )
             return user
 

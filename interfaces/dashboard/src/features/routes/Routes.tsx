@@ -9,6 +9,8 @@ import { PageHeader } from '../../components/shell';
 import type { RouteReplayResponse, DispatchVehicle, DispatchVehiclesResponse, RoutePoint } from '../../types';
 import type L from 'leaflet';
 import { MAP_STATUS } from '../../config/mapColors';
+import { useTimezone } from '../../hooks/useTimezone';
+import { todayInTimeZone, formatTime } from '../../utils/datetime';
 
 function speedColor(mph: number): string {
   if (mph > 70) return MAP_STATUS.danger;  // over 70
@@ -17,12 +19,13 @@ function speedColor(mph: number): string {
   return MAP_STATUS.neutral;               // stopped/crawling
 }
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export default function Routes() {
   const { t } = useTranslation();
+  // Route replay defaults to "today" in the account's timezone, and the
+  // date picker caps at it — UTC would offer/allow tomorrow late in the
+  // day for western fleets.
+  const tz = useTimezone();
+  const today = () => todayInTimeZone(tz);
   const { mapRef, leafletMap, isReady } = useLeafletMap();
   const poiHook = usePoiLayers(leafletMap, isReady);
   const layerRef = useRef<L.LayerGroup | null>(null);
@@ -72,7 +75,7 @@ export default function Routes() {
     Leaf.circleMarker([first.lat, first.lng], {
       radius: 7, color: MAP_STATUS.ok, fillColor: MAP_STATUS.ok, fillOpacity: 1,
     })
-      .bindPopup(`<b>Start</b><br>${new Date(first.time).toLocaleTimeString()}`)
+      .bindPopup(`<b>Start</b><br>${formatTime(first.time, { timeZone: tz })}`)
       .addTo(layerRef.current);
 
     // End marker
@@ -80,7 +83,7 @@ export default function Routes() {
     Leaf.circleMarker([last.lat, last.lng], {
       radius: 7, color: MAP_STATUS.danger, fillColor: MAP_STATUS.danger, fillOpacity: 1,
     })
-      .bindPopup(`<b>End</b><br>${new Date(last.time).toLocaleTimeString()}`)
+      .bindPopup(`<b>End</b><br>${formatTime(last.time, { timeZone: tz })}`)
       .addTo(layerRef.current);
 
     // Fit bounds

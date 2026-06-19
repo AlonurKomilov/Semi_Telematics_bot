@@ -10,6 +10,8 @@ import {
   ErrorState,
   TableSkeleton,
 } from '../../components/shell';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate } from '../../utils/datetime';
 import type { CameraCheck, CameraChecksResponse, AnyColumn } from '../../types';
 
 // Camera health vocabulary → semantic tone.  Camera-check specific
@@ -31,7 +33,8 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{status}</span>;
 }
 
-const columns: AnyColumn[] = [
+function makeColumns(tz: string): AnyColumn[] {
+  return [
   { key: 'vehicle_name', label: 'Vehicle' },
   {
     key: 'camera_type',
@@ -65,12 +68,14 @@ const columns: AnyColumn[] = [
   {
     key: 'checked_at',
     label: 'Checked',
-    render: (v) => v ? new Date(v as string).toLocaleString() : '—',
+    render: (v) => v ? formatDate(v as string, { timeZone: tz }) : '—',
   },
-];
+  ];
+}
 
 export default function Cameras() {
   const { t } = useTranslation();
+  const tz = useTimezone();
   const [checks, setChecks] = useState<CameraCheck[]>([]);
   const [vehicleFilter, setVehicleFilter] = useState('');
   const [showHistory, setShowHistory] = useState(false);
@@ -194,7 +199,7 @@ export default function Cameras() {
         />
       ) : (
         <DataTable
-          columns={columns}
+          columns={makeColumns(tz)}
           data={checks as unknown as Record<string, unknown>[]}
           searchKey="vehicle_name"
           onRowClick={(row) => setDetail(row as unknown as CameraCheck)}
@@ -256,7 +261,7 @@ export default function Cameras() {
               </div>
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">Checked</dt>
-                <dd>{new Date(detail.checked_at).toLocaleString()}</dd>
+                <dd>{formatDate(detail.checked_at, { timeZone: tz })}</dd>
               </div>
               {detail.summary && (
                 <div className="pt-2 border-t border-border">

@@ -55,6 +55,9 @@ export const VEHICLE_LAYOUTS: LayoutMap = {
   // slot in between info and inspections.
   hr: ['header', 'info', 'inspections', 'location'],
 
+  // Recruiter — personnel persona; same vehicle view as HR.
+  recruiter: ['header', 'info', 'inspections', 'location'],
+
   // Accounting — utilisation + identity, no ops.  Usage trends carry
   // the cost-per-mile + work-order spend; Timeline kept for the
   // weekly drill-down.  Health / Faults / Inspections / Location all

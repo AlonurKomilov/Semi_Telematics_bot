@@ -75,5 +75,6 @@ export const ALERTS_LAYOUTS: LayoutMap = {
   // → expand the array below in place of ``[...UNIVERSAL]``.
   hr:         [...UNIVERSAL],
   accounting: [...UNIVERSAL],
+  recruiter:  [...UNIVERSAL],
   driver:     [...UNIVERSAL],
 };

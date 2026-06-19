@@ -15,15 +15,18 @@
 
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Database, Loader2, RefreshCw } from 'lucide-react';
-import { Button } from '../../components/ui/button';
-import { toneClasses } from '../../lib/status';
-import { getDatatruckSyncStatus, triggerDatatruckSync } from './api';
+import { useTimezone } from '../../hooks/useTimezone';
+import {
+  getDatatruckSyncStatus, triggerDatatruckSync,
+  startDatatruckPreview, getDatatruckPreview, applyDatatruckSync,
+} from './api';
 import type {
-  DatatruckResourceOverview,
   DatatruckSyncStatusResponse,
+  DatatruckPreviewStatus,
 } from './types';
 import { DATATRUCK_RESOURCE_LABELS, formatSyncTimestamp } from './labels';
+import FeedsTable, { type FeedRow } from './FeedsTable';
+import SyncPreviewModal from './SyncPreviewModal';
 
 type Feedback = { kind: 'success' | 'error' | 'info'; message: string } | null;
 
@@ -32,13 +35,31 @@ type Feedback = { kind: 'success' | 'error' | 'info'; message: string } | null;
 // doesn't apply to them — we send ``days`` only for these.
 const DATE_RANGED = new Set(['orders', 'work_orders']);
 
-export default function DatatruckSyncPanel() {
+// Resources that MERGE into a user-owned SSOT (vehicle registry,
+// work-orders module).  These go through the preview → accept flow so
+// nothing is written until the operator approves the diff.  Roster-only
+// (drivers) and the huge append-only orders feed sync directly.
+const PREVIEWABLE = new Set(['trucks', 'trailers', 'work_orders']);
+
+export default function DatatruckSyncPanel({
+  windowDays,
+  onToggle,
+}: {
+  windowDays: number;
+  /** Enable/disable a resource's sync capability — folds the old
+   *  per-resource checklist into the Synced-data rows. */
+  onToggle: (capability: string, enabled: boolean) => void;
+}) {
   const qc = useQueryClient();
+  const tz = useTimezone();
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [triggering, setTriggering] = useState<Set<string>>(new Set());
-  // History window for the date-ranged resources, mirroring the
-  // Samsara card's backfill picker so both integrations read the same.
-  const [windowDays, setWindowDays] = useState(30);
+  // The history window comes from the shared card-level picker (same
+  // place on every integration) — applied to the date-ranged resources
+  // (orders / work orders); roster syncs ignore it.
+  // Open preview modal (plan → apply) + whether an apply is in flight.
+  const [preview, setPreview] = useState<DatatruckPreviewStatus | null>(null);
+  const [applying, setApplying] = useState(false);
 
   const { data, isLoading, error } = useQuery<DatatruckSyncStatusResponse>({
     queryKey: ['datatruck-sync-status'],
@@ -53,14 +74,70 @@ export default function DatatruckSyncPanel() {
     staleTime: 3_000,
   });
 
+  const busyOff = (resource: string) =>
+    setTriggering((prev) => {
+      const next = new Set(prev);
+      next.delete(resource);
+      return next;
+    });
+
+  // Poll a background preview until it's ready/failed.  The upstream
+  // fetch is rate-gated and can run tens of seconds, so it can't be a
+  // single synchronous request — we keep the row's spinner on (via
+  // ``triggering``) the whole time, then open the modal on ready.
+  const pollPreview = async (
+    resource: string, previewId: string, attempt: number,
+  ) => {
+    if (attempt > 60) {  // ~90s ceiling
+      setFeedback({ kind: 'error', message: `${resource}: preview timed out — try again` });
+      busyOff(resource);
+      return;
+    }
+    try {
+      const st = await getDatatruckPreview(resource, previewId);
+      if (st.state === 'ready') {
+        setPreview(st);
+        busyOff(resource);
+      } else if (st.state === 'failed') {
+        setFeedback({ kind: 'error', message: `${resource}: ${st.error || 'preview failed'}` });
+        busyOff(resource);
+      } else if (st.state === 'expired' || st.state === 'unavailable') {
+        setFeedback({ kind: 'error', message: `${resource}: preview unavailable — try again` });
+        busyOff(resource);
+      } else {
+        // queued / pending / running → keep polling
+        setTimeout(() => pollPreview(resource, previewId, attempt + 1), 1500);
+      }
+    } catch (e) {
+      setFeedback({ kind: 'error', message: `${resource}: ${e instanceof Error ? e.message : 'preview failed'}` });
+      busyOff(resource);
+    }
+  };
+
   const handleSync = async (resource: string) => {
     if (triggering.has(resource)) return;
     setTriggering((prev) => new Set(prev).add(resource));
     setFeedback(null);
+    const days = DATE_RANGED.has(resource) ? windowDays : undefined;
+
+    if (PREVIEWABLE.has(resource)) {
+      // Dry-run first (background) → poll → modal.  Nothing is written
+      // until the operator accepts.  ``busyOff`` happens in pollPreview.
+      try {
+        const { preview_id } = await startDatatruckPreview(resource, days);
+        pollPreview(resource, preview_id, 0);
+      } catch (e) {
+        setFeedback({
+          kind: 'error',
+          message: `${resource}: ${e instanceof Error ? e.message : 'preview failed'}`,
+        });
+        busyOff(resource);
+      }
+      return;
+    }
+
+    // Roster-only / append-only — sync directly.
     try {
-      // Only the date-ranged resources take a window; roster lists are
-      // always full, so we don't send a misleading ``days`` for them.
-      const days = DATE_RANGED.has(resource) ? windowDays : undefined;
       await triggerDatatruckSync(resource, days);
       setFeedback({
         kind: 'info',
@@ -75,144 +152,117 @@ export default function DatatruckSyncPanel() {
         message: `${resource}: ${e instanceof Error ? e.message : 'sync failed'}`,
       });
     } finally {
-      setTriggering((prev) => {
-        const next = new Set(prev);
-        next.delete(resource);
-        return next;
-      });
+      busyOff(resource);
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="mb-4 border border-border rounded-md px-3 py-2 text-2xs text-muted-foreground flex items-center gap-1.5">
-        <Loader2 size={12} className="animate-spin" />
-        Loading sync status…
-      </div>
-    );
-  }
-  if (error) {
-    return (
-      <div className={`${toneClasses('danger')} mb-4 rounded px-2 py-1.5 text-2xs`}>
-        Could not load sync status: {error instanceof Error ? error.message : 'error'}
-      </div>
-    );
-  }
+  const handleAccept = async () => {
+    if (!preview || applying) return;
+    setApplying(true);
+    try {
+      await applyDatatruckSync(preview.resource, preview.preview_id);
+      setFeedback({ kind: 'info', message: `${preview.resource}: applying changes…` });
+      qc.invalidateQueries({ queryKey: ['datatruck-sync-status'] });
+      setPreview(null);
+    } catch (e) {
+      setFeedback({
+        kind: 'error',
+        message: `${preview.resource}: ${e instanceof Error ? e.message : 'apply failed'}`,
+      });
+    } finally {
+      setApplying(false);
+    }
+  };
 
   const resources = data?.resources ?? {};
 
-  return (
-    <div className="mb-4 border border-border rounded-md">
-      <div className="flex items-center justify-between px-3 py-2 bg-muted/40 border-b border-border">
-        <span className="text-xs font-medium flex items-center gap-1.5">
-          <Database size={12} />
-          Synced data
-        </span>
-        {/* History window for orders & work orders.  Mirrors the
-            Samsara card's backfill picker so both cards read the same.
-            Driver/truck/trailer rosters always sync in full and ignore
-            this. */}
-        <select
-          value={windowDays}
-          onChange={(e) => setWindowDays(Number(e.target.value))}
-          className="bg-muted border border-border rounded text-2xs text-foreground px-1.5 py-1 focus:outline-none focus:border-ring"
-          title="History window for orders & work orders. Driver, truck and trailer rosters always sync in full."
-          aria-label="Sync history window"
-        >
-          <option value={7}>Last 7 days</option>
-          <option value={30}>Last 30 days</option>
-          <option value={90}>Last 90 days</option>
-        </select>
-      </div>
-      <ul className="divide-y divide-border">
-        {DATATRUCK_RESOURCE_LABELS.map(([key, label]) => (
-          <ResourceRow
-            key={key}
-            resource={key}
-            label={label}
-            overview={resources[key]}
-            triggering={triggering.has(key)}
-            onSync={() => handleSync(key)}
-          />
-        ))}
-      </ul>
-      {feedback && (
-        <p
-          className={`px-3 py-1.5 text-2xs border-t border-border ${
-            feedback.kind === 'error' ? 'text-danger' : 'text-muted-foreground'
-          }`}
-        >
-          {feedback.message}
-        </p>
-      )}
-    </div>
-  );
-}
+  // Map each Datatruck resource → the shared FeedRow shape.  All the
+  // sync/preview/poll logic stays above; this just describes the row.
+  const rows: FeedRow[] = DATATRUCK_RESOURCE_LABELS.map(([key, label]) => {
+    const ov = resources[key];
+    const enabled = ov?.enabled ?? false;
+    const stored = ov?.stored;
+    const run = ov?.sync;
+    const live = run?.state === 'running' || run?.state === 'queued';
+    const detailGap = (run?.detail_failed ?? 0) > 0;
+    const freshness = stored && stored.count > 0
+      ? `${stored.count.toLocaleString()} records · ${formatSyncTimestamp(stored.last_synced_at, tz) || 'sync stamp missing'}`
+      : 'nothing synced yet';
 
-function ResourceRow({
-  resource, label, overview, triggering, onSync,
-}: {
-  resource: string;
-  label: string;
-  overview: DatatruckResourceOverview | undefined;
-  triggering: boolean;
-  onSync: () => void;
-}) {
-  const enabled = overview?.enabled ?? false;
-  const stored = overview?.stored;
-  const run = overview?.sync;
-  const live = run?.state === 'running' || run?.state === 'queued';
+    let badge: FeedRow['badge'] = null;
+    if (live && run) {
+      badge = {
+        text: `page ${run.pages_done} · ${run.records_written.toLocaleString()} records`,
+        tone: 'info',
+        title: run.total_upstream != null
+          ? `${run.records_written} of ${run.total_upstream.toLocaleString()} upstream records`
+          : undefined,
+      };
+    } else if (run?.state === 'failed') {
+      badge = { text: run.error || 'sync failed', tone: 'danger', title: run.error || undefined };
+    }
 
-  // Stored summary: "60 records · synced 2 min ago", or the empty hint.
-  const storedText = stored && stored.count > 0
-    ? `${stored.count.toLocaleString()} records · ${formatSyncTimestamp(stored.last_synced_at) || 'sync stamp missing'}`
-    : 'nothing synced yet';
+    const note: FeedRow['note'] = (detailGap && !live)
+      ? {
+          text:
+            `Synced the basics, but the detail endpoint was unreachable `
+            + `(${run?.detail_failed} of ${(run?.detail_ok ?? 0) + (run?.detail_failed ?? 0)}) `
+            + `— invoice #, payment, and vendor contact need an API token `
+            + `scoped for work-order detail.`,
+          title: run?.detail_error || undefined,
+        }
+      : null;
+
+    const capability = ov?.capability;
+    return {
+      key, label, freshness, enabled, badge, note,
+      feature: ov?.feature || undefined,
+      toggle: capability
+        ? { enabled, onChange: (en: boolean) => onToggle(capability, en) }
+        : null,
+      action: {
+        label: 'Sync now',
+        onClick: () => handleSync(key),
+        busy: triggering.has(key) || live,
+        disabled: triggering.has(key) || live || !enabled,
+        title: !enabled
+          ? 'Enable this resource’s toggle above first'
+          : live
+            ? 'A sync is already running for this resource'
+            : `Pull ${label.toLowerCase()} from Datatruck now`,
+      },
+    };
+  });
 
   return (
-    <li className={`px-3 py-2 text-xs ${enabled ? '' : 'opacity-60'}`}>
-      <div className="flex items-center gap-3">
-        <span className="font-medium w-28 shrink-0">{label}</span>
-        <span className="flex-1 truncate text-muted-foreground text-2xs">
-          {storedText}
-        </span>
-        {live && run && (
-          <span
-            className={`${toneClasses('info')} text-2xs px-1.5 py-0.5 rounded`}
-            title={
-              run.total_upstream != null
-                ? `${run.records_written} of ${run.total_upstream.toLocaleString()} upstream records`
-                : undefined
-            }
+    <>
+      <FeedsTable
+        rows={rows}
+        loading={isLoading}
+        error={Boolean(error)}
+        footer={feedback && (
+          <p
+            className={`px-3 py-1.5 text-2xs border-t border-border ${
+              feedback.kind === 'error' ? 'text-danger' : 'text-muted-foreground'
+            }`}
           >
-            page {run.pages_done} · {run.records_written.toLocaleString()} records
-          </span>
+            {feedback.message}
+          </p>
         )}
-        {!live && run?.state === 'failed' && (
-          <span
-            className={`${toneClasses('danger')} text-2xs px-1.5 py-0.5 rounded max-w-44 truncate`}
-            title={run.error || undefined}
-          >
-            {run.error || 'sync failed'}
-          </span>
-        )}
-        <Button
-          type="button" variant="ghost" size="sm"
-          onClick={onSync}
-          disabled={triggering || live || !enabled}
-          title={
-            !enabled
-              ? 'Enable this resource’s toggle above first'
-              : live
-                ? 'A sync is already running for this resource'
-                : `Pull ${label.toLowerCase()} from Datatruck now`
+      />
+      {preview && (
+        <SyncPreviewModal
+          resource={preview.resource}
+          label={
+            (DATATRUCK_RESOURCE_LABELS.find(([k]) => k === preview.resource)
+              || [preview.resource, preview.resource])[1]
           }
-        >
-          {(triggering || live)
-            ? <Loader2 size={12} className="animate-spin" />
-            : <RefreshCw size={12} />}
-          Sync now
-        </Button>
-      </div>
-    </li>
+          preview={preview}
+          applying={applying}
+          onAccept={handleAccept}
+          onClose={() => { if (!applying) setPreview(null); }}
+        />
+      )}
+    </>
   );
 }

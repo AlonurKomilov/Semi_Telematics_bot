@@ -191,6 +191,7 @@
     "fuel_costs": "Fuel Costs",
     "cost_per_mile": "Cost per Mile",
     "drivers": "Drivers",
+    "applications": "Applications",
     "coaching": "Coaching",
     "payroll": "Payroll",
     "working_hours": "Working Hours",
@@ -464,7 +465,7 @@
     "verification_resending": "Sending…",
     "verification_resent": "Verification email sent. Check your inbox.",
     "register_check_inbox": "We sent a verification link to {{email}}. Click it to activate your account, then sign in.",
-    "company_name": "Company name — e.g. Premier Trucking Group Inc"
+    "company_name": "Company name — e.g. Acme Trucking Inc"
   },
   "errors": {
     "load_failed": "Failed to load",
@@ -876,6 +877,9 @@
     "target_fleet": "Fleet only",
     "target_safety": "Safety only",
     "target_dispatcher": "Dispatcher only",
+    "target_hr": "HR only",
+    "target_accounting": "Accounting only",
+    "target_recruiter": "Recruiter only",
     "target_driver": "Driver only",
     "public_approval_warning": "Public articles require admin approval before they become visible to other companies. Only links to allowed media hosts (YouTube, Vimeo, Drive, Dropbox, OneDrive, Imgur) are permitted.",
     "btn_create": "Create",

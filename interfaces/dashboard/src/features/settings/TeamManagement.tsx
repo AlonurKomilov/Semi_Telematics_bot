@@ -9,7 +9,7 @@ import { apiJSON, apiFetch } from '../../api/client';
 import { toast } from 'sonner';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
-import RoleBadge, { ROLE_LABEL, roleTone } from '../../components/RoleBadge';
+import RoleBadge, { ROLE_LABEL, ASSIGNABLE_ROLES, roleTone } from '../../components/RoleBadge';
 import { useAuth } from '../../context/AuthContext';
 import {
   PageHeader,
@@ -35,6 +35,12 @@ const ROLE_RANK: Record<string, number> = {
   fleet: 2,
   safety: 2,
   dispatcher: 2,
+  // Department personas — peers of dispatcher (rank 2), per the backend
+  // ROLE_HIERARCHY in capabilities/permissions/roles.py.  Without these
+  // a rank lookup falls back to 0 and the grid mis-gates them.
+  hr: 2,
+  accounting: 2,
+  recruiter: 2,
   driver: 1,
 };
 
@@ -73,12 +79,12 @@ function initialsOf(name: string): string {
     : (parts[0]?.[0] || '–').toUpperCase();
 }
 
-// Roles the Owner/Admin can re-assign existing members to.  Excludes
-// 'owner' (only an Owner can transfer ownership and that's a separate
-// flow) and the personnel back-office roles 'hr'/'accounting' (not yet
-// exposed in this UI).  Display labels come from the canonical
-// ROLE_LABEL map in components/RoleBadge.tsx.
-const ROLES = ['admin', 'fleet', 'safety', 'dispatcher', 'driver'] as const;
+// Roles the Owner/Admin can re-assign existing members to — the shared
+// assignable-role list (every role except 'owner', which transfers via a
+// separate flow).  Sourced from RoleBadge so new personas surface here
+// automatically instead of drifting.  The rank gate below still hides
+// targets the caller can't outrank.
+const ROLES = ASSIGNABLE_ROLES;
 
 function UserAvatar({ userId, name, size = 48, active = true }: { userId: number; name: string; size?: number; active?: boolean }) {
   const [src, setSrc] = useState<string | null>(null);

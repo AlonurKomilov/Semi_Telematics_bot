@@ -509,7 +509,7 @@
     "add_step2_hint": "<i>(በ samsara_api_... ይጀምራል)</i>",
     "add_step3": "<b>እርምጃ 3/3</b> — ስም (አማራጭ)",
     "add_step3_prompt": "ለዚህ ኩባንያ ስም ይተይቡ\nወይም ኮዱን ለመጠቀም <b>⏭ ዝለል</b> ይንኩ።",
-    "add_step3_example": "ምሳሌ: <i>Premier Trucking Group</i>",
+    "add_step3_example": "ምሳሌ: <i>Acme Trucking Inc</i>",
     "add_code_invalid": "❌ ኮድ ከ1-10 ፊደላት ከቦታ ውጭ መሆን አለበት።",
     "add_code_example": "ምሳሌ: <b>PTG</b>, <b>CFT</b>",
     "wizard_lost": "❌ ጠፍቷል። እባክዎ እንደገና ይጀምሩ።"

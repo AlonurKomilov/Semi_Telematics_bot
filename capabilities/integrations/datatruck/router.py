@@ -26,6 +26,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from infra.platform import get_platform_db
 from infra.services import get_telematics_client
@@ -34,8 +35,11 @@ from interfaces.api.deps import require_permission
 from ..shared.helpers import audit, spawn_background, validate_provider
 from .sync import (
     RESOURCES,
+    apply_resource,
     collect_sync_overview,
+    get_preview,
     get_sync_status,
+    run_preview,
     sync_resource,
 )
 
@@ -199,6 +203,134 @@ async def trigger_sync(
         "account_id": account_id,
         "provider_id": _PROVIDER_ID,
         "resource": resource,
+    }
+
+
+async def _require_enabled(account_id: int, resource: str):
+    """Shared preflight: the resource is known, the integration is
+    connected, and the resource's toggle is on.  Raises HTTPException
+    otherwise; returns the ResourceSpec."""
+    spec = RESOURCES.get(resource)
+    if spec is None:
+        raise HTTPException(
+            404,
+            f"unknown resource {resource!r} — one of: "
+            f"{', '.join(sorted(RESOURCES))}",
+        )
+    db = get_platform_db()
+    ai = await db.get_account_integration(account_id, _PROVIDER_ID)
+    if ai is None:
+        raise HTTPException(404, "datatruck integration not configured")
+    if ai.status != "connected":
+        raise HTTPException(
+            409, f"integration status is {ai.status!r}, not connected",
+        )
+    cap_cfg = (ai.feature_toggles or {}).get(spec.capability) or {}
+    if not cap_cfg.get("enabled", False):
+        raise HTTPException(
+            409,
+            f"the {resource} sync toggle is disabled — enable it on "
+            "the Integration card first",
+        )
+    return spec
+
+
+@router.post("/datatruck/sync/{resource}/preview")
+async def sync_preview_start(
+    resource: str,
+    days: int | None = Query(None, ge=1, le=365),
+    user: dict = Depends(_owner_only),
+):
+    """Kick off a dry-run for a previewable resource (trucks / trailers /
+    work_orders): fetch + diff WITHOUT writing.  Runs in the background
+    (the rate-gated upstream fetch can outlast the 30s HTTP timeout) and
+    returns a ``preview_id`` immediately — poll
+    ``GET …/preview/{preview_id}`` until ``state='ready'`` for the diff.
+    """
+    validate_provider(_PROVIDER_ID)
+    account_id = int(user["account_id"])
+    triggered_by = int(user.get("id") or 0)
+    await _require_enabled(account_id, resource)
+    if resource not in ("trucks", "trailers", "work_orders"):
+        raise HTTPException(400, f"{resource!r} does not support preview")
+
+    import secrets
+    preview_id = secrets.token_hex(8)
+
+    async def _run() -> None:
+        await run_preview(
+            account_id, resource, preview_id, days=days,
+            triggered_by=triggered_by,
+        )
+
+    spawn_background(_run())
+    return {"state": "queued", "resource": resource, "preview_id": preview_id}
+
+
+@router.get("/datatruck/sync/{resource}/preview/{preview_id}")
+async def sync_preview_status(
+    resource: str,
+    preview_id: str,
+    user: dict = Depends(_owner_only),
+):
+    """Poll a running preview.  Returns ``{state: pending|running|ready|
+    failed|expired}`` plus the diff once ``ready``."""
+    validate_provider(_PROVIDER_ID)
+    account_id = int(user["account_id"])
+    return await get_preview(account_id, resource, preview_id)
+
+
+class _ApplyBody(BaseModel):
+    preview_id: str
+
+
+@router.post("/datatruck/sync/{resource}/apply")
+async def sync_apply(
+    resource: str,
+    body: _ApplyBody,
+    user: dict = Depends(_owner_only),
+):
+    """Commit a previewed resource from its cached rows (fire-and-forget).
+
+    Same preflight + 409-on-duplicate as a direct sync.  The cached
+    preview (Redis, 10-min TTL) is consumed on apply, so a stale preview
+    can't be replayed.  Poll ``GET /datatruck/sync-status`` for progress.
+    """
+    validate_provider(_PROVIDER_ID)
+    account_id = int(user["account_id"])
+    triggered_by = int(user.get("id") or 0)
+    await _require_enabled(account_id, resource)
+
+    running = await get_sync_status(account_id, resource)
+    if running and running.get("state") in ("running", "queued"):
+        raise HTTPException(
+            409,
+            f"a {resource} sync is already running — wait for it to "
+            "complete",
+        )
+
+    preview_id = body.preview_id
+
+    async def _run() -> None:
+        await apply_resource(
+            account_id, resource, preview_id, triggered_by=triggered_by,
+        )
+
+    spawn_background(_run())
+    logger.info(
+        "datatruck apply queued acct=%d resource=%s preview=%s by user=%d",
+        account_id, resource, preview_id, triggered_by,
+    )
+    await audit(
+        account_id, triggered_by, "integration.datatruck_apply",
+        f"{_PROVIDER_ID}:{resource}",
+    )
+    return {
+        "state": "queued",
+        "account_id": account_id,
+        "provider_id": _PROVIDER_ID,
+        "resource": resource,
+        "preview_id": preview_id,
     }
 
 

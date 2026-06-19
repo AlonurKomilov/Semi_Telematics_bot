@@ -3,8 +3,8 @@
 Locks in:
   * Catalog drift guard: the catalog and provider agree on capabilities
     (the provider module's import-time assertion).
-  * Subdomain normalisation: pasting "premier", "premier.datatruck.io",
-    or "https://premier.datatruck.io/" all reduce to the same slug.
+  * Subdomain normalisation: pasting "acme", "acme.datatruck.io",
+    or "https://acme.datatruck.io/" all reduce to the same slug.
   * test_connection() error mapping: 401/403 → "credentials rejected",
     404 → "wrong subdomain", success → carries the visible-driver count.
   * No accidental telematics drift: the provider's
@@ -73,13 +73,13 @@ def test_datatruck_does_not_claim_telematics_capabilities():
 
 
 @pytest.mark.parametrize("raw,expected", [
-    ("premier", "premier"),
-    ("PREMIER", "premier"),
-    ("  premier  ", "premier"),
-    ("premier.datatruck.io", "premier"),
-    ("https://premier.datatruck.io", "premier"),
-    ("https://premier.datatruck.io/", "premier"),
-    ("http://premier.datatruck.io", "premier"),
+    ("acme", "acme"),
+    ("ACME", "acme"),
+    ("  acme  ", "acme"),
+    ("acme.datatruck.io", "acme"),
+    ("https://acme.datatruck.io", "acme"),
+    ("https://acme.datatruck.io/", "acme"),
+    ("http://acme.datatruck.io", "acme"),
 ])
 def test_client_normalises_subdomain(raw: str, expected: str):
     c = DatatruckClient(company_subdomain=raw, api_token="t")
@@ -87,7 +87,7 @@ def test_client_normalises_subdomain(raw: str, expected: str):
     assert c.base_url == f"https://{expected}.datatruck.io/api/v1/openapi/"
 
 
-@pytest.mark.parametrize("bad", ["", "  ", "premier.example.com", "pre/mier"])
+@pytest.mark.parametrize("bad", ["", "  ", "acme.example.com", "pre/mier"])
 def test_client_rejects_invalid_subdomain(bad: str):
     with pytest.raises(ValueError):
         DatatruckClient(company_subdomain=bad, api_token="t")
@@ -108,7 +108,7 @@ def test_client_gives_specific_error_for_app_datatruck_io(login_host: str):
 
 def test_client_rejects_missing_token():
     with pytest.raises(ValueError):
-        DatatruckClient(company_subdomain="premier", api_token="")
+        DatatruckClient(company_subdomain="acme", api_token="")
 
 
 # ── test_connection error mapping ────────────────────────────
@@ -116,7 +116,7 @@ def test_client_rejects_missing_token():
 
 @pytest.mark.asyncio
 async def test_provider_test_connection_success_reports_driver_count():
-    client = DatatruckClient(company_subdomain="premier", api_token="t")
+    client = DatatruckClient(company_subdomain="acme", api_token="t")
 
     async def fake_get(path, params=None):
         return 200, {"count": 60, "results": []}
@@ -127,12 +127,12 @@ async def test_provider_test_connection_success_reports_driver_count():
     status = await provider.test_connection({})
     assert status.ok is True
     assert "60 drivers" in status.message
-    assert status.provider_account_id == "premier"
+    assert status.provider_account_id == "acme"
 
 
 @pytest.mark.asyncio
 async def test_provider_test_connection_401_means_token_rejected():
-    client = DatatruckClient(company_subdomain="premier", api_token="bad")
+    client = DatatruckClient(company_subdomain="acme", api_token="bad")
 
     async def fake_get(path, params=None):
         return 401, "<unauthorized>"

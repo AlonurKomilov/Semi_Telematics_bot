@@ -109,7 +109,8 @@ class TestExecuteToolInjection:
 
 # ── Batch 2: the four scope-aware tools, gate + per-tool filtering ───────────
 
-_SCOPE_AWARE = ["get_parked_vehicles", "get_rolling_stopped", "search_vehicles",
+_SCOPE_AWARE = ["get_parked_vehicles", "get_undriven_vehicles",
+                "get_rolling_stopped", "search_vehicles",
                 "get_alert_history", "get_maintenance_summary", "get_weather",
                 "get_driver_hos_status", "get_low_fuel_vehicles",
                 "get_fuel_cost_summary", "get_vehicle_health", "get_account_stats",
@@ -234,3 +235,47 @@ class TestRollupScopeFilter:
         monkeypatch.setattr(_events_mod, "_svc_events", fake_events)
         res = await _events_mod.get_events_summary({}, None, account_id=1, db=None)
         assert res["total_events"] == 2
+
+
+# ── get_undriven_vehicles (movement-based "not driven in N days") ────────────
+
+
+class _FakeUndrivenDB:
+    def __init__(self, rows):
+        self._rows = rows
+
+    async def get_undriven_vehicles(self, account_id, **kw):
+        return list(self._rows)
+
+
+@pytest.mark.asyncio
+class TestUndrivenVehicles:
+    async def test_filters_to_scope(self):
+        from features.vehicles.ai_tool import get_undriven_vehicles
+        db = _FakeUndrivenDB([
+            {"vehicle_name": "B-1", "company_code": "B", "days_stopped": 5},
+            {"vehicle_name": "A-3", "company_code": "A", "days_stopped": 9},
+        ])
+        res = await get_undriven_vehicles(
+            {"_scope_vehicles": ["B-1"], "min_days": 3}, None, account_id=1, db=db,
+        )
+        assert res["count"] == 1
+        assert res["vehicles"][0]["vehicle"] == "B-1"
+
+    async def test_unscoped_returns_all(self):
+        from features.vehicles.ai_tool import get_undriven_vehicles
+        db = _FakeUndrivenDB([
+            {"vehicle_name": "B-1", "days_stopped": 5},
+            {"vehicle_name": "A-3", "days_stopped": 9},
+        ])
+        res = await get_undriven_vehicles({"min_days": 1}, None, account_id=1, db=db)
+        assert res["count"] == 2
+
+    async def test_missing_warehouse_method_errs_gracefully(self):
+        from features.vehicles.ai_tool import get_undriven_vehicles
+
+        class _NoMethodDB:
+            pass
+
+        res = await get_undriven_vehicles({"min_days": 1}, None, account_id=1, db=_NoMethodDB())
+        assert "error" in res

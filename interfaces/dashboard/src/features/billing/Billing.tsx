@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CreditCard, ExternalLink, FileText, AlertTriangle, Gift } from 'lucide-react';
 import { apiJSON } from '../../api/client';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDay } from '../../utils/datetime';
 import { PageHeader, CardSkeleton } from '../../components/shell';
 import { toneClasses } from '../../lib/status';
 import { rollupByDisplayLabel } from '../../features/ai/helpers';
@@ -158,6 +160,7 @@ function PastDueBanner({ since }: { since: string }) {
 // ── Comp account banner ───────────────────────────────────────────
 
 function CompBanner({ summary }: { summary: BillingSummary }) {
+  const tz = useTimezone();
   if (!summary.is_comped) return null;
   const exp = summary.comp_expires_at ? new Date(summary.comp_expires_at) : null;
   const daysLeft = exp ? Math.max(0, Math.ceil((exp.getTime() - Date.now()) / 86_400_000)) : null;
@@ -171,7 +174,7 @@ function CompBanner({ summary }: { summary: BillingSummary }) {
           4truck is covering <span className="font-semibold text-foreground">{usd(wouldBe)}/month</span> for you.
           {exp && daysLeft != null && (
             <>
-              {' '}Expires <span className="font-medium text-foreground">{exp.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+              {' '}Expires <span className="font-medium text-foreground">{formatDay(exp, { timeZone: tz, intl: { month: 'short', day: 'numeric', year: 'numeric' } })}</span>
               {' '}<span className="text-xs">({daysLeft} day{daysLeft === 1 ? '' : 's'} remaining)</span>
             </>
           )}
@@ -210,6 +213,7 @@ function InactiveVehiclesFooter({ summary }: { summary: BillingSummary }) {
 // ── Plan summary card ─────────────────────────────────────────────
 
 function SummaryCard({ summary }: { summary: BillingSummary }) {
+  const tz = useTimezone();
   const isOverLimit = summary.extra_vehicles > 0;
   return (
     <div className="bg-card border border-border rounded-xl p-6 mb-4">
@@ -297,10 +301,10 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
           <span>👥 {summary.user_count} team member{summary.user_count !== 1 ? 's' : ''}</span>
         )}
         {summary.current_period_end && (
-          <span>📅 Period ends {new Date(summary.current_period_end).toLocaleDateString()}</span>
+          <span>📅 Period ends {formatDay(summary.current_period_end, { timeZone: tz })}</span>
         )}
         {summary.trial_ends_at && (
-          <span className="text-warn">⚠️ Trial ends {new Date(summary.trial_ends_at).toLocaleDateString()}</span>
+          <span className="text-warn">⚠️ Trial ends {formatDay(summary.trial_ends_at, { timeZone: tz })}</span>
         )}
         {summary.provider === 'stub' && (
           <span className="text-primary">🧪 Test mode — no real charges</span>
@@ -467,6 +471,7 @@ function UsageTable({ items }: { items: UsageSnapshot[] }) {
 // ── Invoices table ────────────────────────────────────────────────
 
 function InvoicesTable({ items }: { items: Invoice[] }) {
+  const tz = useTimezone();
   if (items.length === 0) {
     return (
       <p className="text-sm text-muted-foreground text-center py-8">
@@ -490,7 +495,7 @@ function InvoicesTable({ items }: { items: Invoice[] }) {
           {items.map((inv) => (
             <tr key={inv.id} className="border-b border-border/50 hover:bg-muted/30">
               <td className="py-2.5 pr-4 text-foreground/80 tabular-nums">
-                {new Date(inv.created_at).toLocaleDateString()}
+                {formatDay(inv.created_at, { timeZone: tz })}
               </td>
               <td className="py-2.5 pr-4">
                 <span className={`px-2 py-0.5 rounded text-xs font-medium border ${
@@ -501,9 +506,9 @@ function InvoicesTable({ items }: { items: Invoice[] }) {
                 }`}>{inv.status || '—'}</span>
               </td>
               <td className="py-2.5 pr-4 text-muted-foreground text-xs">
-                {inv.period_start ? new Date(inv.period_start).toLocaleDateString() : '—'}
+                {inv.period_start ? formatDay(inv.period_start, { timeZone: tz }) : '—'}
                 {inv.period_end && (
-                  <> → {new Date(inv.period_end).toLocaleDateString()}</>
+                  <> → {formatDay(inv.period_end, { timeZone: tz })}</>
                 )}
               </td>
               <td className="py-2.5 pr-4 text-right font-semibold text-foreground tabular-nums">

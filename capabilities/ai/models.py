@@ -75,6 +75,31 @@ class _GeminiCaller:
             config=config,
         )
 
+    def generate_content_stream(self, contents, tools=None):
+        """Streaming variant of :meth:`generate_content`.
+
+        Returns google-genai's sync streaming iterator (chunks).  Forces
+        ``include_thoughts=True`` so reasoning summaries surface as ``thought``
+        parts in the stream — this only produces output when the model is
+        actually thinking (``thinking_budget != 0``), so it's a no-op for the
+        Flash variants that run with budget 0.  Preserves any existing
+        thinking budget / level.  Sync generator — wrap the consuming loop with
+        ``asyncio.to_thread``.
+        """
+        from google.genai import types as _gtypes
+        cfg_dict = self._base_config.model_dump(exclude_unset=True)
+        if tools is not None:
+            cfg_dict["tools"] = tools
+        tc = cfg_dict.get("thinking_config")
+        tc = {**tc, "include_thoughts": True} if isinstance(tc, dict) else {"include_thoughts": True}
+        cfg_dict["thinking_config"] = _gtypes.ThinkingConfig(**tc)
+        config = _gtypes.GenerateContentConfig(**cfg_dict)
+        return self._client.models.generate_content_stream(
+            model=self._model_id,
+            contents=contents,
+            config=config,
+        )
+
 
 def _build_gen_config(info: dict):
     """Build a ``GenerateContentConfig`` from a registry entry."""

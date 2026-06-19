@@ -13,6 +13,8 @@ import {
 } from '../../components/shell';
 import type { ReportsLayoutOutletContext } from './ReportsLayout';
 import { useShellConfig } from '../../hooks/useShellConfig';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate } from '../../utils/datetime';
 import type {
   FaultVehicle, FaultReportResponse,
   FuelVehicle, FuelReportResponse,
@@ -66,20 +68,20 @@ function FuelBadge({ pct }: { pct: number | null }) {
   return <span className={cls}>{pct}%</span>;
 }
 
-const faultCols: AnyColumn[] = [
+const faultCols = (tz: string): AnyColumn[] => [
   { key: 'vehicle_name', label: 'Vehicle', sortable: true },
   { key: 'company', label: 'Company', sortable: true },
   { key: 'dtc_count', label: 'DTCs', sortable: true },
   { key: 'severity', label: 'Severity', render: (v) => <SeverityBadge severity={v as string} /> },
-  { key: 'fault_time', label: 'Last Seen', render: (v) => v ? new Date(v as string).toLocaleString() : '—' },
+  { key: 'fault_time', label: 'Last Seen', render: (v) => v ? formatDate(v as string, { timeZone: tz }) : '—' },
 ];
 
-const fuelCols: AnyColumn[] = [
+const fuelCols = (tz: string): AnyColumn[] => [
   { key: 'vehicle_name', label: 'Vehicle', sortable: true },
   { key: 'company', label: 'Company', sortable: true },
   { key: 'fuel_pct', label: 'Fuel', sortable: true, render: (v) => <FuelBadge pct={v as number | null} /> },
   { key: 'def_pct', label: 'DEF', sortable: true, render: (v) => <FuelBadge pct={v as number | null} /> },
-  { key: 'fuel_time', label: 'Updated', render: (v) => v ? new Date(v as string).toLocaleString() : '—' },
+  { key: 'fuel_time', label: 'Updated', render: (v) => v ? formatDate(v as string, { timeZone: tz }) : '—' },
 ];
 
 const healthCols: AnyColumn[] = [
@@ -115,15 +117,16 @@ const effCols: AnyColumn[] = [
   { key: 'overspeed_min', label: 'Overspeed (min)', sortable: true },
 ];
 
-const COLUMNS_MAP: Record<TabKey, AnyColumn[]> = {
-  faults: faultCols,
-  fuel: fuelCols,
+const columnsMap = (tz: string): Record<TabKey, AnyColumn[]> => ({
+  faults: faultCols(tz),
+  fuel: fuelCols(tz),
   health: healthCols,
   efficiency: effCols,
-};
+});
 
 export default function Reports() {
   const { t } = useTranslation();
+  const tz = useTimezone();
   const { persona } = useShellConfig();
   // Outlet context comes from ReportsLayout — lets this child page
   // push the PDF/CSV export buttons (and the efficiency-only Date
@@ -294,7 +297,7 @@ export default function Reports() {
         />
       ) : (
         <DataTable
-          columns={COLUMNS_MAP[tab]}
+          columns={columnsMap(tz)[tab]}
           data={data}
           searchKey="vehicle_name"
         />

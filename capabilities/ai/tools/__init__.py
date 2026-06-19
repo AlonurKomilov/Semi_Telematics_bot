@@ -9,6 +9,8 @@ from capabilities.ai.tools.registry import (                              # noqa
     get_anthropic_tools,
     invalidate_tool_cache,
     execute_tool,
+    tool_ok,
+    tool_error,
 )
 
 # Pre-load the alerting capability FIRST.  Some feature packages' ``__init__``

@@ -75,14 +75,20 @@ export function currentTimeInTz(iana: string, now?: Date): string {
 }
 
 /** Like ``timezoneLabel`` but appends the *current* time in that zone
- *  instead of the example city — e.g. ``"Eastern Time (ET) — 3:42 AM"``.
+ *  instead of the example city — e.g. ``"Eastern Time — 3:42 AM"``.
  *  Useful in pickers so an admin can immediately see what each option
- *  means without converting "America/New_York" in their head. */
+ *  means without converting "America/New_York" in their head.
+ *
+ *  The ``(ET)``/``(CT)`` shorthand is intentionally NOT shown here: the
+ *  full zone name plus the live local time is unambiguous on its own,
+ *  and dropping the two-letter code avoids confusion with the
+ *  standard/daylight abbreviations (EST/EDT).  The ``abbrev`` field is
+ *  kept on the option for compact chip rendering elsewhere. */
 export function timezoneLabelWithTime(iana: string, now?: Date): string {
   const o = _BY_VALUE[iana];
   if (!o) return iana;
   const t = currentTimeInTz(iana, now);
-  return t ? `${o.label} (${o.abbrev}) — ${t}` : `${o.label} (${o.abbrev})`;
+  return t ? `${o.label} — ${t}` : o.label;
 }
 
 /** Short chip-style label, e.g. ``"ET"`` for inline rendering when

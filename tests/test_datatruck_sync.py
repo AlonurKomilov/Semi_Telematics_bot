@@ -53,17 +53,17 @@ def test_norm_driver_camel_case_fallbacks():
 def test_norm_truck_matches_live_probe_shape():
     # Field names confirmed against a live tenant probe (2026-06-10).
     rec = {
-        "id": 443, "unit_number": "247", "plate_number": "PXF8448",
-        "vin": "3AKJJHDR7VSXC469", "year": "2027",
+        "id": 443, "unit_number": "247", "plate_number": "ABC1234",
+        "vin": "1HGTEST0000000001", "year": "2027",
         "odometer": "558396.9",
-        "operator": {"id": 12, "name": "ELIERE KALIHUNGU"},
+        "operator": {"id": 12, "name": "SAM OPERATOR"},
     }
     out = _norm_truck(rec)
     assert out["external_id"] == "443"
     assert out["unit_number"] == "247"
     assert out["year"] == 2027          # str → int coercion
     assert out["odometer"] == pytest.approx(558396.9)
-    assert out["operator_name"] == "ELIERE KALIHUNGU"
+    assert out["operator_name"] == "SAM OPERATOR"
 
 
 def test_norm_order_nested_locations_and_ids():
@@ -99,9 +99,9 @@ def test_norm_work_order_vendor_string_does_not_echo_name_as_phone():
     # List shape: vendor is a bare name string (no contact dict).  The phone
     # must NOT become the vendor name — it stays blank unless a top-level
     # phone field exists.
-    out = _norm_work_order({"id": 7, "vendor": "Flying J", "truck": "247"})
-    assert out["vendor_name"] == "Flying J"
-    assert out["vendor_phone"] == ""        # was the bug: echoed "Flying J"
+    out = _norm_work_order({"id": 7, "vendor": "Roadside Fuel Co", "truck": "247"})
+    assert out["vendor_name"] == "Roadside Fuel Co"
+    assert out["vendor_phone"] == ""        # was the bug: echoed "Roadside Fuel Co"
 
 
 def test_norm_work_order_rounds_money_to_cents():
@@ -123,17 +123,17 @@ def test_norm_work_order_v2_detail_shape():
     importantly that ``number`` (WO id) and ``invoice_id`` are distinct,
     the vendor object is unwrapped, and line items are normalized."""
     rec = {
-        "id": 1599, "number": "WO-00991", "invoice_id": "46478",
-        "status": "completed", "note": "steer tires", "notes": [],
+        "id": 1599, "number": "WO-0001", "invoice_id": "INV-1001",
+        "status": "completed", "note": "front brake job", "notes": [],
         "payment_type": "efs", "tax_total_price": 92.48,
         "total_price": 1270.44, "odometer": 0.0,
         "scheduled_on_date": "2026-06-09T00:00:00Z", "due_date": "2026-07-09",
-        "location": "PO Box 1597, Calhoun, GA 30703-1597",
-        "truck": {"id": 38, "unit_number": "204", "plate_number": "PXF7499"},
+        "location": "100 Example Rd, Springfield, IL 62701",
+        "truck": {"id": 38, "unit_number": "T100", "plate_number": "ABC1234"},
         "trailer": None,
-        "vendor": {"id": 1263, "name": "Interstate Tire & Lube, Inc.",
-                   "contact_number": "(706) 625-5600",
-                   "email": "accounts@interstatetireandlube.com"},
+        "vendor": {"id": 1263, "name": "Roadside Repair Co",
+                   "contact_number": "(555) 010-0100",
+                   "email": "shop@example.com"},
         "work_order_tasks": [
             {"id": 3699, "task": None, "custom_task": "TIRE DISPOSAL FEE",
              "parts_price": 10.0, "parts_quantity": 2, "labor_price": 0.0,
@@ -142,14 +142,14 @@ def test_norm_work_order_v2_detail_shape():
     }
     out = _norm_work_order(rec)
     assert out["external_id"] == "1599"
-    assert out["number"] == "WO-00991"
-    assert out["invoice_number"] == "46478"     # invoice_id, NOT number
-    assert out["vehicle_unit"] == "204"         # truck.unit_number
-    assert out["vendor_name"] == "Interstate Tire & Lube, Inc."
-    assert out["vendor_phone"] == "(706) 625-5600"
-    assert out["vendor_address"] == "PO Box 1597, Calhoun, GA 30703-1597"
+    assert out["number"] == "WO-0001"
+    assert out["invoice_number"] == "INV-1001"     # invoice_id, NOT number
+    assert out["vehicle_unit"] == "T100"         # truck.unit_number
+    assert out["vendor_name"] == "Roadside Repair Co"
+    assert out["vendor_phone"] == "(555) 010-0100"
+    assert out["vendor_address"] == "100 Example Rd, Springfield, IL 62701"
     assert out["payment_method"] == "efs"
-    assert out["note"] == "steer tires"         # the string, not the [] array
+    assert out["note"] == "front brake job"         # the string, not the [] array
     assert out["tax_amount"] == 92.48
     assert out["total_cost"] == 1270.44
     assert out["opened_at"] == "2026-06-09T00:00:00Z"
@@ -165,9 +165,9 @@ def test_norm_work_order_trailer_unit():
     """When the WO is on a trailer, the unit comes from ``trailer``."""
     out = _norm_work_order({
         "id": 1601, "truck": None,
-        "trailer": {"id": 9, "unit_number": "TL645015"},
+        "trailer": {"id": 9, "unit_number": "TR200"},
     })
-    assert out["vehicle_unit"] == "TL645015"
+    assert out["vehicle_unit"] == "TR200"
     assert out["vehicle_type"] == "trailer"   # the WO is on a trailer
 
 
@@ -194,7 +194,7 @@ def _page(base: str, *, count: int, results: list, next_page: int | None):
 
 @pytest.mark.asyncio
 async def test_iter_pages_follows_next_until_exhausted():
-    c = DatatruckClient(company_subdomain="premier", api_token="t")
+    c = DatatruckClient(company_subdomain="acme", api_token="t")
     base = c.base_url
     pages = [
         _page(base, count=25, results=[{"id": i} for i in range(10)], next_page=2),
@@ -225,7 +225,7 @@ async def test_iter_pages_follows_next_until_exhausted():
 
 @pytest.mark.asyncio
 async def test_iter_pages_respects_max_pages_cap():
-    c = DatatruckClient(company_subdomain="premier", api_token="t")
+    c = DatatruckClient(company_subdomain="acme", api_token="t")
     base = c.base_url
 
     async def fake_get(path, params=None):
@@ -244,7 +244,7 @@ async def test_iter_pages_respects_max_pages_cap():
 
 @pytest.mark.asyncio
 async def test_iter_pages_raises_on_http_error():
-    c = DatatruckClient(company_subdomain="premier", api_token="t")
+    c = DatatruckClient(company_subdomain="acme", api_token="t")
 
     async def fake_get(path, params=None):
         return 500, "<upstream broke>"
@@ -260,7 +260,7 @@ async def test_get_url_refuses_foreign_hosts():
     """The ``next`` link follower must never leave the tenant host —
     a poisoned pagination envelope can't redirect our authed session
     elsewhere."""
-    c = DatatruckClient(company_subdomain="premier", api_token="t")
+    c = DatatruckClient(company_subdomain="acme", api_token="t")
     with pytest.raises(ValueError, match="refusing non-tenant URL"):
         await c._get_url("https://evil.example.com/api/v1/openapi/x/")
 
@@ -291,7 +291,7 @@ async def test_sync_resource_happy_path(monkeypatch):
         sync_mod, "get_tenant_db", AsyncMock(return_value=tenant),
     )
 
-    base = "https://premier.datatruck.io/api/v1/openapi/"
+    base = "https://acme.datatruck.io/api/v1/openapi/"
 
     async def fake_iter_pages(path, params=None, *, max_pages=50):
         yield _page(base, count=12, results=[{"id": i} for i in range(10)], next_page=2)
@@ -403,7 +403,7 @@ async def test_sync_resource_passes_days_window_to_date_ranged(monkeypatch):
     monkeypatch.setattr(sync_mod, "get_tenant_db", AsyncMock(return_value=tenant))
 
     captured: dict = {}
-    base = "https://premier.datatruck.io/api/v1/openapi/"
+    base = "https://acme.datatruck.io/api/v1/openapi/"
 
     async def fake_iter_pages(path, params=None, *, max_pages=50):
         captured["params"] = params
@@ -439,7 +439,7 @@ async def test_sync_resource_orders_without_window_sends_no_params(monkeypatch):
     monkeypatch.setattr(sync_mod, "get_tenant_db", AsyncMock(return_value=tenant))
 
     captured: dict = {"params": "unset"}
-    base = "https://premier.datatruck.io/api/v1/openapi/"
+    base = "https://acme.datatruck.io/api/v1/openapi/"
 
     async def fake_iter_pages(path, params=None, *, max_pages=50):
         captured["params"] = params
@@ -457,6 +457,63 @@ async def test_sync_resource_orders_without_window_sends_no_params(monkeypatch):
     status = await sync_mod.sync_resource(42, "orders")
     assert status["state"] == "completed"
     assert captured["params"] is None
+
+
+@pytest.mark.asyncio
+async def test_work_orders_sync_does_not_call_v2_detail(monkeypatch):
+    """Detail-fetch is OFF: an openapi token gets 401 on the v2 detail
+    endpoint, so re-fetching per WO would be ~300 wasted rate-gated calls
+    per sync.  The sync must enrich purely from the openapi list and never
+    touch ``get_path``."""
+    from capabilities.integrations.datatruck import sync as sync_mod
+
+    db = MagicMock()
+    db.get_account_integration = AsyncMock(return_value=_integration_stub())
+    monkeypatch.setattr(sync_mod, "get_platform_db", lambda: db)
+
+    tenant = MagicMock()
+    tenant.upsert_datatruck_work_orders = AsyncMock(side_effect=lambda a, rows: len(rows))
+    captured: dict = {}
+
+    async def fake_project(account_id, rows, *, source="datatruck", vehicle_lookup=None):
+        captured["rows"] = rows
+        return len(rows)
+
+    tenant.project_external_work_orders = fake_project
+    monkeypatch.setattr(sync_mod, "get_tenant_db", AsyncMock(return_value=tenant))
+
+    base = "https://acme.datatruck.io/api/v1/openapi/"
+
+    async def fake_iter_pages(path, params=None, *, max_pages=50):
+        # The openapi list record (vendor/truck as strings, has tasks).
+        yield _page(base, count=1, results=[{
+            "id": 1599, "number": "WO-0001", "vendor": "Roadside Repair Co",
+            "truck": "T100", "total_price": 124.0, "balance": 0.0,
+            "paid_amount": 124.0,
+            "work_order_tasks": [
+                {"custom_task": "Brake pads", "parts_price": 62.0,
+                 "parts_quantity": 2, "total_price": 124.0},
+            ],
+        }], next_page=None)
+
+    get_path = AsyncMock()  # must NOT be called
+    client = MagicMock()
+    client.iter_pages = fake_iter_pages
+    client.get_path = get_path
+    provider = MagicMock()
+    provider.client = client
+    monkeypatch.setattr(
+        sync_mod, "get_telematics_client", AsyncMock(return_value=provider),
+    )
+    monkeypatch.setattr(sync_mod, "_publish", AsyncMock())
+
+    status = await sync_mod.sync_resource(42, "work_orders")
+    assert status["state"] == "completed"
+    get_path.assert_not_called()              # no wasted v2 calls
+    row = captured["rows"][0]
+    assert row["vendor_name"] == "Roadside Repair Co"   # from the list string
+    assert row["balance"] == 0.0                        # payment signal carried
+    assert row["paid_amount"] == 124.0
 
 
 # ── Route preflight ───────────────────────────────────────────
@@ -520,3 +577,171 @@ async def test_trigger_sync_queues_and_spawns(monkeypatch):
     assert out["state"] == "queued"
     assert out["resource"] == "trucks"
     assert len(spawned) == 1
+
+
+# ── Preview (plan → apply) ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_preview_resource_fetches_diffs_and_caches(monkeypatch):
+    from capabilities.integrations.datatruck import sync as sync_mod
+
+    tenant = MagicMock()
+
+    async def fake_plan(account_id, rows, *, vehicle_type):
+        return {
+            "kind": "vehicles", "vehicle_type": vehicle_type,
+            "new": [{"unit": r["unit_number"]} for r in rows],
+            "enrich": [], "review": [],
+            "counts": {"new": len(rows), "enrich": 0, "review": 0,
+                       "unchanged": 0, "total": len(rows)},
+        }
+
+    tenant.plan_external_vehicles = fake_plan
+    monkeypatch.setattr(sync_mod, "get_tenant_db", AsyncMock(return_value=tenant))
+
+    base = "https://acme.datatruck.io/api/v1/openapi/"
+
+    async def fake_iter_pages(path, params=None, *, max_pages=50):
+        yield _page(base, count=2, results=[
+            {"id": 1, "unit_number": "204"},
+            {"id": 2, "unit_number": "305"},
+        ], next_page=None)
+
+    client = MagicMock()
+    client.iter_pages = fake_iter_pages
+    provider = MagicMock()
+    provider.client = client
+    monkeypatch.setattr(
+        sync_mod, "get_telematics_client", AsyncMock(return_value=provider),
+    )
+
+    cached: dict = {}
+    monkeypatch.setattr(sync_mod._redis, "is_available", lambda: True)
+
+    async def fake_cache_set(key, value, ttl=0):
+        cached["key"] = key
+        cached["value"] = value
+
+    monkeypatch.setattr(sync_mod._redis, "cache_set", fake_cache_set)
+
+    payload = await sync_mod.run_preview(42, "trucks", "pid-1")
+    assert payload["state"] == "ready"
+    assert payload["fetched"] == 2
+    assert payload["diff"]["counts"]["new"] == 2
+    # The fetched rows were cached so apply commits the same data.
+    assert len(cached["value"]["rows"]) == 2
+
+    # get_preview strips the bulky rows before handing the diff to the client.
+    async def fake_get(key):
+        return cached["value"]
+    monkeypatch.setattr(sync_mod._redis, "get", fake_get)
+    got = await sync_mod.get_preview(42, "trucks", "pid-1")
+    assert got["state"] == "ready"
+    assert got["diff"]["counts"]["new"] == 2
+    assert "rows" not in got
+
+
+@pytest.mark.asyncio
+async def test_run_preview_rejects_non_previewable_resource():
+    from capabilities.integrations.datatruck import sync as sync_mod
+    # run_preview never raises — a bad resource lands as state='failed'.
+    payload = await sync_mod.run_preview(42, "orders", "pid-x")
+    assert payload["state"] == "failed"
+    assert "does not support preview" in payload["error"]
+
+
+@pytest.mark.asyncio
+async def test_apply_resource_commits_cached_rows(monkeypatch):
+    from capabilities.integrations.datatruck import sync as sync_mod
+
+    tenant = MagicMock()
+    tenant.upsert_datatruck_trucks = AsyncMock(side_effect=lambda a, rows: len(rows))
+    projected: dict = {}
+
+    async def fake_proj(account_id, rows, *, vehicle_type, source):
+        projected["rows"] = rows
+        return len(rows)
+
+    tenant.project_external_vehicles = fake_proj
+    monkeypatch.setattr(sync_mod, "get_tenant_db", AsyncMock(return_value=tenant))
+    monkeypatch.setattr(sync_mod, "_publish", AsyncMock())
+
+    monkeypatch.setattr(sync_mod._redis, "is_available", lambda: True)
+    rows = [{"external_id": "1", "unit_number": "204"}]
+
+    async def fake_get(key):
+        return {"rows": rows, "total_upstream": 1}
+
+    monkeypatch.setattr(sync_mod._redis, "get", fake_get)
+    deleted: dict = {}
+
+    async def fake_del(key):
+        deleted["key"] = key
+
+    monkeypatch.setattr(sync_mod._redis, "delete", fake_del)
+
+    status = await sync_mod.apply_resource(42, "trucks", "pid123")
+    assert status["state"] == "completed"
+    assert status["records_written"] == 1
+    assert projected["rows"] == rows
+    assert deleted["key"]  # the cached preview is consumed (one-shot)
+
+
+@pytest.mark.asyncio
+async def test_apply_resource_expired_preview_fails(monkeypatch):
+    from capabilities.integrations.datatruck import sync as sync_mod
+    monkeypatch.setattr(sync_mod, "get_tenant_db", AsyncMock(return_value=MagicMock()))
+    monkeypatch.setattr(sync_mod, "_publish", AsyncMock())
+    monkeypatch.setattr(sync_mod._redis, "is_available", lambda: True)
+
+    async def fake_get(key):
+        return None
+
+    monkeypatch.setattr(sync_mod._redis, "get", fake_get)
+    status = await sync_mod.apply_resource(42, "trucks", "missing")
+    assert status["state"] == "failed"
+    assert "expired" in status["error"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_vehicle_lookup_builds_plate_and_unit_map(monkeypatch):
+    from capabilities.integrations.datatruck import sync as sync_mod
+    base = "https://acme.datatruck.io/api/v1/openapi/"
+    pages = {
+        "trucks/list/": _page(base, count=1, results=[
+            {"id": 1, "unit_number": "T100", "plate_number": "ABC123"}],
+            next_page=None),
+        "trailers/list/": _page(base, count=1, results=[
+            {"id": 2, "unit_number": "TR200", "plate_number": "XYZ789"}],
+            next_page=None),
+    }
+
+    async def fake_iter_pages(path, params=None, *, max_pages=50):
+        yield pages[path]
+
+    client = MagicMock()
+    client.iter_pages = fake_iter_pages
+    provider = MagicMock()
+    provider.client = client
+    monkeypatch.setattr(
+        sync_mod, "get_telematics_client", AsyncMock(return_value=provider),
+    )
+
+    lookup = await sync_mod._fetch_vehicle_lookup(42)
+    # keyed by BOTH plate and unit, case-insensitive; value [unit, type]
+    assert lookup["abc123"] == ["T100", "truck"]
+    assert lookup["t100"] == ["T100", "truck"]
+    assert lookup["xyz789"] == ["TR200", "trailer"]
+
+
+def test_norm_work_order_assigned_to_string_and_object():
+    # openapi list: assigned_to is a bare name string
+    out = _norm_work_order({"id": 1, "assigned_to": "Pat Driver"})
+    assert out["assigned_to"] == "Pat Driver"
+    # v2 detail: assigned_to is a nested user object → full_name
+    out2 = _norm_work_order({
+        "id": 2,
+        "assigned_to": {"id": 9, "full_name": "Pat Driver", "username": "pd"},
+    })
+    assert out2["assigned_to"] == "Pat Driver"

@@ -204,7 +204,7 @@ class UsersMixin:
         """Operator-side cross-account user search (system console).
 
         Joined with ``accounts.name`` so the operator sees "Jane —
-        PREMIER TRUCKING (owner)" without a per-row lookup.  ``search``
+        ACME TRUCKING (owner)" without a per-row lookup.  ``search``
         matches display_name (case-insensitive substring), email, or an
         exact telegram_id.  Newest first.  This is the only place we
         intentionally read users across tenant boundaries — gated by

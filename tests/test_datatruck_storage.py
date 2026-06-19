@@ -79,8 +79,8 @@ async def test_trucks_promoted_columns_and_numerics(db):
     written = await db.upsert_datatruck_trucks(42, [{
         "external_id": "443",
         "unit_number": "247",
-        "plate_number": "PXF8448",
-        "vin": "3AKJJHDR7VSXC469",
+        "plate_number": "ABC1234",
+        "vin": "1HGTEST0000000001",
         "make": "Freightliner",
         "model": "Cascadia",
         "year": 2027,

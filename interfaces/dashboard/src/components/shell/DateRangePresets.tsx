@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDay } from '../../utils/datetime';
 
 /**
  * Quick-select day-range picker with optional custom-range calendar.
@@ -57,8 +59,8 @@ function fmtIso(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function fmtNice(d: Date): string {
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+function fmtNice(d: Date, tz?: string): string {
+  return formatDay(d, { timeZone: tz, intl: { month: 'short', day: 'numeric', year: 'numeric' } });
 }
 
 function labelFor(value: number, opts: { label: string; days: number }[]): string {
@@ -143,6 +145,7 @@ export default function DateRangePresets({
   options = DEFAULT_OPTIONS,
   isFetching = false,
 }: DateRangePresetsProps) {
+  const tz = useTimezone();
   const [open, setOpen] = useState(false);
   const [showCal, setShowCal] = useState(false);
   const [pickerMonth, setPickerMonth] = useState<Date>(() => {
@@ -275,7 +278,7 @@ export default function DateRangePresets({
           <div className="mt-3 flex items-center justify-between text-2xs text-muted-foreground">
             <span>
               {pickedStart
-                ? `${fmtNice(pickedStart)} → ${fmtNice(today)} (${daysBetween(pickedStart, today)}d)`
+                ? `${fmtNice(pickedStart, tz)} → ${fmtNice(today, tz)} (${daysBetween(pickedStart, today)}d)`
                 : 'Range ends today'}
             </span>
           </div>

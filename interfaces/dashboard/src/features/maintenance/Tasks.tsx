@@ -29,6 +29,8 @@ import { toneClasses } from '@/lib/status';
 import { ServiceHistoryModal } from './ServiceHistoryModal';
 import { TemplatesModal } from './TemplatesModal';
 import type { MaintenanceTemplate } from '../../types';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate, formatDay } from '../../utils/datetime';
 
 // Status dropdown options. Labels are computed via STATUS_LABELS so
 // the on-screen text is properly capitalised ("In Progress", not
@@ -76,18 +78,18 @@ function _dueDateToPeriodDays(due: string | null | undefined): string {
 // instead of mixing numeric and long-form locale defaults.
 const DATE_FMT: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'short', day: 'numeric' };
 
-function _formatDate(input: string | null | undefined): string {
+function _formatDate(input: string | null | undefined, tz?: string): string {
   if (!input) return '';
   // YYYY-MM-DD inputs land at midnight UTC if parsed bare; pin to
   // local midnight so the rendered day matches the user's calendar.
   const iso = /^\d{4}-\d{2}-\d{2}$/.test(input) ? input + 'T00:00:00' : input;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString(undefined, DATE_FMT);
+  return formatDay(d, { timeZone: tz, intl: DATE_FMT });
 }
 
-function _todayLabel(): string {
-  return new Date().toLocaleDateString(undefined, DATE_FMT);
+function _todayLabel(tz?: string): string {
+  return formatDay(new Date(), { timeZone: tz, intl: DATE_FMT });
 }
 
 // Snooze Alerts is only meaningful when the task is actually nagging
@@ -206,6 +208,7 @@ const baseColumns: AnyColumn[] = [
 export default function Tasks() {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const tz = useTimezone();
   const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showAdd, setShowAdd] = useState(false);
@@ -780,10 +783,25 @@ export default function Tasks() {
           },
         };
       }
+      if (col.key === 'updated_at') {
+        // Override the static render so the Updated timestamp formats
+        // in the account-effective timezone (the module-level
+        // ``baseColumns`` definition can't reach the ``useTimezone``
+        // hook).  Same short date+time shape as before.
+        return {
+          ...col,
+          render: (v: unknown) => v
+            ? formatDate(String(v), {
+                timeZone: tz,
+                intl: { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' },
+              })
+            : '—',
+        };
+      }
       return col;
     });
     return [checkboxCol, ...enrichedBase];
-  }, [tasks, selectedIds, dueSoonClassify, customTypeLabelByValue]);
+  }, [tasks, selectedIds, dueSoonClassify, customTypeLabelByValue, tz]);
 
   // Bulk action handlers — POST to the new /tasks/bulk/* routes.
   const handleBulkComplete = async () => {
@@ -1191,7 +1209,7 @@ export default function Tasks() {
       });
       toast.success(
         until
-          ? `Snoozed until ${new Date(until).toLocaleString()}`
+          ? `Snoozed until ${formatDate(until, { timeZone: tz })}`
           : 'Snooze cleared',
       );
       setSelected(null);
@@ -1514,9 +1532,9 @@ export default function Tasks() {
             {fTriggerMode === 'date' && (
               <label className="block">
                 <div className="flex items-center justify-between gap-2 text-2xs text-muted-foreground mb-1">
-                  <span title="Today's date — the period below is added to this">Today: {_todayLabel()}</span>
+                  <span title="Today's date — the period below is added to this">Today: {_todayLabel(tz)}</span>
                   <span className="text-primary">
-                    Due: {fDueDate ? _formatDate(_periodDaysToDueDate(fDueDate)) : '—'}
+                    Due: {fDueDate ? _formatDate(_periodDaysToDueDate(fDueDate), tz) : '—'}
                   </span>
                 </div>
                 <DaysPicker value={fDueDate} onChange={setFDueDate} />
@@ -1865,7 +1883,7 @@ export default function Tasks() {
               <div className={`mb-4 px-3 py-2 rounded text-xs flex items-center gap-2 ${toneClasses('warn')}`}>
                 <BellOff size={14} className="shrink-0" />
                 <span className="flex-1">
-                  Snoozed until {new Date(selected.snoozed_until).toLocaleString()}
+                  Snoozed until {formatDate(selected.snoozed_until, { timeZone: tz })}
                 </span>
                 <button
                   type="button"
@@ -1881,11 +1899,11 @@ export default function Tasks() {
                 description, due triggers, priority) live in the form
                 below so the same value never appears twice. */}
             <dl className="space-y-3 text-sm mb-6">
-              <div className="flex justify-between"><dt className="text-muted-foreground">Created</dt><dd>{_formatDate(selected.created_at)}</dd></div>
+              <div className="flex justify-between"><dt className="text-muted-foreground">Created</dt><dd>{_formatDate(selected.created_at, tz)}</dd></div>
               {selected.completed_at && (
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Completed</dt>
-                  <dd>{_formatDate(selected.completed_at)}</dd>
+                  <dd>{_formatDate(selected.completed_at, tz)}</dd>
                 </div>
               )}
               {(selected.recur_interval_days
@@ -1918,7 +1936,7 @@ export default function Tasks() {
                       {selected.attested_by_name || `user ${selected.attested_by}`}
                     </span>
                     {' '}confirmed on{' '}
-                    {new Date(selected.attested_at).toLocaleString()}
+                    {formatDate(selected.attested_at, { timeZone: tz })}
                   </dd>
                 </div>
               )}
@@ -2000,9 +2018,9 @@ export default function Tasks() {
                 {eTriggerMode === 'date' && (
                   <label className="block">
                     <div className="flex items-center justify-between gap-2 text-2xs text-muted-foreground mb-1">
-                      <span title="Today's date — the period below is added to this">Today: {_todayLabel()}</span>
+                      <span title="Today's date — the period below is added to this">Today: {_todayLabel(tz)}</span>
                       <span className="text-primary">
-                        Due: {eDueDate ? _formatDate(_periodDaysToDueDate(eDueDate)) : '—'}
+                        Due: {eDueDate ? _formatDate(_periodDaysToDueDate(eDueDate), tz) : '—'}
                       </span>
                     </div>
                     <DaysPicker value={eDueDate} onChange={setEDueDate} />

@@ -509,7 +509,7 @@
     "add_step2_hint": "<i>(waxay ka bilaabmaysaa samsara_api_…)</i>",
     "add_step3": "<b>Tallaabada 3/3</b> — Magaca muuqda (ikhtiyaari)",
     "add_step3_prompt": "Qor magac saaxiibtinimo ee shirkaddan\nama taabo <b>⏭ Gudub</b> si aad u isticmaasho koodhka.",
-    "add_step3_example": "Tusaale: <i>Premier Trucking Group</i>",
+    "add_step3_example": "Tusaale: <i>Acme Trucking Inc</i>",
     "add_code_invalid": "❌ Koodhku waa inuu ahaadaa 1–10 xaraf, iyada oo aan boos bannan lahayn.",
     "add_code_example": "Tusaale: <b>PTG</b>, <b>CFT</b>",
     "wizard_lost": "❌ Xaaladdii saaxirku way luntay. Fadlan mar kale bilow."

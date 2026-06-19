@@ -291,10 +291,10 @@ async def get_vehicle_odometer(tool_args: dict, samsara_client,
                 "type": "string",
                 "description": (
                     "Vehicle name or number (e.g. '231').  Required — "
-                    "fleet-wide history isn't supported here because "
-                    "the row count explodes; for fleet questions use "
-                    "the per-vehicle tools (get_account_stats, "
-                    "get_parked_vehicles, get_efficiency_summary)."
+                    "account-wide history isn't supported here because "
+                    "the row count explodes; for account-wide questions use "
+                    "get_undriven_vehicles, get_parked_vehicles, "
+                    "get_account_stats, or get_efficiency_summary."
                 ),
             },
             "days": {
@@ -392,5 +392,68 @@ async def get_vehicle_history(tool_args: dict, samsara_client,
                 "driver_id": r.get("last_driver_id"),
             }
             for r in rows
+        ],
+    }
+
+
+@register_tool({
+    "name": "get_undriven_vehicles",
+    "description": (
+        "List vehicles that have NOT been driven / have not moved for at "
+        "least the requested number of days, based on actual movement "
+        "history (the last time the vehicle's speed was above idle).\n\n"
+        "USE THIS for questions like:\n"
+        "- 'what vehicle was stopped 3 days without driving'\n"
+        "- \"which trucks haven't moved in a week\"\n"
+        "- 'vehicles not driven in N days'\n"
+        "- 'what truck hasn't been driven recently'\n"
+        "Returns vehicle name, company, when it last moved, and how many "
+        "days it's been stopped (longest-stopped first).\n\n"
+        "This is MOVEMENT-based.  For vehicles parked specifically at an "
+        "unsafe/unknown location use get_parked_vehicles; for one named "
+        "vehicle's full movement history use get_vehicle_history."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "min_days": {
+                "type": "number",
+                "description": (
+                    "Minimum days without driving (default 1).  "
+                    "Use 3 for 'three days', 7 for 'a week'."
+                ),
+            },
+        },
+        "required": [],
+    },
+})
+async def get_undriven_vehicles(tool_args: dict, samsara_client,
+                                account_id: int | None = None, db=None) -> dict:
+    if not db or account_id is None:
+        return {"error": "Vehicle movement history not available in this context"}
+    if not hasattr(db, "get_undriven_vehicles"):
+        return {
+            "error": (
+                "Movement history requires the warehouse snapshot table — "
+                "this account hasn't been migrated to it yet, or the "
+                "snapshot ingestor hasn't run."
+            ),
+        }
+    min_days = float(tool_args.get("min_days") or 1)
+    rows = await db.get_undriven_vehicles(account_id, min_days=min_days)
+    # Account-wide tool → filter to the caller's Vehicle-Access scope.
+    rows = filter_to_scope(rows, tool_args, key="vehicle_name")
+    return {
+        "min_days": min_days,
+        "count": len(rows),
+        "vehicles": [
+            {
+                "vehicle": r.get("vehicle_name"),
+                "company": r.get("company_code", ""),
+                "last_moved": r.get("last_moved"),
+                "days_stopped": r.get("days_stopped"),
+                "last_seen": r.get("last_seen"),
+            }
+            for r in rows[:25]
         ],
     }

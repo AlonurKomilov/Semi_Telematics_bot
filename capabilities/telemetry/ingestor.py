@@ -204,7 +204,13 @@ async def ingest_vehicle_state(account_id: int) -> int:
             try:
                 readings = await company_client.get_current_odometer_readings()
             except Exception as e:
-                logger.debug("odometer fetch failed: %s", e)
+                # WARNING (not debug): a persistent odometer-endpoint
+                # failure silently freezes every vehicle's mileage while
+                # GPS keeps working — exactly the kind of stall that
+                # should be visible in logs, not hidden.
+                logger.warning(
+                    "odometer fetch failed acct=%d: %s", account_id, e,
+                )
                 readings = []
             for reading in readings:
                 vehicle_id = reading.get("id")
@@ -217,7 +223,9 @@ async def ingest_vehicle_state(account_id: int) -> int:
             try:
                 hours_readings = await company_client.get_current_engine_hours_readings()
             except Exception as e:
-                logger.debug("engine-hours fetch failed: %s", e)
+                logger.warning(
+                    "engine-hours fetch failed acct=%d: %s", account_id, e,
+                )
                 hours_readings = []
             for reading in hours_readings:
                 vehicle_id = reading.get("id")
@@ -248,6 +256,19 @@ async def ingest_vehicle_state(account_id: int) -> int:
         len(odometer_by_vehicle_id),
         len(engine_hours_by_vehicle_id),
     )
+    # Surface a whole-fleet odometer stall: we persisted vehicles but got
+    # ZERO odometer readings.  Covers both failure modes — the endpoint
+    # threw (warned above) AND the quieter case where it returns an empty
+    # list with no exception.  Without this, every snapshot from here on
+    # carries a NULL odometer and the back-dated work-order reading
+    # silently freezes at the last good day, fleet-wide, for days.
+    if n > 0 and not odometer_by_vehicle_id:
+        logger.warning(
+            "odometer ingestion stalled acct=%d: %d vehicles persisted, "
+            "0 odometer readings (Samsara odometer endpoint down or "
+            "unauthorized?) — back-dated WO mileage will freeze",
+            account_id, n,
+        )
 
     # Keep the Vehicle registry (our SSOT) complete: every Samsara
     # vehicle this tick saw is upserted into ``vehicles`` (source=
@@ -619,12 +640,44 @@ async def _aggregate_day_window(
         """,
         (account_id, hour_start_label, hour_end_label),
     )
-    rows = []
+    hourly_agg = await cur.fetchall()
+
+    # End-of-day odometer + engine-hours, read straight from the 5-min
+    # snapshots for this day.  Both readings are monotonic (cumulative),
+    # so MAX over the day == the last reading of the day — no correlated
+    # subquery needed.  This carries the long-lived odometer into the
+    # 730-day daily tier so back-dated work orders resolve far past the
+    # 7-day snapshot retention.  Window matches the hourly labels above
+    # (the snapshot ``captured_at`` may be ISO "…T..Z" or "… ..", and a
+    # bare-hour label sorts correctly against both).
+    eod_by_vid: dict[str, dict] = {}
+    cur = await tenant._db.execute(
+        """
+        SELECT vehicle_id,
+               MAX(odometer_mi)  AS odometer_eod,
+               MAX(engine_hours) AS engine_hours_eod
+          FROM vehicle_state_snapshot
+         WHERE account_id = ?
+           AND captured_at >= ?
+           AND captured_at <  ?
+           AND odometer_mi IS NOT NULL
+         GROUP BY vehicle_id
+        """,
+        (account_id, hour_start_label, hour_end_label),
+    )
     for r in await cur.fetchall():
+        d = dict(zip(("vehicle_id", "odometer_eod", "engine_hours_eod"), r))
+        vid = str(d.get("vehicle_id") or "")
+        if vid:
+            eod_by_vid[vid] = d
+
+    rows = []
+    for r in hourly_agg:
         d = dict(zip(cols, r))
         vid = str(d.get("vehicle_id") or "")
         if not vid:
             continue
+        eod = eod_by_vid.get(vid, {})
         rows.append({
             "vehicle_id":        vid,
             "day_utc":           day_label,
@@ -639,6 +692,8 @@ async def _aggregate_day_window(
             # consumer needs it (column reserved so adding it later
             # doesn't require another migration).
             "fault_count_eod":   0,
+            "odometer_eod":      eod.get("odometer_eod"),
+            "engine_hours_eod":  eod.get("engine_hours_eod"),
         })
     if not rows:
         return 0

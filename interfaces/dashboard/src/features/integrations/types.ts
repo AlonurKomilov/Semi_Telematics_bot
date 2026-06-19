@@ -160,6 +160,27 @@ export interface TestCompanyResponse {
   elapsed_ms: number;
 }
 
+// ── Telematics "Synced data" feeds (Samsara) ────────────────────
+
+/** One data feed Samsara pushes into the warehouse, with its stored
+ *  freshness — the telematics counterpart to ``DatatruckResourceOverview``
+ *  so both cards render the same "Synced data" table. */
+export interface ProviderFeed {
+  /** Capability id — the frontend derives label + cadence from it. */
+  capability: string;
+  /** "scheduled" | "scheduled+backfill" — drives which action shows. */
+  mode: string;
+  /** Product feature this feed serves — groups the Synced-data table. */
+  feature: string;
+  enabled: boolean;
+  stored: { count: number; last_synced_at: string | null };
+}
+
+export interface ProviderFeedsResponse {
+  provider_id: string;
+  feeds: ProviderFeed[];
+}
+
 // ── Datatruck TMS sync ──────────────────────────────────────────
 
 /** Live state of one resource's sync run (Redis-backed, 24h TTL).
@@ -175,6 +196,68 @@ export interface DatatruckSyncRun {
   started_at: string;
   finished_at: string | null;
   error: string | null;
+  /** Per-id detail enrichment outcome (work orders).  When
+   *  ``detail_failed`` > 0 the integration token couldn't reach the
+   *  detail endpoint, so rich fields (invoice, payment, vendor contact)
+   *  fell back to blank — ``detail_error`` carries the reason. */
+  detail_ok?: number;
+  detail_failed?: number;
+  detail_error?: string | null;
+}
+
+// ── Sync preview (plan → apply) ────────────────────────────────
+
+export interface SyncDiffVehicles {
+  kind: 'vehicles';
+  vehicle_type: string;
+  /** Will be inserted (no match). */
+  new: { unit: string; vin: string; plate: string }[];
+  /** Matched — will fill these empty fields, nothing overwritten. */
+  enrich: { unit: string; matched_unit: string; by: string; fills: string[] }[];
+  /** Would insert, but the unit already exists on >1 vehicle — review. */
+  review: { unit: string; vin: string; plate: string; reason: string }[];
+  counts: {
+    new: number; enrich: number; review: number;
+    unchanged: number; total: number;
+  };
+}
+
+interface WorkOrderFieldChange {
+  field: string;
+  from: string;
+  to: string;
+}
+
+interface WorkOrderDiffRow {
+  external_id: string;
+  number: string;
+  vendor: string;
+  vehicle: string;
+  total: number | null;
+  /** Per-field before → after, only on update rows. */
+  changes?: WorkOrderFieldChange[];
+}
+
+export interface SyncDiffWorkOrders {
+  kind: 'work_orders';
+  new: WorkOrderDiffRow[];
+  update: WorkOrderDiffRow[];
+  counts: { new: number; update: number; changed?: number; total: number };
+}
+
+export type SyncDiff = SyncDiffVehicles | SyncDiffWorkOrders;
+
+/** Poll payload for a background preview run.  ``diff`` is present once
+ *  ``state === 'ready'``. */
+export interface DatatruckPreviewStatus {
+  state: 'queued' | 'pending' | 'running' | 'ready' | 'failed'
+    | 'expired' | 'unavailable';
+  resource: string;
+  preview_id: string;
+  fetched?: number;
+  total_upstream?: number | null;
+  diff?: SyncDiff;
+  error?: string | null;
 }
 
 /** One resource row in the sync overview. */
@@ -182,6 +265,8 @@ export interface DatatruckResourceOverview {
   /** Whether the matching capability toggle is on. */
   enabled: boolean;
   capability: string;
+  /** Product feature this resource lands in — groups the table. */
+  feature?: string;
   stored: { count: number; last_synced_at: string | null };
   sync: DatatruckSyncRun | null;
 }

@@ -5,6 +5,8 @@ import { ClipboardCheck, ChevronRight } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { type Tone, toneClasses } from '../../lib/status';
 import type { PTIInspectionRow, PTIInspectionsResponse } from '../../types';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDay } from '../../utils/datetime';
 
 /**
  * "Last 5 inspections" mini-card embedded on the Vehicle Detail page.
@@ -35,11 +37,8 @@ const STATUS_TONE: Record<PTIInspectionRow['status'], Tone> = {
   revision_required: 'warn',
 };
 
-function _formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString();
+function _formatDate(iso: string | null, tz?: string): string {
+  return formatDay(iso, { timeZone: tz });
 }
 
 interface Props {
@@ -48,6 +47,7 @@ interface Props {
 
 export function VehicleInspectionsCard({ vehicleName }: Props) {
   const { t } = useTranslation();
+  const tz = useTimezone();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['vehicle-inspections', vehicleName],
@@ -104,7 +104,7 @@ export function VehicleInspectionsCard({ vehicleName }: Props) {
                     {r.inspection_type.replace(/_/g, ' ')}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {_formatDate(r.submitted_at ?? r.created_at)}
+                    {_formatDate(r.submitted_at ?? r.created_at, tz)}
                     {r.defects_count > 0 ? ` · ${r.defects_count} defect${r.defects_count !== 1 ? 's' : ''}` : ''}
                     {r.has_oos_defect ? ' · OOS' : ''}
                   </p>

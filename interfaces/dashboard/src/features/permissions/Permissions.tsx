@@ -10,13 +10,14 @@ import { toneClasses } from '../../lib/status';
 
 // Column order mirrors the persona-selector dropdown.
 const ROLES = [
-  'owner', 'admin', 'fleet', 'dispatcher', 'safety', 'hr', 'accounting', 'driver',
+  'owner', 'admin', 'fleet', 'dispatcher', 'safety', 'hr', 'accounting', 'recruiter', 'driver',
 ] as const;
 type RoleId = typeof ROLES[number];
 
 const ROLE_LABELS: Record<string, string> = {
   owner: 'Owner', admin: 'Admin', fleet: 'Fleet', dispatcher: 'Dispatch',
-  safety: 'Safety', hr: 'HR', accounting: 'Accounting', driver: 'Driver',
+  safety: 'Safety', hr: 'HR', accounting: 'Accounting',
+  recruiter: 'Recruiter', driver: 'Driver',
 };
 
 // ── Permission flag model ─────────────────────────────────────────
@@ -144,6 +145,13 @@ const PERM_GROUPS: PermGroup[] = [
     flags: [
       { key: 'can_coaching_admin',    label: 'Coaching' },
       { key: 'can_coaching_view_own', label: 'View Own Coaching', indented: true },
+    ],
+  },
+  {
+    title: 'Recruiting',
+    flags: [
+      { key: 'can_recruit_applicants', label: 'Applications', description: 'Recruiting links + the driver-application dashboard' },
+      { key: 'can_convert_to_driver',  label: 'Hire Applicant', indented: true, description: 'Convert an approved application into a driver / invite — without full Send-Invites power' },
     ],
   },
   {

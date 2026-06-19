@@ -2,6 +2,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Fuel, Plus } from 'lucide-react';
 import { apiJSON } from '../../api/client';
+import { useTimezone } from '../../hooks/useTimezone';
+import { todayInTimeZone } from '../../utils/datetime';
 import DataTable from '../../components/DataTable';
 import {
   PageHeader,
@@ -47,12 +49,13 @@ const summaryCols: AnyColumn[] = [
   },
 ];
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export default function FuelCosts() {
   const { t } = useTranslation();
+  // "Today" must be the account's local day (not UTC) — a fuel entry
+  // logged late evening on the West Coast belongs to today, and the
+  // date input must not block it as "future".
+  const tz = useTimezone();
+  const today = () => todayInTimeZone(tz);
   const [tab, setTab] = useState<'entries' | 'summary'>('entries');
   const [entries, setEntries] = useState<FuelEntry[]>([]);
   const [summaryData, setSummaryData] = useState<FuelSummaryVehicle[]>([]);

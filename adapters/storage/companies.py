@@ -11,25 +11,32 @@ class CompaniesMixin:
 
     async def add_company(
         self, account_id: int, code: str,
-        samsara_api_key: str, display_name: str = "",
-        active_days: int = 30,
+        samsara_api_key: str = "", display_name: str = "",
+        active_days: int = 30, mc_number: str = "", usdot_number: str = "",
     ) -> Company:
-        """Add a Samsara company to an account."""
+        """Add a sub-company to an account.  ``mc_number``/``usdot_number``
+        are the optional federal carrier ids used to match integration
+        records to this company."""
         now = self._now()
         code = code.strip().upper()
+        mc_number = (mc_number or "").strip()
+        usdot_number = (usdot_number or "").strip()
         from infra.crypto import encrypt as _enc
         encrypted_key = _enc(samsara_api_key)
         cur = await self._db.execute(
             """INSERT INTO companies
-               (account_id, code, display_name, samsara_api_key, active_days, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (account_id, code, display_name, encrypted_key, active_days, now),
+               (account_id, code, display_name, samsara_api_key, active_days,
+                mc_number, usdot_number, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (account_id, code, display_name, encrypted_key, active_days,
+             mc_number, usdot_number, now),
         )
         await self._db.commit()
         return Company(
             id=cur.lastrowid, account_id=account_id, code=code,
             display_name=display_name, samsara_api_key=samsara_api_key,
             active_days=active_days, is_active=True, created_at=now,
+            mc_number=mc_number, usdot_number=usdot_number,
         )
 
     async def get_account_companies(
@@ -107,10 +114,14 @@ class CompaniesMixin:
         account_id scopes the update to the owning account
         (prevents cross-tenant modification).
         """
-        allowed = {"display_name", "samsara_api_key", "active_days", "is_active"}
+        allowed = {"display_name", "samsara_api_key", "active_days",
+                   "is_active", "mc_number", "usdot_number"}
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
             return False
+        for f in ("mc_number", "usdot_number"):
+            if f in updates and updates[f] is not None:
+                updates[f] = str(updates[f]).strip()
         if "samsara_api_key" in updates:
             from infra.crypto import encrypt as _enc
             updates["samsara_api_key"] = _enc(updates["samsara_api_key"])

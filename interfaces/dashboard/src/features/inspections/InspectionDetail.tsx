@@ -6,6 +6,8 @@ import { X, BellRing, MapPin, FileDown } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { toneClasses, toneText } from '../../lib/status';
 import { ErrorState } from '../../components/shell';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate, formatTime } from '../../utils/datetime';
 import type {
   PTIInspectionDetail,
   PTIInspectionItem,
@@ -40,17 +42,15 @@ const REVIEW_OPTIONS: Array<{ value: 'approved' | 'needs_service' | 'rejected' |
 ];
 
 
-function _formatTs(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString();
+function _formatTs(iso: string | null, tz?: string): string {
+  return formatDate(iso, { timeZone: tz });
 }
 
 
 export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }: Props) {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const tz = useTimezone();
   const [tab, setTab] = useState<'items' | 'media'>('items');
   const [reviewStatus, setReviewStatus] = useState<'approved' | 'needs_service' | 'rejected' | 'revision_required'>('approved');
   const [reviewNotes, setReviewNotes] = useState('');
@@ -94,7 +94,7 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
       } else if (res.throttled_until) {
         // Cooldown — surface when it'll unlock so the fleet doesn't
         // keep tapping.
-        const when = new Date(res.throttled_until).toLocaleTimeString();
+        const when = formatTime(res.throttled_until, { timeZone: tz });
         toast.warning(t('inspections.remind_throttled', { time: when }));
       } else {
         toast.error(t('inspections.remind_failed'));
@@ -156,8 +156,8 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
             {ins?.submitted_at && (
               <p className="text-xs text-muted-foreground">
                 {ins.driver_name
-                  ? `Submitted by ${ins.driver_name} · ${_formatTs(ins.submitted_at)}`
-                  : `Submitted ${_formatTs(ins.submitted_at)}`}
+                  ? `Submitted by ${ins.driver_name} · ${_formatTs(ins.submitted_at, tz)}`
+                  : `Submitted ${_formatTs(ins.submitted_at, tz)}`}
               </p>
             )}
           </div>
@@ -346,8 +346,8 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
                     {ins.reviewed_by_name
-                      ? `By ${ins.reviewed_by_name} on ${_formatTs(ins.reviewed_at)}`
-                      : `On ${_formatTs(ins.reviewed_at)}`}
+                      ? `By ${ins.reviewed_by_name} on ${_formatTs(ins.reviewed_at, tz)}`
+                      : `On ${_formatTs(ins.reviewed_at, tz)}`}
                   </p>
                   {ins.review_notes && (
                     <p className="text-sm mt-2 bg-muted/40 rounded px-3 py-2">{ins.review_notes}</p>

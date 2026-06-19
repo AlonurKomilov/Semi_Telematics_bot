@@ -233,6 +233,12 @@ async def snapshot_coverage(
     }
 
 
+# NOTE: the "Synced data" feeds endpoint is now generic + catalog-
+# driven — see ``GET /{provider_id}/feeds`` in the shared router.  Samsara
+# declares its feeds via ``feeds=_SAMSARA_FEED_SPECS`` in the catalog, so
+# there's no provider-specific endpoint here anymore.
+
+
 # ── Per-company credentials (canonical key management) ───────────
 
 

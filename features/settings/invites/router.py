@@ -19,7 +19,9 @@ from interfaces.api.deps import (
     get_platform_db, paginate, resolve_user_id,
 )
 from adapters.storage.models import Role
-from capabilities.permissions.roles import validate_role_change, role_rank
+from capabilities.permissions.roles import (
+    validate_role_change, role_rank, ASSIGNABLE_ROLES_PATTERN,
+)
 from .service import _INVITE_EMAIL_RE, _invite_email_rate_check
 
 logger = logging.getLogger(__name__)
@@ -35,7 +37,7 @@ router = APIRouter(prefix="/admin", tags=["settings"])
 # interfaces/api/auth.py:_EMAIL_RE (single source of truth would be
 # nice; deferred to a tidy-up pass).
 class InviteCreate(BaseModel):
-    role: str = Field("fleet", pattern=r"^(admin|fleet|safety|dispatcher|driver)$")
+    role: str = Field("fleet", pattern=ASSIGNABLE_ROLES_PATTERN)
     truck_num: Optional[str] = None
     hours: int = Field(24, ge=1, le=720)
     # Email-channel: when present, the server generates the invite

@@ -163,6 +163,42 @@ async def _show_loading(update: Update, context: ContextTypes.DEFAULT_TYPE, text
         _active_messages[key] = [msg.message_id]
 
 
+async def _edit_active(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+    """Best-effort in-place edit of the current active message.
+
+    Used for live progress ticks (e.g. streaming AI tool-call updates)
+    so the user watches work happen instead of staring at a static
+    "Thinking…".  Deliberately swallows BadRequest (message-not-modified
+    / message-gone) and any transient error (edit rate limits) — a
+    dropped progress tick must never break the final answer that follows.
+    """
+    bot = context.bot
+    query = update.callback_query
+    if query:
+        chat_id = query.message.chat.id
+        msg_id = query.message.message_id
+    else:
+        chat_id = update.effective_chat.id
+        key = _msg_key(
+            update,
+            context.user_data["_db_user"].account_id
+            if context.user_data.get("_db_user") else 0,
+        )
+        ids = _active_messages.get(key) or []
+        msg_id = ids[-1] if ids else None
+    if not msg_id:
+        return
+    try:
+        await bot.edit_message_text(
+            chat_id=chat_id, message_id=msg_id,
+            text=text, parse_mode=ParseMode.HTML,
+        )
+    except BadRequest:
+        pass  # not-modified / message deleted — nothing to do
+    except Exception:
+        pass  # rate-limit or transient — progress is best-effort
+
+
 def _company_line(breakdown: dict) -> str:
     parts = []
     for code in sorted(breakdown.keys()):

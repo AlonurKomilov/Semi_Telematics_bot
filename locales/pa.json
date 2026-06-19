@@ -509,7 +509,7 @@
     "add_step2_hint": "<i>(samsara_api_… ਨਾਲ ਸ਼ੁਰੂ ਹੁੰਦਾ ਹੈ)</i>",
     "add_step3": "<b>ਕਦਮ 3/3</b> — ਡਿਸਪਲੇ ਨਾਮ (ਵਿਕਲਪਿਕ)",
     "add_step3_prompt": "ਇਸ ਕੰਪਨੀ ਲਈ ਕੋਈ ਨਾਮ ਟਾਈਪ ਕਰੋ\nਜਾਂ ਕੋਡ ਵਰਤਣ ਲਈ <b>⏭ ਛੱਡੋ (Skip)</b> 'ਤੇ ਟੈਪ ਕਰੋ।",
-    "add_step3_example": "ਉਦਾਹਰਣ: <i>Premier Trucking Group</i>",
+    "add_step3_example": "ਉਦਾਹਰਣ: <i>Acme Trucking Inc</i>",
     "add_code_invalid": "❌ ਕੋਡ 1–10 ਅੱਖਰਾਂ ਦਾ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ, ਕੋਈ ਖਾਲੀ ਥਾਂ (space) ਨਹੀਂ।",
     "add_code_example": "ਉਦਾਹਰਣ: <b>PTG</b>, <b>CFT</b>",
     "wizard_lost": "❌ ਵਿਜ਼ਾਰਡ ਸਥਿਤੀ ਖਤਮ ਹੋ ਗਈ। ਕਿਰਪਾ ਕਰਕੇ ਦੁਬਾਰਾ ਸ਼ੁਰੂ ਕਰੋ।"

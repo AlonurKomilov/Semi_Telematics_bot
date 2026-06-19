@@ -78,6 +78,8 @@ from .payroll import PayrollMixin
 from .coaching import CoachingMixin
 from .storage_sync import StorageSyncMixin
 from .ai_chat import AIChatHistoryMixin
+from .errors import ErrorLogMixin
+from .recruitment import RecruitmentMixin
 from .account_integrations import AccountIntegrationsMixin, AccountIntegration  # noqa: F401
 from .datatruck import DatatruckStorageMixin
 from .vehicles_registry import VehiclesRegistryMixin, Vehicle  # noqa: F401
@@ -121,6 +123,8 @@ class Database(
     CoachingMixin,
     StorageSyncMixin,
     AIChatHistoryMixin,
+    ErrorLogMixin,
+    RecruitmentMixin,
     DatatruckStorageMixin,
     VehiclesRegistryMixin,
     _DatabaseCore,

@@ -80,6 +80,7 @@ const ROLE_TO_HOST: Record<string, string> = {
   safety: `safety.${APEX_DOMAIN}`,
   hr: `hr.${APEX_DOMAIN}`,
   accounting: `accounting.${APEX_DOMAIN}`,
+  recruiter: `recruiter.${APEX_DOMAIN}`,
   driver: `dash.${APEX_DOMAIN}`,
 };
 

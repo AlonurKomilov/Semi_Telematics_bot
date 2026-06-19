@@ -591,6 +591,34 @@ async def vehicle_faults(
     }
 
 
+@router.get("/{vehicle_name}/reading-as-of")
+async def vehicle_reading_as_of(
+    vehicle_name: str,
+    date: str = Query(..., description="Service date (YYYY-MM-DD)"),
+    user: dict = Depends(require_permission_any(
+        "can_work_orders_all", "can_faults", "can_vehicle_vehicle",
+    )),
+):
+    """Odometer + engine-hours for a vehicle AS OF a date — backs the
+    work-order form's back-dated auto-fill.
+
+    When a snapshot exists, returns it.  When none does, returns nulls plus
+    the vehicle's snapshot *coverage window* (``telematics_linked`` +
+    ``coverage_start``/``coverage_end``) so the caller can explain WHY —
+    no telematics link vs. history not reaching that far back."""
+    tenant_db = await _get_tenant_db(user["account_id"])
+    r = await tenant_db.get_reading_as_of(user["account_id"], vehicle_name, date)
+    if r:
+        return {**r, "telematics_linked": True}
+    cov = await tenant_db.get_snapshot_coverage(user["account_id"], vehicle_name)
+    return {
+        "odometer_miles": None, "engine_hours": None, "as_of": None,
+        "telematics_linked": cov["telematics_linked"],
+        "coverage_start": cov["coverage_start"],
+        "coverage_end": cov["coverage_end"],
+    }
+
+
 @router.get("/{vehicle_name}/timeline")
 async def vehicle_timeline(
     vehicle_name: str,

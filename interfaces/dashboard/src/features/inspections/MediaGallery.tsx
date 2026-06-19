@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { X, Download } from 'lucide-react';
 import { apiFetch } from '../../api/client';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate } from '../../utils/datetime';
 import type { PTIInspectionDetail, PTIInspectionMedia } from '../../types';
 import { parseVerdict, VERDICT_EMOJI, verdictTone } from './aiVerdict';
 
@@ -76,6 +78,7 @@ async function downloadMedia(inspectionId: number, media: PTIInspectionMedia) {
 
 
 export function MediaGallery({ inspection }: Props) {
+  const tz = useTimezone();
   const media = inspection.media ?? [];
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
@@ -148,7 +151,7 @@ export function MediaGallery({ inspection }: Props) {
                   {m.annotated_at && (
                     <span
                       className="absolute top-1 right-1 bg-red-500 text-white text-3xs font-semibold px-1.5 py-0.5 rounded"
-                      title={`Annotated by driver · ${new Date(m.annotated_at).toLocaleString()}`}
+                      title={`Annotated by driver · ${formatDate(m.annotated_at, { timeZone: tz })}`}
                     >
                       ✎ Annotated
                     </span>

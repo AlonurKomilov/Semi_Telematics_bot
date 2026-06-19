@@ -61,6 +61,37 @@ class ProviderKind(str, Enum):
 
 
 @dataclass(frozen=True)
+class FeedSpec:
+    """One data feed a provider pushes into the tenant DB — the unit the
+    Integration card's shared "Synced data" table renders.
+
+    Declaring feeds here (not in a router) makes the card data-driven:
+    a new provider gets its synced-data table for free by listing its
+    feeds, with no new endpoint or UI.
+
+      * ``capability`` ties the feed to its on/off toggle, and the
+        frontend derives the row label + cadence from it.
+      * ``table`` / ``ts_col`` are the tenant-DB source the generic
+        ``/{provider}/feeds`` endpoint reads count + last-synced from.
+      * ``mode`` hints which action the card offers
+        (``scheduled+backfill`` → "Refresh history"; plain
+        ``scheduled`` → none, since continuous feeds have no manual pull).
+    """
+
+    capability: str
+    table: str
+    ts_col: str
+    mode: str = "scheduled"
+    # The product FEATURE this data primarily serves (display grouping on
+    # the integration card's "Synced data" table).  Telemetry streams are
+    # COMPONENTS of a feature (faults/health are parts of Vehicles), not
+    # features themselves — this records which feature reads them.  The
+    # integration stays feature-agnostic (it only fills the warehouse);
+    # this is metadata for grouping, not a dependency.
+    feature: str = ""
+
+
+@dataclass(frozen=True)
 class ProviderCatalogEntry:
     """Metadata the dashboard needs to render a provider card.
 
@@ -109,6 +140,12 @@ class ProviderCatalogEntry:
     owner first connects this provider.  Stored verbatim in
     account_integrations.feature_toggles; owners can override later."""
 
+    feeds: tuple[FeedSpec, ...] = ()
+    """Data feeds this provider pushes into the tenant DB — drive the
+    card's shared "Synced data" freshness table via the generic
+    ``/{provider}/feeds`` endpoint.  Empty for providers whose synced-
+    data view is bespoke (e.g. Datatruck's interactive sync panel)."""
+
 
 # Canonical defaults for Samsara — match the live scheduler cadences.
 _SAMSARA_DEFAULTS: dict[str, dict] = {
@@ -132,6 +169,26 @@ _SAMSARA_DEFAULTS: dict[str, dict] = {
     # regardless of how many accounts connect at once.
     Capability.HISTORY_BACKFILL:        {"enabled": True},
 }
+
+
+# Samsara's data feeds → the card's "Synced data" table.  Order = display
+# order.  ``(table, ts_col)`` is the tenant-DB freshness source the
+# generic /feeds endpoint reads.  Meta capabilities (prune/backfill) are
+# NOT feeds — they're actions, not stored data.
+_SAMSARA_FEED_SPECS: tuple[FeedSpec, ...] = (
+    # Ordered so feeds of the same feature are contiguous → clean groups.
+    FeedSpec(Capability.VEHICLE_STATE,           "vehicle_state",            "captured_at",              feature="Vehicles"),
+    FeedSpec(Capability.STATE_SNAPSHOT_HISTORY,  "vehicle_state_snapshot",   "captured_at", "scheduled+backfill", feature="Vehicles"),
+    FeedSpec(Capability.VEHICLE_HEALTH,          "vehicle_health_snapshot",  "captured_at",              feature="Vehicles"),
+    FeedSpec(Capability.VEHICLE_FAULTS,          "vehicle_fault_snapshot",   "captured_at",              feature="Vehicles"),
+    FeedSpec(Capability.TELEMETRY_HOURLY,        "vehicle_telemetry_hourly", "hour_utc",                 feature="Vehicles"),
+    FeedSpec(Capability.METRICS_DAILY,           "vehicle_metrics_daily",    "day_utc",                  feature="Vehicles"),
+    FeedSpec(Capability.SAFETY_EVENTS,           "safety_event_log",         "occurred_at",              feature="Safety"),
+    FeedSpec(Capability.DRIVER_EFFICIENCY_DAILY, "driver_efficiency_daily",  "day",                      feature="Driver Scorecards"),
+    FeedSpec(Capability.FLEET_WEATHER,           "aggregate_weather_snapshot",    "captured_at",         feature="Live Map"),
+    FeedSpec(Capability.FLEET_EFFICIENCY,        "aggregate_efficiency_snapshot", "captured_at",         feature="Costs"),
+    FeedSpec(Capability.GEOFENCE_DEFINITIONS,    "geofence_definitions",     "captured_at",              feature="Geofences"),
+)
 
 
 def resolve_capability_cadence(
@@ -186,6 +243,7 @@ PROVIDER_CATALOG: dict[str, ProviderCatalogEntry] = {
         icon="Satellite",
         status=ProviderStatus.AVAILABLE,
         feature_defaults=_SAMSARA_DEFAULTS,
+        feeds=_SAMSARA_FEED_SPECS,
     ),
 
     # ── Coming-soon placeholders ──
@@ -248,7 +306,7 @@ PROVIDER_CATALOG: dict[str, ProviderCatalogEntry] = {
             "LIVE telematics; the two complement each other and can "
             "run side-by-side on the same fleet.  Per-account "
             "credentials: enter your Datatruck company subdomain "
-            "(e.g. 'premier' for premier.datatruck.io) plus an API "
+            "(e.g. 'acme' for acme.datatruck.io) plus an API "
             "token minted from Datatruck Settings → API tokens with "
             "Driver, Orders, and Work Order Read scopes."
         ),

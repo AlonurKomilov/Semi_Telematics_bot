@@ -167,12 +167,57 @@ def invalidate_tool_cache(account_id: int | None = None):
             del cache[k]
 
 
+def tool_ok(data: dict | None = None, **fields) -> dict:
+    """Build a success envelope: ``{"ok": True, ...}``.
+
+    New tools should return this (or :func:`tool_error`) so the agent loop has a
+    uniform success/failure signal it can branch on without knowing each tool's
+    bespoke shape — the contract a future multi-round / autonomous mode needs to
+    decide retry vs. replan.  Existing tools that return a bare dict keep working;
+    :func:`execute_tool` stamps ``ok`` on their result either way.
+    """
+    out: dict = {"ok": True}
+    if data:
+        out.update(data)
+    out.update(fields)
+    return out
+
+
+def tool_error(message: str, **fields) -> dict:
+    """Build a failure envelope: ``{"ok": False, "error": message, ...}``."""
+    return {"ok": False, "error": str(message), **fields}
+
+
+def _stamp_ok(result: Any) -> dict:
+    """Attach a flat ``ok`` discriminator without restructuring the result.
+
+    Behaviour-preserving: every existing key is kept and the model-facing JSON
+    gains only one boolean.  ``ok`` is derived from the presence of an ``error``
+    key, so today's bare-dict tools get a consistent signal for free.  A tool
+    that already speaks the envelope (via :func:`tool_ok`/:func:`tool_error`) is
+    passed through untouched.  Non-dict returns are wrapped so the loop always
+    sees a dict.
+    """
+    if not isinstance(result, dict):
+        return {"ok": True, "data": result}
+    if "ok" in result:
+        return result
+    out = dict(result)
+    out["ok"] = "error" not in result
+    return out
+
+
 async def execute_tool(tool_name: str, tool_args: dict,
                        samsara_client,
                        account_id: int | None = None,
                        db=None,
                        scope_vehicles: list | None = None) -> dict:
     """Execute a registered tool by name. Returns result dict.
+
+    Every return is passed through :func:`_stamp_ok`, so the result always
+    carries a flat ``ok`` boolean (``True`` unless an ``error`` key is present)
+    on top of its existing keys — a uniform success/failure signal for the
+    agent loop, behaviour-preserving for current consumers.
 
     ``scope_vehicles`` is the caller's effective allowed-vehicle set (None =
     unrestricted).  For a scope-aware account-wide tool we inject it as
@@ -182,14 +227,14 @@ async def execute_tool(tool_name: str, tool_args: dict,
     """
     handler = get_tool_handler(tool_name)
     if not handler:
-        return {"error": f"Unknown tool: {tool_name}"}
+        return _stamp_ok({"error": f"Unknown tool: {tool_name}"})
     if scope_vehicles is not None:
         from capabilities.permissions.roles import SCOPE_AWARE_TOOLS
         if tool_name in SCOPE_AWARE_TOOLS:
             tool_args = {**tool_args, "_scope_vehicles": list(scope_vehicles)}
     try:
-        return await handler(tool_args, samsara_client,
-                             account_id=account_id, db=db)
+        return _stamp_ok(await handler(tool_args, samsara_client,
+                                       account_id=account_id, db=db))
     except Exception as e:
         logger.error(f"Tool {tool_name} failed: {e}")
-        return {"error": str(e)}
+        return _stamp_ok({"error": str(e)})

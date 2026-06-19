@@ -17,18 +17,30 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // Pages are already route-lazy (see router.tsx), so the ``index``
+    // chunk is just the always-loaded shared core (shell, contexts,
+    // i18n, design-system primitives).  ~150 kB gzip is fine for that;
+    // raise the warn threshold so a healthy shared core doesn't nag.
+    chunkSizeWarningLimit: 700,
     rollupOptions: {
       output: {
         // Split heavy vendor libs into their own chunks so:
         //  - editing a chart page doesn't invalidate the user's recharts cache
         //  - editing a map page doesn't invalidate the user's leaflet cache
         //  - the React/router/query bundle is reused across every navigation
+        //  - i18n + small utils ride their own long-lived chunks instead
+        //    of bloating the shared ``index`` core
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           'query-vendor': ['@tanstack/react-query', '@tanstack/react-query-devtools', '@tanstack/react-table'],
           'chart-vendor': ['recharts'],
-          'map-vendor': ['leaflet', 'leaflet.heat'],
+          // leaflet is only reached via lazy map pages — Rollup bundles
+          // it into a shared chunk for those automatically.  A forced
+          // ``map-vendor`` manualChunk just produces an empty chunk
+          // (nothing in the static graph imports it), so it's omitted.
           'ui-vendor': ['@base-ui/react', 'lucide-react', 'sonner'],
+          'i18n-vendor': ['i18next', 'react-i18next', 'i18next-browser-languagedetector'],
+          'util-vendor': ['clsx', 'tailwind-merge', 'class-variance-authority', 'react-is'],
         },
       },
     },

@@ -11,22 +11,16 @@ const VIEW_LABELS: Record<string, string> = {
   dispatcher: 'Dispatch',
   hr: 'HR',
   accounting: 'Accounting',
+  recruiter: 'Recruiter',
   driver: 'Driver',
 };
 
-// Glyph shown alongside the label in the top-bar selector — borrowed
-// from capabilities/iam/permissions.py ROLE_DISPLAY so bot + dashboard
-// agree on the persona iconography.
-const VIEW_ICONS: Record<string, string> = {
-  owner: '👑',
-  admin: '🔑',
-  fleet: '🔧',
-  safety: '🛡️',
-  dispatcher: '📡',
-  hr: '👥',
-  accounting: '💰',
-  driver: '🚛',
-};
+// NOTE: no per-persona icon map here.  The PersonaSelector deliberately
+// shows NO role icon (labels only — see its header comment), and the
+// dashboard's icon vocabulary is lucide-react, never emoji (design.md
+// §"Icons").  Emoji role glyphs live ONLY in the backend
+// capabilities/permissions/roles.py for the Telegram bot, whose
+// design language is emoji-native (design.md §9).
 
 // Default landing route per persona — when an Owner/Admin switches to
 // "view as Fleet", we navigate to the Fleet persona's home page so the
@@ -48,6 +42,9 @@ const VIEW_HOME_ROUTE: Record<string, string> = {
   // Reports — same logic, the cost-rollup view is the day's start.
   hr: '/workforce/drivers',
   accounting: '/cost-reports',
+  // Recruiter lands on Drivers too — the roster + qualification files
+  // are the daily entry point for onboarding work.
+  recruiter: '/workforce/drivers',
   driver: '/',
 };
 
@@ -60,7 +57,7 @@ const SWITCHABLE_ROLES = ['owner', 'admin'];
 // dashboard the actual driver would never open).  If a Driver does
 // happen to log into the dashboard directly, they'll still see their
 // own role label correctly via the non-switchable static pill.
-const PREVIEWABLE_ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'hr', 'accounting'];
+const PREVIEWABLE_ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'hr', 'accounting', 'recruiter'];
 
 // localStorage key — survives reloads so the dashboard reopens in the
 // same persona the user last chose.  We deliberately do NOT clear it on
@@ -82,6 +79,7 @@ const SUBDOMAIN_TO_ROLE: Record<string, string> = {
   safety: 'safety',
   hr: 'hr',
   accounting: 'accounting',
+  recruiter: 'recruiter',
 };
 
 // Persona → host mapping (inverse of SUBDOMAIN_TO_ROLE plus the
@@ -98,6 +96,9 @@ const ROLE_HOST: Record<string, string> = {
   fleet: `fleet.${APEX_DOMAIN}`,
   dispatcher: `dispatch.${APEX_DOMAIN}`,
   safety: `safety.${APEX_DOMAIN}`,
+  hr: `hr.${APEX_DOMAIN}`,
+  accounting: `accounting.${APEX_DOMAIN}`,
+  recruiter: `recruiter.${APEX_DOMAIN}`,
   driver: `dash.${APEX_DOMAIN}`,
 };
 
@@ -115,10 +116,9 @@ function getSubdomainRole(): string | null {
 interface RoleViewContextValue {
   activeView: string;
   viewLabel: string;
-  viewIcon: string;
   homeRoute: string;
   canSwitch: boolean;
-  availableViews: { key: string; label: string; icon: string }[];
+  availableViews: { key: string; label: string }[];
   switchView: (role: string) => void;
   viewHas: (flag: string) => boolean;
   viewHasAny: (...flags: string[]) => boolean;
@@ -280,24 +280,21 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
     ? PREVIEWABLE_ROLES.map(key => ({
         key,
         label: VIEW_LABELS[key] ?? key,
-        icon: VIEW_ICONS[key] ?? '',
       }))
     : realRole
     ? [{
         key: realRole,
         label: VIEW_LABELS[realRole] ?? realRole,
-        icon: VIEW_ICONS[realRole] ?? '',
       }]
     : [];
 
   const viewLabel = VIEW_LABELS[activeView] ?? activeView;
-  const viewIcon = VIEW_ICONS[activeView] ?? '';
   const homeRoute = VIEW_HOME_ROUTE[activeView] ?? '/';
   const isPreviewing = canSwitch && activeView !== realRole;
 
   return (
     <RoleViewContext.Provider value={{
-      activeView, viewLabel, viewIcon, homeRoute, canSwitch, availableViews,
+      activeView, viewLabel, homeRoute, canSwitch, availableViews,
       switchView, viewHas, viewHasAny, isPreviewing,
       rolePermSets, refreshPermissions: fetchRolePerms,
     }}>

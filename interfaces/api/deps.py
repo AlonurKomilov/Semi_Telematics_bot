@@ -466,6 +466,7 @@ def require_permission_any(*features: str):
 # already runs end-to-end on the dedicated driver_token surface.
 _VALID_VIEW_ROLES: frozenset[str] = frozenset({
     "owner", "admin", "fleet", "safety", "dispatcher", "hr", "accounting",
+    "recruiter",
 })
 
 # Roles whose user can preview ANY persona via X-View-As.  Everyone

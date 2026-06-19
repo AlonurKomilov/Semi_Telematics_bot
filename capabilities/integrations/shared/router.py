@@ -36,7 +36,7 @@ from capabilities.telemetry.history_backfill import (
     backfill_vehicle_history,
     get_backfill_status,
 )
-from infra.platform import get_platform_db
+from infra.platform import get_platform_db, get_tenant_db
 from infra.services import get_telematics_client, invalidate_client
 from interfaces.api.deps import require_permission
 
@@ -466,3 +466,50 @@ async def effective_cadences(
             provider_id, cap, ai.cadence_overrides,
         )
     return {"provider_id": provider_id, "cadences": out}
+
+
+@router.get("/{provider_id}/feeds")
+async def provider_feeds(
+    provider_id: str,
+    user: dict = Depends(_owner_only),
+):
+    """Per-feed freshness for ANY provider's "Synced data" table.
+
+    Generic + catalog-driven: reads the provider's declared ``feeds``
+    (``FeedSpec`` list) and resolves each feed's stored count +
+    last-synced from the tenant DB.  A new provider gets this table for
+    free by declaring its feeds in the catalog — no new endpoint, no UI
+    change.  Providers with no declared feeds (e.g. Datatruck's bespoke
+    interactive sync panel) return an empty list.
+    """
+    validate_provider(provider_id)
+    entry = PROVIDER_CATALOG.get(provider_id)
+    feed_specs = list(entry.feeds) if entry else []
+    if not feed_specs:
+        return {"provider_id": provider_id, "feeds": []}
+    account_id = int(user["account_id"])
+    db = get_platform_db()
+    ai = await db.get_account_integration(account_id, provider_id)
+    toggles = (getattr(ai, "feature_toggles", None) or {}) if ai else {}
+    tenant = await get_tenant_db(account_id)
+    fresh = (
+        await tenant.get_feed_freshness(
+            account_id, [(f.table, f.ts_col) for f in feed_specs],
+        )
+        if tenant is not None else {}
+    )
+    feeds = []
+    for f in feed_specs:
+        tog = toggles.get(f.capability) or {}
+        fr = fresh.get(f.table) or {"count": 0, "last_at": None}
+        feeds.append({
+            "capability": f.capability,
+            "mode": f.mode,
+            "feature": f.feature,
+            "enabled": bool(tog.get("enabled", True)),
+            "stored": {
+                "count": fr.get("count", 0),
+                "last_synced_at": fr.get("last_at"),
+            },
+        })
+    return {"provider_id": provider_id, "feeds": feeds}

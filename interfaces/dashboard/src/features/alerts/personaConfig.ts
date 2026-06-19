@@ -103,6 +103,14 @@ export const PERSONA_FILTER_DEFAULTS: Record<Persona, FilterDefaults> = {
     vehicleSearch: '',
     days: 30,
   },
+  recruiter: {
+    viewMode: 'by-vehicle',
+    typeFilter: 'all',
+    severityFilter: 'all',
+    ackState: 'active',
+    vehicleSearch: '',
+    days: 30,
+  },
   driver: {
     viewMode: 'list',
     typeFilter: 'all',

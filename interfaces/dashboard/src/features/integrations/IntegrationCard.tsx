@@ -11,18 +11,19 @@
  * metadata.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Check, Plug, RefreshCw, X, AlertTriangle, Loader2,
-  KeyRound, Pencil, Plus, Trash2, ChevronDown, ChevronRight,
+  Pencil, Plus, Trash2, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import StatusBadge from '../../components/StatusBadge';
 import { Button } from '../../components/ui/button';
 import { toneClasses } from '../../lib/status';
 import {
   getBackfillStatus,
+  getProviderFeeds,
   listProviderCompanies,
   setCompanyCredential,
   removeCompanyCredential,
@@ -36,10 +37,14 @@ import type {
   FeatureToggleMap,
   ProviderCompaniesResponse,
   ProviderCompanyEntry,
+  ProviderFeedsResponse,
   TestCompanyResponse,
   TestConnectionResponse,
 } from './types';
 import DatatruckSyncPanel from './DatatruckSyncPanel';
+import SyncedDataTable from './SyncedDataTable';
+import CredentialsSection from './CredentialsSection';
+import SingleCredentialPanel from './SingleCredentialPanel';
 import {
   capabilityLabel,
   formatCadence,
@@ -89,11 +94,11 @@ export default function IntegrationCard({
   const [testResult, setTestResult] = useState<ActionFeedback>(null);
   const [triggering, setTriggering] = useState(false);
   const [triggerResult, setTriggerResult] = useState<ActionFeedback>(null);
-  // Operator-selectable history window for the account-wide backfill.
-  // The shared BackfillRequest accepts 1–90 days; we expose the three
-  // common presets.  Only meaningful for providers that declare
-  // history_backfill (Samsara) — never rendered on a TMS card.
-  const [backfillDays, setBackfillDays] = useState(30);
+  // The card-level "history window" every sync on this card reads — the
+  // Samsara backfill depth AND the Datatruck date-ranged-sync window —
+  // so the control lives in one consistent place per integration.  We
+  // expose the three common presets (1–90 within the backend's bounds).
+  const [historyWindow, setHistoryWindow] = useState(30);
 
   // Collapse state: when the page grows past a single integration,
   // the densely-rendered toggles + companies + actions per card
@@ -139,13 +144,51 @@ export default function IntegrationCard({
   const { data: backfillStatus } = useQuery<BackfillStatus>({
     queryKey: ['integration-backfill-status', entry.provider_id],
     queryFn: () => getBackfillStatus(entry.provider_id),
-    enabled: Boolean(integration),
+    // Only providers with history backfill expose this endpoint — gating
+    // it stops a TMS (Datatruck) from polling a route that 404s.
+    enabled: Boolean(integration) && entry.capabilities.includes('history_backfill'),
     refetchInterval: (q) => {
       const s = q.state.data?.state;
       return s === 'running' || s === 'queued' ? 5_000 : false;
     },
     staleTime: 4_000,
   });
+
+  // Which capabilities are shown (and now toggled) in the "Synced data"
+  // table — so the checklist below can EXCLUDE them and stop showing the
+  // same data type in two places.  Telematics feeds come from the
+  // (deduped) feeds query; TMS feeds are all the tms_* capabilities.
+  const { data: feedsData } = useQuery<ProviderFeedsResponse>({
+    queryKey: ['provider-feeds', entry.provider_id],
+    queryFn: () => getProviderFeeds(entry.provider_id),
+    enabled: Boolean(integration) && entry.kind !== 'tms',
+    staleTime: 30_000,
+  });
+  const feedCaps = useMemo(
+    () =>
+      entry.kind === 'tms'
+        ? new Set(entry.capabilities.filter((c) => c.startsWith('tms_')))
+        : new Set((feedsData?.feeds ?? []).map((f) => f.capability)),
+    [entry.kind, entry.capabilities, feedsData],
+  );
+  const checklistCaps = entry.capabilities.filter((c) => !feedCaps.has(c));
+
+  // Persist one capability's enabled flag — used by the feed-row toggles
+  // in the Synced-data table (the merged-in checklist).
+  const toggleCapability = (capability: string, enabled: boolean) => {
+    if (!integration) return;
+    void Promise.resolve(
+      onToggle({
+        ...integration.feature_toggles,
+        [capability]: { ...(integration.feature_toggles[capability] ?? {}), enabled },
+      }),
+    ).then(() => {
+      // Refresh the freshness/run views so the row's enabled state and
+      // greying settle to the persisted value.
+      qc.invalidateQueries({ queryKey: ['provider-feeds', entry.provider_id] });
+      qc.invalidateQueries({ queryKey: ['datatruck-sync-status'] });
+    });
+  };
   const backfillRunning =
     backfillStatus?.state === 'running' || backfillStatus?.state === 'queued';
 
@@ -374,6 +417,30 @@ export default function IntegrationCard({
             </p>
           )}
 
+          {/* Shared "history window" — one control per card, in the SAME
+              place on every integration, that every sync on this card
+              reads.  Samsara: how many days the backfill replays.
+              Datatruck: the window for its date-ranged resources (orders
+              / work orders); roster syncs ignore it.  Shown only for
+              cards that have a history concept. */}
+          {(entry.capabilities.includes('history_backfill') || entry.kind === 'tms') && (
+            <div className="mb-3 flex items-center gap-2">
+              <span className="text-2xs text-muted-foreground">History window</span>
+              <select
+                value={historyWindow}
+                onChange={(e) => setHistoryWindow(Number(e.target.value))}
+                disabled={triggering || backfillRunning}
+                className="bg-muted border border-border rounded text-2xs text-foreground px-1.5 py-1 focus:outline-none focus:border-ring disabled:opacity-50"
+                title="How many days of history each sync on this card pulls."
+                aria-label="History window"
+              >
+                <option value={7}>Last 7 days</option>
+                <option value={30}>Last 30 days</option>
+                <option value={90}>Last 90 days</option>
+              </select>
+            </div>
+          )}
+
           {/* Per-company key matrix — canonical place to manage
               Samsara API keys.  Replaces the API Key column that
               used to live on the Companies page so operators have
@@ -386,14 +453,50 @@ export default function IntegrationCard({
             <ConnectedCompanies providerId={entry.provider_id} />
           )}
 
+          {/* Single-token providers (Datatruck) get the same shell with
+              a one-credential summary + Update action — so every
+              connected card shows its credentials consistently. */}
+          {entry.auth_kind !== 'api_token' && (
+            <SingleCredentialPanel
+              authKind={entry.auth_kind}
+              hasCredentials={integration.has_credentials}
+              onUpdate={() => setShowConnect(true)}
+            />
+          )}
+
           {/* TMS providers get the "Synced data" panel instead — one
               row per resource with stored counts, live run progress,
               and a Sync-now button.  Keyed on kind (not provider_id)
-              so a future second TMS provider inherits the surface. */}
-          {entry.kind === 'tms' && <DatatruckSyncPanel />}
+              so a future second TMS provider inherits the surface.
+              The window comes from the shared picker above. */}
+          {entry.kind === 'tms' && (
+            <DatatruckSyncPanel windowDays={historyWindow} onToggle={toggleCapability} />
+          )}
 
+          {/* Telematics providers get the same "Synced data" freshness
+              table (count + last-synced per feed) so the Samsara and
+              Datatruck cards read as one consistent structure. */}
+          {entry.kind !== 'tms' && (
+            <SyncedDataTable
+              providerId={entry.provider_id}
+              toggles={integration.feature_toggles}
+              defaults={entry.feature_defaults}
+              onToggle={toggleCapability}
+            />
+          )}
+
+          {/* Everything that stores data is now a feature-grouped feed in
+              the Synced-data table above.  What's left here are the
+              non-data "housekeeping" capabilities — the one-time history
+              backfill + the retention prune (actions/policies, not feeds).
+              Hidden entirely when every capability is a feed (Datatruck). */}
+          {checklistCaps.length > 0 && (
+          <div className="mt-4">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Housekeeping
+            </p>
           <FeatureToggleList
-            capabilities={entry.capabilities}
+            capabilities={checklistCaps}
             toggles={integration.feature_toggles}
             defaults={entry.feature_defaults}
             onChange={onToggle}
@@ -422,6 +525,8 @@ export default function IntegrationCard({
                 : undefined
             }
           />
+          </div>
+          )}
           {triggerResult && (
             <FeedbackBanner
               kind={triggerResult.kind}
@@ -464,52 +569,38 @@ export default function IntegrationCard({
                 that declare history_backfill in the catalog — TMS
                 providers (Datatruck) have no historical telemetry to
                 replay, so the button would be a misleading no-op. */}
+            {/* Account-wide history backfill.  The day window comes from
+                the shared card-level "History window" picker (rendered up
+                top, same place on every integration), not an inline
+                control here. */}
             {entry.capabilities.includes('history_backfill') && (
-              <>
-                {/* History-window picker for the account-wide backfill.
-                    The chosen value flows into the Run-all click below.
-                    Disabled while a run is in flight so the operator
-                    can't change the window mid-backfill. */}
-                <select
-                  value={backfillDays}
-                  onChange={(e) => setBackfillDays(Number(e.target.value))}
-                  disabled={triggering || backfillRunning}
-                  className="bg-muted border border-border rounded text-xs text-foreground px-2 py-1.5 focus:outline-none focus:border-ring disabled:opacity-50"
-                  title="How many days of history to replay across every company"
-                  aria-label="History window"
-                >
-                  <option value={7}>Last 7 days</option>
-                  <option value={30}>Last 30 days</option>
-                  <option value={90}>Last 90 days</option>
-                </select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleTrigger(backfillDays)}
-                  disabled={triggering || backfillRunning}
-                  title={
-                    backfillRunning && backfillStatus
-                      ? `Backfill in progress · ${backfillStatus.days_done ?? 0}/${backfillStatus.days_total ?? backfillStatus.days_requested ?? backfillDays} days`
-                      : integration.last_backfill_at
-                        ? `Last completed ${formatBackfillTimestamp(integration.last_backfill_at)}. Click to re-run the last ${backfillDays} days for every company.`
-                        : `Run a ${backfillDays}-day history backfill across every company`
-                  }
-                >
-                  {(triggering || backfillRunning) ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : integration.last_backfill_at ? (
-                    <Check size={14} />
-                  ) : (
-                    <RefreshCw size={14} />
-                  )}
-                  {backfillRunning && backfillStatus
-                    ? `Running · ${backfillStatus.days_done ?? 0}/${backfillStatus.days_total ?? backfillStatus.days_requested ?? backfillDays}`
-                    : triggering ? 'Queuing…'
-                    : integration.last_backfill_at ? 'Refresh history'
-                    : `Run all (${backfillDays} days)`}
-                </Button>
-              </>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => handleTrigger(historyWindow)}
+                disabled={triggering || backfillRunning}
+                title={
+                  backfillRunning && backfillStatus
+                    ? `Backfill in progress · ${backfillStatus.days_done ?? 0}/${backfillStatus.days_total ?? backfillStatus.days_requested ?? historyWindow} days`
+                    : integration.last_backfill_at
+                      ? `Last completed ${formatBackfillTimestamp(integration.last_backfill_at)}. Click to re-run the last ${historyWindow} days for every company.`
+                      : `Run a ${historyWindow}-day history backfill across every company`
+                }
+              >
+                {(triggering || backfillRunning) ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : integration.last_backfill_at ? (
+                  <Check size={14} />
+                ) : (
+                  <RefreshCw size={14} />
+                )}
+                {backfillRunning && backfillStatus
+                  ? `Running · ${backfillStatus.days_done ?? 0}/${backfillStatus.days_total ?? backfillStatus.days_requested ?? historyWindow}`
+                  : triggering ? 'Queuing…'
+                  : integration.last_backfill_at ? 'Refresh history'
+                  : `Run all (${historyWindow} days)`}
+              </Button>
             )}
             <Button
               type="button"
@@ -534,7 +625,11 @@ export default function IntegrationCard({
         </div>
       )}
 
-      {showConnect && !integration && (
+      {/* Shown when connecting (no integration) AND when updating an
+          existing single-token integration's credentials (re-connect
+          upserts).  Per-company-key providers manage keys inline in the
+          companies matrix, so they never reopen this for an update. */}
+      {showConnect && (
         <div className="mt-4 border-t border-border pt-3">
           <ConnectForm
             authKind={entry.auth_kind}
@@ -726,12 +821,9 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
   };
 
   return (
-    <div className="mb-4 border border-border rounded-md">
-      <div className="flex items-center justify-between px-3 py-2 bg-muted/40 border-b border-border">
-        <span className="text-xs font-medium flex items-center gap-1.5">
-          <KeyRound size={12} />
-          Connected companies ({companies.length})
-        </span>
+    <CredentialsSection
+      title={`Connected companies (${companies.length})`}
+      headerRight={
         <span className="flex items-center gap-2">
           {/* Aggregate health summary — derived from per-company
               probe results, NOT the legacy ai.status.  Lets the
@@ -766,7 +858,8 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
             Add company
           </Link>
         </span>
-      </div>
+      }
+    >
       <ul className="divide-y divide-border">
         {companies.map((co) => (
           <CompanyKeyRow
@@ -796,7 +889,7 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
           />
         </div>
       )}
-    </div>
+    </CredentialsSection>
   );
 }
 
@@ -1124,7 +1217,7 @@ function ConnectForm({
             value={subdomain}
             onChange={(e) => setSubdomain(e.target.value)}
             className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
-            placeholder="premier.datatruck.io  or just  premier"
+            placeholder="acme.datatruck.io  or just  acme"
             autoFocus
             autoCapitalize="none"
             autoCorrect="off"
@@ -1137,8 +1230,8 @@ function ConnectForm({
             <div className="mt-1.5 pl-3 space-y-1.5 border-l-2 border-border">
               <p>
                 Datatruck gives every company its own URL prefix (e.g.{' '}
-                <span className="font-mono">premier</span> for Premier
-                Trucking). Three places you might find yours:
+                <span className="font-mono">acme</span> for Acme
+                Trucking Inc). Three places you might find yours:
               </p>
               <ol className="list-decimal list-inside space-y-0.5 ml-1">
                 <li>

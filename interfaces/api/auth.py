@@ -1921,28 +1921,21 @@ async def auth_register_account(request: Request, body: RegisterAccountRequest):
             "platform audit write failed for account %s", account.id,
         )
 
-    # 14-day auto-trial via the existing comp machinery.  actor_user_id=0
-    # marks the row as system-generated in comp_history so an operator
-    # browsing the comp audit log can tell self-serve trials apart from
-    # sales-driven grants.  Failure is non-fatal — the account still
-    # exists, the owner can still verify and log in, they just won't
-    # have trial premium features until an operator grants comp
-    # manually.
+    # 14-day Pro trial — a REAL trial, not a comp: tier='pro' +
+    # status='trialing' + trial_ends_at so the owner gets full Pro
+    # features (and the operator console shows "Pro · trialing", not a
+    # confusing "free").  The daily ``expire_due_trials`` job downgrades
+    # to free when the window elapses.  Non-fatal on failure — the
+    # account still exists; an operator can start the trial manually.
     trial_expires_iso: str | None = None
     try:
-        from datetime import datetime, timezone, timedelta
-        expires = datetime.now(timezone.utc) + timedelta(days=_AUTO_TRIAL_DAYS)
-        trial_expires_iso = expires.isoformat()
-        await db.grant_comp(
-            account.id,
-            expires_at=trial_expires_iso,
-            reason=f"{_AUTO_TRIAL_DAYS}-day auto trial",
-            actor_user_id=0,
+        trial_expires_iso = await db.start_trial(
+            account.id, tier="pro", days=_AUTO_TRIAL_DAYS,
         )
     except Exception as e:
         trial_expires_iso = None
         logging.getLogger("api.auth").warning(
-            "Auto-trial comp grant failed for new account %s: %s",
+            "Auto-trial start failed for new account %s: %s",
             account.id, e,
         )
 

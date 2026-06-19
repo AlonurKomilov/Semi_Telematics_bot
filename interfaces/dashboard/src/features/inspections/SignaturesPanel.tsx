@@ -4,6 +4,8 @@ import { toast } from 'sonner';
 import { PenLine } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate } from '../../utils/datetime';
 import type { PTIInspectionDetail } from '../../types';
 import { SignaturePad } from './SignaturePad';
 
@@ -27,11 +29,9 @@ interface Props {
   onSigned: () => void;
 }
 
-function _formatTs(iso: string | null | undefined): string {
+function _formatTs(iso: string | null | undefined, tz?: string): string {
   if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString();
+  return formatDate(iso, { timeZone: tz });
 }
 
 function SignatureBox({
@@ -40,12 +40,14 @@ function SignatureBox({
   signedAt,
   signerName,
   emptyText,
+  tz,
 }: {
   label: string;
   pngDataUrl: string | null | undefined;
   signedAt: string | null | undefined;
   signerName?: string;
   emptyText: string;
+  tz?: string;
 }) {
   return (
     <div className="border border-border rounded-md p-3 space-y-2 flex-1">
@@ -60,7 +62,7 @@ function SignatureBox({
             />
           </div>
           <p className="text-2xs text-muted-foreground">
-            {signerName ? `${signerName} · ` : ''}{_formatTs(signedAt)}
+            {signerName ? `${signerName} · ` : ''}{_formatTs(signedAt, tz)}
           </p>
         </>
       ) : (
@@ -75,6 +77,7 @@ function SignatureBox({
 export function SignaturesPanel({ inspection: ins, onSigned }: Props) {
   const { t } = useTranslation();
   const { has } = useViewPermissions();
+  const tz = useTimezone();
   const [signing, setSigning] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -116,6 +119,7 @@ export function SignaturesPanel({ inspection: ins, onSigned }: Props) {
           signedAt={ins.driver_signed_at}
           signerName={ins.driver_name}
           emptyText={t('inspections.signature.driver_empty')}
+          tz={tz}
         />
         <SignatureBox
           label={t('inspections.signature.reviewer_label')}
@@ -123,6 +127,7 @@ export function SignaturesPanel({ inspection: ins, onSigned }: Props) {
           signedAt={ins.reviewer_signed_at}
           signerName={ins.reviewed_by_name}
           emptyText={t('inspections.signature.reviewer_empty')}
+          tz={tz}
         />
       </div>
 

@@ -23,6 +23,38 @@ class TestRolePermissions:
             perms = get_permissions(role)
             assert isinstance(perms, FeatureSet), f"Missing perms for {role}"
 
+    def test_every_role_in_hierarchy_display_emoji(self):
+        """Every Role enum member must appear in ROLE_HIERARCHY,
+        ROLE_DISPLAY and ROLE_EMOJI.
+
+        Regression guard: hr + accounting were once missing from
+        ROLE_HIERARCHY (→ rank 0 → couldn't invite anyone) and from the
+        display/emoji dicts.  A new persona must never ship half-wired.
+        """
+        from capabilities.permissions.roles import (
+            ROLE_HIERARCHY, ROLE_DISPLAY, ROLE_EMOJI, role_rank,
+        )
+        for role in Role:
+            assert role.value in ROLE_HIERARCHY, (
+                f"{role.value} missing from ROLE_HIERARCHY (would rank 0)"
+            )
+            assert role_rank(role) > 0, f"{role.value} has rank 0"
+            assert role in ROLE_DISPLAY, f"{role.value} missing from ROLE_DISPLAY"
+            assert role in ROLE_EMOJI, f"{role.value} missing from ROLE_EMOJI"
+
+    def test_department_roles_can_invite_driver(self):
+        """The exact bug we fixed: department roles must be able to
+        invite a driver (rank > driver), not be locked out at rank 0.
+        Recruiter (driver acquisition) is rank 2 for exactly this — it
+        invites drivers once an owner enables can_invite in the matrix."""
+        from capabilities.permissions.roles import validate_invite_role
+        for dept in (Role.HR, Role.ACCOUNTING, Role.RECRUITER):
+            ok, reason = validate_invite_role(dept, Role.DRIVER)
+            assert ok, f"{dept.value} should invite driver, got {reason!r}"
+            # …but not a peer or higher.
+            ok2, _ = validate_invite_role(dept, Role.SAFETY)
+            assert not ok2, f"{dept.value} must not invite safety (peer/higher)"
+
     def test_unknown_role_returns_empty(self):
         perms = get_permissions("nonexistent")
         assert perms == FeatureSet()

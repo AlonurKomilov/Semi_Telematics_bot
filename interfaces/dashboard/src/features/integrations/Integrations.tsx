@@ -222,7 +222,12 @@ function renderCard(
         })
       }
       backfillStatusBadge={
-        integration ? <BackfillStatusBadge providerId={entry.provider_id} /> : null
+        // Only providers with history backfill expose the status endpoint —
+        // a TMS (Datatruck) has none, so rendering the badge there just spams
+        // 404s.  Gate on the capability.
+        integration && entry.capabilities.includes('history_backfill')
+          ? <BackfillStatusBadge providerId={entry.provider_id} />
+          : null
       }
     />
   );

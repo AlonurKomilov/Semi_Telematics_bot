@@ -52,6 +52,10 @@ const PERSONA_MODULES: Record<string, string[]> = {
   safety:     ['core', 'safety'],
   hr:         ['core', 'hr'],
   accounting: ['core', 'accounting'],
+  // Recruiter (driver acquisition / onboarding) shares the HR module so
+  // the Drivers surface can appear once an owner grants the permission in
+  // the matrix; core-only would hide it regardless of permission.
+  recruiter:  ['core', 'hr'],
   driver:     ['core'],
 };
 

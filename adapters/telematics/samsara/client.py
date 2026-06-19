@@ -364,6 +364,23 @@ class SamsaraClient:
                         raise SamsaraPermissionError(msg)
                     if resp.status >= 500:
                         status_label = "5xx"
+                    if resp.status >= 400:
+                        # Surface Samsara's error BODY before raising.
+                        # ``raise_for_status()`` keeps only the bare reason
+                        # phrase ("Bad Request"), which hides WHY a 400
+                        # happened — e.g. an unsupported stat type or an
+                        # over-long ``stats/history`` window.  Logging the
+                        # body turns an opaque 400 into an actionable message.
+                        try:
+                            _err_body = (await resp.text())[:600]
+                        except Exception:
+                            _err_body = ""
+                        if resp.status < 500:
+                            status_label = "4xx"
+                        logger.error(
+                            "Samsara %d on %s — body: %s",
+                            resp.status, endpoint, _err_body,
+                        )
                     resp.raise_for_status()
                     return await resp.json()
             except SamsaraPermissionError:

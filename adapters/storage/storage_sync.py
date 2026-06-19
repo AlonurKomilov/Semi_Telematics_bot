@@ -567,7 +567,7 @@ class StorageSyncMixin:
     ) -> None:
         """Flip an account between ``'disk'``, ``'gdrive'``, ``'hybrid'``.
 
-        Convenience for both the immediate Phase-1 unblock (PREMIER
+        Convenience for both the immediate Phase-1 unblock (ACME
         → disk) and the Phase 6 storage dashboard's "Switch backend"
         action.  Doesn't migrate existing files — that's a separate
         operational decision (existing GDrive files stay reachable as

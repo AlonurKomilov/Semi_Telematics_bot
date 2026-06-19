@@ -299,13 +299,16 @@ class _DatabaseCore:
 
     def _row_to_company(self, row) -> Company:
         from infra.crypto import decrypt as _dec
+        d = dict(row)
         return Company(
-            id=row["id"], account_id=row["account_id"],
-            code=row["code"], display_name=row["display_name"],
-            samsara_api_key=_dec(row["samsara_api_key"]),
-            active_days=row["active_days"],
-            is_active=bool(row["is_active"]),
-            created_at=row["created_at"],
+            id=d["id"], account_id=d["account_id"],
+            code=d["code"], display_name=d["display_name"],
+            samsara_api_key=_dec(d["samsara_api_key"]),
+            active_days=d["active_days"],
+            is_active=bool(d["is_active"]),
+            created_at=d["created_at"],
+            mc_number=str(d.get("mc_number") or ""),
+            usdot_number=str(d.get("usdot_number") or ""),
         )
 
     def _row_to_user(self, row) -> User:

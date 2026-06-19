@@ -541,7 +541,7 @@
     "add_step2_hint": "<i>(starts with samsara_api_…)</i>",
     "add_step3": "<b>Step 3/3</b> — Display name (optional)",
     "add_step3_prompt": "Type a friendly name for this company\nor tap <b>⏭ Skip</b> to use the code.",
-    "add_step3_example": "Example: <i>Premier Trucking Group</i>",
+    "add_step3_example": "Example: <i>Acme Trucking Inc</i>",
     "add_code_invalid": "❌ Code must be 1–10 characters, no spaces.",
     "add_code_example": "Example: <b>PTG</b>, <b>CFT</b>",
     "wizard_lost": "❌ Wizard state lost. Please start over."

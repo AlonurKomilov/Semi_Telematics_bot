@@ -17,7 +17,7 @@ import pytest
 async def test_add_list_get_round_trip(db):
     vid = await db.add_vehicle(
         42, unit_number="247", company_code="PTG", vehicle_type="truck",
-        vin="3AKJJHDR7VSXC469", plate_number="PXF8448",
+        vin="1HGTEST0000000001", plate_number="ABC1234",
         make="Freightliner", model="Cascadia", year=2027,
     )
     assert vid > 0
@@ -32,7 +32,7 @@ async def test_add_list_get_round_trip(db):
     assert v.is_active is True
 
     fetched = await db.get_vehicle(42, vid)
-    assert fetched is not None and fetched.vin == "3AKJJHDR7VSXC469"
+    assert fetched is not None and fetched.vin == "1HGTEST0000000001"
 
 
 @pytest.mark.asyncio
@@ -288,16 +288,16 @@ async def test_projection_fills_vin_on_samsara_row_by_unit(db):
     )
     n = await db.project_external_vehicles(
         42,
-        [{"unit_number": "247", "vin": "3AKJJHDR7VSXC469",
-          "plate_number": "PXF8448", "make": "Freightliner"}],
+        [{"unit_number": "247", "vin": "1HGTEST0000000001",
+          "plate_number": "ABC1234", "make": "Freightliner"}],
         vehicle_type="truck", source="datatruck",
     )
     assert n == 1
     rows = await db.list_vehicles(42)
     assert len(rows) == 1                      # NOT duplicated
     v = rows[0]
-    assert v.vin == "3AKJJHDR7VSXC469"         # VIN filled in
-    assert v.plate_number == "PXF8448"
+    assert v.vin == "1HGTEST0000000001"         # VIN filled in
+    assert v.plate_number == "ABC1234"
     assert v.source == "samsara"               # source preserved
     assert v.telematics_ref == "sam_99"        # samsara link preserved
 
@@ -366,3 +366,42 @@ async def test_projection_ambiguous_unit_inserts_rather_than_guess(db):
     # Two samsara + one datatruck (company_code='') = three rows.
     assert len(rows) == 3
     assert any(v.source == "datatruck" and v.vin == "NEWVIN" for v in rows)
+
+
+# ── Preview / plan (dry-run reconciliation) ───────────────────
+
+
+@pytest.mark.asyncio
+async def test_plan_classifies_new_enrich_review(db):
+    # Existing registry: 204 (has VIN, no plate), 305 (no VIN), and two
+    # rows sharing unit 900 (ambiguous).
+    await db.add_vehicle(42, unit_number="204", vin="VIN204")
+    await db.add_vehicle(42, unit_number="305")
+    await db.add_vehicle(42, unit_number="900", company_code="A")
+    await db.add_vehicle(42, unit_number="900", company_code="B")
+
+    rows = [
+        {"unit_number": "204", "vin": "VIN204", "plate_number": "P1"},  # vin match → enrich (plate)
+        {"unit_number": "305", "vin": "VINNEW", "make": "Volvo"},       # unit match → enrich (vin, make)
+        {"unit_number": "777", "vin": "V777"},                          # no match → new
+        {"unit_number": "900", "vin": "V900"},                          # ambiguous → review
+    ]
+    diff = await db.plan_external_vehicles(42, rows, vehicle_type="truck")
+    assert diff["counts"]["new"] == 1
+    assert diff["counts"]["enrich"] == 2
+    assert diff["counts"]["review"] == 1
+    assert {f for e in diff["enrich"] for f in e["fills"]} >= {"plate_number", "vin", "make"}
+    # A plan NEVER writes.
+    assert len(await db.list_vehicles(42)) == 4
+
+
+@pytest.mark.asyncio
+async def test_plan_matches_by_plate(db):
+    # Existing has a plate but a DIFFERENT unit name than Datatruck uses;
+    # plate matching should still reconcile them (no duplicate).
+    await db.add_vehicle(42, unit_number="OLDNAME", plate_number="XYZ999")
+    rows = [{"unit_number": "204", "plate_number": "XYZ999", "vin": "V1"}]
+    diff = await db.plan_external_vehicles(42, rows, vehicle_type="truck")
+    assert diff["counts"]["new"] == 0
+    assert diff["counts"]["enrich"] == 1
+    assert diff["enrich"][0]["by"] == "plate"

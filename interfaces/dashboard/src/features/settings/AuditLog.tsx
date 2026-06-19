@@ -11,6 +11,8 @@ import {
   TableSkeleton,
 } from '../../components/shell';
 import type { AuditLogEntry, AnyColumn } from '../../types';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate } from '../../utils/datetime';
 
 // Human-readable labels for the audit-log ``action`` enum.  Unknown
 // actions fall through to the raw snake_case string so a newly-added
@@ -27,8 +29,8 @@ const ACTION_LABEL: Record<string, string> = {
   invite_email_complained: 'Invite reported as spam',
 };
 
-const columns: AnyColumn[] = [
-  { key: 'created_at', label: 'Time', sortable: true, render: (v) => v ? new Date(String(v)).toLocaleString() : '—' },
+const makeColumns = (tz: string): AnyColumn[] => [
+  { key: 'created_at', label: 'Time', sortable: true, render: (v) => v ? formatDate(String(v), { timeZone: tz }) : '—' },
   {
     key: 'action',
     label: 'Action',
@@ -49,7 +51,9 @@ const columns: AnyColumn[] = [
 
 export default function AuditLog() {
   const { t } = useTranslation();
+  const tz = useTimezone();
   const [limit, setLimit] = useState(100);
+  const columns = makeColumns(tz);
 
   const { data, isLoading: loading, error: queryError, refetch } = useQuery({
     queryKey: ['admin-audit', limit],

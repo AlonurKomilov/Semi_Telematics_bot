@@ -110,15 +110,17 @@ describe('check-role-drift: role-literal guard', () => {
     expect(r.stderr).toContain('pages/B.tsx');
   });
 
-  it('catches new personas — hr and accounting', () => {
+  it('catches new personas — hr, accounting, and recruiter', () => {
     const root = stage({
       'pages/A.tsx': `if (role === 'hr') {}`,
       'pages/B.tsx': `if (activeView === 'accounting') {}`,
+      'pages/C.tsx': `if (role === 'recruiter') {}`,
     });
     const r = runScript(root);
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toContain('pages/A.tsx');
     expect(r.stderr).toContain('pages/B.tsx');
+    expect(r.stderr).toContain('pages/C.tsx');
   });
 
   it('DOCUMENTED LIMITATION: persona patterns inside string literals DO trip the regex (rare in practice — acceptable trade-off)', () => {

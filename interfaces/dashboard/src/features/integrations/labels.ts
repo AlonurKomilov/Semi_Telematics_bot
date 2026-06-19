@@ -7,6 +7,8 @@
  * Future i18n keys can wrap these without changing the call sites.
  */
 
+import { formatDay, formatTime } from '../../utils/datetime';
+
 export const CAPABILITY_LABELS: Record<string, string> = {
   vehicle_state:            'Live vehicle state',
   safety_events:            'Safety events',
@@ -43,27 +45,40 @@ export function capabilityLabel(id: string): string {
   return CAPABILITY_LABELS[id] || id;
 }
 
-/** Format an ISO timestamp like ``"2026-06-07T14:22:35+00:00"`` into
- *  the relative + absolute form the cards show ("2 hr ago · Jun 7,
- *  14:22 UTC").  Empty/invalid input → empty output.  Shared by the
- *  Samsara backfill line and the Datatruck synced-data rows so the
- *  same stamp renders identically across providers. */
-export function formatSyncTimestamp(iso: string | null | undefined): string {
+/** Format an ISO timestamp into the relative + absolute form the cards
+ *  show ("2 hr ago · Jun 7, 2:22 PM").  Empty/invalid input → empty
+ *  output.  Shared by the Samsara backfill line and the Datatruck
+ *  synced-data rows so the same stamp renders identically.
+ *
+ *  Both the date AND the clock render in the **account timezone** (the
+ *  SSOT) via the shared datetime helpers — no hardcoded UTC.  ``tz``
+ *  absent → browser locale fallback.
+ *
+ *  Naive warehouse stamps (e.g. ``"2026-06-19T07:00:00"``) carry no tz
+ *  designator; they are UTC, so we tag them before parsing — otherwise
+ *  ``new Date`` reads them as browser-local, skewing the relative time
+ *  (and reading slightly-ahead aggregate rows as the future).  Future
+ *  ages are clamped to "just now". */
+export function formatSyncTimestamp(
+  iso: string | null | undefined,
+  tz?: string,
+): string {
   if (!iso) return '';
-  const d = new Date(iso);
+  const hasTz = /[zZ]|[+-]\d\d:?\d\d$/.test(iso);
+  const d = new Date(hasTz ? iso : `${iso}Z`);
   if (Number.isNaN(d.getTime())) return '';
-  const ageMin = Math.round((Date.now() - d.getTime()) / 60_000);
+  const ageMin = Math.max(0, Math.round((Date.now() - d.getTime()) / 60_000));
   const ageHr = Math.round(ageMin / 60);
   const ageDays = Math.round(ageHr / 24);
   const rel =
-    ageMin < 60 ? `${ageMin} min ago`
+    ageMin < 1 ? 'just now'
+    : ageMin < 60 ? `${ageMin} min ago`
     : ageHr < 48 ? `${ageHr} hr ago`
     : `${ageDays} days ago`;
-  const abs = d.toLocaleDateString(undefined, {
-    month: 'short', day: 'numeric',
-  }) + ' · ' + d.toLocaleTimeString(undefined, {
-    hour: '2-digit', minute: '2-digit', timeZone: 'UTC',
-  }) + ' UTC';
+  const abs = `${formatDay(d, {
+    timeZone: tz,
+    intl: { year: undefined, month: 'short', day: 'numeric' },
+  })} · ${formatTime(d, { timeZone: tz })}`;
   return `${rel} · ${abs}`;
 }
 

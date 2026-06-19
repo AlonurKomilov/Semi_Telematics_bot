@@ -6,6 +6,8 @@ import { apiJSON } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
 import type { MaintenanceTask } from '../../types';
 import { TaskTypeCell } from './badges';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate, formatDay } from '../../utils/datetime';
 
 // Build the last-12-months service-count series for the chart.
 // Anchored on TODAY so the rightmost bar is always the current month,
@@ -52,6 +54,7 @@ export function ServiceHistoryModal({
   vehicleName: string;
   onClose: () => void;
 }) {
+  const tz = useTimezone();
   const { data, isLoading, error } = useQuery({
     queryKey: ['maintenance-history', vehicleName],
     queryFn: () => apiJSON<ServiceHistoryResponse>(
@@ -122,7 +125,7 @@ export function ServiceHistoryModal({
                 <p className="text-xs text-muted-foreground">Last Service</p>
                 <p className="text-sm font-medium">
                   {data.summary.last_service_at
-                    ? new Date(data.summary.last_service_at).toLocaleDateString()
+                    ? formatDay(data.summary.last_service_at, { timeZone: tz })
                     : '—'}
                 </p>
               </div>
@@ -205,8 +208,8 @@ export function ServiceHistoryModal({
                       )}
                       <p className="text-xs text-muted-foreground mt-1">
                         {task.completed_at
-                          ? new Date(task.completed_at).toLocaleString()
-                          : new Date(task.created_at).toLocaleString()}
+                          ? formatDate(task.completed_at, { timeZone: tz })
+                          : formatDate(task.created_at, { timeZone: tz })}
                         {task.last_odometer != null && (
                           <> · {Number(task.last_odometer).toLocaleString()} mi</>
                         )}
@@ -224,7 +227,7 @@ export function ServiceHistoryModal({
                           <span className="font-medium">
                             {task.attested_by_name || `user ${task.attested_by}`}
                           </span>
-                          {' '}on {new Date(task.attested_at).toLocaleDateString()}
+                          {' '}on {formatDay(task.attested_at, { timeZone: tz })}
                         </p>
                       )}
                       {task.work_order_id && (

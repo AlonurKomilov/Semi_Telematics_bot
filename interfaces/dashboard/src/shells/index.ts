@@ -29,7 +29,8 @@ export type ShellKey =
   | 'safety'
   | 'driver'
   | 'hr'
-  | 'accounting';
+  | 'accounting'
+  | 'recruiter';
 
 // Each non-Owner/Admin persona renders through its dedicated shell
 // file.  Editing FleetShell.tsx / DispatchShell.tsx / SafetyShell.tsx
@@ -45,6 +46,10 @@ export const SHELLS: Partial<Record<ShellKey, ComponentType>> = {
   safety:     SafetyShell,
   hr:         HRShell,
   accounting: AccountingShell,
+  // Recruiter ships on DefaultShell with a permission-generated minimal
+  // nav (driver-equivalent default).  A dedicated RecruiterShell can be
+  // added later for tuned chrome; the fallback keeps it safe meanwhile.
+  recruiter:  DefaultShell,
   driver:     DefaultShell,   // Drivers use the Mini App; this is a fallback only
 };
 

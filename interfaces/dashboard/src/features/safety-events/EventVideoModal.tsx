@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X, Download, Truck, User, MapPin, Gauge, Clock, Loader2 } from 'lucide-react';
 import { apiJSON } from '@/api/client';
 import { toneClasses } from '@/lib/status';
+import { formatDate, formatDay, formatTime } from '@/utils/datetime';
+import { useTimezone } from '@/hooks/useTimezone';
 import type { SafetyEvent } from '@/types';
 
 interface VideoUrlResponse {
@@ -35,6 +37,7 @@ export default function EventVideoModal({
   event: SafetyEvent;
   onClose: () => void;
 }) {
+  const tz = useTimezone();
   const [angle, setAngle] = useState<'forward' | 'inward'>('forward');
   const [videoUrl, setVideoUrl] = useState<string>('');
   const [loadError, setLoadError] = useState<string>('');
@@ -91,12 +94,14 @@ export default function EventVideoModal({
     return label;
   })();
   const eventTime = event.time ? new Date(event.time) : null;
-  const dateStr = eventTime?.toLocaleDateString(undefined, {
-    year: 'numeric', month: 'long', day: 'numeric',
-  }) ?? '—';
-  const timeStr = eventTime?.toLocaleTimeString(undefined, {
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-  }) ?? '—';
+  const dateStr = formatDay(eventTime, {
+    timeZone: tz,
+    intl: { year: 'numeric', month: 'long', day: 'numeric' },
+  });
+  const timeStr = formatTime(eventTime, {
+    timeZone: tz,
+    intl: { hour: '2-digit', minute: '2-digit', second: '2-digit' },
+  });
 
   const latLng = (event.latitude != null && event.longitude != null)
     ? `${event.latitude.toFixed(6)}, ${event.longitude.toFixed(6)}`
@@ -217,7 +222,7 @@ export default function EventVideoModal({
           )}
           {eventTime && (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Clock size={12} /> {eventTime.toLocaleString()}
+              <Clock size={12} /> {formatDate(eventTime, { timeZone: tz })}
             </span>
           )}
           {latLng && (

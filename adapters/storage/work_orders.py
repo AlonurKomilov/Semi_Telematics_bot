@@ -36,6 +36,7 @@ class WorkOrdersMixin:
         payment_status: str = "unpaid",
         status: str = "draft",
         notes: str = "",
+        assigned_to: str = "",
         created_by: int = 0,
     ) -> int:
         now = self._now()
@@ -46,15 +47,15 @@ class WorkOrdersMixin:
                 service_date, odometer_at_service, engine_hours_at_service,
                 labor_cost, parts_cost, tax_amount, total_cost,
                 invoice_number, payment_method, payment_status,
-                status, notes, created_by, created_at, updated_at)
+                status, notes, assigned_to, created_by, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, company_code, vehicle_id, vehicle_name,
              vehicle_type, vendor_name, vendor_address, vendor_phone,
              service_date, odometer_at_service, engine_hours_at_service,
              labor_cost, parts_cost, tax_amount, total_cost,
              invoice_number, payment_method, payment_status,
-             status, notes, created_by, now, now),
+             status, notes, assigned_to, created_by, now, now),
         )
         await self._db.commit()
         return cur.lastrowid
@@ -85,6 +86,32 @@ class WorkOrdersMixin:
                             resolver.setdefault(key.lower(), (unit, vtype))
             except Exception:
                 pass
+        return resolver
+
+    async def _wo_company_resolver(
+        self, account_id: int,
+    ) -> dict[str, tuple[str, str]]:
+        """carrier id (MC or USDOT, stripped) → (company code, name).
+
+        Built from the account's OWN Companies, which own the MC/DOT — so
+        a synced work order's mc_number matches to the right sub-company
+        locally, no integration roster needed."""
+        resolver: dict[str, tuple[str, str]] = {}
+        try:
+            rc = await self._db.execute(
+                "SELECT code, display_name, mc_number, usdot_number "
+                "FROM companies WHERE account_id = ? AND is_active = 1",
+                (account_id,),
+            )
+            for row in (dict(x) for x in await rc.fetchall()):
+                code = str(row.get("code") or "")
+                name = str(row.get("display_name") or "") or code
+                for cid in (row.get("mc_number"), row.get("usdot_number")):
+                    cid = str(cid or "").strip()
+                    if cid:
+                        resolver.setdefault(cid, (code, name))
+        except Exception:
+            pass
         return resolver
 
     async def project_external_work_orders(
@@ -133,6 +160,9 @@ class WorkOrdersMixin:
         # in the synced datatruck_trucks/trailers tables; empty → keep the raw
         # value (graceful fallback).
         resolver = await self._wo_vehicle_resolver(account_id, vehicle_lookup)
+        # Match the WO's carrier MC number to one of the account's
+        # Companies (which own the MC/DOT) → the company code.
+        company_resolver = await self._wo_company_resolver(account_id)
         cur = await self._db.execute(
             "SELECT id, external_id FROM work_orders "
             "WHERE account_id = ? AND source = ? AND external_id <> ''",
@@ -162,6 +192,11 @@ class WorkOrdersMixin:
                     str(r.get("vehicle_type") or "")
                     or (_resolved[1] if _resolved else "")
                 )
+                # Match the carrier MC number to one of the account's
+                # companies → its code (blank when no company owns that MC).
+                _co = company_resolver.get(str(r.get("mc_number") or "").strip())
+                company_code = _co[0] if _co else ""
+                assigned_to = str(r.get("assigned_to") or "")
                 invoice_number = str(r.get("invoice_number") or "")
                 vendor_name = str(r.get("vendor_name") or "")
                 vendor_address = str(r.get("vendor_address") or "")
@@ -206,14 +241,15 @@ class WorkOrdersMixin:
                     # Refresh Datatruck-owned fields only.
                     await self._db.execute(
                         "UPDATE work_orders SET vehicle_name = ?, "
-                        "vehicle_type = ?, "
+                        "vehicle_type = ?, company_code = ?, assigned_to = ?, "
                         "invoice_number = ?, vendor_name = ?, "
                         "vendor_address = ?, vendor_phone = ?, "
                         "payment_method = ?, service_date = ?, "
                         "odometer_at_service = ?, labor_cost = ?, "
                         "parts_cost = ?, tax_amount = ?, total_cost = ?, "
                         "updated_at = ? WHERE id = ? AND account_id = ?",
-                        (vehicle_name, vehicle_type, invoice_number, vendor_name,
+                        (vehicle_name, vehicle_type, company_code, assigned_to,
+                         invoice_number, vendor_name,
                          vendor_address, vendor_phone, payment_method,
                          service_date, odometer, labor_cost, parts_cost,
                          tax, total, now, wo_id, account_id),
@@ -232,18 +268,18 @@ class WorkOrdersMixin:
                         engine_hours_at_service,
                         labor_cost, parts_cost, tax_amount, total_cost,
                         invoice_number, payment_method, payment_status,
-                        status, notes, source, external_id,
+                        status, notes, assigned_to, source, external_id,
                         created_by, created_at, updated_at)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                        ON CONFLICT (account_id, source, external_id)
                        WHERE external_id <> '' DO NOTHING""",
-                    (account_id, "", "", vehicle_name,
+                    (account_id, company_code, "", vehicle_name,
                      vehicle_type, vendor_name, vendor_address, vendor_phone,
                      service_date, odometer, None,
                      labor_cost, parts_cost, tax, total,
                      invoice_number, payment_method, payment_status,
-                     "submitted", str(r.get("note") or ""), source, ext,
+                     "submitted", str(r.get("note") or ""), assigned_to, source, ext,
                      0, now, now),
                 )
                 # Resolve the freshly-inserted id and seed its line items.
@@ -289,7 +325,7 @@ class WorkOrdersMixin:
         # an update can show before → after, not just "will update".
         cur = await self._db.execute(
             "SELECT external_id, vendor_name, invoice_number, vehicle_name, "
-            "payment_method, total_cost FROM work_orders "
+            "payment_method, total_cost, company_code FROM work_orders "
             "WHERE account_id = ? AND source = ? AND external_id <> ''",
             (account_id, source),
         )
@@ -297,6 +333,9 @@ class WorkOrdersMixin:
             str(dict(x)["external_id"]): dict(x) for x in await cur.fetchall()
         }
         resolver = await self._wo_vehicle_resolver(account_id, vehicle_lookup)
+        company_resolver = await self._wo_company_resolver(account_id)
+        # company code → display name, for the Company before → after.
+        code_to_name = {v[0]: v[1] for v in company_resolver.values()}
 
         def _num(v: Any) -> float:
             try:
@@ -313,11 +352,13 @@ class WorkOrdersMixin:
             raw_unit = str(r.get("vehicle_unit") or "")
             resolved = resolver.get(raw_unit.strip().lower())
             vehicle = resolved[0] if resolved else raw_unit
+            _co = company_resolver.get(str(r.get("mc_number") or "").strip())
             base = {
                 "external_id": ext,
                 "number": str(r.get("number") or ""),
                 "vendor": str(r.get("vendor_name") or ""),
                 "vehicle": vehicle,
+                "company": _co[1] if _co else "",
                 "total": r.get("total_cost"),
             }
             if ext not in existing:
@@ -340,6 +381,16 @@ class WorkOrdersMixin:
             if abs(was_t - now_t) > 0.005:
                 changes.append({
                     "field": "Total", "from": f"{was_t:.2f}", "to": f"{now_t:.2f}",
+                })
+            # Company can newly populate once the operator adds MC numbers —
+            # compare the stored code's name to the freshly-matched one.
+            cur_code = str(cur_row.get("company_code") or "")
+            new_code = _co[0] if _co else ""
+            if cur_code != new_code:
+                changes.append({
+                    "field": "Company",
+                    "from": code_to_name.get(cur_code, cur_code),
+                    "to": code_to_name.get(new_code, new_code),
                 })
             update.append({**base, "changes": changes})
 
@@ -414,7 +465,7 @@ class WorkOrdersMixin:
             "service_date", "odometer_at_service", "engine_hours_at_service",
             "labor_cost", "parts_cost", "tax_amount", "total_cost",
             "invoice_number", "payment_method", "payment_status",
-            "status", "notes",
+            "status", "notes", "assigned_to",
         }
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:

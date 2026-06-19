@@ -2,8 +2,8 @@
 
 Datatruck's API lives at ``https://{company_subdomain}.datatruck.io/
 api/v1/openapi/`` with a Token auth header.  The subdomain is the
-operator's company slug on the Datatruck side (e.g. ``premier`` for
-Premier Trucking Group).
+operator's company slug on the Datatruck side (e.g. ``acme`` for
+Acme Trucking Inc).
 
 Rate limit
 ----------
@@ -20,7 +20,7 @@ Datatruck caps results at **10 items per page**.  Endpoints return
 and the same shape for ``/orders/``.  The ``paginated_get`` helper
 walks every page until exhausted, respecting the rate limit.
 
-Endpoints discovered live (10 Jun 2026 against premier.datatruck.io)
+Endpoints discovered live (10 Jun 2026 against acme.datatruck.io)
 -------------------------------------------------------------------
   GET /api/v1/openapi/drivers/list/?page=N&page_size=10
   GET /api/v1/openapi/trucks/list/?page=N&page_size=10
@@ -64,11 +64,11 @@ class DatatruckClient:
     raise.
 
     The credentials shape Datatruck expects:
-        {"company_subdomain": "premier", "api_token": "<hex>"}
+        {"company_subdomain": "acme", "api_token": "<hex>"}
 
     Both fields are required.  ``company_subdomain`` is the literal
     DNS label that prefixes ``.datatruck.io`` — operators see it in
-    their Datatruck browser URL (e.g. ``premier.datatruck.io``).
+    their Datatruck browser URL (e.g. ``acme.datatruck.io``).
     """
 
     def __init__(self, company_subdomain: str, api_token: str) -> None:
@@ -78,12 +78,12 @@ class DatatruckClient:
                 "api_token — missing one or both",
             )
         # Defensive — strip any prefix the operator might have pasted.
-        # ``premier`` is what we want; ``premier.datatruck.io`` and
-        # ``https://premier.datatruck.io`` both reduce to ``premier``.
+        # ``acme`` is what we want; ``acme.datatruck.io`` and
+        # ``https://acme.datatruck.io`` both reduce to ``acme``.
         sub = company_subdomain.strip().lower()
         sub = sub.removeprefix("https://").removeprefix("http://")
         # Order matters: trailing slash MUST be stripped before the
-        # ".datatruck.io" suffix or "premier.datatruck.io/" leaves
+        # ".datatruck.io" suffix or "acme.datatruck.io/" leaves
         # the full host in place ("/" doesn't end with ".datatruck.io").
         sub = sub.removesuffix("/")
         sub = sub.removesuffix(".datatruck.io")
@@ -96,12 +96,12 @@ class DatatruckClient:
             raise ValueError(
                 "'app.datatruck.io' is the shared Datatruck login page, "
                 "not a company URL — paste the part that's unique to "
-                "your company (e.g. 'premier')",
+                "your company (e.g. 'acme')",
             )
         if not sub or "." in sub or "/" in sub:
             raise ValueError(
                 f"company_subdomain {company_subdomain!r} is not a "
-                "valid Datatruck slug (e.g. 'premier')",
+                "valid Datatruck slug (e.g. 'acme')",
             )
         self._subdomain = sub
         self._token = api_token
@@ -198,6 +198,32 @@ class DatatruckClient:
                 f"refusing non-tenant URL {url!r} — pagination links "
                 f"must stay under {self._base}",
             )
+        await self._wait_for_quota()
+        sess = await self._ensure_session()
+        async with sess.get(url, params=params) as resp:
+            ctype = resp.headers.get("content-type", "")
+            if "application/json" in ctype:
+                body: Any = await resp.json()
+            else:
+                body = await resp.text()
+            return resp.status, body
+
+    async def get_path(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+    ) -> tuple[int, Any]:
+        """GET a path under THIS tenant's Datatruck host but OUTSIDE the
+        ``/api/v1/openapi/`` base — e.g. the richer
+        ``/api/v2/truck/truck/work_order/{id}/detail/`` endpoint the UI
+        uses, which carries fields the openapi list omits (invoice id,
+        payment type, vendor contact, location, the unit number).
+
+        The URL is always rebuilt from our own ``{subdomain}.datatruck.io``
+        host, so a caller-supplied ``path`` can never redirect us to a
+        foreign host.  Same rate gate as every other call.
+        """
+        url = f"https://{self._subdomain}.datatruck.io/{path.lstrip('/')}"
         await self._wait_for_quota()
         sess = await self._ensure_session()
         async with sess.get(url, params=params) as resp:

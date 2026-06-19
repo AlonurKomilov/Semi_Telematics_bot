@@ -812,6 +812,90 @@ class WarehouseMixin(_MixinBase):
             row,
         ))
 
+    async def get_undriven_vehicles(
+        self,
+        account_id: int,
+        *,
+        min_days: float = 1.0,
+        move_threshold_mph: float = 1.0,
+        lookback_days: int = 30,
+    ) -> list[dict[str, Any]]:
+        """Vehicles that have NOT moved (speed above threshold) in at least
+        ``min_days``, derived from ``vehicle_state_snapshot``.
+
+        Movement-based — the authoritative answer to "which vehicle hasn't
+        driven in N days" — as opposed to parking-location events.  Only
+        vehicles still reporting snapshots within ``lookback_days`` are
+        considered, so a truck that simply fell offline isn't reported as
+        "stopped".  ``vehicle_state_snapshot`` is keyed by ``vehicle_id``,
+        so we join the current ``vehicle_state`` for name + company.
+
+        Each returned dict: ``vehicle_id``, ``vehicle_name``,
+        ``company_code``, ``last_moved`` (None if no movement in the
+        window), ``last_seen``, ``days_stopped`` (None when last_moved is
+        beyond the lookback).  Sorted longest-stopped first.
+        """
+        from datetime import timedelta
+        now = datetime.now(timezone.utc)
+        since = (now - timedelta(days=lookback_days)).isoformat()
+        cutoff = (now - timedelta(days=min_days)).isoformat()
+
+        cur = await self._db.execute(
+            """
+            SELECT vehicle_id,
+                   MAX(CASE WHEN speed_mph > ? THEN captured_at END) AS last_moved,
+                   MAX(captured_at) AS last_seen
+              FROM vehicle_state_snapshot
+             WHERE account_id = ? AND captured_at >= ?
+             GROUP BY vehicle_id
+            """,
+            (move_threshold_mph, account_id, since),
+        )
+        agg: dict[str, dict] = {}
+        for row in await cur.fetchall():
+            d = dict(zip(("vehicle_id", "last_moved", "last_seen"), row))
+            vid = str(d.get("vehicle_id") or "")
+            if vid:
+                agg[vid] = d
+
+        # vehicle_id → name/company from the current state table.
+        meta_by_id = {
+            str(s.get("vehicle_id")): s
+            for s in await self.get_vehicle_state(account_id)
+        }
+
+        out: list[dict[str, Any]] = []
+        for vid, d in agg.items():
+            last_moved = d.get("last_moved")
+            # Still driving recently → not undriven.
+            if last_moved and last_moved >= cutoff:
+                continue
+            meta = meta_by_id.get(vid, {})
+            days_stopped: Optional[float] = None
+            if last_moved:
+                try:
+                    lm = datetime.fromisoformat(str(last_moved).replace("Z", "+00:00"))
+                    if lm.tzinfo is None:
+                        lm = lm.replace(tzinfo=timezone.utc)
+                    days_stopped = round((now - lm).total_seconds() / 86400.0, 1)
+                except Exception:
+                    days_stopped = None
+            out.append({
+                "vehicle_id": vid,
+                "vehicle_name": meta.get("vehicle_name") or vid,
+                "company_code": meta.get("company_code") or "",
+                "last_moved": last_moved,
+                "last_seen": d.get("last_seen"),
+                "days_stopped": days_stopped,
+            })
+
+        # Longest-stopped first; "never moved in window" (None) sorts to top.
+        out.sort(
+            key=lambda x: x["days_stopped"] if x["days_stopped"] is not None else float("inf"),
+            reverse=True,
+        )
+        return out
+
     async def compute_vehicle_velocity_window(
         self,
         account_id: int,
@@ -1011,6 +1095,183 @@ class WarehouseMixin(_MixinBase):
         await self._db.commit()
         return getattr(cur, "rowcount", 0) or 0
 
+    async def get_reading_as_of(
+        self, account_id: int, vehicle_name: str, on_date: str,
+    ) -> Optional[dict]:
+        """Odometer + engine-hours for a vehicle AS OF a date.
+
+        Powers back-dated work orders: a WO dated last month should show
+        the mileage the truck had then, not today's.  ``vehicle_name`` is
+        the unit name; resolved to the telematics id via ``vehicle_state``.
+
+        Tiered lookup, precise-first:
+          1. The 5-minute ``vehicle_state_snapshot`` (kept 7 days) — exact
+             reading at/-before end of ``on_date``.
+          2. Fallback to the end-of-day reading in ``vehicle_metrics_daily``
+             (kept 730 days) for dates older than the snapshot window.
+
+        Returns ``{odometer_miles, engine_hours, as_of}`` or ``None`` when
+        the vehicle isn't telematics-linked or neither tier has a reading
+        at/-before that date (caller falls back to the current reading).
+        """
+        name = (vehicle_name or "").strip()
+        on_date = (on_date or "").strip()[:10]
+        if not name or len(on_date) != 10:
+            return None
+        # name → telematics vehicle_id (the snapshot's key).
+        rc = await self._db.execute(
+            "SELECT vehicle_id FROM vehicle_state "
+            "WHERE account_id = ? AND lower(vehicle_name) = lower(?) LIMIT 1",
+            (account_id, name),
+        )
+        vrow = await rc.fetchone()
+        if not vrow:
+            return None
+        vehicle_id = dict(vrow)["vehicle_id"]
+        # captured_at < next-day midnight → "<= end of on_date".  String
+        # compare is safe for both "YYYY-MM-DDTHH:MM:SSZ" and "… HH:MM:SS"
+        # because a bare date sorts before any same-day timestamp.
+        from datetime import date as _date, timedelta as _td
+        try:
+            next_day = (_date.fromisoformat(on_date) + _td(days=1)).isoformat()
+        except ValueError:
+            return None
+        # Tier 1 — precise 5-minute snapshot.
+        cur = await self._db.execute(
+            "SELECT odometer_mi, engine_hours, captured_at "
+            "FROM vehicle_state_snapshot "
+            "WHERE account_id = ? AND vehicle_id = ? AND captured_at < ? "
+            "AND odometer_mi IS NOT NULL "
+            "ORDER BY captured_at DESC LIMIT 1",
+            (account_id, vehicle_id, next_day),
+        )
+        row = await cur.fetchone()
+        if row:
+            d = dict(row)
+            return {
+                "odometer_miles": d.get("odometer_mi"),
+                "engine_hours": d.get("engine_hours"),
+                "as_of": d.get("captured_at"),
+            }
+        # Tier 2 — end-of-day reading from the long-retention daily table.
+        cur = await self._db.execute(
+            "SELECT odometer_eod, engine_hours_eod, day_utc "
+            "FROM vehicle_metrics_daily "
+            "WHERE account_id = ? AND vehicle_id = ? AND day_utc <= ? "
+            "AND odometer_eod IS NOT NULL "
+            "ORDER BY day_utc DESC LIMIT 1",
+            (account_id, vehicle_id, on_date),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        return {
+            "odometer_miles": d.get("odometer_eod"),
+            "engine_hours": d.get("engine_hours_eod"),
+            "as_of": d.get("day_utc"),
+        }
+
+    async def get_snapshot_coverage(
+        self, account_id: int, vehicle_name: str,
+    ) -> dict:
+        """How far back our odometer history reaches for a vehicle.
+
+        Lets the work-order form explain *why* a back-dated date has no
+        reading: the vehicle has no telematics link at all, or it's linked
+        but our stored history doesn't reach that far.  Mirrors the tiered
+        read in ``get_reading_as_of`` — the window is the UNION of the
+        5-minute ``vehicle_state_snapshot`` (≤7 days) and the end-of-day
+        ``vehicle_metrics_daily`` (≤730 days), so the reported reach
+        matches what the as-of lookup can actually answer.
+
+        Returns ``{telematics_linked, coverage_start, coverage_end}`` —
+        the earliest/latest dates with an odometer (None when the vehicle
+        isn't linked or has no odometer history yet).
+        """
+        name = (vehicle_name or "").strip()
+        if not name:
+            return {"telematics_linked": False,
+                    "coverage_start": None, "coverage_end": None}
+        rc = await self._db.execute(
+            "SELECT vehicle_id FROM vehicle_state "
+            "WHERE account_id = ? AND lower(vehicle_name) = lower(?) LIMIT 1",
+            (account_id, name),
+        )
+        vrow = await rc.fetchone()
+        if not vrow:
+            return {"telematics_linked": False,
+                    "coverage_start": None, "coverage_end": None}
+        vehicle_id = dict(vrow)["vehicle_id"]
+        # Snapshot tier (precise, recent) — full ISO timestamps.
+        cur = await self._db.execute(
+            "SELECT MIN(captured_at) AS first_at, MAX(captured_at) AS last_at "
+            "FROM vehicle_state_snapshot "
+            "WHERE account_id = ? AND vehicle_id = ? AND odometer_mi IS NOT NULL",
+            (account_id, vehicle_id),
+        )
+        snap = dict(await cur.fetchone() or {})
+        # Daily EOD tier (long-retention) — bare YYYY-MM-DD day labels.
+        cur = await self._db.execute(
+            "SELECT MIN(day_utc) AS first_day, MAX(day_utc) AS last_day "
+            "FROM vehicle_metrics_daily "
+            "WHERE account_id = ? AND vehicle_id = ? AND odometer_eod IS NOT NULL",
+            (account_id, vehicle_id),
+        )
+        daily = dict(await cur.fetchone() or {})
+
+        # Earliest/latest across both tiers.  Compare on the date prefix
+        # so a daily "2025-01-01" and a snapshot "2025-01-01T..Z" order
+        # correctly; return the daily label for the start (it reaches
+        # furthest back) and the snapshot timestamp for the end (freshest).
+        starts = [s for s in (daily.get("first_day"), snap.get("first_at")) if s]
+        ends = [e for e in (snap.get("last_at"), daily.get("last_day")) if e]
+        coverage_start = min(starts, key=lambda s: s[:10]) if starts else None
+        coverage_end = max(ends, key=lambda e: e[:10]) if ends else None
+        return {
+            "telematics_linked": True,
+            "coverage_start": coverage_start,
+            "coverage_end": coverage_end,
+        }
+
+    # Identifier guard for the feed-freshness query.  ``specs`` come
+    # from the provider catalog (developer-controlled, not user input),
+    # but we still validate table/column names against this pattern so a
+    # typo can never become a SQL-injection surface.
+    _IDENT_RE = __import__("re").compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+    async def get_feed_freshness(
+        self, account_id: int, specs,
+    ) -> dict[str, dict]:
+        """Per-table ``{count, last_at}`` for a provider's declared data
+        feeds — powers the Integration card's shared "Synced data" table.
+
+        ``specs`` is an iterable of ``(table, ts_col)`` from the provider
+        catalog's ``FeedSpec`` list.  Each table is queried independently
+        so an odd/missing table degrades to ``{count: 0, last_at: None}``
+        rather than failing the whole card.  Returns a dict keyed by
+        table name.
+        """
+        out: dict[str, dict] = {}
+        for table, ts_col in specs:
+            if not (self._IDENT_RE.match(table) and self._IDENT_RE.match(ts_col)):
+                out[table] = {"count": 0, "last_at": None}
+                continue
+            try:
+                cur = await self._db.execute(
+                    f"SELECT COUNT(*) AS n, MAX({ts_col}) AS last_at "
+                    f"FROM {table} WHERE account_id = ?",
+                    (account_id,),
+                )
+                row = dict(await cur.fetchone() or {})
+                out[table] = {
+                    "count": int(row.get("n") or 0),
+                    "last_at": row.get("last_at"),
+                }
+            except Exception:
+                out[table] = {"count": 0, "last_at": None}
+        return out
+
     async def vehicle_state_snapshot_has_day(
         self, account_id: int, day_utc: date,
     ) -> bool:
@@ -1168,6 +1429,8 @@ class WarehouseMixin(_MixinBase):
                 _opt_float(r.get("avg_fuel_pct")),
                 int(r.get("harsh_event_count") or 0),
                 int(r.get("fault_count_eod") or 0),
+                _opt_float(r.get("odometer_eod")),
+                _opt_float(r.get("engine_hours_eod")),
                 ts,
             ))
         if values:
@@ -1177,8 +1440,9 @@ class WarehouseMixin(_MixinBase):
                     account_id, vehicle_id, day_utc,
                     miles, drive_min, idle_min,
                     max_speed_mph, avg_fuel_pct,
-                    harsh_event_count, fault_count_eod, ingested_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    harsh_event_count, fault_count_eod,
+                    odometer_eod, engine_hours_eod, ingested_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (account_id, vehicle_id, day_utc) DO UPDATE SET
                     miles=excluded.miles,
                     drive_min=excluded.drive_min,
@@ -1187,6 +1451,10 @@ class WarehouseMixin(_MixinBase):
                     avg_fuel_pct=excluded.avg_fuel_pct,
                     harsh_event_count=excluded.harsh_event_count,
                     fault_count_eod=excluded.fault_count_eod,
+                    -- Keep a prior non-null EOD reading if a later re-run
+                    -- (e.g. after snapshot pruning) can't recompute it.
+                    odometer_eod=COALESCE(excluded.odometer_eod, vehicle_metrics_daily.odometer_eod),
+                    engine_hours_eod=COALESCE(excluded.engine_hours_eod, vehicle_metrics_daily.engine_hours_eod),
                     ingested_at=excluded.ingested_at
                 """,
                 values,

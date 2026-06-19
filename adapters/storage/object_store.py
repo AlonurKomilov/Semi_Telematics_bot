@@ -202,8 +202,8 @@ class DiskObjectStore:
     The optional ``account_id`` constructor argument makes the store
     *tenant-aware*: every operation transparently prefixes the bucket
     with ``account-{id}/``.  Callers pass a "Drive-shaped" bucket like
-    ``PREMIER/inspections/80`` and the disk store maps it to
-    ``data/userdata/account-10000001/PREMIER/inspections/80/``.  The
+    ``ACME/inspections/80`` and the disk store maps it to
+    ``data/userdata/account-10000001/ACME/inspections/80/``.  The
     Google Drive backend writes the same caller-provided bucket
     directly under the tenant's own ``4truck/`` root — disk and Drive
     paths stay in lockstep inside the tenant boundary.
@@ -281,7 +281,7 @@ class DiskObjectStore:
     def get_by_id(self, object_id: str) -> bytes | None:
         """Disk has no stable ID separate from the path.  ``object_id``
         is treated as the project-relative URL form returned by
-        ``url()`` / ``put()`` — e.g. ``data/userdata/PREMIER/inspections/78/photo.jpg``.
+        ``url()`` / ``put()`` — e.g. ``data/userdata/ACME/inspections/78/photo.jpg``.
         Resolved under the project root so it survives a cwd change.
 
         Transition safety: also tries the pre-``data/userdata/`` path

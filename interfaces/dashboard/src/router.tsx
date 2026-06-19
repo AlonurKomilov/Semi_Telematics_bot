@@ -102,6 +102,7 @@ const Billing          = lazyWithReload(() => import('./features/billing/Billing
 const Payroll          = lazyWithReload(() => import('./features/payroll/Payroll'));
 const Coaching         = lazyWithReload(() => import('./features/coaching/Coaching'));
 const Drivers          = lazyWithReload(() => import('./features/drivers/Drivers'));
+const Applications     = lazyWithReload(() => import('./features/applications/Applications'));
 const AIChat           = lazyWithReload(() => import('./features/ai/Chat'));
 const AISummary        = lazyWithReload(() => import('./features/ai/Summary'));
 const NotFound         = lazy(() => import('./pages/NotFound'));
@@ -147,25 +148,26 @@ export default function AppRouter() {
             truth); the persona context is carried by the subdomain
             (fleet.4truck.us etc.) and the active shell, never the URL
             path. */}
-        <Route path="live-map" element={L(<P perm={['can_location_map', 'can_location_own']}><LiveMap /></P>)} />
-        <Route path="vehicles" element={L(<P perm={['can_vehicle_all', 'can_vehicle_own']}><Vehicles /></P>)} />
-        <Route path="vehicles/:name" element={L(<P perm={['can_vehicle_all', 'can_vehicle_own']}><VehicleDetail /></P>)} />
-        <Route path="routes" element={L(<P perm={['can_route_all', 'can_route_own']}><RoutesPage /></P>)} />
-        <Route path="geofences" element={L(<P perm={['can_geofence_all', 'can_geofence_own']}><Geofences /></P>)} />
-        <Route path="parking" element={L(<P perm={['can_alerts_all', 'can_alerts_own']}><Parking /></P>)} />
-        <Route path="alerts" element={L(<P perm={['can_alerts_all', 'can_alerts_own']}><Alerts /></P>)} />
-        <Route path="driver-scorecards" element={L(<P perm={['can_scorecard_all', 'can_scorecard_own']}><Scorecards /></P>)} />
-        <Route path="safety-events" element={L(<P perm={['can_events_all', 'can_events_own']}><Events /></P>)} />
+        <Route path="live-map" element={L(<P perm={['can_location_map', 'can_location_vehicle']}><LiveMap /></P>)} />
+        <Route path="vehicles" element={L(<P perm={['can_vehicle_all', 'can_vehicle_vehicle']}><Vehicles /></P>)} />
+        <Route path="vehicles/:name" element={L(<P perm={['can_vehicle_all', 'can_vehicle_vehicle']}><VehicleDetail /></P>)} />
+        <Route path="routes" element={L(<P perm={['can_route_all', 'can_route_vehicle']}><RoutesPage /></P>)} />
+        <Route path="geofences" element={L(<P perm={['can_geofence_all', 'can_geofence_vehicle']}><Geofences /></P>)} />
+        <Route path="parking" element={L(<P perm={['can_alerts_all', 'can_alerts_vehicle']}><Parking /></P>)} />
+        <Route path="alerts" element={L(<P perm={['can_alerts_all', 'can_alerts_vehicle']}><Alerts /></P>)} />
+        <Route path="driver-scorecards" element={L(<P perm={['can_scorecard_all', 'can_scorecard_vehicle']}><Scorecards /></P>)} />
+        <Route path="safety-events" element={L(<P perm={['can_events_all', 'can_events_vehicle']}><Events /></P>)} />
         <Route path="cameras" element={L(<P perm="can_faults"><Cameras /></P>)} />
 
-        {/* AI Assistant — gate aligned with sidebar + backend so any
-            user who sees the link can also load the page.  Any of the
-            three flags grants access: can_faults (faults-Q&A),
-            can_vehicle_all (cross-fleet), can_vehicle_own (driver
-            self-view).  Keeps the AI useful for non-fault personas
-            (HR, Dispatch, Accounting) without inheriting fault data. */}
-        <Route path="ai/chat" element={L(<P perm={['can_faults', 'can_vehicle_all', 'can_vehicle_own']}><AIChat /></P>)} />
-        <Route path="ai/summary" element={L(<P perm={['can_faults', 'can_vehicle_all', 'can_vehicle_own']}><AISummary /></P>)} />
+        {/* AI Assistant — gate on the SAME flag as the sidebar entry
+            (featureCatalog `ai_assistant` → can_ai_chat), so any persona
+            who sees the link can load the page.  can_ai_chat defaults True
+            for every role; the AI's individual tools are permission-gated
+            server-side, so a non-fleet persona (recruiter, HR, accounting)
+            gets the assistant without inheriting fault/vehicle data.  The
+            previous vehicle-centric guard bounced those personas to "/". */}
+        <Route path="ai/chat" element={L(<P perm="can_ai_chat"><AIChat /></P>)} />
+        <Route path="ai/summary" element={L(<P perm="can_ai_chat"><AISummary /></P>)} />
 
         {/* Reports module — the four sub-pages are nested under one
             ReportsLayout that owns the shared header + cross-page
@@ -198,7 +200,7 @@ export default function AppRouter() {
         <Route path="costs/cpm" element={L(<P perm="can_cost_per_mile"><CostPerMile /></P>)} />
 
         {/* Maintenance */}
-        <Route path="maintenance" element={L(<P perm={['can_maintenance_all', 'can_maintenance_own']}><Maintenance /></P>)} />
+        <Route path="maintenance" element={L(<P perm={['can_maintenance_all', 'can_maintenance_vehicle']}><Maintenance /></P>)} />
 
         {/* PTI (Pre-Trip Inspections) — fleet review surface.
             Drivers complete inspections via the Mini App; this page
@@ -208,9 +210,9 @@ export default function AppRouter() {
         {/* Work Orders — separate module from Maintenance.  Maintenance
             tracks "what needs doing"; Work Orders is "what was done"
             (shop visits, costs, parts, attachments). */}
-        <Route path="work-orders"         element={L(<P perm={['can_maintenance_all', 'can_maintenance_own']}><WorkOrders /></P>)} />
+        <Route path="work-orders"         element={L(<P perm={['can_maintenance_all', 'can_maintenance_vehicle']}><WorkOrders /></P>)} />
         <Route path="work-orders/new"     element={L(<P perm="can_maintenance_all"><WorkOrderForm /></P>)} />
-        <Route path="work-orders/:id"     element={L(<P perm={['can_maintenance_all', 'can_maintenance_own']}><WorkOrderForm /></P>)} />
+        <Route path="work-orders/:id"     element={L(<P perm={['can_maintenance_all', 'can_maintenance_vehicle']}><WorkOrderForm /></P>)} />
         {/* Cost Reports route lives under /reports/* (see above) since
             it's a sub-page of the Reports module; this position kept
             empty intentionally — the legacy /cost-reports redirect
@@ -260,6 +262,7 @@ export default function AppRouter() {
         <Route path="payroll" element={L(<P perm="can_payroll_admin"><Payroll /></P>)} />
         <Route path="coaching" element={L(<P perm="can_coaching_admin"><Coaching /></P>)} />
         <Route path="workforce/drivers" element={L(<P perm="can_manage_driver_docs"><Drivers /></P>)} />
+        <Route path="workforce/applications" element={L(<P perm="can_recruit_applicants"><Applications /></P>)} />
         <Route path="*" element={L(<NotFound />)} />
       </Route>
     </Routes>

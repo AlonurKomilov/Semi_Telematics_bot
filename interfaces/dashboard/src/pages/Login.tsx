@@ -402,7 +402,7 @@ export default function Login() {
               {registerKind === 'new-company' && (
                 <Input
                   type="text"
-                  placeholder={t('auth.company_name', 'Company name — e.g. Premier Trucking Group Inc')}
+                  placeholder={t('auth.company_name', 'Company name — e.g. Acme Trucking Inc')}
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
                   required

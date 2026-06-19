@@ -33,6 +33,8 @@ import type {
   VehiclesAlertsResponse,
 } from '../../../types';
 import { formatAlertDescription } from '../../../utils/alertDescription';
+import { formatDate } from '../../../utils/datetime';
+import { useTimezone } from '../../../hooks/useTimezone';
 import { statusClasses, toneClasses } from '../../../lib/status';
 import { useAlertsFilters } from '../_shared/useAlertsFilters';
 import { useAlertsSelection } from '../_shared/AlertsSelectionContext';
@@ -47,6 +49,7 @@ import {
 
 export default function AlertsResults() {
   const { t } = useTranslation();
+  const tz = useTimezone();
   const { ackState, viewMode } = useAlertsFilters();
   const {
     selected,
@@ -356,7 +359,7 @@ export default function AlertsResults() {
                   </div>
                   <span className="text-xs text-muted-foreground whitespace-nowrap">
                     {g.latest_seen
-                      ? new Date(g.latest_seen).toLocaleString()
+                      ? formatDate(g.latest_seen, { timeZone: tz })
                       : '—'}
                   </span>
                 </div>
@@ -424,12 +427,12 @@ export default function AlertsResults() {
                             </td>
                             <td className="px-4 py-2 text-xs text-muted-foreground whitespace-nowrap">
                               {a.last_seen
-                                ? new Date(a.last_seen).toLocaleString()
+                                ? formatDate(a.last_seen, { timeZone: tz })
                                 : '—'}
                             </td>
                             {ackState !== 'active' && (
                               <td className="px-4 py-2">
-                                <AckMarker alert={a} />
+                                <AckMarker alert={a} tz={tz} />
                               </td>
                             )}
                           </tr>
@@ -560,14 +563,14 @@ export default function AlertsResults() {
               </td>
               <td className="px-4 py-3 text-muted-foreground">
                 {a.last_seen
-                  ? new Date(a.last_seen).toLocaleString()
+                  ? formatDate(a.last_seen, { timeZone: tz })
                   : a.created_at
-                    ? new Date(a.created_at).toLocaleString()
+                    ? formatDate(a.created_at, { timeZone: tz })
                     : '—'}
               </td>
               {ackState !== 'active' && (
                 <td className="px-4 py-3">
-                  <AckMarker alert={a} />
+                  <AckMarker alert={a} tz={tz} />
                 </td>
               )}
             </tr>

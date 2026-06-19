@@ -509,7 +509,7 @@
     "add_step2_hint": "<i>(commence par samsara_api_…)</i>",
     "add_step3": "<b>Étape 3/3</b> — Nom d'affichage (optionnel)",
     "add_step3_prompt": "Entrez un nom convivial pour cette entreprise\nou appuyez sur <b>⏭ Passer</b> pour utiliser le code.",
-    "add_step3_example": "Exemple : <i>Premier Trucking Group</i>",
+    "add_step3_example": "Exemple : <i>Acme Trucking Inc</i>",
     "add_code_invalid": "❌ Le code doit contenir entre 1 et 10 caractères, sans espaces.",
     "add_code_example": "Exemple : <b>PTG</b>, <b>CFT</b>",
     "wizard_lost": "❌ État de l'assistant perdu. Veuillez recommencer."

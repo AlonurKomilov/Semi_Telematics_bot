@@ -749,7 +749,7 @@ def _prepare_company_folders(creds, root_folder_id: str, companies) -> None:
     layout discoverable from minute one::
 
         4truck/
-          ├─ PREMIER TRUCKING/
+          ├─ ACME TRUCKING/
           │   ├─ work-orders/
           │   ├─ camera-images/
           │   ├─ parking-maps/

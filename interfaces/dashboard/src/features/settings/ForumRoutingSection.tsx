@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { apiJSON } from '../../api/client';
 import { toneClasses } from '../../lib/status';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate } from '../../utils/datetime';
 import {
   ChevronDown, ChevronRight, Check, X,
   // Per-alert-type row icons.  The backend still ships `icon_emoji`
@@ -84,6 +86,7 @@ const AI_CAPABLE_TYPES = ['faults', 'health', 'parking', 'camera'] as const;
  */
 export default function ForumRoutingSection() {
   const { t } = useTranslation();
+  const tz = useTimezone();
   const [state, setState] = useState<RoutingState | null>(null);
   const [loading, setLoading] = useState(true);
   const [showMapping, setShowMapping] = useState(false);
@@ -228,7 +231,7 @@ export default function ForumRoutingSection() {
                   {t('forum_routing.mode_group_setup_status', { status: state.setup_status })}
                   {state.last_setup_at && (
                     ' · ' + t('forum_routing.mode_group_last_setup', {
-                      when: new Date(state.last_setup_at).toLocaleString(),
+                      when: formatDate(state.last_setup_at, { timeZone: tz }),
                     })
                   )}
                 </p>

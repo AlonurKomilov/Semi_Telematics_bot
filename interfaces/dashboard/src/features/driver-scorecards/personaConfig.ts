@@ -36,6 +36,7 @@ export const BLOCKS_FOR_PERSONA: Record<Persona, ScorecardBlock[]> = {
   dispatcher: ['kpi', 'table'],
   driver: ['table'],
   accounting: ['kpi', 'table'],
+  recruiter: ['kpi', 'table'],
 };
 
 export function blocksForPersona(persona: Persona): ScorecardBlock[] {

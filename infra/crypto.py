@@ -103,3 +103,31 @@ def decrypt(stored: str) -> str:
         raise ValueError(
             "Failed to decrypt API key — ENCRYPTION_KEY may have changed"
         )
+
+
+def blind_index(value: str, *, scope: str = "") -> str | None:
+    """Deterministic, KEYED lookup hash for matching a sensitive value
+    (e.g. an SSN) WITHOUT storing or exposing it.
+
+    Why HMAC and not a plain hash: an SSN has only ~10^9 possible values,
+    so a bare SHA-256 is trivially brute-forced / rainbow-tabled.  Keying
+    the hash with the secret ENCRYPTION_KEY makes the digest unforgeable
+    and un-reversible without the key.
+
+    ``scope`` domain-separates the index — pass the account id so the same
+    SSN hashes DIFFERENTLY per account: matches stay within one carrier and
+    there's no cross-tenant correlation even with raw DB access.
+
+    Normalises to alphanumerics (so "111-22-3333" == "111223333").  Returns
+    None when ENCRYPTION_KEY is unset (matching disabled) or the value is
+    empty — callers treat None as "no index, no match".
+    """
+    import hmac
+    import hashlib
+
+    passphrase = os.getenv("ENCRYPTION_KEY", "").strip()
+    norm = "".join(ch for ch in (value or "") if ch.isalnum()).lower()
+    if not passphrase or not norm:
+        return None
+    msg = f"{scope}\x00{norm}".encode("utf-8")
+    return hmac.new(passphrase.encode("utf-8"), msg, hashlib.sha256).hexdigest()

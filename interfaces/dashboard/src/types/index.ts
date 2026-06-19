@@ -987,6 +987,10 @@ export interface CompanyInfo {
   is_active: boolean;
   created_at: string;
   has_api_key: boolean;
+  /** Federal carrier ids — the stable key for matching synced records
+   *  (e.g. Datatruck work orders) to this company. */
+  mc_number?: string;
+  usdot_number?: string;
 }
 
 export interface CompaniesResponse {
@@ -1329,6 +1333,9 @@ export interface WorkOrder {
   /** draft / submitted / paid / void */
   status: string;
   notes: string;
+  /** Who the work order is assigned to (synced from Datatruck's
+   *  assigned_to, or set by the operator). */
+  assigned_to?: string;
   /** Provenance: 'manual' (hand-entered) or an integration id like
    *  'datatruck'.  Drives the Source column badge on the list. */
   source?: string;

@@ -12,6 +12,8 @@ import {
   ErrorState,
   TableSkeleton,
 } from '../../components/shell';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate } from '../../utils/datetime';
 import type { PTITemplate, PTITemplateItem } from '../../types';
 
 /**
@@ -43,12 +45,8 @@ import type { PTITemplate, PTITemplateItem } from '../../types';
 type VehicleType = 'truck' | 'trailer';
 
 
-function _formatDate(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? '—'
-    : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+function _formatDate(iso: string | null | undefined, tz?: string): string {
+  return formatDate(iso, { timeZone: tz, intl: { dateStyle: 'medium', timeStyle: 'short' } });
 }
 
 
@@ -458,6 +456,7 @@ function TemplateCard({
   onChange: () => void;
 }) {
   const { t } = useTranslation();
+  const tz = useTimezone();
   const [adding, setAdding] = useState(false);
 
   const items = template?.items ?? [];
@@ -514,7 +513,7 @@ function TemplateCard({
         <div className="text-xs text-muted-foreground">
           {t('inspections.template_meta', {
             version: template.version,
-            updated: _formatDate(template.updated_at),
+            updated: _formatDate(template.updated_at, tz),
             count: items.length,
           })}
         </div>

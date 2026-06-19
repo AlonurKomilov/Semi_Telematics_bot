@@ -79,6 +79,7 @@ class WorkOrderCreate(BaseModel):
     payment_status: str = Field("unpaid", pattern=r"^(unpaid|paid|partial|void)$")
     status: str = Field("draft", pattern=r"^(draft|submitted|paid|void)$")
     notes: str = ""
+    assigned_to: str = ""
 
 
 class WorkOrderUpdate(BaseModel):
@@ -101,6 +102,7 @@ class WorkOrderUpdate(BaseModel):
     payment_status: Optional[str] = Field(None, pattern=r"^(unpaid|paid|partial|void)$")
     status: Optional[str] = Field(None, pattern=r"^(draft|submitted|paid|void)$")
     notes: Optional[str] = None
+    assigned_to: Optional[str] = None
 
 
 class PartCreate(BaseModel):

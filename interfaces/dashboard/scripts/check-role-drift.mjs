@@ -44,7 +44,7 @@ const SRC = join(ROOT, 'src');
 // stay in lockstep when adding a new persona.
 const ROLE_KEYS = [
   'owner', 'admin', 'fleet', 'safety', 'dispatcher', 'driver',
-  'hr', 'accounting',
+  'hr', 'accounting', 'recruiter',
 ];
 
 // Files where a `role === '<persona>'` comparison is a legitimate,
@@ -267,7 +267,58 @@ for (const file of walk(SRC)) {
   }
 }
 
+// ── Guard 3: role→host map completeness ───────────────────────────
+//
+// The persona→subdomain map is hand-duplicated in AuthContext.tsx
+// (ROLE_TO_HOST, drives post-login redirect) and RoleViewContext.tsx
+// (ROLE_HOST, drives the Owner/Admin "view as" switcher).  When the two
+// drift, a persona logs in fine but can't be previewed (or vice-versa)
+// — exactly how hr/accounting shipped half-wired.  This guard parses the
+// keys of both maps and asserts each covers EVERY persona in ROLE_KEYS.
+const hostMaps = [
+  ['src/context/AuthContext.tsx', 'ROLE_TO_HOST'],
+  ['src/context/RoleViewContext.tsx', 'ROLE_HOST'],
+];
+const hostMapViolations = [];
+for (const [rel, name] of hostMaps) {
+  let txt;
+  try {
+    txt = readFileSync(join(ROOT, rel), 'utf8');
+  } catch {
+    // File absent in this tree (e.g. the integration test's temporary
+    // src/ fixture, which only writes the files under test) — skip,
+    // don't crash the whole script.
+    continue;
+  }
+  // Object body between `const <name> ... = {` and the map's closing
+  // `}` at the START of a line.  Anchoring on ``\n}`` (not the first
+  // ``}``) is essential: the values are template literals like
+  // ``dash.${APEX_DOMAIN}`` whose inner ``}`` would end the match early.
+  const m = txt.match(new RegExp(`${name}[^=]*=\\s*\\{([\\s\\S]*?)\\n\\}`));
+  if (!m) {
+    hostMapViolations.push(`${rel}: could not find map ${name}`);
+    continue;
+  }
+  const keys = new Set();
+  for (const km of m[1].matchAll(/(?:^|\n)\s*([a-z_]+)\s*:/g)) keys.add(km[1]);
+  for (const persona of ROLE_KEYS) {
+    if (!keys.has(persona)) {
+      hostMapViolations.push(`${rel}: ${name} is missing persona '${persona}'`);
+    }
+  }
+}
+
 let failed = false;
+
+if (hostMapViolations.length > 0) {
+  failed = true;
+  console.error('✗ Role→host map completeness check failed.');
+  console.error('  Every persona must appear in BOTH AuthContext.ROLE_TO_HOST');
+  console.error('  (post-login redirect) AND RoleViewContext.ROLE_HOST');
+  console.error('  (persona switcher), or the persona half-works.\n');
+  for (const v of hostMapViolations) console.error(`  ${v}`);
+  console.error('');
+}
 
 if (literalViolations.length > 0) {
   failed = true;
@@ -296,9 +347,58 @@ if (sectionViolations.length > 0) {
   console.error('');
 }
 
+// ── Router perm-guard keys must exist in the Permission type ─────────
+// A <Route> guarded on a flag the Permission interface (types/index.ts)
+// doesn't define is silently ALWAYS-false: viewHasAny() returns false and
+// ProtectedRoute bounces the user to "/".  The sidebar (featureCatalog)
+// and the route then disagree — the nav shows the link but the page won't
+// open.  This is exactly how the `_own` (should be `_vehicle`) typo broke
+// AI / Vehicles / Live Map / Alerts / Scorecards for own-scope personas.
+const permKeyViolations = [];
+{
+  // The authoritative set of permission flags is the backend FeatureSet
+  // dataclass (capabilities/permissions/roles.py) — that's what gets
+  // serialized to the client.  src/types/index.ts is a hand-maintained
+  // (and incomplete) mirror, so validating against it gives false
+  // positives; read the real source instead.
+  let featureSetSrc = '';
+  let routerSrc = '';
+  try {
+    featureSetSrc = readFileSync(
+      resolve(ROOT, '../../capabilities/permissions/roles.py'), 'utf8',
+    );
+    routerSrc = readFileSync(join(SRC, 'router.tsx'), 'utf8');
+  } catch {
+    // A file moved — skip rather than crash the whole guard.
+  }
+  if (featureSetSrc && routerSrc) {
+    // Dataclass field declarations: `can_xxx: bool = ...`.
+    const known = new Set(
+      [...featureSetSrc.matchAll(/\b(can_[a-z_]+)\s*:\s*bool/g)].map((m) => m[1]),
+    );
+    for (const guard of stripComments(routerSrc).matchAll(/perm=(?:\{[^}]*\}|"[^"]*")/g)) {
+      for (const km of guard[0].matchAll(/['"](can_[a-z_]+)['"]/g)) {
+        if (!known.has(km[1])) permKeyViolations.push(km[1]);
+      }
+    }
+  }
+}
+
+if (permKeyViolations.length > 0) {
+  failed = true;
+  console.error('✗ Router permission-key check failed.');
+  console.error('  These <Route perm=...> flags are NOT in the Permission');
+  console.error('  type (src/types/index.ts) — viewHasAny() is always false');
+  console.error('  for them, so the route silently bounces to "/" even though');
+  console.error('  the sidebar shows the link.  Own-scope is `_vehicle`, not');
+  console.error('  `_own`.\n');
+  for (const v of [...new Set(permKeyViolations)]) console.error(`  router.tsx: ${v}`);
+  console.error('');
+}
+
 if (failed) process.exit(1);
 
 console.log(
-  '✓ Role-drift check passed — no stray persona literals or section-contract violations.',
+  '✓ Role-drift check passed — no stray persona literals, section-contract, or router perm-key violations.',
 );
 process.exit(0);

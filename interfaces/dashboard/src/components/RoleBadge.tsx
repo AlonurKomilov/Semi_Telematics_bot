@@ -31,12 +31,24 @@ export const ROLE_LABEL: Record<string, string> = {
   driver:     'Driver',
   hr:         'HR',
   accounting: 'Accounting',
+  recruiter:  'Recruiter',
 };
+
+/** Operator-assignable roles, in display order — every role EXCEPT owner
+ *  (owner transfers, it is never assigned or invited).  Single source for
+ *  the Change-Role grid and the Invite dropdown, so adding a role to
+ *  ROLE_LABEL above surfaces it in both pickers automatically instead of
+ *  drifting per-file.  Target-role lists that also need 'all' / 'owner'
+ *  (Working Hours) layer those on top of this. */
+export const ASSIGNABLE_ROLES = [
+  'admin', 'fleet', 'safety', 'dispatcher',
+  'hr', 'accounting', 'recruiter', 'driver',
+] as const;
 
 /** Role → semantic tone.  Categories:
  *    info    = management / system tier (owner, admin, dispatcher)
  *    ok      = fleet operations (fleet)
- *    warn    = compliance / personnel focus (safety, hr)
+ *    warn    = compliance / personnel focus (safety, hr, recruiter)
  *    neutral = rank-and-file / back-office (driver, accounting)
  *  Tone collisions are intentional — the label carries the precise
  *  role; the colour groups them by function so a fleet ops table reads
@@ -50,6 +62,7 @@ const ROLE_TONE: Record<string, Tone> = {
   driver:     'neutral',
   hr:         'warn',
   accounting: 'neutral',
+  recruiter:  'warn',
 };
 
 /** Resolve a role string to its semantic tone.  Unknown roles fall

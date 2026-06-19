@@ -476,6 +476,26 @@ def _is_openai_compat(model_name: str) -> bool:
     return info.get("api_type") != "gemini"
 
 
+# Sampling temperature was hardcoded to 0.3 at every rawPredict/MaaS call site.
+# Centralizing it here lets a model override sampling via the registry
+# (``"temperature": <float>``) — e.g. a reasoning model that wants different (or
+# no) sampling — without editing the generation paths.  Unset → the default,
+# so behaviour is unchanged for every model today.
+DEFAULT_TEMPERATURE = 0.3
+
+
+def model_temperature(model_info: dict | None) -> float:
+    """Sampling temperature for a model: its registry ``temperature`` or the
+    global :data:`DEFAULT_TEMPERATURE`.  A missing or non-numeric value falls
+    back to the default."""
+    try:
+        if model_info and model_info.get("temperature") is not None:
+            return float(model_info["temperature"])
+    except (TypeError, ValueError):
+        pass
+    return DEFAULT_TEMPERATURE
+
+
 def is_vision_capable(model_name: str) -> bool:
     """Check whether a model supports multimodal vision (image input)."""
     info = MODEL_REGISTRY.get(model_name, {})

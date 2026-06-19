@@ -273,7 +273,7 @@ async def _broadcast_to_fleet(account_id: int, text: str,
         return 0
     # Roles eligible for review pings — broader than just "admin" so
     # fleet/safety managers see them too.
-    eligible_roles = {Role.OWNER, Role.ADMIN, Role.FLEET, Role.SAFETY, Role.DISPATCH}
+    eligible_roles = {Role.OWNER, Role.ADMIN, Role.FLEET, Role.SAFETY, Role.DISPATCHER}
     targets: list[int] = []
     for u in admins:
         if u.role in eligible_roles and u.telegram_id:

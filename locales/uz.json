@@ -509,7 +509,7 @@
     "add_step2_hint": "<i>(samsara_api_… bilan boshlanadi)</i>",
     "add_step3": "<b>3/3 qadam</b> — Kompaniya nomi",
     "add_step3_prompt": "Kompaniya nomini yozing:",
-    "add_step3_example": "Masalan: <i>Premier Trucking</i>",
+    "add_step3_example": "Masalan: <i>Acme Trucking Inc</i>",
     "add_code_invalid": "❌ Noto'g'ri kod.",
     "add_code_example": "Masalan: <b>PTG</b>",
     "wizard_lost": "❌ Xato. Qaytadan urinib ko'ring."

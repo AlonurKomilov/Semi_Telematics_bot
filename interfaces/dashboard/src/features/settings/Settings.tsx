@@ -18,7 +18,7 @@ import ForumRoutingSection from './ForumRoutingSection';
 import DangerZoneSection from './DangerZoneSection';
 import { toneClasses } from '../../lib/status';
 
-const ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'driver'];
+const ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'hr', 'accounting', 'recruiter', 'driver'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 export default function Settings() {
@@ -201,7 +201,7 @@ export default function Settings() {
             override their own timezone in My Preferences below.
             <br />
             <span className="opacity-75">
-              Tip: DST is handled automatically — picking Eastern Time (ET) gives
+              Tip: DST is handled automatically — picking Eastern Time gives
               you EST in winter and EDT in summer.
             </span>
           </p>

@@ -25,6 +25,7 @@ from features.settings import router as settings_routes
 from capabilities.telemetry import router as telemetry_routes
 from capabilities.jobs import router as jobs_routes
 from interfaces.api.routes import system as system_routes
+from interfaces.api.routes import recruitment as recruitment_routes
 from capabilities.permissions import router as permissions_routes
 from interfaces.api.routes import webhooks as webhooks_routes
 # Hub + platform-capability routers live WITH their domain:
@@ -92,6 +93,7 @@ _MAX_UPLOAD_BODY_SIZE = int(os.getenv("MAX_UPLOAD_BODY_SIZE", str(25 * 1024 * 10
 _UPLOAD_PATH_SUFFIXES = (
     "/attachments",   # work-order invoice/photo/warranty uploads (10 MB cap in-route)
     "/documents",     # driver license/medical/insurance uploads (20 MB cap in-route)
+    "/apply",         # PUBLIC driver-application intake (multipart; per-file 8 MB cap + magic-byte check in-route)
 )
 
 
@@ -396,6 +398,7 @@ def create_api() -> FastAPI:
         app.include_router(telemetry_routes.router, prefix=prefix)
         app.include_router(jobs_routes.router, prefix=prefix)
         app.include_router(system_routes.router, prefix=prefix)
+        app.include_router(recruitment_routes.router, prefix=prefix)
         app.include_router(permissions_routes.router, prefix=prefix)
         app.include_router(maintenance_routes.router, prefix=prefix)
         app.include_router(work_orders_routes.router, prefix=prefix)

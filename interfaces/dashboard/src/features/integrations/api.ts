@@ -12,7 +12,9 @@ import type {
   BackfillStatus,
   DatatruckSyncStatusResponse,
   IntegrationsListResponse,
+  DatatruckPreviewStatus,
   ProviderCompaniesResponse,
+  ProviderFeedsResponse,
   SnapshotCoverageResponse,
   TestCompanyResponse,
   TestConnectionResponse,
@@ -117,6 +119,15 @@ export async function getBackfillStatus(
 ): Promise<BackfillStatus> {
   return apiJSON<BackfillStatus>(
     `${BASE}/${encodeURIComponent(providerId)}/actions/backfill-history/status`,
+  );
+}
+
+/** Per-feed freshness for the telematics "Synced data" table (Samsara). */
+export async function getProviderFeeds(
+  providerId: string,
+): Promise<ProviderFeedsResponse> {
+  return apiJSON<ProviderFeedsResponse>(
+    `${BASE}/${encodeURIComponent(providerId)}/feeds`,
   );
 }
 
@@ -237,5 +248,41 @@ export async function triggerDatatruckSync(
 export async function getDatatruckSyncStatus(): Promise<DatatruckSyncStatusResponse> {
   return apiJSON<DatatruckSyncStatusResponse>(
     `${BASE}/datatruck/sync-status`,
+  );
+}
+
+/** Kick off a background dry-run for a previewable resource.  Returns a
+ *  ``preview_id`` immediately; poll ``getDatatruckPreview`` until the
+ *  state is ``ready`` (then ``applyDatatruckSync`` commits it). */
+export async function startDatatruckPreview(
+  resource: string,
+  days?: number,
+): Promise<{ state: string; resource: string; preview_id: string }> {
+  const qs = days ? `?days=${days}` : '';
+  return apiJSON<{ state: string; resource: string; preview_id: string }>(
+    `${BASE}/datatruck/sync/${encodeURIComponent(resource)}/preview${qs}`,
+    { method: 'POST' },
+  );
+}
+
+/** Poll a running preview for its state + diff. */
+export async function getDatatruckPreview(
+  resource: string,
+  previewId: string,
+): Promise<DatatruckPreviewStatus> {
+  return apiJSON<DatatruckPreviewStatus>(
+    `${BASE}/datatruck/sync/${encodeURIComponent(resource)}/preview/${encodeURIComponent(previewId)}`,
+  );
+}
+
+/** Commit a previewed resource from its cached rows.  Fire-and-forget —
+ *  poll ``getDatatruckSyncStatus`` for progress. */
+export async function applyDatatruckSync(
+  resource: string,
+  previewId: string,
+): Promise<{ state: string; resource: string }> {
+  return apiJSON<{ state: string; resource: string }>(
+    `${BASE}/datatruck/sync/${encodeURIComponent(resource)}/apply`,
+    { method: 'POST', body: { preview_id: previewId } },
   );
 }

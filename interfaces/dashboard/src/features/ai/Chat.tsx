@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bot, Send, Trash2, Copy, Check, RefreshCw, Sparkles, MessageSquare, Pencil, Download, RotateCcw, ChevronDown, Zap, Brain, Microscope, ThumbsUp, ThumbsDown, type LucideIcon } from 'lucide-react';
+import { Bot, Send, Square, Trash2, Copy, Check, RefreshCw, Sparkles, MessageSquare, Pencil, Download, RotateCcw, ChevronDown, Zap, Brain, Microscope, ThumbsUp, ThumbsDown, type LucideIcon } from 'lucide-react';
 import { apiJSON, apiJSONAI, apiStreamChat } from '../../api/client';
 import { useShellConfig } from '../../hooks/useShellConfig';
 import type { AIChatMessage, AIChatResponse, AIHistoryResponse, AISummaryResponse, AIModel, AIModelsResponse, AIUsage, AITierChoice, AITierOption, AITierResponse } from '../../types';
 import { formatAIResponse } from '../../utils/formatAI';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate, formatTime } from '../../utils/datetime';
 import { DislikeReasonForm } from './sections/DislikeReasonForm';
 
 // Extended message type with client-side timestamp
@@ -44,8 +46,8 @@ function getSuggestedQuestions(view?: string): string[] {
     case 'dispatcher':
       return [
         'Which trucks are rolling right now?',
+        "Which vehicles haven't driven in 3 days?",
         'Show current fuel status',
-        'Any vehicles in unusual locations?',
         'Which routes are active today?',
       ];
     case 'safety':
@@ -60,14 +62,14 @@ function getSuggestedQuestions(view?: string): string[] {
       return [
         'Give me a status briefing for the operation',
         'Which trucks have active faults?',
-        'Show me fuel costs this month',
+        "Which vehicles haven't driven in 3 days?",
         'Any overdue maintenance tasks?',
       ];
     default:
       return [
         'How are my vehicles doing today?',
         'Which trucks have active faults?',
-        'Show me fuel costs this month',
+        "Which vehicles haven't driven in 3 days?",
         'Any overdue maintenance tasks?',
       ];
   }
@@ -75,6 +77,7 @@ function getSuggestedQuestions(view?: string): string[] {
 
 export default function Chat() {
   const { t } = useTranslation();
+  const tz = useTimezone();
   const location = useLocation();
   const navigate = useNavigate();
   const { activeView, isDriverView, briefingLabel, chatSubject } = useShellConfig();
@@ -296,6 +299,16 @@ export default function Chat() {
     }
   }
 
+  /** Abort the in-flight streaming request.  apiStreamChat's fetch rejects
+   *  with AbortError, which send()'s catch swallows (and its finally clears
+   *  loading) — but we optimistically clear the streaming UI here too so the
+   *  Stop feels instant rather than waiting for the rejection to propagate. */
+  function stopGeneration() {
+    abortRef.current?.abort();
+    setLoading(false);
+    setToolActivity([]);
+  }
+
   async function switchTier(tier: AITierChoice) {
     if (tierSwitching || tier === currentTier) {
       setTierOpen(false);
@@ -457,7 +470,7 @@ export default function Chat() {
 
   function exportChat() {
     const lines = messages.map((m) => {
-      const time = m.timestamp.toLocaleString();
+      const time = formatDate(m.timestamp, { timeZone: tz });
       const who = m.role === 'user' ? 'You' : 'AI';
       // Strip HTML tags for plain-text export
       const plainText = m.text.replace(/<[^>]+>/g, '');
@@ -692,7 +705,7 @@ export default function Chat() {
                         <Pencil size={12} />
                       </button>
                       <p className="text-3xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                        {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {formatTime(msg.timestamp, { timeZone: tz, intl: { hour: '2-digit', minute: '2-digit' } })}
                       </p>
                     </div>
                   </div>
@@ -861,14 +874,25 @@ export default function Chat() {
               className="flex-1 bg-card text-foreground rounded-xl px-4 py-3 text-sm border border-border focus:border-ring focus:ring-2 focus:ring-ring/20 focus:outline-none resize-none transition-colors placeholder:text-muted-foreground/50"
               disabled={loading}
             />
-            <button
-              onClick={() => send(input)}
-              disabled={loading || !input.trim()}
-              className="px-4 py-3 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
-            >
-              <Send size={14} />
-              Send
-            </button>
+            {loading ? (
+              <button
+                onClick={stopGeneration}
+                className="px-4 py-3 rounded-lg bg-muted hover:bg-muted/80 text-foreground font-medium text-sm transition-colors border border-border flex items-center gap-1.5 shrink-0"
+                title="Stop generating"
+              >
+                <Square size={14} className="fill-current" />
+                Stop
+              </button>
+            ) : (
+              <button
+                onClick={() => send(input)}
+                disabled={!input.trim()}
+                className="px-4 py-3 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
+              >
+                <Send size={14} />
+                Send
+              </button>
+            )}
           </div>
         </>
       )}
@@ -881,7 +905,7 @@ export default function Chat() {
               <h2 className="text-lg font-semibold">{briefingLabel}</h2>
               {briefingTime && (
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Generated at {briefingTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  Generated at {formatTime(briefingTime, { timeZone: tz, intl: { hour: '2-digit', minute: '2-digit' } })}
                 </p>
               )}
             </div>

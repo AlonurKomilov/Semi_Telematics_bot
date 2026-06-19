@@ -10,6 +10,11 @@ export interface VehicleSummary {
    *  that /vehicles is registry-backed.  Lets callers auto-resolve the
    *  inspection template from the picked vehicle. */
   vehicle_type?: string;
+  /** Current readings (registry/live-state) — let callers auto-fill an
+   *  odometer / engine-hours field from the picked vehicle (e.g. the
+   *  Work Order form).  Null when the vehicle doesn't report them. */
+  odometer_miles?: number | null;
+  engine_hours?: number | null;
 }
 
 const STATUS_DOT: Record<string, string> = {
@@ -33,7 +38,13 @@ export function VehiclePicker({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { if (!value) setQuery(''); }, [value]);
+  // Keep the visible text in sync with the controlled ``value``.  During
+  // typing/select the parent's value already equals ``query`` (we push it
+  // up via onChange), so this is a no-op then; it matters when ``value``
+  // arrives AFTER mount — e.g. editing an existing record, where the
+  // stored vehicle loads asynchronously and must show in the field rather
+  // than the empty placeholder.
+  useEffect(() => { setQuery(value); }, [value]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {

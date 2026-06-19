@@ -101,6 +101,77 @@ class BillingMixin:
         )
         await self._db.commit()
 
+    async def start_trial(
+        self, account_id: int, *, tier: str = "pro", days: int = 14,
+    ) -> str:
+        """Put an account on a real ``tier`` trial for ``days`` days.
+
+        Sets ``status='trialing'``, ``tier`` (default pro so the user
+        gets full features), and ``trial_ends_at = now + days`` plus the
+        tier's vehicle/price fields so the billing preview reflects what
+        they'll pay if they convert.  No charge happens while trialing
+        (Stripe treats 'trialing' as not-yet-billed; with Stripe off,
+        nothing bills at all).  Returns the ISO ``trial_ends_at``.
+
+        Idempotent-ish: safe to call on a fresh account.  ``expire_due_trials``
+        reverses it to free when the window elapses.
+        """
+        from datetime import timedelta
+        await self.get_or_create_subscription(account_id)
+        ends = datetime.now(timezone.utc) + timedelta(days=days)
+        ends_iso = ends.isoformat()
+        await self.update_subscription(
+            account_id,
+            tier=tier,
+            status="trialing",
+            trial_ends_at=ends_iso,
+            base_vehicles=_TIER_BASE_VEHICLES.get(tier, 10),
+            monthly_base_usd=_TIER_MONTHLY_BASE.get(tier, 0),
+            extra_vehicle_cents=_TIER_EXTRA_CENTS.get(tier, 0),
+        )
+        # accounts.tier is what the operator list renders — keep it in
+        # sync with the subscription so a trial shows "Pro" there too.
+        try:
+            await self.update_account(account_id, tier=tier)
+        except Exception:
+            pass
+        return ends_iso
+
+    async def expire_due_trials(self, *, before_iso: str) -> list[dict]:
+        """Downgrade trials whose window has elapsed back to free.
+
+        Finds ``status='trialing'`` rows with ``trial_ends_at <= before_iso``
+        and resets them to a free, active subscription (tier=free, status=
+        active, trial cleared, free-tier vehicle/price fields).  Returns
+        the affected ``{account_id}`` rows so the scheduler can log/audit.
+        The owner keeps access — they just drop to free-tier limits until
+        they pick a paid plan.
+        """
+        cur = await self._db.execute(
+            "SELECT account_id FROM subscriptions "
+            "WHERE status = 'trialing' AND trial_ends_at IS NOT NULL "
+            "AND trial_ends_at <= ?",
+            (before_iso,),
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+        for r in rows:
+            await self.update_subscription(
+                r["account_id"],
+                tier="free",
+                status="active",
+                trial_ends_at=None,
+                base_vehicles=_TIER_BASE_VEHICLES.get("free", 0),
+                monthly_base_usd=_TIER_MONTHLY_BASE.get("free", 0),
+                extra_vehicle_cents=_TIER_EXTRA_CENTS.get("free", 0),
+            )
+            # Keep accounts.tier in sync with the subscription tier so the
+            # operator list (which reads accounts.tier) shows 'free' too.
+            try:
+                await self.update_account(r["account_id"], tier="free")
+            except Exception:
+                pass
+        return rows
+
     async def list_active_subscriptions(self) -> list[dict]:
         """Return all subscriptions with status 'active' or 'trialing'."""
         cur = await self._db.execute(
@@ -496,7 +567,7 @@ class BillingMixin:
         """Operator-side cross-account invoice search.
 
         All filter args are optional; combined with AND.  Result joins
-        the account name so the UI shows "PREMIER TRUCKING — $99 paid"
+        the account name so the UI shows "ACME TRUCKING — $99 paid"
         rather than a bare account id.  Newest invoice first.
         """
         wheres: list[str] = []

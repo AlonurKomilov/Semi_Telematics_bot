@@ -509,7 +509,7 @@
     "add_step2_hint": "<i>(починається з samsara_api_…)</i>",
     "add_step3": "<b>Крок 3/3</b> — Назва (необов'язково)",
     "add_step3_prompt": "Введіть зрозумілу назву для компанії\nабо натисніть <b>⏭ Пропустити</b>, щоб використати код.",
-    "add_step3_example": "Приклад: <i>Premier Trucking Group</i>",
+    "add_step3_example": "Приклад: <i>Acme Trucking Inc</i>",
     "add_code_invalid": "❌ Код повинен містити від 1 до 10 символів, без пробілів.",
     "add_code_example": "Приклад: <b>PTG</b>, <b>CFT</b>",
     "wizard_lost": "❌ Стан майстра втрачено. Почніть спочатку."

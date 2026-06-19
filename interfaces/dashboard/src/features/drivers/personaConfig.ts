@@ -46,6 +46,9 @@ export const TABS_FOR_PERSONA: Record<Persona, DriverDetailTab[]> = {
   dispatcher: ['profile', 'vehicles', 'hos'],
   driver: ['profile', 'documents'],
   accounting: ['profile'],
+  // Recruiter: qualification-focused — CDL/medical docs, inspection +
+  // training records for onboarding.  No operational tabs (vehicles/hos).
+  recruiter: ['profile', 'documents', 'inspections', 'trainings'],
 };
 
 export function tabsForPersona(persona: Persona): DriverDetailTab[] {

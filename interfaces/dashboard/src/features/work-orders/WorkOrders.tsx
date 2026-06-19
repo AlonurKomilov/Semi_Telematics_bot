@@ -11,6 +11,8 @@ import {
 } from '../../components/shell';
 import type { WorkOrder, WorkOrdersResponse, AnyColumn } from '../../types';
 import { toneClasses, type Tone } from '../../lib/status';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDay } from '../../utils/datetime';
 
 // Status / payment → tone.  Matches the maintenance module's
 // StatusBadge styling family so the two modules read as siblings.
@@ -66,13 +68,17 @@ function SourceCell({ value }: { value: unknown }) {
   );
 }
 
-const columns: AnyColumn[] = [
+function makeColumns(tz: string): AnyColumn[] {
+  return [
   { key: 'id', label: '#', sortable: true, render: (v) => <span className="font-mono text-xs text-muted-foreground">{`#${v}`}</span> },
   { key: 'vehicle_name', label: 'Vehicle', sortable: true },
+  // Compact company CODE on the list (the full name lives on the WO
+  // detail page).  Set from the MC/DOT match during sync; '—' if none.
+  { key: 'company_code', label: 'Company', sortable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
   { key: 'vendor_name', label: 'Vendor', sortable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
   {
     key: 'service_date', label: 'Service Date', sortable: true,
-    render: (v) => v ? new Date(String(v)).toLocaleDateString() : <span className="text-muted-foreground">—</span>,
+    render: (v) => v ? formatDay(String(v), { timeZone: tz }) : <span className="text-muted-foreground">—</span>,
   },
   { key: 'total_cost', label: 'Total', sortable: true, render: (v) => <MoneyCell value={v} /> },
   { key: 'status', label: 'Status', sortable: true, render: (v) => <Pill value={v} palette={STATUS_TONE} /> },
@@ -84,10 +90,12 @@ const columns: AnyColumn[] = [
   // Invoice number is the operator's primary cross-reference to their
   // own bookkeeping system — surface it as a distinct column.
   { key: 'invoice_number', label: 'Invoice #', render: (v) => (v ? <span className="font-mono text-xs">{String(v)}</span> : <span className="text-muted-foreground">—</span>) },
-];
+  ];
+}
 
 export default function WorkOrders() {
   const { t } = useTranslation();
+  const tz = useTimezone();
   const navigate = useNavigate();
   // URL params drive optional filters when the user click-throughs
   // from a Cost Reports chart.  ``?vehicle=221`` filters to one
@@ -120,12 +128,8 @@ export default function WorkOrders() {
     if (!vendorFilter && !taskTypeFilter) return rawWorkOrders;
     return rawWorkOrders.filter(w => {
       if (vendorFilter && !(w.vendor_name || '').toLowerCase().includes(vendorFilter.toLowerCase())) return false;
-      // task_type filtering requires joining through linked
-      // maintenance tasks — not surfaced on the work-order row
-      // directly today.  When the field is absent we fall back to
-      // showing all rows (the click-through doesn't have the join
-      // server-side either).  Future revision could pull
-      // /work-orders/{id} per row to enforce — not worth it for v1.
+      // task_type filtering requires joining through linked maintenance
+      // tasks — not surfaced on the work-order row directly today.
       return true;
     });
   }, [rawWorkOrders, vendorFilter, taskTypeFilter]);
@@ -253,7 +257,7 @@ export default function WorkOrders() {
         />
       ) : (
         <DataTable
-          columns={columns}
+          columns={makeColumns(tz)}
           data={workOrders as unknown as Record<string, unknown>[]}
           searchKey="vendor_name"
           searchPlaceholder={t('work_orders_page.search_placeholder')}

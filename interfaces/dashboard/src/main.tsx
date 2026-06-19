@@ -43,22 +43,46 @@ const queryClient = new QueryClient({
   },
 });
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <ThemeProvider>
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <BrowserRouter basename={import.meta.env.VITE_ROUTER_BASE ?? ''}>
-            <AuthProvider>
-              <RoleViewProvider>
-                <App />
-              </RoleViewProvider>
-            </AuthProvider>
-          </BrowserRouter>
-        </TooltipProvider>
-        <Toaster richColors position="top-right" closeButton />
-        {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
-      </QueryClientProvider>
-    </ThemeProvider>
-  </React.StrictMode>,
-);
+// apply.<apex> serves this same dist but is a PUBLIC, auth-free driver
+// application — mount it standalone with no ThemeProvider (so the page
+// stays on the light `:root` tokens), no auth, no router, no shell.
+// ``?apply`` is honoured too so the form can be previewed in local dev.
+const _host = window.location.hostname.toLowerCase();
+const _isApply = _host.startsWith('apply.') || new URLSearchParams(window.location.search).has('apply');
+const _root = ReactDOM.createRoot(document.getElementById('root')!);
+
+// Lazy so the public form is its OWN chunk — dashboard users never pay
+// for it, and apply.* visitors never load the auth/router/shell graph.
+const PublicApply = React.lazy(() => import('./features/apply/PublicApply'));
+
+if (_isApply) {
+  document.body.className = 'bg-background text-foreground';
+  _root.render(
+    <React.StrictMode>
+      <React.Suspense fallback={null}>
+        <PublicApply />
+      </React.Suspense>
+      <Toaster richColors position="top-right" closeButton />
+    </React.StrictMode>,
+  );
+} else {
+  _root.render(
+    <React.StrictMode>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider>
+            <BrowserRouter basename={import.meta.env.VITE_ROUTER_BASE ?? ''}>
+              <AuthProvider>
+                <RoleViewProvider>
+                  <App />
+                </RoleViewProvider>
+              </AuthProvider>
+            </BrowserRouter>
+          </TooltipProvider>
+          <Toaster richColors position="top-right" closeButton />
+          {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
+        </QueryClientProvider>
+      </ThemeProvider>
+    </React.StrictMode>,
+  );
+}

@@ -91,6 +91,11 @@ const STATUS_TONE: Record<string, Tone> = {
   connected: 'ok', paused: 'warn', disabled: 'warn',
   disconnected: 'neutral',
   coming_soon: 'neutral',
+  // Driver-application pipeline: submitted=info (new, untriaged) →
+  // screening/interview=warn (in progress) → approved/hired=ok →
+  // rejected=danger, withdrawn=neutral.
+  submitted: 'info', screening: 'warn', interview: 'warn',
+  approved: 'ok', hired: 'ok', rejected: 'danger', withdrawn: 'neutral',
 };
 
 export function statusTone(status: string | null | undefined): Tone {

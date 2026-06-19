@@ -21,13 +21,18 @@ class Role(str, Enum):
     FLEET       = "fleet"
     SAFETY      = "safety"
     DISPATCHER  = "dispatcher"
-    # HR + ACCOUNTING are dedicated personas for the
-    # people-management and money-management halves of the business.
-    # They have their own subdomains (hr.4truck.us / accounting.4truck.us),
-    # their own sidebar nav (interfaces/dashboard/src/shells/nav/),
-    # and their own permission defaults (see capabilities/permissions/permissions.py).
+    # HR + ACCOUNTING + RECRUITER are dedicated department personas, each
+    # with its own subdomain (hr./accounting./recruiter..4truck.us), its
+    # own sidebar nav (interfaces/dashboard/src/shells/nav/), and its own
+    # permission defaults (see capabilities/permissions/roles.py).
+    # RECRUITER (driver acquisition / onboarding) defaults to a
+    # driver-equivalent baseline PLUS the recruiting rights
+    # (can_recruit_applicants + can_convert_to_driver) so it works out of
+    # the box; owners tailor any flag per account from the Permissions
+    # matrix.
     HR          = "hr"
     ACCOUNTING  = "accounting"
+    RECRUITER   = "recruiter"
     DRIVER      = "driver"
 
     @classmethod
@@ -35,6 +40,8 @@ class Role(str, Enum):
         s = s.strip().lower()
         if s == "fleet_manager":
             s = "fleet"
+        if s == "driver_recruiter":
+            s = "recruiter"
         for r in cls:
             if r.value == s:
                 return r
@@ -72,6 +79,11 @@ class Company:
     active_days: int
     is_active: bool
     created_at: str
+    # Immutable federal carrier identifiers — the stable join key for
+    # matching integration records (e.g. a Datatruck WO's mc_number) to
+    # this sub-company.  Default '' for companies that haven't set them.
+    mc_number: str = ""
+    usdot_number: str = ""
 
 @dataclass
 class User:
