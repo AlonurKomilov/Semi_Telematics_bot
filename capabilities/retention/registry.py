@@ -6,12 +6,15 @@ kept for a while, then deleted.  This hub centralizes the *policy* while
 keeping ownership feature-centric, exactly like the Alerting/Reporting
 hubs:
 
-  * Features declare *how long they need a target kept* via
-    ``register_need`` (``features/<x>/retention.py``).
-  * The platform declares *how to prune each target* via
-    ``register_target`` (``capabilities/retention/targets.py``).
+  * The feature that owns a data domain declares both *how to prune each
+    target* (``register_target``) and *how long it* needs it
+    (``register_need``) in its own ``retention.py`` (e.g.
+    ``features/vehicles/retention.py``, ``capabilities/email/retention.py``).
+  * Features that merely *read* a shared target add their own
+    ``register_need`` (e.g. Maintenance/Work Orders on
+    ``vehicle.metrics_daily``).
   * ``resolve()`` keeps each target for the MAX of its declared needs —
-    so a shared table (e.g. ``vehicle_state_snapshot``, read by several
+    so a shared tier (e.g. ``vehicle.timeline_5min``, read by several
     features) is retained as long as the hungriest consumer requires,
     and the magic numbers become a contract you can read.
 
@@ -35,7 +38,7 @@ PruneExecutor = Callable[[Any, "int | None", int], Awaitable[int]]
 class RetentionTarget:
     """How to prune one data target (declared by the platform layer)."""
 
-    key: str            # stable id, e.g. "vehicle_state_snapshot"
+    key: str            # feature-component id, e.g. "vehicle.timeline_5min"
     label: str          # human label
     scope: str          # "tenant" (per-account) | "platform" (global)
     prune: PruneExecutor

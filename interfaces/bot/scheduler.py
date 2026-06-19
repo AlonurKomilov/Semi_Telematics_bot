@@ -140,25 +140,9 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         max_instances=1, coalesce=True,
     )
 
-    # Resend invite-email webhook idempotency-table cleanup.
-    # 14-day retention is well past Resend's 10h retry ceiling.
-    # Without this the table grows unbounded over months — at
-    # 10k sends/month with healthy delivery + occasional bounces
-    # that's ~50k rows/year per deploy.  Run at 03:20 UTC so it
-    # doesn't collide with the alerting cleanup at 03:15.
-    async def _prune_email_webhook_events(_app):
-        from infra.platform import get_platform_db
-        try:
-            db = await get_platform_db()
-            n = await db.prune_email_webhook_events(days=14)
-            logger.info("prune_email_webhook_events: deleted %d row(s)", n)
-        except Exception:
-            logger.exception("prune_email_webhook_events failed")
-    scheduler.add_job(
-        _prune_email_webhook_events, "cron",
-        hour=3, minute=20, args=[app], id="prune_email_webhook_events",
-        max_instances=1, coalesce=True,
-    )
+    # (The Resend email-webhook cleanup now runs through the Retention
+    # hub's platform pass — email.delivery_events, 14d.  See data_retention
+    # below.)
     # Nightly scorecard snapshot. Tick hourly; the per-account body
     # gates on local 02:00 so each account snapshots "yesterday" at a
     # consistent local cadence.
@@ -221,7 +205,6 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         job_aggregate_telemetry_hourly,
         job_snapshot_vehicle_state,
         job_aggregate_metrics_daily,
-        job_prune_telemetry_history,
         job_ingest_vehicle_health,
         job_ingest_vehicle_faults,
         job_ingest_fleet_weather,
@@ -272,17 +255,26 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         hour=0, minute=5, timezone="UTC", args=[app], id="warehouse_metrics_daily",
         max_instances=1, coalesce=True,
     )
-    # HISTORY_PRUNE (02:00 UTC): trims vehicle_state_snapshot (7d),
-    # vehicle_telemetry_hourly (90d), vehicle_metrics_daily (730d).  Safe
-    # to run now that the 730-day EOD tier is populated — the Samsara
-    # backfill's chained aggregations carried odometer_eod across the
-    # existing snapshot history (verified: 732 daily rows hold an
-    # odometer_eod through the current window), so back-dated work orders
-    # keep their reach after the 7-day raw snapshots are pruned.  UTC-
-    # pinned for the same reason as the daily roll-up above.
+    # ── data retention (cross-cutting hub) ───────────────────
+    # One nightly pass that prunes every registered retention target to the
+    # window its OWNING feature declares (capabilities/retention):
+    #   tenant   — vehicle.timeline_5min (7d), vehicle.timeline_hourly (90d),
+    #              vehicle.metrics_daily (730d), scorecards.score_history (90d)
+    #   platform — email.delivery_events (14d)
+    # Replaces three scattered paths (the per-capability HISTORY_PRUNE job,
+    # the inline score_events prune, the email-webhook cleanup) so the
+    # windows live in one readable contract.  Runs for EVERY active account —
+    # a prune on a tier with no rows is a harmless no-op, and HISTORY_PRUNE
+    # was on-by-default for every telematics account anyway, so this only
+    # adds no-ops for non-telematics tenants (the dropped capability gate is
+    # the single behavior change to verify on deploy).  Safe now that the
+    # 730-day EOD daily tier is populated, so back-dated work orders keep
+    # their reach after the 7-day raw snapshots are pruned.  02:00 UTC, after
+    # the 00:05 daily roll-up; UTC-pinned for the same reason as the roll-up.
+    from capabilities.retention.jobs import job_run_retention
     scheduler.add_job(
-        job_prune_telemetry_history, "cron",
-        hour=2, minute=0, timezone="UTC", args=[app], id="warehouse_history_prune",
+        job_run_retention, "cron",
+        hour=2, minute=0, timezone="UTC", args=[app], id="data_retention",
         max_instances=1, coalesce=True,
     )
     scheduler.add_job(

@@ -92,3 +92,40 @@ async def test_undriven_skips_offline_vehicles(pg_db):
     ])
     rows = await db.get_undriven_vehicles(acct, min_days=3)
     assert all(r["vehicle_name"] != "D-9" for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_undriven_extends_past_snapshot_window_via_daily(pg_db):
+    """A truck parked beyond the 7-day snapshot horizon is still answered
+    correctly: the daily roll-up (730d) supplies the last drive day, so
+    "undriven for 14 days" works even after snapshots are pruned at 7d."""
+    db = pg_db
+    acct = 4
+    now = datetime.now(timezone.utc)
+
+    await db.upsert_vehicle_state(acct, [
+        {"vehicle_id": "v5", "vehicle_name": "E-5", "company_code": "E"},
+    ])
+    # Online but PARKED throughout the snapshot window (speed 0) — so the
+    # snapshot tier alone reports "no movement", with no idea how long.
+    await db.upsert_vehicle_state_snapshots(acct, [
+        {"vehicle_id": "v5", "captured_at": _iso(now - timedelta(days=2)), "speed_mph": 0.0},
+        {"vehicle_id": "v5", "captured_at": _iso(now - timedelta(hours=1)), "speed_mph": 0.0},
+    ])
+    # Daily roll-up: it last actually drove 20 days ago, idle ever since.
+    await db.upsert_vehicle_metrics_daily(acct, [
+        {"vehicle_id": "v5", "day_utc": (now - timedelta(days=20)).date().isoformat(),
+         "miles": 210.0, "drive_min": 320.0},
+        {"vehicle_id": "v5", "day_utc": (now - timedelta(days=5)).date().isoformat(),
+         "miles": 0.0, "drive_min": 0.0},
+    ])
+
+    # Caught at 14 days (drove 20 days ago) with a real days_stopped.
+    rows = await db.get_undriven_vehicles(acct, min_days=14)
+    by_name = {r["vehicle_name"]: r for r in rows}
+    assert "E-5" in by_name
+    assert 18.5 <= by_name["E-5"]["days_stopped"] <= 20.5
+
+    # Not caught at 25 days — it DID drive 20 days ago (< 25).
+    rows25 = await db.get_undriven_vehicles(acct, min_days=25)
+    assert all(r["vehicle_name"] != "E-5" for r in rows25)

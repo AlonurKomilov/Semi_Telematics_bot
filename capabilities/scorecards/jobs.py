@@ -129,22 +129,9 @@ async def take_daily_scorecard_snapshots(_app=None) -> None:
         len(accounts), snapshot_date, failed or "none",
     )
 
-    # Prune score_events older than 90 days to keep the table bounded.
-    # Same gate — only the account whose local 02:00 just ticked prunes
-    # its own rows.  Other accounts' rows are untouched until their tick.
-    for acc in accounts:
-        if not await _is_local_hour(acc.id, _TARGET_HOUR):
-            continue
-        tenant = await get_tenant_db(acc.id)
-        if tenant is None:
-            continue
-        try:
-            async with tenant.with_account(acc.id):
-                deleted = await tenant.prune_score_events(acc.id, keep_days=90)
-            if deleted:
-                logger.debug("score_events: pruned %d old rows for account %d", deleted, acc.id)
-        except Exception:
-            logger.exception("score_events: prune failed for account %d", acc.id)
+    # (Pruning score_events to its 90-day window now runs through the
+    # Retention hub's nightly tenant pass — scorecards.score_history.  See
+    # capabilities/retention + the ``data_retention`` scheduler job.)
 
 
 # Default thresholds for score-drop alerting.

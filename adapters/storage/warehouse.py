@@ -821,25 +821,36 @@ class WarehouseMixin(_MixinBase):
         lookback_days: int = 30,
     ) -> list[dict[str, Any]]:
         """Vehicles that have NOT moved (speed above threshold) in at least
-        ``min_days``, derived from ``vehicle_state_snapshot``.
+        ``min_days``.
 
         Movement-based — the authoritative answer to "which vehicle hasn't
         driven in N days" — as opposed to parking-location events.  Only
-        vehicles still reporting snapshots within ``lookback_days`` are
-        considered, so a truck that simply fell offline isn't reported as
-        "stopped".  ``vehicle_state_snapshot`` is keyed by ``vehicle_id``,
-        so we join the current ``vehicle_state`` for name + company.
+        vehicles still reporting (recent ``vehicle_state_snapshot`` rows)
+        are considered, so a truck that simply fell offline isn't reported
+        as "stopped".  Snapshots are keyed by ``vehicle_id``, so we join the
+        current ``vehicle_state`` for name + company.
+
+        Tiered so the answer reaches past the 7-day snapshot retention:
+          * Recent, precise movement comes from ``vehicle_state_snapshot``
+            (5-min cadence, ≤7 days) — this also decides which vehicles are
+            online enough to consider.
+          * For an online truck with NO movement inside the snapshot window,
+            the last day it actually drove is read from the long-retention
+            ``vehicle_metrics_daily`` roll-up (≤730 days; a "drive day" =
+            ``drive_min > 0``).  Without this, "undriven for 14 days" could
+            never be answered once snapshots are pruned at 7 days.
 
         Each returned dict: ``vehicle_id``, ``vehicle_name``,
-        ``company_code``, ``last_moved`` (None if no movement in the
-        window), ``last_seen``, ``days_stopped`` (None when last_moved is
-        beyond the lookback).  Sorted longest-stopped first.
+        ``company_code``, ``last_moved`` (None if it never drove within
+        ``lookback_days``), ``last_seen``, ``days_stopped`` (None when
+        last_moved is unknown).  Sorted longest-stopped first.
         """
         from datetime import timedelta
         now = datetime.now(timezone.utc)
         since = (now - timedelta(days=lookback_days)).isoformat()
         cutoff = (now - timedelta(days=min_days)).isoformat()
 
+        # Online trucks + recent precise movement (5-min snapshot tier).
         cur = await self._db.execute(
             """
             SELECT vehicle_id,
@@ -858,6 +869,28 @@ class WarehouseMixin(_MixinBase):
             if vid:
                 agg[vid] = d
 
+        # Extend the lookback past the 7-day snapshot horizon: for online
+        # trucks showing no movement inside the snapshot window, read the
+        # last day they actually drove from the long-retention daily tier.
+        stalled = [vid for vid, d in agg.items() if not d.get("last_moved")]
+        last_drive_day: dict[str, str] = {}
+        if stalled:
+            since_day = (now - timedelta(days=lookback_days)).date().isoformat()
+            cur = await self._db.execute(
+                """
+                SELECT vehicle_id, MAX(day_utc) AS last_drive_day
+                  FROM vehicle_metrics_daily
+                 WHERE account_id = ? AND day_utc >= ? AND drive_min > 0
+                 GROUP BY vehicle_id
+                """,
+                (account_id, since_day),
+            )
+            for row in await cur.fetchall():
+                d = dict(zip(("vehicle_id", "last_drive_day"), row))
+                vid = str(d.get("vehicle_id") or "")
+                if vid and d.get("last_drive_day"):
+                    last_drive_day[vid] = str(d["last_drive_day"])
+
         # vehicle_id → name/company from the current state table.
         meta_by_id = {
             str(s.get("vehicle_id")): s
@@ -867,6 +900,11 @@ class WarehouseMixin(_MixinBase):
         out: list[dict[str, Any]] = []
         for vid, d in agg.items():
             last_moved = d.get("last_moved")
+            # No movement in the snapshot window → fall back to the daily
+            # tier's last drive day, anchored at end-of-day so the coarser
+            # tier never OVER-states days_stopped (no false "undriven" flags).
+            if not last_moved and vid in last_drive_day:
+                last_moved = last_drive_day[vid] + "T23:59:59+00:00"
             # Still driving recently → not undriven.
             if last_moved and last_moved >= cutoff:
                 continue
@@ -1472,6 +1510,59 @@ class WarehouseMixin(_MixinBase):
             "DELETE FROM vehicle_metrics_daily "
             "WHERE account_id = ? AND day_utc < ?",
             (account_id, cutoff_day),
+        )
+        await self._db.commit()
+        return getattr(cur, "rowcount", 0) or 0
+
+    async def prune_driver_efficiency_daily(
+        self, account_id: int, *, days_keep: int = 730,
+    ) -> int:
+        """Drop per-driver daily efficiency rows older than the window
+        (the Driver-feature analogue of ``prune_vehicle_metrics_daily``)."""
+        from datetime import timedelta
+        cutoff_day = (datetime.now(timezone.utc) - timedelta(days=days_keep)).date().isoformat()
+        cur = await self._db.execute(
+            "DELETE FROM driver_efficiency_daily "
+            "WHERE account_id = ? AND day < ?",
+            (account_id, cutoff_day),
+        )
+        await self._db.commit()
+        return getattr(cur, "rowcount", 0) or 0
+
+    async def prune_safety_event_log(
+        self, account_id: int, *, days_keep: int = 1095,
+    ) -> int:
+        """Drop safety / harsh-event rows older than the window.
+
+        Compliance-sensitive (FMCSA / litigation / insurance), so the
+        window is deliberately long (3 years by default).  Owned by the
+        Safety Events feature.
+        """
+        from datetime import timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days_keep)).isoformat()
+        cur = await self._db.execute(
+            "DELETE FROM safety_event_log "
+            "WHERE account_id = ? AND occurred_at < ?",
+            (account_id, cutoff),
+        )
+        await self._db.commit()
+        return getattr(cur, "rowcount", 0) or 0
+
+    async def prune_vehicle_fault_detail(
+        self, account_id: int, *, days_keep: int = 365,
+    ) -> int:
+        """Drop CLEARED fault rows older than the window.
+
+        Active faults (``cleared_at IS NULL``) are live state and are NEVER
+        pruned — only resolved DTCs aged past the window are removed, so the
+        diagnostic history stays bounded without ever losing a live fault.
+        """
+        from datetime import timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days_keep)).isoformat()
+        cur = await self._db.execute(
+            "DELETE FROM vehicle_fault_detail "
+            "WHERE account_id = ? AND cleared_at IS NOT NULL AND cleared_at < ?",
+            (account_id, cutoff),
         )
         await self._db.commit()
         return getattr(cur, "rowcount", 0) or 0

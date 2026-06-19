@@ -823,32 +823,9 @@ async def backfill_aggregations(
     }
 
 
-async def prune_telemetry_history(account_id: int) -> int:
-    """Drop snapshot / hourly / daily rows past their retention windows.
-
-    Single function so a missed run on one tier doesn't leave the
-    others unpruned, and so the next run finds a clean state.
-    Returns total rows deleted across all three tables.
-    """
-    tenant = await get_tenant_db(account_id)
-    if tenant is None:
-        return 0
-    snap_deleted = await tenant.prune_vehicle_state_snapshots(
-        account_id, days_keep=7,
-    )
-    hourly_deleted = await tenant.prune_vehicle_telemetry_hourly(
-        account_id, days_keep=90,
-    )
-    daily_deleted = await tenant.prune_vehicle_metrics_daily(
-        account_id, days_keep=730,
-    )
-    total = snap_deleted + hourly_deleted + daily_deleted
-    if total:
-        logger.info(
-            "prune_telemetry_history acct=%d snap=%d hourly=%d daily=%d total=%d",
-            account_id, snap_deleted, hourly_deleted, daily_deleted, total,
-        )
-    return total
+# (Telemetry-history pruning — snapshot 7d / hourly 90d / daily 730d — now
+# runs through the cross-cutting Retention hub; the Vehicle feature owns
+# those targets in features/vehicles/retention.py.  See capabilities/retention.)
 
 
 # ── scheduler entry points (iterate active accounts) ─────────────────
@@ -1058,12 +1035,6 @@ async def job_snapshot_vehicle_state(_app=None) -> None:
 async def job_aggregate_metrics_daily(_app=None) -> None:
     await _for_each_account_with_capability(
         _Cap.METRICS_DAILY, aggregate_metrics_daily,
-    )
-
-
-async def job_prune_telemetry_history(_app=None) -> None:
-    await _for_each_account_with_capability(
-        _Cap.HISTORY_PRUNE, prune_telemetry_history,
     )
 
 

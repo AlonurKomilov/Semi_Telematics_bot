@@ -1,10 +1,13 @@
 """Scheduler entry for the Retention hub.
 
 Runs the platform pass once, then the tenant pass per active account.
-NOT yet wired into the scheduler — the legacy prune jobs
-(``job_prune_telemetry_history``, the email-webhook prune, the in-line
-score-events prune) still run.  The cutover is a deliberate step: register
-this job, then remove those three so retention isn't double-run.
+Wired into the scheduler as the ``data_retention`` cron (02:00 UTC); it
+replaced the three legacy prune paths (the per-capability telemetry-history
+job, the email-webhook cleanup, and the in-line score-events prune) so every
+retention window lives in one contract instead of three scattered constants.
+
+Runs for every active account (no capability gate): a prune on a tier with
+no rows is a harmless no-op.
 """
 
 from __future__ import annotations

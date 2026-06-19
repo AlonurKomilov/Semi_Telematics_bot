@@ -32,20 +32,29 @@ def test_windows_match_legacy_prune():
     """The migrated policies must reproduce the old hardcoded windows."""
     discover()
     by = {r.target.key: r.keep_days for r in resolve()}
-    assert by["vehicle_state_snapshot"] == 7
-    assert by["vehicle_telemetry_hourly"] == 90
-    assert by["vehicle_metrics_daily"] == 730
-    assert by["score_events"] == 90
-    assert by["email_webhook_events"] == 14
+    assert by["vehicle.timeline_5min"] == 7
+    assert by["vehicle.timeline_hourly"] == 90
+    assert by["vehicle.metrics_daily"] == 730
+    assert by["scorecards.score_history"] == 90
+    assert by["email.delivery_events"] == 14
+
+
+def test_growing_table_target_windows():
+    """The feature-owned growing-table targets resolve to their chosen windows."""
+    discover()
+    by = {r.target.key: r.keep_days for r in resolve()}
+    assert by["driver.efficiency_daily"] == 730   # match the vehicle daily tier
+    assert by["safety_events"] == 1095            # 3y — FMCSA/litigation lookback
+    assert by["vehicle.faults"] == 365            # cleared-fault diagnostic history
 
 
 def test_scope_partitions_targets():
     discover()
     tenant = {r.target.key for r in resolve(scope="tenant")}
     platform = {r.target.key for r in resolve(scope="platform")}
-    assert "vehicle_state_snapshot" in tenant
-    assert "email_webhook_events" in platform
-    assert "email_webhook_events" not in tenant
+    assert "vehicle.timeline_5min" in tenant
+    assert "email.delivery_events" in platform
+    assert "email.delivery_events" not in tenant
 
 
 def test_keep_days_is_max_across_needs():
