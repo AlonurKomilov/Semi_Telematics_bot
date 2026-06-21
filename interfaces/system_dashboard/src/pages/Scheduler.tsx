@@ -1,6 +1,19 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiJSON, ApiError } from '../api/client';
-import type { SchedulerJobsResponse, SchedulerJob } from '../types';
+
+// Defined locally (not imported from types.ts) so this page is
+// self-contained.
+interface SchedulerJob {
+  job_id: string;
+  trigger: string;
+  next_run_at: string | null;
+  category: string;
+  description: string;
+  updated_at: string;
+}
+interface SchedulerJobsResponse {
+  jobs: SchedulerJob[];
+}
 
 // "cron[hour='2', minute='0']" -> "cron · hour=2, minute=0"
 // "interval[0:01:00]"          -> "interval · 0:01:00"
@@ -14,6 +27,28 @@ function formatTrigger(t: string): string {
 function formatWhen(iso: string | null): string {
   if (!iso) return '—';
   return iso.slice(0, 16).replace('T', ' ');
+}
+
+// Display order for the subsystem groups; any category not listed (incl.
+// "Other") renders after these, alphabetically.
+const CATEGORY_ORDER = [
+  'Telematics',
+  'Alerts',
+  'Scorecards & coaching',
+  'Inspections (PTI)',
+  'Work orders',
+  'Billing & payroll',
+  'Reporting',
+  'Integrations',
+  'Storage & data',
+  'Accounts & system',
+];
+
+function orderedCategories(jobs: SchedulerJob[]): string[] {
+  const present = Array.from(new Set(jobs.map((j) => j.category || 'Other')));
+  const known = CATEGORY_ORDER.filter((c) => present.includes(c));
+  const rest = present.filter((c) => !CATEGORY_ORDER.includes(c)).sort();
+  return [...known, ...rest];
 }
 
 export default function SchedulerPage() {
@@ -72,37 +107,45 @@ export default function SchedulerPage() {
         </div>
       )}
 
-      {jobs && jobs.length > 0 && (
-        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b border-slate-800">
-                <th className="px-4 py-2 font-medium">Job</th>
-                <th className="px-4 py-2 font-medium">Schedule</th>
-                <th className="px-4 py-2 font-medium">Next run</th>
-              </tr>
-            </thead>
-            <tbody>
-              {jobs.map((j) => (
-                <tr key={j.job_id} className="border-b border-slate-800/60 last:border-0 align-top">
-                  <td className="px-4 py-3">
-                    <div className="font-mono text-slate-200">{j.job_id}</div>
-                    {j.description && (
-                      <div className="text-xs text-slate-500 mt-0.5">{j.description}</div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap font-mono text-xs text-slate-300">
-                    {formatTrigger(j.trigger)}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-xs text-slate-400">
-                    {formatWhen(j.next_run_at)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {jobs && jobs.length > 0 && orderedCategories(jobs).map((category) => {
+        const inGroup = jobs.filter((j) => (j.category || 'Other') === category);
+        return (
+          <section key={category} className="mb-6">
+            <p className="px-1 py-1 text-[10px] uppercase tracking-wider text-slate-600">
+              {category} <span className="text-slate-700">· {inGroup.length}</span>
+            </p>
+            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b border-slate-800">
+                    <th className="px-4 py-2 font-medium">Job</th>
+                    <th className="px-4 py-2 font-medium">Schedule</th>
+                    <th className="px-4 py-2 font-medium">Next run</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inGroup.map((j) => (
+                    <tr key={j.job_id} className="border-b border-slate-800/60 last:border-0 align-top">
+                      <td className="px-4 py-3">
+                        <div className="font-mono text-slate-200">{j.job_id}</div>
+                        {j.description && (
+                          <div className="text-xs text-slate-500 mt-0.5">{j.description}</div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap font-mono text-xs text-slate-300">
+                        {formatTrigger(j.trigger)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-xs text-slate-400">
+                        {formatWhen(j.next_run_at)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        );
+      })}
 
       <p className="text-xs text-slate-600 mt-4">
         Read-only. Schedules are defined in code (the bot's scheduler); change them via code review,

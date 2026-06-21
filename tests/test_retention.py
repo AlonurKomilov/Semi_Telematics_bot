@@ -144,12 +144,15 @@ async def test_record_and_get_scheduler_jobs(pg_db):
     db = pg_db
     await db.record_scheduler_jobs([
         {"job_id": "data_retention", "trigger": "cron[hour='2', minute='0']",
-         "next_run_at": "2026-06-22T02:00:00+00:00", "description": "Prune retention targets"},
+         "next_run_at": "2026-06-22T02:00:00+00:00",
+         "category": "Storage & data", "description": "Prune retention targets"},
         {"job_id": "warehouse_vehicle_state", "trigger": "interval[0:01:00]",
-         "next_run_at": "2026-06-21T12:00:00+00:00", "description": "Pull live state"},
+         "next_run_at": "2026-06-21T12:00:00+00:00",
+         "category": "Telematics", "description": "Pull live state"},
     ])
     jobs = {j["job_id"]: j for j in await db.get_scheduler_jobs()}
     assert jobs["data_retention"]["trigger"] == "cron[hour='2', minute='0']"
+    assert jobs["data_retention"]["category"] == "Storage & data"
     assert jobs["warehouse_vehicle_state"]["next_run_at"] == "2026-06-21T12:00:00+00:00"
 
     # A fresh snapshot fully replaces the prior one (removed jobs drop out).

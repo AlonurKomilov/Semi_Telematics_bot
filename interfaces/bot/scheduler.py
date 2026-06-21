@@ -19,38 +19,65 @@ from interfaces.bot.config import ALERT_INTERVAL
 logger = logging.getLogger(__name__)
 
 
-# Human descriptions for the operator-console Scheduler page.  Keyed by
-# job id; jobs without an entry fall back to their id.  The schedule +
-# next-run come live from the snapshot, so only the prose lives here.
-_JOB_DESCRIPTIONS = {
-    "fault_cache_warmup":            "Warm the vehicle-fault cache on startup",
-    "scheduled_reports_send":        "Send due scheduled reports",
-    "pti_spawn_weekly":              "Spawn the weekly PTI inspections",
-    "pti_remind_due_soon":           "Remind drivers of PTI inspections due soon",
-    "pti_escalate_overdue":          "Escalate overdue PTI inspections",
-    "pti_fleet_digest":              "PTI fleet digest to managers",
-    "storage_sync":                  "Upload queued media to the customer's cloud (Drive)",
-    "nightly_stale_close":           "Auto-close stale work orders",
-    "scorecard_snapshot":            "Write nightly driver/vehicle scorecard snapshots",
-    "payroll_monthly":               "Run the monthly pay-for-performance payroll",
-    "billing_snapshot_monthly":      "Record monthly billing-usage snapshots",
-    "billing_comp_expiry_sweep":     "Expire lapsed comp accounts + send reminders",
-    "coaching_nightly":              "Run the nightly auto-coaching evaluation",
-    "warehouse_vehicle_state":       "Pull live vehicle state from Samsara",
-    "warehouse_safety_events":       "Ingest safety / harsh-driving events",
-    "warehouse_driver_efficiency":   "Ingest per-driver daily efficiency",
-    "warehouse_telemetry_hourly":    "Roll 5-min snapshots into the hourly tier",
-    "warehouse_state_snapshot":      "Capture the 5-min vehicle-state history",
-    "warehouse_metrics_daily":       "Roll the hourly tier into the daily tier",
-    "data_retention":                "Prune every retention target to its window",
-    "warehouse_vehicle_health":      "Ingest current vehicle health",
-    "warehouse_vehicle_faults":      "Ingest current vehicle faults (DTCs)",
-    "warehouse_fleet_weather":       "Ingest cabin-weather snapshots",
-    "warehouse_fleet_efficiency":    "Ingest fleet-efficiency aggregates",
-    "warehouse_geofence_definitions": "Sync geofence definitions",
-    "integration_health_checks":     "Check each account's integration health",
-    "account_lifecycle_housekeeping": "Hard-purge expired accounts + send deletion warnings",
-    "scheduler_jobs_snapshot":       "Snapshot scheduled jobs for the operator console",
+# (category, description) per job id, for the operator-console Scheduler
+# page — the single source of truth for grouping + prose.  Schedule +
+# next-run come live from the snapshot; only this metadata lives here.
+# Jobs with no entry fall back to ("Other", "").
+_JOB_META = {
+    # ── Telematics (warehouse ingest + rollup) ──
+    "warehouse_vehicle_state":        ("Telematics", "Pull live vehicle state from Samsara"),
+    "warehouse_state_snapshot":       ("Telematics", "Capture the 5-min vehicle-state history"),
+    "warehouse_telemetry_hourly":     ("Telematics", "Roll 5-min snapshots into the hourly tier"),
+    "warehouse_metrics_daily":        ("Telematics", "Roll the hourly tier into the daily tier"),
+    "warehouse_vehicle_health":       ("Telematics", "Ingest current vehicle health"),
+    "warehouse_vehicle_faults":       ("Telematics", "Ingest current vehicle faults (DTCs)"),
+    "warehouse_safety_events":        ("Telematics", "Ingest safety / harsh-driving events"),
+    "warehouse_driver_efficiency":    ("Telematics", "Ingest per-driver daily efficiency"),
+    "warehouse_fleet_weather":        ("Telematics", "Ingest cabin-weather snapshots"),
+    "warehouse_fleet_efficiency":     ("Telematics", "Ingest fleet-efficiency aggregates"),
+    "warehouse_geofence_definitions": ("Telematics", "Sync geofence definitions"),
+    "fault_cache_warmup":             ("Telematics", "Warm the vehicle-fault cache on startup"),
+    # ── Alerts (per-feature checks + delivery/escalation) ──
+    "events_check":                   ("Alerts", "Check for new safety events to alert on"),
+    "geofence_check":                 ("Alerts", "Check geofence entries/exits to alert on"),
+    "health_check":                   ("Alerts", "Check vehicle health for alerts"),
+    "fault_check":                    ("Alerts", "Check vehicle faults (DTCs) for alerts"),
+    "fuel_check":                     ("Alerts", "Check fuel anomalies to alert on"),
+    "parking_check":                  ("Alerts", "Check unsafe / long parking to alert on"),
+    "camera_check":                   ("Alerts", "Check dashcam events to alert on"),
+    "maintenance_check":              ("Alerts", "Check maintenance due to alert on"),
+    "maintenance_warning_check":      ("Alerts", "Check upcoming maintenance warnings"),
+    "maintenance_mileage_check":      ("Alerts", "Check mileage-based maintenance thresholds"),
+    "maintenance_engine_hours_check": ("Alerts", "Check engine-hours maintenance thresholds"),
+    "critical_reescalate":            ("Alerts", "Re-escalate unacknowledged critical alerts"),
+    "dnd_delivery":                   ("Alerts", "Deliver do-not-disturb-queued alerts"),
+    "scorecard_drop_alerts":          ("Alerts", "Alert on significant driver score drops"),
+    "driver_doc_expiry_check":        ("Alerts", "Alert on expiring driver documents"),
+    # ── Scorecards & coaching ──
+    "scorecard_snapshot":             ("Scorecards & coaching", "Write nightly driver/vehicle scorecard snapshots"),
+    "coaching_nightly":               ("Scorecards & coaching", "Run the nightly auto-coaching evaluation"),
+    # ── Inspections (PTI) ──
+    "pti_spawn_weekly":               ("Inspections (PTI)", "Spawn the weekly PTI inspections"),
+    "pti_remind_due_soon":            ("Inspections (PTI)", "Remind drivers of PTI inspections due soon"),
+    "pti_escalate_overdue":           ("Inspections (PTI)", "Escalate overdue PTI inspections"),
+    "pti_fleet_digest":               ("Inspections (PTI)", "PTI fleet digest to managers"),
+    # ── Work orders ──
+    "nightly_stale_close":            ("Work orders", "Auto-close stale work orders"),
+    # ── Billing & payroll ──
+    "billing_snapshot_monthly":       ("Billing & payroll", "Record monthly billing-usage snapshots"),
+    "billing_comp_expiry_sweep":      ("Billing & payroll", "Expire lapsed comp accounts + send reminders"),
+    "payroll_monthly":                ("Billing & payroll", "Run the monthly pay-for-performance payroll"),
+    # ── Reporting ──
+    "scheduled_reports_send":         ("Reporting", "Send due scheduled reports"),
+    # ── Integrations ──
+    "integration_health_checks":      ("Integrations", "Check each account's integration health"),
+    "driver_samsara_sync":            ("Integrations", "Sync drivers from Samsara"),
+    # ── Storage & data lifecycle ──
+    "storage_sync":                   ("Storage & data", "Upload queued media to the customer's cloud (Drive)"),
+    "data_retention":                 ("Storage & data", "Prune every retention target to its window"),
+    # ── Accounts & system ──
+    "account_lifecycle_housekeeping": ("Accounts & system", "Hard-purge expired accounts + send deletion warnings"),
+    "scheduler_jobs_snapshot":        ("Accounts & system", "Snapshot scheduled jobs for the operator console"),
 }
 
 
@@ -455,17 +482,18 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     async def _snapshot_scheduler_jobs(_app=None):
         from infra.platform import get_platform_db
         try:
-            rows = [
-                {
+            rows = []
+            for job in scheduler.get_jobs():
+                category, description = _JOB_META.get(job.id, ("Other", ""))
+                rows.append({
                     "job_id": job.id,
                     "trigger": str(job.trigger),
                     "next_run_at": (
                         job.next_run_time.isoformat() if job.next_run_time else None
                     ),
-                    "description": _JOB_DESCRIPTIONS.get(job.id, ""),
-                }
-                for job in scheduler.get_jobs()
-            ]
+                    "category": category,
+                    "description": description,
+                })
             await get_platform_db().record_scheduler_jobs(rows)
         except Exception:
             logger.exception("scheduler: job snapshot failed")

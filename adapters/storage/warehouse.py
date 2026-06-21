@@ -1653,17 +1653,23 @@ class WarehouseMixin(_MixinBase):
                 job_id       TEXT    PRIMARY KEY,
                 trigger      TEXT    NOT NULL DEFAULT '',
                 next_run_at  TEXT,
+                category     TEXT    NOT NULL DEFAULT '',
                 description  TEXT    NOT NULL DEFAULT '',
                 updated_at   TEXT    NOT NULL
             )
             """
+        )
+        # Upgrade path for a table created before ``category`` existed.
+        await self._db.execute(
+            "ALTER TABLE scheduler_jobs ADD COLUMN IF NOT EXISTS "
+            "category TEXT NOT NULL DEFAULT ''"
         )
 
     async def record_scheduler_jobs(self, rows) -> int:
         """Replace the snapshot of currently-registered scheduler jobs.
 
         ``rows`` is an iterable of dicts with ``job_id`` plus optional
-        ``trigger`` / ``next_run_at`` / ``description``."""
+        ``trigger`` / ``next_run_at`` / ``category`` / ``description``."""
         await self._ensure_scheduler_jobs_table()
         now = self._now()
         values = [
@@ -1671,6 +1677,7 @@ class WarehouseMixin(_MixinBase):
                 str(r.get("job_id") or ""),
                 str(r.get("trigger") or ""),
                 r.get("next_run_at"),
+                str(r.get("category") or ""),
                 str(r.get("description") or ""),
                 now,
             )
@@ -1681,8 +1688,8 @@ class WarehouseMixin(_MixinBase):
         if values:
             await self._db.executemany(
                 "INSERT INTO scheduler_jobs "
-                "(job_id, trigger, next_run_at, description, updated_at) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "(job_id, trigger, next_run_at, category, description, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
                 values,
             )
         await self._db.commit()
@@ -1693,7 +1700,7 @@ class WarehouseMixin(_MixinBase):
         first.  Returns ``[]`` when no snapshot exists yet."""
         try:
             cur = await self._db.execute(
-                "SELECT job_id, trigger, next_run_at, description, updated_at "
+                "SELECT job_id, trigger, next_run_at, category, description, updated_at "
                 "FROM scheduler_jobs ORDER BY next_run_at ASC NULLS LAST, job_id"
             )
             return [dict(r) for r in await cur.fetchall()]
