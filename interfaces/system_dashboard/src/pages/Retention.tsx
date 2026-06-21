@@ -90,6 +90,7 @@ export default function RetentionPage() {
                 <tr className="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b border-slate-800">
                   <th className="px-4 py-2 font-medium">Target</th>
                   <th className="px-4 py-2 font-medium">Keep window</th>
+                  <th className="px-4 py-2 font-medium">Last run</th>
                   <th className="px-4 py-2 font-medium">Needed by</th>
                 </tr>
               </thead>
@@ -103,6 +104,20 @@ export default function RetentionPage() {
                     <td className="px-4 py-3 whitespace-nowrap">
                       <span className="text-slate-100 font-medium">{formatWindow(t.keep_days)}</span>
                       <span className="text-slate-600 text-xs ml-1">({t.keep_days}d)</span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-xs">
+                      {t.last_run?.ran_at ? (
+                        <>
+                          <span className="text-slate-300">
+                            {t.last_run.ran_at.slice(0, 16).replace('T', ' ')}
+                          </span>
+                          <span className="text-slate-500 ml-1">
+                            · {t.last_run.rows_deleted ?? 0} deleted
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-slate-600">never run</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">

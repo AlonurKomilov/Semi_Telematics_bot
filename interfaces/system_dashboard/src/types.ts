@@ -302,12 +302,19 @@ export interface RetentionNeed {
   reason: string;
 }
 
+export interface RetentionRun {
+  ran_at: string | null;
+  rows_deleted: number | null;
+  accounts: number | null;
+}
+
 export interface RetentionTarget {
   key: string;
   label: string;
   scope: 'tenant' | 'platform';
   keep_days: number;
   needs: RetentionNeed[];
+  last_run: RetentionRun | null;
 }
 
 export interface RetentionContract {

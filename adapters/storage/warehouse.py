@@ -1567,6 +1567,79 @@ class WarehouseMixin(_MixinBase):
         await self._db.commit()
         return getattr(cur, "rowcount", 0) or 0
 
+    # ── Retention-run telemetry ──────────────────────────────────
+    # One summary row per target per nightly retention run, so the
+    # operator console can show "last run + rows deleted".  Global
+    # (no account_id) — the run is aggregated across all accounts.
+    # The table self-creates on first write so this stays a
+    # behaviour-preserving, self-contained addition.
+
+    async def _ensure_retention_runs_table(self) -> None:
+        await self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS retention_runs (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                target_key    TEXT    NOT NULL,
+                scope         TEXT    NOT NULL DEFAULT '',
+                keep_days     INTEGER NOT NULL DEFAULT 0,
+                rows_deleted  INTEGER NOT NULL DEFAULT 0,
+                accounts      INTEGER NOT NULL DEFAULT 0,
+                ran_at        TEXT    NOT NULL
+            )
+            """
+        )
+        await self._db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_retention_runs_target_ran "
+            "ON retention_runs(target_key, ran_at DESC)"
+        )
+
+    async def record_retention_runs(self, ran_at: str, rows) -> int:
+        """Persist one summary row per target for a completed run.
+
+        ``rows`` is an iterable of dicts with ``target_key`` plus optional
+        ``scope`` / ``keep_days`` / ``rows_deleted`` / ``accounts``.
+        """
+        await self._ensure_retention_runs_table()
+        values = [
+            (
+                str(r.get("target_key") or ""),
+                str(r.get("scope") or ""),
+                int(r.get("keep_days") or 0),
+                int(r.get("rows_deleted") or 0),
+                int(r.get("accounts") or 0),
+                ran_at,
+            )
+            for r in rows
+            if r.get("target_key")
+        ]
+        if not values:
+            return 0
+        await self._db.executemany(
+            "INSERT INTO retention_runs "
+            "(target_key, scope, keep_days, rows_deleted, accounts, ran_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            values,
+        )
+        await self._db.commit()
+        return len(values)
+
+    async def get_latest_retention_runs(self) -> list[dict[str, Any]]:
+        """The most recent run row per target (newest ``ran_at`` wins).
+
+        Returns ``[]`` when no run has been recorded yet (table absent)."""
+        try:
+            cur = await self._db.execute(
+                """
+                SELECT DISTINCT ON (target_key)
+                       target_key, scope, keep_days, rows_deleted, accounts, ran_at
+                  FROM retention_runs
+                 ORDER BY target_key, ran_at DESC
+                """
+            )
+            return [dict(r) for r in await cur.fetchall()]
+        except Exception:
+            return []
+
     async def get_vehicle_metrics_daily(
         self,
         account_id: int,

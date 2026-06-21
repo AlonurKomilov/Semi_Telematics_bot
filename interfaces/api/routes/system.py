@@ -489,19 +489,25 @@ async def system_stats(
 @router.get("/retention")
 async def retention_contract(
     _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
 ):
     """The live data-retention contract for the operator console.
 
     Returns every registered retention target, the keep-window it
     resolves to (the MAX across the features that declare a need), its
-    scope, and which features need it.  Read-only by design: the windows
-    are code-owned contracts (e.g. ``safety_events`` at 3y is a compliance
-    number), so this surface is observability — not configuration.
+    scope, which features need it, and the last recorded run (when it last
+    ran + rows deleted).  Read-only by design: the windows are code-owned
+    contracts (e.g. ``safety_events`` at 3y is a compliance number), so
+    this surface is observability — not configuration.
     """
     from capabilities.retention import discover
     from capabilities.retention.registry import resolve
 
     discover()
+    last_runs = {
+        row["target_key"]: row
+        for row in await platform_db.get_latest_retention_runs()
+    }
     targets = [
         {
             "key":       r.target.key,
@@ -512,6 +518,14 @@ async def retention_contract(
                 {"feature": n.feature, "keep_days": n.keep_days, "reason": n.reason}
                 for n in sorted(r.needs, key=lambda n: n.feature)
             ],
+            "last_run": (
+                {
+                    "ran_at":       last_runs[r.target.key].get("ran_at"),
+                    "rows_deleted": last_runs[r.target.key].get("rows_deleted"),
+                    "accounts":     last_runs[r.target.key].get("accounts"),
+                }
+                if r.target.key in last_runs else None
+            ),
         }
         for r in sorted(resolve(), key=lambda x: (x.target.scope, x.target.key))
     ]

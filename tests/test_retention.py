@@ -90,13 +90,49 @@ async def test_engine_calls_existing_methods_with_resolved_windows():
         async def prune_vehicle_metrics_daily(self, _a, *, days_keep):
             calls["daily"] = days_keep
             return 1
+        async def prune_vehicle_fault_detail(self, _a, *, days_keep):
+            calls["fault"] = days_keep
+            return 0
+        async def prune_driver_efficiency_daily(self, _a, *, days_keep):
+            calls["driver_eff"] = days_keep
+            return 0
         async def prune_score_events(self, _a, *, keep_days):
             calls["score"] = keep_days
+            return 0
+        async def prune_safety_event_log(self, _a, *, days_keep):
+            calls["safety"] = days_keep
             return 0
 
     deleted = await prune_tenant_targets(FakeTenantDB(), account_id=1)
     assert calls["snapshot"] == 7
     assert calls["hourly"] == 90
     assert calls["daily"] == 730
+    assert calls["fault"] == 365
+    assert calls["driver_eff"] == 730
     assert calls["score"] == 90
-    assert deleted >= 4  # 3 + 1 from snapshot + daily
+    assert calls["safety"] == 1095
+    # The engine now returns {target_key: rows_deleted} so the job can
+    # aggregate per-target totals for the run telemetry.
+    assert deleted["vehicle.timeline_5min"] == 3
+    assert deleted["vehicle.metrics_daily"] == 1
+    assert sum(deleted.values()) == 4
+
+
+@pytest.mark.asyncio
+async def test_record_and_get_latest_retention_runs(pg_db):
+    """Run telemetry round-trips, and the newest run per target wins."""
+    db = pg_db
+    await db.record_retention_runs("2026-06-20T02:00:00+00:00", [
+        {"target_key": "vehicle.timeline_5min", "scope": "tenant",
+         "keep_days": 7, "rows_deleted": 10, "accounts": 3},
+    ])
+    await db.record_retention_runs("2026-06-21T02:00:00+00:00", [
+        {"target_key": "vehicle.timeline_5min", "scope": "tenant",
+         "keep_days": 7, "rows_deleted": 25, "accounts": 4},
+        {"target_key": "email.delivery_events", "scope": "platform",
+         "keep_days": 14, "rows_deleted": 2, "accounts": 0},
+    ])
+    latest = {r["target_key"]: r for r in await db.get_latest_retention_runs()}
+    assert latest["vehicle.timeline_5min"]["rows_deleted"] == 25   # newest run wins
+    assert latest["vehicle.timeline_5min"]["ran_at"] == "2026-06-21T02:00:00+00:00"
+    assert latest["email.delivery_events"]["rows_deleted"] == 2
