@@ -318,3 +318,13 @@ export interface RetentionContract {
   };
   targets: RetentionTarget[];
 }
+
+export interface OrphanReport {
+  account_id: number;
+  scanned_files: number;
+  referenced: number;
+  grace_days: number;
+  candidate_count: number;
+  candidate_bytes: number;
+  sample: string[];
+}

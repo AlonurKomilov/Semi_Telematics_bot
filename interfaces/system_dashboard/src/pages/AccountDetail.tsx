@@ -6,6 +6,7 @@ import AlertRoutingCard from '../components/AlertRoutingCard';
 import type {
   AccountDetail, CompHistoryRow,
   SyncQuantityResult, RefreshVehiclesResult, BillingEmailResult,
+  OrphanReport,
 } from '../types';
 
 export default function AccountDetailPage() {
@@ -133,6 +134,9 @@ export default function AccountDetailPage() {
           currentEmail={sub?.billing_email ?? ''}
           onMutated={load}
         />
+
+        {/* Server-local orphaned-file audit (report-only) */}
+        <StorageOrphansCard accountId={accountId} />
 
         {/* Comp control + history */}
         <Card title="Complimentary access"
@@ -409,6 +413,96 @@ function CompForm({ mode, accountId, currentExpiry, onClose, onDone }: {
         </div>
       </form>
     </div>
+  );
+}
+
+// ── Storage: orphaned-file audit (report-only) ─────────────────
+
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+// On-demand (not auto-load): the scan walks the account's disk subtree, so
+// the operator triggers it explicitly.  Report-only — never deletes, never
+// touches the customer's external cloud.
+function StorageOrphansCard({ accountId }: { accountId: number }) {
+  const [report, setReport] = useState<OrphanReport | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const scan = async () => {
+    setBusy(true);
+    setErr('');
+    try {
+      setReport(await apiJSON<OrphanReport>(`/system/retention/orphans/${accountId}`));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Scan failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card
+      title="Storage · orphaned files"
+      actions={
+        <button
+          onClick={scan}
+          disabled={busy}
+          className="text-xs px-3 py-1.5 bg-slate-800 border border-slate-700 rounded hover:bg-slate-700 disabled:opacity-50"
+        >
+          {busy ? 'Scanning…' : report ? 'Re-scan' : 'Scan for orphans'}
+        </button>
+      }
+    >
+      <p className="text-xs text-slate-500 mb-3">
+        Report only — finds files on <span className="text-slate-400">our server's</span> disk that
+        no record references (leaked blobs from deleted parents). Deletes nothing, and never touches
+        the customer's Google Drive.
+      </p>
+
+      {err && (
+        <p className="text-xs text-danger bg-danger/10 border border-danger/40 rounded px-2 py-1">{err}</p>
+      )}
+      {!report && !err && (
+        <p className="text-sm text-slate-500">Run a scan to see candidates.</p>
+      )}
+
+      {report && (
+        <>
+          <dl className="text-sm space-y-1.5">
+            <Row label="Files scanned" value={String(report.scanned_files)} />
+            <Row label="Referenced by a record" value={String(report.referenced)} />
+            <Row
+              label={`Orphan candidates (older than ${report.grace_days}d)`}
+              value={`${report.candidate_count} · ${fmtBytes(report.candidate_bytes)}`}
+              accent={report.candidate_count ? 'text-warn' : 'text-ok'}
+            />
+          </dl>
+
+          {report.sample.length > 0 && (
+            <details className="mt-3">
+              <summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-200">
+                Sample ({report.sample.length} of {report.candidate_count}, largest first)
+              </summary>
+              <ul className="mt-2 space-y-0.5 text-xs font-mono text-slate-500">
+                {report.sample.map((p) => (
+                  <li key={p} className="truncate" title={p}>{p}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+
+          <p className="text-[11px] text-slate-600 mt-3">
+            Candidates are not deleted. Deletion is enabled only after these reports are reviewed
+            and confirmed to contain no in-use files.
+          </p>
+        </>
+      )}
+    </Card>
   );
 }
 
