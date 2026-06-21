@@ -346,3 +346,15 @@ export interface OrphanPurgeResult {
   deleted_bytes: number;
   sample: string[];
 }
+
+export interface SchedulerJob {
+  job_id: string;
+  trigger: string;
+  next_run_at: string | null;
+  description: string;
+  updated_at: string;
+}
+
+export interface SchedulerJobsResponse {
+  jobs: SchedulerJob[];
+}

@@ -1640,6 +1640,66 @@ class WarehouseMixin(_MixinBase):
         except Exception:
             return []
 
+    # ── Scheduler-job snapshot ───────────────────────────────────
+    # The bot process snapshots its registered APScheduler jobs here so
+    # the (separate) API process can show them on the operator console —
+    # it can't read the bot's in-memory scheduler directly.  Self-creating
+    # table, full-replace on each snapshot so removed jobs drop out.
+
+    async def _ensure_scheduler_jobs_table(self) -> None:
+        await self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS scheduler_jobs (
+                job_id       TEXT    PRIMARY KEY,
+                trigger      TEXT    NOT NULL DEFAULT '',
+                next_run_at  TEXT,
+                description  TEXT    NOT NULL DEFAULT '',
+                updated_at   TEXT    NOT NULL
+            )
+            """
+        )
+
+    async def record_scheduler_jobs(self, rows) -> int:
+        """Replace the snapshot of currently-registered scheduler jobs.
+
+        ``rows`` is an iterable of dicts with ``job_id`` plus optional
+        ``trigger`` / ``next_run_at`` / ``description``."""
+        await self._ensure_scheduler_jobs_table()
+        now = self._now()
+        values = [
+            (
+                str(r.get("job_id") or ""),
+                str(r.get("trigger") or ""),
+                r.get("next_run_at"),
+                str(r.get("description") or ""),
+                now,
+            )
+            for r in rows
+            if r.get("job_id")
+        ]
+        await self._db.execute("DELETE FROM scheduler_jobs")
+        if values:
+            await self._db.executemany(
+                "INSERT INTO scheduler_jobs "
+                "(job_id, trigger, next_run_at, description, updated_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                values,
+            )
+        await self._db.commit()
+        return len(values)
+
+    async def get_scheduler_jobs(self) -> list[dict[str, Any]]:
+        """The last snapshot of registered scheduler jobs, soonest-next
+        first.  Returns ``[]`` when no snapshot exists yet."""
+        try:
+            cur = await self._db.execute(
+                "SELECT job_id, trigger, next_run_at, description, updated_at "
+                "FROM scheduler_jobs ORDER BY next_run_at ASC NULLS LAST, job_id"
+            )
+            return [dict(r) for r in await cur.fetchall()]
+        except Exception:
+            return []
+
     async def get_vehicle_metrics_daily(
         self,
         account_id: int,

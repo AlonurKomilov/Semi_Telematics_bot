@@ -593,6 +593,23 @@ async def retention_orphan_purge(
     return asdict(result)
 
 
+# ── Scheduler jobs ───────────────────────────────────────────────
+
+
+@router.get("/scheduler")
+async def scheduler_jobs(
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Snapshot of the bot scheduler's registered jobs for the console.
+
+    The scheduler runs in the bot process; this API process can't read its
+    in-memory job registry, so the bot persists a snapshot (job id, trigger,
+    next run) that this endpoint serves.  Read-only observability.
+    """
+    return {"jobs": await platform_db.get_scheduler_jobs()}
+
+
 # ── Metrics snapshot ─────────────────────────────────────────────
 
 

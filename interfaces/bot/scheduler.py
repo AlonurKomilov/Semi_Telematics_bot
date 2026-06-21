@@ -19,6 +19,41 @@ from interfaces.bot.config import ALERT_INTERVAL
 logger = logging.getLogger(__name__)
 
 
+# Human descriptions for the operator-console Scheduler page.  Keyed by
+# job id; jobs without an entry fall back to their id.  The schedule +
+# next-run come live from the snapshot, so only the prose lives here.
+_JOB_DESCRIPTIONS = {
+    "fault_cache_warmup":            "Warm the vehicle-fault cache on startup",
+    "scheduled_reports_send":        "Send due scheduled reports",
+    "pti_spawn_weekly":              "Spawn the weekly PTI inspections",
+    "pti_remind_due_soon":           "Remind drivers of PTI inspections due soon",
+    "pti_escalate_overdue":          "Escalate overdue PTI inspections",
+    "pti_fleet_digest":              "PTI fleet digest to managers",
+    "storage_sync":                  "Upload queued media to the customer's cloud (Drive)",
+    "nightly_stale_close":           "Auto-close stale work orders",
+    "scorecard_snapshot":            "Write nightly driver/vehicle scorecard snapshots",
+    "payroll_monthly":               "Run the monthly pay-for-performance payroll",
+    "billing_snapshot_monthly":      "Record monthly billing-usage snapshots",
+    "billing_comp_expiry_sweep":     "Expire lapsed comp accounts + send reminders",
+    "coaching_nightly":              "Run the nightly auto-coaching evaluation",
+    "warehouse_vehicle_state":       "Pull live vehicle state from Samsara",
+    "warehouse_safety_events":       "Ingest safety / harsh-driving events",
+    "warehouse_driver_efficiency":   "Ingest per-driver daily efficiency",
+    "warehouse_telemetry_hourly":    "Roll 5-min snapshots into the hourly tier",
+    "warehouse_state_snapshot":      "Capture the 5-min vehicle-state history",
+    "warehouse_metrics_daily":       "Roll the hourly tier into the daily tier",
+    "data_retention":                "Prune every retention target to its window",
+    "warehouse_vehicle_health":      "Ingest current vehicle health",
+    "warehouse_vehicle_faults":      "Ingest current vehicle faults (DTCs)",
+    "warehouse_fleet_weather":       "Ingest cabin-weather snapshots",
+    "warehouse_fleet_efficiency":    "Ingest fleet-efficiency aggregates",
+    "warehouse_geofence_definitions": "Sync geofence definitions",
+    "integration_health_checks":     "Check each account's integration health",
+    "account_lifecycle_housekeeping": "Hard-purge expired accounts + send deletion warnings",
+    "scheduler_jobs_snapshot":       "Snapshot scheduled jobs for the operator console",
+}
+
+
 def register_all(scheduler: AsyncIOScheduler, app: Application):
     """Register every periodic background job on *scheduler*."""
 
@@ -409,5 +444,35 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     scheduler.add_job(
         _account_lifecycle_housekeeping, "cron",
         hour=4, minute=10, args=[app], id="account_lifecycle_housekeeping",
+        max_instances=1, coalesce=True,
+    )
+
+    # ── Operator-console scheduler snapshot ───────────────────────
+    # The API process can't read this (bot-process) scheduler's in-memory
+    # jobs, so persist a snapshot to the DB for the Scheduler page.  Runs
+    # right after startup (next_run_time=now) and every 15 min after, so
+    # the stored next-run times stay reasonably fresh as jobs fire.
+    async def _snapshot_scheduler_jobs(_app=None):
+        from infra.platform import get_platform_db
+        try:
+            rows = [
+                {
+                    "job_id": job.id,
+                    "trigger": str(job.trigger),
+                    "next_run_at": (
+                        job.next_run_time.isoformat() if job.next_run_time else None
+                    ),
+                    "description": _JOB_DESCRIPTIONS.get(job.id, ""),
+                }
+                for job in scheduler.get_jobs()
+            ]
+            await get_platform_db().record_scheduler_jobs(rows)
+        except Exception:
+            logger.exception("scheduler: job snapshot failed")
+
+    scheduler.add_job(
+        _snapshot_scheduler_jobs, "interval",
+        minutes=15, args=[app], id="scheduler_jobs_snapshot",
+        next_run_time=datetime.now(timezone.utc),
         max_instances=1, coalesce=True,
     )
