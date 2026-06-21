@@ -6,7 +6,7 @@ import AlertRoutingCard from '../components/AlertRoutingCard';
 import type {
   AccountDetail, CompHistoryRow,
   SyncQuantityResult, RefreshVehiclesResult, BillingEmailResult,
-  OrphanReport,
+  OrphanReport, OrphanPurgeResult,
 } from '../types';
 
 export default function AccountDetailPage() {
@@ -432,6 +432,8 @@ function StorageOrphansCard({ accountId }: { accountId: number }) {
   const [report, setReport] = useState<OrphanReport | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [purging, setPurging] = useState(false);
+  const [purgeMsg, setPurgeMsg] = useState('');
 
   const scan = async () => {
     setBusy(true);
@@ -442,6 +444,30 @@ function StorageOrphansCard({ accountId }: { accountId: number }) {
       setErr(e instanceof Error ? e.message : 'Scan failed');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const purge = async () => {
+    if (!report || report.candidate_count === 0) return;
+    if (!window.confirm(
+      `Delete ${report.candidate_count} orphaned file(s) (${fmtBytes(report.candidate_bytes)}) `
+      + `from this account's server-local storage?\n\n`
+      + `It re-scans and removes only files still unreferenced. The customer's Google `
+      + `Drive is never touched. This cannot be undone.`,
+    )) return;
+    setPurging(true);
+    setPurgeMsg('');
+    try {
+      const r = await apiJSON<OrphanPurgeResult>(
+        `/system/retention/orphans/${accountId}/purge?confirm=true`,
+        { method: 'POST' },
+      );
+      setPurgeMsg(`Deleted ${r.deleted} file(s), freed ${fmtBytes(r.deleted_bytes)}.`);
+      await scan(); // refresh the report so the count drops to 0
+    } catch (e) {
+      setPurgeMsg(`Failed: ${e instanceof Error ? e.message : 'unknown'}`);
+    } finally {
+      setPurging(false);
     }
   };
 
@@ -496,10 +522,26 @@ function StorageOrphansCard({ accountId }: { accountId: number }) {
             </details>
           )}
 
-          <p className="text-[11px] text-slate-600 mt-3">
-            Candidates are not deleted. Deletion is enabled only after these reports are reviewed
-            and confirmed to contain no in-use files.
-          </p>
+          {report.candidate_count > 0 && (
+            <div className="mt-3 pt-3 border-t border-slate-800">
+              <button
+                onClick={purge}
+                disabled={purging || busy}
+                className="text-xs px-3 py-1.5 bg-danger/15 text-danger border border-danger/40 rounded hover:bg-danger/25 disabled:opacity-50"
+              >
+                {purging ? 'Deleting…' : `Delete ${report.candidate_count} orphaned file(s)`}
+              </button>
+              <p className="text-[11px] text-slate-600 mt-2">
+                Review the sample first. Deletion re-scans and removes only server-local files
+                still unreferenced; the customer's Google Drive is never touched.
+              </p>
+              {purgeMsg && (
+                <p className="text-xs mt-2 text-slate-400 bg-slate-950 border border-slate-800 rounded px-2 py-1">
+                  {purgeMsg}
+                </p>
+              )}
+            </div>
+          )}
         </>
       )}
     </Card>

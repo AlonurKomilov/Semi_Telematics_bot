@@ -564,6 +564,35 @@ async def retention_orphan_report(
     return asdict(report)
 
 
+@router.post("/retention/orphans/{account_id}/purge")
+async def retention_orphan_purge(
+    account_id: int,
+    confirm: bool = Query(False),
+    grace_days: int = Query(7, ge=1, le=90),
+    _user: dict = Depends(require_system_owner),
+):
+    """Operator-triggered, server-local deletion of an account's orphaned
+    files.
+
+    Requires ``?confirm=true`` to actually delete — without it (the
+    default) this is a dry-run that reports what *would* be removed, so a
+    missing flag can never delete.  Re-scans at call time and removes only
+    files still orphaned; never touches the customer's external cloud.
+    """
+    from dataclasses import asdict
+
+    from capabilities.storage.orphans import delete_account_orphans
+    from infra.platform import get_tenant_db
+
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="account not found")
+    result = await delete_account_orphans(
+        tenant, account_id, grace_days=grace_days, dry_run=not confirm,
+    )
+    return asdict(result)
+
+
 # ── Metrics snapshot ─────────────────────────────────────────────
 
 

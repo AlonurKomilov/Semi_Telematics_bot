@@ -335,3 +335,14 @@ export interface OrphanReport {
   candidate_bytes: number;
   sample: string[];
 }
+
+export interface OrphanPurgeResult {
+  account_id: number;
+  grace_days: number;
+  dry_run: boolean;
+  candidate_count: number;
+  candidate_bytes: number;
+  deleted: number;
+  deleted_bytes: number;
+  sample: string[];
+}

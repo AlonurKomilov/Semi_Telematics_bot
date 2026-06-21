@@ -21,8 +21,30 @@ from capabilities.storage.orphans import (
     LocalFile,
     _normalize,
     _select_candidates,
+    delete_account_orphans,
     scan_account_orphans,
 )
+
+
+async def _seed_account_tree(db, tmp_path, monkeypatch, acct):
+    """Write ref/orphan/fresh files + a DB reference; returns the abspaths.
+    The referenced + orphan files are aged past the 7-day grace; fresh stays."""
+    from infra import config as _cfg
+    monkeypatch.setattr(_cfg, "OBJECT_STORE_ROOT", str(tmp_path))
+    store = DiskObjectStore(root=str(tmp_path), account_id=acct)
+    ref_path = store.put("ACME/wo", "ref.jpg", b"r" * 100)
+    orphan_path = store.put("ACME/wo", "orphan.jpg", b"o" * 200)
+    fresh_path = store.put("ACME/wo", "fresh.jpg", b"f" * 50)
+    old = time.time() - 30 * 86400
+    os.utime(ref_path, (old, old))
+    os.utime(orphan_path, (old, old))
+    await db._db.execute("CREATE TABLE _orphan_ref_test (account_id INTEGER, file_path TEXT)")
+    await db._db.execute(
+        "INSERT INTO _orphan_ref_test (account_id, file_path) VALUES (?, ?)",
+        (acct, ref_path),
+    )
+    await db._db.commit()
+    return ref_path, orphan_path, fresh_path
 
 
 def test_select_candidates_excludes_referenced_and_recent():
@@ -84,3 +106,32 @@ async def test_scan_account_orphans_end_to_end(pg_db, tmp_path, monkeypatch):
     assert report.candidate_count == 1               # ref excluded, fresh held by grace
     assert report.sample == ["account-1/ACME/wo/orphan.jpg"]
     assert report.candidate_bytes == 200
+
+
+@pytest.mark.asyncio
+async def test_delete_orphans_dry_run_deletes_nothing(pg_db, tmp_path, monkeypatch):
+    db = pg_db
+    ref, orphan, fresh = await _seed_account_tree(db, tmp_path, monkeypatch, acct=1)
+    result = await delete_account_orphans(db, 1, grace_days=7, dry_run=True, root=str(tmp_path))
+    assert result.dry_run is True
+    assert result.candidate_count == 1
+    assert result.deleted == 0
+    # Nothing removed on a dry run.
+    assert os.path.exists(ref) and os.path.exists(orphan) and os.path.exists(fresh)
+
+
+@pytest.mark.asyncio
+async def test_delete_orphans_removes_only_candidates(pg_db, tmp_path, monkeypatch):
+    db = pg_db
+    ref, orphan, fresh = await _seed_account_tree(db, tmp_path, monkeypatch, acct=1)
+    result = await delete_account_orphans(db, 1, grace_days=7, dry_run=False, root=str(tmp_path))
+    assert result.deleted == 1
+    assert result.deleted_bytes == 200
+    # Only the aged, unreferenced file is gone; referenced + fresh survive.
+    assert not os.path.exists(orphan)
+    assert os.path.exists(ref)
+    assert os.path.exists(fresh)
+    # Idempotent: a second pass finds nothing left to delete.
+    again = await delete_account_orphans(db, 1, grace_days=7, dry_run=False, root=str(tmp_path))
+    assert again.candidate_count == 0
+    assert again.deleted == 0

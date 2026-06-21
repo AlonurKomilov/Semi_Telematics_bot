@@ -61,6 +61,18 @@ class OrphanReport:
     sample: list[str] = field(default_factory=list)  # up to N candidate relpaths
 
 
+@dataclass(frozen=True)
+class OrphanPurgeResult:
+    account_id: int
+    grace_days: int
+    dry_run: bool
+    candidate_count: int
+    candidate_bytes: int
+    deleted: int
+    deleted_bytes: int
+    sample: list[str] = field(default_factory=list)
+
+
 def _account_root(account_id: int, root: str | None = None) -> str:
     """Absolute path of the account's local object-store subtree."""
     from adapters.storage.object_store import DiskObjectStore
@@ -155,6 +167,21 @@ def _select_candidates(
     ]
 
 
+async def _find(
+    tenant_db, account_id: int, grace_days: int, root: str | None,
+) -> tuple[list[LocalFile], list[LocalFile], int]:
+    """Shared core: (all local files, orphan candidates largest-first,
+    referenced-set size)."""
+    files = _walk_account_files(account_id, root)
+    if not files:
+        return [], [], 0
+    referenced = await _collect_referenced(tenant_db, account_id)
+    cutoff = time.time() - grace_days * 86400
+    candidates = _select_candidates(files, referenced, cutoff)
+    candidates.sort(key=lambda f: f.size, reverse=True)
+    return files, candidates, len(referenced)
+
+
 async def scan_account_orphans(
     tenant_db,
     account_id: int,
@@ -168,17 +195,11 @@ async def scan_account_orphans(
     ``grace_days`` ignores recently-written files (an in-flight upload
     whose DB row hasn't committed isn't an orphan).  Deletes nothing.
     """
-    files = _walk_account_files(account_id, root)
-    if not files:
-        return OrphanReport(account_id, 0, 0, grace_days, 0, 0, [])
-    referenced = await _collect_referenced(tenant_db, account_id)
-    cutoff = time.time() - grace_days * 86400
-    candidates = _select_candidates(files, referenced, cutoff)
-    candidates.sort(key=lambda f: f.size, reverse=True)
+    files, candidates, referenced = await _find(tenant_db, account_id, grace_days, root)
     report = OrphanReport(
         account_id=account_id,
         scanned_files=len(files),
-        referenced=len(referenced),
+        referenced=referenced,
         grace_days=grace_days,
         candidate_count=len(candidates),
         candidate_bytes=sum(f.size for f in candidates),
@@ -190,3 +211,53 @@ async def scan_account_orphans(
         report.candidate_count, report.candidate_bytes,
     )
     return report
+
+
+async def delete_account_orphans(
+    tenant_db,
+    account_id: int,
+    *,
+    grace_days: int = 7,
+    dry_run: bool = True,
+    sample: int = 20,
+    root: str | None = None,
+) -> OrphanPurgeResult:
+    """Operator-triggered deletion of an account's orphaned LOCAL files.
+
+    SAFE BY DEFAULT:
+      * ``dry_run=True`` (the default) deletes nothing — it just reports
+        what *would* be removed, so a missing ``confirm`` can never delete.
+      * Re-scans at call time and removes only files STILL orphaned now
+        (no acting on a stale report).
+      * Server-local ONLY — it ``os.remove``s files under our disk and
+        never touches the customer's external cloud (their Google Drive).
+    """
+    _files, candidates, _referenced = await _find(tenant_db, account_id, grace_days, root)
+    deleted = 0
+    deleted_bytes = 0
+    if not dry_run:
+        for f in candidates:
+            try:
+                os.remove(f.abspath)  # server-local path only
+                deleted += 1
+                deleted_bytes += f.size
+            except FileNotFoundError:
+                deleted += 1  # already gone — converged
+            except OSError:
+                logger.warning(
+                    "orphan-purge: could not remove %s", f.abspath, exc_info=True,
+                )
+    logger.info(
+        "orphan-purge acct=%d candidates=%d deleted=%d bytes=%d dry_run=%s",
+        account_id, len(candidates), deleted, deleted_bytes, dry_run,
+    )
+    return OrphanPurgeResult(
+        account_id=account_id,
+        grace_days=grace_days,
+        dry_run=dry_run,
+        candidate_count=len(candidates),
+        candidate_bytes=sum(f.size for f in candidates),
+        deleted=deleted,
+        deleted_bytes=deleted_bytes,
+        sample=[f.relpath for f in candidates[:sample]],
+    )
