@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { Bot, Send, Square, Trash2, Copy, Check, RefreshCw, Sparkles, MessageSquare, Pencil, Download, RotateCcw, ChevronDown, Zap, Brain, Microscope, ThumbsUp, ThumbsDown, type LucideIcon } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { Bot, Send, Square, Trash2, Copy, Check, RefreshCw, Sparkles, Pencil, Download, RotateCcw, ChevronDown, Zap, Brain, Microscope, ThumbsUp, ThumbsDown, Eye, type LucideIcon } from 'lucide-react';
 import { apiJSON, apiJSONAI, apiStreamChat } from '../../api/client';
 import { useShellConfig } from '../../hooks/useShellConfig';
 import type { AIChatMessage, AIChatResponse, AIHistoryResponse, AISummaryResponse, AIModel, AIModelsResponse, AIUsage, AITierChoice, AITierOption, AITierResponse } from '../../types';
@@ -9,11 +9,20 @@ import { formatAIResponse } from '../../utils/formatAI';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, formatTime } from '../../utils/datetime';
 import { DislikeReasonForm } from './sections/DislikeReasonForm';
+import { ReferencedVehicles } from './sections/ReferencedVehicles';
 
 // Extended message type with client-side timestamp
 interface LocalMessage extends AIChatMessage {
   timestamp: Date;
   usage?: AIUsage;
+  /** Structured tool outputs from the `done` event — drives the clickable
+   *  "Vehicles in this answer" chips.  Absent on history-loaded messages
+   *  (the DB stores text only). */
+  toolResults?: unknown[];
+  /** Internal name of the model that produced THIS answer, frozen at receipt.
+   *  Per-message so switching the tier picker never relabels past answers.
+   *  Absent on history-loaded messages (the DB stores text only). */
+  model?: string;
 }
 
 // No hardcoded loading messages — we show real tool activity from the stream
@@ -57,12 +66,33 @@ function getSuggestedQuestions(view?: string): string[] {
         'Which drivers had harsh braking?',
         'Trucks with stop engine lights?',
       ];
+    case 'recruiter':
+      return [
+        'Show me pending driver applications',
+        'How many people applied in the last 30 days?',
+        'Which applicants are ready to hire?',
+        'Any applications in screening?',
+      ];
+    case 'hr':
+      return [
+        'Show me pending driver applications',
+        'How many people applied in the last 30 days?',
+        'How many drivers do we have?',
+        'Which applicants are ready to hire?',
+      ];
+    case 'accounting':
+      return [
+        'Show me fuel costs this month',
+        'Which vehicles have the highest fuel spend?',
+        "What's our total fuel cost?",
+        'Show me the fuel cost summary',
+      ];
     case 'admin':
     case 'owner':
       return [
-        'Give me a status briefing for the operation',
         'Which trucks have active faults?',
         "Which vehicles haven't driven in 3 days?",
+        'Show me fuel costs this month',
         'Any overdue maintenance tasks?',
       ];
     default:
@@ -75,17 +105,25 @@ function getSuggestedQuestions(view?: string): string[] {
   }
 }
 
+// Topic hint shown in the empty-state subtitle, per persona — so a Recruiter
+// isn't told to "ask about faults & maintenance".  Falls back to the
+// fleet-ops topics for fleet/owner/admin.
+function getChatTopics(view?: string): string {
+  switch (view) {
+    case 'recruiter': return 'driver applications and the hiring pipeline';
+    case 'hr':        return 'applications, drivers, and coaching';
+    case 'accounting':return 'fuel costs, spend, and cost per mile';
+    case 'safety':    return 'safety events, faults, and coaching';
+    case 'dispatcher':return 'locations, routes, and fuel status';
+    default:          return 'vehicles, faults, fuel, events, maintenance';
+  }
+}
+
 export default function Chat() {
   const { t } = useTranslation();
   const tz = useTimezone();
   const location = useLocation();
-  const navigate = useNavigate();
   const { activeView, isDriverView, briefingLabel, chatSubject } = useShellConfig();
-
-  // ── Tab state ────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'chat' | 'briefing'>(() =>
-    new URLSearchParams(location.search).get('tab') === 'briefing' ? 'briefing' : 'chat'
-  );
 
   // ── Chat state ───────────────────────────────────────────────
   const [messages, setMessages] = useState<LocalMessage[]>([]);
@@ -117,6 +155,14 @@ export default function Chat() {
   // ── Streaming state ──────────────────────────────────────────
   /** Tool labels shown while streaming (e.g. "Checking fault codes") */
   const [toolActivity, setToolActivity] = useState<string[]>([]);
+  /** Live answer text as it streams in (token-by-token), when the backend
+   *  emits `delta` events.  Empty on the non-streaming path — the answer then
+   *  arrives whole in the `done` event, exactly as before. */
+  const [streamingText, setStreamingText] = useState('');
+  /** Live reasoning text as it streams in (`thinking` events) — shown in a
+   *  collapsible panel while the model works. */
+  const [reasoning, setReasoning] = useState('');
+  const [reasoningOpen, setReasoningOpen] = useState(true);
   /** Last message that failed — shown in retry button */
   const [lastFailed, setLastFailed] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -131,18 +177,16 @@ export default function Chat() {
   // a single-button dropdown — see the design pass that flagged the
   // emoji icons and always-visible-3-chip layout for revision.
   const [models, setModels] = useState<AIModel[]>([]);
-  const [currentModel, setCurrentModel] = useState('');
   const [tiers, setTiers] = useState<AITierOption[]>([]);
   const [currentTier, setCurrentTier] = useState<AITierChoice>('fast');
   const [tierSwitching, setTierSwitching] = useState(false);
   const [tierOpen, setTierOpen] = useState(false);
 
-  // ── Briefing state ───────────────────────────────────────────
-  const [briefing, setBriefing] = useState('');
-  const [briefingTime, setBriefingTime] = useState<Date | null>(null);
-  const [briefingSuggestions, setBriefingSuggestions] = useState<string[]>([]);
-  const [briefingLoading, setBriefingLoading] = useState(false);
-  const [briefingError, setBriefingError] = useState('');
+  // ── Data-scope (trust badge) ─────────────────────────────────
+  // Set from the `done` event's `scope` descriptor (server-resolved Vehicle
+  // Access).  Per-user, not per-message, so we hold the latest and show one
+  // persistent header badge for restricted users.  null = not yet known.
+  const [scope, setScope] = useState<{ restricted: boolean; vehicle_count?: number } | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -150,6 +194,12 @@ export default function Chat() {
 
   // Load conversation history + models on mount
   useEffect(() => {
+    // Legacy entry points (overview KPI tile, AI summary card, the
+    // /ai/summary redirect) link to ?tab=briefing.  The separate Briefing
+    // tab is gone, so honour those links by auto-running the briefing inline
+    // — sequenced AFTER history load so it appends to the conversation
+    // instead of being clobbered by the history replace.
+    const wantBriefing = new URLSearchParams(location.search).get('tab') === 'briefing';
     apiJSON<AIHistoryResponse>('/ai/history')
       .then((d) => setMessages((d.messages || []).map(m => ({
         ...m,
@@ -163,6 +213,12 @@ export default function Chat() {
         // empty state, which is confusing.  Surface it.
         const msg = e instanceof Error ? e.message : String(e);
         setError(`Couldn't load chat history: ${msg}`);
+      })
+      .finally(() => {
+        if (wantBriefing) {
+          window.history.replaceState({}, document.title, '/ai/chat');
+          runBriefing();
+        }
       });
     // /ai/models still queried so the chat-bubble "produced by Gemini 2.5 Flash"
     // subtitle can resolve display names from model names.  The user-facing
@@ -174,7 +230,6 @@ export default function Chat() {
       .then((d) => {
         setTiers(d.tiers || []);
         setCurrentTier(d.current_tier);
-        setCurrentModel(d.current_model ?? '');
       })
       .catch(() => {});
   }, []);
@@ -196,10 +251,10 @@ export default function Chat() {
 
   // Cycle through thinking phrases before first tool fires
   const THINK_PHRASES = [
-    'Reading your question\u2026',
-    'Figuring out what data I need\u2026',
-    'Preparing the right query\u2026',
-    'Connecting to telematics\u2026',
+    'Reading your question…',
+    'Figuring out what data I need…',
+    'Preparing the right query…',
+    'Connecting to telematics…',
   ];
   useEffect(() => {
     if (!loading || toolActivity.length > 0) return;
@@ -208,20 +263,6 @@ export default function Chat() {
     return () => clearInterval(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, toolActivity.length]);
-
-  // Sync tab with URL query param (?tab=briefing)
-  useEffect(() => {
-    const tab = new URLSearchParams(location.search).get('tab');
-    setActiveTab(tab === 'briefing' ? 'briefing' : 'chat');
-  }, [location.search]);
-
-  // Auto-load Fleet Briefing when switching to that tab (if not already loaded)
-  useEffect(() => {
-    if (activeTab === 'briefing' && !briefing && !briefingLoading && !briefingError) {
-      generateBriefing();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
 
   // Close tier dropdown when clicking anywhere outside it.
   useEffect(() => {
@@ -250,8 +291,9 @@ export default function Chat() {
     setLoading(true);
     setError('');
     setToolActivity([]);
+    setStreamingText('');
+    setReasoning('');
     setLastFailed(null);
-    setActiveTab('chat');
 
     // Cancel any in-flight request
     abortRef.current?.abort();
@@ -262,16 +304,25 @@ export default function Chat() {
       let finalReply = '';
       let finalSuggestions: string[] = [];
       let finalUsage: AIUsage | undefined;
+      let finalToolResults: unknown[] = [];
+      let finalModel = '';
 
       await apiStreamChat(
         text.trim(),
         (event) => {
           if (event.type === 'tool') {
             setToolActivity((prev) => [...prev, event.label]);
+          } else if (event.type === 'thinking') {
+            setReasoning((prev) => prev + event.text);
+          } else if (event.type === 'delta') {
+            setStreamingText((prev) => prev + event.text);
           } else if (event.type === 'done') {
             finalReply = event.reply;
             finalSuggestions = event.suggestions || [];
             finalUsage = event.usage as unknown as AIUsage | undefined;
+            finalToolResults = event.tool_results || [];
+            finalModel = event.model || '';
+            if (event.scope) setScope(event.scope);
           } else if (event.type === 'error') {
             throw new Error(event.message);
           }
@@ -280,14 +331,14 @@ export default function Chat() {
       );
 
       if (!finalReply) throw new Error('No response received');
-      const aiMsg: LocalMessage = { role: 'model', text: finalReply, timestamp: new Date(), usage: finalUsage };
+      const aiMsg: LocalMessage = { role: 'model', text: finalReply, timestamp: new Date(), usage: finalUsage, toolResults: finalToolResults, model: finalModel || undefined };
       setMessages((prev) => [...prev, aiMsg]);
       setSuggestions(finalSuggestions);
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') return;
       const msg = e instanceof Error ? e.message : 'Failed to get response';
       if (msg.includes('429') || msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('too many')) {
-        setError('Too many messages \u2014 please wait a moment before sending again.');
+        setError('Too many messages — please wait a moment before sending again.');
       } else {
         setError(msg);
       }
@@ -295,8 +346,63 @@ export default function Chat() {
     } finally {
       setLoading(false);
       setToolActivity([]);
+      setStreamingText('');
+      setReasoning('');
       inputRef.current?.focus();
     }
+  }
+
+  /** Run the operations briefing as an inline chat turn.  The briefing is a
+   *  curated executive summary from a dedicated endpoint (/ai/summary) — we
+   *  render it as a normal AI message so it lives in the conversation and can
+   *  be followed up on, rather than living in a separate tab.  Triggered by
+   *  the `/briefing` command or the empty-state chip. */
+  async function runBriefing() {
+    if (loading) return;
+    const userMsg: LocalMessage = { role: 'user', text: briefingLabel, timestamp: new Date() };
+    setMessages((prev) => [...prev, userMsg]);
+    setInput('');
+    setSuggestions([]);
+    setError('');
+    setToolActivity([]);
+    setLoading(true);
+    try {
+      const data = await apiJSONAI<AISummaryResponse>('/ai/summary', { method: 'POST' });
+      const aiMsg: LocalMessage = { role: 'model', text: data.summary, timestamp: new Date() };
+      setMessages((prev) => [...prev, aiMsg]);
+      setSuggestions(data.suggestions || []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to generate briefing');
+    } finally {
+      setLoading(false);
+      inputRef.current?.focus();
+    }
+  }
+
+  // The Operations Briefing is a fleet-ops summary, so it's only surfaced for
+  // operations-facing personas — a Recruiter / HR / Accounting view keeps its
+  // empty state and command menu focused on their own work, not fleet health.
+  const briefingRelevant = !['recruiter', 'hr', 'accounting'].includes(activeView ?? '');
+
+  /** Slash commands typed in the chat input.  Extensible — add an entry here
+   *  to expose a new shortcut (e.g. /parked, /undriven).  Discoverable via the
+   *  `/` menu above the input and the empty-state chips. */
+  const SLASH_COMMANDS: { name: string; label: string; run: () => void }[] = [
+    ...(briefingRelevant ? [{ name: 'briefing', label: briefingLabel, run: runBriefing }] : []),
+  ];
+
+  /** Dispatch the input box: a known `/command` runs its action, anything
+   *  else is sent to the AI as a normal message. */
+  function submit(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed || loading) return;
+    const cmd = SLASH_COMMANDS.find((c) => `/${c.name}` === trimmed.toLowerCase());
+    if (cmd) {
+      setInput('');
+      cmd.run();
+      return;
+    }
+    send(text);
   }
 
   /** Abort the in-flight streaming request.  apiStreamChat's fetch rejects
@@ -307,6 +413,8 @@ export default function Chat() {
     abortRef.current?.abort();
     setLoading(false);
     setToolActivity([]);
+    setStreamingText('');
+    setReasoning('');
   }
 
   async function switchTier(tier: AITierChoice) {
@@ -326,10 +434,9 @@ export default function Chat() {
         body: { tier },
       });
       setCurrentTier(r.tier);
-      // ``"auto"`` returns null — the actual model gets picked per
-      // request from the prompt, so we clear the cached "produced by"
-      // hint until the next reply comes back.
-      setCurrentModel(r.resolved_model ?? '');
+      // The "produced by" label is now per-message (frozen from each answer's
+      // `done` event), so switching the tier no longer needs to touch any
+      // global model hint.
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to switch tier');
     } finally {
@@ -382,7 +489,7 @@ export default function Chat() {
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      send(input);
+      submit(input);
     }
   }
 
@@ -485,28 +592,13 @@ export default function Chat() {
     URL.revokeObjectURL(url);
   }
 
-  // ── Briefing functions ───────────────────────────────────────
-  async function generateBriefing() {
-    setBriefingLoading(true);
-    setBriefingError('');
-    try {
-      const data = await apiJSONAI<AISummaryResponse>('/ai/summary', { method: 'POST' });
-      setBriefing(data.summary);
-      setBriefingTime(new Date());
-      setBriefingSuggestions(data.suggestions || []);
-    } catch (e) {
-      setBriefingError(e instanceof Error ? e.message : 'Failed to generate briefing');
-    } finally {
-      setBriefingLoading(false);
-    }
-  }
-
-  function switchTab(tab: 'chat' | 'briefing') {
-    navigate(`/ai/chat${tab === 'briefing' ? '?tab=briefing' : ''}`, { replace: true });
-  }
-
-
   const suggestedQuestions = getSuggestedQuestions(activeView);
+
+  // Slash-command autocomplete: when the input begins with "/", show the
+  // matching commands above the input so the feature is discoverable.
+  const slashMatches = input.startsWith('/')
+    ? SLASH_COMMANDS.filter((c) => `/${c.name}`.startsWith(input.trim().toLowerCase()))
+    : [];
 
   // Index of the most recent AI message in ``messages``.  The
   // Regenerate button is only shown on that bubble (see the
@@ -523,10 +615,24 @@ export default function Chat() {
     <div className="flex flex-col h-[calc(100vh-6rem)]">
       {/* ── Header ────────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
-        <h1 className="text-xl font-semibold flex items-center gap-2">
-          <Bot size={20} className="text-primary" />
-          AI Assistant
-        </h1>
+        <div className="flex items-center gap-3 min-w-0">
+          <h1 className="text-xl font-semibold flex items-center gap-2">
+            <Bot size={20} className="text-primary" />
+            AI Assistant
+          </h1>
+          {/* Trust badge: only for restricted (company/vehicle-scoped) users —
+              surfaces the Vehicle Access scope so they understand answers cover
+              a subset, not the whole account. */}
+          {scope?.restricted && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-2xs font-medium bg-muted text-muted-foreground border border-border whitespace-nowrap"
+              title="Your access is limited to these vehicles — answers cover only them."
+            >
+              <Eye size={12} aria-hidden />
+              Answering for your {scope.vehicle_count ?? 0} vehicle{scope.vehicle_count === 1 ? '' : 's'}
+            </span>
+          )}
+        </div>
 
         {/* Right-side controls: tier picker + export + clear */}
         <div className="flex items-center gap-2">
@@ -601,12 +707,12 @@ export default function Chat() {
           })()}
 
           {/* Separator */}
-          {activeTab === 'chat' && messages.length > 0 && (
+          {messages.length > 0 && (
             <div className="w-px h-5 bg-border" />
           )}
 
-          {/* Export + Clear — only in Chat tab with messages */}
-          {activeTab === 'chat' && messages.length > 0 && (
+          {/* Export + Clear — only when there are messages */}
+          {messages.length > 0 && (
             <>
               <button
                 onClick={exportChat}
@@ -632,174 +738,200 @@ export default function Chat() {
         </div>
       </div>
 
-      {/* ── Tabs ──────────────────────────────────────────────── */}
-      <div className="flex gap-1 mb-3 border-b border-border flex-shrink-0">
-        <button
-          onClick={() => switchTab('chat')}
-          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            activeTab === 'chat'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <MessageSquare size={14} />
-          {t('chat.tab_chat')}
-        </button>
-        <button
-          onClick={() => switchTab('briefing')}
-          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            activeTab === 'briefing'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <Sparkles size={14} />
-          {briefingLabel}
-        </button>
-      </div>
+      {/* Messages area */}
+      <div className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-0">
+        {messages.length === 0 && !loading && (
+          <div className="text-center text-muted-foreground mt-16">
+            <Bot size={40} className="mx-auto mb-3 text-primary/40" />
+            <p className="text-lg font-medium">{t('chat.title')}</p>
+            <p className="text-sm mt-1">
+              {isDriverView
+                ? t('chat.ask_driver')
+                : `Ask anything about ${chatSubject} — ${getChatTopics(activeView)}.`}
+            </p>
+            {/* Primary action: the operations briefing.  Lives here (and as the
+                /briefing command) instead of a separate tab. */}
+            <div className="mt-6 flex flex-col items-center gap-3">
+              {briefingRelevant && (
+                <button
+                  onClick={runBriefing}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 transition-colors"
+                  title="Generate an operations briefing — or type /briefing"
+                >
+                  <Sparkles size={16} aria-hidden />
+                  {briefingLabel}
+                </button>
+              )}
+              <div className="flex flex-wrap justify-center gap-2">
+                {suggestedQuestions.map((q) => (
+                  <button
+                    key={q}
+                    onClick={() => send(q)}
+                    className="px-3 py-2 text-sm rounded-lg bg-muted hover:bg-muted/80 text-foreground/80 border border-border transition-colors"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
-      {/* ══ CHAT TAB ════════════════════════════════════════════ */}
-      {activeTab === 'chat' && (
-        <>
-          {/* Messages area */}
-          <div className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-0">
-            {messages.length === 0 && !loading && (
-              <div className="text-center text-muted-foreground mt-16">
-                <Bot size={40} className="mx-auto mb-3 text-primary/40" />
-                <p className="text-lg font-medium">{t('chat.title')}</p>
-                <p className="text-sm mt-1">
-                  {isDriverView
-                    ? t('chat.ask_driver')
-                    : `Ask anything about ${chatSubject} \u2014 vehicles, faults, fuel, events, maintenance.`}
-                </p>
-                <div className="mt-6 flex flex-wrap justify-center gap-2">
-                  {suggestedQuestions.map((q) => (
-                    <button
-                      key={q}
-                      onClick={() => send(q)}
-                      className="px-3 py-2 text-sm rounded-lg bg-muted hover:bg-muted/80 text-foreground/80 border border-border transition-colors"
-                    >
-                      {q}
-                    </button>
-                  ))}
+        {messages.map((msg, i) => (
+          <div
+            key={i}
+            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+          >
+            {msg.role === 'user' ? (
+              <div className="max-w-[80%] group">
+                <div className="rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap bg-primary text-primary-foreground rounded-br-none">
+                  {msg.text}
+                </div>
+                <div className="flex items-center justify-end gap-2 mt-1">
+                  <button
+                    onClick={() => editMessage(msg.text)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                    title={t('chat.edit_message')}
+                  >
+                    <Pencil size={12} />
+                  </button>
+                  <p className="text-3xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                    {formatTime(msg.timestamp, { timeZone: tz, intl: { hour: '2-digit', minute: '2-digit' } })}
+                  </p>
                 </div>
               </div>
-            )}
-
-            {messages.map((msg, i) => (
-              <div
-                key={i}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                {msg.role === 'user' ? (
-                  <div className="max-w-[80%] group">
-                    <div className="rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap bg-primary text-primary-foreground rounded-br-none">
-                      {msg.text}
-                    </div>
-                    <div className="flex items-center justify-end gap-2 mt-1">
+            ) : (
+              <div className="max-w-[82%] group">
+                <div
+                  className="rounded-2xl px-4 py-3 text-sm bg-card border border-border text-foreground rounded-bl-none ai-response shadow-sm"
+                  dangerouslySetInnerHTML={{ __html: formatAIResponse(msg.text) }}
+                />
+                {msg.toolResults && <ReferencedVehicles toolResults={msg.toolResults} />}
+                <div className="flex items-center gap-2 mt-1">
+                  {/* The model that produced THIS answer, frozen at receipt.
+                      Absent on history-loaded bubbles (no model stored), so
+                      they simply show no label — and switching the tier picker
+                      never relabels past answers. */}
+                  {msg.model && (
+                    <span className="text-3xs text-muted-foreground/60">
+                      {models.find((m) => m.name === msg.model)?.display || msg.model}
+                    </span>
+                  )}
+                  {/* Data-freshness stamp — hover-reveal like the action
+                      icons, so it's available but not noisy by default. */}
+                  <span className="text-3xs text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {formatTime(msg.timestamp, { timeZone: tz, intl: { hour: '2-digit', minute: '2-digit' } })}
+                  </span>
+                  {/* Feedback row — only on the latest AI bubble.
+                      Thumbs up = explicit positive (flips
+                      had_thumbs_up).  Thumbs down = explicit
+                      negative without retry (flips had_reask).
+                      Regenerate = explicit negative WITH retry
+                      (flips had_reask + re-fires the same prompt
+                      via the existing send() dispatcher).  Once
+                      the user votes, the icon stays filled so
+                      they have visual confirmation. */}
+                  {i === lastAiIdx && (
+                    <>
                       <button
-                        onClick={() => editMessage(msg.text)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
-                        title={t('chat.edit_message')}
+                        onClick={() => voteOnMessage(i, 'up')}
+                        disabled={loading}
+                        className={`opacity-0 group-hover:opacity-100 transition-opacity ml-auto disabled:cursor-not-allowed ${
+                          feedbackByIdx[i] === 'up'
+                            ? 'opacity-100 text-primary'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                        title={t('chat.feedback_good')}
+                        aria-pressed={feedbackByIdx[i] === 'up'}
                       >
-                        <Pencil size={12} />
+                        <ThumbsUp
+                          size={12}
+                          className={feedbackByIdx[i] === 'up' ? 'fill-current' : ''}
+                        />
                       </button>
-                      <p className="text-3xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                        {formatTime(msg.timestamp, { timeZone: tz, intl: { hour: '2-digit', minute: '2-digit' } })}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="max-w-[82%] group">
-                    <div
-                      className="rounded-2xl px-4 py-3 text-sm bg-card border border-border text-foreground rounded-bl-none ai-response shadow-sm"
-                      dangerouslySetInnerHTML={{ __html: formatAIResponse(msg.text) }}
-                    />
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-3xs text-muted-foreground/60">
-                        {models.find((m) => m.name === currentModel)?.display || currentModel}
-                      </span>
-                      {/* Feedback row — only on the latest AI bubble.
-                          Thumbs up = explicit positive (flips
-                          had_thumbs_up).  Thumbs down = explicit
-                          negative without retry (flips had_reask).
-                          Regenerate = explicit negative WITH retry
-                          (flips had_reask + re-fires the same prompt
-                          via the existing send() dispatcher).  Once
-                          the user votes, the icon stays filled so
-                          they have visual confirmation. */}
-                      {i === lastAiIdx && (
-                        <>
-                          <button
-                            onClick={() => voteOnMessage(i, 'up')}
-                            disabled={loading}
-                            className={`opacity-0 group-hover:opacity-100 transition-opacity ml-auto disabled:cursor-not-allowed ${
-                              feedbackByIdx[i] === 'up'
-                                ? 'opacity-100 text-primary'
-                                : 'text-muted-foreground hover:text-foreground'
-                            }`}
-                            title={t('chat.feedback_good')}
-                            aria-pressed={feedbackByIdx[i] === 'up'}
-                          >
-                            <ThumbsUp
-                              size={12}
-                              className={feedbackByIdx[i] === 'up' ? 'fill-current' : ''}
-                            />
-                          </button>
-                          <button
-                            onClick={() => voteOnMessage(i, 'down')}
-                            disabled={loading}
-                            className={`opacity-0 group-hover:opacity-100 transition-opacity disabled:cursor-not-allowed ${
-                              feedbackByIdx[i] === 'down'
-                                ? 'opacity-100 text-warn'
-                                : 'text-muted-foreground hover:text-foreground'
-                            }`}
-                            title={t('chat.feedback_bad')}
-                            aria-pressed={feedbackByIdx[i] === 'down'}
-                          >
-                            <ThumbsDown
-                              size={12}
-                              className={feedbackByIdx[i] === 'down' ? 'fill-current' : ''}
-                            />
-                          </button>
-                          <button
-                            onClick={() => regenerateMessage(i)}
-                            disabled={regeneratingIdx !== null || loading}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
-                            title={t('chat.regenerate')}
-                          >
-                            <RefreshCw
-                              size={12}
-                              className={regeneratingIdx === i ? 'animate-spin' : ''}
-                            />
-                          </button>
-                        </>
-                      )}
                       <button
-                        onClick={() => copyMessage(msg.text, i)}
-                        className={`opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground ${i === lastAiIdx ? '' : 'ml-auto'}`}
-                        title={t('chat.copy_response')}
+                        onClick={() => voteOnMessage(i, 'down')}
+                        disabled={loading}
+                        className={`opacity-0 group-hover:opacity-100 transition-opacity disabled:cursor-not-allowed ${
+                          feedbackByIdx[i] === 'down'
+                            ? 'opacity-100 text-warn'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                        title={t('chat.feedback_bad')}
+                        aria-pressed={feedbackByIdx[i] === 'down'}
                       >
-                        {copiedIdx === i
-                          ? <Check size={12} className="text-ok" />
-                          : <Copy size={12} />}
+                        <ThumbsDown
+                          size={12}
+                          className={feedbackByIdx[i] === 'down' ? 'fill-current' : ''}
+                        />
                       </button>
-                    </div>
-                    {dislikeFormFor === i && (
-                      <DislikeReasonForm
-                        onSkip={() => setDislikeFormFor(null)}
-                        onSubmitted={() => setDislikeFormFor(null)}
-                      />
-                    )}
-                  </div>
+                      <button
+                        onClick={() => regenerateMessage(i)}
+                        disabled={regeneratingIdx !== null || loading}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                        title={t('chat.regenerate')}
+                      >
+                        <RefreshCw
+                          size={12}
+                          className={regeneratingIdx === i ? 'animate-spin' : ''}
+                        />
+                      </button>
+                    </>
+                  )}
+                  <button
+                    onClick={() => copyMessage(msg.text, i)}
+                    className={`opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground ${i === lastAiIdx ? '' : 'ml-auto'}`}
+                    title={t('chat.copy_response')}
+                  >
+                    {copiedIdx === i
+                      ? <Check size={12} className="text-ok" />
+                      : <Copy size={12} />}
+                  </button>
+                </div>
+                {dislikeFormFor === i && (
+                  <DislikeReasonForm
+                    onSkip={() => setDislikeFormFor(null)}
+                    onSubmitted={() => setDislikeFormFor(null)}
+                  />
                 )}
               </div>
-            ))}
+            )}
+          </div>
+        ))}
 
-            {loading && (
-              <div className="flex justify-start">
-                <div className="bg-muted rounded-xl px-4 py-3 text-sm rounded-bl-sm max-w-[82%] min-w-[220px]">
-                  {/* Completed steps */}
+        {loading && (
+          <div className="flex justify-start">
+            <div className="bg-muted rounded-xl px-4 py-3 text-sm rounded-bl-sm max-w-[82%] min-w-[220px]">
+              {/* Live reasoning (streaming models) — collapsible.  Only
+                  present when the backend emits `thinking` events; the
+                  non-streaming path never sets this, so nothing shows. */}
+              {reasoning && (
+                <div className="mb-2 border-b border-border/40 pb-2">
+                  <button
+                    onClick={() => setReasoningOpen((o) => !o)}
+                    className="flex items-center gap-1.5 text-2xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <Brain size={12} />
+                    <span>Thinking</span>
+                    <ChevronDown size={12} className={`transition-transform ${reasoningOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {reasoningOpen && (
+                    <div className="mt-1.5 text-2xs text-muted-foreground/80 whitespace-pre-wrap max-h-40 overflow-y-auto leading-relaxed">
+                      {reasoning}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {streamingText ? (
+                /* Answer streaming in token-by-token (streaming models). */
+                <div
+                  className="ai-response"
+                  dangerouslySetInnerHTML={{ __html: formatAIResponse(streamingText) }}
+                />
+              ) : (
+                <>
+                  {/* Completed tool steps */}
                   {toolActivity.slice(0, toolActivity.length > 0 ? toolActivity.length - 1 : 0).map((label, i) => (
                     <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground/70 mb-1.5">
                       <Check size={12} className="text-primary/70 flex-shrink-0" />
@@ -815,170 +947,104 @@ export default function Chat() {
                     </span>
                     <span className="text-foreground font-medium">
                       {toolActivity.length > 0
-                        ? `${toolActivity[toolActivity.length - 1]}\u2026`
+                        ? `${toolActivity[toolActivity.length - 1]}…`
                         : THINK_PHRASES[thinkIdx]}
                     </span>
                   </div>
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <div className="flex flex-col items-center gap-2">
-                <p className="text-destructive text-sm bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>
-                {lastFailed && (
-                  <button
-                    onClick={() => { setError(''); send(lastFailed!); }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground border border-border transition-colors"
-                  >
-                    <RotateCcw size={12} />
-                    Retry
-                  </button>
-                )}
-              </div>
-            )}
-
-            <div ref={bottomRef} />
-          </div>
-
-          {/* Follow-up suggestions */}
-          {suggestions.length > 0 && !loading && (
-            <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-border flex-shrink-0">
-              {suggestions.map((s, i) => (
-                <button
-                  key={i}
-                  onClick={() => send(s)}
-                  disabled={loading}
-                  className="px-3 py-1.5 text-xs rounded-full bg-muted hover:bg-primary/10 hover:text-primary hover:border-primary/30 text-foreground/70 border border-border transition-colors disabled:opacity-50"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Input */}
-          <div className="flex gap-2 mt-3 flex-shrink-0">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                e.target.style.height = 'auto';
-                e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
-              }}
-              onKeyDown={handleKeyDown}
-              placeholder={`Ask about ${chatSubject}\u2026`}
-              rows={1}
-              style={{ maxHeight: '120px' }}
-              className="flex-1 bg-card text-foreground rounded-xl px-4 py-3 text-sm border border-border focus:border-ring focus:ring-2 focus:ring-ring/20 focus:outline-none resize-none transition-colors placeholder:text-muted-foreground/50"
-              disabled={loading}
-            />
-            {loading ? (
-              <button
-                onClick={stopGeneration}
-                className="px-4 py-3 rounded-lg bg-muted hover:bg-muted/80 text-foreground font-medium text-sm transition-colors border border-border flex items-center gap-1.5 shrink-0"
-                title="Stop generating"
-              >
-                <Square size={14} className="fill-current" />
-                Stop
-              </button>
-            ) : (
-              <button
-                onClick={() => send(input)}
-                disabled={!input.trim()}
-                className="px-4 py-3 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
-              >
-                <Send size={14} />
-                Send
-              </button>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* ══ BRIEFING TAB ════════════════════════════════════════ */}
-      {activeTab === 'briefing' && (
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-lg font-semibold">{briefingLabel}</h2>
-              {briefingTime && (
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Generated at {formatTime(briefingTime, { timeZone: tz, intl: { hour: '2-digit', minute: '2-digit' } })}
-                </p>
+                </>
               )}
             </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-destructive text-sm bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>
+            {lastFailed && (
+              <button
+                onClick={() => { setError(''); send(lastFailed!); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground border border-border transition-colors"
+              >
+                <RotateCcw size={12} />
+                Retry
+              </button>
+            )}
+          </div>
+        )}
+
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Follow-up suggestions */}
+      {suggestions.length > 0 && !loading && (
+        <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-border flex-shrink-0">
+          {suggestions.map((s, i) => (
             <button
-              onClick={generateBriefing}
-              disabled={briefingLoading}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-sm transition-colors disabled:opacity-50"
+              key={i}
+              onClick={() => send(s)}
+              disabled={loading}
+              className="px-3 py-1.5 text-xs rounded-full bg-muted hover:bg-primary/10 hover:text-primary hover:border-primary/30 text-foreground/70 border border-border transition-colors disabled:opacity-50"
             >
-              <RefreshCw size={14} className={briefingLoading ? 'animate-spin' : ''} />
-              {briefingLoading ? 'Generating\u2026' : briefing ? 'Refresh' : 'Generate'}
+              {s}
             </button>
-          </div>
-
-          {briefingError && <p className="text-destructive mb-4 text-sm">{briefingError}</p>}
-
-          {!briefing && !briefingLoading && !briefingError && (
-            <div className="text-center text-muted-foreground mt-16">
-              <Sparkles size={40} className="mx-auto mb-3 text-primary/40" />
-              <p className="text-lg font-medium">{briefingLabel}</p>
-              <p className="text-sm mt-1">
-                {isDriverView
-                  ? "Get a quick summary of your truck's current status, health, and any issues."
-                  : `Generate an executive summary of ${chatSubject} — status, health, events, and recommendations.`}
-              </p>
-              <button
-                onClick={generateBriefing}
-                className="mt-6 px-6 py-3 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium transition-colors"
-              >
-                Generate Briefing
-              </button>
-            </div>
-          )}
-
-          {briefingLoading && (
-            <div className="flex justify-center mt-16">
-              <div className="text-muted-foreground text-sm flex items-center gap-2">
-                <span className="inline-flex gap-1">
-                  <span className="animate-bounce" style={{ animationDelay: '0ms' }}>&#9679;</span>
-                  <span className="animate-bounce" style={{ animationDelay: '150ms' }}>&#9679;</span>
-                  <span className="animate-bounce" style={{ animationDelay: '300ms' }}>&#9679;</span>
-                </span>
-                Analyzing {chatSubject}\u2026
-              </div>
-            </div>
-          )}
-
-          {briefing && !briefingLoading && (
-            <>
-              <div
-                className="bg-muted rounded-xl p-6 text-sm text-foreground/90 leading-relaxed ai-response"
-                dangerouslySetInnerHTML={{ __html: formatAIResponse(briefing) }}
-              />
-              {briefingSuggestions.length > 0 && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <span className="text-xs text-muted-foreground self-center mr-1">Follow-up:</span>
-                  {briefingSuggestions.map((s, i) => (
-                    <button
-                      key={i}
-                      onClick={() => {
-                        switchTab('chat');
-                        setTimeout(() => send(s), 0);
-                      }}
-                      className="px-3 py-1.5 text-xs rounded-full bg-card text-foreground/80 border border-border hover:bg-muted transition-colors"
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
+          ))}
         </div>
       )}
+
+      {/* Slash-command menu — appears when the input starts with "/" */}
+      {slashMatches.length > 0 && !loading && (
+        <div className="flex flex-col gap-0.5 mt-2 rounded-lg border border-border bg-card p-1 shadow-sm flex-shrink-0">
+          {slashMatches.map((c) => (
+            <button
+              key={c.name}
+              onClick={() => { setInput(''); c.run(); }}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md text-left text-foreground/80 hover:bg-muted transition-colors"
+            >
+              <Sparkles size={14} className="text-primary shrink-0" aria-hidden />
+              <span className="font-medium">/{c.name}</span>
+              <span className="text-2xs text-muted-foreground">{c.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Input */}
+      <div className="flex gap-2 mt-3 flex-shrink-0">
+        <textarea
+          ref={inputRef}
+          value={input}
+          onChange={(e) => {
+            setInput(e.target.value);
+            e.target.style.height = 'auto';
+            e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder={`Ask about ${chatSubject}…  (or type / for commands)`}
+          rows={1}
+          style={{ maxHeight: '120px' }}
+          className="flex-1 bg-card text-foreground rounded-xl px-4 py-3 text-sm border border-border focus:border-ring focus:ring-2 focus:ring-ring/20 focus:outline-none resize-none transition-colors placeholder:text-muted-foreground/50"
+          disabled={loading}
+        />
+        {loading ? (
+          <button
+            onClick={stopGeneration}
+            className="px-4 py-3 rounded-lg bg-muted hover:bg-muted/80 text-foreground font-medium text-sm transition-colors border border-border flex items-center gap-1.5 shrink-0"
+            title="Stop generating"
+          >
+            <Square size={14} className="fill-current" />
+            Stop
+          </button>
+        ) : (
+          <button
+            onClick={() => submit(input)}
+            disabled={!input.trim()}
+            className="px-4 py-3 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
+          >
+            <Send size={14} />
+            Send
+          </button>
+        )}
+      </div>
     </div>
   );
 }

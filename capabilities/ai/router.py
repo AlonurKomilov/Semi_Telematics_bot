@@ -16,7 +16,7 @@ from capabilities.ai import _chat_histories
 from capabilities.ai.registry import DEFAULT_LOCATION
 from capabilities.ai.usage import build_user_ai_context, log_ai_usage as _log_ai_usage_fn, parse_ai_suggestions as _parse_suggestions
 from capabilities.permissions.roles import is_management_role
-from interfaces.api.deps import require_permission, require_permission_any, get_current_user, get_platform_db, get_tenant_db
+from interfaces.api.deps import require_permission, require_permission_any, get_current_user, get_platform_db, get_tenant_db, active_view
 from interfaces.api.rate_limit import limiter
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -106,6 +106,37 @@ async def _log_usage(account_id: int, user_id: int, action: str,
     )
 
 
+def _scope_descriptor(user_context: dict | None) -> dict:
+    """Describe the AI data scope applied this turn, for the trust badge.
+
+    Reads ``scoped_vehicle_nums`` — the Team Management Vehicle Access SSOT
+    set by :func:`_get_user_info`: ``None`` = unrestricted (All access);
+    a list = restricted to exactly those vehicles (``[]`` = no access).  The
+    frontend shows "Answering for your N vehicles" only when ``restricted``.
+    """
+    scoped = (user_context or {}).get("scoped_vehicle_nums")
+    if scoped is None:
+        return {"restricted": False}
+    return {"restricted": True, "vehicle_count": len(scoped)}
+
+
+def _apply_persona_preview(user_context: dict | None, view: str | None) -> None:
+    """Owner/Admin "View as <role>" — gate the AI as the previewed role so the
+    preview is faithful: the assistant advertises, allows, and refuses tools
+    exactly as that role would.
+
+    ``view`` comes from :func:`active_view`, which already enforces that ONLY
+    owner/admin may preview another role and only ever returns an
+    equal-or-narrower role (a non-switchable user always gets their real role
+    back).  So this can never *escalate* access — it only relabels the role
+    used for tool gating, narrowing it.  Vehicle-Access scope is deliberately
+    left as the real user's: we preview *which tools* a role gets, not a
+    specific other user's data scope.  No-op when not previewing.
+    """
+    if user_context and view and view != user_context.get("role"):
+        user_context["role"] = view
+
+
 async def _get_user_info(user: dict, platform_db) -> tuple[dict | None, list[str] | None, str]:
     """Fetch full user from DB and build user_context + vehicle_filter + language."""
     user_obj = await platform_db.get_user_by_telegram_id(
@@ -158,6 +189,7 @@ async def ai_chat(
     user: dict = Depends(
         require_permission_any("can_ai_chat")
     ),
+    view: str = Depends(active_view),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -173,6 +205,7 @@ async def ai_chat(
     account_id = user["account_id"]
     await ai.ensure_account_model(account_id)
     user_context, vehicle_filter, language = await _get_user_info(user, platform_db)
+    _apply_persona_preview(user_context, view)  # owner/admin "View as <role>"
 
     try:
         import time as _t
@@ -274,6 +307,7 @@ async def ai_chat_stream(
     user: dict = Depends(
         require_permission_any("can_ai_chat")
     ),
+    view: str = Depends(active_view),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -291,6 +325,7 @@ async def ai_chat_stream(
     account_id = user["account_id"]
     await ai.ensure_account_model(account_id)
     user_context, vehicle_filter, language = await _get_user_info(user, platform_db)
+    _apply_persona_preview(user_context, view)  # owner/admin "View as <role>"
 
     try:
         # Implicit-satisfaction markers (timing + phrase).  Same as
@@ -338,6 +373,11 @@ async def ai_chat_stream(
                         **event,
                         "message": _scrub_error_text(msg),
                     }
+                elif event.get("type") == "done":
+                    # Attach the data-scope descriptor so the client can show a
+                    # "Answering for your N vehicles" trust badge for restricted
+                    # users (and nothing for unrestricted ones).
+                    event = {**event, "scope": _scope_descriptor(user_context)}
                 yield f"data: {json.dumps(event)}\n\n"
                 if event.get("type") == "done":
                     # Persist the final reply to DB
