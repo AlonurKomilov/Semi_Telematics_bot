@@ -1,6 +1,11 @@
-"""Reports package — PDF and CSV report generators."""
+"""Reports package — shared report infra + cross-feature generators.
 
-from .vehicle_pdf import generate_vehicle_detail_pdf
+The single-vehicle detail PDF moved to ``features/vehicles/report.py``
+(co-located with its feature, like ``features/cameras/report.py``); import
+``generate_vehicle_detail_pdf`` from there.  The shared ``pdf_base`` +
+cross-feature reports (shift, risk, DOT binder) stay in this hub.
+"""
+
 from .shift_pdf import generate_shift_report_pdf
 from .risk_summary_pdf import generate_risk_summary_pdf
 from .risk_profile import RiskProfile, build_risk_profile
@@ -18,7 +23,6 @@ from .csv_generators import (
 )
 
 __all__ = [
-    "generate_vehicle_detail_pdf",
     "generate_vehicle_health_pdf",
     "generate_shift_report_pdf",
     "generate_risk_summary_pdf",

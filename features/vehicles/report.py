@@ -1,5 +1,5 @@
 """Single vehicle detail PDF generator."""
-from .pdf_base import *  # noqa: F403,F401
+from capabilities.reporting.pdf_base import *  # noqa: F403,F401
 
 def generate_vehicle_detail_pdf(vehicle: dict) -> io.BytesIO:
     """Generate a professional PDF for a single truck.

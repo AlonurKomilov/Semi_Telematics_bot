@@ -13,7 +13,7 @@ from adapters.storage import Role
 from capabilities.permissions.roles import can
 from infra.context import get_company_display
 from capabilities.formatting import format_vehicle_detail, format_vehicle_picker
-from capabilities.reporting import generate_vehicle_detail_pdf
+from features.vehicles.report import generate_vehicle_detail_pdf
 from features.vehicles.faults.report import generate_critical_report_pdf
 from features.vehicles.service import (
     prepare_companies, get_company_codes as _get_company_codes,
