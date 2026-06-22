@@ -54,6 +54,14 @@ _KB_CREATE_WINDOW = 60            # window in seconds
 _create_log: dict[int, deque[float]] = defaultdict(deque)
 _create_log_lock = asyncio.Lock()
 
+# Separate bucket for the /upload endpoint so heavy attachment
+# authoring doesn't burn the create budget (and vice versa).  Caps
+# at 20 uploads per hour per user — comfortably covers real authoring
+# sessions while still blocking a compromised credential from filling
+# storage in a tight loop.
+_upload_log: dict[int, deque[float]] = defaultdict(deque)
+_upload_log_lock = asyncio.Lock()
+
 
 async def _check_create_rate(user_id: int) -> None:
     """Raise 429 if the user has exceeded the create/edit rate.
@@ -77,6 +85,40 @@ async def _check_create_rate(user_id: int) -> None:
                         f"{retry_in} second(s)."
                     ),
                     "error_code": "kb_rate_limited",
+                    "retry_after": retry_in,
+                },
+                headers={"Retry-After": str(retry_in)},
+            )
+        bucket.append(now)
+
+
+async def _check_upload_rate(user_id: int) -> None:
+    """Raise 429 if the user has exceeded the upload rate (hourly bucket).
+
+    Mirrors ``_check_create_rate`` but with its own bucket + longer
+    window — uploads are bigger than article writes so a tighter cap
+    over a longer window stops storage exhaustion without throttling
+    legitimate authoring (typical KB article has 1–3 attachments).
+    """
+    # Constants live next to the verifier block further down; declared
+    # there so the magic-byte + rate-limit knobs are visually grouped.
+    now = time.monotonic()
+    async with _upload_log_lock:
+        bucket = _upload_log[user_id]
+        cutoff = now - _KB_UPLOAD_RATE_WINDOW
+        while bucket and bucket[0] < cutoff:
+            bucket.popleft()
+        if len(bucket) >= _KB_UPLOAD_RATE_LIMIT:
+            retry_in = int(bucket[0] + _KB_UPLOAD_RATE_WINDOW - now) + 1
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "message": (
+                        f"Upload rate limit reached "
+                        f"({_KB_UPLOAD_RATE_LIMIT} files/hour). "
+                        f"Try again in {retry_in} second(s)."
+                    ),
+                    "error_code": "kb_upload_rate_limited",
                     "retry_after": retry_in,
                 },
                 headers={"Retry-After": str(retry_in)},
@@ -535,6 +577,28 @@ async def create_article(
     db_user = await platform_db.get_user_by_id(internal_uid)
     creator_name = db_user.display_name if db_user else ""
 
+    # Auto-derive target_role server-side (the form no longer ships
+    # a manual selector — role-isolation is implicit from author):
+    #
+    #   visibility=public                            → 'all'
+    #     (Public means platform-wide, no role gate.)
+    #   visibility=private + author is owner/admin   → 'all'
+    #     (Management posts are usually broad guidance for the whole
+    #     account; the in-memory check already routes Owner/Admin
+    #     past every private gate so this default is consistent.)
+    #   visibility=private + author is a team role   → author's role
+    #     (Fleet articles to Fleet, Safety to Safety, HR to HR, etc.
+    #     This is the role-isolation semantics the operator asked
+    #     for.  Whatever target_role the client sent is ignored —
+    #     the backend is the source of truth.)
+    author_role = user.get("role", "")
+    if body.visibility == "public":
+        effective_target_role = "all"
+    elif author_role in ("owner", "admin"):
+        effective_target_role = "all"
+    else:
+        effective_target_role = author_role or "all"
+
     article_id = await platform_db.add_kb_article(
         account_id=user["account_id"],
         title=body.title,
@@ -544,7 +608,7 @@ async def create_article(
         media_type=body.media_type,
         tags=body.tags,
         visibility=body.visibility,
-        target_role=body.target_role,
+        target_role=effective_target_role,
         pinned=body.pinned,
         created_by=internal_uid,
         creator_name=creator_name,
@@ -559,7 +623,8 @@ async def create_article(
             account_id=user["account_id"],
             article={
                 "title": body.title, "category": body.category,
-                "target_role": body.target_role, "visibility": body.visibility,
+                "target_role": effective_target_role,
+                "visibility": body.visibility,
             },
             exclude_user_id=internal_uid,
         )
@@ -598,6 +663,18 @@ async def update_article(
     kwargs = {k: v for k, v in body.model_dump().items() if v is not None}
     if not kwargs:
         raise HTTPException(status_code=422, detail="No fields to update")
+
+    # ``target_role`` is server-derived on create (from the author's
+    # role) and PRESERVED on edit — operators don't pick it manually
+    # anymore (the form selector was dropped to make role-isolation
+    # automatic).  Strip any client-supplied value here so a stale
+    # API client can't unilaterally narrow / broaden visibility.
+    # Visibility-change semantics (private↔public) DO need to flip
+    # target_role too: a private article gaining public visibility
+    # should publish to 'all' (per the simplified Public model).
+    kwargs.pop("target_role", None)
+    if kwargs.get("visibility") == "public":
+        kwargs["target_role"] = "all"
 
     if (
         "media_url" in kwargs and kwargs["media_url"]
@@ -658,7 +735,57 @@ _KB_UPLOAD_CONTENT_TYPES = {
     "image/png":                "image",
     "image/jpeg":               "image",
     "image/webp":               "image",
+    # GIF enables animated step-by-step articles (e.g. "click here →
+    # this dialog appears → press save").  Renders inline in every
+    # browser, no codec / playback concerns like a real video would.
+    "image/gif":                "image",
 }
+
+# Magic-byte fingerprints for each whitelisted content-type.
+# Each entry is a list of acceptable byte-prefix predicates; the
+# upload handler accepts the file iff at least one predicate matches.
+# WHY: the browser-sent ``Content-Type`` header is attacker-controlled
+# (``curl -F "file=@virus.exe;type=application/pdf"`` bypasses the
+# allowlist without this).  Sniffing the actual file bytes after read
+# closes the spoofing window — a renamed .exe doesn't start with
+# ``%PDF`` so it gets rejected with 415 before hitting storage.
+def _matches_pdf(b: bytes) -> bool:
+    # PDFs begin with the literal ``%PDF-`` magic; spec allows up to
+    # 1024 leading bytes of comments before the header in rare cases
+    # but mainstream tools always emit it at offset 0.  We accept
+    # offset 0 only — anything else looks crafted.
+    return b.startswith(b"%PDF-")
+
+def _matches_png(b: bytes) -> bool:
+    return b.startswith(b"\x89PNG\r\n\x1a\n")
+
+def _matches_jpeg(b: bytes) -> bool:
+    # JPEG SOI marker (FF D8 FF) followed by APP0/APP1/etc.  All
+    # variants we accept start with these three bytes.
+    return b[:3] == b"\xff\xd8\xff"
+
+def _matches_webp(b: bytes) -> bool:
+    # RIFF container with WEBP fourCC at offset 8.
+    return b[:4] == b"RIFF" and b[8:12] == b"WEBP"
+
+def _matches_gif(b: bytes) -> bool:
+    # GIF87a or GIF89a header.
+    return b.startswith(b"GIF87a") or b.startswith(b"GIF89a")
+
+_KB_MAGIC_VERIFIERS: dict[str, callable] = {
+    "application/pdf": _matches_pdf,
+    "image/png":       _matches_png,
+    "image/jpeg":      _matches_jpeg,
+    "image/webp":      _matches_webp,
+    "image/gif":       _matches_gif,
+}
+
+# Per-user upload rate limit — see _check_upload_rate() below.
+# Tuned to comfortably cover real authoring sessions (typical KB
+# article has 1–3 attachments) while still rate-limiting a runaway
+# script or compromised credential from filling storage.
+_KB_UPLOAD_RATE_LIMIT = 20      # uploads
+_KB_UPLOAD_RATE_WINDOW = 3600   # ...per hour
 
 
 def _is_internal_kb_path(value: str) -> bool:
@@ -704,13 +831,21 @@ async def upload_file(
             detail="Only owners, admins, fleet, and safety can upload files",
         )
 
+    # Per-user rate limit — prevents a runaway script or compromised
+    # credential from filling object storage even though every other
+    # gate (auth, role, size, magic-byte) passes.  Checked BEFORE the
+    # 25 MB read so a flood of large requests doesn't burn IO before
+    # being rejected.
+    internal_uid = await resolve_user_id(user)
+    await _check_upload_rate(internal_uid)
+
     content_type = (file.content_type or "").lower()
     if content_type not in _KB_UPLOAD_CONTENT_TYPES:
         raise HTTPException(
             status_code=415,
             detail=(
                 f"Unsupported file type: {content_type or 'unknown'}. "
-                "Allowed: PDF, PNG, JPEG, WEBP."
+                "Allowed: PDF, PNG, JPEG, WEBP, GIF."
             ),
         )
 
@@ -721,6 +856,59 @@ async def upload_file(
         raise HTTPException(
             status_code=413,
             detail=f"File exceeds {_KB_UPLOAD_MAX_BYTES // (1024 * 1024)} MB limit.",
+        )
+
+    # Magic-byte verification — defense against content-type spoofing.
+    # The browser-sent header passed the allowlist check above, but a
+    # crafted curl request could lie about the type to slip a binary
+    # past the filter.  Sniffing the first bytes of the actual payload
+    # closes that hole: a renamed .exe doesn't start with %PDF, an
+    # HTML phishing page doesn't start with the PNG magic, etc.
+    verifier = _KB_MAGIC_VERIFIERS.get(content_type)
+    if verifier is None or not verifier(raw[:16]):
+        # Log enough to triage abuse without leaking the file content
+        # itself — header bytes only, hex-encoded for safe logging.
+        logger.warning(
+            "KB upload rejected: declared content-type %s but magic bytes are %r (user=%s)",
+            content_type, raw[:8].hex(), internal_uid,
+        )
+        raise HTTPException(
+            status_code=415,
+            detail=(
+                "File content does not match the declared type. "
+                "The file may be corrupted, renamed from a different "
+                "format, or crafted to bypass the upload filter."
+            ),
+        )
+
+    # Per-upload virus scan — catches the "real-format-with-payload"
+    # class (PDF with embedded JS exploit, JPEG with stegano payload,
+    # EICAR test pattern) that magic-byte verification can't see.
+    # Env-gated: no-op when CLAMAV_HOST is unset, so dev/staging behave
+    # like today.  Fails CLOSED when scanning is configured but the
+    # daemon is unreachable — better a 422 than silently storing
+    # unscanned bytes.  See infra/file_safety.scan_or_reject for the
+    # detailed protocol + behaviour notes.
+    from infra.file_safety import scan_or_reject as _av_scan
+    av_clean, av_reason = await _av_scan(
+        raw,
+        user_id=internal_uid,
+        account_id=user["account_id"],
+        content_type=content_type,
+        surface="kb",
+    )
+    if not av_clean:
+        # Distinguish "rejected because of malware" from "scan
+        # infrastructure down" so the operator sees the right thing
+        # in the dashboard error toast.
+        status = 503 if av_reason == "av_scan_unavailable" else 422
+        raise HTTPException(
+            status_code=status,
+            detail=(
+                "Virus scan unavailable — try again in a moment."
+                if av_reason == "av_scan_unavailable"
+                else f"File rejected by virus scan: {av_reason}"
+            ),
         )
 
     safe_name = safe_attachment_name(file.filename or "attachment")
@@ -761,6 +949,16 @@ async def serve_article_file(
     article = await platform_db.get_kb_article(article_id)
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
+    # Quarantine gate — files flagged by the ad-hoc rescan (Tier 3)
+    # are hidden from readers until an operator either restores them
+    # (false positive) or deletes the article entirely.  The check
+    # happens BEFORE the per-article visibility gate so a cross-account
+    # public article can't be served while quarantined.
+    if article.get("quarantined_at"):
+        raise HTTPException(
+            status_code=423,
+            detail="This article is quarantined pending operator review.",
+        )
     internal_uid = await resolve_user_id(user)
     if not _can_view_article(
         user_id=internal_uid,
@@ -793,8 +991,8 @@ async def serve_article_file(
     content_type = "application/pdf"
     if article.get("media_type") == "image":
         # We don't store the exact MIME — sniff a tiny prefix to pick
-        # between png / jpeg / webp.  Any image renderer accepts the
-        # first match.
+        # between png / jpeg / webp / gif.  Any image renderer accepts
+        # the first match.
         head = data[:12]
         if head.startswith(b"\x89PNG"):
             content_type = "image/png"
@@ -802,13 +1000,44 @@ async def serve_article_file(
             content_type = "image/jpeg"
         elif head[:4] == b"RIFF" and head[8:12] == b"WEBP":
             content_type = "image/webp"
+        elif head.startswith(b"GIF87a") or head.startswith(b"GIF89a"):
+            content_type = "image/gif"
         else:
             content_type = "application/octet-stream"
 
     def _iter():
         yield data
 
-    return StreamingResponse(_iter(), media_type=content_type)
+    # Defense-in-depth headers:
+    #   - X-Content-Type-Options: nosniff
+    #       Forces browsers to honour the Content-Type we send instead
+    #       of MIME-sniffing the payload.  Without this, IE/Edge (and
+    #       older Chrome) might re-interpret a file as HTML/JS based
+    #       on content, which would matter if a magic-byte spoof ever
+    #       slipped past the upload gate.
+    #   - Content-Disposition: inline; filename=...
+    #       Tells the browser the original filename (so a "Save as"
+    #       suggests something sensible) AND that inline rendering is
+    #       expected.  The filename comes from the article title — we
+    #       sanitise it the same way uploaded names get sanitised so a
+    #       hostile title can't inject quotes / line breaks into the
+    #       header.  Falls back to a generic name when title is empty.
+    raw_title = (article.get("title") or "attachment").strip()
+    safe_dl_name = safe_attachment_name(raw_title, fallback="attachment")
+    ext = {
+        "application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg",
+        "image/webp": "webp", "image/gif": "gif",
+    }.get(content_type, "bin")
+    if "." not in safe_dl_name:
+        safe_dl_name = f"{safe_dl_name}.{ext}"
+    return StreamingResponse(
+        _iter(),
+        media_type=content_type,
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": f'inline; filename="{safe_dl_name}"',
+        },
+    )
 
 
 # ── Approval workflow ─────────────────────────────────────────────

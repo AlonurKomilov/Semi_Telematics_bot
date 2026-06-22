@@ -64,11 +64,21 @@ _SAFE_URL_RE = re.compile(r"^https://", re.IGNORECASE)
 # an attacker from listing internal services as "links" in articles.
 # Subdomains of these hosts are accepted via suffix-match.
 KB_ALLOWED_MEDIA_HOSTS = frozenset({
-    # Video
-    "youtube.com", "youtu.be", "vimeo.com",
+    # Video — the four hosting platforms the KB form actually
+    # recommends in its placeholder hint.  Loom + Wistia were added
+    # alongside YouTube/Vimeo because they're the common fleet-doc
+    # screen-recording targets; their absence here was a real bug
+    # (operators pasting valid Loom URLs got 422 errors).
+    "youtube.com", "youtu.be", "vimeo.com", "loom.com",
+    "wistia.com", "wistia.net",     # wistia.net is the CDN domain
     # Document / file hosting
     "docs.google.com", "drive.google.com", "dropbox.com", "onedrive.live.com",
     "sharepoint.com", "icloud.com",
+    # Google Drive thumbnail/CDN domain — Drive returns
+    # ``lh3.googleusercontent.com`` URLs for preview thumbnails; without
+    # this entry, a Drive image link would resolve and then 422 on the
+    # thumbnail rewrite path.
+    "googleusercontent.com",
     # Image hosting
     "imgur.com", "i.imgur.com",
     # Cloud object storage (signed-URL pattern; treated as safe-enough)
@@ -235,13 +245,28 @@ class KnowledgeBaseMixin:
         unchanged from the API layer.  ``search`` matches case-
         insensitively against title/description/tags (ILIKE).
         """
+        # SQL must mirror service.can_view_article exactly — any drift
+        # between this prefilter and the in-memory check would let a
+        # row leak past the LIMIT/OFFSET budget without being shown,
+        # producing "page 2 is short" symptoms.  Mirrored gates:
+        #   * Private:  same account AND
+        #               (legacy 'all' target OR matches role OR
+        #                user is owner/admin — management override)
+        #   * Public+approved: target='all' OR matches role
+        #   * Pending:  same-account (review queue, gated by include_pending)
+        #   * Creator:  always sees own row regardless of vis/role
         cols = self._LIST_COLUMNS if light else "*"
+        is_mgmt = user_role in ("owner", "admin")
         q = f"""SELECT {cols} FROM knowledge_base WHERE (
-                  (visibility = 'private' AND account_id = ?)
+                  (visibility = 'private' AND account_id = ?
+                   AND ({'TRUE' if is_mgmt else "(target_role = 'all' OR target_role = ?)"}))
                OR (visibility = 'public' AND approved = 1
                    AND (target_role = 'all' OR target_role = ?))
                OR created_by = ?"""
-        params: list = [account_id, user_role, user_id]
+        params: list = [account_id]
+        if not is_mgmt:
+            params.append(user_role)
+        params.extend([user_role, user_id])
         if include_pending:
             q += " OR (visibility = 'public' AND approved = 0 AND account_id = ?)"
             params.append(account_id)
@@ -285,12 +310,19 @@ class KnowledgeBaseMixin:
         Used by the dashboard to render the pagination footer
         ("page 2 of 7") without re-fetching the full list.
         """
-        q = """SELECT COUNT(*) AS n FROM knowledge_base WHERE (
-                  (visibility = 'private' AND account_id = ?)
+        # Mirror the same gates as get_kb_articles (count must equal
+        # rows visible to this user; any drift breaks pagination).
+        is_mgmt = user_role in ("owner", "admin")
+        q = f"""SELECT COUNT(*) AS n FROM knowledge_base WHERE (
+                  (visibility = 'private' AND account_id = ?
+                   AND ({'TRUE' if is_mgmt else "(target_role = 'all' OR target_role = ?)"}))
                OR (visibility = 'public' AND approved = 1
                    AND (target_role = 'all' OR target_role = ?))
                OR created_by = ?"""
-        params: list = [account_id, user_role, user_id]
+        params: list = [account_id]
+        if not is_mgmt:
+            params.append(user_role)
+        params.extend([user_role, user_id])
         if include_pending:
             q += " OR (visibility = 'public' AND approved = 0 AND account_id = ?)"
             params.append(account_id)

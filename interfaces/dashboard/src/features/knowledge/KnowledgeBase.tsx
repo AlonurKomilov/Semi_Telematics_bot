@@ -33,9 +33,301 @@ function CategoryIcon({ category, size = 13, className = '' }: { category: strin
   const Icon = CATEGORY_ICONS[category] || BookOpen;
   return <Icon size={size} className={`shrink-0 ${className}`} />;
 }
+
+/**
+ * Convert a public video / Drive URL into its embeddable iframe src,
+ * or null when the URL isn't from a provider we know how to embed.
+ *
+ * Pattern-matches the four hosts our backend allowlist already accepts
+ * — YouTube, Vimeo, Loom, Google Drive — so the operator pastes the
+ * normal share link from those services and the article view renders
+ * an inline player instead of a "Open link" button.
+ *
+ * Returns null on:
+ *   - any URL not from one of the four providers
+ *   - URLs from those providers but in a shape we can't parse
+ *     (e.g. youtube.com/channel/... — that's a channel, not a video)
+ *
+ * Caller falls back to the link button for null returns; we never
+ * render an iframe from an arbitrary URL because that would defeat
+ * the backend allowlist (XSS via crafted iframe src).
+ */
+function getEmbedSrc(rawUrl: string): string | null {
+  if (!rawUrl) return null;
+  let u: URL;
+  try {
+    u = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'https:') return null;
+  const host = u.hostname.toLowerCase();
+
+  // YouTube — handles youtube.com/watch?v=ID, youtu.be/ID, and
+  // youtube.com/shorts/ID.  ``embed`` is the canonical iframe URL.
+  if (host === 'youtu.be') {
+    const id = u.pathname.slice(1).split('/')[0];
+    if (id) return `https://www.youtube.com/embed/${encodeURIComponent(id)}`;
+  }
+  if (host === 'youtube.com' || host.endsWith('.youtube.com')) {
+    const v = u.searchParams.get('v');
+    if (v) return `https://www.youtube.com/embed/${encodeURIComponent(v)}`;
+    const m = u.pathname.match(/^\/(?:embed|shorts)\/([A-Za-z0-9_-]+)/);
+    if (m) return `https://www.youtube.com/embed/${encodeURIComponent(m[1])}`;
+  }
+
+  // Vimeo — vimeo.com/{ID} or vimeo.com/{user}/{ID} share URLs.
+  // ``player.vimeo.com/video/{ID}`` is the embed origin.
+  if (host === 'vimeo.com' || host.endsWith('.vimeo.com')) {
+    const segs = u.pathname.split('/').filter(Boolean);
+    const id = segs.find(s => /^\d+$/.test(s));
+    if (id) return `https://player.vimeo.com/video/${encodeURIComponent(id)}`;
+  }
+
+  // Loom — share URLs look like loom.com/share/{ID}.  Replace
+  // ``/share/`` with ``/embed/`` to get the iframe variant.
+  if (host === 'loom.com' || host.endsWith('.loom.com')) {
+    const m = u.pathname.match(/^\/share\/([A-Za-z0-9]+)/);
+    if (m) return `https://www.loom.com/embed/${encodeURIComponent(m[1])}`;
+    const m2 = u.pathname.match(/^\/embed\/([A-Za-z0-9]+)/);
+    if (m2) return `https://www.loom.com/embed/${encodeURIComponent(m2[1])}`;
+  }
+
+  // Google Drive — file/d/{ID}/view → file/d/{ID}/preview.
+  // Requires the Drive file to be set to "Anyone with the link can
+  // view" — if it isn't, the iframe will render an "access denied"
+  // screen, which is the right behaviour (the author needs to fix
+  // their sharing settings).
+  if (host === 'drive.google.com') {
+    const m = u.pathname.match(/^\/file\/d\/([A-Za-z0-9_-]+)/);
+    if (m) return `https://drive.google.com/file/d/${encodeURIComponent(m[1])}/preview`;
+    const id = u.searchParams.get('id');
+    if (id) return `https://drive.google.com/file/d/${encodeURIComponent(id)}/preview`;
+  }
+
+  return null;
+}
+
+// ── Article media renderer ─────────────────────────────────────────
+//
+// Decides what to render based on (media_type, URL shape):
+//
+//   video + recognised provider URL  → iframe (YouTube/Vimeo/Loom/Drive)
+//   image + external URL             → <img> directly (no auth needed)
+//   image + internal upload          → <img> via auth-fetched blob URL
+//   pdf   + Drive URL                → iframe to Drive's /preview (handles
+//                                      both videos AND PDFs)
+//   pdf   + internal upload          → <embed type=pdf> via auth blob
+//   anything else                    → "Open link" button fallback
+//
+// "Internal upload" means the media_url doesn't start with http(s)://
+// — those are paths into our object store, served via the authed
+// /api/knowledge/articles/{id}/file endpoint.
+//
+// Pulled out of the article-card body so the conditional tree stays
+// readable + so each authed-blob fetch is scoped to ONE article-media
+// component (lifecycle pairs cleanly with the article render).
+
+interface ArticleMediaProps {
+  article: KBArticle;
+  // ``React.ComponentType`` matches both ``FC`` and plain function
+  // components (the existing MediaIcon is an FC) — narrower
+  // ``(props) => JSX.Element`` would reject FC<>'s ReactNode return.
+  MediaIcon: React.ComponentType<{ type: string; size?: number }>;
+  mediaLinkLabel: (type: string) => string;
+}
+
+function ArticleMedia({ article: a, MediaIcon, mediaLinkLabel }: ArticleMediaProps) {
+  const isExternal =
+    a.media_url.startsWith('http://') || a.media_url.startsWith('https://');
+  // Authed blob URL — only created when we actually need it (internal
+  // upload AND a media type that supports inline rendering).  Empty
+  // string skips the fetch.  The hook revokes on unmount automatically.
+  const internalFileUrl =
+    !isExternal && (a.media_type === 'image' || a.media_type === 'pdf')
+      ? `/api/knowledge/articles/${a.id}/file`
+      : '';
+  const blobUrl = useAuthedBlobUrl(internalFileUrl || null);
+
+  // VIDEO from a known provider (YouTube/Vimeo/Loom/Drive) → iframe.
+  // External-only by design; we don't host raw video.
+  const embedSrc = isExternal ? getEmbedSrc(a.media_url) : null;
+  if (embedSrc) {
+    return (
+      <div className="rounded-lg overflow-hidden border border-border bg-muted aspect-video">
+        <iframe
+          src={embedSrc}
+          title={a.title || 'Embedded media'}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          referrerPolicy="strict-origin-when-cross-origin"
+          className="w-full h-full border-0"
+        />
+      </div>
+    );
+  }
+
+  // IMAGE — inline <img> for both external + internal sources.
+  // ``loading="lazy"`` defers off-screen images so a long article list
+  // doesn't hammer the API with parallel blob fetches at first paint.
+  if (a.media_type === 'image') {
+    if (isExternal) {
+      return (
+        <img
+          src={a.media_url}
+          alt={a.title || 'Article image'}
+          loading="lazy"
+          className="rounded-lg border border-border bg-muted max-h-96 w-auto object-contain"
+        />
+      );
+    }
+    if (blobUrl) {
+      return (
+        <img
+          src={blobUrl}
+          alt={a.title || 'Article image'}
+          loading="lazy"
+          className="rounded-lg border border-border bg-muted max-h-96 w-auto object-contain"
+        />
+      );
+    }
+    // Blob still loading — show a thin skeleton so layout doesn't jump.
+    return (
+      <div className="rounded-lg border border-border bg-muted/50 h-48 animate-pulse" />
+    );
+  }
+
+  // PDF — inline <embed> for internal uploads (browsers render the
+  // native PDF viewer).  External PDFs go through the link button
+  // unless they're hosted on Drive (whose /preview URL embeds fine);
+  // direct ``*.pdf`` links on Dropbox/S3 typically block iframe
+  // embedding via X-Frame-Options, so the link button is the safer
+  // default there.
+  if (a.media_type === 'pdf') {
+    if (!isExternal && blobUrl) {
+      return (
+        <embed
+          src={blobUrl}
+          type="application/pdf"
+          className="w-full h-96 rounded-lg border border-border bg-muted"
+        />
+      );
+    }
+    if (!isExternal) {
+      // Still loading the blob — same skeleton shape as image so the
+      // layout reserves vertical space upfront.
+      return (
+        <div className="rounded-lg border border-border bg-muted/50 h-96 animate-pulse" />
+      );
+    }
+    // External PDF + not on Drive — link button.
+    // (The Drive case was already handled above by the ``embedSrc``
+    // branch since getEmbedSrc recognises drive.google.com regardless
+    // of whether the file inside is a video or a PDF.)
+  }
+
+  // Fallback — anything we don't have an inline renderer for opens in
+  // a new tab.  Covers unknown external hosts, internal Link-type
+  // articles, etc.
+  const href = isExternal ? a.media_url : `/api/knowledge/articles/${a.id}/file`;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/15 border border-primary/30 rounded-lg text-sm text-primary hover:bg-primary/25 transition-colors"
+    >
+      <MediaIcon type={a.media_type} size={14} />
+      {mediaLinkLabel(a.media_type)}
+    </a>
+  );
+}
+
+// ── Role-aware new-article placeholders ────────────────────────────
+//
+// The original placeholders ("How to check battery voltage on
+// Freightliner" + "freightliner, battery, electrical") were Fleet-
+// specific and read as broken for HR / Recruiter / Accounting
+// authors.  This map seeds the form with examples + a sensible
+// default category that actually look like THAT role's work, so the
+// placeholder does what placeholders are for: teach the user what
+// kind of content goes in the field.
+//
+// Adding a new role: add an entry here.  Missing roles fall through
+// to the ``default`` entry — never null, so the form is always usable.
+
+interface RolePlaceholders {
+  title: string;
+  tags: string;
+  category: string;  // key from CATEGORY_ICONS / backend categories list
+}
+
+const ROLE_PLACEHOLDERS: Record<string, RolePlaceholders> = {
+  fleet: {
+    title:    'How to check battery voltage on Freightliner',
+    tags:     'freightliner, battery, electrical',
+    category: 'maintenance',
+  },
+  safety: {
+    title:    'Incident reporting procedure (DOT recordable)',
+    tags:     'incident, reporting, dot',
+    category: 'safety',
+  },
+  dispatcher: {
+    title:    'Load assignment SOP for overnight runs',
+    tags:     'loads, assignment, dispatch',
+    category: 'procedures',
+  },
+  hr: {
+    title:    'Driver onboarding checklist',
+    tags:     'onboarding, paperwork, dq-file',
+    category: 'compliance',
+  },
+  accounting: {
+    title:    'IFTA quarterly filing — step-by-step',
+    tags:     'ifta, taxes, quarterly',
+    category: 'compliance',
+  },
+  recruiter: {
+    title:    'Pre-employment screening process (MVR + background)',
+    tags:     'screening, mvr, background',
+    category: 'compliance',
+  },
+  driver: {
+    title:    'How to do a pre-trip inspection',
+    tags:     'pti, inspection, daily',
+    category: 'pre_trip',
+  },
+  owner: {
+    title:    'Company-wide policy update',
+    tags:     'policy, company-wide, announcement',
+    category: 'procedures',
+  },
+  admin: {
+    title:    'Account setting change — process',
+    tags:     'admin, configuration, account',
+    category: 'procedures',
+  },
+};
+
+const DEFAULT_PLACEHOLDERS: RolePlaceholders = {
+  title:    'How to ...',
+  tags:     'topic, subtopic, related',
+  category: 'general',
+};
+
+/** Resolve the placeholder set for the current user's role.
+ *  Returns ``DEFAULT_PLACEHOLDERS`` for unknown roles so the form
+ *  always shows usable hints. */
+function placeholdersForRole(role: string | null | undefined): RolePlaceholders {
+  if (!role) return DEFAULT_PLACEHOLDERS;
+  return ROLE_PLACEHOLDERS[role] ?? DEFAULT_PLACEHOLDERS;
+}
+
 import { apiFetch, apiJSON } from '../../api/client';
 import { toneClasses } from '../../lib/status';
 import { useAuth } from '../../context/AuthContext';
+import { useAuthedBlobUrl } from '../../hooks/useAuthedBlobUrl';
 import {
   PageHeader,
   EmptyState,
@@ -109,18 +401,27 @@ export default function KnowledgeBase() {
   const [searchInput, setSearchInput] = useState('');
   const [page, setPage] = useState(0);
 
-  // Create / Edit form
+  // Create / Edit form.  Default category seeds from the user's role
+  // so an HR user opening the form lands on 'compliance', a Fleet
+  // user on 'maintenance', etc. — they can still pick anything from
+  // the dropdown, this just removes a click for the common case.
+  // Placeholders ride the same role map (see placeholdersForRole).
+  const myRolePlaceholders = placeholdersForRole(user?.role);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<KBArticle | null>(null);
   const [saving, setSaving] = useState(false);
   const [fTitle, setFTitle] = useState('');
   const [fDesc, setFDesc] = useState('');
-  const [fCategory, setFCategory] = useState('general');
+  const [fCategory, setFCategory] = useState(myRolePlaceholders.category);
   const [fMediaUrl, setFMediaUrl] = useState('');
   const [fMediaType, setFMediaType] = useState('link');
   const [fTags, setFTags] = useState('');
   const [fVisibility, setFVisibility] = useState('private');
-  const [fTargetRole, setFTargetRole] = useState('all');
+  // Role-target removed from the form (Tier: role-isolation made
+  // automatic).  Backend derives target_role from the author at
+  // create-time; the field is preserved on edit.  Leaving the
+  // useState shape would invite a future contributor to wire it
+  // back up — explicit comment instead.
   // Upload state: when set, the user attached a file (not a URL).  The
   // backend stores the upload's path in media_url just like any other
   // value, so the create payload doesn't need a special field.
@@ -174,8 +475,8 @@ export default function KnowledgeBase() {
   };
 
   const resetForm = () => {
-    setFTitle(''); setFDesc(''); setFCategory('general'); setFMediaUrl('');
-    setFMediaType('link'); setFTags(''); setFVisibility('private'); setFTargetRole('all');
+    setFTitle(''); setFDesc(''); setFCategory(myRolePlaceholders.category); setFMediaUrl('');
+    setFMediaType('link'); setFTags(''); setFVisibility('private');
     setFUploadName(''); setFUploadSize(0); setFUploading(false);
     setEditing(null); setShowForm(false);
     setError('');
@@ -247,7 +548,8 @@ export default function KnowledgeBase() {
     }
     setFTags(a.tags);
     setFVisibility(a.visibility);
-    setFTargetRole(a.target_role || 'all');
+    // target_role no longer settable from the form — preserved
+    // server-side on edit so we don't need to track it in state.
     setShowForm(true);
   };
 
@@ -264,7 +566,9 @@ export default function KnowledgeBase() {
         media_type: fMediaType,
         tags: fTags,
         visibility: fVisibility,
-        target_role: fVisibility === 'public' ? fTargetRole : 'all',
+        // target_role intentionally NOT sent — backend derives it
+        // from the author's role on create (Fleet → fleet, HR → hr,
+        // Owner/Admin → 'all') and preserves it on edit.
       };
       if (editing) {
         await apiJSON(`/knowledge/articles/${editing.id}`, { method: 'PUT', body });
@@ -465,7 +769,10 @@ export default function KnowledgeBase() {
                   required
                   maxLength={200}
                   className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
-                  placeholder={t('knowledge.field_title_placeholder')}
+                  placeholder={t(
+                    `knowledge.field_title_placeholder_${user?.role ?? 'default'}`,
+                    myRolePlaceholders.title,
+                  )}
                 />
               </div>
               <div>
@@ -551,7 +858,10 @@ export default function KnowledgeBase() {
                   onChange={(e) => setFTags(e.target.value)}
                   maxLength={500}
                   className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
-                  placeholder={t('knowledge.field_tags_placeholder')}
+                  placeholder={t(
+                    `knowledge.field_tags_placeholder_${user?.role ?? 'default'}`,
+                    myRolePlaceholders.tags,
+                  )}
                 />
               </div>
               <div>
@@ -563,33 +873,36 @@ export default function KnowledgeBase() {
                   onChange={(e) => setFVisibility(e.target.value)}
                   className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
                 >
-                  <option value="private">{t('knowledge.visibility_private')}</option>
-                  <option value="public">{t('knowledge.visibility_public')}</option>
+                  <option value="private">
+                    {t('knowledge.visibility_private', 'Private — my team in this company')}
+                  </option>
+                  <option value="public">
+                    {t('knowledge.visibility_public', 'Public — every user on the platform')}
+                  </option>
                 </select>
+                <p className="text-2xs text-muted-foreground mt-1">
+                  {fVisibility === 'private'
+                    ? t(
+                        'knowledge.visibility_private_hint',
+                        'Visible to other members of your role in this company. Owner / Admin always see every private article in the account.',
+                      )
+                    : t(
+                        'knowledge.visibility_public_hint',
+                        'Visible to every user on the platform, regardless of role or company.  Public articles need owner / admin approval before they appear.',
+                      )}
+                </p>
               </div>
-              {fVisibility === 'public' && (
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">
-                    {t('knowledge.field_target_role')}
-                  </label>
-                  <select
-                    value={fTargetRole}
-                    onChange={(e) => setFTargetRole(e.target.value)}
-                    className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
-                  >
-                    <option value="all">{t('knowledge.target_all')}</option>
-                    <option value="owner">{t('knowledge.target_owner')}</option>
-                    <option value="admin">{t('knowledge.target_admin')}</option>
-                    <option value="fleet">{t('knowledge.target_fleet')}</option>
-                    <option value="safety">{t('knowledge.target_safety')}</option>
-                    <option value="dispatcher">{t('knowledge.target_dispatcher')}</option>
-                    <option value="hr">{t('knowledge.target_hr')}</option>
-                    <option value="accounting">{t('knowledge.target_accounting')}</option>
-                    <option value="recruiter">{t('knowledge.target_recruiter')}</option>
-                    <option value="driver">{t('knowledge.target_driver')}</option>
-                  </select>
-                </div>
-              )}
+              {/* Role-target selector removed — visibility is now a
+                  simple Public/Private choice and role-isolation
+                  happens automatically based on the author:
+                    • Private + team author → team-only
+                      (Fleet → Fleet, Safety → Safety, HR → HR, …)
+                    • Private + Owner/Admin → all roles in account
+                      (management posts are broad by default)
+                    • Public → whole platform, no role gate
+                  Operators don't pick a target — the backend derives
+                  it from the author's role at create-time, which the
+                  hint under the Visibility dropdown explains. */}
             </div>
 
             {/* Pin moved out of the form entirely: pinning is now a
@@ -868,8 +1181,13 @@ function ArticleCard({
                 </span>
               )
             ) : (
+              // Private chip now also surfaces the role scope so a
+              // reader knows whether they're looking at a team-only
+              // article ("Private · fleet") or an account-wide one
+              // ("Private" — the legacy / Owner-Admin default).
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-muted border border-border rounded text-muted-foreground">
                 {t('knowledge.chip_private')}
+                {a.target_role && a.target_role !== 'all' ? ` · ${a.target_role}` : ''}
               </span>
             )}
             <span title={formatDate(a.created_at, { timeZone: tz })}>
@@ -1004,19 +1322,11 @@ function ExpandedArticleBody({
         </div>
       )}
       {a.media_url && (
-        <a
-          href={
-            a.media_url.startsWith('http://') || a.media_url.startsWith('https://')
-              ? a.media_url
-              : `/api/knowledge/articles/${a.id}/file`
-          }
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/15 border border-primary/30 rounded-lg text-sm text-primary hover:bg-primary/25 transition-colors"
-        >
-          <MediaIcon type={a.media_type} size={14} />
-          {mediaLinkLabel(a.media_type)}
-        </a>
+        <ArticleMedia
+          article={a}
+          MediaIcon={MediaIcon}
+          mediaLinkLabel={mediaLinkLabel}
+        />
       )}
 
       <ArticleEngagement
@@ -1227,14 +1537,20 @@ function MediaInput({
   // Dropbox).  Inverts the current order so the upload flow is the
   // discoverable one.
   if (isFile) {
+    // GIF added to the image whitelist alongside PNG/JPEG/WEBP so
+    // animated step-by-step guides (click here → dialog appears →
+    // press save) work without a heavyweight video pipeline.  Real
+    // video files (MP4/MOV) are deliberately omitted — the Video
+    // type below handles those via YouTube/Vimeo/Loom embeds, which
+    // bring captions + adaptive streaming for free.
     const accept =
       mediaType === 'pdf'
         ? 'application/pdf'
-        : 'image/png,image/jpeg,image/webp';
+        : 'image/png,image/jpeg,image/webp,image/gif';
     const hint =
       mediaType === 'pdf'
         ? t('knowledge.upload_hint_pdf', 'PDF · max 25 MB')
-        : t('knowledge.upload_hint_image', 'PNG, JPEG, WEBP · max 25 MB');
+        : t('knowledge.upload_hint_image', 'PNG, JPEG, WEBP, GIF · max 25 MB');
 
     if (uploadName) {
       return (
@@ -1320,15 +1636,25 @@ function MediaInput({
     );
   }
 
-  // video / link: URL only.
-  const urlLabel =
-    mediaType === 'video'
-      ? t('knowledge.field_video_url', 'Video URL')
-      : t('knowledge.field_link_url', 'Link URL');
-  const urlPlaceholder =
-    mediaType === 'video'
-      ? 'https://youtube.com/watch?v=…  ·  https://vimeo.com/…'
-      : t('knowledge.field_media_url_placeholder');
+  // video / link: URL only.  Video deliberately doesn't accept
+  // uploads — hosting platforms (YouTube/Vimeo/Loom) give captions,
+  // adaptive streaming, and mobile playback for free, which a 25 MB
+  // self-hosted MP4 can't match.  The hint below tells the operator
+  // WHY there's no upload button so the missing affordance reads as
+  // intentional rather than broken.
+  const isVideo = mediaType === 'video';
+  const urlLabel = isVideo
+    ? t('knowledge.field_video_url', 'Video URL')
+    : t('knowledge.field_link_url', 'Link URL');
+  const urlPlaceholder = isVideo
+    ? 'https://youtube.com/watch?v=…  ·  https://vimeo.com/…  ·  https://loom.com/…'
+    : t('knowledge.field_link_url_placeholder', 'https://…');
+  const hint = isVideo
+    ? t(
+        'knowledge.video_hint',
+        'Paste a YouTube, Vimeo, or Loom link. Host the video there first — readers get captions and smooth playback on mobile that a direct upload can\'t match.',
+      )
+    : null;
   return (
     <>
       <label className="block text-xs text-muted-foreground mb-1">
@@ -1342,6 +1668,9 @@ function MediaInput({
         className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
         placeholder={urlPlaceholder}
       />
+      {hint && (
+        <p className="text-2xs text-muted-foreground mt-1">{hint}</p>
+      )}
     </>
   );
 }
