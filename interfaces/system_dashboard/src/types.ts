@@ -351,10 +351,89 @@ export interface SchedulerJob {
   job_id: string;
   trigger: string;
   next_run_at: string | null;
+  category: string;
   description: string;
   updated_at: string;
 }
 
 export interface SchedulerJobsResponse {
   jobs: SchedulerJob[];
+}
+
+// ── File scans (per-upload AV scan observability) ─────────────────
+
+export interface ScanHealth {
+  enabled: boolean;
+  host: string | null;
+  port: number | null;
+  max_concurrent: number;
+  rate_per_sec: number;
+  timeout_sec: number;
+  scan_types: string[] | 'all';
+}
+
+export interface ScanTopSignature {
+  signature: string;
+  count: number;
+}
+
+export interface ScanStats {
+  total: number;
+  clean: number;
+  infected: number;
+  unavailable: number;
+  latency_p50: number;
+  latency_p95: number;
+  latency_max: number;
+  top_signatures: ScanTopSignature[];
+  window_days: number;
+}
+
+export interface ScanEvent {
+  id: number;
+  account_id: number | null;
+  user_id: number | null;
+  surface: string;
+  file_size: number | null;
+  content_type: string | null;
+  verdict: 'clean' | 'infected' | 'unavailable';
+  signature: string | null;
+  latency_ms: number | null;
+  created_at: string;
+}
+
+export interface RescanJob {
+  id: number;
+  started_at: string;
+  completed_at: string | null;
+  status: 'running' | 'completed' | 'cancelled' | 'failed';
+  total_files: number;
+  scanned_files: number;
+  clean_count: number;
+  infected_count: number;
+  error_count: number;
+  started_by: number | null;
+  cancelled_by: number | null;
+  last_error: string | null;
+}
+
+export interface QuarantinedArticle {
+  id: number;
+  account_id: number;
+  title: string;
+  category: string;
+  visibility: string;
+  quarantined_at: string;
+  quarantined_reason: string | null;
+  created_by: number | null;
+  creator_name: string | null;
+}
+
+export interface ScansOverview {
+  health: ScanHealth;
+  stats: ScanStats;
+  recent: ScanEvent[];
+  active_job: RescanJob | null;
+  recent_jobs: RescanJob[];
+  quarantine: QuarantinedArticle[];
 }

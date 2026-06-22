@@ -147,6 +147,19 @@ async def run_all(conn) -> None:
     # tell apart inaccurate-data dislikes from off-topic dislikes
     # from hallucination dislikes.
     await migrate_ai_usage_feedback_reason(conn)
+    # Append-only log of every per-upload virus scan attempt — feeds
+    # the operator console's File Scans page (count, latency p50/p95,
+    # signatures hit, daemon outages).  90-day retention via the
+    # registry.  No-op when CLAMAV_HOST is unset (the scanner is the
+    # only writer, so an unconfigured env produces zero rows).
+    await migrate_create_scan_log(conn)
+    # Quarantine columns + ad-hoc rescan job tracker (Tier 3).  When
+    # the operator runs a batch rescan from the System Dashboard, the
+    # job iterates stored files, scans each against the current
+    # signature DB, and marks any infected articles as quarantined
+    # (hidden from readers, restorable / deletable by the operator).
+    await migrate_kb_quarantine_columns(conn)
+    await migrate_create_scan_rescan_jobs(conn)
 
 
 async def migrate_ai_chat_history(conn) -> None:
@@ -2763,6 +2776,141 @@ async def migrate_ai_usage_prompt_category(conn) -> None:
         await conn.commit()
     except Exception as e:
         logger.debug("ai_usage prompt_category ADD skipped (%s)", e)
+
+
+async def migrate_create_scan_log(conn) -> None:
+    """Append-only log of every per-upload virus scan (KB attachments,
+    driver application docs, future intake surfaces).
+
+    Recorded for every scan attempt — clean, infected, AND scan-failure
+    (clamd unreachable / timeout) — so the operator console can show:
+      - 24h scan health (count, p50/p95 latency, % blocked)
+      - last 50 events for quick triage
+      - top signatures hit (which malware is showing up in uploads)
+      - daemon-availability outages (av_scan_unavailable events)
+
+    Schema rationale:
+      ``account_id``       — partition by tenant; nullable for system-
+                              level events (e.g. daemon health probe)
+      ``user_id``          — internal PK from users table; nullable for
+                              anonymous public-intake scans (driver
+                              application form)
+      ``surface``          — 'kb' | 'driver_app' | 'maintenance' — so
+                              an operator can filter by where uploads
+                              are coming from
+      ``file_size``        — bytes; useful for "are big uploads slower?"
+      ``content_type``     — declared MIME (post magic-byte verify)
+      ``verdict``          — 'clean' | 'infected' | 'unavailable'
+      ``signature``        — clamd's signature name for infected hits
+                              (NULL for clean / unavailable)
+      ``latency_ms``       — scan wall-clock; NULL when unavailable
+      ``created_at``       — UTC timestamp for the dashboard's recent-
+                              activity table
+
+    Indexed by ``(created_at DESC)`` for the recent-activity tail-read
+    and by ``(account_id, created_at)`` for per-account drill-downs.
+
+    Retention: 90 days, wired via capabilities/retention/registry.py
+    target ``platform.scan_log``.  Old rows pruned by the nightly
+    ``data_retention`` job (see Retention page on the operator console).
+    """
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS scan_log (
+                id           BIGSERIAL PRIMARY KEY,
+                account_id   INTEGER,
+                user_id      INTEGER,
+                surface      TEXT NOT NULL DEFAULT 'kb',
+                file_size    INTEGER,
+                content_type TEXT,
+                verdict      TEXT NOT NULL,
+                signature    TEXT,
+                latency_ms   INTEGER,
+                created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_scan_log_created_at "
+            "ON scan_log(created_at DESC)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_scan_log_account_created "
+            "ON scan_log(account_id, created_at DESC)"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.debug("scan_log table setup skipped (%s)", e)
+
+
+async def migrate_kb_quarantine_columns(conn) -> None:
+    """Add quarantine columns to ``knowledge_base`` for Tier 3 rescan.
+
+    When the ad-hoc rescan job (``infra/scan_rescan.py``) finds an
+    article whose stored file is now flagged by ClamAV, it sets
+    ``quarantined_at`` + ``quarantined_reason`` instead of deleting
+    the file outright.  Quarantined articles are hidden from readers
+    by the existing visibility check; the operator restores or
+    deletes them via the System Dashboard's File Scans page.
+
+    Both columns nullable; existing rows stay valid.  No index needed
+    — the quarantine list query filters on a sparse predicate that
+    Postgres handles via the existing per-account scan.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE knowledge_base "
+            "ADD COLUMN IF NOT EXISTS quarantined_at TIMESTAMPTZ"
+        )
+        await conn.execute(
+            "ALTER TABLE knowledge_base "
+            "ADD COLUMN IF NOT EXISTS quarantined_reason TEXT"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.debug("kb quarantine columns ADD skipped (%s)", e)
+
+
+async def migrate_create_scan_rescan_jobs(conn) -> None:
+    """Track every ad-hoc rescan run for the System Dashboard.
+
+    One row per rescan job — captures status, progress, who started
+    it, who cancelled (if applicable), and the rollup counts.  Used
+    by the dashboard's "Run rescan" card to show live progress and
+    the recent-jobs history.
+
+    Status values:
+      ``running``    — currently iterating files
+      ``completed``  — finished naturally
+      ``cancelled``  — operator hit the cancel button
+      ``failed``     — unrecoverable error (logged)
+
+    Single-job-at-a-time discipline is enforced at the endpoint layer:
+    POST /scans/rescan refuses when status='running' already exists.
+    """
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS scan_rescan_jobs (
+                id              BIGSERIAL PRIMARY KEY,
+                started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                completed_at    TIMESTAMPTZ,
+                status          TEXT NOT NULL DEFAULT 'running',
+                total_files     INTEGER NOT NULL DEFAULT 0,
+                scanned_files   INTEGER NOT NULL DEFAULT 0,
+                clean_count     INTEGER NOT NULL DEFAULT 0,
+                infected_count  INTEGER NOT NULL DEFAULT 0,
+                error_count     INTEGER NOT NULL DEFAULT 0,
+                started_by      INTEGER,
+                cancelled_by    INTEGER,
+                last_error      TEXT
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_scan_rescan_jobs_status "
+            "ON scan_rescan_jobs(status, started_at DESC)"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.debug("scan_rescan_jobs table setup skipped (%s)", e)
 
 
 async def migrate_ai_usage_routing_columns(conn) -> None:

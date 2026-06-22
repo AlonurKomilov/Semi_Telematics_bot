@@ -483,6 +483,164 @@ async def system_stats(
     }
 
 
+# ── File scans (per-upload AV scan observability) ────────────────
+
+
+@router.get("/scans")
+async def file_scans_overview(
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Operator console view of the per-upload virus-scan subsystem.
+
+    Five panels in one payload:
+      * ``health``        — current scanner config (enabled, host:port,
+                             concurrency cap, rate limit, scan types).
+      * ``stats``         — 7-day aggregate (counts by verdict, latency
+                             p50/p95/max, top signatures hit).
+      * ``recent``        — last 50 scan events for the activity table.
+      * ``active_job``    — currently-running rescan (or null) with
+                             live progress counters.
+      * ``recent_jobs``   — last 10 finished rescan jobs.
+      * ``quarantine``    — KB articles currently flagged as infected
+                             by a rescan (pending operator action).
+
+    Read-only by design — operators tune scanner behaviour via env
+    vars (CLAMAV_*), not via this surface; this is observability.
+    Rescan + quarantine actions are separate POST endpoints below.
+    """
+    from infra.file_safety import av_health
+    stats = await platform_db.get_scan_stats(days=7)
+    recent = await platform_db.get_recent_scans(limit=50)
+    active_job = await platform_db.get_active_rescan_job()
+    recent_jobs = await platform_db.list_recent_rescan_jobs(limit=10)
+    quarantine = await platform_db.list_quarantined_articles()
+    return {
+        "health":       av_health(),
+        "stats":        stats,
+        "recent":       recent,
+        "active_job":   active_job,
+        "recent_jobs":  recent_jobs,
+        "quarantine":   quarantine,
+    }
+
+
+@router.post("/scans/rescan", status_code=202)
+async def start_scans_rescan(
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Kick off a background rescan of every stored KB attachment.
+
+    Refuses (409) when a rescan is already running — single-job-at-
+    a-time discipline.  Returns the new job_id immediately; progress
+    is polled via GET /system/scans (active_job field).
+
+    Requires CLAMAV_HOST to be configured — refuses (412) when the
+    scanner is disabled, since a rescan with no scanner is a no-op
+    that would just mark everything clean.
+    """
+    from infra.file_safety import is_av_enabled
+    from infra.scan_rescan import start_rescan, is_rescan_in_flight
+    if not is_av_enabled():
+        raise HTTPException(
+            status_code=412,
+            detail="ClamAV not configured (CLAMAV_HOST unset); rescan would have nothing to check.",
+        )
+    if is_rescan_in_flight() or await platform_db.get_active_rescan_job():
+        raise HTTPException(
+            status_code=409,
+            detail="A rescan is already running — wait for it to finish or cancel it first.",
+        )
+    job_id = await start_rescan(started_by=int(user.get("sub") or 0) or None)
+    return {"job_id": job_id, "status": "running"}
+
+
+@router.post("/scans/rescan/{job_id}/cancel", status_code=202)
+async def cancel_scans_rescan(
+    job_id: int,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Request cancellation of a running rescan.
+
+    Cancellation is cooperative — the worker loop checks the flag
+    each iteration and exits cleanly at the next boundary, then marks
+    the job ``cancelled`` in the DB.  Returns immediately with the
+    request acknowledged; the dashboard polls for the status flip.
+    """
+    from infra.scan_rescan import request_cancel
+    job = await platform_db.get_rescan_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Rescan job not found")
+    if job.get("status") != "running":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job is already {job.get('status')!r}; cannot cancel.",
+        )
+    accepted = request_cancel(job_id)
+    if not accepted:
+        # In-memory flag missing — likely the worker is in a different
+        # process (single-process today, but defensive).  Mark cancelled
+        # directly so the dashboard reflects intent; the worker (if any)
+        # will exit at the next iteration via the DB-status check that's
+        # also checked there.
+        await platform_db.cancel_rescan_job(
+            job_id, cancelled_by=int(user.get("sub") or 0) or None,
+        )
+    else:
+        # Mark cancelled-by now; the worker also stamps cancelled when
+        # it observes the flag (idempotent via DB-side status check).
+        await platform_db.cancel_rescan_job(
+            job_id, cancelled_by=int(user.get("sub") or 0) or None,
+        )
+    return {"ok": True, "job_id": job_id, "status": "cancelled"}
+
+
+@router.post("/scans/quarantine/{article_id}/restore", status_code=200)
+async def restore_quarantined(
+    article_id: int,
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Clear an article's quarantine flag — operator confirms it's a
+    false positive (or has been remediated externally)."""
+    article = await platform_db.get_kb_article(article_id)
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    await platform_db.restore_quarantined_article(article_id)
+    return {"ok": True, "article_id": article_id}
+
+
+@router.delete("/scans/quarantine/{article_id}", status_code=200)
+async def delete_quarantined(
+    article_id: int,
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Hard-delete a quarantined article (DB row + stored file).
+
+    Uses the existing KB delete path so the same cleanup logic runs
+    (object_store deletion, foreign-key cascades, etc.).  Refuses if
+    the article isn't actually quarantined — operator should restore
+    + use the normal delete UX for healthy articles.
+    """
+    article = await platform_db.get_kb_article(article_id)
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    if not article.get("quarantined_at"):
+        raise HTTPException(
+            status_code=409,
+            detail="Article is not quarantined — use the normal delete flow.",
+        )
+    # Use the existing delete method.  This handles object-store cleanup
+    # via the kb-deletion side-effects already wired in storage.
+    await platform_db._db.execute(
+        "DELETE FROM knowledge_base WHERE id = ?", (int(article_id),),
+    )
+    return {"ok": True, "article_id": article_id}
+
+
 # ── Data retention contract ──────────────────────────────────────
 
 

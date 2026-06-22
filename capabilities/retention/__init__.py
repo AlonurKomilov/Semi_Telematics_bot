@@ -25,6 +25,7 @@ _CONTRIBUTORS = (
     "features.events.retention",          # owns safety_events
     "capabilities.scorecards.retention",  # owns scorecards.score_history
     "capabilities.email.retention",       # owns email.delivery_events
+    "infra.scan_retention",               # owns platform.scan_log (AV scan audit)
 )
 
 _discovered = False
