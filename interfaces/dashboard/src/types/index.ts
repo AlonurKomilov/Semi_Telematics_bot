@@ -33,7 +33,6 @@ export interface Permissions {
   can_manage_billing: boolean;
   can_invite: boolean;
   can_efficiency: boolean;
-  can_rolling_stopped: boolean;
   can_digest: boolean;
   can_manage_poi_layers: boolean;
   can_payroll_admin: boolean;

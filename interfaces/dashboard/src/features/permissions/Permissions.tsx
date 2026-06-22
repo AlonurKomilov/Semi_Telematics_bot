@@ -82,11 +82,10 @@ const PERM_GROUPS: PermGroup[] = [
       // Accounting (mirrors how the per-vehicle reports moved under Vehicles).
       // Scheduled Reports (the digest subscription) is part of the always-on
       // Reports service — derived, so it has no row.
-      // The AI assistant itself is always on (a derived service — see the
-      // System Services panel).  What stays grantable here are the specific
-      // AI DATA TOOLS a role may reach, e.g. live engine-state lookup.
-      { header: 'AI', description: 'the assistant is always on — these gate specific AI data tools' },
-      { key: 'can_rolling_stopped', label: 'Engine-state Lookup', indented: true, description: 'AI-only: "what\'s rolling / idling / off right now?"' },
+      // The AI assistant has NO matrix rows either: it's fully always-on, and
+      // each of its tools answers only from data the role can already see — so
+      // a tool's access IS its feature's access (e.g. the engine-state lookup
+      // follows Vehicles, like the fleet-list tools).  Nothing to toggle here.
       // Settings is ONE System-tier feature whose components each carry
       // their own permission — account administration can be held by one
       // role or delegated piecemeal (e.g. HR gets Invites without Users).
@@ -571,7 +570,7 @@ export default function Permissions() {
                 <Bot size={16} className="text-muted-foreground mt-0.5 shrink-0" />
                 <div>
                   <div className="text-sm font-medium text-foreground">AI Assistant</div>
-                  <div className="text-2xs text-muted-foreground">Available to every role. Each AI tool still answers only from data the role can already see; specific AI data tools (e.g. Engine-state Lookup) stay grantable above.</div>
+                  <div className="text-2xs text-muted-foreground">Available to every role. Each AI tool answers only from data the role can already see — a tool&apos;s access is just its feature&apos;s access (e.g. the engine-state lookup follows Vehicles), so there&apos;s nothing separate to grant.</div>
                 </div>
               </li>
               <li className="flex items-start gap-2.5">

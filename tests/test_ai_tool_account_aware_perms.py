@@ -116,7 +116,7 @@ async def test_owner_preview_as_fleet_gated_as_fleet(seeded_db, monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("role,perm,tool", [
-    ("dispatcher", "can_rolling_stopped",      "get_rolling_stopped"),
+    ("dispatcher", "can_vehicle_all",          "get_rolling_stopped"),
     ("accounting", "can_fuel_cost",            "get_fuel_cost_summary"),
     ("hr",         "can_manage_applications",  "get_driver_applications"),
     ("safety",     "can_events_all",           "get_events_summary"),

@@ -102,9 +102,6 @@ class FeatureSet:
     can_manage_storage: bool = False       # storage backend + quota
     can_manage_work_hours: bool = False    # working-hours schedules
 
-    # Dispatcher extras
-    can_rolling_stopped: bool = False   # rolling/stopped notifications
-
     # ── New features ──────────────────────────────────────────────
     can_geofence_all: bool = False      # geofence alerts (all trucks)
     can_geofence_vehicle: bool = False      # geofence alerts (assigned vehicle)
@@ -166,7 +163,6 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_companies=True, can_manage_vehicles=True, can_manage_account=True,
         can_manage_permissions=True, can_manage_integrations=True,
         can_manage_storage=True, can_manage_work_hours=True,
-        can_rolling_stopped=True,
         can_geofence_all=True, can_geofence_vehicle=True,
         can_parking_all=True, can_parking_vehicle=True,
         can_maintenance_all=True, can_maintenance_vehicle=True,
@@ -195,7 +191,6 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_companies=False, can_manage_vehicles=True, can_manage_account=False,
         can_manage_permissions=False, can_manage_integrations=False,
         can_manage_storage=False, can_manage_work_hours=False,
-        can_rolling_stopped=True,
         can_geofence_all=True, can_geofence_vehicle=True,
         can_maintenance_all=True, can_maintenance_vehicle=True,
         can_work_orders_all=True, can_work_orders_vehicle=True,
@@ -221,7 +216,6 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_vehicle_all=True, can_vehicle_vehicle=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_vehicles=True, can_manage_account=False,
-        can_rolling_stopped=False,
         can_geofence_all=True, can_geofence_vehicle=True,
         can_maintenance_all=True, can_maintenance_vehicle=True,
         can_work_orders_all=True, can_work_orders_vehicle=True,
@@ -247,7 +241,6 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_vehicle_all=True, can_vehicle_vehicle=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
-        can_rolling_stopped=False,
         can_geofence_all=True, can_geofence_vehicle=True,
         can_maintenance_all=True, can_maintenance_vehicle=True,
         can_work_orders_all=True, can_work_orders_vehicle=True,
@@ -277,7 +270,6 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # alerts show, not whether the inbox exists.
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
-        can_rolling_stopped=True,
         can_geofence_all=True, can_geofence_vehicle=True,
         can_maintenance_all=False, can_maintenance_vehicle=False,
         can_scorecard_all=True, can_scorecard_vehicle=True,
@@ -334,7 +326,6 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_vehicle_all=False, can_vehicle_vehicle=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
-        can_rolling_stopped=False,
         can_geofence_all=False, can_geofence_vehicle=True,
         can_maintenance_all=False, can_maintenance_vehicle=True,
         can_work_orders_all=False, can_work_orders_vehicle=True,
@@ -368,7 +359,6 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_vehicle_all=False, can_vehicle_vehicle=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
-        can_rolling_stopped=False,
         can_geofence_all=False, can_geofence_vehicle=True,
         can_maintenance_all=False, can_maintenance_vehicle=True,
         can_work_orders_all=False, can_work_orders_vehicle=True,
@@ -800,7 +790,6 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_manage_integrations": "telematics integrations",
     "can_manage_storage": "storage backend & quota",
     "can_manage_work_hours": "working-hours schedules",
-    "can_rolling_stopped": "rolling/stopped status",
     "can_geofence_all": "geofence alerts (all)",
     "can_geofence_vehicle": "geofence alerts (assigned vehicle)",
     "can_digest": "auto reports",
@@ -1072,7 +1061,7 @@ TOOL_PERMISSIONS: dict[str, list[str] | None] = {
     "get_fuel_cost_summary":    ["can_fuel_cost"],                           # owner/admin/fleet
     "check_vehicle_camera":     ["can_vehicle_all"],                           # all except driver
     "get_driver_scorecard":     ["can_scorecard_all", "can_scorecard_vehicle"],  # all except dispatcher
-    "get_rolling_stopped":      ["can_rolling_stopped"],                     # owner/admin/dispatcher
+    "get_rolling_stopped":      ["can_vehicle_all"],                       # all except driver — account-wide fleet engine-state, follows Vehicles access like search_vehicles/get_parked_vehicles
     "get_vehicle_odometer":     ["can_vehicle_all", "can_vehicle_vehicle"],          # all roles
     "get_drivers_list":         ["can_vehicle_all"],                           # all except driver
     "search_vehicles":          ["can_vehicle_all"],                           # all except driver
