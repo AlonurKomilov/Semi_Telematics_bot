@@ -20,6 +20,7 @@ from capabilities.permissions.roles import (
     get_account_permissions,
     invalidate_permissions_cache,
     OWNER_PROTECTED_PERMS,
+    DERIVED_SERVICE_FIELDS,
 )
 
 logger = logging.getLogger(__name__)
@@ -206,6 +207,17 @@ async def update_role_perms(
     before = asdict(current)
     merged = dict(before)
     merged.update(body.permissions)
+
+    # Alerts inbox + AI chat are DERIVED service surfaces (see
+    # derive_service_perms): access follows the role's feature permissions,
+    # never a stored toggle.  Strip them from both the persisted row and the
+    # diff base so the override row stays honest and the resolver's derivation
+    # remains the single source of truth.  (The current matrix still sends
+    # these keys until the rows are removed in the frontend pass; accepting
+    # and dropping them keeps that save working without a 422.)
+    for _dk in DERIVED_SERVICE_FIELDS:
+        merged.pop(_dk, None)
+        before.pop(_dk, None)
 
     # Owner lockout protection — the owner can never lose the account-
     # control permissions that are the only way back from a

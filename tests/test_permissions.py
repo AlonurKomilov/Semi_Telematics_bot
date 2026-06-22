@@ -62,11 +62,22 @@ class TestRolePermissions:
     # ── Owner: full access ────────────────────────────────────────
 
     def test_owner_has_all_permissions(self):
+        from capabilities.permissions.roles import DERIVED_SERVICE_FIELDS
         perms = get_permissions(Role.OWNER)
+        # The derived service surfaces (Alerts inbox, AI assistant) are not
+        # plain "all True" flags — the inbox scope is mutually exclusive, so
+        # the owner gets the fleet-wide inbox (can_alerts_all) and NOT the
+        # redundant own-vehicle flag.  Assert those explicitly; blanket-check
+        # every other field stays True for the owner.
         for field_name in FeatureSet.__dataclass_fields__:
+            if field_name in DERIVED_SERVICE_FIELDS:
+                continue
             assert getattr(perms, field_name) is True, (
                 f"Owner should have {field_name}=True"
             )
+        assert perms.can_alerts_all is True        # fleet-wide Alerts inbox
+        assert perms.can_alerts_vehicle is False   # mutually exclusive with _all
+        assert perms.can_ai_chat is True           # always-on AI service
 
     # ── Admin: no company management ──────────────────────────────
 
@@ -280,8 +291,18 @@ class TestPermSsotDriftDetection:
         assert block, "Could not locate PERM_GROUPS in Permissions.tsx"
         groups_src = block.group(1)
 
+        from capabilities.permissions.roles import DERIVED_SERVICE_FIELDS
+
         flag_names = [f.name for f in FeatureSet.__dataclass_fields__.values()]
-        missing = [n for n in flag_names if f"'{n}'" not in groups_src and f'"{n}"' not in groups_src]
+        # The derived service surfaces (Alerts inbox, AI assistant) are
+        # intentionally NOT matrix rows — they're always-on system services
+        # present for every role, shown read-only in the "System Services"
+        # panel.  See derive_service_perms; they must NOT be customizable.
+        missing = [
+            n for n in flag_names
+            if n not in DERIVED_SERVICE_FIELDS
+            and f"'{n}'" not in groups_src and f'"{n}"' not in groups_src
+        ]
 
         assert not missing, (
             f"FeatureSet flags missing from dashboard's PERM_GROUPS: {sorted(missing)}\n"

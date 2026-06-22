@@ -71,18 +71,22 @@ class FeatureSet:
     can_vehicle_all: bool = False      # /vehicle <any>
     can_vehicle_vehicle: bool = False      # /vehicle <own> (driver)
 
-    # Alerts
-    can_alerts_all: bool = False     # new fault alerts (all trucks)
-    can_alerts_vehicle: bool = False     # alerts for assigned vehicle only
+    # Alerts inbox — DERIVED, never stored/toggled.  Every role HAS the inbox
+    # (it's a system service); derive_service_perms() only sets the SCOPE from
+    # the role's vehicle scope.  The field defaults below are placeholders the
+    # resolver replaces.
+    can_alerts_all: bool = False     # fleet-wide Alerts inbox  (derived)
+    can_alerts_vehicle: bool = False     # own-vehicle Alerts inbox (derived)
     # Parking — own feature (NOT part of Alerts).  Defaults mirror the old
     # alerts/vehicle gate: everyone sees all, drivers see their assigned vehicle.
     can_parking_all: bool = True     # unsafe-parking events (all trucks)
     can_parking_vehicle: bool = False    # unsafe-parking events (assigned vehicle)
     # Cameras — own feature (NOT part of Faults).  Defaults mirror can_faults.
     can_cameras: bool = False        # dashcam footage viewer
-    # AI Chat — own feature (NOT part of Faults).  Defaults on for everyone
-    # (the old gate was faults-or-vehicle, which every role passed).
-    can_ai_chat: bool = True         # AI assistant chat + summary
+    # AI assistant — DERIVED, never stored/toggled.  derive_service_perms()
+    # forces this True (always-on service); per-tool gating lives in
+    # TOOL_PERMISSIONS.  The default below is a placeholder.
+    can_ai_chat: bool = True         # AI assistant chat + summary (derived)
 
     # Management
     can_invite: bool = False         # /invite
@@ -104,7 +108,7 @@ class FeatureSet:
     # ── New features ──────────────────────────────────────────────
     can_geofence_all: bool = False      # geofence alerts (all trucks)
     can_geofence_vehicle: bool = False      # geofence alerts (assigned vehicle)
-    can_digest: bool = False            # auto reports subscription
+    can_digest: bool = True             # scheduled-report subscription (DERIVED — always on; see derive_service_perms)
     can_maintenance_all: bool = False   # maintenance scheduler (all trucks)
     can_maintenance_vehicle: bool = False   # maintenance scheduler (assigned vehicle)
     can_work_orders_all: bool = False   # shop-invoice work orders (all trucks)
@@ -141,13 +145,13 @@ class FeatureSet:
     # lets a driver complete + submit their own assigned vehicle.
     can_inspections_all: bool = False
     can_inspections_vehicle: bool = False
-    # Recruiting — driver-application intake.  ``can_recruit_applicants``
+    # Recruiting — driver-application intake.  ``can_manage_applications``
     # gates the Applications dashboard + recruiting-link management;
     # ``can_convert_to_driver`` is the narrower right to turn an approved
     # applicant into a driver/invite WITHOUT the broad ``can_invite``
     # (so a recruiter can hire without being granted full user-invite
     # power).  The public applicant form needs neither — it's unauthed.
-    can_recruit_applicants: bool = False
+    can_manage_applications: bool = False
     can_convert_to_driver: bool = False
 
 
@@ -158,7 +162,6 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_faults=True, can_fuel=True, can_cameras=True,
         can_efficiency=True, can_health=True,
         can_vehicle_all=True, can_vehicle_vehicle=True,
-        can_alerts_all=True, can_alerts_vehicle=True,
         can_invite=True, can_manage_users=True,
         can_manage_companies=True, can_manage_vehicles=True, can_manage_account=True,
         can_manage_permissions=True, can_manage_integrations=True,
@@ -166,7 +169,6 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_rolling_stopped=True,
         can_geofence_all=True, can_geofence_vehicle=True,
         can_parking_all=True, can_parking_vehicle=True,
-        can_digest=True,
         can_maintenance_all=True, can_maintenance_vehicle=True,
         can_work_orders_all=True, can_work_orders_vehicle=True,
         can_cost_reports=True,
@@ -183,20 +185,18 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_coaching_admin=True, can_coaching_view_own=True,
         can_manage_driver_docs=True, can_driver_docs_own=True,
         can_inspections_all=True, can_inspections_vehicle=True,
-        can_recruit_applicants=True, can_convert_to_driver=True,
+        can_manage_applications=True, can_convert_to_driver=True,
     ),
     Role.ADMIN: FeatureSet(
         can_faults=True, can_fuel=True, can_cameras=True,
         can_efficiency=True, can_health=True,
         can_vehicle_all=True, can_vehicle_vehicle=True,
-        can_alerts_all=True, can_alerts_vehicle=True,
         can_invite=True, can_manage_users=True,
         can_manage_companies=False, can_manage_vehicles=True, can_manage_account=False,
         can_manage_permissions=False, can_manage_integrations=False,
         can_manage_storage=False, can_manage_work_hours=False,
         can_rolling_stopped=True,
         can_geofence_all=True, can_geofence_vehicle=True,
-        can_digest=True,
         can_maintenance_all=True, can_maintenance_vehicle=True,
         can_work_orders_all=True, can_work_orders_vehicle=True,
         can_cost_reports=True,
@@ -213,18 +213,16 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_coaching_admin=True, can_coaching_view_own=True,
         can_manage_driver_docs=True, can_driver_docs_own=True,
         can_inspections_all=True, can_inspections_vehicle=True,
-        can_recruit_applicants=True, can_convert_to_driver=True,
+        can_manage_applications=True, can_convert_to_driver=True,
     ),
     Role.FLEET: FeatureSet(
         can_faults=True, can_fuel=True, can_cameras=True,
         can_efficiency=True, can_health=True,
         can_vehicle_all=True, can_vehicle_vehicle=True,
-        can_alerts_all=True, can_alerts_vehicle=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_vehicles=True, can_manage_account=False,
         can_rolling_stopped=False,
         can_geofence_all=True, can_geofence_vehicle=True,
-        can_digest=True,
         can_maintenance_all=True, can_maintenance_vehicle=True,
         can_work_orders_all=True, can_work_orders_vehicle=True,
         can_cost_reports=True,
@@ -247,12 +245,10 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_faults=True, can_fuel=False, can_cameras=True,
         can_efficiency=False, can_health=True,
         can_vehicle_all=True, can_vehicle_vehicle=True,
-        can_alerts_all=True, can_alerts_vehicle=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
         can_rolling_stopped=False,
         can_geofence_all=True, can_geofence_vehicle=True,
-        can_digest=True,
         can_maintenance_all=True, can_maintenance_vehicle=True,
         can_work_orders_all=True, can_work_orders_vehicle=True,
         can_scorecard_all=True, can_scorecard_vehicle=True,
@@ -275,15 +271,14 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_faults=False, can_fuel=True,
         can_efficiency=False, can_health=False,
         can_vehicle_all=True, can_vehicle_vehicle=True,
-        # Dispatchers need to see geofence/parking alerts and safety events
-        # to react to deviations from the route plan. Without these they
-        # were effectively blind to anything happening to a truck mid-shift.
-        can_alerts_all=True, can_alerts_vehicle=True,
+        # Dispatchers need the geofence and safety-event features (granted
+        # below) to react to deviations mid-shift.  Those alerts surface in the
+        # always-on Alerts inbox every role has — the features decide WHICH
+        # alerts show, not whether the inbox exists.
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
         can_rolling_stopped=True,
         can_geofence_all=True, can_geofence_vehicle=True,
-        can_digest=True,
         can_maintenance_all=False, can_maintenance_vehicle=False,
         can_scorecard_all=True, can_scorecard_vehicle=True,
         can_location_map=True, can_location_vehicle=True,
@@ -309,13 +304,10 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # not edit fleet ops:
         can_vehicle_all=True,                  # Which vehicle a driver is on
         can_location_map=True,                 # Where drivers are right now
-        can_alerts_all=True,                   # Driver-related alerts
         can_events_all=True,                   # Safety events drive coaching
         can_scorecard_all=True,                # Driver behaviour insight
         can_risk_report_all=True,              # Personnel risk reporting
         can_geofence_all=True,                 # See geofence context for incidents
-        # Subscriptions / digest:
-        can_digest=True,
     ),
     Role.ACCOUNTING: FeatureSet(
         # Accounting persona — money management.  Focus: billing,
@@ -335,19 +327,15 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # Read-only context — accounting needs to see WHICH assets
         # generate WHICH costs:
         can_vehicle_all=True,                  # Vehicle list for asset accounting
-        # Subscriptions / digest:
-        can_digest=True,
     ),
     Role.DRIVER: FeatureSet(
         can_faults=False, can_fuel=False,
         can_efficiency=False, can_health=False,
         can_vehicle_all=False, can_vehicle_vehicle=True,
-        can_alerts_all=False, can_alerts_vehicle=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
         can_rolling_stopped=False,
         can_geofence_all=False, can_geofence_vehicle=True,
-        can_digest=True,
         can_maintenance_all=False, can_maintenance_vehicle=True,
         can_work_orders_all=False, can_work_orders_vehicle=True,
         can_parking_all=False, can_parking_vehicle=True,  # driver: assigned vehicle only
@@ -368,7 +356,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
     # RECRUITER — driver acquisition / onboarding.  Operationally a
     # driver-equivalent baseline (no fleet ops / costs / admin) PLUS the
     # two recruiting rights granted by default so the role is USABLE out of
-    # the box: can_recruit_applicants (the applications surface) and
+    # the box: can_manage_applications (the applications surface) and
     # can_convert_to_driver (hire → driver invite).  Owners can still
     # tighten or widen any flag per account from the Permissions matrix
     # (e.g. revoke can_convert_to_driver for a screening-only recruiter).
@@ -378,12 +366,10 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_faults=False, can_fuel=False,
         can_efficiency=False, can_health=False,
         can_vehicle_all=False, can_vehicle_vehicle=True,
-        can_alerts_all=False, can_alerts_vehicle=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
         can_rolling_stopped=False,
         can_geofence_all=False, can_geofence_vehicle=True,
-        can_digest=True,
         can_maintenance_all=False, can_maintenance_vehicle=True,
         can_work_orders_all=False, can_work_orders_vehicle=True,
         can_parking_all=False, can_parking_vehicle=True,
@@ -402,7 +388,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # default so the role is usable out of the box.  Owners can
         # narrow to screening-only by revoking can_convert_to_driver in
         # the Permissions matrix.
-        can_recruit_applicants=True, can_convert_to_driver=True,
+        can_manage_applications=True, can_convert_to_driver=True,
     ),
 }
 
@@ -433,6 +419,72 @@ def _protect_owner(role: Role, fs: FeatureSet) -> FeatureSet:
     return replace(fs, **{k: True for k in OWNER_PROTECTED_PERMS})
 
 
+# ─── Derived service surfaces (Alerts, AI assistant, Reports) ─────
+# Alerts, the AI assistant, and the Reports hub are always-on infrastructure
+# SERVICES, present for EVERY role — never owner-toggled features.  The owner
+# can only narrow what FLOWS THROUGH a service by disabling features (disable
+# Faults → no faults alerts in the inbox / no Faults report tab; the per-item
+# gating lives in capabilities/alerting/relevance.py for alert *types*,
+# TOOL_PERMISSIONS for AI *tools*, and the per-report-type flags for the
+# Reports tabs), but the service surface itself — the inbox, the assistant,
+# the Reports page + its scheduled-report subscription — is always there.  So
+# these flags are DERIVED, never stored or shown as a matrix row; they appear
+# read-only in a "System Services" panel instead.
+
+# Service-surface flags that are DERIVED, never persisted or owner-toggled.
+# The Permissions matrix must not offer these as editable rows (they live in a
+# read-only "System Services" panel instead) and the save endpoint strips them
+# from the stored override row.  Note: the report TYPES (can_risk_report_*,
+# can_cost_reports) are NOT here — they're genuine per-role features that gate
+# individual Reports tabs and live in the matrix under their owning department.
+DERIVED_SERVICE_FIELDS: frozenset[str] = frozenset({
+    "can_alerts_all", "can_alerts_vehicle", "can_ai_chat", "can_digest",
+})
+
+
+def derive_service_perms(fs: FeatureSet) -> FeatureSet:
+    """Compute the always-on service permissions for any role.
+
+    Returns a copy of *fs* with the derived service-surface flags overwritten:
+
+      * ``can_ai_chat`` — always True; the AI assistant is available to every
+        role (its per-tool gating lives in ``TOOL_PERMISSIONS``).
+      * ``can_digest`` — always True; every role can manage its scheduled-
+        report subscription.  The Reports hub is a system service; WHICH
+        report tabs/digests a role actually sees follows its per-report-type
+        feature flags (can_risk_report_*, can_cost_reports, etc.).
+      * Alerts inbox — every role HAS the inbox; it is a system service, not a
+        feature, so it is never withheld.  Only the *scope* is derived, from
+        the role's vehicle scope: account-wide visibility (``can_vehicle_all``)
+        → fleet-wide inbox (``can_alerts_all``); otherwise the own-vehicle
+        inbox (``can_alerts_vehicle``).  The two scopes are mutually exclusive,
+        and ``require_permission_any(can_alerts_all, can_alerts_vehicle)``
+        matches ``_all`` first, so a fleet-wide role never needs the vehicle
+        flag.  WHAT the inbox shows is gated per-feature downstream
+        (relevance.py); a role with no alert-bearing features simply sees an
+        empty inbox — the surface is still there.
+
+    Applied as the LAST step of every resolver (after module masking).  Note
+    the inbox scope tracks vehicle scope, so even disabling the Fleet/Vehicles
+    module (which masks ``can_vehicle_all``) only NARROWS the inbox to
+    own-vehicle scope — it never removes the inbox.
+
+    The inbox is a *vehicle*-alerts surface, so it requires SOME vehicle
+    visibility — every real role has either account-wide or own-vehicle scope,
+    so every real role gets it.  Only a malformed/unknown role with no vehicle
+    scope at all (the ``ROLE_PERMISSIONS.get(role, FeatureSet())`` fallback)
+    gets no inbox, preserving the "unknown role grants nothing" contract.
+    """
+    from dataclasses import replace
+    has_vehicle = bool(fs.can_vehicle_all or fs.can_vehicle_vehicle)
+    return replace(
+        fs,
+        can_ai_chat=True, can_digest=True,
+        can_alerts_all=bool(fs.can_vehicle_all),
+        can_alerts_vehicle=has_vehicle and not bool(fs.can_vehicle_all),
+    )
+
+
 def get_permissions(role: Role) -> FeatureSet:
     """Get the hardcoded ROLE-DEFAULT permission set (sync, no DB).
 
@@ -450,8 +502,13 @@ def get_permissions(role: Role) -> FeatureSet:
     This sync default is appropriate ONLY for account-agnostic surfaces
     (e.g. building a static menu skeleton) and as an explicit fallback when
     no account_id is available.
+
+    The derived service surfaces (Alerts inbox, AI assistant) are computed
+    from the feature defaults here too, so a caller reading
+    ``get_permissions(role).can_alerts_all`` sees the same value the
+    account-aware resolver would produce for a default-configured account.
     """
-    return ROLE_PERMISSIONS.get(role, FeatureSet())
+    return derive_service_perms(ROLE_PERMISSIONS.get(role, FeatureSet()))
 
 
 async def _apply_module_mask(fs: FeatureSet, account_id: int) -> FeatureSet:
@@ -525,6 +582,12 @@ async def get_account_permissions(
             merged = {**role_defaults, **filtered}
             fs = _protect_owner(role, FeatureSet(**merged))
             fs = await _apply_module_mask(fs, account_id)
+            # Derive the always-on service surfaces LAST — after the module
+            # mask, so a disabled module that strips an alert feature also
+            # closes the Alerts inbox.  Any stored can_alerts_*/can_ai_chat
+            # override in the row is intentionally overwritten here: those
+            # surfaces are derived, not configured.
+            fs = derive_service_perms(fs)
             _permissions_cache[cache_key] = (now + _PERMS_CACHE_TTL_S, fs)
             return fs
     except Exception as e:
@@ -532,6 +595,7 @@ async def get_account_permissions(
 
     fs = _protect_owner(role, ROLE_PERMISSIONS.get(role, FeatureSet()))
     fs = await _apply_module_mask(fs, account_id)
+    fs = derive_service_perms(fs)
     _permissions_cache[cache_key] = (now + _PERMS_CACHE_TTL_S, fs)
     return fs
 
@@ -1019,6 +1083,7 @@ TOOL_PERMISSIONS: dict[str, list[str] | None] = {
     "get_alert_history":        ["can_alerts_all", "can_alerts_vehicle"],         # owner/admin/fleet/safety/driver(own)
     "get_recent_work_orders":   ["can_maintenance_all", "can_maintenance_vehicle"],  # owner/admin/fleet/safety/driver(own)
     "get_recent_inspections":   ["can_maintenance_all", "can_maintenance_vehicle"],  # owner/admin/fleet/safety/driver(own)
+    "get_driver_applications":  ["can_manage_applications"],                          # owner/admin/hr/recruiter — applicant-pipeline triage, account-wide
     "get_vehicle_history":      ["can_vehicle_all", "can_vehicle_vehicle"],       # all roles — vehicle-specific tool, isolation enforced below
 }
 
@@ -1031,7 +1096,7 @@ ACCOUNT_WIDE_TOOLS: frozenset[str] = frozenset({
     "get_fuel_cost_summary", "get_rolling_stopped",
     "get_drivers_list", "search_vehicles",
     "get_parked_vehicles", "get_undriven_vehicles", "get_driver_hos_status",
-    "get_alert_history",
+    "get_alert_history", "get_driver_applications",
 })
 
 # Account-wide tools that have been taught to FILTER their results to a

@@ -1,7 +1,7 @@
 import { useState, useMemo, Fragment, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Shield, Check, X, Lock, ChevronRight, ChevronDown } from 'lucide-react';
+import { Shield, Check, X, Lock, ChevronRight, ChevronDown, Bell, Bot, FileText } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useRoleView } from '../../context/RoleViewContext';
 import { useAuth } from '../../context/AuthContext';
@@ -72,17 +72,20 @@ const PERM_GROUPS: PermGroup[] = [
     // System — available to everyone, account-wide.
     title: 'System',
     flags: [
-      { allKey: 'can_alerts_all', vehicleKey: 'can_alerts_vehicle', label: 'Alerts', scoped: true },
-      { header: 'Reports', description: 'the individual report types below' },
-      { key: 'can_faults',     label: 'Faults Report', indented: true },
-      { key: 'can_health',     label: 'Health Report', indented: true },
-      { key: 'can_efficiency', label: 'Efficiency Report', indented: true },
-      { key: 'can_fuel',       label: 'Fuel Report', indented: true },
-      { allKey: 'can_risk_report_all', vehicleKey: 'can_risk_report_own', label: 'Risk Summary', scoped: true, indented: true },
-      { key: 'can_cost_reports', label: 'Cost Reports', indented: true },
-      { key: 'can_digest',       label: 'Scheduled Reports', indented: true },
-      { header: 'AI', description: 'the AI assistant + its tools below' },
-      { key: 'can_ai_chat', label: 'AI Chat', indented: true, description: 'AI assistant chat + fleet summary' },
+      // Alerts (the inbox) and Reports (the hub) are NOT rows here — both are
+      // always-on services EVERY role has.  Disabling a feature only drops
+      // that feature's alerts/report-tab out of the surface (Faults / Health /
+      // Fuel / Safety Events / Geofences / Maintenance), never the surface
+      // itself.  Both are shown read-only in the "System Services" panel below.
+      // The individual report TYPES are genuine per-role features and live in
+      // their owning department: Risk Summary → Safety, Cost Reports →
+      // Accounting (mirrors how the per-vehicle reports moved under Vehicles).
+      // Scheduled Reports (the digest subscription) is part of the always-on
+      // Reports service — derived, so it has no row.
+      // The AI assistant itself is always on (a derived service — see the
+      // System Services panel).  What stays grantable here are the specific
+      // AI DATA TOOLS a role may reach, e.g. live engine-state lookup.
+      { header: 'AI', description: 'the assistant is always on — these gate specific AI data tools' },
       { key: 'can_rolling_stopped', label: 'Engine-state Lookup', indented: true, description: 'AI-only: "what\'s rolling / idling / off right now?"' },
       // Settings is ONE System-tier feature whose components each carry
       // their own permission — account administration can be held by one
@@ -112,6 +115,12 @@ const PERM_GROUPS: PermGroup[] = [
       { key: 'can_manage_poi_layers', label: 'Manage POI Layers', indented: true },
       { allKey: 'can_vehicle_all',  vehicleKey: 'can_vehicle_vehicle',  label: 'Vehicles', scoped: true },
       { key: 'can_manage_vehicles', label: 'Manage Vehicles', indented: true, description: 'Add / edit / remove vehicles in the registry (trucks + trailers, with or without telematics)' },
+      // Per-vehicle component views (each gates the live tab on the Vehicle
+      // Info page + its report + AI tool) — mirrors features/vehicles/*.
+      { key: 'can_health',     label: 'Health', indented: true, description: 'Engine gauges — battery, oil, coolant, DEF, RPM' },
+      { key: 'can_faults',     label: 'Faults', indented: true, description: 'Active fault codes (DTCs) + the faults report' },
+      { key: 'can_fuel',       label: 'Fuel', indented: true, description: 'Fuel & DEF tank levels + low-fuel alerts' },
+      { key: 'can_efficiency', label: 'Efficiency', indented: true, description: 'MPG, idle vs drive time, harsh-driving utilization' },
       { allKey: 'can_geofence_all', vehicleKey: 'can_geofence_vehicle', label: 'Geofences', scoped: true },
       { key: 'can_manage_driver_docs', label: 'Drivers', description: 'Driver list + document management' },
       { key: 'can_driver_docs_own',    label: 'View Own Documents', indented: true },
@@ -138,6 +147,10 @@ const PERM_GROUPS: PermGroup[] = [
       { allKey: 'can_events_all', vehicleKey: 'can_events_vehicle', label: 'Safety Events', scoped: true },
       { key: 'can_cameras', label: 'Cameras', description: 'Dashcam footage' },
       { allKey: 'can_parking_all', vehicleKey: 'can_parking_vehicle', label: 'Parking', scoped: true, description: 'Unsafe-parking events' },
+      // The Risk Summary report tab — a stakeholder/personnel risk deliverable.
+      // It's a report TYPE (feature), surfaced inside the always-on Reports
+      // hub; it lives here because it's safety-owned data.
+      { allKey: 'can_risk_report_all', vehicleKey: 'can_risk_report_own', label: 'Risk Summary', scoped: true, description: 'Stakeholder Risk Summary report (in the Reports hub)' },
     ],
   },
   {
@@ -150,7 +163,7 @@ const PERM_GROUPS: PermGroup[] = [
   {
     title: 'Recruiting',
     flags: [
-      { key: 'can_recruit_applicants', label: 'Applications', description: 'Recruiting links + the driver-application dashboard' },
+      { key: 'can_manage_applications', label: 'Applications', description: 'Recruiting links + the driver-application dashboard' },
       { key: 'can_convert_to_driver',  label: 'Hire Applicant', indented: true, description: 'Convert an approved application into a driver / invite — without full Send-Invites power' },
     ],
   },
@@ -160,6 +173,10 @@ const PERM_GROUPS: PermGroup[] = [
       { header: 'Costs', description: 'fuel spend + cost-per-mile components' },
       { key: 'can_fuel_cost',     label: 'Fuel Costs', indented: true },
       { key: 'can_cost_per_mile', label: 'Cost per Mile', indented: true },
+      // The Cost Reports tab — executive maintenance/work-order cost rollups,
+      // a report TYPE (feature) surfaced in the always-on Reports hub.  Lives
+      // here because it's cost-owned data (deliberately split from Maintenance).
+      { key: 'can_cost_reports', label: 'Cost Reports', description: 'Executive cost rollups (in the Reports hub)' },
       { key: 'can_payroll_admin',    label: 'Payroll' },
       { key: 'can_payroll_view_own', label: 'View Own Paystubs', indented: true },
       { key: 'can_manage_billing',   label: 'Billing' },
@@ -528,6 +545,43 @@ export default function Permissions() {
                 })}
               </tbody>
             </table>
+          </div>
+
+          {/* System Services — always-on infrastructure, NOT owner-toggled.
+              Access is derived from each role's feature permissions, so there
+              is nothing to tick.  This panel documents the model in-place so
+              an admin isn't left wondering where the old Alerts / AI rows went. */}
+          <div className="mt-4 rounded-lg border border-border bg-card p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">System Services</span>
+              <span className={`text-2xs px-1.5 py-0.5 rounded normal-case tracking-normal ${toneClasses('ok')}`}>always on</span>
+            </div>
+            <p className="text-2xs text-muted-foreground mb-3">
+              Infrastructure services — not granted here. Each one follows the role&apos;s feature permissions automatically: disable a feature and its slice stops, but the service itself never stops.
+            </p>
+            <ul className="space-y-2.5">
+              <li className="flex items-start gap-2.5">
+                <Bell size={16} className="text-muted-foreground mt-0.5 shrink-0" />
+                <div>
+                  <div className="text-sm font-medium text-foreground">Alerts</div>
+                  <div className="text-2xs text-muted-foreground">Every role has the inbox. It shows the alerts for whichever features the role can see — disable a feature (Faults, Health, Fuel, Safety Events, Geofences, Maintenance) and just those alerts drop out. Scope follows the role&apos;s vehicle access — fleet-wide or own-vehicle.</div>
+                </div>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <Bot size={16} className="text-muted-foreground mt-0.5 shrink-0" />
+                <div>
+                  <div className="text-sm font-medium text-foreground">AI Assistant</div>
+                  <div className="text-2xs text-muted-foreground">Available to every role. Each AI tool still answers only from data the role can already see; specific AI data tools (e.g. Engine-state Lookup) stay grantable above.</div>
+                </div>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <FileText size={16} className="text-muted-foreground mt-0.5 shrink-0" />
+                <div>
+                  <div className="text-sm font-medium text-foreground">Reports</div>
+                  <div className="text-2xs text-muted-foreground">The Reports hub and its scheduled-report subscription are open to every role. Which report tabs appear follows the role&apos;s features — the report TYPES (Risk Summary, Cost Reports) stay grantable above, under Safety and Accounting.</div>
+                </div>
+              </li>
+            </ul>
           </div>
         </>
       )}
