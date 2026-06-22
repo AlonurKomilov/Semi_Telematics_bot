@@ -473,6 +473,11 @@ _TOOL_KEYWORDS: dict[str, tuple[str, ...]] = {
         "inspection history", "previous inspection",
         "past inspection", "dvir", "pti history",
     ),
+    "get_driver_applications": (
+        "driver application", "applicant", "applications pipeline",
+        "who applied", "new applications", "applicants in screening",
+        "ready to hire", "pending applications",
+    ),
     "get_vehicle_history": (
         "history of truck", "vehicle history",
         "past status", "history for truck",

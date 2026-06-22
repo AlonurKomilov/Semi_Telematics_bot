@@ -4,22 +4,19 @@ router.py is interface-layer code co-located with its feature
 (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps.
 Keeps the historical ``/admin`` URL prefix.
 """
-import asyncio
 import logging
-import os
-import time
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field, model_validator
+import io
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from typing import Optional
 
 from interfaces.api.deps import (
-    require_permission, get_current_db_user, get_tenant_db,
-    get_platform_db, paginate, resolve_user_id,
+    require_permission, get_tenant_db,
+    get_platform_db,
 )
-from adapters.storage.models import Role
-from capabilities.permissions.roles import validate_role_change, role_rank
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +42,11 @@ class CompanyUpdate(BaseModel):
     active_days: Optional[int] = Field(None, ge=1, le=365)
     mc_number: Optional[str] = Field(None, max_length=40)
     usdot_number: Optional[str] = Field(None, max_length=40)
+    # Brand/identity.  brand_color is a #RRGGBB hex (or '' to clear) — the
+    # pattern blocks CSS injection when it's later applied as a token.
+    brand_color: Optional[str] = Field(None, pattern=r"^(#[0-9a-fA-F]{6})?$")
+    website: Optional[str] = Field(None, max_length=200)
+    phone: Optional[str] = Field(None, max_length=40)
 
 
 @router.get("/companies")
@@ -66,6 +68,10 @@ async def list_companies(
                 "has_api_key": bool(c.samsara_api_key),
                 "mc_number": c.mc_number,
                 "usdot_number": c.usdot_number,
+                "brand_color": c.brand_color,
+                "website": c.website,
+                "phone": c.phone,
+                "has_logo": bool(c.logo_object_id),
             }
             for c in companies
         ],
@@ -175,6 +181,79 @@ async def update_company(
         except Exception:
             logger.exception("Failed to enqueue backfill on token rotation acct=%d", user["account_id"])
 
+    return {"ok": True}
+
+
+# ── Company logo (brand identity) ─────────────────────────────
+
+_LOGO_MIME_EXT = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+
+
+@router.post("/companies/{company_id}/logo")
+async def upload_company_logo(
+    company_id: int,
+    file: UploadFile = File(...),
+    user: dict = Depends(require_permission("can_manage_companies")),
+    tenant_db=Depends(get_tenant_db),
+    platform_db=Depends(get_platform_db),
+):
+    """Upload a company logo (JPG/PNG/WEBP ≤ 2 MB).  Magic-byte validated
+    (never trusts the client type); stored under a generated key."""
+    company = await tenant_db.get_company_in_account(user["account_id"], company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    raw = await file.read()
+    from infra.file_safety import validate_upload
+    ok, mime, _ = validate_upload(raw, max_bytes=2 * 1024 * 1024)
+    if not ok or mime not in _LOGO_MIME_EXT:
+        raise HTTPException(status_code=422, detail="Logo must be a JPG, PNG, or WEBP image under 2 MB")
+    from adapters.storage.object_store import get_object_store_for_account
+    store = await get_object_store_for_account(user["account_id"], platform_db)
+    try:
+        oid = store.put(f"company-logos/{company_id}", f"logo.{_LOGO_MIME_EXT[mime]}", raw)
+    except Exception:
+        logger.exception("company logo store failed company=%s", company_id)
+        raise HTTPException(status_code=500, detail="Could not store the logo.")
+    await tenant_db.update_company(company_id, account_id=user["account_id"], logo_object_id=oid)
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]), "company_logo_set",
+        target_type="company", target_id=str(company_id), details="",
+    )
+    return {"ok": True}
+
+
+@router.get("/companies/{company_id}/logo")
+async def get_company_logo(
+    company_id: int,
+    user: dict = Depends(require_permission("can_manage_companies")),
+    tenant_db=Depends(get_tenant_db),
+    platform_db=Depends(get_platform_db),
+):
+    """Serve the company logo to the dashboard (authed, account-scoped)."""
+    company = await tenant_db.get_company_in_account(user["account_id"], company_id)
+    if not company or not company.logo_object_id:
+        raise HTTPException(status_code=404, detail="No logo")
+    from adapters.storage.object_store import get_object_store_for_account
+    store = await get_object_store_for_account(user["account_id"], platform_db)
+    raw = store.get_by_id(company.logo_object_id)
+    if raw is None:
+        raise HTTPException(status_code=404, detail="No logo")
+    from infra.file_safety import sniff_mime
+    mime = sniff_mime(raw) or "image/png"
+    return StreamingResponse(io.BytesIO(raw), media_type=mime,
+                             headers={"Cache-Control": "private, max-age=300"})
+
+
+@router.delete("/companies/{company_id}/logo")
+async def remove_company_logo(
+    company_id: int,
+    user: dict = Depends(require_permission("can_manage_companies")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Clear the company logo (drops the reference)."""
+    ok = await tenant_db.update_company(company_id, account_id=user["account_id"], logo_object_id="")
+    if not ok:
+        raise HTTPException(status_code=404, detail="Company not found")
     return {"ok": True}
 
 

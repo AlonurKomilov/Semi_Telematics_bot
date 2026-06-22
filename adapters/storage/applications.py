@@ -1,6 +1,6 @@
 """Driver-recruiting mixin — recruitment links + driver applications.
 
-Recruiters create shareable links (``recruitment_links``); prospective
+Recruiters create shareable links (``application_links``); prospective
 drivers submit applications through them (``driver_applications``).  PII
 is encrypted at rest via ``infra.crypto``: the scalar DOB/SSN columns plus
 the JSON blobs that carry sensitive identifiers (full address + history,
@@ -13,9 +13,19 @@ from __future__ import annotations
 import json
 import logging
 import secrets
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    class _MixinBase:
+        """Typing stub — attributes provided by the concrete DB class at runtime."""
+        _db: Any
+
+        @staticmethod
+        def _now() -> str: ...
+else:
+    _MixinBase = object
 
 # JSON columns encrypted at rest because they carry PII beyond the
 # cleartext promoted columns (first/last/email/phone/city/state, kept
@@ -29,14 +39,19 @@ _ENCRYPTED_JSON_COLS = frozenset({
     "employment_json", "incidents_json",
 })
 
+# Sentinel for partial-update args that may legitimately be set to NULL
+# (so "not provided" is distinct from "clear to NULL").
+_UNSET: Any = object()
 
-class RecruitmentMixin:
+
+class ApplicationsMixin(_MixinBase):
 
     # ── Recruitment links ───────────────────────────────────────────
 
-    async def create_recruitment_link(
+    async def create_application_link(
         self, account_id: int, *, label: str = "", source: str = "",
         created_by: int | None = None, expires_in_days: int | None = None,
+        company_id: int | None = None,
     ) -> dict:
         """Mint a shareable recruiting link.  Returns the row incl. token.
 
@@ -53,32 +68,35 @@ class RecruitmentMixin:
                 datetime.now(timezone.utc) + timedelta(days=expires_in_days)
             ).isoformat()
         cur = await self._db.execute(
-            """INSERT INTO recruitment_links
+            """INSERT INTO application_links
                  (account_id, token, label, source, created_by, is_active,
-                  created_at, expires_at)
-               VALUES (?, ?, ?, ?, ?, 1, ?, ?)""",
-            (account_id, token, label, source, created_by, now, expires_at),
+                  created_at, expires_at, company_id)
+               VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)""",
+            (account_id, token, label, source, created_by, now, expires_at, company_id),
         )
         await self._db.commit()
         return {
             "id": cur.lastrowid, "account_id": account_id, "token": token,
             "label": label, "source": source, "is_active": True,
-            "created_at": now, "expires_at": expires_at,
+            "created_at": now, "expires_at": expires_at, "company_id": company_id,
         }
 
-    async def list_recruitment_links(self, account_id: int) -> list[dict]:
+    async def list_application_links(self, account_id: int) -> list[dict]:
         """Links with per-link funnel stats: views (column) + submissions
         and hires (derived from driver_applications on the token)."""
         cur = await self._db.execute(
             """
             SELECT l.*,
+                   co.code AS company_code, co.display_name AS company_name,
+                   (co.logo_object_id IS NOT NULL) AS company_has_logo,
                    COUNT(a.id) AS submissions,
                    COALESCE(SUM(CASE WHEN a.status = 'hired' THEN 1 ELSE 0 END), 0) AS hires
-              FROM recruitment_links l
+              FROM application_links l
+              LEFT JOIN companies co ON co.id = l.company_id
               LEFT JOIN driver_applications a
                      ON a.link_token = l.token AND a.account_id = l.account_id
              WHERE l.account_id = ?
-             GROUP BY l.id
+             GROUP BY l.id, co.id
              ORDER BY l.id DESC
             """,
             (account_id,),
@@ -90,13 +108,13 @@ class RecruitmentMixin:
         caller always returns 204 regardless of whether the token matched,
         so this never reveals which tokens exist)."""
         await self._db.execute(
-            "UPDATE recruitment_links SET view_count = view_count + 1 "
+            "UPDATE application_links SET view_count = view_count + 1 "
             "WHERE token = ? AND is_active = 1",
             (token,),
         )
         await self._db.commit()
 
-    async def resolve_recruitment_link(self, token: str) -> Optional[dict]:
+    async def resolve_application_link(self, token: str) -> Optional[dict]:
         """Map a public token → its account.  None if unknown/inactive.
 
         The public applicant form calls this with the /apply/<token>
@@ -104,20 +122,64 @@ class RecruitmentMixin:
         for which tokens exist).
         """
         cur = await self._db.execute(
-            "SELECT * FROM recruitment_links WHERE token = ? AND is_active = 1 "
+            "SELECT * FROM application_links WHERE token = ? AND is_active = 1 "
             "AND (expires_at IS NULL OR expires_at > ?)",
             (token, self._now()),
         )
         row = await cur.fetchone()
         return dict(row) if row else None
 
-    async def set_recruitment_link_active(
+    async def set_application_link_active(
         self, account_id: int, link_id: int, active: bool,
     ) -> bool:
         cur = await self._db.execute(
-            "UPDATE recruitment_links SET is_active = ? "
+            "UPDATE application_links SET is_active = ? "
             "WHERE id = ? AND account_id = ?",
             (1 if active else 0, link_id, account_id),
+        )
+        await self._db.commit()
+        return cur.rowcount > 0
+
+    async def update_application_link(
+        self, account_id: int, link_id: int, *,
+        label: Optional[str] = None, source: Optional[str] = None,
+        company_id: Any = _UNSET, expires_at: Any = _UNSET,
+    ) -> bool:
+        """Edit an existing link's label/source/carrier/expiry.  Only the
+        fields supplied are written (``company_id``/``expires_at`` use a
+        sentinel so they can be explicitly set to NULL).  Account-scoped."""
+        sets: list[str] = []
+        vals: list[Any] = []
+        if label is not None:
+            sets.append("label = ?")
+            vals.append(label)
+        if source is not None:
+            sets.append("source = ?")
+            vals.append(source)
+        if company_id is not _UNSET:
+            sets.append("company_id = ?")
+            vals.append(company_id)
+        if expires_at is not _UNSET:
+            sets.append("expires_at = ?")
+            vals.append(expires_at)
+        if not sets:
+            return False
+        vals += [link_id, account_id]
+        cur = await self._db.execute(
+            f"UPDATE application_links SET {', '.join(sets)} "
+            "WHERE id = ? AND account_id = ?",
+            tuple(vals),
+        )
+        await self._db.commit()
+        return cur.rowcount > 0
+
+    async def delete_application_link(self, account_id: int, link_id: int) -> bool:
+        """Permanently remove a link row (account-scoped).  Submitted
+        applications are keyed by ``link_token`` text, NOT a FK, so they are
+        left intact — only the shareable link + its view counter go away."""
+        cur = await self._db.execute(
+            "DELETE FROM application_links WHERE id = ? AND account_id = ?",
+            (link_id, account_id),
         )
         await self._db.commit()
         return cur.rowcount > 0
@@ -126,7 +188,7 @@ class RecruitmentMixin:
 
     async def create_driver_application(
         self, account_id: int, *, link_token: str, reference: str,
-        data: dict, docs: dict, submit_ip: str = "",
+        data: dict, docs: dict, submit_ip: str = "", company_id: int | None = None,
     ) -> dict:
         """Persist a submitted application.
 
@@ -179,7 +241,8 @@ class RecruitmentMixin:
                 experience_json, employment_json, incidents_json,
                 position_json, consents_json, docs_json,
                 sig_mode, sig_name, sig_date, sig_object_id,
-                disclosure_version, ssn_hash, submit_ip, submitted_at, created_at
+                disclosure_version, ssn_hash, submit_ip, company_id,
+                submitted_at, created_at
             ) VALUES (
                 ?, ?, ?, 'submitted',
                 ?, ?, ?, ?, ?, ?,
@@ -189,7 +252,8 @@ class RecruitmentMixin:
                 ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?, ?,
-                ?, ?, ?, ?, ?
+                ?, ?, ?, ?,
+                ?, ?
             )
             """,
             (
@@ -213,7 +277,8 @@ class RecruitmentMixin:
                 json.dumps(docs or {}),
                 consents.get("sigMode", ""), consents.get("sigName", ""),
                 consents.get("sigDate", ""), docs.get("signature"),
-                data.get("disclosureVersion", ""), ssn_hash, submit_ip, now, now,
+                data.get("disclosureVersion", ""), ssn_hash, submit_ip, company_id,
+                now, now,
             ),
         )
         await self._db.commit()
@@ -266,17 +331,48 @@ class RecruitmentMixin:
             return []
         d = dict(row)
         ssn_hash, email, phone = d.get("ssn_hash"), (d.get("email") or ""), (d.get("phone") or "")
+        # Build only the clauses we have a value for — a bare ``? IS NOT NULL``
+        # is type-ambiguous to the driver, and skipping empty signals keeps
+        # the match precise.
+        clauses: list[str] = []
+        params: list = [account_id, app_id]
+        if ssn_hash:
+            clauses.append("ssn_hash = ?")
+            params.append(ssn_hash)
+        if email:
+            clauses.append("LOWER(email) = LOWER(?)")
+            params.append(email)
+        if phone:
+            clauses.append("phone = ?")
+            params.append(phone)
+        if not clauses:
+            return []
         cur = await self._db.execute(
-            """SELECT id, reference, status, first_name, last_name, submitted_at
-                 FROM driver_applications
-                WHERE account_id = ? AND id <> ?
-                  AND ((? IS NOT NULL AND ssn_hash = ?)
-                       OR (? <> '' AND LOWER(email) = LOWER(?))
-                       OR (? <> '' AND phone = ?))
-                ORDER BY id DESC""",
-            (account_id, app_id, ssn_hash, ssn_hash, email, email, phone, phone),
+            f"""SELECT id, reference, status, first_name, last_name, submitted_at
+                  FROM driver_applications
+                 WHERE account_id = ? AND id <> ? AND ({" OR ".join(clauses)})
+                 ORDER BY id DESC""",
+            params,
         )
         return [dict(r) for r in await cur.fetchall()]
+
+    async def get_application_status_public(self, reference: str, email: str) -> Optional[dict]:
+        """Self-service status lookup — TWO-FACTOR (reference + email), no
+        account needed.  Returns minimal {status, submitted_at} or None;
+        the caller rate-limits + returns a uniform 'not found' so this is
+        not an enumeration oracle.  No PII beyond what the applicant
+        already supplied to find the row."""
+        ref = (reference or "").strip().upper()
+        em = (email or "").strip()
+        if not ref or not em:
+            return None
+        cur = await self._db.execute(
+            "SELECT status, submitted_at FROM driver_applications "
+            "WHERE reference = ? AND LOWER(email) = LOWER(?) LIMIT 1",
+            (ref, em),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
 
     async def get_driver_application(
         self, account_id: int, app_id: int, *, decrypt_pii: bool = True,
@@ -331,13 +427,24 @@ class RecruitmentMixin:
 
     async def update_application_status(
         self, account_id: int, app_id: int, status: str,
-        *, reviewed_by: int | None = None,
+        *, reviewed_by: int | None = None, expect_status: str | None = None,
     ) -> bool:
-        cur = await self._db.execute(
-            "UPDATE driver_applications SET status = ?, reviewed_by = ? "
-            "WHERE id = ? AND account_id = ?",
-            (status, reviewed_by, app_id, account_id),
-        )
+        """Set the status.  With ``expect_status`` the UPDATE is CONDITIONAL
+        on the current status (an atomic compare-and-set) and returns False
+        if it didn't match — the hire flow uses this so two concurrent
+        converts can't both claim one applicant."""
+        if expect_status is not None:
+            cur = await self._db.execute(
+                "UPDATE driver_applications SET status = ?, reviewed_by = ? "
+                "WHERE id = ? AND account_id = ? AND status = ?",
+                (status, reviewed_by, app_id, account_id, expect_status),
+            )
+        else:
+            cur = await self._db.execute(
+                "UPDATE driver_applications SET status = ?, reviewed_by = ? "
+                "WHERE id = ? AND account_id = ?",
+                (status, reviewed_by, app_id, account_id),
+            )
         await self._db.commit()
         return cur.rowcount > 0
 
@@ -400,14 +507,14 @@ class RecruitmentMixin:
     # Canonical channel set; a prefs row stores a comma-list subset.
     NOTIFY_CHANNELS = ("telegram", "email", "dashboard")
 
-    async def create_recruitment_notification(
+    async def create_application_notification(
         self, account_id: int, user_id: int, *, application_id: int | None,
         reference: str, title: str, body: str = "",
         kind: str = "application_submitted",
     ) -> int:
         now = self._now()
         cur = await self._db.execute(
-            """INSERT INTO recruitment_notifications
+            """INSERT INTO application_notifications
                  (account_id, user_id, application_id, reference, kind,
                   title, body, is_read, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)""",
@@ -416,7 +523,7 @@ class RecruitmentMixin:
         await self._db.commit()
         return cur.lastrowid
 
-    async def list_recruitment_notifications(
+    async def list_application_notifications(
         self, account_id: int, user_id: int, *, unread_only: bool = False, limit: int = 50,
     ) -> list[dict]:
         where = "WHERE account_id = ? AND user_id = ?"
@@ -426,22 +533,22 @@ class RecruitmentMixin:
         params.append(limit)
         cur = await self._db.execute(
             f"""SELECT id, application_id, reference, kind, title, body, is_read, created_at
-                  FROM recruitment_notifications {where}
+                  FROM application_notifications {where}
                  ORDER BY id DESC LIMIT ?""",
             params,
         )
         return [dict(r) for r in await cur.fetchall()]
 
-    async def count_unread_recruitment_notifications(self, account_id: int, user_id: int) -> int:
+    async def count_unread_application_notifications(self, account_id: int, user_id: int) -> int:
         cur = await self._db.execute(
-            "SELECT COUNT(*) AS n FROM recruitment_notifications "
+            "SELECT COUNT(*) AS n FROM application_notifications "
             "WHERE account_id = ? AND user_id = ? AND is_read = 0",
             (account_id, user_id),
         )
         row = await cur.fetchone()
         return int(dict(row)["n"]) if row else 0
 
-    async def mark_recruitment_notifications_read(
+    async def mark_application_notifications_read(
         self, account_id: int, user_id: int, ids: list[int] | None = None,
     ) -> int:
         """Mark the user's notifications read.  ``ids=None`` → mark all."""
@@ -449,22 +556,22 @@ class RecruitmentMixin:
             return 0
         if ids:
             placeholders = ",".join("?" for _ in ids)
-            sql = (f"UPDATE recruitment_notifications SET is_read = 1 "
+            sql = (f"UPDATE application_notifications SET is_read = 1 "
                    f"WHERE account_id = ? AND user_id = ? AND id IN ({placeholders})")
             params = [account_id, user_id, *ids]
         else:
-            sql = ("UPDATE recruitment_notifications SET is_read = 1 "
+            sql = ("UPDATE application_notifications SET is_read = 1 "
                    "WHERE account_id = ? AND user_id = ? AND is_read = 0")
             params = [account_id, user_id]
         cur = await self._db.execute(sql, params)
         await self._db.commit()
         return cur.rowcount
 
-    async def get_recruitment_notify_channels(self, user_id: int) -> set[str]:
+    async def get_application_notify_channels(self, user_id: int) -> set[str]:
         """A user's chosen channels.  No row → all channels (the default
         for someone who can already review applications)."""
         cur = await self._db.execute(
-            "SELECT channels FROM recruitment_notify_prefs WHERE user_id = ?",
+            "SELECT channels FROM application_notify_prefs WHERE user_id = ?",
             (user_id,),
         )
         row = await cur.fetchone()
@@ -473,14 +580,14 @@ class RecruitmentMixin:
         raw = (dict(row)["channels"] or "").strip()
         return {c.strip() for c in raw.split(",") if c.strip() in self.NOTIFY_CHANNELS}
 
-    async def set_recruitment_notify_channels(
+    async def set_application_notify_channels(
         self, account_id: int, user_id: int, channels: list[str],
     ) -> set[str]:
         clean = [c for c in self.NOTIFY_CHANNELS if c in set(channels)]
         value = ",".join(clean)
         now = self._now()
         await self._db.execute(
-            """INSERT INTO recruitment_notify_prefs (user_id, account_id, channels, updated_at)
+            """INSERT INTO application_notify_prefs (user_id, account_id, channels, updated_at)
                VALUES (?, ?, ?, ?)
                ON CONFLICT(user_id) DO UPDATE SET channels = excluded.channels,
                                                   updated_at = excluded.updated_at""",

@@ -88,7 +88,7 @@ FLAG_MODULES: dict[str, frozenset[str]] = {
     # Recruiting (driver-application intake) — hr.  Masking these with the
     # HR module means disabling HR turns recruiting OFF at the API too, not
     # just hidden in the nav — so "module off" is a real switch.
-    "can_recruit_applicants": frozenset({"hr"}),
+    "can_manage_applications": frozenset({"hr"}),
     "can_convert_to_driver": frozenset({"hr"}),
     # Accounting (costs + payroll)
     "can_fuel_cost": frozenset({"accounting", "dispatch"}),

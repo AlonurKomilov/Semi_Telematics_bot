@@ -309,6 +309,20 @@ class _DatabaseCore:
             created_at=d["created_at"],
             mc_number=str(d.get("mc_number") or ""),
             usdot_number=str(d.get("usdot_number") or ""),
+            logo_object_id=d.get("logo_object_id"),
+            brand_color=str(d.get("brand_color") or ""),
+            website=str(d.get("website") or ""),
+            phone=str(d.get("phone") or ""),
+            headline=str(d.get("headline") or ""),
+            perks=str(d.get("perks") or ""),
+            banner_object_id=d.get("banner_object_id"),
+            req_experience_years=int(d.get("req_experience_years") or 1),
+            req_min_age=int(d.get("req_min_age") or 21),
+            req_cdl_class=str(d.get("req_cdl_class") or "A"),
+            form_theme=str(d.get("form_theme") or "light"),
+            header_color=str(d.get("header_color") or ""),
+            bg_color=str(d.get("bg_color") or ""),
+            heading_color=str(d.get("heading_color") or ""),
         )
 
     def _row_to_user(self, row) -> User:

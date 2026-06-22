@@ -39,6 +39,46 @@ async def create_tables(conn) -> None:
     except Exception as e:
         logger.debug(f"ai_usage migration check: {e}")
 
+    # Migration: rename the recruiting tables to the feature name
+    # (applications).  The feature/code/API/UI are all "applications";
+    # these 3 physical tables kept the legacy "recruitment_*" names.
+    # Postgres-aware (information_schema — the organizations rename above
+    # uses sqlite_master, which is a no-op on Postgres).  Guarded so it
+    # only fires when the old table exists and the new one does not, so it
+    # never collides with the CREATE TABLE IF NOT EXISTS below.
+    for _old, _new in (
+        ("recruitment_links", "application_links"),
+        ("recruitment_notifications", "application_notifications"),
+        ("recruitment_notify_prefs", "application_notify_prefs"),
+    ):
+        try:
+            has_old = await (await conn.execute(
+                f"SELECT 1 FROM information_schema.tables WHERE table_name = '{_old}'"
+            )).fetchone()
+            if not has_old:
+                continue  # already migrated (or fresh DB) — nothing to rename
+            has_new = await (await conn.execute(
+                f"SELECT 1 FROM information_schema.tables WHERE table_name = '{_new}'"
+            )).fetchone()
+            if has_new:
+                # Orphan recovery: a CREATE-before-rename race on deploy can
+                # leave an EMPTY new table beside the data-bearing old one.
+                # Drop it ONLY if empty, then rename the real table in; if it
+                # has rows, leave both and warn (needs a human merge).
+                row = await (await conn.execute(f"SELECT COUNT(*) FROM {_new}")).fetchone()
+                new_rows = (row[0] if row else 0) or 0
+                if new_rows:
+                    logger.warning(
+                        "Both %s and non-empty %s exist — skipping rename "
+                        "(manual merge required)", _old, _new)
+                    continue
+                await conn.execute(f"DROP TABLE {_new}")
+            await conn.execute(f"ALTER TABLE {_old} RENAME TO {_new}")
+            await conn.commit()
+            logger.info("Renamed table %s → %s", _old, _new)
+        except Exception as e:
+            logger.debug(f"table rename check {_old}: {e}")
+
     await conn.executescript("""
         CREATE TABLE IF NOT EXISTS accounts (
             id                   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,6 +106,20 @@ async def create_tables(conn) -> None:
             mc_number       TEXT    NOT NULL DEFAULT '',
             usdot_number    TEXT    NOT NULL DEFAULT '',
             is_active       INTEGER NOT NULL DEFAULT 1,
+            logo_object_id  TEXT,
+            brand_color     TEXT    NOT NULL DEFAULT '',
+            website         TEXT    NOT NULL DEFAULT '',
+            phone           TEXT    NOT NULL DEFAULT '',
+            headline        TEXT    NOT NULL DEFAULT '',
+            perks           TEXT    NOT NULL DEFAULT '',
+            banner_object_id TEXT,
+            req_experience_years INTEGER NOT NULL DEFAULT 1,
+            req_min_age          INTEGER NOT NULL DEFAULT 21,
+            req_cdl_class        TEXT    NOT NULL DEFAULT 'A',
+            form_theme           TEXT    NOT NULL DEFAULT 'light',
+            header_color         TEXT    NOT NULL DEFAULT '',
+            bg_color             TEXT    NOT NULL DEFAULT '',
+            heading_color        TEXT    NOT NULL DEFAULT '',
             created_at      TEXT    NOT NULL,
             UNIQUE(account_id, code)
         );
@@ -273,7 +327,7 @@ async def create_tables(conn) -> None:
             created_at   TEXT    NOT NULL
         );
 
-        CREATE TABLE IF NOT EXISTS recruitment_links (
+        CREATE TABLE IF NOT EXISTS application_links (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id  INTEGER NOT NULL REFERENCES accounts(id),
             token       TEXT    NOT NULL UNIQUE,
@@ -282,6 +336,7 @@ async def create_tables(conn) -> None:
             created_by  INTEGER REFERENCES users(id),
             is_active   INTEGER NOT NULL DEFAULT 1,
             view_count  INTEGER NOT NULL DEFAULT 0,
+            company_id  INTEGER REFERENCES companies(id),
             created_at  TEXT    NOT NULL
         );
 
@@ -324,11 +379,12 @@ async def create_tables(conn) -> None:
             reviewed_by          INTEGER REFERENCES users(id),
             converted_to_user_id INTEGER REFERENCES users(id),
             submit_ip            TEXT NOT NULL DEFAULT '',
+            company_id           INTEGER REFERENCES companies(id),
             submitted_at         TEXT NOT NULL,
             created_at           TEXT NOT NULL
         );
 
-        CREATE TABLE IF NOT EXISTS recruitment_notifications (
+        CREATE TABLE IF NOT EXISTS application_notifications (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id      INTEGER NOT NULL REFERENCES accounts(id),
             user_id         INTEGER NOT NULL REFERENCES users(id),
@@ -341,10 +397,10 @@ async def create_tables(conn) -> None:
             created_at      TEXT    NOT NULL
         );
 
-        CREATE INDEX IF NOT EXISTS idx_recruit_notif_inbox
-            ON recruitment_notifications(account_id, user_id, is_read, id);
+        CREATE INDEX IF NOT EXISTS idx_app_notif_inbox
+            ON application_notifications(account_id, user_id, is_read, id);
 
-        CREATE TABLE IF NOT EXISTS recruitment_notify_prefs (
+        CREATE TABLE IF NOT EXISTS application_notify_prefs (
             user_id     INTEGER PRIMARY KEY REFERENCES users(id),
             account_id  INTEGER NOT NULL REFERENCES accounts(id),
             channels    TEXT    NOT NULL DEFAULT 'telegram,email,dashboard',

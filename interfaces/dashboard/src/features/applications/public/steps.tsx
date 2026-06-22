@@ -20,10 +20,13 @@ export interface StepDef {
   Render: (p: RenderProps) => JSX.Element;
   validate: (data: Data) => Errors;
 }
+// Per-carrier pre-qual gate thresholds (adapt the Step 1 question text).
+export interface GateReq { years: number; age: number; cls: string; }
 interface RenderProps {
   data: Data;
   set: (path: string, value: unknown) => void;
   errors: Errors;
+  req?: GateReq;
 }
 
 const grid = 'grid grid-cols-1 gap-4 sm:grid-cols-2';
@@ -43,7 +46,10 @@ const Step1: StepDef = {
       if (!deepGet(d, `gate.${k}`)) e[`gate.${k}`] = 'Required';
     return e;
   },
-  Render: ({ data, set, errors }) => {
+  Render: ({ data, set, errors, req }) => {
+    const years = req?.years ?? 1;
+    const age = req?.age ?? 21;
+    const cls = req?.cls || 'A';
     const Q = (key: string, label: string, hint?: string) => (
       <Field label={label} hint={hint} required error={errors[`gate.${key}`]}>
         <Choices value={deepGet(data, `gate.${key}`)} onChange={(v) => set(`gate.${key}`, v)} options={YES_NO} name={`gate-${key}`} />
@@ -52,10 +58,10 @@ const Step1: StepDef = {
     const anyNo = ['cdl1yr', 'age21', 'workAuth', 'cdlClassA', 'dotMedical'].some((k) => deepGet(data, `gate.${k}`) === 'no');
     return (
       <div className="flex flex-col gap-5">
-        {Q('cdl1yr', 'Do you have at least one (1) year of verifiable CDL Class A driving experience?')}
-        {Q('age21', 'Are you 21 years of age or older?')}
+        {Q('cdl1yr', `Do you have at least ${years} ${years === 1 ? 'year' : 'years'} of verifiable CDL Class ${cls} driving experience?`)}
+        {Q('age21', `Are you ${age} years of age or older?`)}
         {Q('workAuth', 'Are you legally authorized to work in the United States?')}
-        {Q('cdlClassA', 'Do you currently hold a valid CDL Class A?')}
+        {Q('cdlClassA', `Do you currently hold a valid CDL Class ${cls}?`)}
         {Q('dotMedical', 'Do you have a current DOT medical card?', '49 CFR §391.41')}
         {anyNo && (
           <p className="rounded-md border border-warn-bd bg-warn-bg px-3 py-2 text-sm text-warn">

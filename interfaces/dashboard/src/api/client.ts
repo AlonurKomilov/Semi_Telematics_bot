@@ -192,7 +192,9 @@ export async function apiJSONSlow<T = unknown>(path: string, opts: ApiFetchOpts 
 /** SSE event types from /ai/chat/stream */
 export type StreamEvent =
   | { type: 'tool'; name: string; label: string }
-  | { type: 'done'; reply: string; suggestions: string[]; usage: Record<string, number> | null; tool_results: unknown[] }
+  | { type: 'thinking'; text: string }   // live reasoning chunk (streaming models)
+  | { type: 'delta'; text: string }      // live answer chunk (streaming models)
+  | { type: 'done'; reply: string; suggestions: string[]; usage: Record<string, number> | null; tool_results: unknown[]; scope?: { restricted: boolean; vehicle_count?: number }; model?: string }
   | { type: 'error'; message: string };
 
 /**
@@ -208,6 +210,9 @@ export async function apiStreamChat(
   const token = getToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  // Mirror apiFetch: carry the persona preview so owner/admin "View as <role>"
+  // gates the streaming AI as that role too (the backend honours X-View-As).
+  if (_activeViewForApi) headers['X-View-As'] = _activeViewForApi;
 
   const res = await fetch(`${API_BASE}/ai/chat/stream`, {
     method: 'POST',

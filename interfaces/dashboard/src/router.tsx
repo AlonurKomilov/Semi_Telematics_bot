@@ -103,6 +103,7 @@ const Payroll          = lazyWithReload(() => import('./features/payroll/Payroll
 const Coaching         = lazyWithReload(() => import('./features/coaching/Coaching'));
 const Drivers          = lazyWithReload(() => import('./features/drivers/Drivers'));
 const Applications     = lazyWithReload(() => import('./features/applications/Applications'));
+const ApplyPreview     = lazyWithReload(() => import('./features/applications/ApplyPreview'));
 const AIChat           = lazyWithReload(() => import('./features/ai/Chat'));
 const AISummary        = lazyWithReload(() => import('./features/ai/Summary'));
 const NotFound         = lazy(() => import('./pages/NotFound'));
@@ -141,6 +142,11 @@ export default function AppRouter() {
   const Shell = pickShell(activeView);
   return (
     <Routes>
+      {/* Full-screen recruiter preview of the public apply form — sits
+          OUTSIDE the dashboard shell (no sidebar/chrome) so it renders
+          exactly like the real form, but still auth + permission gated. */}
+      <Route path="applications/preview/:companyId"
+        element={L(<P perm="can_manage_applications"><ApplyPreview /></P>)} />
       <Route element={<Shell />}>
         <Route index element={L(<Overview />)} />
 
@@ -262,7 +268,7 @@ export default function AppRouter() {
         <Route path="payroll" element={L(<P perm="can_payroll_admin"><Payroll /></P>)} />
         <Route path="coaching" element={L(<P perm="can_coaching_admin"><Coaching /></P>)} />
         <Route path="workforce/drivers" element={L(<P perm="can_manage_driver_docs"><Drivers /></P>)} />
-        <Route path="workforce/applications" element={L(<P perm="can_recruit_applicants"><Applications /></P>)} />
+        <Route path="workforce/applications" element={L(<P perm="can_manage_applications"><Applications /></P>)} />
         <Route path="*" element={L(<NotFound />)} />
       </Route>
     </Routes>

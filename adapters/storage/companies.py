@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from .models import Company
 
+if TYPE_CHECKING:
+    class _MixinBase:
+        """Typing stub — attributes provided by the concrete DB class at runtime."""
+        _db: Any
 
-class CompaniesMixin:
+        @staticmethod
+        def _now() -> str: ...
+
+        def _row_to_company(self, row: Any) -> Company: ...
+else:
+    _MixinBase = object
+
+
+class CompaniesMixin(_MixinBase):
 
     async def add_company(
         self, account_id: int, code: str,
@@ -115,7 +127,11 @@ class CompaniesMixin:
         (prevents cross-tenant modification).
         """
         allowed = {"display_name", "samsara_api_key", "active_days",
-                   "is_active", "mc_number", "usdot_number"}
+                   "is_active", "mc_number", "usdot_number",
+                   "logo_object_id", "brand_color", "website", "phone",
+                   "headline", "perks", "banner_object_id",
+                   "req_experience_years", "req_min_age", "req_cdl_class",
+                   "form_theme", "header_color", "bg_color", "heading_color"}
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
             return False

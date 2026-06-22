@@ -94,4 +94,17 @@ async def get_maintenance_summary(tool_args: dict, samsara_client,
             }
             for t in overdue[:10]
         ],
+        # Per-vehicle pending rows too (not just overdue) so the assistant can
+        # name specific trucks and the dashboard can render clickable chips for
+        # "show me pending tasks" — the common case when nothing is overdue yet.
+        "pending_tasks": [
+            {
+                "vehicle": t.get("vehicle_name", "?"),
+                "type": t.get("task_type", "custom"),
+                "description": t.get("description", ""),
+                "due_date": t.get("due_date"),
+                "due_miles": t.get("due_miles"),
+            }
+            for t in pending[:10]
+        ],
     }

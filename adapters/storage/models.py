@@ -27,7 +27,7 @@ class Role(str, Enum):
     # permission defaults (see capabilities/permissions/roles.py).
     # RECRUITER (driver acquisition / onboarding) defaults to a
     # driver-equivalent baseline PLUS the recruiting rights
-    # (can_recruit_applicants + can_convert_to_driver) so it works out of
+    # (can_manage_applications + can_convert_to_driver) so it works out of
     # the box; owners tailor any flag per account from the Permissions
     # matrix.
     HR          = "hr"
@@ -84,6 +84,26 @@ class Company:
     # this sub-company.  Default '' for companies that haven't set them.
     mc_number: str = ""
     usdot_number: str = ""
+    # Brand/identity for the carrier — used by the public application form
+    # + DQ packet.  ``logo_object_id`` points at an object-store image.
+    logo_object_id: Optional[str] = None
+    brand_color: str = ""
+    website: str = ""
+    phone: str = ""
+    # Recruiter-editable apply-form content (surfaced on the public form).
+    headline: str = ""
+    perks: str = ""
+    banner_object_id: Optional[str] = None
+    # Per-carrier pre-qual gate thresholds (adapt the apply form's questions).
+    req_experience_years: int = 1
+    req_min_age: int = 21
+    req_cdl_class: str = "A"
+    # Apply-form base theme: 'light' (default) or 'dark'.
+    form_theme: str = "light"
+    # Optional extra apply-form colours (empty → base-theme default).
+    header_color: str = ""
+    bg_color: str = ""
+    heading_color: str = ""
 
 @dataclass
 class User:

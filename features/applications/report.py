@@ -1,6 +1,12 @@
-"""Driver-application PDF packet — the retainable §391.51 record.
+"""Applications feature — reporting contribution (the DQ-packet PDF).
 
-Renders a submitted application (the full ``get_driver_application`` dict)
+Co-located with the feature (like ``features/cameras/report.py``): the
+reporting *hub* (``capabilities/reporting``) owns the shared infra, while a
+feature owns its own report generator.  This one is self-contained — it
+builds the PDF straight from reportlab, no hub ``pdf_base`` needed.
+
+The retainable §391.51 Driver Qualification record.  Renders a submitted
+application (the full ``get_driver_application`` dict)
 into a printable Driver Qualification File packet: identity, CDL, 10-yr
 employment, accident/violation history, the signed FMCSA authorizations,
 the pre-hire vetting checklist, and the applicant's signature.  Pure
@@ -10,7 +16,7 @@ from __future__ import annotations
 
 import html
 import io
-from typing import Optional
+from typing import Any, Optional
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -42,7 +48,7 @@ def _styles():
     return s
 
 
-def _kv(rows: list[tuple[str, str]], styles) -> Table:
+def _kv(rows: list[tuple[str, Any]], styles) -> Table:
     data = [[Paragraph(f"<b>{_esc(k)}</b>", styles["DQBody"]), Paragraph(_esc(v) or "—", styles["DQBody"])]
             for k, v in rows]
     t = Table(data, colWidths=[1.7 * inch, 4.8 * inch])
@@ -64,7 +70,8 @@ def _yn(v) -> str:
 
 def build_dq_packet_pdf(
     app: dict, *, account_name: str = "", signature_png: Optional[bytes] = None,
-    generated_at: str = "",
+    generated_at: str = "", carrier_name: str = "", carrier_mc: str = "",
+    carrier_dot: str = "",
 ) -> io.BytesIO:
     """Build the application packet PDF.  Returns a seek-0 BytesIO."""
     styles = _styles()
@@ -78,9 +85,21 @@ def build_dq_packet_pdf(
     P = app.get("personal") or {}
     name = f"{P.get('first', '')} {P.get('middle', '')} {P.get('last', '')}".replace("  ", " ").strip()
 
+    # Hiring carrier identity (§391.51): prefer the specific sub-company
+    # the applicant applied to (legal name + MC#/USDOT#); fall back to the
+    # account name for generic / pre-branding links.
+    carrier_bits: list[str] = []
+    if carrier_name:
+        carrier_bits.append(_esc(carrier_name))
+        if carrier_mc:
+            carrier_bits.append(f"MC {_esc(carrier_mc)}")
+        if carrier_dot:
+            carrier_bits.append(f"USDOT {_esc(carrier_dot)}")
+    header_org = " · ".join(carrier_bits) if carrier_bits else _esc(account_name)
+
     story.append(Paragraph("Driver Application — Qualification File", styles["DQTitle"]))
     story.append(Paragraph(
-        f"{_esc(account_name)} · Reference {_esc(app.get('reference'))} · "
+        f"{header_org} · Reference {_esc(app.get('reference'))} · "
         f"Status {_esc(app.get('status'))} · Submitted {_esc((app.get('submitted_at') or '')[:10])}",
         styles["DQSub"]))
 

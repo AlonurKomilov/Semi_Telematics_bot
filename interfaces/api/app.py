@@ -25,7 +25,7 @@ from features.settings import router as settings_routes
 from capabilities.telemetry import router as telemetry_routes
 from capabilities.jobs import router as jobs_routes
 from interfaces.api.routes import system as system_routes
-from interfaces.api.routes import recruitment as recruitment_routes
+from features.applications import router as applications_routes
 from capabilities.permissions import router as permissions_routes
 from interfaces.api.routes import webhooks as webhooks_routes
 # Hub + platform-capability routers live WITH their domain:
@@ -398,7 +398,7 @@ def create_api() -> FastAPI:
         app.include_router(telemetry_routes.router, prefix=prefix)
         app.include_router(jobs_routes.router, prefix=prefix)
         app.include_router(system_routes.router, prefix=prefix)
-        app.include_router(recruitment_routes.router, prefix=prefix)
+        app.include_router(applications_routes.router, prefix=prefix)
         app.include_router(permissions_routes.router, prefix=prefix)
         app.include_router(maintenance_routes.router, prefix=prefix)
         app.include_router(work_orders_routes.router, prefix=prefix)

@@ -73,6 +73,7 @@ _TOOL_LABELS: dict[str, str] = {
     "get_recent_work_orders": "Looking up shop visits",
     "get_recent_inspections": "Reviewing inspections",
     "get_vehicle_history":    "Reading vehicle history",
+    "get_driver_applications": "Checking the applicant pipeline",
 }
 
 
@@ -1302,12 +1303,21 @@ async def ask_agent_stream(question: str, vehicle_context: dict,
             )
             reply = result.get("text", "")
             clean, suggestions = _parse_sug(reply)
+            # The model that actually produced THIS answer (same resolution
+            # ask_agent used), so the client can attribute each bubble to its
+            # own model instead of relabelling history with whatever model is
+            # currently selected.
+            try:
+                _answer_model = result.get("model") or get_model_for_user(user_id, account_id)[1]
+            except Exception:
+                _answer_model = result.get("model") or ""
             await queue.put({
                 "type": "done",
                 "reply": clean,
                 "suggestions": suggestions,
                 "usage": result.get("usage"),
                 "tool_results": result.get("tool_results", []),
+                "model": _answer_model,
             })
         except Exception as exc:
             # The route layer (``_event_stream`` in interfaces/api/routes/ai.py)

@@ -129,7 +129,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   { id: 'drivers', labelKey: 'nav.drivers', path: '/workforce/drivers', icon: IdCard, modules: ['hr', 'fleet', 'safety'], tier: 'shared', permission: ['can_manage_driver_docs'], navGroup: 'people' },
   // Recruiting intake — recruiter sends an apply.* link, prospects submit
   // FMCSA applications here; HR/recruiter triage + convert-to-driver.
-  { id: 'applications', labelKey: 'nav.applications', path: '/workforce/applications', icon: UserPlus, modules: ['hr'], tier: 'role', permission: ['can_recruit_applicants'], navGroup: 'people' },
+  { id: 'applications', labelKey: 'nav.applications', path: '/workforce/applications', icon: UserPlus, modules: ['hr'], tier: 'role', permission: ['can_manage_applications'], navGroup: 'people' },
   // Working Hours has been folded into Team Management → Working
   // Hours tab.  Sidebar entry removed so operators don't see two
   // doors to the same config (Team Management nav entry covers it).

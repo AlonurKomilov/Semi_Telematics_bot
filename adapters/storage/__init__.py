@@ -79,7 +79,8 @@ from .coaching import CoachingMixin
 from .storage_sync import StorageSyncMixin
 from .ai_chat import AIChatHistoryMixin
 from .errors import ErrorLogMixin
-from .recruitment import RecruitmentMixin
+from .scan_log import ScanLogMixin
+from .applications import ApplicationsMixin
 from .account_integrations import AccountIntegrationsMixin, AccountIntegration  # noqa: F401
 from .datatruck import DatatruckStorageMixin
 from .vehicles_registry import VehiclesRegistryMixin, Vehicle  # noqa: F401
@@ -124,7 +125,8 @@ class Database(
     StorageSyncMixin,
     AIChatHistoryMixin,
     ErrorLogMixin,
-    RecruitmentMixin,
+    ScanLogMixin,
+    ApplicationsMixin,
     DatatruckStorageMixin,
     VehiclesRegistryMixin,
     _DatabaseCore,

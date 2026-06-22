@@ -1,6 +1,7 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import type { ReactNode } from 'react';
-import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink, Bell, Mail, MessageSquare, Monitor, CheckCheck, Download, ShieldCheck, LayoutGrid, List, Users } from 'lucide-react';
+import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink, Bell, Mail, MessageSquare, Monitor, CheckCheck, Download, ShieldCheck, LayoutGrid, List, Users, Search, ArrowUp, ArrowDown, ChevronsUpDown, Building2, Upload, Pencil, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { apiJSON, apiFetch } from '../../api/client';
 import { PageHeader } from '../../components/shell';
 import { Button } from '../../components/ui/button';
@@ -19,13 +20,237 @@ const STATUSES = [
   'submitted', 'screening', 'interview', 'approved', 'rejected', 'withdrawn', 'hired',
 ] as const;
 
-interface RecruitLink {
+interface ApplicationLink {
   id: number; token: string; label: string; source: string; is_active: number;
   created_at: string;
   /** ISO auto-close timestamp; null → never expires. */
   expires_at?: string | null;
   /** Per-link funnel stats. */
   view_count?: number; submissions?: number; hires?: number;
+  /** Carrier this link brands for (null → generic). */
+  company_id?: number | null; company_code?: string | null; company_name?: string | null;
+}
+
+interface PickerCompany {
+  id: number; code: string; display_name: string; has_logo: boolean; brand_color: string;
+  // Cosmetic brand the recruiter can edit + the owner-managed identity (read-only).
+  website: string; phone: string; mc_number: string; usdot_number: string;
+  // Apply-form content (recruiter-editable).
+  headline: string; perks: string; has_banner: boolean;
+  // Per-carrier pre-qual gate thresholds.
+  req_experience_years: number; req_min_age: number; req_cdl_class: string;
+  // Apply-form base theme: 'light' | 'dark'.
+  form_theme: string;
+}
+
+// Authed carrier logo for the create-link preview (an <img src> can't carry
+// the Bearer token, so we fetch the bytes and object-URL them).
+function LinkCompanyLogo({ id, hasLogo, version = 0, size = 48 }: {
+  id: number; hasLogo?: boolean; version?: number; size?: number;
+}) {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    if (!hasLogo) { setUrl(''); return; }
+    let dead = false; let made = '';
+    apiFetch(`/applications/companies/${id}/logo`).then(async (res) => {
+      if (!res.ok) return;
+      const blob = await res.blob();
+      if (dead) return;
+      made = URL.createObjectURL(blob); setUrl(made);
+    }).catch(() => { /* placeholder */ });
+    return () => { dead = true; if (made) URL.revokeObjectURL(made); };
+  }, [id, hasLogo, version]);
+  if (url) return <img src={url} alt="" style={{ width: size, height: size }} className="rounded object-contain border border-border bg-card" />;
+  return (
+    <span style={{ width: size, height: size }} className="inline-flex items-center justify-center rounded border border-border bg-muted text-muted-foreground">
+      <Building2 size={Math.round(size * 0.5)} />
+    </span>
+  );
+}
+
+// Authed carrier hero photo for the create-link preview.
+function LinkCompanyBanner({ id, version = 0 }: { id: number; version?: number }) {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    let dead = false; let made = '';
+    apiFetch(`/applications/companies/${id}/banner`).then(async (res) => {
+      if (!res.ok) return;
+      const blob = await res.blob();
+      if (dead) return;
+      made = URL.createObjectURL(blob); setUrl(made);
+    }).catch(() => { /* none */ });
+    return () => { dead = true; if (made) URL.revokeObjectURL(made); };
+  }, [id, version]);
+  if (!url) return null;
+  return <img src={url} alt="" className="mt-2 h-28 w-full rounded-md border border-border object-cover" />;
+}
+
+// Preview + cosmetic touch-up for the carrier a link is branded for.  The
+// recruiter can fix the logo / accent / contact / pitch WITHOUT owner access
+// to Settings·Companies; the name + MC/DOT stay owner-managed (read-only).
+// Accent colour + light/dark base are edited live INSIDE the preview (see
+// PreviewThemeBar) — this panel owns the content brand (logo / contact /
+// pitch / photo / pre-qual requirements).
+function CompanyBrandPanel({ company, onChanged }: { company: PickerCompany; onChanged: () => void }) {
+  const [website, setWebsite] = useState(company.website || '');
+  const [phone, setPhone] = useState(company.phone || '');
+  const [headline, setHeadline] = useState(company.headline || '');
+  const [perks, setPerks] = useState(company.perks || '');
+  const [reqYears, setReqYears] = useState(company.req_experience_years ?? 1);
+  const [reqAge, setReqAge] = useState(company.req_min_age ?? 21);
+  const [reqClass, setReqClass] = useState(company.req_cdl_class || 'A');
+  const [busy, setBusy] = useState(false);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoVersion, setLogoVersion] = useState(0);
+  const [bannerBusy, setBannerBusy] = useState(false);
+  const [bannerVersion, setBannerVersion] = useState(0);
+  useEffect(() => {
+    setWebsite(company.website || ''); setPhone(company.phone || '');
+    setHeadline(company.headline || ''); setPerks(company.perks || '');
+    setReqYears(company.req_experience_years ?? 1); setReqAge(company.req_min_age ?? 21);
+    setReqClass(company.req_cdl_class || 'A');
+    setLogoVersion(0); setBannerVersion(0);
+  }, [company.id, company.website, company.phone, company.headline, company.perks,
+      company.req_experience_years, company.req_min_age, company.req_cdl_class]);
+
+  const dirty = website !== (company.website || '')
+    || phone !== (company.phone || '') || headline !== (company.headline || '') || perks !== (company.perks || '')
+    || reqYears !== (company.req_experience_years ?? 1) || reqAge !== (company.req_min_age ?? 21)
+    || reqClass !== (company.req_cdl_class || 'A');
+
+  const saveBrand = async () => {
+    setBusy(true);
+    try {
+      await apiJSON(`/applications/companies/${company.id}/brand`, {
+        method: 'PATCH',
+        body: { website, phone, headline, perks,
+                req_experience_years: reqYears, req_min_age: reqAge, req_cdl_class: reqClass },
+      });
+      toast.success('Brand updated');
+      onChanged();
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Update failed'); }
+    finally { setBusy(false); }
+  };
+  const uploadBanner = async (f: File) => {
+    setBannerBusy(true);
+    try {
+      const fd = new FormData(); fd.append('file', f);
+      const res = await apiFetch(`/applications/companies/${company.id}/banner`, { method: 'POST', body: fd });
+      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.detail || 'Upload failed'); }
+      toast.success('Photo updated'); setBannerVersion((v) => v + 1); onChanged();
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Upload failed'); }
+    finally { setBannerBusy(false); }
+  };
+  const removeBanner = async () => {
+    setBannerBusy(true);
+    try {
+      await apiFetch(`/applications/companies/${company.id}/banner`, { method: 'DELETE' });
+      setBannerVersion((v) => v + 1); onChanged();
+    } catch { /* non-fatal */ } finally { setBannerBusy(false); }
+  };
+  const uploadLogo = async (f: File) => {
+    setLogoBusy(true);
+    try {
+      const fd = new FormData(); fd.append('file', f);
+      const res = await apiFetch(`/applications/companies/${company.id}/logo`, { method: 'POST', body: fd });
+      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.detail || 'Upload failed'); }
+      toast.success('Logo updated'); setLogoVersion((v) => v + 1); onChanged();
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Upload failed'); }
+    finally { setLogoBusy(false); }
+  };
+  const removeLogo = async () => {
+    setLogoBusy(true);
+    try {
+      await apiFetch(`/applications/companies/${company.id}/logo`, { method: 'DELETE' });
+      setLogoVersion((v) => v + 1); onChanged();
+    } catch { /* non-fatal */ } finally { setLogoBusy(false); }
+  };
+
+  return (
+    <div className="mt-3 rounded-md border border-border bg-background/40 p-4">
+      <div className="flex items-start gap-4">
+        <LinkCompanyLogo id={company.id} hasLogo={company.has_logo} version={logoVersion} />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-foreground">{company.display_name || company.code}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {company.mc_number ? `MC ${company.mc_number}` : 'MC —'} · {company.usdot_number ? `USDOT ${company.usdot_number}` : 'USDOT —'}
+            <span className="ml-1 opacity-70">· name &amp; MC/DOT managed by owner</span>
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <label className="cursor-pointer">
+              <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+                disabled={logoBusy}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); e.currentTarget.value = ''; }} />
+              <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted px-2.5 py-1.5 text-xs text-foreground hover:bg-muted/70">
+                <Upload size={13} /> {company.has_logo ? 'Replace logo' : 'Upload logo'}
+              </span>
+            </label>
+            {company.has_logo && (
+              <button type="button" onClick={removeLogo} disabled={logoBusy}
+                className="text-xs text-muted-foreground hover:text-danger">Remove</button>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <Input placeholder="Website" value={website} onChange={(e) => setWebsite(e.target.value)} />
+        <Input placeholder="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+      </div>
+      <div className="mt-2 grid grid-cols-1 gap-2">
+        <Input placeholder="Headline — e.g. Top pay. Home weekly. Modern trucks."
+          value={headline} maxLength={140} onChange={(e) => setHeadline(e.target.value)} />
+        <Textarea placeholder="Perks — one per line (e.g. $0.65/mile · Home weekends · 2022+ trucks · Full benefits)"
+          value={perks} rows={3} maxLength={800} onChange={(e) => setPerks(e.target.value)} />
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span className="text-xs text-muted-foreground">Hero photo</span>
+        <label className="cursor-pointer">
+          <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={bannerBusy}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadBanner(f); e.currentTarget.value = ''; }} />
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted px-2.5 py-1.5 text-xs text-foreground hover:bg-muted/70">
+            <Upload size={13} /> {company.has_banner ? 'Replace photo' : 'Add photo'}
+          </span>
+        </label>
+        {company.has_banner && (
+          <button type="button" onClick={removeBanner} disabled={bannerBusy}
+            className="text-xs text-muted-foreground hover:text-danger">Remove</button>
+        )}
+      </div>
+      {company.has_banner && <LinkCompanyBanner id={company.id} version={bannerVersion} />}
+      <div className="mt-3 border-t border-border pt-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Pre-qual requirements</p>
+        <p className="mt-0.5 text-2xs text-muted-foreground">Adapts the apply form's eligibility questions for this carrier.</p>
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <label className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground">
+            Min experience (yrs)
+            <input type="number" min={0} max={20} value={reqYears}
+              onChange={(e) => setReqYears(Math.max(0, Math.min(20, Number(e.target.value) || 0)))}
+              className="w-14 rounded border border-border bg-muted px-1.5 py-1 text-right text-foreground" />
+          </label>
+          <label className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground">
+            Min age
+            <input type="number" min={18} max={99} value={reqAge}
+              onChange={(e) => setReqAge(Math.max(18, Math.min(99, Number(e.target.value) || 18)))}
+              className="w-14 rounded border border-border bg-muted px-1.5 py-1 text-right text-foreground" />
+          </label>
+          <label className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground">
+            CDL class
+            <select value={reqClass} onChange={(e) => setReqClass(e.target.value)}
+              className="rounded border border-border bg-muted px-1.5 py-1 text-foreground">
+              {['A', 'B', 'C'].map((x) => <option key={x} value={x}>{x}</option>)}
+            </select>
+          </label>
+        </div>
+      </div>
+      <div className="mt-3 flex items-center justify-between">
+        <a href={`/applications/preview/${company.id}`} target="_blank" rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline">
+          <ExternalLink size={13} /> Preview application
+        </a>
+        <Button size="sm" onClick={saveBrand} disabled={busy || !dirty}>{busy ? '…' : 'Save'}</Button>
+      </div>
+    </div>
+  );
 }
 
 // Expiry choices for a new link.  Default 90 days so links don't live
@@ -49,11 +274,68 @@ interface RelatedApp {
   first_name: string; last_name: string; submitted_at: string;
 }
 
+// Inline editor for an existing link — label / source / carrier / expiry.
+// Expiry defaults to "keep" so saving other fields never silently resets
+// the auto-close window; choosing a window re-bases it from now.
+function LinkEditPanel({ link, companies, onSaved, onCancel, onCompaniesChanged }: {
+  link: ApplicationLink; companies: PickerCompany[]; onSaved: () => void; onCancel: () => void;
+  onCompaniesChanged: () => void;
+}) {
+  const [label, setLabel] = useState(link.label || '');
+  const [source, setSource] = useState(link.source || '');
+  const [companyId, setCompanyId] = useState(link.company_id ? String(link.company_id) : '');
+  const [expiry, setExpiry] = useState('keep');
+  const [busy, setBusy] = useState(false);
+  const sel = companyId ? companies.find((c) => String(c.id) === companyId) : null;
+  const save = async () => {
+    setBusy(true);
+    try {
+      const body: Record<string, unknown> = { label, source, company_id: companyId ? Number(companyId) : null };
+      if (expiry !== 'keep') body.expires_in_days = Number(expiry);
+      await apiJSON(`/applications/links/${link.id}`, { method: 'PATCH', body });
+      toast.success('Link updated');
+      onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Update failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="mt-2 rounded-md border border-border bg-background/40 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Input placeholder="Label" value={label} onChange={(e) => setLabel(e.target.value)} className="max-w-xs" />
+        <Input placeholder="Source" value={source} onChange={(e) => setSource(e.target.value)} className="max-w-[10rem]" />
+        {companies.length > 0 && (
+          <select value={companyId} onChange={(e) => setCompanyId(e.target.value)}
+            title="Carrier this link brands for"
+            className="bg-muted border border-border rounded-md px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring">
+            <option value="">No company (generic)</option>
+            {companies.map((co) => <option key={co.id} value={co.id}>{co.display_name || co.code}</option>)}
+          </select>
+        )}
+        <select value={expiry} onChange={(e) => setExpiry(e.target.value)}
+          className="bg-muted border border-border rounded-md px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring">
+          <option value="keep">Keep expiry</option>
+          {EXPIRY_OPTIONS.map((o) => <option key={o.days} value={o.days}>Reset · {o.label}</option>)}
+        </select>
+        <Button size="sm" onClick={save} disabled={busy}>{busy ? '…' : 'Save'}</Button>
+        <button type="button" onClick={onCancel} className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
+      </div>
+      {/* Same carrier brand + requirements + preview the create flow shows. */}
+      {sel && <CompanyBrandPanel company={sel} onChanged={onCompaniesChanged} />}
+    </div>
+  );
+}
+
 export default function Applications() {
-  const [links, setLinks] = useState<RecruitLink[]>([]);
+  const [links, setLinks] = useState<ApplicationLink[]>([]);
   const [rows, setRows] = useState<AppRow[]>([]);
   const [statusFilter, setStatusFilter] = useState('');
   const [view, setView] = useState<'table' | 'board'>('table');
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<{ key: 'name' | 'status' | 'submitted'; dir: 'asc' | 'desc' }>({ key: 'submitted', dir: 'desc' });
+  const [selected, setSelected] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
@@ -62,13 +344,16 @@ export default function Applications() {
   const [label, setLabel] = useState('');
   const [source, setSource] = useState('');
   const [expiryDays, setExpiryDays] = useState(90);  // default: not forever
+  const [companyId, setCompanyId] = useState('');   // '' → generic/no brand
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState<number | null>(null);
+  // Carriers the recruiter can brand a link with (read-only picker).
+  const [companies, setCompanies] = useState<PickerCompany[]>([]);
 
   // Load ALL applications once; the table filters client-side and the
   // board groups by status — both need the full set.
   const loadApps = useCallback(() => {
-    apiJSON<{ items: AppRow[] }>('/recruitment/applications?limit=500')
+    apiJSON<{ items: AppRow[] }>('/applications?limit=500')
       .then((r) => setRows(r.items))
       .catch((e) => setErr(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => setLoading(false));
@@ -82,45 +367,121 @@ export default function Applications() {
     if (prev.find((r) => r.id === id)?.status === status) return;
     setRows(prev.map((r) => (r.id === id ? { ...r, status } : r)));
     try {
-      await apiJSON(`/recruitment/applications/${id}/status`, { method: 'PATCH', body: { status } });
+      await apiJSON(`/applications/${id}/status`, { method: 'PATCH', body: { status } });
     } catch (e) {
       setRows(prev);
       alert(e instanceof Error ? e.message : 'Could not move application');
     }
   };
 
-  const visibleRows = statusFilter ? rows.filter((r) => r.status === statusFilter) : rows;
+  // Table rows: status filter → text search → sort (all client-side over
+  // the full set already loaded).
+  const tableRows = useMemo(() => {
+    let rs = statusFilter ? rows.filter((r) => r.status === statusFilter) : rows;
+    const q = search.trim().toLowerCase();
+    if (q) rs = rs.filter((r) => `${r.first_name} ${r.last_name} ${r.email} ${r.reference}`.toLowerCase().includes(q));
+    const key = (r: AppRow) =>
+      sort.key === 'name' ? `${r.last_name} ${r.first_name}`.toLowerCase()
+        : sort.key === 'status' ? r.status
+        : (r.submitted_at || '');
+    rs = [...rs].sort((a, b) => {
+      const av = key(a), bv = key(b);
+      const c = av < bv ? -1 : av > bv ? 1 : 0;
+      return sort.dir === 'asc' ? c : -c;
+    });
+    return rs;
+  }, [rows, statusFilter, search, sort]);
+
+  const toggleSort = (key: 'name' | 'status' | 'submitted') =>
+    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
+
+  const toggleRow = (id: number) =>
+    setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const allVisibleSelected = tableRows.length > 0 && tableRows.every((r) => selected.has(r.id));
+  const toggleAll = () =>
+    setSelected((s) => {
+      const n = new Set(s);
+      if (allVisibleSelected) tableRows.forEach((r) => n.delete(r.id));
+      else tableRows.forEach((r) => n.add(r.id));
+      return n;
+    });
+
+  // Bulk move: the server enforces the per-app rules (illegal jumps, the
+  // vetting gate, hired-only-via-Hire) and tells us what it skipped.
+  const bulkAction = async (status: string, label: string) => {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    if (!confirm(`${label} ${ids.length} application${ids.length > 1 ? 's' : ''}?`)) return;
+    try {
+      const r = await apiJSON<{ updated: number[]; skipped: { id: number; reason: string }[] }>(
+        '/applications/bulk-status', { method: 'POST', body: { ids, status } });
+      const skipped = r.skipped?.length ?? 0;
+      if (skipped) toast.warning(`${r.updated.length} updated · ${skipped} skipped (${r.skipped[0].reason})`);
+      else toast.success(`${r.updated.length} application${r.updated.length > 1 ? 's' : ''} ${label.toLowerCase()}d`);
+      setSelected(new Set());
+      loadApps();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Bulk action failed');
+    }
+  };
+
+  // Sortable column header.
+  const sortTh = (k: 'name' | 'status' | 'submitted', labelNode: ReactNode) => (
+    <th className="px-3 py-2 text-left">
+      <button onClick={() => toggleSort(k)} className="inline-flex items-center gap-1 hover:text-foreground">
+        {labelNode}
+        {sort.key === k
+          ? (sort.dir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)
+          : <ChevronsUpDown size={11} className="opacity-40" />}
+      </button>
+    </th>
+  );
 
   const loadLinks = useCallback(() => {
-    apiJSON<{ items: RecruitLink[] }>('/recruitment/links')
+    apiJSON<{ items: ApplicationLink[] }>('/applications/links')
       .then((r) => setLinks(r.items))
       .catch(() => { /* non-fatal */ });
   }, []);
 
   useEffect(() => { loadApps(); }, [loadApps]);
   useEffect(() => { loadLinks(); }, [loadLinks]);
+  // Carriers for the link company-picker + brand preview (no Samsara key).
+  const loadCompanies = useCallback(() => {
+    apiJSON<{ items: PickerCompany[] }>('/applications/companies')
+      .then((r) => setCompanies(r.items))
+      .catch(() => { /* non-fatal — picker just shows 'No company' */ });
+  }, []);
+  useEffect(() => { loadCompanies(); }, [loadCompanies]);
 
   const createLink = async () => {
     setCreating(true);
     try {
-      await apiJSON('/recruitment/links', {
+      await apiJSON('/applications/links', {
         method: 'POST',
-        body: { label, source, expires_in_days: expiryDays || null },
+        body: { label, source, expires_in_days: expiryDays || null, company_id: companyId ? Number(companyId) : null },
       });
-      setLabel(''); setSource('');
+      setLabel(''); setSource(''); setCompanyId('');
       loadLinks();
     } finally {
       setCreating(false);
     }
   };
 
+  const [editingLink, setEditingLink] = useState<number | null>(null);
+
   const revokeLink = async (id: number) => {
     if (!confirm('Revoke this link? Applicants can no longer use it.')) return;
-    await apiJSON(`/recruitment/links/${id}/revoke`, { method: 'POST' });
+    await apiJSON(`/applications/links/${id}/revoke`, { method: 'POST' });
     loadLinks();
   };
 
-  const copyLink = (l: RecruitLink) => {
+  const deleteLink = async (id: number) => {
+    if (!confirm('Delete this link permanently? Submitted applications are kept; only the link + its stats are removed.')) return;
+    await apiJSON(`/applications/links/${id}`, { method: 'DELETE' });
+    loadLinks();
+  };
+
+  const copyLink = (l: ApplicationLink) => {
     navigator.clipboard?.writeText(`${APPLY_BASE}/${l.token}`);
     setCopied(l.id);
     setTimeout(() => setCopied(null), 1500);
@@ -129,19 +490,32 @@ export default function Applications() {
   return (
     <div className="space-y-6">
       <PageHeader title="Driver Applications" icon={UserPlus}
-        description="Recruiting links + submitted driver applications."
+        description="Application links + submitted driver applications."
         actions={<NotificationsBell onOpen={(id) => setOpenId(id)} />} />
 
-      {/* ── Recruiting links ───────────────────────────────────── */}
+      {/* ── Application links ──────────────────────────────────── */}
       <section className="bg-card border border-border rounded-lg p-4">
         <h2 className="text-base font-semibold flex items-center gap-2 mb-3">
-          <LinkIcon size={16} className="text-muted-foreground" /> Recruiting links
+          <LinkIcon size={16} className="text-muted-foreground" /> Application Links
         </h2>
         <div className="flex flex-wrap gap-2 mb-4">
           <Input placeholder="Label (e.g. Indeed campaign)" value={label}
             onChange={(e) => setLabel(e.target.value)} className="max-w-xs" />
           <Input placeholder="Source (optional)" value={source}
             onChange={(e) => setSource(e.target.value)} className="max-w-[10rem]" />
+          {companies.length > 0 && (
+            <select
+              value={companyId}
+              onChange={(e) => setCompanyId(e.target.value)}
+              title="Brand the application form for this carrier"
+              className="bg-muted border border-border rounded-md px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
+            >
+              <option value="">No company (generic)</option>
+              {companies.map((co) => (
+                <option key={co.id} value={co.id}>{co.display_name || co.code}</option>
+              ))}
+            </select>
+          )}
           <select
             value={expiryDays}
             onChange={(e) => setExpiryDays(Number(e.target.value))}
@@ -155,6 +529,15 @@ export default function Applications() {
             {creating ? '…' : 'Create link'}
           </Button>
         </div>
+        {companyId && (() => {
+          const sel = companies.find((c) => String(c.id) === companyId);
+          return sel ? (
+            <div className="mb-4">
+              <p className="text-xs text-muted-foreground">This link will be branded for — review &amp; fix the carrier's look before creating:</p>
+              <CompanyBrandPanel company={sel} onChanged={loadCompanies} />
+            </div>
+          ) : null;
+        })()}
         {links.length === 0 ? (
           <p className="text-sm text-muted-foreground">No links yet. Create one to start collecting applications.</p>
         ) : (
@@ -164,46 +547,69 @@ export default function Applications() {
                 && new Date(l.expires_at).getTime() < Date.now();
               const live = l.is_active === 1 && !expired;
               return (
-              <li key={l.id} className="flex items-center gap-2 text-sm">
-                <span className={`px-2 py-0.5 rounded text-xs ${
-                  l.is_active !== 1 ? statusClasses('disabled')
-                  : expired ? statusClasses('disabled')
-                  : statusClasses('active')}`}>
-                  {l.is_active !== 1 ? 'revoked' : expired ? 'expired' : 'active'}
-                </span>
-                <span className="font-medium">{l.label || '(no label)'}</span>
-                {l.source && <span className="text-muted-foreground text-xs">· {l.source}</span>}
-                <code className="text-2xs text-muted-foreground truncate max-w-[16rem]">
-                  {APPLY_BASE}/{l.token}
-                </code>
-                <span className="text-2xs text-muted-foreground whitespace-nowrap" title="views · applications · hires">
-                  · {l.view_count ?? 0} views · {l.submissions ?? 0} applied · {l.hires ?? 0} hired
-                  {(l.submissions ?? 0) > 0 && (
-                    <span className="ml-1 text-foreground">({Math.round(((l.hires ?? 0) / (l.submissions || 1)) * 100)}%)</span>
-                  )}
-                </span>
-                {live && l.expires_at && (
-                  <span className="text-2xs text-muted-foreground whitespace-nowrap">
-                    · expires {formatDate(l.expires_at, { timeZone: tz, intl: { hour: undefined, minute: undefined } })}
+              <li key={l.id} className="text-sm">
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-0.5 rounded text-xs ${
+                    l.is_active !== 1 ? statusClasses('disabled')
+                    : expired ? statusClasses('disabled')
+                    : statusClasses('active')}`}>
+                    {l.is_active !== 1 ? 'revoked' : expired ? 'expired' : 'active'}
                   </span>
-                )}
-                {live && (
-                  <>
-                    <button onClick={() => copyLink(l)} title="Copy link"
-                      className="text-muted-foreground hover:text-foreground p-1 rounded hover:bg-muted">
-                      {copied === l.id ? <Check size={14} className="text-ok" /> : <Copy size={14} />}
-                    </button>
-                    <button onClick={() => revokeLink(l.id)} title="Revoke"
-                      className="text-muted-foreground hover:text-destructive p-1 rounded hover:bg-muted">
-                      <Ban size={14} />
-                    </button>
-                  </>
-                )}
-                {l.is_active === 1 && expired && (
-                  <button onClick={() => revokeLink(l.id)} title="Remove expired link"
-                    className="text-muted-foreground hover:text-destructive p-1 rounded hover:bg-muted">
-                    <Ban size={14} />
-                  </button>
+                  {(l.company_name || l.company_code) && (
+                    <span className={`rounded px-1.5 py-0.5 text-2xs ${toneClasses('info')}`}
+                      title="This link brands the application form for this carrier">
+                      {l.company_name || l.company_code}
+                    </span>
+                  )}
+                  <span className="font-medium">{l.label || '(no label)'}</span>
+                  {l.source && <span className="text-muted-foreground text-xs">· {l.source}</span>}
+                  <code className="text-2xs text-muted-foreground truncate max-w-[16rem]">
+                    {APPLY_BASE}/{l.token}
+                  </code>
+                  <span className="text-2xs text-muted-foreground whitespace-nowrap" title="views · applications · hires">
+                    · {l.view_count ?? 0} views · {l.submissions ?? 0} applied · {l.hires ?? 0} hired
+                    {(l.submissions ?? 0) > 0 && (
+                      <span className="ml-1 text-foreground">({Math.round(((l.hires ?? 0) / (l.submissions || 1)) * 100)}%)</span>
+                    )}
+                  </span>
+                  {live && l.expires_at && (
+                    <span className="text-2xs text-muted-foreground whitespace-nowrap">
+                      · expires {formatDate(l.expires_at, { timeZone: tz, intl: { hour: undefined, minute: undefined } })}
+                    </span>
+                  )}
+                  <div className="ml-auto flex items-center gap-1">
+                    {live && (
+                      <button onClick={() => copyLink(l)} title="Copy link"
+                        className="text-muted-foreground hover:text-foreground p-1 rounded hover:bg-muted">
+                        {copied === l.id ? <Check size={14} className="text-ok" /> : <Copy size={14} />}
+                      </button>
+                    )}
+                    {l.is_active === 1 && (
+                      <button onClick={() => setEditingLink(editingLink === l.id ? null : l.id)}
+                        title="Edit link (label, source, carrier, expiry)"
+                        className={`p-1 rounded hover:bg-muted ${editingLink === l.id ? 'text-foreground bg-muted' : 'text-muted-foreground hover:text-foreground'}`}>
+                        <Pencil size={14} />
+                      </button>
+                    )}
+                    {live && (
+                      <button onClick={() => revokeLink(l.id)} title="Revoke"
+                        className="text-muted-foreground hover:text-destructive p-1 rounded hover:bg-muted">
+                        <Ban size={14} />
+                      </button>
+                    )}
+                    {!live && (
+                      <button onClick={() => deleteLink(l.id)} title="Delete link permanently"
+                        className="text-muted-foreground hover:text-destructive p-1 rounded hover:bg-muted">
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {editingLink === l.id && (
+                  <LinkEditPanel link={l} companies={companies}
+                    onSaved={() => { setEditingLink(null); loadLinks(); }}
+                    onCancel={() => setEditingLink(null)}
+                    onCompaniesChanged={loadCompanies} />
                 )}
               </li>
               );
@@ -238,9 +644,23 @@ export default function Applications() {
                   {s}
                 </button>
               ))}
+              <div className="relative ml-auto">
+                <Search size={13} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, ref…"
+                  className="w-48 rounded-md border border-border bg-card py-1 pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-ring" />
+              </div>
             </>
           )}
         </div>
+        {view === 'table' && selected.size > 0 && (
+          <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-3 py-2 text-xs">
+            <span className="font-medium text-foreground">{selected.size} selected</span>
+            <button onClick={() => bulkAction('screening', 'Move to screening')} className="rounded-md border border-border px-2 py-1 hover:bg-muted">Move to screening</button>
+            <button onClick={() => bulkAction('rejected', 'Reject')} className={`rounded-md px-2 py-1 ${toneClasses('danger')}`}>Reject</button>
+            <button onClick={() => bulkAction('withdrawn', 'Withdraw')} className="rounded-md border border-border px-2 py-1 hover:bg-muted">Withdraw</button>
+            <button onClick={() => setSelected(new Set())} className="ml-auto text-muted-foreground hover:text-foreground">Clear</button>
+          </div>
+        )}
         {err && <div className="p-3 text-sm text-destructive">{err}</div>}
         {view === 'board' ? (
           <ApplicationsBoard rows={rows} loading={loading} onMove={moveApp} onOpen={setOpenId} />
@@ -248,23 +668,33 @@ export default function Applications() {
           <table className="w-full text-sm">
             <thead className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="text-left px-3 py-2">Ref</th>
-                <th className="text-left px-3 py-2">Name</th>
-                <th className="text-left px-3 py-2">Contact</th>
-                <th className="text-left px-3 py-2">Location</th>
-                <th className="text-left px-3 py-2">CDL</th>
-                <th className="text-left px-3 py-2">Status</th>
-                <th className="text-left px-3 py-2">Submitted</th>
+                <th className="w-8 px-3 py-2">
+                  <input type="checkbox" aria-label="Select all" checked={allVisibleSelected}
+                    onChange={toggleAll} className="accent-primary" />
+                </th>
+                <th className="px-3 py-2 text-left">Ref</th>
+                {sortTh('name', 'Name')}
+                <th className="px-3 py-2 text-left">Contact</th>
+                <th className="px-3 py-2 text-left">Location</th>
+                <th className="px-3 py-2 text-left">CDL</th>
+                {sortTh('status', 'Status')}
+                {sortTh('submitted', 'Submitted')}
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan={7} className="text-center text-muted-foreground py-8">Loading…</td></tr>}
-              {!loading && visibleRows.length === 0 && (
-                <tr><td colSpan={7} className="text-center text-muted-foreground py-8">No applications{statusFilter ? ` in '${statusFilter}'` : ' yet'}.</td></tr>
+              {loading && <tr><td colSpan={8} className="text-center text-muted-foreground py-8">Loading…</td></tr>}
+              {!loading && tableRows.length === 0 && (
+                <tr><td colSpan={8} className="text-center text-muted-foreground py-8">
+                  No applications{search ? ' match your search' : statusFilter ? ` in '${statusFilter}'` : ' yet'}.
+                </td></tr>
               )}
-              {visibleRows.map((r) => (
+              {tableRows.map((r) => (
                 <tr key={r.id} onClick={() => setOpenId(r.id)}
-                  className="border-b border-border/50 cursor-pointer hover:bg-muted/40">
+                  className={`border-b border-border/50 cursor-pointer hover:bg-muted/40 ${selected.has(r.id) ? 'bg-primary/5' : ''}`}>
+                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                    <input type="checkbox" aria-label={`Select ${r.reference}`} checked={selected.has(r.id)}
+                      onChange={() => toggleRow(r.id)} className="accent-primary" />
+                  </td>
                   <td className="px-3 py-2 font-mono text-xs">{r.reference}</td>
                   <td className="px-3 py-2">
                     {r.first_name} {r.last_name}
@@ -395,7 +825,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
   const [hireResult, setHireResult] = useState<string>('');
 
   useEffect(() => {
-    apiJSON<AppDetail>(`/recruitment/applications/${appId}`).then((d) => {
+    apiJSON<AppDetail>(`/applications/${appId}`).then((d) => {
       setApp(d); setNotes(d.recruiter_notes || '');
     });
   }, [appId]);
@@ -403,7 +833,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
   const setStatus = async (status: string) => {
     setBusy(true);
     try {
-      await apiJSON(`/recruitment/applications/${appId}/status`, { method: 'PATCH', body: { status } });
+      await apiJSON(`/applications/${appId}/status`, { method: 'PATCH', body: { status } });
       setApp((a) => a ? { ...a, status } : a);
       onChanged();
     } catch (e) {
@@ -415,13 +845,13 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
 
   const toggleCheck = async (key: string, done: boolean) => {
     const r = await apiJSON<{ vetting: AppDetail['vetting'] }>(
-      `/recruitment/applications/${appId}/vetting`, { method: 'PATCH', body: { check: key, done } },
+      `/applications/${appId}/vetting`, { method: 'PATCH', body: { check: key, done } },
     );
     setApp((a) => (a ? { ...a, vetting: r.vetting } : a));
   };
 
   const downloadPacket = async () => {
-    const res = await apiFetch(`/recruitment/applications/${appId}/packet.pdf`);
+    const res = await apiFetch(`/applications/${appId}/packet.pdf`);
     if (!res.ok) { alert('Could not download the packet.'); return; }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
@@ -434,7 +864,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
   const saveNotes = async () => {
     setBusy(true);
     try {
-      await apiJSON(`/recruitment/applications/${appId}/notes`, { method: 'PATCH', body: { notes } });
+      await apiJSON(`/applications/${appId}/notes`, { method: 'PATCH', body: { notes } });
     } finally { setBusy(false); }
   };
 
@@ -442,7 +872,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
     if (!confirm('Hire this applicant? This creates a driver invite link to share with them.')) return;
     setBusy(true);
     try {
-      const r = await apiJSON<{ invite_link: string }>(`/recruitment/applications/${appId}/convert`, { method: 'POST' });
+      const r = await apiJSON<{ invite_link: string }>(`/applications/${appId}/convert`, { method: 'POST' });
       setHireResult(r.invite_link);
       setApp((a) => a ? { ...a, status: 'hired' } : a);
       onChanged();
@@ -707,7 +1137,7 @@ function DocThumb({ appId, slot }: { appId: number; slot: string }) {
   useEffect(() => {
     let dead = false;
     let made = '';
-    apiFetch(`/recruitment/applications/${appId}/docs/${slot}`)
+    apiFetch(`/applications/${appId}/docs/${slot}`)
       .then(async (res) => {
         if (!res.ok) throw new Error(String(res.status));
         const blob = await res.blob();
@@ -760,7 +1190,7 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
   const [channels, setChannels] = useState<string[]>([]);
 
   const load = useCallback(() => {
-    apiJSON<{ items: Notif[]; unread_count: number }>('/recruitment/notifications?limit=20')
+    apiJSON<{ items: Notif[]; unread_count: number }>('/applications/notifications?limit=20')
       .then((r) => { setItems(r.items); setUnread(r.unread_count); })
       .catch(() => { /* non-fatal */ });
   }, []);
@@ -769,18 +1199,18 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { const t = setInterval(load, 60_000); return () => clearInterval(t); }, [load]);
   useEffect(() => {
-    apiJSON<{ channels: string[] }>('/recruitment/notify-prefs')
+    apiJSON<{ channels: string[] }>('/applications/notify-prefs')
       .then((r) => setChannels(r.channels)).catch(() => { /* non-fatal */ });
   }, []);
 
   const markAll = async () => {
-    await apiJSON('/recruitment/notifications/read', { method: 'POST', body: {} });
+    await apiJSON('/applications/notifications/read', { method: 'POST', body: {} });
     setItems((xs) => xs.map((x) => ({ ...x, is_read: 1 })));
     setUnread(0);
   };
   const openNotif = (n: Notif) => {
     if (!n.is_read) {
-      apiJSON('/recruitment/notifications/read', { method: 'POST', body: { ids: [n.id] } }).catch(() => {});
+      apiJSON('/applications/notifications/read', { method: 'POST', body: { ids: [n.id] } }).catch(() => {});
       setItems((xs) => xs.map((x) => (x.id === n.id ? { ...x, is_read: 1 } : x)));
       setUnread((u) => Math.max(0, u - 1));
     }
@@ -790,7 +1220,7 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
   const toggleChannel = async (key: string) => {
     const next = channels.includes(key) ? channels.filter((c) => c !== key) : [...channels, key];
     setChannels(next);
-    const r = await apiJSON<{ channels: string[] }>('/recruitment/notify-prefs', { method: 'PUT', body: { channels: next } });
+    const r = await apiJSON<{ channels: string[] }>('/applications/notify-prefs', { method: 'PUT', body: { channels: next } });
     setChannels(r.channels);
   };
 

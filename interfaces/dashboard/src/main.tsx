@@ -9,6 +9,7 @@ import { AuthProvider } from './context/AuthContext';
 import { RoleViewProvider } from './context/RoleViewContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { TooltipProvider } from './components/ui/tooltip';
+import { applyPublicFormTheme } from './features/applications/public/theme';
 import './i18n';  // initialise i18next before any component renders
 import './index.css';
 
@@ -53,14 +54,20 @@ const _root = ReactDOM.createRoot(document.getElementById('root')!);
 
 // Lazy so the public form is its OWN chunk — dashboard users never pay
 // for it, and apply.* visitors never load the auth/router/shell graph.
-const PublicApply = React.lazy(() => import('./features/apply/PublicApply'));
+// /status[/<ref>] renders the self-service status checker instead.
+const PublicApply = React.lazy(() => import('./features/applications/public/PublicApply'));
+const ApplyStatus = React.lazy(() => import('./features/applications/public/ApplyStatus'));
+const _isStatus = window.location.pathname.split('/').filter(Boolean)[0]?.toLowerCase() === 'status';
 
 if (_isApply) {
+  // Public form theme — the SAME rule the recruiter preview reproduces
+  // (one source of truth in public/theme.ts), so the two never diverge.
+  applyPublicFormTheme();
   document.body.className = 'bg-background text-foreground';
   _root.render(
     <React.StrictMode>
       <React.Suspense fallback={null}>
-        <PublicApply />
+        {_isStatus ? <ApplyStatus /> : <PublicApply />}
       </React.Suspense>
       <Toaster richColors position="top-right" closeButton />
     </React.StrictMode>,

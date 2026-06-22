@@ -4641,9 +4641,9 @@ async def migrate_metrics_daily_eod_readings(conn) -> None:
 
 @_register("112_driver_applications")
 async def migrate_driver_applications(conn) -> None:
-    """Driver-recruiting intake: recruitment_links + driver_applications.
+    """Driver-recruiting intake: application_links + driver_applications.
 
-    ``recruitment_links`` — one row per shareable recruiting link an
+    ``application_links`` — one row per shareable recruiting link an
     account creates (the token in /apply/<token> resolves to the
     account).  Reusable: many applicants submit through one link.
 
@@ -4659,7 +4659,7 @@ async def migrate_driver_applications(conn) -> None:
     try:
         await conn.executescript(
             """
-            CREATE TABLE IF NOT EXISTS recruitment_links (
+            CREATE TABLE IF NOT EXISTS application_links (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 account_id  INTEGER NOT NULL REFERENCES accounts(id),
                 token       TEXT    NOT NULL UNIQUE,
@@ -4716,8 +4716,8 @@ async def migrate_driver_applications(conn) -> None:
                 created_at           TEXT NOT NULL
             );
 
-            CREATE INDEX IF NOT EXISTS idx_recruitment_links_account
-                ON recruitment_links(account_id);
+            CREATE INDEX IF NOT EXISTS idx_application_links_account
+                ON application_links(account_id);
             CREATE INDEX IF NOT EXISTS idx_driver_apps_account_status
                 ON driver_applications(account_id, status);
             CREATE INDEX IF NOT EXISTS idx_driver_apps_token
@@ -4725,7 +4725,7 @@ async def migrate_driver_applications(conn) -> None:
             """
         )
         await conn.commit()
-        logger.info("Migration 112: recruitment_links + driver_applications ready")
+        logger.info("Migration 112: application_links + driver_applications ready")
     except Exception as e:
         logger.error("Migration 112 failed: %s", e, exc_info=True)
         try:
@@ -4739,7 +4739,7 @@ async def migrate_driver_applications(conn) -> None:
 async def migrate_invites_source_application(conn) -> None:
     """Link an invite back to the driver application it was minted from.
 
-    Hiring an applicant (``/recruitment/applications/{id}/convert``) mints a
+    Hiring an applicant (``/applications/applications/{id}/convert``) mints a
     driver invite, but the new user doesn't exist until that invite is
     REDEEMED.  Stamping the source application id on the invite lets
     ``redeem_invite`` complete the round-trip — set the application's
@@ -4759,8 +4759,8 @@ async def migrate_invites_source_application(conn) -> None:
 
 
 @_register("114_recruitment_links_expires_at")
-async def migrate_recruitment_links_expires_at(conn) -> None:
-    """Add ``recruitment_links.expires_at`` (ISO-8601, nullable).
+async def migrate_application_links_expires_at(conn) -> None:
+    """Add ``application_links.expires_at`` (ISO-8601, nullable).
 
     Public apply links used to live forever until manually revoked — a
     leaked or stale-campaign link kept ingesting applicant PII unmonitored.
@@ -4772,21 +4772,21 @@ async def migrate_recruitment_links_expires_at(conn) -> None:
     """
     try:
         await conn.execute(
-            "ALTER TABLE recruitment_links ADD COLUMN expires_at TEXT"
+            "ALTER TABLE application_links ADD COLUMN expires_at TEXT"
         )
         await conn.commit()
-        logger.info("Migration 114: added recruitment_links.expires_at")
+        logger.info("Migration 114: added application_links.expires_at")
     except Exception as e:
-        logger.info("Migration 114: recruitment_links.expires_at likely exists — %s", e)
+        logger.info("Migration 114: application_links.expires_at likely exists — %s", e)
 
 
 @_register("115_recruitment_notifications")
-async def migrate_recruitment_notifications(conn) -> None:
+async def migrate_application_notifications(conn) -> None:
     """In-app notifications + per-user channel prefs for recruiting.
 
-    ``recruitment_notifications`` is one row PER RECIPIENT (fan-out target
-    is every account user holding ``can_recruit_applicants``), powering the
-    dashboard channel + the unread badge.  ``recruitment_notify_prefs``
+    ``application_notifications`` is one row PER RECIPIENT (fan-out target
+    is every account user holding ``can_manage_applications``), powering the
+    dashboard channel + the unread badge.  ``application_notify_prefs``
     stores each user's chosen delivery channels (telegram / email /
     dashboard) — mirroring the ``digest_subscriptions.delivery_channels``
     comma-list pattern.  A missing prefs row means "all channels" (the
@@ -4796,7 +4796,7 @@ async def migrate_recruitment_notifications(conn) -> None:
     """
     try:
         await conn.execute("""
-            CREATE TABLE IF NOT EXISTS recruitment_notifications (
+            CREATE TABLE IF NOT EXISTS application_notifications (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 account_id      INTEGER NOT NULL REFERENCES accounts(id),
                 user_id         INTEGER NOT NULL REFERENCES users(id),
@@ -4811,10 +4811,10 @@ async def migrate_recruitment_notifications(conn) -> None:
         """)
         await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_recruit_notif_inbox
-                ON recruitment_notifications(account_id, user_id, is_read, id)
+                ON application_notifications(account_id, user_id, is_read, id)
         """)
         await conn.execute("""
-            CREATE TABLE IF NOT EXISTS recruitment_notify_prefs (
+            CREATE TABLE IF NOT EXISTS application_notify_prefs (
                 user_id     INTEGER PRIMARY KEY REFERENCES users(id),
                 account_id  INTEGER NOT NULL REFERENCES accounts(id),
                 channels    TEXT    NOT NULL DEFAULT 'telegram,email,dashboard',
@@ -4822,7 +4822,7 @@ async def migrate_recruitment_notifications(conn) -> None:
             )
         """)
         await conn.commit()
-        logger.info("Migration 115: created recruitment_notifications + recruitment_notify_prefs")
+        logger.info("Migration 115: created application_notifications + application_notify_prefs")
     except Exception as e:
         logger.error("Migration 115 failed: %s", e, exc_info=True)
         try:
@@ -4841,7 +4841,7 @@ async def migrate_application_vetting(conn) -> None:
        whom and when.  The 'approved' status gate enforces the required
        checks so the pipeline stage is a real compliance gate, not a label.
 
-    2. Re-point ``recruitment_notifications.application_id`` FK to
+    2. Re-point ``application_notifications.application_id`` FK to
        ``ON DELETE CASCADE``.  The account purge (terminal step of the
        90-day FMCSA grace) deletes tenant tables by ``account_id`` in an
        arbitrary order; with the default RESTRICT, deleting
@@ -4861,32 +4861,32 @@ async def migrate_application_vetting(conn) -> None:
         logger.info("Migration 116: vetting_json likely exists — %s", e)
     try:
         await conn.execute(
-            "ALTER TABLE recruitment_notifications "
-            "DROP CONSTRAINT IF EXISTS recruitment_notifications_application_id_fkey"
+            "ALTER TABLE application_notifications "
+            "DROP CONSTRAINT IF EXISTS application_notifications_application_id_fkey"
         )
         await conn.execute(
-            "ALTER TABLE recruitment_notifications "
-            "ADD CONSTRAINT recruitment_notifications_application_id_fkey "
+            "ALTER TABLE application_notifications "
+            "ADD CONSTRAINT application_notifications_application_id_fkey "
             "FOREIGN KEY (application_id) REFERENCES driver_applications(id) ON DELETE CASCADE"
         )
         await conn.commit()
-        logger.info("Migration 116: recruitment_notifications.application_id → ON DELETE CASCADE")
+        logger.info("Migration 116: application_notifications.application_id → ON DELETE CASCADE")
     except Exception as e:
         logger.info("Migration 116: FK cascade alter skipped — %s", e)
 
 
 @_register("117_recruitment_link_view_count")
 async def migrate_recruitment_link_view_count(conn) -> None:
-    """``recruitment_links.view_count`` — top-of-funnel counter for the
+    """``application_links.view_count`` — top-of-funnel counter for the
     per-link analytics (views → submissions → hires conversion).  Bumped
     by the public apply page; submissions/hires are derived from
     ``driver_applications`` at read time.  Idempotent ADD COLUMN."""
     try:
         await conn.execute(
-            "ALTER TABLE recruitment_links ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0"
+            "ALTER TABLE application_links ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0"
         )
         await conn.commit()
-        logger.info("Migration 117: added recruitment_links.view_count")
+        logger.info("Migration 117: added application_links.view_count")
     except Exception as e:
         logger.info("Migration 117: view_count likely exists — %s", e)
 
@@ -4915,3 +4915,231 @@ async def migrate_application_ssn_hash(conn) -> None:
         logger.info("Migration 118: created idx_driver_app_ssn_hash")
     except Exception as e:
         logger.info("Migration 118: ssn_hash index skipped — %s", e)
+
+
+@_register("119_perm_recruit_to_manage_applications")
+async def migrate_perm_recruit_to_manage_applications(conn) -> None:
+    """Rename the permission flag ``can_recruit_applicants`` →
+    ``can_manage_applications`` inside every stored per-account
+    ``role_permissions`` override.
+
+    The Applications feature was renamed off the recruiter-role word; the
+    FeatureSet field + permission matrix now use ``can_manage_applications``.
+    Existing accounts hold their grants as a JSON blob keyed by the OLD flag
+    name, so without this rewrite a saved grant would be read under a key the
+    code no longer knows and silently revert to the role default.  Fresh DBs
+    have no such rows → no-op.  The physical recruitment_* tables keep their
+    legacy names (renaming live tables fights schema.create_tables; not worth
+    it for invisible names).
+    """
+    import json as _json
+    try:
+        cur = await conn.execute("SELECT id, permissions FROM role_permissions")
+        rows = await cur.fetchall()
+    except Exception as e:
+        logger.info("Migration 119: role_permissions not present — %s", e)
+        return
+    changed = 0
+    for r in rows:
+        rid = r[0]
+        try:
+            perms = _json.loads(r[1] or "{}")
+        except (ValueError, TypeError):
+            continue
+        if isinstance(perms, dict) and "can_recruit_applicants" in perms:
+            perms["can_manage_applications"] = perms.pop("can_recruit_applicants")
+            await conn.execute(
+                "UPDATE role_permissions SET permissions = ? WHERE id = ?",
+                (_json.dumps(perms), rid),
+            )
+            changed += 1
+    await conn.commit()
+    logger.info(
+        "Migration 119: renamed can_recruit_applicants→can_manage_applications "
+        "in %d role_permissions override(s)", changed,
+    )
+
+
+@_register("120_company_branding")
+async def migrate_company_branding(conn) -> None:
+    """Brand/identity fields on ``companies`` so each sub-company (a real
+    carrier) carries its own logo + brand for the public application form
+    and the DQ packet.  ``logo_object_id`` points at an object-store image;
+    the rest are plain text.  Idempotent ADD COLUMN."""
+    cols = [
+        ("logo_object_id", "TEXT"),
+        ("brand_color", "TEXT NOT NULL DEFAULT ''"),
+        ("website", "TEXT NOT NULL DEFAULT ''"),
+        ("phone", "TEXT NOT NULL DEFAULT ''"),
+    ]
+    for name, ddl in cols:
+        try:
+            await conn.execute(f"ALTER TABLE companies ADD COLUMN {name} {ddl}")
+            await conn.commit()
+            logger.info("Migration 120: added companies.%s", name)
+        except Exception as e:
+            logger.info("Migration 120: companies.%s likely exists — %s", name, e)
+
+
+@_register("121_application_link_company")
+async def migrate_application_link_company(conn) -> None:
+    """``application_links.company_id`` — which sub-company (carrier) a
+    recruiting link is for, so the public form + DQ packet brand to that
+    carrier.  Nullable (NULL → generic/account brand, backward compatible).
+    Idempotent ADD COLUMN."""
+    try:
+        await conn.execute(
+            "ALTER TABLE application_links ADD COLUMN company_id INTEGER REFERENCES companies(id)"
+        )
+        await conn.commit()
+        logger.info("Migration 121: added application_links.company_id")
+    except Exception as e:
+        logger.info("Migration 121: company_id likely exists — %s", e)
+
+
+@_register("122_driver_application_company")
+async def migrate_driver_application_company(conn) -> None:
+    """``driver_applications.company_id`` — snapshots which carrier the
+    applicant applied to (copied from the link at submit time, so it
+    survives the link being revoked/re-pointed).  Drives the DQ packet's
+    carrier identity (legal name + MC#/DOT#).  Nullable.  Idempotent."""
+    try:
+        await conn.execute(
+            "ALTER TABLE driver_applications ADD COLUMN company_id INTEGER REFERENCES companies(id)"
+        )
+        await conn.commit()
+        logger.info("Migration 122: added driver_applications.company_id")
+    except Exception as e:
+        logger.info("Migration 122: company_id likely exists — %s", e)
+
+
+@_register("123_company_brand_content")
+async def migrate_company_brand_content(conn) -> None:
+    """Recruiter-editable apply-form content on a carrier: ``headline`` (a
+    one-line pitch), ``perks`` (newline-separated selling points), and
+    ``banner_object_id`` (a hero photo).  Cosmetic — surfaced on the public
+    apply form only.  Idempotent ADD COLUMNs."""
+    cols = [
+        ("headline", "TEXT NOT NULL DEFAULT ''"),
+        ("perks", "TEXT NOT NULL DEFAULT ''"),
+        ("banner_object_id", "TEXT"),
+    ]
+    for name, ddl in cols:
+        try:
+            await conn.execute(f"ALTER TABLE companies ADD COLUMN {name} {ddl}")
+            await conn.commit()
+            logger.info("Migration 123: added companies.%s", name)
+        except Exception as e:
+            logger.info("Migration 123: companies.%s likely exists — %s", name, e)
+
+
+@_register("124_company_requirements")
+async def migrate_company_requirements(conn) -> None:
+    """Per-carrier pre-qual gate thresholds for the apply form: minimum CDL
+    experience (years), minimum age, and required CDL class.  Defaults match
+    the old hardcoded gate (1 / 21 / A) so unbranded forms are unchanged.
+    These adapt the gate's self-attestation question text only — no hard
+    server enforcement.  Idempotent ADD COLUMNs."""
+    cols = [
+        ("req_experience_years", "INTEGER NOT NULL DEFAULT 1"),
+        ("req_min_age", "INTEGER NOT NULL DEFAULT 21"),
+        ("req_cdl_class", "TEXT NOT NULL DEFAULT 'A'"),
+    ]
+    for name, ddl in cols:
+        try:
+            await conn.execute(f"ALTER TABLE companies ADD COLUMN {name} {ddl}")
+            await conn.commit()
+            logger.info("Migration 124: added companies.%s", name)
+        except Exception as e:
+            logger.info("Migration 124: companies.%s likely exists — %s", name, e)
+
+
+@_register("125_company_form_theme")
+async def migrate_company_form_theme(conn) -> None:
+    """Per-carrier apply-form base theme — 'light' (default) or 'dark' — so a
+    carrier can match a dark website.  The carrier's accent colour tints the
+    primary UI on top of whichever base.  Idempotent ADD COLUMN."""
+    try:
+        await conn.execute(
+            "ALTER TABLE companies ADD COLUMN form_theme TEXT NOT NULL DEFAULT 'light'"
+        )
+        await conn.commit()
+        logger.info("Migration 125: added companies.form_theme")
+    except Exception as e:
+        logger.info("Migration 125: form_theme likely exists — %s", e)
+
+
+@_register("126_company_header_bg_colors")
+async def migrate_company_header_bg_colors(conn) -> None:
+    """Optional apply-form colours beyond the accent: ``header_color`` tints
+    the hero band, ``bg_color`` tints the page background.  Empty → the base
+    theme default.  Text on each is auto-contrasted client-side.  Idempotent."""
+    cols = [
+        ("header_color", "TEXT NOT NULL DEFAULT ''"),
+        ("bg_color", "TEXT NOT NULL DEFAULT ''"),
+    ]
+    for name, ddl in cols:
+        try:
+            await conn.execute(f"ALTER TABLE companies ADD COLUMN {name} {ddl}")
+            await conn.commit()
+            logger.info("Migration 126: added companies.%s", name)
+        except Exception as e:
+            logger.info("Migration 126: companies.%s likely exists — %s", name, e)
+
+
+@_register("127_company_heading_color")
+async def migrate_company_heading_color(conn) -> None:
+    """Optional apply-form heading colour — tints the big title + carrier name
+    only (body/hints stay auto-contrasted).  Empty → base default.  Idempotent."""
+    try:
+        await conn.execute("ALTER TABLE companies ADD COLUMN heading_color TEXT NOT NULL DEFAULT ''")
+        await conn.commit()
+        logger.info("Migration 127: added companies.heading_color")
+    except Exception as e:
+        logger.info("Migration 127: heading_color likely exists — %s", e)
+
+
+@_register("128_drop_derived_service_perms")
+async def migrate_drop_derived_service_perms(conn) -> None:
+    """Strip the now-DERIVED service flags from every stored
+    ``role_permissions`` override: ``can_alerts_all``, ``can_alerts_vehicle``,
+    ``can_ai_chat``, ``can_digest``.
+
+    The Alerts inbox, the AI assistant, and the Reports hub (incl. its
+    scheduled-report subscription) are no longer owner-toggled features —
+    access is derived from the role's feature permissions at resolve time
+    (capabilities/permissions/roles.derive_service_perms).  Any value stored
+    under these keys is now ignored on read, so leaving them in the JSON blob
+    would only mislead a future reader into thinking the toggle still matters.
+    This removes them.  Fresh DBs have no such rows → no-op; the rewrite is
+    idempotent (a second run finds nothing to strip).
+    """
+    import json as _json
+    _DERIVED = ("can_alerts_all", "can_alerts_vehicle", "can_ai_chat", "can_digest")
+    try:
+        cur = await conn.execute("SELECT id, permissions FROM role_permissions")
+        rows = await cur.fetchall()
+    except Exception as e:
+        logger.info("Migration 128: role_permissions not present — %s", e)
+        return
+    changed = 0
+    for r in rows:
+        rid = r[0]
+        try:
+            perms = _json.loads(r[1] or "{}")
+        except (ValueError, TypeError):
+            continue
+        if isinstance(perms, dict) and any(k in perms for k in _DERIVED):
+            for k in _DERIVED:
+                perms.pop(k, None)
+            await conn.execute(
+                "UPDATE role_permissions SET permissions = ? WHERE id = ?",
+                (_json.dumps(perms), rid),
+            )
+            changed += 1
+    await conn.commit()
+    logger.info(
+        "Migration 128: dropped derived service flags "
+        "(can_alerts_all/can_alerts_vehicle/can_ai_chat) from %d "
+        "role_permissions override(s)", changed,
+    )

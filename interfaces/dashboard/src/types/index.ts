@@ -991,6 +991,11 @@ export interface CompanyInfo {
    *  (e.g. Datatruck work orders) to this company. */
   mc_number?: string;
   usdot_number?: string;
+  /** Brand/identity for the public application form + DQ packet. */
+  brand_color?: string;
+  website?: string;
+  phone?: string;
+  has_logo?: boolean;
 }
 
 export interface CompaniesResponse {

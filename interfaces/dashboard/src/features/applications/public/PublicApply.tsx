@@ -1,15 +1,34 @@
 // Public driver-application page — mounted standalone on apply.<apex>
 // (no auth / shell / router; see main.tsx host branch).
 //
-// Submits multipart to POST /api/recruitment/apply: a JSON `application`
+// Submits multipart to POST /api/applications/apply: a JSON `application`
 // part (file blobs stripped) + the raw document files as their own parts.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Truck, Clock, ShieldCheck, CheckCircle2, ArrowLeft, ArrowRight, Lock } from 'lucide-react';
 import { STEPS } from './steps';
 import { deepSet, DISCLOSURE_VERSION, todayISO } from './lib';
 import type { Data } from './lib';
+import { brandTintStyle, onColorStyle } from './theme';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api';
+
+// Carrier branding for a recruiting link, from GET /applications/brand.
+// Display-only — the public endpoint never returns the Samsara key.
+export interface Brand {
+  name: string; brand_color: string; website: string; phone: string;
+  mc_number: string; usdot_number: string; has_logo: boolean;
+  headline: string; perks: string[]; has_banner: boolean;
+  // Per-carrier pre-qual gate thresholds.
+  req_experience_years: number; req_min_age: number; req_cdl_class: string;
+  // Base theme the form renders on: 'light' | 'dark'.
+  form_theme: string;
+  // Optional extra colours (empty → base default).
+  header_color: string; bg_color: string; heading_color: string;
+}
+
+// Recruiter preview: the authed dashboard wrapper passes the carrier brand
+// + pre-loaded (authed-blob) image URLs; the form renders read-only.
+export interface ApplyPreviewProps { brand: Brand; logoUrl?: string; bannerUrl?: string }
 
 // The link token is the first path segment (apply.<apex>/<token>); a
 // ?token= / ?apply= query param is honoured too for local dev.
@@ -48,18 +67,56 @@ function sanitizeForJson(data: Data): Data {
   return clone;
 }
 
-function Header({ compact }: { compact?: boolean }) {
+function Header({ compact, brand, token, logoUrl, bannerUrl }: {
+  compact?: boolean; brand?: Brand | null; token?: string;
+  // Preview mode passes pre-loaded (authed-blob) image URLs that override
+  // the public token URLs below.
+  logoUrl?: string; bannerUrl?: string;
+}) {
+  // The carrier brand colours (accent / header / bg) are per-tenant runtime
+  // data — like chart/map colours, the sanctioned place a literal colour
+  // reaches the DOM.  onColorStyle() tints the header band + sets readable
+  // text vars scoped to it.
+  const accent = brand?.brand_color || '';
+  const hdrStyle = onColorStyle(brand?.header_color);
+  // Optional manual heading colour — tints the title + carrier name only.
+  const headingStyle = brand?.heading_color ? { color: brand.heading_color } : undefined;
+  const logoSrc = logoUrl ?? (brand?.has_logo && token
+    ? `${API_BASE}/applications/brand-logo?token=${encodeURIComponent(token)}`
+    : '');
+  const bannerSrc = bannerUrl ?? (brand?.has_banner && token
+    ? `${API_BASE}/applications/brand-banner?token=${encodeURIComponent(token)}`
+    : '');
   return (
-    <header className="border-b border-border bg-card">
+    <header className="border-b border-border bg-card" style={hdrStyle}>
+      {!compact && bannerSrc && (
+        <img src={bannerSrc} alt="" className="h-40 w-full object-cover sm:h-48" />
+      )}
+      {accent && <div className="h-1 w-full" style={{ backgroundColor: accent }} />}
       <div className="mx-auto max-w-5xl px-4 py-5 sm:px-6">
         <div className="flex items-center gap-2 text-primary">
-          <Truck size={22} />
-          <span className="text-base font-semibold text-foreground">Driver Application</span>
+          {logoSrc
+            ? <img src={logoSrc} alt={brand?.name || 'Carrier'} className="h-7 w-auto max-w-40 object-contain" />
+            : <Truck size={22} style={accent ? { color: accent } : undefined} />}
+          <span className="text-base font-semibold text-foreground" style={headingStyle}>
+            {brand?.name ? `${brand.name} · Driver Application` : 'Driver Application'}
+          </span>
         </div>
         {!compact && (
           <>
-            <h1 className="mt-3 text-2xl font-bold text-foreground">Join our driving team.</h1>
-            <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
+            <h1 className="mt-3 text-2xl font-bold text-foreground" style={headingStyle}>
+              {brand?.headline || (brand?.name ? `Apply to drive with ${brand.name}.` : 'Join our driving team.')}
+            </h1>
+            {brand?.perks && brand.perks.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {brand.perks.slice(0, 6).map((p) => (
+                  <span key={p} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-3 py-1 text-xs font-medium text-foreground">
+                    <CheckCircle2 size={14} style={accent ? { color: accent } : undefined} /> {p}
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
               Complete your DOT driver file in about 8 minutes — we'll review and reach out shortly.
               Have your CDL, DOT medical card, and last 10 years of employer info ready.
             </p>
@@ -120,14 +177,22 @@ function Success({ data, reference, onReset }: { data: Data; reference: string; 
       <div className="mt-5 rounded-md border border-border bg-card p-4">
         <p className="text-xs uppercase tracking-wide text-muted-foreground">Your reference number</p>
         <p className="mt-1 font-mono text-lg font-semibold text-foreground">{reference}</p>
+        <a href={`/status/${encodeURIComponent(reference)}`} className="mt-2 inline-block text-xs text-primary hover:underline">
+          Check your application status later →
+        </a>
       </div>
       <button onClick={onReset} className="mt-6 text-sm text-primary hover:underline">Start a new application</button>
     </div>
   );
 }
 
-export default function PublicApply() {
-  const token = useMemo(resolveToken, []);
+export default function PublicApply({ preview }: { preview?: ApplyPreviewProps } = {}) {
+  const realToken = useMemo(resolveToken, []);
+  // In preview the token is EMPTY (the wrapper supplies brand + image blobs):
+  // the network calls (track-view / brand / submit) are skipped below, and an
+  // empty token means no token-based <img> URLs are built — so the form never
+  // requests /brand-logo?token=… (which 404s for the non-existent preview).
+  const token = preview ? '' : realToken;
   // Pre-seed the signature defaults (today's date, type mode) so Step 8
   // never has to write state during render.
   const [data, setData] = useState<Data>(() => ({ consents: { sigDate: todayISO(), sigMode: 'type' } }));
@@ -135,12 +200,38 @@ export default function PublicApply() {
   // Count the page view for per-link funnel analytics (best-effort,
   // oracle-safe: the endpoint always 204s).
   useEffect(() => {
-    if (!token) return;
-    fetch(`${API_BASE}/recruitment/track-view`, {
+    if (preview || !token) return;
+    fetch(`${API_BASE}/applications/track-view`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token }),
     }).catch(() => { /* analytics is non-critical */ });
-  }, [token]);
+  }, [token, preview]);
+
+  // Carrier branding for this link (logo / name / accent colour).  Always
+  // 200 with {company:null} for generic links — falls back to default look.
+  // In preview the wrapper supplies the brand directly (no public fetch).
+  const [brand, setBrand] = useState<Brand | null>(preview?.brand ?? null);
+  // In preview the wrapper OWNS the brand (live theme edits from the toolbar);
+  // sync it in so accent/base changes re-tint the form immediately — no
+  // refresh needed.  No-op outside preview (the fetch below owns it).
+  useEffect(() => {
+    if (preview?.brand) setBrand(preview.brand);
+  }, [preview?.brand]);
+  useEffect(() => {
+    if (preview || !token) return;
+    fetch(`${API_BASE}/applications/brand?token=${encodeURIComponent(token)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => setBrand(j?.company || null))
+      .catch(() => { /* generic look on failure */ });
+  }, [token, preview]);
+  // Tint the primary UI to the carrier colour (button/stepper/progress/
+  // links), apply the carrier's base theme (light/dark) scoped to the form,
+  // and an optional custom page background.
+  const tint = brandTintStyle(brand?.brand_color);
+  const brandStyle: React.CSSProperties | undefined = brand?.bg_color
+    ? { ...(tint || {}), backgroundColor: brand.bg_color }
+    : tint;
+  const rootClass = `min-h-screen bg-background${brand?.form_theme === 'dark' ? ' dark' : ''}`;
 
   const [step, setStep] = useState(0);
   const [maxReached, setMaxReached] = useState(0);
@@ -149,6 +240,9 @@ export default function PublicApply() {
   const [submitError, setSubmitError] = useState('');
   const [reference, setReference] = useState('');
   const [done, setDone] = useState(false);
+  // Honeypot — a hidden field real applicants never see/fill; a bot that
+  // auto-fills every input trips it and the server silently drops it.
+  const [honeypot, setHoneypot] = useState('');
   const cardRef = useRef<HTMLFormElement>(null);
 
   const set = (path: string, value: unknown) => setData((d) => deepSet(d, path, value));
@@ -161,14 +255,16 @@ export default function PublicApply() {
   const scrollUp = () => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   const submit = async () => {
+    if (preview) return;  // read-only recruiter preview — never posts
     setSubmitting(true);
     setSubmitError('');
     try {
       const fd = new FormData();
       fd.append('link_token', token);
+      fd.append('hp', honeypot);
       fd.append('application', JSON.stringify(sanitizeForJson(data)));
       for (const [part, file] of Object.entries(extractFiles(data))) if (file) fd.append(part, file);
-      const res = await fetch(`${API_BASE}/recruitment/apply`, { method: 'POST', body: fd });
+      const res = await fetch(`${API_BASE}/applications/apply`, { method: 'POST', body: fd });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json.success === false) throw new Error(json.detail || json.message || `Server returned ${res.status}`);
       setReference(json.reference || 'SUBMITTED');
@@ -184,6 +280,12 @@ export default function PublicApply() {
   const next = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (submitting) return;
+    // Preview: walk through every step freely (no validation, never posts).
+    if (preview) {
+      if (isLast) return;
+      const n = step + 1; setStep(n); setMaxReached((m) => Math.max(m, n)); setTimeout(scrollUp, 30);
+      return;
+    }
     if (hasErrors) { setAttempted((a) => ({ ...a, [step]: true })); return; }
     if (isLast) { submit(); return; }
     const n = step + 1;
@@ -200,7 +302,7 @@ export default function PublicApply() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  if (!token) {
+  if (!token && !preview) {
     return (
       <div className="min-h-screen bg-background">
         <Header compact />
@@ -214,8 +316,8 @@ export default function PublicApply() {
 
   if (done) {
     return (
-      <div className="min-h-screen bg-background">
-        <Header compact />
+      <div className={rootClass} style={brandStyle}>
+        <Header compact brand={brand} token={token} />
         <Success data={data} reference={reference} onReset={reset} />
       </div>
     );
@@ -223,12 +325,23 @@ export default function PublicApply() {
 
   const Render = cur.Render;
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
+    <div className={rootClass} style={brandStyle}>
+      {preview && (
+        <div className="bg-warn-bg px-4 py-2 text-center text-xs font-medium text-warn">
+          Preview — this is exactly what an applicant sees. Submitting is disabled here.
+        </div>
+      )}
+      <Header brand={brand} token={token} logoUrl={preview?.logoUrl} bannerUrl={preview?.bannerUrl} />
       <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[15rem_1fr]">
           <Stepper current={step} max={maxReached} onJump={jump} />
           <form ref={cardRef} onSubmit={next} noValidate className="rounded-lg border border-border bg-card">
+            {/* Honeypot: off-screen + aria-hidden + not tabbable + a name no
+                autofiller targets, so a real applicant never fills it; a
+                form-filling bot does. */}
+            <input type="text" name="contact_time" tabIndex={-1} autoComplete="off"
+              aria-hidden="true" value={honeypot} onChange={(e) => setHoneypot(e.target.value)}
+              style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} />
             <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <div>
                 <p className="text-xs text-muted-foreground">Step {step + 1} of {STEPS.length}</p>
@@ -241,7 +354,8 @@ export default function PublicApply() {
               </div>
             </div>
             <div className="px-5 py-5">
-              <Render data={data} set={set} errors={visibleErrors} />
+              <Render data={data} set={set} errors={visibleErrors}
+                req={brand ? { years: brand.req_experience_years, age: brand.req_min_age, cls: brand.req_cdl_class } : undefined} />
               {submitError && (
                 <p className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                   <b>Submission failed.</b> {submitError}
@@ -253,15 +367,33 @@ export default function PublicApply() {
                 className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted disabled:opacity-40">
                 <ArrowLeft size={16} /> Back
               </button>
-              <button type="submit" disabled={submitting}
+              <button type="submit" disabled={submitting || (!!preview && isLast)}
                 className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
-                {submitting ? 'Submitting…' : isLast ? 'Submit application' : 'Continue'}
-                {!submitting && <ArrowRight size={16} />}
+                {preview
+                  ? (isLast ? 'Submit disabled in preview' : 'Continue')
+                  : submitting ? 'Submitting…' : isLast ? 'Submit application' : 'Continue'}
+                {!submitting && !(preview && isLast) && <ArrowRight size={16} />}
               </button>
             </div>
           </form>
         </div>
       </main>
+      {(brand?.website || brand?.phone) && (
+        <footer className="mx-auto max-w-5xl px-4 pb-8 text-xs text-muted-foreground sm:px-6"
+          style={onColorStyle(brand?.bg_color)}>
+          Questions about driving with {brand?.name || 'us'}?{' '}
+          {brand?.phone && (
+            <a href={`tel:${brand.phone}`} className="text-foreground hover:underline">{brand.phone}</a>
+          )}
+          {brand?.phone && brand?.website && <span> · </span>}
+          {brand?.website && (
+            <a href={brand.website.startsWith('http') ? brand.website : `https://${brand.website}`}
+              target="_blank" rel="noopener noreferrer" className="text-foreground hover:underline">
+              {brand.website}
+            </a>
+          )}
+        </footer>
+      )}
     </div>
   );
 }
