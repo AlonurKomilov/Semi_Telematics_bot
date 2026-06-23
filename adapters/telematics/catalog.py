@@ -160,7 +160,11 @@ _SAMSARA_DEFAULTS: dict[str, dict] = {
     Capability.STATE_SNAPSHOT_HISTORY:  {"enabled": True, "interval_min": 5},
     Capability.TELEMETRY_HOURLY:        {"enabled": True, "cron": "5 * * * *"},
     Capability.METRICS_DAILY:           {"enabled": True, "cron": "5 0 * * *"},
-    Capability.HISTORY_PRUNE:           {"enabled": True, "cron": "0 2 * * *"},
+    # NB: no HISTORY_PRUNE — retention is now owned by the cross-cutting
+    # Retention hub (the ``data_retention`` job + the operator Retention
+    # page), not a per-account integration toggle.  The old per-account
+    # prune capability was retired in that cutover; leaving it here would
+    # render a dead "History retention prune" toggle that controls nothing.
     # ON by default so a fresh connect automatically backfills 30
     # days of Samsara history.  Without this the calendar projection
     # would sit empty for ~7 days while the live aggregators caught

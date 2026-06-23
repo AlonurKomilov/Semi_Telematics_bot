@@ -76,7 +76,9 @@ class SamsaraProvider:
         Capability.STATE_SNAPSHOT_HISTORY,
         Capability.TELEMETRY_HOURLY,
         Capability.METRICS_DAILY,
-        Capability.HISTORY_PRUNE,
+        # HISTORY_PRUNE retired — retention is owned by the Retention hub
+        # (data_retention job + operator Retention page), not a per-account
+        # integration toggle.  See catalog._SAMSARA_DEFAULTS.
         Capability.HISTORY_BACKFILL,
     })
 

@@ -21,7 +21,8 @@ export const CAPABILITY_LABELS: Record<string, string> = {
   state_snapshot_history:   'Vehicle state history (5-min)',
   telemetry_hourly:         'Hourly roll-up',
   metrics_daily:            'Daily roll-up',
-  history_prune:            'History retention prune',
+  // history_prune retired — retention now lives in the Retention hub
+  // (operator console), not a per-account integration toggle.
   history_backfill:         'One-time history backfill',
   // TMS capabilities (Datatruck) — dispatch-shaped sync, not telemetry.
   tms_drivers_sync:         'Drivers sync',
