@@ -54,3 +54,42 @@ async def test_fetch_enrichment_maps_batches_stats_into_one_call():
     assert deff["v1"] == {"value": 55.0, "time": "t1"}  # milli-percent / 1000
     assert "v2" not in deff                              # no DEF sensor → absent
     assert locs["v1"] == {"latitude": 1.0}
+
+
+@pytest.mark.asyncio
+async def test_low_fuel_reuses_cached_overview_not_per_company_fanout():
+    """get_low_fuel_vehicles derives from the (cached) merged overview —
+    one overview read, no per-company fan-out — and filters identically."""
+    from adapters.telematics.samsara.client import MultiCompanyClient
+
+    mc = MultiCompanyClient.__new__(MultiCompanyClient)  # bypass __init__
+
+    overview_calls: list = []
+
+    async def fake_overview(company=None):
+        overview_calls.append(company)
+        return [
+            {"id": "v1", "name": "T1", "_org": "CFT", "fuel": {"value": 10, "time": "t1"}},
+            {"id": "v2", "name": "T2", "_org": "CFT", "fuel": {"value": 50, "time": "t2"}},
+            {"id": "v3", "name": "T3", "_org": "G1",  "fuel": {"value": 25, "time": "t3"}},
+            {"id": "v4", "name": "T4", "_org": "G1"},  # no fuel data → skipped
+        ]
+
+    async def fake_cache_get(_key):
+        return None
+
+    async def fake_cache_set(_key, _result, ttl=None):
+        return None
+
+    mc.get_vehicles_overview = fake_overview      # type: ignore[assignment]
+    mc._cache_get = fake_cache_get                # type: ignore[assignment]
+    mc._cache_set = fake_cache_set                # type: ignore[assignment]
+
+    low = await mc.get_low_fuel_vehicles(threshold=30)
+
+    # Reused the overview once — no independent per-company fetch.
+    assert overview_calls == [None]
+    # Only ≤30%, sorted ascending by fuel, with _fuel_pct/_fuel_time set.
+    assert [v["id"] for v in low] == ["v1", "v3"]
+    assert low[0]["_fuel_pct"] == 10 and low[0]["_fuel_time"] == "t1"
+    assert low[1]["_fuel_pct"] == 25 and low[1]["_org"] == "G1"

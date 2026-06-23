@@ -2260,13 +2260,23 @@ class MultiCompanyClient:
         if cached is not None:
             return cached
 
-        async def _fn(c, thr):
-            return await c.get_low_fuel_vehicles(thr)
-
-        per_co = await self._run_per_company(_fn, threshold, company=company)
-        combined = []
-        for code, vehicles in per_co.items():
-            combined.extend(self._tag(vehicles, code))
+        # Derive from the (cached) merged overview instead of an independent
+        # per-company fan-out — the overview already carries each vehicle's
+        # fuel + its ``_org`` tag, so this reuses the fleet_overview cache
+        # rather than re-fetching the fleet.  Behaviour- AND freshness-
+        # preserving: the old path also read fuel off the per-company
+        # overview, and both are bounded by the same cache TTL.
+        fleet = await self.get_vehicles_overview(company=company)
+        combined: list[dict] = []
+        for v in fleet:
+            fuel = v.get("fuel") or {}
+            pct = fuel.get("value") if isinstance(fuel, dict) else None
+            if pct is not None and pct <= threshold:
+                # Copy so we never mutate the shared cached overview dicts.
+                entry = dict(v)
+                entry["_fuel_pct"] = pct
+                entry["_fuel_time"] = fuel.get("time", "") if isinstance(fuel, dict) else ""
+                combined.append(entry)
         combined.sort(key=lambda x: x.get("_fuel_pct", 999))
         await self._cache_set(cache_key, combined)
         return combined
