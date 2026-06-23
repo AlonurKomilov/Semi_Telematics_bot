@@ -89,6 +89,11 @@ class FeedSpec:
     # integration stays feature-agnostic (it only fills the warehouse);
     # this is metadata for grouping, not a dependency.
     feature: str = ""
+    # The sub-component WITHIN the feature (e.g. Vehicles → Location & state
+    # / Telemetry / Health / Faults).  Drives the card's second grouping
+    # level so the telemetry tiers read as one component instead of separate
+    # feeds.  Empty → the feed renders directly under its feature.
+    component: str = ""
 
 
 @dataclass(frozen=True)
@@ -181,17 +186,17 @@ _SAMSARA_DEFAULTS: dict[str, dict] = {
 # NOT feeds — they're actions, not stored data.
 _SAMSARA_FEED_SPECS: tuple[FeedSpec, ...] = (
     # Ordered so feeds of the same feature are contiguous → clean groups.
-    FeedSpec(Capability.VEHICLE_STATE,           "vehicle_state",            "captured_at",              feature="Vehicles"),
-    FeedSpec(Capability.STATE_SNAPSHOT_HISTORY,  "vehicle_state_snapshot",   "captured_at", "scheduled+backfill", feature="Vehicles"),
-    FeedSpec(Capability.VEHICLE_HEALTH,          "vehicle_health_snapshot",  "captured_at",              feature="Vehicles"),
-    FeedSpec(Capability.VEHICLE_FAULTS,          "vehicle_fault_snapshot",   "captured_at",              feature="Vehicles"),
-    FeedSpec(Capability.TELEMETRY_HOURLY,        "vehicle_telemetry_hourly", "hour_utc",                 feature="Vehicles"),
-    FeedSpec(Capability.METRICS_DAILY,           "vehicle_metrics_daily",    "day_utc",                  feature="Vehicles"),
-    FeedSpec(Capability.SAFETY_EVENTS,           "safety_event_log",         "occurred_at",              feature="Safety"),
-    FeedSpec(Capability.DRIVER_EFFICIENCY_DAILY, "driver_efficiency_daily",  "day",                      feature="Driver Scorecards"),
-    FeedSpec(Capability.FLEET_WEATHER,           "aggregate_weather_snapshot",    "captured_at",         feature="Live Map"),
-    FeedSpec(Capability.FLEET_EFFICIENCY,        "aggregate_efficiency_snapshot", "captured_at",         feature="Costs"),
-    FeedSpec(Capability.GEOFENCE_DEFINITIONS,    "geofence_definitions",     "captured_at",              feature="Geofences"),
+    FeedSpec(Capability.VEHICLE_STATE,           "vehicle_state",            "captured_at",              feature="Vehicles",   component="Location & state"),
+    FeedSpec(Capability.STATE_SNAPSHOT_HISTORY,  "vehicle_state_snapshot",   "captured_at", "scheduled+backfill", feature="Vehicles", component="Telemetry"),
+    FeedSpec(Capability.VEHICLE_HEALTH,          "vehicle_health_snapshot",  "captured_at",              feature="Vehicles",   component="Health"),
+    FeedSpec(Capability.VEHICLE_FAULTS,          "vehicle_fault_snapshot",   "captured_at",              feature="Vehicles",   component="Faults"),
+    FeedSpec(Capability.TELEMETRY_HOURLY,        "vehicle_telemetry_hourly", "hour_utc",                 feature="Vehicles",   component="Telemetry"),
+    FeedSpec(Capability.METRICS_DAILY,           "vehicle_metrics_daily",    "day_utc",                  feature="Vehicles",   component="Telemetry"),
+    FeedSpec(Capability.SAFETY_EVENTS,           "safety_event_log",         "occurred_at",              feature="Safety",     component="Events"),
+    FeedSpec(Capability.DRIVER_EFFICIENCY_DAILY, "driver_efficiency_daily",  "day",                      feature="Scorecards", component="Efficiency"),
+    FeedSpec(Capability.FLEET_WEATHER,           "aggregate_weather_snapshot",    "captured_at",         feature="Live Map",   component="Weather"),
+    FeedSpec(Capability.FLEET_EFFICIENCY,        "aggregate_efficiency_snapshot", "captured_at",         feature="Costs",      component="Efficiency"),
+    FeedSpec(Capability.GEOFENCE_DEFINITIONS,    "geofence_definitions",     "captured_at",              feature="Geofences",  component="Definitions"),
 )
 
 

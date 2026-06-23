@@ -33,10 +33,10 @@ export interface FeedRow {
    *  feature sub-header so the card reads "by feature" (Vehicles, Safety,
    *  Drivers, Work Orders…).  Empty → ungrouped (rendered flat). */
   feature?: string;
-  /** Optional muted tag after the label, e.g. "computed here" — marks a
-   *  feed that's derived locally (a downsampled tier) rather than pulled
-   *  from the provider, so tiers don't read as duplicate feeds. */
-  originTag?: { text: string; title?: string } | null;
+  /** Sub-component within the feature (e.g. Vehicles → Telemetry / Health /
+   *  Faults) — a second grouping level under the feature header.  Only
+   *  shown when a feature has more than one component; empty → none. */
+  component?: string;
   /** Enable/disable checkbox at the row start — folds the old separate
    *  capability checklist into the feed row (one place per data type). */
   toggle?: { enabled: boolean; onChange: (enabled: boolean) => void } | null;
@@ -82,10 +82,26 @@ export default function FeedsTable({
   }
   const showHeaders = groupOrder.some((g) => g !== '');
 
-  const renderRow = (r: FeedRow) => (
+  // Within a feature, sub-group by component (first-appearance order) so the
+  // card reads Feature → Component (e.g. Vehicles → Telemetry / Health).
+  const byComponent = (featRows: FeedRow[]): { comp: string; rows: FeedRow[] }[] => {
+    const order: string[] = [];
+    const map = new Map<string, FeedRow[]>();
+    for (const r of featRows) {
+      const c = r.component || '';
+      if (!map.has(c)) {
+        map.set(c, []);
+        order.push(c);
+      }
+      map.get(c)!.push(r);
+    }
+    return order.map((c) => ({ comp: c, rows: map.get(c)! }));
+  };
+
+  const renderRow = (r: FeedRow, indent = false) => (
     <li
       key={r.key}
-      className={`px-3 py-2 text-sm ${r.enabled ? '' : 'opacity-60'}`}
+      className={`${indent ? 'pl-7 pr-3' : 'px-3'} py-2 text-sm ${r.enabled ? '' : 'opacity-60'}`}
     >
       <div className="flex items-center gap-3">
         {r.toggle && (
@@ -104,14 +120,6 @@ export default function FeedsTable({
         >
           {r.label}
         </span>
-        {r.originTag && (
-          <span
-            className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground"
-            title={r.originTag.title}
-          >
-            {r.originTag.text}
-          </span>
-        )}
         <span className="shrink-0 text-xs text-muted-foreground">{r.freshness}</span>
         {r.badge && (
           <span
@@ -174,16 +182,31 @@ export default function FeedsTable({
         <p className="px-3 py-3 text-sm text-muted-foreground">{emptyText}</p>
       ) : (
         <ul className="divide-y divide-border">
-          {groupOrder.map((g) => (
-            <Fragment key={g || '_ungrouped'}>
-              {showHeaders && g && (
-                <li className="bg-muted/20 px-3 py-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {g}
-                </li>
-              )}
-              {byFeature.get(g)!.map(renderRow)}
-            </Fragment>
-          ))}
+          {groupOrder.map((feat) => {
+            const comps = byComponent(byFeature.get(feat)!);
+            // Component sub-headers only when a feature has more than one
+            // (Vehicles → 4); single-component features render flat.
+            const showComp = comps.filter((c) => c.comp !== '').length > 1;
+            return (
+              <Fragment key={feat || '_ungrouped'}>
+                {showHeaders && feat && (
+                  <li className="bg-muted/30 px-3 py-1 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {feat}
+                  </li>
+                )}
+                {comps.map(({ comp, rows: crows }) => (
+                  <Fragment key={comp || '_nocomp'}>
+                    {showComp && comp && (
+                      <li className="bg-muted/10 pl-6 pr-3 py-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                        {comp}
+                      </li>
+                    )}
+                    {crows.map((r) => renderRow(r, showComp && comp !== ''))}
+                  </Fragment>
+                ))}
+              </Fragment>
+            );
+          })}
         </ul>
       )}
       {footer}

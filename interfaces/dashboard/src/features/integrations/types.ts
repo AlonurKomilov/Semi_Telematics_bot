@@ -172,6 +172,9 @@ export interface ProviderFeed {
   mode: string;
   /** Product feature this feed serves — groups the Synced-data table. */
   feature: string;
+  /** Sub-component within the feature (e.g. Vehicles → Telemetry / Health /
+   *  Faults) — the card's second grouping level.  Empty → no sub-group. */
+  component: string;
   enabled: boolean;
   stored: { count: number; last_synced_at: string | null };
 }

@@ -506,6 +506,7 @@ async def provider_feeds(
             "capability": f.capability,
             "mode": f.mode,
             "feature": f.feature,
+            "component": f.component,
             "enabled": bool(tog.get("enabled", True)),
             "stored": {
                 "count": fr.get("count", 0),
