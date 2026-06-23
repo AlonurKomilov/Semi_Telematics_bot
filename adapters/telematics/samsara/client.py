@@ -758,31 +758,37 @@ class SamsaraClient:
 
     # ── Combined: Enriched Vehicle Data ──────────────────────────
 
-    async def get_vehicles_overview(self) -> list[dict]:
-        """
-        Build an enriched list of **active** vehicles by merging:
-        vehicle info + fault codes + GPS + fuel.
+    async def _fetch_enrichment_maps(
+        self,
+    ) -> tuple[dict[str, dict], dict[str, dict], dict[str, dict], dict[str, dict]]:
+        """Per-vehicle lookup maps (faults, location, fuel, DEF) for the
+        overview/detail builders, fetched with the fewest API calls.
 
-        Vehicles are filtered by GPS recency (active_days) and
-        ghost-name patterns.
+        Folds what used to be two separate ``/fleet/vehicles/stats`` calls
+        — ``faultCodes`` then ``fuelPercents,defLevelMilliPercent`` — into a
+        SINGLE multi-type ``_safe_stats`` request (same endpoint, one
+        round-trip), then the live ``locations`` call.  Behaviour-preserving:
+        the merged response carries each type as its own per-vehicle
+        sub-object, exactly as the old per-type calls returned; folding
+        ``faultCodes`` through ``_safe_stats`` also gains the per-type
+        fallback + unsupported-type caching it lacked before.
+
+        Returns ``(faults_by_id, loc_by_id, fuel_by_id, def_by_id)``.
         """
-        vehicles_raw = await self.get_vehicles()
-        fault_raw = await self.get_fault_codes()
+        stats = await self._safe_stats("faultCodes,fuelPercents,defLevelMilliPercent")
+        stats_data = stats.get("data", [])
         location_raw = await self.get_locations()
-        fuel_raw = await self.get_fuel_levels()
 
-        # Index by vehicle ID
-        vehicles = {v["id"]: v for v in vehicles_raw}
-        faults_by_id = {v["id"]: v.get("faultCodes", {}) for v in fault_raw}
+        faults_by_id = {v["id"]: v.get("faultCodes", {}) for v in stats_data}
         loc_by_id = {v["id"]: v.get("location", {}) for v in location_raw}
-        # Samsara may return the key as "fuelPercents" (matching the type name)
-        # or "fuelPercent" (singular); read both defensively.
+        # Samsara may return the key as "fuelPercents" (matching the type
+        # name) or "fuelPercent" (singular); read both defensively.
         fuel_by_id = {
             v["id"]: v.get("fuelPercents") or v.get("fuelPercent") or {}
-            for v in fuel_raw
+            for v in stats_data
         }
         def_by_id: dict[str, dict] = {}
-        for fv in fuel_raw:
+        for fv in stats_data:
             # defLevelMilliPercent is absent (not just empty) for vehicles
             # without DEF sensors — treat missing or empty the same way.
             d = fv.get("defLevelMilliPercent") or {}
@@ -792,6 +798,21 @@ class SamsaraClient:
                     "value": round(val / 1000, 1),
                     "time": d.get("time", ""),
                 }
+        return faults_by_id, loc_by_id, fuel_by_id, def_by_id
+
+    async def get_vehicles_overview(self) -> list[dict]:
+        """
+        Build an enriched list of **active** vehicles by merging:
+        vehicle info + fault codes + GPS + fuel.
+
+        Vehicles are filtered by GPS recency (active_days) and
+        ghost-name patterns.
+        """
+        vehicles_raw = await self.get_vehicles()
+        # One batched stats call (faults + fuel + DEF) + locations, instead
+        # of three separate round-trips — see _fetch_enrichment_maps.
+        vehicles = {v["id"]: v for v in vehicles_raw}
+        faults_by_id, loc_by_id, fuel_by_id, def_by_id = await self._fetch_enrichment_maps()
 
         enriched = []
         skipped = 0
@@ -860,25 +881,9 @@ class SamsaraClient:
         those without a gateway) so direct truck lookups always work.
         """
         vehicles_raw = await self.get_vehicles()
-        fault_raw = await self.get_fault_codes()
-        location_raw = await self.get_locations()
-        fuel_raw = await self.get_fuel_levels()
-
-        faults_by_id = {v["id"]: v.get("faultCodes", {}) for v in fault_raw}
-        loc_by_id = {v["id"]: v.get("location", {}) for v in location_raw}
-        fuel_by_id = {
-            v["id"]: v.get("fuelPercents") or v.get("fuelPercent") or {}
-            for v in fuel_raw
-        }
-        def_by_id: dict[str, dict] = {}
-        for fv in fuel_raw:
-            d = fv.get("defLevelMilliPercent") or {}
-            val = d.get("value") if isinstance(d, dict) else None
-            if val is not None:
-                def_by_id[fv["id"]] = {
-                    "value": round(val / 1000, 1),
-                    "time": d.get("time", ""),
-                }
+        # Same batched fetch as the overview (faults + fuel + DEF in one
+        # stats call + locations) — see _fetch_enrichment_maps.
+        faults_by_id, loc_by_id, fuel_by_id, def_by_id = await self._fetch_enrichment_maps()
 
         truck_name_lower = vehicle_name.strip().lower()
         for v in vehicles_raw:
