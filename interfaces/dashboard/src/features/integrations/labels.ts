@@ -18,9 +18,13 @@ export const CAPABILITY_LABELS: Record<string, string> = {
   fleet_weather:            'Weather overlay',
   fleet_efficiency:         'Fleet efficiency',
   geofence_definitions:     'Geofence definitions',
-  state_snapshot_history:   'Vehicle state history (5-min)',
-  telemetry_hourly:         'Hourly roll-up',
-  metrics_daily:            'Daily roll-up',
+  // The three telemetry tiers below are COMPUTED locally from the live
+  // feed (downsampled), not separate Samsara pulls — named as one series
+  // + tagged "computed here" (see DERIVED_CAPABILITIES) so they don't read
+  // as duplicate feeds.
+  state_snapshot_history:   'Telemetry · 5-min history',
+  telemetry_hourly:         'Telemetry · hourly roll-up',
+  metrics_daily:            'Telemetry · daily roll-up',
   // history_prune retired — retention now lives in the Retention hub
   // (operator console), not a per-account integration toggle.
   history_backfill:         'One-time history backfill',
@@ -44,6 +48,21 @@ export const DATATRUCK_RESOURCE_LABELS: [string, string][] = [
 
 export function capabilityLabel(id: string): string {
   return CAPABILITY_LABELS[id] || id;
+}
+
+/** Capabilities that are COMPUTED locally — downsampled / rolled-up from
+ *  the live feed — rather than pulled from the provider.  The Synced-data
+ *  table tags these "computed here" so the telemetry tiers don't read as
+ *  separate Samsara feeds (the live state + the 5-min/hourly/daily history
+ *  are one stream at four resolutions). */
+export const DERIVED_CAPABILITIES = new Set<string>([
+  'state_snapshot_history',
+  'telemetry_hourly',
+  'metrics_daily',
+]);
+
+export function isDerivedCapability(id: string): boolean {
+  return DERIVED_CAPABILITIES.has(id);
 }
 
 /** Format an ISO timestamp into the relative + absolute form the cards

@@ -9,7 +9,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { getProviderFeeds } from './api';
-import { capabilityLabel, formatCadence, formatSyncTimestamp } from './labels';
+import { capabilityLabel, formatCadence, formatSyncTimestamp, isDerivedCapability } from './labels';
 import FeedsTable, { type FeedRow } from './FeedsTable';
 import { useTimezone } from '../../hooks/useTimezone';
 import type { FeatureToggleMap, ProviderFeedsResponse } from './types';
@@ -54,6 +54,12 @@ export default function SyncedDataTable({
       enabled,
       cadence: cadence || undefined,
       feature: f.feature || undefined,
+      originTag: isDerivedCapability(f.capability)
+        ? {
+            text: 'computed here',
+            title: 'Derived locally by downsampling the live feed — not a separate pull from the provider.',
+          }
+        : undefined,
       toggle: { enabled, onChange: (en: boolean) => onToggle(f.capability, en) },
     };
   });

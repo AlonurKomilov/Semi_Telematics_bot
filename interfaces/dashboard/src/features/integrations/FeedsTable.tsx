@@ -33,6 +33,10 @@ export interface FeedRow {
    *  feature sub-header so the card reads "by feature" (Vehicles, Safety,
    *  Drivers, Work Orders…).  Empty → ungrouped (rendered flat). */
   feature?: string;
+  /** Optional muted tag after the label, e.g. "computed here" — marks a
+   *  feed that's derived locally (a downsampled tier) rather than pulled
+   *  from the provider, so tiers don't read as duplicate feeds. */
+  originTag?: { text: string; title?: string } | null;
   /** Enable/disable checkbox at the row start — folds the old separate
    *  capability checklist into the feed row (one place per data type). */
   toggle?: { enabled: boolean; onChange: (enabled: boolean) => void } | null;
@@ -100,6 +104,14 @@ export default function FeedsTable({
         >
           {r.label}
         </span>
+        {r.originTag && (
+          <span
+            className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground"
+            title={r.originTag.title}
+          >
+            {r.originTag.text}
+          </span>
+        )}
         <span className="shrink-0 text-xs text-muted-foreground">{r.freshness}</span>
         {r.badge && (
           <span
