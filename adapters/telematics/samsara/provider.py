@@ -73,9 +73,9 @@ class SamsaraProvider:
         Capability.FLEET_WEATHER,
         Capability.FLEET_EFFICIENCY,
         Capability.GEOFENCE_DEFINITIONS,
-        Capability.STATE_SNAPSHOT_HISTORY,
-        Capability.TELEMETRY_HOURLY,
-        Capability.METRICS_DAILY,
+        # The snapshot/hourly/daily roll-ups are NOT advertised here — they're
+        # provider-agnostic warehouse plumbing (always-on), not a Samsara
+        # capability the owner toggles.  See adapters/telematics/catalog.
         # HISTORY_PRUNE retired — retention is owned by the Retention hub
         # (data_retention job + operator Retention page), not a per-account
         # integration toggle.  See catalog._SAMSARA_DEFAULTS.

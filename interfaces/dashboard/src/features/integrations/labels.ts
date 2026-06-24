@@ -18,14 +18,9 @@ export const CAPABILITY_LABELS: Record<string, string> = {
   fleet_weather:            'Weather overlay',
   fleet_efficiency:         'Fleet efficiency',
   geofence_definitions:     'Geofence definitions',
-  // The three telemetry tiers below group under the "Telemetry" component
-  // on the card, so the labels stay bare — the component header carries the
-  // context (they're one live stream downsampled, not separate feeds).
-  state_snapshot_history:   '5-min history',
-  telemetry_hourly:         'Hourly roll-up',
-  metrics_daily:            'Daily roll-up',
-  // history_prune retired — retention now lives in the Retention hub
-  // (operator console), not a per-account integration toggle.
+  // NB: no snapshot/hourly/daily tiers here — they're the warehouse's
+  // provider-agnostic roll-up cascade (operator console), not Samsara feeds.
+  // history_prune retired — retention now lives in the Retention hub.
   history_backfill:         'One-time history backfill',
   // TMS capabilities (Datatruck) — dispatch-shaped sync, not telemetry.
   tms_drivers_sync:         'Drivers sync',

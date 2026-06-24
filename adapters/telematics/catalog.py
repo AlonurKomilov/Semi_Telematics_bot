@@ -162,9 +162,10 @@ _SAMSARA_DEFAULTS: dict[str, dict] = {
     Capability.FLEET_WEATHER:           {"enabled": True, "interval_min": 10},
     Capability.FLEET_EFFICIENCY:        {"enabled": True, "interval_min": 30},
     Capability.GEOFENCE_DEFINITIONS:    {"enabled": True, "interval_hour": 6},
-    Capability.STATE_SNAPSHOT_HISTORY:  {"enabled": True, "interval_min": 5},
-    Capability.TELEMETRY_HOURLY:        {"enabled": True, "cron": "5 * * * *"},
-    Capability.METRICS_DAILY:           {"enabled": True, "cron": "5 0 * * *"},
+    # NB: the snapshot/hourly/daily roll-ups are NOT Samsara capabilities —
+    # they're provider-agnostic warehouse plumbing (always-on, ungated), so
+    # they don't belong in a provider's toggle set.  Their cadence lives with
+    # the warehouse (the scheduler), not here.  See capabilities/telemetry.
     # NB: no HISTORY_PRUNE — retention is now owned by the cross-cutting
     # Retention hub (the ``data_retention`` job + the operator Retention
     # page), not a per-account integration toggle.  The old per-account
@@ -194,12 +195,13 @@ _SAMSARA_DEFAULTS: dict[str, dict] = {
 # parked truck's GPS time, even though the 5-min sync was running fine.
 _SAMSARA_FEED_SPECS: tuple[FeedSpec, ...] = (
     # Ordered so feeds of the same feature are contiguous → clean groups.
+    # The 5-min / hourly / daily TELEMETRY tiers are NOT feeds — they're our
+    # provider-agnostic downsampling cascade (warehouse plumbing), surfaced on
+    # the operator console (/system/accounts/{id}/telemetry), not the
+    # customer's integration card.  See capabilities/telemetry.
     FeedSpec(Capability.VEHICLE_STATE,           "vehicle_state",            "updated_at",               feature="Vehicles",   component="Location & state"),
-    FeedSpec(Capability.STATE_SNAPSHOT_HISTORY,  "vehicle_state_snapshot",   "captured_at", "scheduled+backfill", feature="Vehicles", component="Telemetry"),
     FeedSpec(Capability.VEHICLE_HEALTH,          "vehicle_health_snapshot",  "updated_at",               feature="Vehicles",   component="Health"),
     FeedSpec(Capability.VEHICLE_FAULTS,          "vehicle_fault_snapshot",   "updated_at",               feature="Vehicles",   component="Faults"),
-    FeedSpec(Capability.TELEMETRY_HOURLY,        "vehicle_telemetry_hourly", "ingested_at",              feature="Vehicles",   component="Telemetry"),
-    FeedSpec(Capability.METRICS_DAILY,           "vehicle_metrics_daily",    "ingested_at",              feature="Vehicles",   component="Telemetry"),
     FeedSpec(Capability.SAFETY_EVENTS,           "safety_event_log",         "ingested_at",              feature="Safety",     component="Events"),
     FeedSpec(Capability.DRIVER_EFFICIENCY_DAILY, "driver_efficiency_daily",  "ingested_at",              feature="Scorecards", component="Efficiency"),
     FeedSpec(Capability.FLEET_WEATHER,           "aggregate_weather_snapshot",    "updated_at",          feature="Live Map",   component="Weather"),

@@ -38,5 +38,9 @@ def test_samsara_feeds_read_ingest_time_freshness():
     assert feeds["vehicle_faults"].ts_col == "updated_at"
     assert feeds["safety_events"].ts_col == "ingested_at"
     assert feeds["driver_efficiency_daily"].ts_col == "ingested_at"
-    assert feeds["telemetry_hourly"].ts_col == "ingested_at"
-    assert feeds["metrics_daily"].ts_col == "ingested_at"
+
+    # The roll-up tiers are NOT customer feeds — they're warehouse plumbing
+    # (operator console), so they must not appear on the integration card.
+    assert "state_snapshot_history" not in feeds
+    assert "telemetry_hourly" not in feeds
+    assert "metrics_daily" not in feeds
