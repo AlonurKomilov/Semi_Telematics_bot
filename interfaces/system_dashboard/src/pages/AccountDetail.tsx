@@ -138,6 +138,9 @@ export default function AccountDetailPage() {
         {/* Server-local orphaned-file audit (report-only) */}
         <StorageOrphansCard accountId={accountId} />
 
+        {/* Telemetry warehouse cascade (our processing, not a provider feed) */}
+        <TelemetryCascadeCard accountId={accountId} />
+
         {/* Comp control + history */}
         <Card title="Complimentary access"
               actions={
@@ -423,6 +426,57 @@ function fmtBytes(n: number): string {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
   return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+// The telemetry warehouse cascade (live → 5-min → hourly → daily).  Our own
+// downsampling pipeline — provider-agnostic plumbing, not a Samsara feed —
+// so its health lives operator-side here, not on the customer's integration
+// card.  Self-loads on mount; freshness reflects ingest time per tier.
+function TelemetryCascadeCard({ accountId }: { accountId: number }) {
+  interface Tier {
+    label: string;
+    table: string;
+    note: string;
+    count: number;
+    last_ingest_at: string | null;
+  }
+  const [tiers, setTiers] = useState<Tier[] | null>(null);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    apiJSON<{ tiers: Tier[] }>(`/system/accounts/${accountId}/telemetry`)
+      .then((d) => setTiers(d.tiers))
+      .catch(() => setErr('Failed to load telemetry cascade'));
+  }, [accountId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <Card title="Telemetry pipeline">
+      <p className="text-xs text-slate-500 mb-3">
+        Our downsampling cascade (live → 5-min → hourly → daily). Provider-agnostic
+        warehouse plumbing — our processing, not a provider feed.
+      </p>
+      {err && <p className="text-xs text-danger">{err}</p>}
+      {!tiers && !err && <p className="text-sm text-slate-500">Loading…</p>}
+      {tiers && (
+        <dl className="text-sm space-y-2">
+          {tiers.map((t) => (
+            <div key={t.table} className="flex items-baseline justify-between gap-3">
+              <dt className="min-w-0">
+                <span className="text-slate-200">{t.label}</span>
+                <span className="block text-[11px] text-slate-600">{t.note}</span>
+              </dt>
+              <dd className="text-right shrink-0">
+                <span className="text-slate-300 tabular-nums">{t.count.toLocaleString()} rows</span>
+                <span className="block text-[11px] text-slate-500">
+                  {t.last_ingest_at ? t.last_ingest_at.slice(0, 16).replace('T', ' ') : '—'}
+                </span>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </Card>
+  );
 }
 
 // On-demand (not auto-load): the scan walks the account's disk subtree, so
