@@ -264,9 +264,6 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         job_ingest_vehicle_state,
         job_ingest_safety_events,
         job_ingest_driver_efficiency_daily,
-        job_aggregate_telemetry_hourly,
-        job_snapshot_vehicle_state,
-        job_aggregate_metrics_daily,
         job_ingest_vehicle_health,
         job_ingest_vehicle_faults,
         job_ingest_fleet_weather,
@@ -288,35 +285,41 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         hours=1, args=[app], id="warehouse_driver_efficiency",
         max_instances=1, coalesce=True,
     )
-    scheduler.add_job(
-        job_aggregate_telemetry_hourly, "cron",
-        minute=5, args=[app], id="warehouse_telemetry_hourly",
-        max_instances=1, coalesce=True,
-    )
-    # The 5-min vehicle-state HISTORY (vehicle_state_snapshot) + the
-    # nightly daily rollup (vehicle_metrics_daily).  These were dropped
-    # from the scheduler in the feature-centric refactor (3864e08), which
-    # silently froze all back-dated odometer/usage history at the last
-    # run — the current-state job kept the live map fresh, masking it.
-    # Cadences match the provider catalog (STATE_SNAPSHOT_HISTORY: 5 min,
-    # METRICS_DAILY: 00:05 UTC).
-    scheduler.add_job(
-        job_snapshot_vehicle_state, "interval",
-        minutes=5, args=[app], id="warehouse_state_snapshot",
-        max_instances=1, coalesce=True,
-    )
-    # ``timezone="UTC"`` is REQUIRED here: the scheduler runs in the
-    # server's local zone (e.g. CEST/UTC+2), so a bare ``hour=0`` fires at
-    # 00:05 LOCAL = 22:05 UTC — BEFORE UTC midnight — and the aggregator's
-    # "yesterday UTC" then resolves two days back, leaving the daily
-    # roll-up perpetually ~1 day stale.  Pinning the trigger to UTC makes
-    # 00:05 land just after UTC midnight so it aggregates the just-closed
-    # UTC day.  (The 5-min snapshot above is an interval job — tz-agnostic.)
-    scheduler.add_job(
-        job_aggregate_metrics_daily, "cron",
-        hour=0, minute=5, timezone="UTC", args=[app], id="warehouse_metrics_daily",
-        max_instances=1, coalesce=True,
-    )
+    # ── telemetry roll-up cascades (Roll-up hub) ─────────────
+    # The downsampling tiers — vehicle state → 5-min snapshot → hourly →
+    # daily, and any future high-frequency stream — are registered as
+    # cascades in capabilities/rollups (each feature owns its aggregation in
+    # its own rollups.py).  We register one scheduler job per stage from that
+    # registry, so adding a new cascade needs NO scheduler edit.  Job ids +
+    # cadences are unchanged from when these were wired by hand:
+    #   warehouse_state_snapshot   — every 5 min (interval, tz-agnostic)
+    #   warehouse_telemetry_hourly — :05 every hour
+    #   warehouse_metrics_daily    — 00:05 UTC.  The UTC pin is REQUIRED: the
+    #     scheduler runs in the server's local zone, so a bare local 00:05
+    #     fires before UTC midnight and the aggregator's "yesterday UTC" then
+    #     resolves two days back, leaving the daily tier perpetually ~1 day
+    #     stale.  (These tiers were silently dropped once in a refactor, which
+    #     froze all back-dated odometer/usage history — the live-state job
+    #     masked it — so the registry is the single source of what runs.)
+    from apscheduler.triggers.cron import CronTrigger
+    from apscheduler.triggers.interval import IntervalTrigger
+
+    from capabilities.rollups import discover as _discover_rollups
+    from capabilities.rollups.engine import run_stage
+    from capabilities.rollups.registry import all_stages
+
+    _discover_rollups()
+    for stage in all_stages():
+        cadence = stage.cadence
+        if "cron" in cadence:
+            trigger = CronTrigger.from_crontab(cadence["cron"], timezone=cadence.get("tz"))
+        else:
+            trigger = IntervalTrigger(minutes=cadence["interval_min"])
+        scheduler.add_job(
+            run_stage, trigger, args=[stage], id=stage.job_id,
+            max_instances=1, coalesce=True,
+        )
+
     # ── data retention (cross-cutting hub) ───────────────────
     # One nightly pass that prunes every registered retention target to the
     # window its OWNING feature declares (capabilities/retention):

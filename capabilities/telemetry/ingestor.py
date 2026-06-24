@@ -1020,25 +1020,16 @@ async def job_ingest_driver_efficiency_daily(_app=None) -> None:
     )
 
 
-# The three roll-ups below are PROVIDER-AGNOSTIC warehouse plumbing — they
-# downsample whatever raw vehicle state already sits in the warehouse
-# (vehicle_state → vehicle_state_snapshot → hourly → daily), regardless of
-# which provider filled it (Samsara today, Motive/Geotab later).  So they run
-# for EVERY active account, not gated on a Samsara capability: an account with
-# no telemetry is a harmless no-op, and any provider's data rolls up the same
-# way.  (The ingest jobs above stay capability-gated — they PULL from a
-# specific provider; the roll-ups don't touch a provider at all.)
-
-async def job_aggregate_telemetry_hourly(_app=None) -> None:
-    await _for_each_active_account(aggregate_telemetry_hourly)
-
-
-async def job_snapshot_vehicle_state(_app=None) -> None:
-    await _for_each_active_account(snapshot_vehicle_state)
-
-
-async def job_aggregate_metrics_daily(_app=None) -> None:
-    await _for_each_active_account(aggregate_metrics_daily)
+# The downsampling roll-ups (snapshot_vehicle_state → aggregate_telemetry_hourly
+# → aggregate_metrics_daily, defined above) are PROVIDER-AGNOSTIC warehouse
+# plumbing: they downsample whatever raw vehicle state already sits in the
+# warehouse (vehicle_state → vehicle_state_snapshot → hourly → daily),
+# regardless of which provider filled it (Samsara today, Motive/Geotab later).
+# They no longer have scheduler wrappers here — they're registered as a cascade
+# with the Roll-up hub (features/vehicles/rollups.py → capabilities/rollups),
+# which fans each stage across EVERY active account on its cadence (no provider
+# gate: an account with no telemetry is a harmless no-op).  A second high-
+# frequency stream registers its own cascade the same way.
 
 
 # ── vehicle health snapshot ────────────────────────────────
