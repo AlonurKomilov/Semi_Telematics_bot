@@ -5,7 +5,7 @@ driver score events).  Declared at the legacy 90-day window so the cutover is
 behavior-preserving.
 """
 
-from capabilities.retention.registry import (
+from capabilities.lifecycle.retention.registry import (
     RetentionNeed,
     RetentionTarget,
     register_need,

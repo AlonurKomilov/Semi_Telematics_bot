@@ -836,60 +836,11 @@ _INGEST_MAX_CONCURRENT_ACCOUNTS = int(
 )
 
 
-async def _for_each_active_account(coro_factory) -> None:
-    """Invoke ``coro_factory(account_id)`` for every active account in
-    parallel (bounded concurrency), catching per-account errors so one
-    bad tenant doesn't block the rest of the fleet.
-
-    Each per-account job is dominated by Samsara API round-trips
-    (~3–5 s); running them serially caused the 60 s cadence jobs to
-    overrun once a deployment passed ~10 accounts. Bounded by env var
-    ``INGEST_MAX_CONCURRENT_ACCOUNTS`` (default 5) so we don't burst
-    the Samsara API or saturate the Postgres connection pool.
-    """
-    import time as _time
-    job_name = getattr(coro_factory, "__name__", "anon")
-    t0 = _time.perf_counter()
-    try:
-        accounts = await get_platform_db().list_accounts(active_only=True)
-    except Exception:
-        logger.exception("ingestor: list_accounts failed")
-        return
-    if not accounts:
-        return
-
-    sem = asyncio.Semaphore(_INGEST_MAX_CONCURRENT_ACCOUNTS)
-    per_acct_ms: dict[int, float] = {}
-
-    async def _run(acc):
-        async with sem:
-            t_acct = _time.perf_counter()
-            try:
-                # Stamp the RLS GUC for this account so every
-                # ``tenant._db.execute(...)`` inside the ingestor sees
-                # ``app.account_id`` set.  Without this, RLS-enforced
-                # mode (ENABLE_RLS=1, application user NOBYPASSRLS)
-                # makes every aggregation query return zero rows —
-                # silently breaking the telemetry pipeline.
-                tenant_db = await get_tenant_db(acc.id)
-                async with tenant_db.with_account(acc.id):
-                    await coro_factory(acc.id)
-            except Exception:
-                logger.exception("ingestor: per-account job failed acct=%d", acc.id)
-            finally:
-                per_acct_ms[acc.id] = round(
-                    (_time.perf_counter() - t_acct) * 1000, 1,
-                )
-
-    await asyncio.gather(*(_run(a) for a in accounts))
-    total_ms = round((_time.perf_counter() - t0) * 1000, 1)
-    if per_acct_ms:
-        slowest_aid = max(per_acct_ms, key=per_acct_ms.get)
-        logger.info(
-            "ingestor job=%s accounts=%d total_ms=%s slowest_acct=%d slowest_ms=%s",
-            job_name, len(accounts), total_ms,
-            slowest_aid, per_acct_ms[slowest_aid],
-        )
+# The bare per-account fan-out moved to the data-lifecycle family
+# (``capabilities/lifecycle/_common.for_each_active_account``) — the rollup +
+# retention hubs use it from there, so the ingestor no longer owns it.  The
+# capability-aware fan-out below stays here: it's ingest-specific (it adds the
+# integration-toggle gate that a generic lifecycle pass must not apply).
 
 
 # ── Capability-aware fan-out ─────────────────────────────────────

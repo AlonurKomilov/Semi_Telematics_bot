@@ -658,8 +658,8 @@ async def retention_contract(
     contracts (e.g. ``safety_events`` at 3y is a compliance number), so
     this surface is observability — not configuration.
     """
-    from capabilities.retention import discover
-    from capabilities.retention.registry import resolve
+    from capabilities.lifecycle.retention import discover
+    from capabilities.lifecycle.retention.registry import resolve
 
     discover()
     last_runs = {

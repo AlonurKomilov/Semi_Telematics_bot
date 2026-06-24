@@ -288,7 +288,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     # ── telemetry roll-up cascades (Roll-up hub) ─────────────
     # The downsampling tiers — vehicle state → 5-min snapshot → hourly →
     # daily, and any future high-frequency stream — are registered as
-    # cascades in capabilities/rollups (each feature owns its aggregation in
+    # cascades in capabilities/lifecycle/rollups (each feature owns its aggregation in
     # its own rollups.py).  We register one scheduler job per stage from that
     # registry, so adding a new cascade needs NO scheduler edit.  Job ids +
     # cadences are unchanged from when these were wired by hand:
@@ -304,9 +304,9 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     from apscheduler.triggers.cron import CronTrigger
     from apscheduler.triggers.interval import IntervalTrigger
 
-    from capabilities.rollups import discover as _discover_rollups
-    from capabilities.rollups.engine import run_stage
-    from capabilities.rollups.registry import all_stages
+    from capabilities.lifecycle.rollups import discover as _discover_rollups
+    from capabilities.lifecycle.rollups.engine import run_stage
+    from capabilities.lifecycle.rollups.registry import all_stages
 
     _discover_rollups()
     for stage in all_stages():
@@ -322,7 +322,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
 
     # ── data retention (cross-cutting hub) ───────────────────
     # One nightly pass that prunes every registered retention target to the
-    # window its OWNING feature declares (capabilities/retention):
+    # window its OWNING feature declares (capabilities/lifecycle/retention):
     #   tenant   — vehicle.timeline_5min (7d), vehicle.timeline_hourly (90d),
     #              vehicle.metrics_daily (730d), scorecards.score_history (90d)
     #   platform — email.delivery_events (14d)
@@ -336,7 +336,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     # 730-day EOD daily tier is populated, so back-dated work orders keep
     # their reach after the 7-day raw snapshots are pruned.  02:00 UTC, after
     # the 00:05 daily roll-up; UTC-pinned for the same reason as the roll-up.
-    from capabilities.retention.jobs import job_run_retention
+    from capabilities.lifecycle.retention.jobs import job_run_retention
     scheduler.add_job(
         job_run_retention, "cron",
         hour=2, minute=0, timezone="UTC", args=[app], id="data_retention",

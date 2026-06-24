@@ -50,10 +50,10 @@ async def job_run_retention(_app=None) -> None:
             tenant_deleted[key] = tenant_deleted.get(key, 0) + deleted
             tenant_accounts[key] = tenant_accounts.get(key, 0) + 1
 
-    # Reuse the warehouse ingestor's active-account iterator (bounded
-    # concurrency, per-account error isolation).
-    from capabilities.telemetry.ingestor import _for_each_active_account
-    await _for_each_active_account(_for_account)
+    # The shared active-account iterator (bounded concurrency, per-account
+    # error isolation) — lives in the lifecycle family, not the ingestor.
+    from .._common import for_each_active_account
+    await for_each_active_account(_for_account)
 
     # Record one summary row per resolved target (incl. zero-delete runs,
     # so the console shows the job ran even when nothing aged out).

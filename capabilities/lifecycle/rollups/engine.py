@@ -22,8 +22,6 @@ logger = logging.getLogger(__name__)
 
 
 async def run_stage(stage: RollupStage) -> None:
-    # Lazy import: the active-account iterator lives with the ingestor and we
-    # avoid an import cycle at module load (same pattern as retention/jobs).
-    from capabilities.telemetry.ingestor import _for_each_active_account
+    from .._common import for_each_active_account
 
-    await _for_each_active_account(stage.run)
+    await for_each_active_account(stage.run)

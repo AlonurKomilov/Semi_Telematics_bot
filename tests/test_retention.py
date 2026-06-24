@@ -14,8 +14,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from capabilities.retention import discover
-from capabilities.retention.registry import (
+from capabilities.lifecycle.retention import discover
+from capabilities.lifecycle.retention.registry import (
     RetentionNeed,
     RetentionTarget,
     register_need,
@@ -76,7 +76,7 @@ def test_unclaimed_target_never_pruned():
 async def test_engine_calls_existing_methods_with_resolved_windows():
     """The tenant pass must invoke the real storage prune methods with the
     resolved keep-days (behavior-preserving)."""
-    from capabilities.retention.engine import prune_tenant_targets
+    from capabilities.lifecycle.retention.engine import prune_tenant_targets
     discover()
     calls: dict[str, int] = {}
 

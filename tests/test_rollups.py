@@ -16,8 +16,8 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 
 
 def test_vehicle_cascade_registered_with_stable_ids_and_cadences():
-    from capabilities.rollups import discover
-    from capabilities.rollups.registry import all_cascades, all_stages
+    from capabilities.lifecycle.rollups import discover
+    from capabilities.lifecycle.rollups.registry import all_cascades, all_stages
 
     discover()
 
@@ -48,16 +48,16 @@ def test_vehicle_cascade_registered_with_stable_ids_and_cadences():
 def test_run_stage_fans_out_across_active_accounts(monkeypatch):
     """The engine decides FOR WHOM (the shared active-account iterator), the
     stage decides WHAT (its run function) — so run_stage just delegates."""
-    import capabilities.telemetry.ingestor as ingestor
-    from capabilities.rollups.engine import run_stage
-    from capabilities.rollups.registry import RollupStage
+    import capabilities.lifecycle._common as _common
+    from capabilities.lifecycle.rollups.engine import run_stage
+    from capabilities.lifecycle.rollups.registry import RollupStage
 
     seen: dict = {}
 
     async def fake_iter(fn):
         seen["fn"] = fn
 
-    monkeypatch.setattr(ingestor, "_for_each_active_account", fake_iter)
+    monkeypatch.setattr(_common, "for_each_active_account", fake_iter)
 
     async def my_run(account_id: int) -> int:
         return 0

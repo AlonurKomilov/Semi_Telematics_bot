@@ -5,7 +5,7 @@ The service-due projection reads per-day miles from
 window, so the daily tier must persist.
 """
 
-from capabilities.retention.registry import RetentionNeed, register_need
+from capabilities.lifecycle.retention.registry import RetentionNeed, register_need
 
 register_need(RetentionNeed(
     "maintenance", "vehicle.metrics_daily", 730, "service-due velocity projection",
