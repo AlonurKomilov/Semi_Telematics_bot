@@ -260,7 +260,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     # ── telemetry warehouse ingestion ─────────────────────
     # Imported lazily so non-warehouse deployments (older installs that
     # haven't run migrations yet) can still boot the scheduler.
-    from capabilities.telemetry.ingestor import (
+    from capabilities.integrations.samsara.sync import (
         job_ingest_vehicle_state,
         job_ingest_safety_events,
         job_ingest_driver_efficiency_daily,

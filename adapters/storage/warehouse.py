@@ -9,7 +9,7 @@ Read + upsert helpers for the four warehouse tables created in
   - vehicle_telemetry_hourly (hourly roll-up)
 
 Pure SQL — no Samsara client calls happen here.  The ingestor
-(``capabilities/telemetry/ingestor.py``) is responsible for fetching
+(``capabilities/integrations/samsara/sync.py``) is responsible for fetching
 upstream data and shaping it before calling these helpers.
 
 API routes never import this module directly; they go through the

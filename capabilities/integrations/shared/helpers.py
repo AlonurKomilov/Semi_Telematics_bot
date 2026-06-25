@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Any
 
 from fastapi import HTTPException
@@ -28,6 +29,7 @@ from adapters.telematics import (
     is_registered,
 )
 from infra.platform import get_tenant_db
+from infra.services import get_platform_db
 
 logger = logging.getLogger(__name__)
 
@@ -211,3 +213,104 @@ def serialize_integration(ai: Any) -> dict:
         "created_at":         ai.created_at,
         "updated_at":         ai.updated_at,
     }
+
+
+# ── Capability-aware fan-out (used by integration ingest jobs) ──
+# Fan a per-account ingest across active accounts that have the integration
+# CONNECTED and the capability toggle ON.  The provider-agnostic data-lifecycle
+# pass (capabilities/data_lifecycle/_common.for_each_active_account) runs for
+# EVERY account; this gated variant is for ingest, which must respect each
+# account's integration status + feed toggles.
+_INGEST_MAX_CONCURRENT_ACCOUNTS = int(
+    os.getenv("INGEST_MAX_CONCURRENT_ACCOUNTS", "5")
+)
+
+
+async def _for_each_account_with_capability(
+    capability: str,
+    coro_factory,
+    *,
+    provider_id: str = "samsara",
+) -> None:
+    """Fan out a job to accounts that have ``capability`` enabled.
+
+    For each active account:
+      1. Look up its integration row for ``provider_id``.
+      2. Skip if status is anything other than ``connected``.
+      3. Skip if ``feature_toggles[capability]["enabled"]`` is False.
+      4. Run ``coro_factory(account_id)`` under the same RLS / error-
+         containment harness as the bare fan-out helper.
+
+    When an account has no integration row yet (mid-rollout, legacy
+    account, account created via the old code path), the job runs.
+    This keeps every existing pipeline working while rollout
+    happens; once production runs migration 084, every active
+    account has a row.
+    """
+    import time as _time
+    job_name = getattr(coro_factory, "__name__", "anon")
+    t0 = _time.perf_counter()
+    try:
+        accounts = await get_platform_db().list_accounts(active_only=True)
+    except Exception:
+        logger.exception("ingestor: list_accounts failed")
+        return
+    if not accounts:
+        return
+
+    sem = asyncio.Semaphore(_INGEST_MAX_CONCURRENT_ACCOUNTS)
+    per_acct_ms: dict[int, float] = {}
+    skipped_disabled = 0
+    skipped_paused = 0
+    ran = 0
+    lock = asyncio.Lock()
+
+    async def _run(acc):
+        nonlocal skipped_disabled, skipped_paused, ran
+        async with sem:
+            t_acct = _time.perf_counter()
+            try:
+                tenant_db = await get_tenant_db(acc.id)
+                async with tenant_db.with_account(acc.id):
+                    db = get_platform_db()
+                    ai = await db.get_account_integration(acc.id, provider_id)
+                    if ai is not None:
+                        if ai.status != "connected":
+                            async with lock:
+                                skipped_paused += 1
+                            return
+                        cap_cfg = ai.feature_toggles.get(capability) or {}
+                        # Default-on for accounts that exist but
+                        # whose toggle map predates this capability
+                        # (e.g. a new capability the catalog adds
+                        # after the row was first written).  Operators
+                        # turn it off explicitly via the dashboard.
+                        if cap_cfg.get("enabled", True) is False:
+                            async with lock:
+                                skipped_disabled += 1
+                            return
+                    await coro_factory(acc.id)
+                    async with lock:
+                        ran += 1
+            except Exception:
+                logger.exception(
+                    "ingestor: per-account job failed acct=%d cap=%s",
+                    acc.id, capability,
+                )
+            finally:
+                per_acct_ms[acc.id] = round(
+                    (_time.perf_counter() - t_acct) * 1000, 1,
+                )
+
+    await asyncio.gather(*(_run(a) for a in accounts))
+    total_ms = round((_time.perf_counter() - t0) * 1000, 1)
+    if per_acct_ms:
+        slowest_aid = max(per_acct_ms, key=per_acct_ms.get)
+        logger.info(
+            "ingestor job=%s cap=%s accounts=%d ran=%d "
+            "skipped_disabled=%d skipped_paused=%d total_ms=%s "
+            "slowest_acct=%d slowest_ms=%s",
+            job_name, capability, len(accounts),
+            ran, skipped_disabled, skipped_paused, total_ms,
+            slowest_aid, per_acct_ms[slowest_aid],
+        )

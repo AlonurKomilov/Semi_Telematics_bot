@@ -165,7 +165,7 @@ async def _digest_for_account(account_id: int) -> str:
 
 
 async def _for_each_active_account(coro_factory) -> None:
-    """Bounded fan-out — same pattern as ``capabilities.telemetry.ingestor``.
+    """Bounded fan-out — same pattern as ``capabilities/data_lifecycle/_common``.
 
     Kept in this module (rather than imported) to avoid a circular
     dependency between PTI jobs and the telemetry layer.

@@ -27,8 +27,8 @@ import asyncio
 import logging
 import sys
 
-from capabilities.telemetry.ingestor import (
-    aggregate_telemetry_hourly,
+from capabilities.telemetry.aggregator import aggregate_telemetry_hourly
+from capabilities.integrations.samsara.sync import (
     ingest_driver_efficiency_daily,
     ingest_fleet_efficiency,
     ingest_fleet_weather,

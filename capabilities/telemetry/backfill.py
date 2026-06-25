@@ -36,7 +36,7 @@ import logging
 from typing import Any
 
 from infra.services import get_tenant_db
-from capabilities.telemetry.ingestor import (
+from capabilities.integrations.samsara.sync import (
     ingest_vehicle_state,
     ingest_vehicle_health,
     ingest_vehicle_faults,

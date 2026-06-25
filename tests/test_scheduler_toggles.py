@@ -111,7 +111,7 @@ def _fake_integration(
 @pytest.mark.asyncio
 async def test_fan_out_runs_when_toggle_enabled(monkeypatch):
     """Account with status=connected + toggle enabled → coro called."""
-    from capabilities.telemetry import ingestor
+    from capabilities.integrations.shared import helpers as ingestor
 
     ran_for: list[int] = []
 
@@ -138,7 +138,7 @@ async def test_fan_out_runs_when_toggle_enabled(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_fan_out_skips_when_toggle_disabled(monkeypatch):
-    from capabilities.telemetry import ingestor
+    from capabilities.integrations.shared import helpers as ingestor
 
     ran_for: list[int] = []
 
@@ -166,7 +166,7 @@ async def test_fan_out_skips_when_toggle_disabled(monkeypatch):
 @pytest.mark.asyncio
 async def test_fan_out_skips_when_status_not_connected(monkeypatch):
     """Status='error' or 'disabled' → skip even if toggle says enabled."""
-    from capabilities.telemetry import ingestor
+    from capabilities.integrations.shared import helpers as ingestor
 
     ran_for: list[int] = []
 
@@ -196,7 +196,7 @@ async def test_fan_out_skips_when_status_not_connected(monkeypatch):
 async def test_fan_out_defaults_to_running_when_no_integration_row(monkeypatch):
     """An account WITHOUT an integration row still runs — preserves
     pre-migration behaviour during M3 rollout."""
-    from capabilities.telemetry import ingestor
+    from capabilities.integrations.shared import helpers as ingestor
 
     ran_for: list[int] = []
 
@@ -221,7 +221,7 @@ async def test_fan_out_defaults_to_running_when_capability_unknown(monkeypatch):
     """An integration row whose toggle map predates a new capability
     should default that capability to enabled — never silently
     disabled because of timing."""
-    from capabilities.telemetry import ingestor
+    from capabilities.integrations.shared import helpers as ingestor
 
     ran_for: list[int] = []
 
@@ -250,7 +250,7 @@ async def test_fan_out_defaults_to_running_when_capability_unknown(monkeypatch):
 @pytest.mark.asyncio
 async def test_fan_out_runs_per_account_independently(monkeypatch):
     """Per-account toggles fan out correctly across mixed configurations."""
-    from capabilities.telemetry import ingestor
+    from capabilities.integrations.shared import helpers as ingestor
 
     ran_for: list[int] = []
 
@@ -289,7 +289,7 @@ async def test_fan_out_runs_per_account_independently(monkeypatch):
 def _patch_fan_out_dependencies(monkeypatch, *, accounts, integration_by_acct):
     """Stub out the platform DB + tenant DB + RLS context manager so
     the fan-out logic runs in isolation without touching Postgres."""
-    from capabilities.telemetry import ingestor
+    from capabilities.integrations.shared import helpers as ingestor
 
     class _StubPlatformDB:
         async def list_accounts(self, active_only=True):

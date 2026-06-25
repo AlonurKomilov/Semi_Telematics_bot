@@ -5,7 +5,7 @@ duplicating Samsara client interaction + company-display setup.
 
 Reads route through the per-tenant warehouse (vehicle_state table) when
 ``WAREHOUSE_READS_ENABLED=1``; otherwise fall back to live Samsara.
-The ingestor (capabilities/telemetry/ingestor.py) keeps the warehouse
+The ingestor (capabilities/integrations/samsara/sync.py) keeps the warehouse
 fresh on a 60s cadence.
 """
 

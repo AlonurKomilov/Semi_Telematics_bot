@@ -915,7 +915,7 @@ async def force_refresh_vehicles(
 ):
     """Pull the Samsara fleet overview for this account RIGHT NOW.
 
-    Wraps ``capabilities.telemetry.ingestor.ingest_vehicle_state`` —
+    Wraps ``capabilities.integrations.samsara.sync.ingest_vehicle_state`` —
     the same function the scheduler runs every 60s — but lets the
     operator force a fresh ingest when investigating discrepancies.
     Returns the count of vehicles persisted on this run.
@@ -927,7 +927,7 @@ async def force_refresh_vehicles(
     acc = await platform_db.get_account(account_id)
     if not acc:
         raise HTTPException(status_code=404, detail="Account not found")
-    from capabilities.telemetry.ingestor import ingest_vehicle_state
+    from capabilities.integrations.samsara.sync import ingest_vehicle_state
     try:
         persisted = await ingest_vehicle_state(account_id)
     except Exception as e:

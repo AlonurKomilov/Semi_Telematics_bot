@@ -25,7 +25,8 @@ import pytest_asyncio
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from adapters.storage import Database
-from capabilities.telemetry import warehouse_reader, ingestor
+from capabilities.telemetry import warehouse_reader, aggregator
+from capabilities.integrations.samsara import sync
 
 
 # ── tenant DB fixture ────────────────────────────────────────────────
@@ -237,7 +238,7 @@ class TestShapeAdapters:
                 "checkEngineLights": {"red": True},
             }},
         }
-        row = ingestor._vehicle_overview_to_state_row(v)
+        row = sync._vehicle_overview_to_state_row(v)
         assert row["vehicle_id"] == "v1"
         assert row["company_code"] == "ACME"
         assert row["fuel_pct"] == 75
@@ -246,10 +247,10 @@ class TestShapeAdapters:
         assert row["dtc_critical_count"] == 1
 
     def test_safety_event_to_log_row_severity(self):
-        hi = ingestor._safety_event_to_log_row({"event_id": "e1", "g_force": 2.5})
-        med = ingestor._safety_event_to_log_row({"event_id": "e2", "g_force": 1.6})
-        low = ingestor._safety_event_to_log_row({"event_id": "e3", "g_force": 0.5})
-        none = ingestor._safety_event_to_log_row({"event_id": "e4"})
+        hi = sync._safety_event_to_log_row({"event_id": "e1", "g_force": 2.5})
+        med = sync._safety_event_to_log_row({"event_id": "e2", "g_force": 1.6})
+        low = sync._safety_event_to_log_row({"event_id": "e3", "g_force": 0.5})
+        none = sync._safety_event_to_log_row({"event_id": "e4"})
         assert hi["severity"] == "high"
         assert med["severity"] == "medium"
         assert low["severity"] == "low"
@@ -355,10 +356,10 @@ class TestIngestor:
         async def get_tenant_db_stub(_aid):
             return tenant
 
-        monkeypatch.setattr(ingestor, "get_client", get_client_stub)
-        monkeypatch.setattr(ingestor, "get_tenant_db", get_tenant_db_stub)
+        monkeypatch.setattr(sync, "get_client", get_client_stub)
+        monkeypatch.setattr(sync, "get_tenant_db", get_tenant_db_stub)
 
-        n = await ingestor.ingest_vehicle_state(1)
+        n = await sync.ingest_vehicle_state(1)
         assert n == 2
         rows = await tenant.get_vehicle_state(1)
         assert {r["vehicle_id"] for r in rows} == {"v1", "v2"}
@@ -377,12 +378,12 @@ class TestIngestor:
             return client
         async def get_tenant_db_stub(_aid):
             return tenant
-        monkeypatch.setattr(ingestor, "get_client", get_client_stub)
-        monkeypatch.setattr(ingestor, "get_tenant_db", get_tenant_db_stub)
+        monkeypatch.setattr(sync, "get_client", get_client_stub)
+        monkeypatch.setattr(sync, "get_tenant_db", get_tenant_db_stub)
 
-        n1 = await ingestor.ingest_safety_events(1)
+        n1 = await sync.ingest_safety_events(1)
         assert n1 == 2
-        n2 = await ingestor.ingest_safety_events(1)
+        n2 = await sync.ingest_safety_events(1)
         assert n2 == 0  # dedup
 
     @pytest.mark.asyncio
@@ -396,10 +397,10 @@ class TestIngestor:
             return client
         async def get_tenant_db_stub(_aid):
             return tenant
-        monkeypatch.setattr(ingestor, "get_client", get_client_stub)
-        monkeypatch.setattr(ingestor, "get_tenant_db", get_tenant_db_stub)
+        monkeypatch.setattr(sync, "get_client", get_client_stub)
+        monkeypatch.setattr(sync, "get_tenant_db", get_tenant_db_stub)
 
-        n = await ingestor.ingest_driver_efficiency_daily(1)
+        n = await sync.ingest_driver_efficiency_daily(1)
         assert n == 2
         agg = await tenant.get_driver_efficiency_window(1, days=1)
         by_id = {r["driver_id"]: r for r in agg}
@@ -412,14 +413,14 @@ class TestIngestor:
             raise RuntimeError("no api key")
         async def get_tenant_db_stub(_aid):
             return tenant
-        monkeypatch.setattr(ingestor, "get_client", get_client_raise)
-        monkeypatch.setattr(ingestor, "get_tenant_db", get_tenant_db_stub)
+        monkeypatch.setattr(sync, "get_client", get_client_raise)
+        monkeypatch.setattr(sync, "get_tenant_db", get_tenant_db_stub)
 
         # Each ingestor must swallow the missing-client case so a single
         # unconfigured tenant can't take the whole scheduler down.
-        assert await ingestor.ingest_vehicle_state(1) == 0
-        assert await ingestor.ingest_safety_events(1) == 0
-        assert await ingestor.ingest_driver_efficiency_daily(1) == 0
+        assert await sync.ingest_vehicle_state(1) == 0
+        assert await sync.ingest_safety_events(1) == 0
+        assert await sync.ingest_driver_efficiency_daily(1) == 0
 
 
 # Silence unused-import warning for the SimpleNamespace helper that some
@@ -581,11 +582,11 @@ async def test_aggregate_day_window_captures_eod(tenant):
     ])
     day = _dt(2026, 6, 15, 0, 0, tzinfo=_tz.utc)
     # Hourly rollup first (daily rows derive from the hourly table)…
-    await ingestor._aggregate_hour_window(
+    await aggregator._aggregate_hour_window(
         tenant, 1, _dt(2026, 6, 15, 12, 0, tzinfo=_tz.utc),
     )
     # …then the daily rollup, which also reads snapshots for EOD.
-    await ingestor._aggregate_day_window(tenant, 1, day)
+    await aggregator._aggregate_day_window(tenant, 1, day)
 
     cur = await tenant._db.execute(
         "SELECT odometer_eod, engine_hours_eod FROM vehicle_metrics_daily "
