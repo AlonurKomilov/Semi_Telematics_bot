@@ -71,6 +71,11 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from adapters.telematics.protocol import Capability
+# Provider-agnostic backfill (driven by ``provider_id`` + ``get_telematics_client``),
+# but the rate-limit throttle/lock + day-chunk size are still Samsara-shaped — Samsara
+# is the only telematics provider today.  GENERALIZE WHEN A 2ND TELEMATICS PROVIDER
+# LANDS: resolve the throttle/lock/chunk from the provider (e.g. via the protocol)
+# instead of importing Samsara's directly.
 from adapters.telematics.samsara.throttle import (
     backfill_account_lock,
     samsara_backfill_throttle,

@@ -54,7 +54,7 @@ def _make_redis_stub():
 
 @pytest.mark.asyncio
 async def test_publish_status_stamps_last_heartbeat(monkeypatch):
-    from capabilities.telemetry import history_backfill
+    from capabilities.integrations.shared import history_backfill
 
     store, fake_get, fake_set, fake_delete, fake_scan, fake_avail = _make_redis_stub()
     monkeypatch.setattr(history_backfill._redis, "is_available", fake_avail)
@@ -78,7 +78,7 @@ async def test_publish_status_does_not_mutate_caller_payload(monkeypatch):
     """Caller often reuses the payload dict — we must not contaminate
     it with the heartbeat (would leak into asdict(result) in subsequent
     publishes and shadow the dataclass field if added later)."""
-    from capabilities.telemetry import history_backfill
+    from capabilities.integrations.shared import history_backfill
 
     _, _, fake_set, _, _, fake_avail = _make_redis_stub()
     monkeypatch.setattr(history_backfill._redis, "is_available", fake_avail)
@@ -99,7 +99,7 @@ async def test_get_backfill_status_coerces_stale_running_to_failed(monkeypatch):
     Redis still says ``running`` with an old heartbeat, but the
     next status read coerces to ``failed`` so the dashboard clears
     and the TOCTOU guard unblocks re-trigger."""
-    from capabilities.telemetry import history_backfill
+    from capabilities.integrations.shared import history_backfill
 
     store, fake_get, _, _, _, fake_avail = _make_redis_stub()
     monkeypatch.setattr(history_backfill._redis, "is_available", fake_avail)
@@ -124,7 +124,7 @@ async def test_get_backfill_status_coerces_stale_running_to_failed(monkeypatch):
 async def test_get_backfill_status_passes_fresh_running_through(monkeypatch):
     """A healthy backfill with a recent heartbeat must NOT be
     coerced — that would prematurely fail a legitimately slow run."""
-    from capabilities.telemetry import history_backfill
+    from capabilities.integrations.shared import history_backfill
 
     store, fake_get, _, _, _, fake_avail = _make_redis_stub()
     monkeypatch.setattr(history_backfill._redis, "is_available", fake_avail)
@@ -151,7 +151,7 @@ async def test_get_backfill_status_treats_missing_heartbeat_as_stale(monkeypatch
     "4/28 days" record was written by the old code (no heartbeat),
     and must auto-recover on the next status poll without manual
     Redis surgery."""
-    from capabilities.telemetry import history_backfill
+    from capabilities.integrations.shared import history_backfill
 
     store, fake_get, _, _, _, fake_avail = _make_redis_stub()
     monkeypatch.setattr(history_backfill._redis, "is_available", fake_avail)
@@ -168,7 +168,7 @@ async def test_get_backfill_status_treats_missing_heartbeat_as_stale(monkeypatch
 async def test_get_backfill_status_passes_completed_through(monkeypatch):
     """Only ``running`` records get the staleness check.  ``completed``
     and ``failed`` shouldn't be re-coerced — they're terminal states."""
-    from capabilities.telemetry import history_backfill
+    from capabilities.integrations.shared import history_backfill
 
     store, fake_get, _, _, _, fake_avail = _make_redis_stub()
     monkeypatch.setattr(history_backfill._redis, "is_available", fake_avail)
@@ -187,7 +187,7 @@ async def test_get_backfill_status_passes_completed_through(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_reset_backfill_status_clears_record(monkeypatch):
-    from capabilities.telemetry import history_backfill
+    from capabilities.integrations.shared import history_backfill
 
     store, fake_get, _, fake_delete, _, fake_avail = _make_redis_stub()
     monkeypatch.setattr(history_backfill._redis, "is_available", fake_avail)
@@ -202,7 +202,7 @@ async def test_reset_backfill_status_clears_record(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_reset_backfill_status_returns_false_when_no_record(monkeypatch):
-    from capabilities.telemetry import history_backfill
+    from capabilities.integrations.shared import history_backfill
 
     store, fake_get, _, fake_delete, _, fake_avail = _make_redis_stub()
     monkeypatch.setattr(history_backfill._redis, "is_available", fake_avail)
@@ -219,7 +219,7 @@ async def test_reset_backfill_status_refuses_to_clear_completed(monkeypatch):
     The dashboard uses that to render "Last backfill done · N rows".
     An accidental Reset click on a completed badge would erase that
     legitimate state — so we refuse and return False."""
-    from capabilities.telemetry import history_backfill
+    from capabilities.integrations.shared import history_backfill
 
     store, fake_get, _, fake_delete, _, fake_avail = _make_redis_stub()
     monkeypatch.setattr(history_backfill._redis, "is_available", fake_avail)
@@ -250,7 +250,7 @@ async def test_skipped_does_not_clobber_running_state_for_same_account(monkeypat
     Result: dashboard shows "Skipped" forever even though A is still
     running, because polling stopped and progress is invisible until
     A completes."""
-    from capabilities.telemetry import history_backfill
+    from capabilities.integrations.shared import history_backfill
     from adapters.telematics.samsara import throttle as _throttle
 
     store, fake_get, fake_set, _, _, fake_avail = _make_redis_stub()
@@ -295,7 +295,7 @@ async def test_skipped_suppress_uses_raw_payload_not_coerced(monkeypatch):
     record with a stale heartbeat.  The raw payload still says
     ``state="running"``, so suppression should fire even though
     the coerced view would say ``failed``."""
-    from capabilities.telemetry import history_backfill
+    from capabilities.integrations.shared import history_backfill
     from adapters.telematics.samsara import throttle as _throttle
 
     store, fake_get, fake_set, _, _, fake_avail = _make_redis_stub()
@@ -333,7 +333,7 @@ async def test_skipped_does_publish_when_no_running_state_for_account(monkeypatc
     for this account.  The 'skipped' payload SHOULD be published so
     the operator sees a clear "your request was skipped because the
     platform queue is busy" message, rather than a silent no-op."""
-    from capabilities.telemetry import history_backfill
+    from capabilities.integrations.shared import history_backfill
     from adapters.telematics.samsara import throttle as _throttle
 
     store, fake_get, fake_set, _, _, fake_avail = _make_redis_stub()
@@ -360,7 +360,7 @@ async def test_reset_backfill_status_clears_failed_record(monkeypatch):
     """``failed`` IS clearable — that's the operator-facing recovery
     path after the staleness coercion writes a stuck record to
     ``failed``."""
-    from capabilities.telemetry import history_backfill
+    from capabilities.integrations.shared import history_backfill
 
     store, fake_get, _, fake_delete, _, fake_avail = _make_redis_stub()
     monkeypatch.setattr(history_backfill._redis, "is_available", fake_avail)
@@ -382,7 +382,7 @@ async def test_shutdown_sweep_marks_running_records_failed(monkeypatch):
     tasks.  Every record still at ``running`` should flip to
     ``failed`` with reason='api restart in flight' so the badge
     clears immediately on next boot."""
-    from capabilities.telemetry import history_backfill
+    from capabilities.integrations.shared import history_backfill
 
     store, fake_get, fake_set, _, fake_scan, fake_avail = _make_redis_stub()
     monkeypatch.setattr(history_backfill._redis, "is_available", fake_avail)
@@ -407,7 +407,7 @@ async def test_shutdown_sweep_marks_running_records_failed(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_shutdown_sweep_handles_no_records_cleanly(monkeypatch):
-    from capabilities.telemetry import history_backfill
+    from capabilities.integrations.shared import history_backfill
 
     store, fake_get, fake_set, _, fake_scan, fake_avail = _make_redis_stub()
     monkeypatch.setattr(history_backfill._redis, "is_available", fake_avail)

@@ -27,7 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from adapters.telematics import PROVIDER_CATALOG
-from capabilities.telemetry.history_backfill import (
+from capabilities.integrations.shared.history_backfill import (
     backfill_vehicle_history,
     get_backfill_status,
     reset_backfill_status,

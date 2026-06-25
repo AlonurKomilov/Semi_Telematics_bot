@@ -29,7 +29,7 @@ import pytest
 
 from adapters.storage.account_integrations import AccountIntegration
 from adapters.telematics.protocol import Capability
-from capabilities.telemetry.history_backfill import (
+from capabilities.integrations.shared.history_backfill import (
     _floor_to_slot,
     _merge_batch,
     _resample_to_snapshot_rows,
@@ -297,10 +297,10 @@ def _no_sleep(monkeypatch):
     async def _instant(*_args, **_kwargs):
         return None
     monkeypatch.setattr(
-        "capabilities.telemetry.history_backfill.asyncio.sleep", _instant,
+        "capabilities.integrations.shared.history_backfill.asyncio.sleep", _instant,
     )
     monkeypatch.setattr(
-        "capabilities.telemetry.history_backfill.samsara_backfill_throttle.acquire",
+        "capabilities.integrations.shared.history_backfill.samsara_backfill_throttle.acquire",
         AsyncMock(),
     )
     yield
@@ -327,11 +327,11 @@ def _stub_platform_services(monkeypatch, seeded_db):
     _a.get_event_loop_policy().new_event_loop().run_until_complete(_setup())
 
     monkeypatch.setattr(
-        "capabilities.telemetry.history_backfill.get_platform_db",
+        "capabilities.integrations.shared.history_backfill.get_platform_db",
         lambda: db,
     )
     monkeypatch.setattr(
-        "capabilities.telemetry.history_backfill.get_tenant_db",
+        "capabilities.integrations.shared.history_backfill.get_tenant_db",
         AsyncMock(return_value=db),
     )
     yield account
@@ -343,7 +343,7 @@ async def test_backfill_skips_when_no_integration(monkeypatch, _no_sleep):
     db = MagicMock()
     db.get_account_integration = AsyncMock(return_value=None)
     monkeypatch.setattr(
-        "capabilities.telemetry.history_backfill.get_platform_db",
+        "capabilities.integrations.shared.history_backfill.get_platform_db",
         lambda: db,
     )
     result = await backfill_vehicle_history(99999, days=3)
@@ -360,7 +360,7 @@ async def test_backfill_skips_when_status_not_connected(
         return_value=_make_integration(42, status="disabled"),
     )
     monkeypatch.setattr(
-        "capabilities.telemetry.history_backfill.get_platform_db",
+        "capabilities.integrations.shared.history_backfill.get_platform_db",
         lambda: db,
     )
     result = await backfill_vehicle_history(42, days=3)
@@ -375,7 +375,7 @@ async def test_backfill_skips_when_toggle_disabled(monkeypatch, _no_sleep):
         return_value=_make_integration(42, backfill_enabled=False),
     )
     monkeypatch.setattr(
-        "capabilities.telemetry.history_backfill.get_platform_db",
+        "capabilities.integrations.shared.history_backfill.get_platform_db",
         lambda: db,
     )
     result = await backfill_vehicle_history(42, days=3)
@@ -391,7 +391,7 @@ async def test_backfill_completes_and_inserts_rows(monkeypatch, _no_sleep):
     db = MagicMock()
     db.get_account_integration = AsyncMock(return_value=integration)
     monkeypatch.setattr(
-        "capabilities.telemetry.history_backfill.get_platform_db",
+        "capabilities.integrations.shared.history_backfill.get_platform_db",
         lambda: db,
     )
 
@@ -399,7 +399,7 @@ async def test_backfill_completes_and_inserts_rows(monkeypatch, _no_sleep):
     tenant.vehicle_state_snapshot_has_day = AsyncMock(return_value=False)
     tenant.upsert_vehicle_state_snapshots = AsyncMock(return_value=3)
     monkeypatch.setattr(
-        "capabilities.telemetry.history_backfill.get_tenant_db",
+        "capabilities.integrations.shared.history_backfill.get_tenant_db",
         AsyncMock(return_value=tenant),
     )
 
@@ -408,7 +408,7 @@ async def test_backfill_completes_and_inserts_rows(monkeypatch, _no_sleep):
         return_value=_fake_provider_response(),
     )
     monkeypatch.setattr(
-        "capabilities.telemetry.history_backfill.get_telematics_client",
+        "capabilities.integrations.shared.history_backfill.get_telematics_client",
         AsyncMock(return_value=provider),
     )
 
@@ -427,7 +427,7 @@ async def test_backfill_skips_already_populated_days(monkeypatch, _no_sleep):
     db = MagicMock()
     db.get_account_integration = AsyncMock(return_value=integration)
     monkeypatch.setattr(
-        "capabilities.telemetry.history_backfill.get_platform_db",
+        "capabilities.integrations.shared.history_backfill.get_platform_db",
         lambda: db,
     )
 
@@ -442,7 +442,7 @@ async def test_backfill_skips_already_populated_days(monkeypatch, _no_sleep):
     tenant.vehicle_state_snapshot_has_day = _has_day
     tenant.upsert_vehicle_state_snapshots = AsyncMock(return_value=3)
     monkeypatch.setattr(
-        "capabilities.telemetry.history_backfill.get_tenant_db",
+        "capabilities.integrations.shared.history_backfill.get_tenant_db",
         AsyncMock(return_value=tenant),
     )
 
@@ -451,7 +451,7 @@ async def test_backfill_skips_already_populated_days(monkeypatch, _no_sleep):
         return_value=_fake_provider_response(),
     )
     monkeypatch.setattr(
-        "capabilities.telemetry.history_backfill.get_telematics_client",
+        "capabilities.integrations.shared.history_backfill.get_telematics_client",
         AsyncMock(return_value=provider),
     )
 
@@ -472,7 +472,7 @@ async def test_backfill_continues_after_per_day_batch_failure(
     db = MagicMock()
     db.get_account_integration = AsyncMock(return_value=integration)
     monkeypatch.setattr(
-        "capabilities.telemetry.history_backfill.get_platform_db",
+        "capabilities.integrations.shared.history_backfill.get_platform_db",
         lambda: db,
     )
 
@@ -480,7 +480,7 @@ async def test_backfill_continues_after_per_day_batch_failure(
     tenant.vehicle_state_snapshot_has_day = AsyncMock(return_value=False)
     tenant.upsert_vehicle_state_snapshots = AsyncMock(return_value=2)
     monkeypatch.setattr(
-        "capabilities.telemetry.history_backfill.get_tenant_db",
+        "capabilities.integrations.shared.history_backfill.get_tenant_db",
         AsyncMock(return_value=tenant),
     )
 
@@ -497,7 +497,7 @@ async def test_backfill_continues_after_per_day_batch_failure(
     provider = MagicMock()
     provider.get_stats_history = _flaky
     monkeypatch.setattr(
-        "capabilities.telemetry.history_backfill.get_telematics_client",
+        "capabilities.integrations.shared.history_backfill.get_telematics_client",
         AsyncMock(return_value=provider),
     )
 

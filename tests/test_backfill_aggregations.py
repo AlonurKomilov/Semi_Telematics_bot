@@ -206,7 +206,8 @@ async def test_m5_backfill_calls_aggregations_on_success(monkeypatch):
     """The M5 history backfill must chain into ``backfill_aggregations``
     so the calendar projection's median path has data the moment M5
     finishes (rather than waiting ~7 days for the cron to catch up)."""
-    from capabilities.telemetry import history_backfill, aggregator as ingestor
+    from capabilities.integrations.shared import history_backfill
+    from capabilities.telemetry import aggregator as ingestor
 
     # Mock the M5 setup so it gets to the chain-into-aggregations
     # point: integration row exists, status connected, toggle on,
@@ -242,7 +243,7 @@ async def test_m5_backfill_calls_aggregations_on_success(monkeypatch):
         "acquire", AsyncMock(),
     )
     monkeypatch.setattr(
-        "capabilities.telemetry.history_backfill.asyncio.sleep",
+        "capabilities.integrations.shared.history_backfill.asyncio.sleep",
         AsyncMock(),
     )
 
@@ -271,7 +272,8 @@ async def test_m5_backfill_aggregations_failure_does_not_flip_state(monkeypatch)
     still be 'completed' (snapshot data landed successfully — the
     aggregations failure just means the live cron will catch up over
     the next 7 days)."""
-    from capabilities.telemetry import history_backfill, aggregator as ingestor
+    from capabilities.integrations.shared import history_backfill
+    from capabilities.telemetry import aggregator as ingestor
 
     integration = MagicMock()
     integration.status = "connected"
@@ -301,7 +303,7 @@ async def test_m5_backfill_aggregations_failure_does_not_flip_state(monkeypatch)
         "acquire", AsyncMock(),
     )
     monkeypatch.setattr(
-        "capabilities.telemetry.history_backfill.asyncio.sleep",
+        "capabilities.integrations.shared.history_backfill.asyncio.sleep",
         AsyncMock(),
     )
 

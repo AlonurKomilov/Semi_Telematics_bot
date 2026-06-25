@@ -475,7 +475,7 @@ def test_redis_key_includes_company_code_when_scoped():
     """Per-company refresh writes to a per-company Redis key so an
     account-wide "Run all" and a row-level "Refresh" can co-exist
     without one clobbering the other's progress."""
-    from capabilities.telemetry.history_backfill import _redis_key
+    from capabilities.integrations.shared.history_backfill import _redis_key
     account_key = _redis_key(42, "samsara")
     company_key = _redis_key(42, "samsara", "OSY")
     assert account_key != company_key

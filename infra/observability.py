@@ -95,7 +95,7 @@ EMAIL_WEBHOOK_EVENTS: Any = _STUB
 # Telematics-provider health probes (capabilities/integrations/telematics_health.py).
 # Cardinality bounded: a handful of providers × {ok, error, timeout}.
 INTEGRATION_HEALTH: Any = _STUB
-# Telematics history-backfill runs (capabilities/telemetry/history_backfill.py).
+# Telematics history-backfill runs (capabilities/integrations/shared/history_backfill.py).
 INTEGRATION_BACKFILL: Any = _STUB
 
 
@@ -313,7 +313,7 @@ def record_integration_backfill_run(provider: str, status: str) -> None:
     """One telematics history-backfill run.
 
     ``status`` ∈ {``completed``, ``failed``, ``partial``}.  Called by
-    ``capabilities/telemetry/history_backfill.py`` (via getattr, so this
+    ``capabilities/integrations/shared/history_backfill.py`` (via getattr, so this
     stays optional); safe before metrics init (stub no-ops).
     """
     INTEGRATION_BACKFILL.labels(
