@@ -837,7 +837,7 @@ _INGEST_MAX_CONCURRENT_ACCOUNTS = int(
 
 
 # The bare per-account fan-out moved to the data-lifecycle family
-# (``capabilities/lifecycle/_common.for_each_active_account``) — the rollup +
+# (``capabilities/data_lifecycle/_common.for_each_active_account``) — the rollup +
 # retention hubs use it from there, so the ingestor no longer owns it.  The
 # capability-aware fan-out below stays here: it's ingest-specific (it adds the
 # integration-toggle gate that a generic lifecycle pass must not apply).

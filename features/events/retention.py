@@ -9,7 +9,7 @@ deliberately long — 3 years — and is a product/legal decision, not a
 technical default.
 """
 
-from capabilities.lifecycle.retention.registry import (
+from capabilities.data_lifecycle.retention.registry import (
     RetentionNeed,
     RetentionTarget,
     register_need,

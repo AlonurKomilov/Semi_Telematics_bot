@@ -5,7 +5,7 @@ platform-scoped bounce/complaint webhook log).  Declared at the legacy
 14-day window so the cutover is behavior-preserving.
 """
 
-from capabilities.lifecycle.retention.registry import (
+from capabilities.data_lifecycle.retention.registry import (
     RetentionNeed,
     RetentionTarget,
     register_need,

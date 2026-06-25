@@ -8,7 +8,7 @@ WHOLE lifecycle side by side:
   * KEEP   (retention)       — how long each tier is kept before pruning, and
     the consumers that need it.  Registered with the Retention hub.
 
-Both hubs live under ``capabilities/lifecycle``; the aggregation/prune
+Both hubs live under ``capabilities/data_lifecycle``; the aggregation/prune
 implementations stay in the warehouse storage layer.  Colocating the two
 declarations means a tier's full lifecycle (born → rolled up → kept → deleted)
 reads top-to-bottom in one file instead of being split across two.
@@ -17,7 +17,7 @@ reads top-to-bottom in one file instead of being split across two.
 from __future__ import annotations
 
 # ── BUILD: the roll-up cascade ───────────────────────────────────
-from capabilities.lifecycle.rollups.registry import (
+from capabilities.data_lifecycle.rollups.registry import (
     RollupCascade,
     RollupStage,
     register_cascade,
@@ -62,7 +62,7 @@ register_cascade(
 
 
 # ── KEEP: retention targets (HOW to prune) + the feature's needs (HOW LONG) ──
-from capabilities.lifecycle.retention.registry import (  # noqa: E402
+from capabilities.data_lifecycle.retention.registry import (  # noqa: E402
     RetentionNeed,
     RetentionTarget,
     register_need,

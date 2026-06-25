@@ -14,7 +14,7 @@ contributions.  Imported at app startup so ``register_target`` /
 
 from __future__ import annotations
 
-from capabilities.lifecycle.retention.registry import (
+from capabilities.data_lifecycle.retention.registry import (
     RetentionNeed,
     RetentionTarget,
     register_need,

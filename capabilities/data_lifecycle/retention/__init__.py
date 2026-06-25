@@ -1,6 +1,6 @@
 """Retention hub — keep each data tier N days, then delete.
 
-Part of the data-lifecycle family (``capabilities/lifecycle``); the DELETE
+Part of the data-lifecycle family (``capabilities/data_lifecycle``); the DELETE
 half (rollups is the BUILD half).  Each feature/capability owns both its
 targets (HOW to prune) and its needs (HOW LONG) in its own module; this hub
 holds only the registry + engine.  ``discover()`` imports the contributors so

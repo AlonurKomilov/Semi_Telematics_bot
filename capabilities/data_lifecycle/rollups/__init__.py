@@ -1,7 +1,7 @@
 """Roll-up hub — generic time-series downsampling (live → 5-min → hourly →
 daily → weekly).
 
-Part of the data-lifecycle family (``capabilities/lifecycle``); holds only the
+Part of the data-lifecycle family (``capabilities/data_lifecycle``); holds only the
 registry + engine — each feature owns its cascade + aggregation in its own
 module.  ``discover()`` imports the contributors so their ``register_cascade``
 calls fire (built from the family's shared ``make_discover``).

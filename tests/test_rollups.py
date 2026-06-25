@@ -16,8 +16,8 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 
 
 def test_vehicle_cascade_registered_with_stable_ids_and_cadences():
-    from capabilities.lifecycle.rollups import discover
-    from capabilities.lifecycle.rollups.registry import all_cascades, all_stages
+    from capabilities.data_lifecycle.rollups import discover
+    from capabilities.data_lifecycle.rollups.registry import all_cascades, all_stages
 
     discover()
 
@@ -48,9 +48,9 @@ def test_vehicle_cascade_registered_with_stable_ids_and_cadences():
 def test_run_stage_fans_out_across_active_accounts(monkeypatch):
     """The engine decides FOR WHOM (the shared active-account iterator), the
     stage decides WHAT (its run function) — so run_stage just delegates."""
-    import capabilities.lifecycle._common as _common
-    from capabilities.lifecycle.rollups.engine import run_stage
-    from capabilities.lifecycle.rollups.registry import RollupStage
+    import capabilities.data_lifecycle._common as _common
+    from capabilities.data_lifecycle.rollups.engine import run_stage
+    from capabilities.data_lifecycle.rollups.registry import RollupStage
 
     seen: dict = {}
 
