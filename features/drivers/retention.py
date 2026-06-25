@@ -6,7 +6,7 @@
 so driver scorecard history lines up with the vehicle daily tier.
 """
 
-from capabilities.retention.registry import (
+from capabilities.data_lifecycle.retention.registry import (
     RetentionNeed,
     RetentionTarget,
     register_need,

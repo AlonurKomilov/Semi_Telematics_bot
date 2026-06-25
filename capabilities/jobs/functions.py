@@ -241,7 +241,7 @@ async def backfill_account_initial(
     t0 = time.perf_counter()
     status = "ok"
     try:
-        from capabilities.telemetry.backfill import backfill_account_initial as _impl
+        from capabilities.integrations.samsara.backfill import backfill_account_initial as _impl
         result = await _impl(account_id, days=days)
     except Exception:
         status = "error"
