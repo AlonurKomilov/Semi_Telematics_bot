@@ -2810,7 +2810,7 @@ async def migrate_create_scan_log(conn) -> None:
     Indexed by ``(created_at DESC)`` for the recent-activity tail-read
     and by ``(account_id, created_at)`` for per-account drill-downs.
 
-    Retention: 90 days, wired via capabilities/retention/registry.py
+    Retention: 90 days, wired via capabilities/data_lifecycle/retention/registry.py
     target ``platform.scan_log``.  Old rows pruned by the nightly
     ``data_retention`` job (see Retention page on the operator console).
     """

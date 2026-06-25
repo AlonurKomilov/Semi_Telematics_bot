@@ -131,7 +131,7 @@ async def take_daily_scorecard_snapshots(_app=None) -> None:
 
     # (Pruning score_events to its 90-day window now runs through the
     # Retention hub's nightly tenant pass — scorecards.score_history.  See
-    # capabilities/retention + the ``data_retention`` scheduler job.)
+    # capabilities/data_lifecycle/retention + the ``data_retention`` scheduler job.)
 
 
 # Default thresholds for score-drop alerting.
