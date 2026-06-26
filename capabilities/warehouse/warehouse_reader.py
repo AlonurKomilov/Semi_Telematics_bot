@@ -211,7 +211,7 @@ async def get_current_vehicles(
 
     ``samsara_fallback`` is a no-arg async callable that yields the
     legacy live-Samsara response.  Required so this module stays free
-    of imports from ``capabilities.telemetry.service`` (which would
+    of imports from ``capabilities.warehouse.service`` (which would
     create a cycle once that module starts calling us).
     """
     if not _enabled():

@@ -15,7 +15,7 @@ from features.vehicles.service import (
     get_vehicles_overview as _svc_vehicles,
     get_vehicle_detail as _svc_detail,
 )
-from capabilities.telemetry.service import get_engine_states as _svc_engine_states
+from capabilities.warehouse.service import get_engine_states as _svc_engine_states
 
 
 @register_tool({

@@ -894,7 +894,7 @@ async def backfill_vehicle_history(
             # snapshot rows but the calendar would still be empty
             # for ~7 more days while the live aggregators caught up.
             try:
-                from capabilities.telemetry.aggregator import (
+                from capabilities.warehouse.aggregator import (
                     backfill_aggregations,
                 )
                 agg = await backfill_aggregations(account_id, days=days)

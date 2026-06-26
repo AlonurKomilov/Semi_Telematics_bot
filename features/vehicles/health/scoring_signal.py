@@ -8,10 +8,10 @@ active issues?" — that's how the underlying Samsara endpoints already
 behave and matches how operators read the dashboard.
 
 Inputs:
-  *health_records* — output of ``capabilities.telemetry.service
+  *health_records* — output of ``capabilities.warehouse.service
     .get_vehicle_health`` — vehicles with ``_health_alerts`` list.
   *faulted_vehicles* — first element of
-    ``capabilities.telemetry.service.get_vehicles_with_faults`` —
+    ``capabilities.warehouse.service.get_vehicles_with_faults`` —
     vehicles with active DTCs.
 """
 

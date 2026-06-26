@@ -19,7 +19,7 @@ from capabilities.alerting.pipeline import (
     send_alert, is_vehicle_suppressed,
 )
 from capabilities.formatting import format_fault_alert
-from capabilities.telemetry.service import get_vehicles_with_faults as _svc_get_faults
+from capabilities.warehouse.service import get_vehicles_with_faults as _svc_get_faults
 from infra.bot_registry import get_app_for_account
 from infra.config import FAULT_ALERT_COOLDOWN_HOURS, CHRONIC_FAULT_SUPPRESS_AFTER
 from infra.context import set_tenant_display

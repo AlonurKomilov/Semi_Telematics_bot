@@ -13,7 +13,7 @@ Pure SQL — no Samsara client calls happen here.  The ingestor
 upstream data and shaping it before calling these helpers.
 
 API routes never import this module directly; they go through the
-reader functions in ``capabilities/telemetry/warehouse_reader.py``
+reader functions in ``capabilities/warehouse/warehouse_reader.py``
 which adds the ``WAREHOUSE_READS_ENABLED`` feature-flag check and
 graceful fallback to the live Samsara client (so an empty warehouse
 during the cutover window doesn't 500 the dashboard).

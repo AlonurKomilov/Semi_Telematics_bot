@@ -580,7 +580,7 @@ async def cmd_ai_diagnose(update: Update, context: ContextTypes.DEFAULT_TYPE,
         header_lines: list[str] = []
 
         if alert_context == "health":
-            from capabilities.telemetry.service import get_vehicle_health as _svc_health
+            from capabilities.warehouse.service import get_vehicle_health as _svc_health
             health_vehicles = await _svc_health(user.account_id, company=company)
             health = {}
             for hv in health_vehicles:

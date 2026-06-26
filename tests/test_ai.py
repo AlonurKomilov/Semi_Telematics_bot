@@ -413,7 +413,7 @@ class TestFleetSnapshot:
              patch("infra.services.get_tenant_db", new_callable=AsyncMock), \
              patch("features.vehicles.service.get_vehicles_overview",
                    new=AsyncMock(return_value=mock_fleet)), \
-             patch("capabilities.telemetry.service.get_vehicle_health",
+             patch("capabilities.warehouse.service.get_vehicle_health",
                    new=AsyncMock(return_value=mock_health)), \
              patch("features.events.service.get_events",
                    new=AsyncMock(return_value=[])):
@@ -448,7 +448,7 @@ class TestFleetSnapshot:
              patch("infra.services.get_tenant_db", new_callable=AsyncMock), \
              patch("features.vehicles.service.get_vehicles_overview",
                    new=AsyncMock(return_value=mock_fleet)), \
-             patch("capabilities.telemetry.service.get_vehicle_health",
+             patch("capabilities.warehouse.service.get_vehicle_health",
                    new=AsyncMock(return_value=[])), \
              patch("features.events.service.get_events",
                    new=AsyncMock(return_value=[])):

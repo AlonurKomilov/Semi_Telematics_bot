@@ -9,7 +9,7 @@ Currently:
     idempotent on (account_id, period_start) so a re-run of the job
     after a transient failure is safe.
 
-The job lives here (not in ``capabilities/telemetry``) because the work
+The job lives here (not in ``capabilities/warehouse``) because the work
 is purely billing — Samsara is already long-since polled for activity
 by the time this fires (02:30 UTC vs the ingest job's 60s cadence).
 """

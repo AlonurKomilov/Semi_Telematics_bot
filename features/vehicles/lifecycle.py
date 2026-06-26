@@ -22,7 +22,7 @@ from capabilities.data_lifecycle.rollups.registry import (
     RollupStage,
     register_cascade,
 )
-from capabilities.telemetry.aggregator import (
+from capabilities.warehouse.aggregator import (
     aggregate_metrics_daily,
     aggregate_telemetry_hourly,
     snapshot_vehicle_state,

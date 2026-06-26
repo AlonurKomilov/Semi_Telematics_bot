@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
 from capabilities.ai.tools.scope import filter_to_scope
-from capabilities.telemetry.service import get_vehicle_health as _svc_health
+from capabilities.warehouse.service import get_vehicle_health as _svc_health
 
 
 @register_tool({

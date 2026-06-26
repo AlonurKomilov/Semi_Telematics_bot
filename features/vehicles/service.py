@@ -63,7 +63,7 @@ async def get_vehicles_overview(
 
     # Lazy import avoids circular dependency
     # (warehouse_reader → telemetry.service → vehicles.service)
-    from capabilities.telemetry import warehouse_reader as _wh
+    from capabilities.warehouse import warehouse_reader as _wh
     live = await _wh.get_current_vehicles(
         account_id, company=company, samsara_fallback=_live,
     )

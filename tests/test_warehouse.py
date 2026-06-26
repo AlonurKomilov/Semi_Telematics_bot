@@ -25,7 +25,7 @@ import pytest_asyncio
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from adapters.storage import Database
-from capabilities.telemetry import warehouse_reader, aggregator
+from capabilities.warehouse import warehouse_reader, aggregator
 from capabilities.integrations.samsara import sync
 
 

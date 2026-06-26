@@ -83,7 +83,7 @@ async def test_samsara_called_on_cold_cache(mock_redis):
     # Warehouse disabled → fallback fires
     with (
         patch("features.vehicles.router._redis", mock_redis),
-        patch("capabilities.telemetry.warehouse_reader._enabled", return_value=False),
+        patch("capabilities.warehouse.warehouse_reader._enabled", return_value=False),
         patch("features.vehicles.service.get_vehicles_overview", fake_fleet_overview),
         patch("features.vehicles.router._svc_vehicles_overview", fake_fleet_overview),
     ):

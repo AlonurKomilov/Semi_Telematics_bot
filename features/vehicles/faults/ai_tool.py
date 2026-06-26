@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
-from capabilities.telemetry.service import (
+from capabilities.warehouse.service import (
     get_vehicles_with_faults as _svc_with_faults,
 )
 from features.vehicles.service import get_vehicle_detail as _svc_detail

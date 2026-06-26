@@ -17,7 +17,7 @@ from capabilities.alerting.pipeline import (
     send_alert, is_vehicle_suppressed,
 )
 from capabilities.formatting import format_health_alert
-from capabilities.telemetry.service import (
+from capabilities.warehouse.service import (
     get_vehicle_health as _svc_vehicle_health,
     get_vehicles_with_faults as _svc_get_faults,
 )

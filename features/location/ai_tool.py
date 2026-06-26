@@ -10,7 +10,7 @@ from __future__ import annotations
 from capabilities.ai.tools.registry import register_tool
 from capabilities.ai.tools.scope import filter_to_scope
 from features.vehicles.service import get_vehicle_detail as _svc_detail
-from capabilities.telemetry.service import get_fleet_weather as _svc_weather
+from capabilities.warehouse.service import get_fleet_weather as _svc_weather
 
 
 @register_tool({

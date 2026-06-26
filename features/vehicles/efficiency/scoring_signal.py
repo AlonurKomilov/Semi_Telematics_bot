@@ -1,6 +1,6 @@
 """Efficiency signal — derived from existing driver-efficiency data.
 
-Reuses ``capabilities.telemetry.service.get_driver_efficiency`` so the
+Reuses ``capabilities.warehouse.service.get_driver_efficiency`` so the
 scorecard never makes a second Samsara call.  Returns a dict keyed by
 driver_id with normalized facts.
 """

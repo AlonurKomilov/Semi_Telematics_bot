@@ -28,8 +28,8 @@ from interfaces.api.deps import (
 from adapters.storage import Role
 from capabilities.permissions.roles import can
 from features.vehicles.service import get_vehicles_overview as _svc_vehicles_overview
-from capabilities.telemetry.service import get_fleet_weather as _svc_fleet_weather
-from capabilities.telemetry import warehouse_reader as _wh_reader
+from capabilities.warehouse.service import get_fleet_weather as _svc_fleet_weather
+from capabilities.warehouse import warehouse_reader as _wh_reader
 from features.location.service import classify_vehicle_status, get_vehicles_for_map
 
 router = APIRouter(prefix="/overview", tags=["overview"])

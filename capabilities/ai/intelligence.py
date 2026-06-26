@@ -99,7 +99,7 @@ async def build_context(account_id: int,
     # Warehouse-first reads via service layer (falls back to live Samsara on
     # cold-start or when WAREHOUSE_READS_ENABLED=0).
     from features.vehicles.service import get_vehicles_overview as _svc_vehicles_overview
-    from capabilities.telemetry.service import get_vehicle_health as _svc_vehicle_health
+    from capabilities.warehouse.service import get_vehicle_health as _svc_vehicle_health
     from features.events.service import get_events as _svc_get_events
     snapshot: dict = {}
 
