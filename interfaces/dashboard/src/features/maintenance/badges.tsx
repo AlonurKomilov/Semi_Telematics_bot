@@ -151,7 +151,7 @@ const TYPE_ICON_COLORS: Record<string, string> = {
   def_refill:     'text-emerald-600 dark:text-emerald-400',
   custom:         'text-muted-foreground',
 };
-const TYPE_LABELS: Record<string, string> = {
+export const TYPE_LABELS: Record<string, string> = {
   oil:            'Oil Change',
   tires:          'Tire Service',
   brakes:         'Brake Inspection',

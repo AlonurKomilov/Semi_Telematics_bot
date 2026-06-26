@@ -721,11 +721,24 @@ export function InvitesPanel() {
     {
       key: 'role',
       label: 'Role',
+      // Filter matches on the role code, displays the friendly label
+      // from ROLE_LABEL so the dropdown reads "Fleet Manager" / "HR"
+      // instead of the internal "fleet" / "hr" codes.
+      filterable: true,
+      filterValue: (row) => String((row as { role?: string }).role ?? ''),
+      filterLabel: (row) => {
+        const r = String((row as { role?: string }).role ?? '');
+        return ROLE_LABEL[r] ?? r;
+      },
       render: (v) => {
         return <RoleBadge role={String(v)} />;
       },
     },
-    { key: 'truck_num', label: 'Vehicle', render: (v) => (v as string) || '—' },
+    {
+      key: 'truck_num', label: 'Vehicle',
+      filterable: true,
+      render: (v) => (v as string) || '—',
+    },
     {
       key: 'expires_at',
       label: 'Expires',
@@ -1106,7 +1119,7 @@ export function InvitesPanel() {
           }
         />
       ) : (
-        <DataTable columns={columns} data={filteredInvites as unknown as Record<string, unknown>[]} />
+        <DataTable tableId="invites" columns={columns} data={filteredInvites as unknown as Record<string, unknown>[]} />
       )}
 
       {/* Create modal — uses ui/dialog primitive (base-ui).

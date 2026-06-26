@@ -402,6 +402,26 @@ export interface Column<T = Record<string, unknown>> {
   key: string;
   label: string;
   sortable?: boolean;
+  /** When true the column header renders an inline text-filter input
+   *  alongside the sort chevron.  Substring match, case-insensitive,
+   *  composes with other column filters (AND) and the global search.
+   *  Off by default — opt in per column (skip for free-text fields
+   *  like Description where the global search is the better tool). */
+  filterable?: boolean;
+  /** Optional accessor for the value the column filter MATCHES on.
+   *  Defaults to the cell value at ``key`` stringified.  Use for
+   *  columns whose ``render`` produces something different from the
+   *  raw row value (e.g. a Role column rendering a styled badge but
+   *  filtering against the plain role string). */
+  filterValue?: (row: T) => string;
+  /** Optional accessor for the human-readable LABEL shown in the
+   *  filter dropdown.  Distinct from ``filterValue`` so the column
+   *  can match on internal codes (``oil``) but display friendly
+   *  names (``Oil Change``).  Defaults to ``filterValue`` (or the
+   *  raw cell value) when omitted — backwards-compatible.
+   *  Receives the row object so it can use the same lookup logic
+   *  the cell renderer uses. */
+  filterLabel?: (row: T) => string;
   render?: (value: unknown, row: T) => React.ReactNode;
   /** Custom comparable value for sorting.  When set, the table sorts
    *  by ``sortKey(row)`` instead of the raw cell value.  Use for

@@ -19,7 +19,7 @@ import {
 import type { MaintenanceTask, AnyColumn } from '../../types';
 import {
   PriorityBadge, EngineHoursProgress, TaskTypeCell, DueDateChip, MileageProgress,
-  PRIORITY_OPTIONS,
+  PRIORITY_OPTIONS, TYPE_LABELS,
   type Priority,
 } from './badges';
 import TypePicker from './TypePicker';
@@ -128,12 +128,12 @@ function _isOverdueOrApproaching(t: MaintenanceTask): boolean {
 // composes the final columns array by prepending a selection column
 // whose render closes over the page-level ``selectedIds`` state.
 const baseColumns: AnyColumn[] = [
-  { key: 'vehicle_name', label: 'Vehicle', sortable: true },
+  { key: 'vehicle_name', label: 'Vehicle', sortable: true, filterable: true },
   // Company column lets operators tell trucks apart when two
   // companies under the same account each have a "103" or "101".
   // Mirrors the Vehicles list column for visual parity.  Renders the
   // raw company_code (e.g. G1 / OSY / PTG) — short, scannable.
-  { key: 'company_code', label: 'Company', sortable: true,
+  { key: 'company_code', label: 'Company', sortable: true, filterable: true,
     render: (v) => {
       const s = String(v || '').trim();
       return s
@@ -143,8 +143,17 @@ const baseColumns: AnyColumn[] = [
   // Priority badge — first column after vehicle so it carries the most
   // visual weight.  ``sortKey`` ranks critical→high→medium→low so the
   // sort matches operator expectations (alphabetical would put
-  // critical AFTER low, which is wrong).
+  // critical AFTER low, which is wrong).  Filter matches against
+  // the raw priority string so "high" narrows to High rows.
   { key: 'priority', label: 'Priority', sortable: true,
+    filterable: true,
+    filterValue: (row) => String((row as MaintenanceTask).priority ?? ''),
+    // Title-case the priority code for display (low → Low,
+    // critical → Critical) so the dropdown reads cleanly.
+    filterLabel: (row) => {
+      const p = String((row as MaintenanceTask).priority ?? '').toLowerCase();
+      return p ? p.charAt(0).toUpperCase() + p.slice(1) : '(none)';
+    },
     sortKey: (row) => {
       const rank: Record<string, number> = {
         critical: 0, high: 1, medium: 2, low: 3,
@@ -153,7 +162,20 @@ const baseColumns: AnyColumn[] = [
       return rank[(r.priority || 'medium').toLowerCase()] ?? 99;
     },
     render: (v) => <PriorityBadge value={v} /> },
-  { key: 'task_type', label: 'Type', sortable: true, render: (v) => <TaskTypeCell type={String(v || 'custom')} /> },
+  { key: 'task_type', label: 'Type', sortable: true, filterable: true,
+    filterValue: (row) => String((row as MaintenanceTask).task_type ?? ''),
+    // Map internal codes (oil, dpf_regen, …) to operator-readable
+    // labels from the same TYPE_LABELS table the cell renderer uses.
+    // Falls back to the raw code humanised (custom_power_steering →
+    // Custom Power Steering) for codes not in the table.
+    filterLabel: (row) => {
+      const code = String((row as MaintenanceTask).task_type ?? '');
+      if (TYPE_LABELS[code]) return TYPE_LABELS[code];
+      return code
+        ? code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+        : '(none)';
+    },
+    render: (v) => <TaskTypeCell type={String(v || 'custom')} /> },
   { key: 'description', label: 'Description', render: (v) => {
     const s = String(v || '');
     return s.length > 60 ? <span title={s}>{s.slice(0, 60)}…</span> : s;
@@ -192,7 +214,18 @@ const baseColumns: AnyColumn[] = [
       return Number(r.due_engine_hours) - Number(last);
     },
     render: (_v, row) => <EngineHoursProgress row={row as MaintenanceTask} /> },
-  { key: 'status', label: 'Status', sortable: true, render: (v) => <StatusBadge status={String(v)} /> },
+  { key: 'status', label: 'Status', sortable: true,
+    filterable: true,
+    filterValue: (row) => String((row as MaintenanceTask).status ?? ''),
+    // Status codes are short snake_case strings; title-case for
+    // display so "due_soon" reads as "Due Soon" in the dropdown.
+    filterLabel: (row) => {
+      const s = String((row as MaintenanceTask).status ?? '');
+      return s
+        ? s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+        : '(none)';
+    },
+    render: (v) => <StatusBadge status={String(v)} /> },
   // Updated column shows date + time so multiple same-day edits are
   // distinguishable.  Short locale format keeps it readable without
   // dominating the row width.
@@ -1727,10 +1760,11 @@ export default function Tasks() {
       ) : (
         <>
           <DataTable
+            tableId="maintenance-tasks"
             columns={columns}
             data={tasks as unknown as Record<string, unknown>[]}
             searchKey={['vehicle_name', 'company_code', 'description', 'task_type']}
-            searchPlaceholder="Filter this list…"
+            searchPlaceholder="Search…"
             onRowClick={(row) => openTaskForEdit(row as unknown as MaintenanceTask)}
           />
           {/* Result count footer.  Always shows the filtered count

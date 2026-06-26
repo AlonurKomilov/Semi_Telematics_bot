@@ -194,25 +194,58 @@ const userColumns: AnyColumn[] = [
       </div>
     );
   }},
-  { key: 'role', label: 'Role', sortable: true, render: (v) => <RoleBadge role={String(v)} /> },
-  { key: 'vehicles', label: 'Vehicles', sortable: false, render: (_v, row) => {
-    const u = row as unknown as AdminUser;
-    const trucks = u.trucks?.length ? u.trucks : u.truck_num ? [u.truck_num] : [];
-    if (!trucks.length) return <span className="text-muted-foreground text-xs">All</span>;
-    if (trucks.length <= 2) return <span className="text-xs">{trucks.join(', ')}</span>;
-    return (
-      <span className="text-xs" title={trucks.join(', ')}>
-        {trucks[0]}{' '}
-        <span className="px-1.5 py-0.5 bg-muted rounded-full text-3xs text-muted-foreground">+{trucks.length - 1}</span>
-      </span>
-    );
-  }},
-  { key: 'allowed_companies', label: 'Companies', sortable: false, render: (_v, row) => {
-    const u = row as unknown as AdminUser;
-    if (!u.allowed_companies?.length) return <span className="text-muted-foreground text-xs">All</span>;
-    return <span className="text-xs">{u.allowed_companies.join(', ')}</span>;
-  }},
-  { key: 'email', label: 'Email' },
+  {
+    key: 'role', label: 'Role', sortable: true,
+    // Role column renders a styled <RoleBadge>; filter matches on
+    // the plain role code and displays the friendly label from
+    // ROLE_LABEL so the dropdown shows "Fleet Manager" / "HR" /
+    // "Safety Officer" instead of "fleet" / "hr" / "safety".
+    filterable: true,
+    filterValue: (row) => String(row.role ?? ''),
+    filterLabel: (row) => {
+      const r = String(row.role ?? '');
+      return ROLE_LABEL[r] ?? r;
+    },
+    render: (v) => <RoleBadge role={String(v)} />,
+  },
+  {
+    key: 'vehicles', label: 'Vehicles', sortable: false,
+    // Filter against the truck list as a single string ("All" for
+    // unrestricted) — same shape the cell renders so typing a
+    // truck number narrows to that driver.
+    filterable: true,
+    filterValue: (row) => {
+      const u = row as unknown as AdminUser;
+      const trucks = u.trucks?.length ? u.trucks : u.truck_num ? [u.truck_num] : [];
+      return trucks.length ? trucks.join(' ') : 'All';
+    },
+    render: (_v, row) => {
+      const u = row as unknown as AdminUser;
+      const trucks = u.trucks?.length ? u.trucks : u.truck_num ? [u.truck_num] : [];
+      if (!trucks.length) return <span className="text-muted-foreground text-xs">All</span>;
+      if (trucks.length <= 2) return <span className="text-xs">{trucks.join(', ')}</span>;
+      return (
+        <span className="text-xs" title={trucks.join(', ')}>
+          {trucks[0]}{' '}
+          <span className="px-1.5 py-0.5 bg-muted rounded-full text-3xs text-muted-foreground">+{trucks.length - 1}</span>
+        </span>
+      );
+    },
+  },
+  {
+    key: 'allowed_companies', label: 'Companies', sortable: false,
+    filterable: true,
+    filterValue: (row) => {
+      const u = row as unknown as AdminUser;
+      return u.allowed_companies?.length ? u.allowed_companies.join(' ') : 'All';
+    },
+    render: (_v, row) => {
+      const u = row as unknown as AdminUser;
+      if (!u.allowed_companies?.length) return <span className="text-muted-foreground text-xs">All</span>;
+      return <span className="text-xs">{u.allowed_companies.join(', ')}</span>;
+    },
+  },
+  { key: 'email', label: 'Email', filterable: true },
   { key: 'is_active', label: 'Status', render: (v) => <StatusBadge status={v ? 'active' : 'inactive'} /> },
 ];
 
@@ -689,6 +722,7 @@ export default function TeamManagement() {
       ) : (
         <>
           <DataTable
+            tableId="team-management"
             columns={userColumns}
             data={filteredUsers as unknown as Record<string, unknown>[]}
             searchKey={['display_name', 'email', 'role', 'truck_num']}
