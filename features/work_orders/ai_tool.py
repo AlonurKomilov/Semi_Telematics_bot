@@ -86,7 +86,9 @@ async def get_recent_work_orders(tool_args: dict, samsara_client,
     # doesn't filter dates and a 1-year mechanic-shop dataset is small.
     rows = [r for r in rows if _within_days(r.get("service_date") or "", days)]
 
-    total_cost_cents = sum(int(r.get("total_cost_cents") or 0) for r in rows)
+    # ``total_cost`` is stored as REAL dollars (work_orders table), NOT cents —
+    # the old ``total_cost_cents`` key never existed, so every cost came back $0.
+    total_cost = sum(float(r.get("total_cost") or 0) for r in rows)
 
     return {
         "count": len(rows),
@@ -94,7 +96,7 @@ async def get_recent_work_orders(tool_args: dict, samsara_client,
             "vehicle_name": vehicle, "status": status,
             "payment_status": pay, "days": days,
         },
-        "total_cost_dollars": round(total_cost_cents / 100.0, 2),
+        "total_cost_dollars": round(total_cost, 2),
         "work_orders": [
             {
                 "id": r.get("id"),
@@ -103,9 +105,7 @@ async def get_recent_work_orders(tool_args: dict, samsara_client,
                 "service_date": r.get("service_date") or "",
                 "status": r.get("status") or "",
                 "payment_status": r.get("payment_status") or "",
-                "total_cost": round(
-                    int(r.get("total_cost_cents") or 0) / 100.0, 2,
-                ),
+                "total_cost": round(float(r.get("total_cost") or 0), 2),
                 "summary": (r.get("notes") or r.get("description") or "")[:200],
             }
             for r in rows[:30]

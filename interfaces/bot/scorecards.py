@@ -1,4 +1,4 @@
-"""Driver Scorecards — dashboard redirect.
+"""Scorecards — dashboard redirect.
 
 The bot's ``/scorecards`` flow rendered driver safety scorecards as
 text + PDF/CSV attachments.  It's a pure fleet-manager / safety
@@ -27,11 +27,11 @@ async def cmd_scorecards(
     """Redirect to the dashboard Scorecards page."""
     await reply_dashboard_redirect(
         update,
-        title="🏆 Driver Scorecards moved",
+        title="🏆 Scorecards moved",
         body=(
             "Sortable safety scorecards with per-driver drill-down, "
             "trends, and proper exports live on the dashboard."
         ),
-        path="/driver-scorecards",
+        path="/scorecards",
         label="Open Scorecards",
     )

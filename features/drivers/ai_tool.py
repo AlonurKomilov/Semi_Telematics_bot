@@ -190,7 +190,7 @@ async def get_driver_efficiency(tool_args: dict, samsara_client,
 @register_tool({
     "name": "get_driver_scorecard",
     "description": (
-        "Get driver scorecards: miles driven, MPG, idle %, drive hours, "
+        "Get scorecards: miles driven, MPG, idle %, drive hours, "
         "eco-driving score (green %), overspeed minutes, anticipation %. "
         "Returns top drivers ranked by miles. Optionally filter by a "
         "specific driver name."
@@ -225,7 +225,7 @@ async def get_driver_scorecard(tool_args: dict, samsara_client,
     if not drivers:
         return {
             "period_days": days, "drivers": [],
-            "status": "No driver scorecard data found for the requested period.",
+            "status": "No scorecard data found for the requested period.",
         }
     return {
         "period_days": days,

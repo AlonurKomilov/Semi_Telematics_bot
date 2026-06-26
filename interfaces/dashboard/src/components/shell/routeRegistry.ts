@@ -39,7 +39,7 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     description: 'Where drivers park and safety classification', keywords: ['parking','safe'] },
 
   // Safety
-  { label: 'Driver Scorecards', path: '/driver-scorecards', icon: Trophy,        group: 'Safety', permission: ['can_scorecard_all', 'can_scorecard_vehicle'],
+  { label: 'Scorecards', path: '/scorecards', icon: Trophy,        group: 'Safety', permission: ['can_scorecard_all', 'can_scorecard_vehicle'],
     description: 'Driver behaviour scoring and ranking', keywords: ['drivers','score','behavior'] },
   { label: 'Safety Events',     path: '/safety-events',     icon: AlertTriangle, group: 'Safety', permission: ['can_events_all', 'can_events_vehicle'],
     description: 'Harsh braking, speeding, and crash events', keywords: ['harsh','speeding','crash'] },
@@ -81,8 +81,8 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     description: 'Sub-companies in your account', keywords: ['org','tenants'] },
   { label: 'Permissions',      path: '/permissions',     icon: Shield,        group: 'Admin', permission: ['can_manage_permissions'],
     description: 'What each role is allowed to do', keywords: ['rbac','roles','permissions'] },
-  { label: 'Scorecard Rules',  path: '/scorecard-rules', icon: Trophy,        group: 'Admin', permission: ['can_manage_account'],
-    description: 'Rules that build the driver scorecard', keywords: ['scoring','penalties'] },
+  { label: 'Scorecard Rules',  path: '/scorecard-rules', icon: Trophy,        group: 'Safety', permission: ['can_manage_scorecard_rules'],
+    description: 'Rules that build the scorecard', keywords: ['scoring','penalties','config'] },
   { label: 'Billing & Plan',   path: '/billing',         icon: CreditCard,    group: 'Admin', permission: ['can_manage_billing'],
     description: 'Subscription plan and invoices', keywords: ['plan','subscription','invoice'] },
   { label: 'Audit Log',        path: '/audit',           icon: ClipboardList, group: 'Admin', permission: ['can_manage_users'],

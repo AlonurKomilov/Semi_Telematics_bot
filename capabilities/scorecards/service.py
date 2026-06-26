@@ -27,7 +27,7 @@ from features.vehicles.service import prepare_companies
 from infra.services import get_tenant_db
 
 from .engine import Scorecard, score
-from .rules import apply_overrides, get_default_rules
+from .rules.defs import apply_overrides, get_default_rules
 # Per-feature signal collectors come through the SIGNALS registry — the
 # hub's extension point — rather than one hardcoded import per module.
 from .signals import SIGNALS

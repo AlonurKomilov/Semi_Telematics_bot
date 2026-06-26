@@ -66,7 +66,7 @@ const LiveMap          = lazyWithReload(() => import('./features/live-map/LiveMa
 const Alerts           = lazyWithReload(() => import('./features/alerts/Alerts'));
 const Geofences        = lazyWithReload(() => import('./features/geofences/Geofences'));
 const RoutesPage       = lazyWithReload(() => import('./features/routes/Routes'));
-const Scorecards       = lazyWithReload(() => import('./features/driver-scorecards/Scorecards'));
+const Scorecards       = lazyWithReload(() => import('./features/scorecards/Scorecards'));
 const Events           = lazyWithReload(() => import('./features/safety-events/Events'));
 const Cameras          = lazyWithReload(() => import('./features/cameras/Cameras'));
 const Parking          = lazyWithReload(() => import('./features/parking/Parking'));
@@ -97,7 +97,7 @@ const Storage          = lazyWithReload(() => import('./features/storage/Storage
 const WorkHours        = lazyWithReload(() => import('./features/settings/WorkHours'));
 const Invites          = lazyWithReload(() => import('./features/settings/Invites'));
 const Permissions      = lazyWithReload(() => import('./features/permissions/Permissions'));
-const ScorecardRules   = lazyWithReload(() => import('./features/driver-scorecards/ScorecardRules'));
+const ScorecardRules   = lazyWithReload(() => import('./features/scorecards/ScorecardRules'));
 const Billing          = lazyWithReload(() => import('./features/billing/Billing'));
 const Payroll          = lazyWithReload(() => import('./features/payroll/Payroll'));
 const Coaching         = lazyWithReload(() => import('./features/coaching/Coaching'));
@@ -161,7 +161,7 @@ export default function AppRouter() {
         <Route path="geofences" element={L(<P perm={['can_geofence_all', 'can_geofence_vehicle']}><Geofences /></P>)} />
         <Route path="parking" element={L(<P perm={['can_alerts_all', 'can_alerts_vehicle']}><Parking /></P>)} />
         <Route path="alerts" element={L(<P perm={['can_alerts_all', 'can_alerts_vehicle']}><Alerts /></P>)} />
-        <Route path="driver-scorecards" element={L(<P perm={['can_scorecard_all', 'can_scorecard_vehicle']}><Scorecards /></P>)} />
+        <Route path="scorecards" element={L(<P perm={['can_scorecard_all', 'can_scorecard_vehicle']}><Scorecards /></P>)} />
         <Route path="safety-events" element={L(<P perm={['can_events_all', 'can_events_vehicle']}><Events /></P>)} />
         <Route path="cameras" element={L(<P perm="can_faults"><Cameras /></P>)} />
 
@@ -243,7 +243,7 @@ export default function AppRouter() {
         <Route path="notifications" element={L(<MyNotifications />)} />
         <Route path="storage"  element={L(<P perm="can_manage_storage"><Storage /></P>)} />
         <Route path="permissions" element={L(<P perm="can_manage_permissions"><Permissions /></P>)} />
-        <Route path="scorecard-rules" element={L(<P perm="can_manage_account"><ScorecardRules /></P>)} />
+        <Route path="scorecard-rules" element={L(<P perm="can_manage_scorecard_rules"><ScorecardRules /></P>)} />
         <Route path="billing" element={L(<P perm="can_manage_billing"><Billing /></P>)} />
 
         {/* Legacy /admin/* redirects — kept so existing bookmarks and

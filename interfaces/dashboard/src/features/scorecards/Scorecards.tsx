@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Trophy, Download, X } from 'lucide-react';
+import { Trophy, Download, X, Settings } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   LineChart, Line, CartesianGrid, ReferenceLine,
@@ -9,7 +10,7 @@ import {
 import { apiJSON, apiJSONSlow } from '../../api/client';
 import { toneClasses, toneText, chartColor, type Tone } from '../../lib/status';
 import DataTable from '../../components/DataTable';
-import DriverInsights from '@/features/driver-scorecards/DriverInsights';
+import DriverInsights from '@/features/scorecards/DriverInsights';
 import {
   PageHeader,
   EmptyState,
@@ -22,8 +23,7 @@ import { useShellConfig } from '../../hooks/useShellConfig';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
-import { blocksForPersona } from '../../features/driver-scorecards/personaConfig';
-import { ScorecardRulesPanel } from './ScorecardRules';
+import { blocksForPersona } from '../../features/scorecards/personaConfig';
 import type {
   CompositeScorecard,
   CompositeScorecardsResponse,
@@ -591,15 +591,16 @@ export default function Scorecards() {
   const { t } = useTranslation();
   const tz = useTimezone();
   // Persona composition: resolve the active persona's block set once at
-  // the page wrapper (features/driver-scorecards/personaConfig.ts);
+  // the page wrapper (features/scorecards/personaConfig.ts);
   // block components never read persona state themselves.
   const { persona } = useShellConfig();
   const blocks = blocksForPersona(persona);
-  // Scorecard Rules is this feature's CONFIG component (docs/FEATURES.md)
-  // — hosted as a Rules tab for admins; the scoreboard stays the default.
+  // Scorecard Rules is this feature's CONFIG component (docs/FEATURES.md) —
+  // reached via a gear icon in the header (→ /scorecard-rules), not a peer
+  // tab: config is a deliberate action, distinct from the live scoreboard.
+  const navigate = useNavigate();
   const { has } = useViewPermissions();
-  const canRules = has('can_manage_account');
-  const [pageTab, setPageTab] = useState<'scoreboard' | 'rules'>('scoreboard');
+  const canRules = has('can_manage_scorecard_rules');
   // Default 30 days — matches Events, RiskSummary and Reports so the
   // dashboard's "default window" is consistent across the SAFETY group.
   const [days, setDays]       = useState(30);
@@ -692,41 +693,21 @@ export default function Scorecards() {
     });
   }, [cards, pillarFilter]);
 
-  // Tab bar — only admins (can_manage_account) see the Rules tab; for
-  // everyone else the page renders tabless, exactly as before.
-  const tabBar = canRules ? (
-    <div className="flex items-center gap-1 mb-4 border-b border-border">
-      {([['scoreboard', t('scorecards.tab_scoreboard', 'Scoreboard')],
-         ['rules', t('scorecards.tab_rules', 'Rules')]] as const).map(([k, label]) => (
-        <button
-          key={k}
-          type="button"
-          onClick={() => setPageTab(k)}
-          className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition ${
-            pageTab === k
-              ? 'border-primary text-foreground'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
+  // The config gear — a deliberate "configure scoring" action in the header,
+  // shown only to roles that may edit the rules.  Routes to the standalone
+  // /scorecard-rules page (this feature's config surface), instead of a peer
+  // tab sitting next to the live scoreboard.
+  const rulesGear = canRules ? (
+    <button
+      type="button"
+      onClick={() => navigate('/scorecard-rules')}
+      className="inline-flex items-center justify-center size-7 rounded-md border border-border bg-background text-muted-foreground hover:text-foreground hover:bg-muted transition"
+      title={t('scorecards.open_rules', 'Scorecard Rules — configure scoring')}
+      aria-label={t('scorecards.open_rules', 'Scorecard Rules — configure scoring')}
+    >
+      <Settings size={14} />
+    </button>
   ) : null;
-
-  if (pageTab === 'rules' && canRules) {
-    return (
-      <div>
-        <PageHeader
-          icon={Trophy}
-          title={t('scorecards.page_title')}
-          description={t('pages.scorecard_rules_desc', 'Configure the scoring pillars, points and caps behind every scorecard.')}
-        />
-        {tabBar}
-        <ScorecardRulesPanel />
-      </div>
-    );
-  }
 
   if (error && cards.length === 0) {
     return (
@@ -735,8 +716,8 @@ export default function Scorecards() {
           icon={Trophy}
           title={t('scorecards.page_title')}
           description={t('scorecards.page_description')}
+          actions={rulesGear}
         />
-        {tabBar}
         <ErrorState
           title={t('errors.load_failed')}
           message={error}
@@ -844,11 +825,10 @@ export default function Scorecards() {
               {t('scorecards.csv_label')}
             </button>
             <DateRangePresets value={days} onChange={setDays} isFetching={isFetching} />
+            {rulesGear}
           </div>
         }
       />
-
-      {tabBar}
 
       {/* KPI strip */}
       {cards.length > 0 && blocks.includes('kpi') && (

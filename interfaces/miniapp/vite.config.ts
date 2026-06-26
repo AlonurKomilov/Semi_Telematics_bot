@@ -4,7 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 // vite-plugin-pwa.
 // The miniapp is now a Telegram WebApp PWA: an install-able shell with
-// a runtime-cached copy of the driver scorecard so it stays useful when
+// a runtime-cached copy of the scorecard so it stays useful when
 // a driver opens it on flaky cellular signal.
 export default defineConfig({
   plugins: [
@@ -15,7 +15,7 @@ export default defineConfig({
       manifest: {
         name: '4truck Driver',
         short_name: '4truck',
-        description: 'Driver scorecard and fleet status',
+        description: 'Scorecard and fleet status',
         theme_color: '#0a84ff',
         background_color: '#000000',
         display: 'standalone',
@@ -30,12 +30,12 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         runtimeCaching: [
           {
-            // Driver scorecard — short SWR window so a fresh open shows
+            // Scorecard — short SWR window so a fresh open shows
             // recent data but offline still works.
             urlPattern: ({ url }) => url.pathname.startsWith('/api/safety/scorecards/me'),
             handler: 'StaleWhileRevalidate',
             options: {
-              cacheName: 'driver-scorecard',
+              cacheName: 'scorecard',
               expiration: { maxEntries: 8, maxAgeSeconds: 60 * 60 * 24 },
             },
           },

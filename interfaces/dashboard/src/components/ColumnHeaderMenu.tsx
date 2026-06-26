@@ -1,6 +1,7 @@
 import { Menu as MenuPrimitive } from '@base-ui/react/menu';
 import {
   ArrowUp, ArrowDown, X, EyeOff, Columns3, MoreVertical,
+  ArrowLeftToLine, ArrowRightToLine, PinOff,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -33,12 +34,19 @@ interface ColumnHeaderMenuProps {
   onClearSort: () => void;
   onHide: () => void;
   onManage: () => void;
+  /** Pin state — ``false`` = unpinned, otherwise the side it's
+   *  pinned to.  Drives which pin/unpin items render. */
+  pinned: false | 'left' | 'right';
+  onPinLeft: () => void;
+  onPinRight: () => void;
+  onUnpin: () => void;
   /** Aria label for the trigger — operators using screen readers. */
   columnLabel: string;
 }
 
 export default function ColumnHeaderMenu({
   sorted, canSort, onSortAsc, onSortDesc, onClearSort, onHide, onManage,
+  pinned, onPinLeft, onPinRight, onUnpin,
   columnLabel,
 }: ColumnHeaderMenuProps) {
   return (
@@ -89,6 +97,26 @@ export default function ColumnHeaderMenu({
                 <div className="my-1 border-t border-border" />
               </>
             )}
+            <MenuItem
+              icon={<ArrowLeftToLine size={14} />}
+              label="Pin left"
+              active={pinned === 'left'}
+              onClick={onPinLeft}
+            />
+            <MenuItem
+              icon={<ArrowRightToLine size={14} />}
+              label="Pin right"
+              active={pinned === 'right'}
+              onClick={onPinRight}
+            />
+            {pinned !== false && (
+              <MenuItem
+                icon={<PinOff size={14} />}
+                label="Unpin"
+                onClick={onUnpin}
+              />
+            )}
+            <div className="my-1 border-t border-border" />
             <MenuItem
               icon={<EyeOff size={14} />}
               label="Hide column"

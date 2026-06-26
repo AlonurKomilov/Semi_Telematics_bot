@@ -99,7 +99,7 @@ const PERM_GROUPS: PermGroup[] = [
       { key: 'can_manage_integrations', label: 'Integrations', description: 'Telematics connections (Samsara, Datatruck)' },
       { key: 'can_manage_storage',      label: 'Storage', description: 'File-storage backend & quota' },
       { header: 'Settings', description: 'account administration — each component has its own permission' },
-      { key: 'can_manage_account',     label: 'General settings', indented: true, description: 'The Settings page itself — timezone, bot + forum routing; also rides: department modules, Scorecard Rules' },
+      { key: 'can_manage_account',     label: 'General settings', indented: true, description: 'The Settings page itself — timezone, bot + forum routing; also rides: department modules' },
       { key: 'can_manage_users',       label: 'Team Management', indented: true, description: 'Members, roles, data scope — also gates the Audit Log' },
       { key: 'can_invite',             label: 'Send Invites', indented: true },
       { key: 'can_manage_companies',   label: 'Manage Companies', indented: true },
@@ -123,7 +123,8 @@ const PERM_GROUPS: PermGroup[] = [
       { allKey: 'can_geofence_all', vehicleKey: 'can_geofence_vehicle', label: 'Geofences', scoped: true },
       { key: 'can_manage_driver_docs', label: 'Drivers', description: 'Driver list + document management' },
       { key: 'can_driver_docs_own',    label: 'View Own Documents', indented: true },
-      { allKey: 'can_scorecard_all', vehicleKey: 'can_scorecard_vehicle', label: 'Driver Scorecards', scoped: true, description: 'Scorecard Rules (the scoring config) is this feature’s admin component' },
+      { allKey: 'can_scorecard_all', vehicleKey: 'can_scorecard_vehicle', label: 'Scorecards', scoped: true },
+      { key: 'can_manage_scorecard_rules', label: 'Scorecard Rules', indented: true, description: 'Edit the scoring rules + pillar caps — this feature’s admin component (was bundled in account Settings)' },
     ],
   },
   {

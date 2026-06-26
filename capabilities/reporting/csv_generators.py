@@ -546,7 +546,7 @@ def generate_scorecard_csv(
     drivers: list[dict],
     pillar_by_driver: dict[str, dict] | None = None,
 ) -> io.BytesIO:
-    """Return a BytesIO containing CSV data for the Driver Scorecards report.
+    """Return a BytesIO containing CSV data for the Scorecards report.
 
     *pillar_by_driver* — optional mapping ``driver_id -> composite
     scorecard dict``. When supplied, the CSV gains
@@ -560,7 +560,7 @@ def generate_scorecard_csv(
     pillar_by_driver = pillar_by_driver or {}
     with_pillars = bool(pillar_by_driver)
 
-    writer.writerow(["Report", "Driver Scorecards"])
+    writer.writerow(["Report", "Scorecards"])
     writer.writerow(["Generated", _now_et()])
     writer.writerow([])
 

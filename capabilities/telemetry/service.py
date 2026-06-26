@@ -147,6 +147,45 @@ async def get_low_fuel_vehicles(
     return out
 
 
+def _ensure_eff_keys(d: dict) -> dict:
+    """Bridge the two driver-efficiency record shapes.
+
+    The live Samsara reader emits ``_``-prefixed keys (``_miles``, ``_mpg``,
+    ``_drive_h`` …) that the AI tools and scorecard signals read.  The
+    warehouse path (the default) returns the bare column names (``miles``,
+    ``mpg`` …), so those consumers were reading ``None`` for every metric and
+    the AI reported "0 miles / no MPG" for drivers who actually had data.
+    Add the ``_``-prefixed keys (deriving ``_idle_pct`` from idle/drive hours)
+    when only the bare ones are present — additive, so live records and the
+    warehouse function's own callers/tests are unaffected.
+    """
+    if "_miles" in d or "miles" not in d:
+        return d  # already live-shaped, or not an efficiency row
+    idle_h = d.get("idle_h") or 0
+    drive_h = d.get("drive_h") or 0
+    idle_pct = None
+    try:
+        total = float(idle_h) + float(drive_h)
+        if total > 0:
+            idle_pct = round(float(idle_h) / total * 100, 1)
+    except (TypeError, ValueError):
+        idle_pct = None
+    return {
+        **d,
+        "_miles": d.get("miles"),
+        "_mpg": d.get("mpg"),
+        "_drive_h": d.get("drive_h"),
+        "_idle_h": d.get("idle_h"),
+        "_idle_pct": idle_pct,
+        "_green_pct": d.get("green_pct"),
+        "_antic_pct": d.get("antic_pct"),
+        "_overspeed_min": d.get("overspeed_min"),
+        "_harsh_brake": d.get("harsh_brake"),
+        "_harsh_turn": d.get("harsh_turn"),
+        "_harsh_accel": d.get("harsh_accel"),
+    }
+
+
 async def get_driver_efficiency(
     account_id: int,
     days: int = 7,
@@ -176,9 +215,19 @@ async def get_driver_efficiency(
         return await client.get_driver_efficiency(days=days, company=company)
 
     from capabilities.telemetry import warehouse_reader as _wh
-    results = await _wh.get_driver_efficiency_window(
-        account_id, days=days, samsara_fallback=_live,
-    )
+    # The truck filter (below) matches ``_vehicle_summaries[].vehicle.name``,
+    # which ONLY the live reader provides — the warehouse efficiency table has
+    # no vehicle join, so reading it for a vehicle filter would silently return
+    # empty for every driver.  A vehicle filter therefore reads live; everything
+    # else stays warehouse-first.
+    if vehicle_nums is not None:
+        results = await _live()
+    else:
+        results = await _wh.get_driver_efficiency_window(
+            account_id, days=days, samsara_fallback=_live,
+        )
+    # Bridge warehouse (bare keys) → the _-prefixed shape consumers expect.
+    results = [_ensure_eff_keys(r) for r in results]
     # Warehouse path is account-scoped but not company-scoped — filter
     # locally so the warehouse hit still respects the caller's company
     # parameter when present.

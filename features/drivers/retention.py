@@ -3,7 +3,7 @@
 ``driver.efficiency_daily`` -> physical table ``driver_efficiency_daily``
 (one row per driver per day).  The Driver-side analogue of
 ``vehicle.metrics_daily``; kept for the same 730-day year-over-year window
-so driver scorecard history lines up with the vehicle daily tier.
+so scorecard history lines up with the vehicle daily tier.
 """
 
 from capabilities.data_lifecycle.retention.registry import (

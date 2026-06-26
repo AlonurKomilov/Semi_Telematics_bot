@@ -95,7 +95,7 @@ async def me_app(pg_db, monkeypatch):
         return list(full)
 
     monkeypatch.setattr(
-        "capabilities.scorecards.router._svc_evaluate_subjects",
+        "features.scorecards.router._svc_evaluate_subjects",
         _fake_evaluate,
     )
 
@@ -240,7 +240,7 @@ class TestScorecardMeRoute:
             return [card]
 
         monkeypatch.setattr(
-            "capabilities.scorecards.router._svc_evaluate_subjects", _fake,
+            "features.scorecards.router._svc_evaluate_subjects", _fake,
         )
 
         from interfaces.api.app import create_api
@@ -300,7 +300,7 @@ class TestScorecardMeRoute:
             }]
 
         monkeypatch.setattr(
-            "capabilities.scorecards.router._svc_evaluate_subjects",
+            "features.scorecards.router._svc_evaluate_subjects",
             _empty_when_filtered,
         )
 
@@ -383,7 +383,7 @@ class TestScorecardMeAdminRankVisibility:
             return list(my_only) if vehicle_nums else list(full)
 
         monkeypatch.setattr(
-            "capabilities.scorecards.router._svc_evaluate_subjects",
+            "features.scorecards.router._svc_evaluate_subjects",
             _fake_evaluate,
         )
 
@@ -486,7 +486,7 @@ class TestScorecardMeProbationary:
                                  company=None, vehicle_nums=None):
             return list(my_only) if vehicle_nums else list(full)
         monkeypatch.setattr(
-            "capabilities.scorecards.router._svc_evaluate_subjects",
+            "features.scorecards.router._svc_evaluate_subjects",
             _fake_evaluate,
         )
 
@@ -688,7 +688,7 @@ class TestMyScorecardExplanation:
                                  company=None, vehicle_nums=None):
             return [my_card]
         monkeypatch.setattr(
-            "capabilities.scorecards.router._svc_evaluate_subjects",
+            "features.scorecards.router._svc_evaluate_subjects",
             _fake_evaluate,
         )
 

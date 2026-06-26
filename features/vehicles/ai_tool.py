@@ -54,7 +54,10 @@ async def get_vehicle_detail(tool_args: dict, samsara_client,
         "fuel_pct": v.get("fuel", {}).get("value"),
         "def_pct": v.get("def_level", {}).get("value"),
         "city": loc.get("reverseGeo", {}).get("formattedLocation", ""),
-        "speed_mph": round(loc.get("speed", 0) * 0.621371, 1) if loc.get("speed") else 0,
+        # location.speed is already mph everywhere else (aliased to
+        # speedMilesPerHour with no conversion) — the *0.621371 km/h→mph factor
+        # was double-converting and under-reporting by ~38%.
+        "speed_mph": round(loc.get("speed", 0) or 0, 1),
     }
 
 
@@ -92,14 +95,22 @@ async def get_rolling_stopped(tool_args: dict, samsara_client,
         vid = v.get("id", "")
         name = v.get("name", "?")
         loc = v.get("location", {})
-        speed = loc.get("speed", 0) or 0
+        speed = loc.get("speed", 0) or 0  # already mph
         city = loc.get("reverseGeo", {}).get("formattedLocation", "")
-        state = state_by_id.get(vid, "Off")
-        entry = {"vehicle": name, "city": city, "speed_mph": round(speed * 0.621371, 1) if speed else 0}
+        state = state_by_id.get(vid)  # None when the engine-state feed is missing
+        entry = {"vehicle": name, "city": city, "speed_mph": round(speed, 1)}
         if state == "On" and speed > 0:
             rolling.append(entry)
         elif state == "On":
             idling.append(entry)
+        elif state == "Off":
+            off.append(entry)
+        elif speed > 0:
+            # No engine-state data (Samsara plan without engineStates, or a
+            # transient gap) — fall back to speed so a moving truck isn't
+            # mislabelled "off".  This was the cause of "the header shows
+            # Moving N but the AI says all vehicles are off".
+            rolling.append(entry)
         else:
             off.append(entry)
     return {
@@ -189,7 +200,7 @@ async def search_vehicles(tool_args: dict, samsara_client,
             "vehicle": name,
             "city": loc.get("reverseGeo", {}).get("formattedLocation", ""),
             "fuel_pct": v.get("fuel", {}).get("value"),
-            "speed_mph": round(speed * 0.621371, 1) if speed else 0,
+            "speed_mph": round(speed, 1),  # already mph (no km/h conversion)
         })
 
     return {

@@ -1,5 +1,5 @@
 /**
- * Persona-aware Driver Scorecards page configuration.
+ * Persona-aware Scorecards page configuration.
  *
  * Scorecards is a Shared-tier feature (docs/FEATURES.md): the page is
  * one ranked table + fleet-level analysis blocks, so the persona

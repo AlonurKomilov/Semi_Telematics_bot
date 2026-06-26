@@ -10,11 +10,13 @@ import {
   type SortingState,
   type VisibilityState,
   type ColumnOrderState,
+  type ColumnPinningState,
   type Header,
+  type Cell,
 } from '@tanstack/react-table';
 import {
   ChevronUp, ChevronDown, ChevronsUpDown, Rows3, Rows2, Rows4,
-  Search, Filter, X, Columns3,
+  Search, Filter, X, Columns3, Download,
 } from 'lucide-react';
 import {
   DndContext, PointerSensor, useSensor, useSensors,
@@ -33,6 +35,7 @@ import type { AnyColumn } from '../types';
 import ColumnFilterMenu from './ColumnFilterMenu';
 import ColumnHeaderMenu from './ColumnHeaderMenu';
 import ManageColumnsMenu from './ManageColumnsMenu';
+import { exportRowsAsCsv } from '../lib/csv';
 
 type Density = 'compact' | 'default' | 'roomy';
 const DENSITY_KEY = '4truck.table.density';
@@ -66,6 +69,7 @@ interface DataTableProps {
 // today, but coming as we add splits) don't clobber each other.
 const visibilityKey = (id: string) => `4truck.table.${id}.visibility`;
 const orderKey      = (id: string) => `4truck.table.${id}.order`;
+const pinningKey    = (id: string) => `4truck.table.${id}.pinning`;
 
 function loadJSON<T>(key: string, fallback: T): T {
   try {
@@ -109,6 +113,9 @@ export default function DataTable({
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(
     () => tableId ? loadJSON<ColumnOrderState>(orderKey(tableId), []) : [],
   );
+  const [columnPinning, setColumnPinning] = useState<ColumnPinningState>(
+    () => tableId ? loadJSON<ColumnPinningState>(pinningKey(tableId), { left: [], right: [] }) : { left: [], right: [] },
+  );
 
   // Reconcile stored ids with the current column config.  Stale ids
   // (column renamed / removed) are dropped; new ids appended in
@@ -137,6 +144,11 @@ export default function DataTable({
     if (!tableId) return;
     saveJSON(orderKey(tableId), columnOrder);
   }, [tableId, columnOrder]);
+
+  useEffect(() => {
+    if (!tableId) return;
+    saveJSON(pinningKey(tableId), columnPinning);
+  }, [tableId, columnPinning]);
 
   const tableColumns = useMemo<ColumnDef<Record<string, unknown>>[]>(
     () =>
@@ -192,12 +204,14 @@ export default function DataTable({
       columnFilters,
       columnVisibility,
       columnOrder,
+      columnPinning,
     },
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
     onColumnOrderChange: setColumnOrder,
+    onColumnPinningChange: setColumnPinning,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -283,12 +297,29 @@ export default function DataTable({
 
   const padding = DENSITY_PADDING[density];
 
+  // CSV export — visible columns in current display order, filtered
+  // + sorted rows.  Filename uses ``tableId`` + today's local date so
+  // re-exports don't overwrite the previous file in the operator's
+  // Downloads folder.  Date format is YYYY-MM-DD (sortable).
+  const handleExportCsv = () => {
+    if (!tableId) return;
+    const visibleColIdsInOrder = table.getVisibleLeafColumns().map(c => c.id);
+    const colByKey = new Map(columns.map(c => [c.key, c]));
+    const exportCols = visibleColIdsInOrder
+      .map(id => colByKey.get(id))
+      .filter((c): c is AnyColumn => Boolean(c));
+    const exportRows = table.getRowModel().rows.map(r => r.original as Record<string, unknown>);
+    const today = new Date().toISOString().slice(0, 10);
+    exportRowsAsCsv(`${tableId}-${today}.csv`, exportCols, exportRows);
+  };
+
   // Resetting visibility/order: empty objects let tanstack-table fall
   // back to "all visible, declaration order".  We persist the empty
   // shape too so the next reload also defaults.
   const resetLayout = () => {
     setColumnVisibility({});
     setColumnOrder([]);
+    setColumnPinning({ left: [], right: [] });
   };
 
   // Manage-columns options — derived from the full column list (NOT
@@ -343,25 +374,37 @@ export default function DataTable({
         </div>
         <div className="flex items-center gap-2">
           {tableId && (
-            <button
-              ref={manageAnchorRef}
-              type="button"
-              onClick={() => setManageOpen((o) => !o)}
-              aria-label="Manage columns"
-              title="Show / hide columns"
-              className={cn(
-                'inline-flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs border border-border text-muted-foreground hover:text-foreground hover:bg-accent',
-                hiddenCount > 0 && 'text-primary border-primary/30 bg-primary/10',
-              )}
-            >
-              <Columns3 size={14} />
-              <span>Columns</span>
-              {hiddenCount > 0 && (
-                <span className="text-2xs bg-primary/15 text-primary px-1 rounded">
-                  {hiddenCount} hidden
-                </span>
-              )}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleExportCsv}
+                aria-label="Export to CSV"
+                title="Export visible rows as CSV"
+                className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs border border-border text-muted-foreground hover:text-foreground hover:bg-accent"
+              >
+                <Download size={14} />
+                <span>Export</span>
+              </button>
+              <button
+                ref={manageAnchorRef}
+                type="button"
+                onClick={() => setManageOpen((o) => !o)}
+                aria-label="Manage columns"
+                title="Show / hide columns"
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs border border-border text-muted-foreground hover:text-foreground hover:bg-accent',
+                  hiddenCount > 0 && 'text-primary border-primary/30 bg-primary/10',
+                )}
+              >
+                <Columns3 size={14} />
+                <span>Columns</span>
+                {hiddenCount > 0 && (
+                  <span className="text-2xs bg-primary/15 text-primary px-1 rounded">
+                    {hiddenCount} hidden
+                  </span>
+                )}
+              </button>
+            </>
           )}
           <div className="inline-flex items-center gap-0.5 p-0.5 bg-muted/50 border border-border rounded-md" role="group" aria-label="Row density">
             {([
@@ -436,9 +479,11 @@ export default function DataTable({
                   className={onRowClick ? 'cursor-pointer' : ''}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className={padding}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
+                    <PinnedBodyCell
+                      key={cell.id}
+                      cell={cell}
+                      padding={padding}
+                    />
                   ))}
                 </TableRow>
               ))
@@ -476,6 +521,29 @@ export default function DataTable({
   );
 }
 
+// ── Sticky-pinning helper ───────────────────────────────────
+//
+// Returns the inline style needed to anchor a pinned column (or
+// nothing for a non-pinned column).  ``getStart('left')`` and
+// ``getAfter('right')`` are tanstack helpers that sum widths of
+// all preceding/following pinned columns so the second left-pin
+// sits at ``left: 200`` (or whatever) and so on.  z-index nudged
+// above the sticky header (10) when both are stacked, otherwise
+// the body row would scroll over the pinned cell.
+function pinnedStyle(
+  column: { getIsPinned: () => false | 'left' | 'right'; getStart: (pos: 'left') => number; getAfter: (pos: 'right') => number },
+  stickyHeader: boolean,
+): React.CSSProperties {
+  const side = column.getIsPinned();
+  if (side === false) return {};
+  const base: React.CSSProperties = {
+    position: 'sticky',
+    zIndex: stickyHeader ? 11 : 2,
+  };
+  if (side === 'left')  return { ...base, left:  column.getStart('left') };
+  return                       { ...base, right: column.getAfter('right') };
+}
+
 // ── Per-column header cell ──────────────────────────────────
 //
 // Lifted into its own component so it can use the ``useSortable`` hook
@@ -498,16 +566,22 @@ function ColumnHeaderCell({
   const canSort = header.column.getCanSort();
   const sortedRaw = header.column.getIsSorted();
   const canFilter = header.column.getCanFilter();
-  const dragEnabled = !!tableId;
+  const pinned = header.column.getIsPinned();   // false | 'left' | 'right'
+  // Pinned columns are NOT draggable — letting them swap into the
+  // centre group would visually break their sticky anchoring.  Use
+  // Unpin from the 3-dot menu first.
+  const dragEnabled = !!tableId && pinned === false;
 
   const {
     attributes, listeners, setNodeRef, transform, transition, isDragging,
   } = useSortable({ id: header.column.id, disabled: !dragEnabled });
 
+  const pinStyle = pinnedStyle(header.column, stickyHeader);
   const dragStyle: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
+    transform: pinned ? undefined : CSS.Transform.toString(transform),
+    transition: pinned ? undefined : transition,
     opacity: isDragging ? 0.5 : 1,
+    ...pinStyle,
   };
 
   const labelNode = flexRender(
@@ -569,7 +643,16 @@ function ColumnHeaderCell({
       style={dragStyle}
       className={cn(
         'text-muted-foreground font-medium group',
-        stickyHeader && 'bg-card',
+        // ``bg-card`` on every header so the pinned cells aren't
+        // see-through against the scrolled body underneath.  Sticky
+        // header already does this; keep it consistent for the
+        // pinned-only case too.
+        (stickyHeader || pinned) && 'bg-card',
+        // Subtle separator on the boundary between pinned and
+        // centre columns — same treatment as Google Sheets so the
+        // operator can see what's frozen.
+        pinned === 'left'  && 'border-r border-border/60',
+        pinned === 'right' && 'border-l border-border/60',
       )}
     >
       <div className="flex items-center gap-1">
@@ -627,10 +710,49 @@ function ColumnHeaderCell({
               onClearSort={() => header.column.clearSorting()}
               onHide={() => header.column.toggleVisibility(false)}
               onManage={onOpenManage}
+              pinned={pinned === 'left' || pinned === 'right' ? pinned : false}
+              onPinLeft={() => header.column.pin('left')}
+              onPinRight={() => header.column.pin('right')}
+              onUnpin={() => header.column.pin(false)}
             />
           </span>
         )}
       </div>
     </TableHead>
+  );
+}
+
+// ── Body cell, pin-aware ────────────────────────────────────
+//
+// Mirrors the header's sticky positioning + bg + separator so that
+// pinned columns scroll independently of the centre group.  The
+// body cell needs the same ``left``/``right`` offsets as its header
+// — tanstack's ``column.getStart('left')`` returns the cumulative
+// width to the START of the column, which is exactly what
+// ``position: sticky`` wants.
+function PinnedBodyCell({
+  cell, padding,
+}: {
+  cell: Cell<Record<string, unknown>, unknown>;
+  padding: string;
+}) {
+  const pinned = cell.column.getIsPinned();
+  const pinStyle = pinnedStyle(cell.column, false);
+  return (
+    <TableCell
+      style={pinStyle}
+      className={cn(
+        padding,
+        // Pinned cells need a background of their own so the rest
+        // of the row doesn't show through when scrolled.  ``bg-card``
+        // matches the row hover treatment; if a future variant
+        // needs zebra striping we can extend here.
+        pinned && 'bg-card',
+        pinned === 'left'  && 'border-r border-border/60',
+        pinned === 'right' && 'border-l border-border/60',
+      )}
+    >
+      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+    </TableCell>
   );
 }

@@ -17,8 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Iterable
 
-from .curves import evaluate_curve
-from .rules import (
+from .rules.curves import evaluate_curve
+from .rules.defs import (
     PILLAR_COMPLIANCE,
     PILLAR_EFFICIENCY,
     PILLAR_SAFETY,

@@ -39,6 +39,24 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from adapters.storage import Database, Role  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Reset the shared slowapi limiter before each test.
+
+    Per-endpoint hour limits (e.g. ``/api/applications/apply`` at 30/hour)
+    otherwise accumulate across a whole test file — once exhausted, later
+    tests receive 429 instead of their expected status (the applications
+    suite hit exactly this: 422-expecting tests got 429).  Resetting the
+    in-memory counters per test isolates them.
+    """
+    try:
+        from interfaces.api.rate_limit import limiter
+        limiter.reset()
+    except Exception:
+        pass
+    yield
+
+
 @pytest_asyncio.fixture
 async def db(pg_db):
     """Postgres-backed ``Database`` (legacy ``db`` fixture alias).

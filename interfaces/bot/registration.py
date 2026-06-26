@@ -76,7 +76,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Tools
     tool_items = []
     if perms.can_scorecard_all or perms.can_scorecard_vehicle:
-        tool_items.append("🏆 Driver scorecards")
+        tool_items.append("🏆 Scorecards")
     if perms.can_location_map or perms.can_location_vehicle:
         tool_items.append("🗺 Live fleet map")
     if perms.can_route_all or perms.can_route_vehicle:

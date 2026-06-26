@@ -94,7 +94,7 @@ def format_unregistered_member(
         "\n"
         "Built for drivers, dispatchers, safety,\n"
         "fleet, and admins — live tracking, fault\n"
-        "diagnostics, AI insights, driver scorecards,\n"
+        "diagnostics, AI insights, scorecards,\n"
         "payroll, coaching, and more.\n"
         "\n"
         "  🌐 <a href=\"https://4truck.us\">4truck.us</a>\n"

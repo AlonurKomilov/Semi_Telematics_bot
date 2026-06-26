@@ -160,7 +160,7 @@ export default function DriverOverview({
               tone="info"
               icon={ShieldAlert}
               hint="Safety score & ranking"
-              onClick={() => navigate('/driver-scorecards')}
+              onClick={() => navigate('/scorecards')}
             />
             <KpiCard
               label="My routes"

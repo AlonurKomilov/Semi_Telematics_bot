@@ -57,7 +57,7 @@ _TOOL_LABELS: dict[str, str] = {
     "get_maintenance_summary":"Reviewing maintenance",
     "get_driver_efficiency":  "Analyzing driver efficiency",
     "get_efficiency_summary": "Summarizing efficiency",
-    "get_driver_scorecard":   "Getting driver scorecard",
+    "get_driver_scorecard":   "Getting scorecard",
     "get_drivers_list":       "Listing drivers",
     "check_vehicle_camera":   "Checking camera",
     "get_geofences":          "Checking geofences",
@@ -423,7 +423,7 @@ def _build_agent_user_prompt(
     parts.append(
         "You have access to tools that can fetch live data from Samsara. "
         "Use them when the user asks about specific trucks, faults, fuel, "
-        "driver efficiency, driver scorecards, safety events, maintenance, "
+        "driver efficiency, scorecards, safety events, maintenance, "
         "fuel costs, rolling/stopped status, or cameras. "
         "For safety events, always state the time period checked. "
         "For camera checks, only check one truck at a time — for account-wide "
@@ -1088,7 +1088,7 @@ async def ask_agent(question: str, vehicle_context: dict,
     parts.append(
         "You have access to tools that can fetch live data from Samsara. "
         "Use them when the user asks about specific trucks, faults, fuel, "
-        "driver efficiency, driver scorecards, safety events, maintenance, "
+        "driver efficiency, scorecards, safety events, maintenance, "
         "fuel costs, rolling/stopped status, or cameras. "
         "For safety events, always state the time period checked. "
         "For camera checks, only check one truck at a time — for account-wide "

@@ -121,7 +121,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // Scorecards are a Safety/coaching capability — surfaced only when the
   // Safety or HR department is on.  A Fleet-only or Dispatch-only company
   // won't see them (they can enable Safety to get them).
-  { id: 'driver_scorecards', labelKey: 'nav.driver_scorecards', path: '/driver-scorecards', icon: Trophy, modules: ['safety', 'hr'], tier: 'shared', permission: ['can_scorecard_all', 'can_scorecard_vehicle'], navGroup: 'monitoring' },
+  { id: 'scorecards', labelKey: 'nav.scorecards', path: '/scorecards', icon: Trophy, modules: ['safety', 'hr'], tier: 'shared', permission: ['can_scorecard_all', 'can_scorecard_vehicle'], navGroup: 'monitoring' },
 
   // ── HR (people) ───────────────────────────────────────────────────
   { id: 'coaching', labelKey: 'nav.coaching', path: '/coaching', icon: GraduationCap, modules: ['hr', 'safety'], tier: 'role', permission: ['can_coaching_admin'], navGroup: 'people' },
@@ -156,10 +156,12 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   { id: 'storage',          labelKey: 'nav.storage',          path: '/storage',         icon: Cloud,         modules: ['account'], tier: 'system', permission: ['can_manage_storage'], navGroup: 'account' },
   { id: 'settings',         labelKey: 'nav.settings',         path: '/settings',        icon: SettingsIcon,  modules: ['account'], tier: 'system', permission: ['can_manage_account'], navGroup: 'settings' },
   { id: 'role_permissions', labelKey: 'nav.role_permissions', path: '/permissions',     icon: Shield,        modules: ['account'], tier: 'system', permission: ['can_manage_permissions'], navGroup: 'account' },
-  // Scorecard Rules is the Scorecards feature's CONFIG component — reached
-  // via the Rules tab on /driver-scorecards (navHidden keeps the route +
-  // deep links alive without a second sidebar entry).
-  { id: 'scorecard_rules',  labelKey: 'nav.scorecard_rules',  path: '/scorecard-rules', icon: Trophy,        modules: ['account'], tier: 'system', permission: ['can_manage_account'], navGroup: 'governance', navHidden: true },
+  // Scorecard Rules is the Scorecards (Shared) feature's CONFIG
+  // component — reached via the gear icon on /scorecards (navHidden
+  // keeps the route + deep links alive without a second sidebar entry).
+  // Tier + modules MIRROR the parent scorecards (Shared, safety/hr) so
+  // it appears/masks in lockstep with the feature it configures.
+  { id: 'scorecard_rules',  labelKey: 'nav.scorecard_rules',  path: '/scorecard-rules', icon: Trophy,        modules: ['safety', 'hr'], tier: 'shared', permission: ['can_manage_scorecard_rules'], navGroup: 'monitoring', navHidden: true },
   { id: 'audit_log',        labelKey: 'nav.audit_log',        path: '/audit',           icon: ClipboardList, modules: ['account'], tier: 'system', permission: ['can_manage_users'], navGroup: 'settings' },
 ];
 

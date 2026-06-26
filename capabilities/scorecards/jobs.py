@@ -1,4 +1,4 @@
-"""Nightly Driver Scorecard snapshot job.
+"""Nightly Scorecard snapshot job.
 
 Persists yesterday's composite scores into ``daily_scorecard_snapshots``
 for every account.  Two purposes:

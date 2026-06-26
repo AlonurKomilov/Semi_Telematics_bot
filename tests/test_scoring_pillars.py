@@ -6,7 +6,7 @@ from capabilities.scorecards.engine import (
     PILLAR_CAPS,
     score,
 )
-from capabilities.scorecards.rules import (
+from capabilities.scorecards.rules.defs import (
     PILLAR_COMPLIANCE,
     PILLAR_EFFICIENCY,
     PILLAR_SAFETY,

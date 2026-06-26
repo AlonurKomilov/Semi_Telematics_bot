@@ -180,7 +180,7 @@
     "inspection_template": "Inspection Template",
     "cost_reports": "Cost Reports",
     "parking": "Parking",
-    "driver_scorecards": "Driver Scorecards",
+    "scorecards": "Scorecards",
     "scorecards": "Scorecards",
     "events": "Safety Events",
     "cameras": "Cameras",
@@ -208,7 +208,7 @@
     "settings": "Settings"
   },
   "scorecards": {
-    "page_title": "Vehicle Scorecards",
+    "page_title": "Scorecards",
     "page_description": "Composite 0-100 score per truck. Click any row for the full breakdown — pillars, trend, bonuses and penalties.",
     "kpi_active_trucks": "Active Trucks",
     "kpi_active_trucks_sub": "any drive activity",
@@ -356,7 +356,7 @@
       "quick_links": "Quick links",
       "vehicle_page": "Vehicle page",
       "vehicle_page_hint": "Faults, inspections, history",
-      "scorecards": "Driver scorecards",
+      "scorecards": "Scorecards",
       "scorecards_hint": "7-day trend, peer comparison",
       "coaching": "Coaching assignments",
       "coaching_hint": "Open + history per driver",

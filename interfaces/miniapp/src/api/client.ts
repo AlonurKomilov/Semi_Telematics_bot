@@ -9,7 +9,7 @@ const REQUEST_TIMEOUT_MS = 30_000;
 // previous tenant's cached fleet/alert data.  Names match the
 // `runtimeCaching[].cacheName` values in vite.config.ts.
 const TENANT_CACHE_NAMES = [
-  'driver-scorecard',
+  'scorecard',
   'st-fleet',
   'st-alerts-count',
   'api-get',

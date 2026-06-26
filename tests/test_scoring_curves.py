@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from capabilities.scorecards.curves import (
+from capabilities.scorecards.rules.curves import (
     LINEAR_PCT,
     LINEAR_PER_HOUR,
     LINEAR_PER_KMI,

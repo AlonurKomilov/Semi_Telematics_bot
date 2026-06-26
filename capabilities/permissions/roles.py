@@ -113,6 +113,7 @@ class FeatureSet:
     can_cost_reports: bool = False      # /cost-reports executive rollups (split off can_maintenance_all)
     can_scorecard_all: bool = False     # scorecards for all subjects (driver or vehicle)
     can_scorecard_vehicle: bool = False     # scorecards for the assigned vehicle(s) only
+    can_manage_scorecard_rules: bool = False  # edit the scoring rules + pillar caps (Scorecards' admin component — was bundled in can_manage_account)
     can_location_map: bool = False      # live location map (all trucks)
     can_location_vehicle: bool = False      # live location map (assigned vehicle)
     can_fuel_cost: bool = False         # fuel cost tracker
@@ -163,6 +164,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_companies=True, can_manage_vehicles=True, can_manage_account=True,
         can_manage_permissions=True, can_manage_integrations=True,
         can_manage_storage=True, can_manage_work_hours=True,
+        can_manage_scorecard_rules=True,   # Scorecards' admin component (owners delegate via the matrix)
         can_geofence_all=True, can_geofence_vehicle=True,
         can_parking_all=True, can_parking_vehicle=True,
         can_maintenance_all=True, can_maintenance_vehicle=True,
@@ -804,8 +806,9 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_cost_reports": "cost reports (executive rollups)",
     "can_inspections_all": "inspections (review all)",
     "can_inspections_vehicle": "inspections (assigned vehicle)",
-    "can_scorecard_all": "driver scorecards (all)",
-    "can_scorecard_vehicle": "driver scorecards (assigned vehicle)",
+    "can_scorecard_all": "scorecards (all)",
+    "can_scorecard_vehicle": "scorecards (assigned vehicle)",
+    "can_manage_scorecard_rules": "scorecard rules + pillar caps (scoring config)",
     "can_location_map": "live location map (all)",
     "can_location_vehicle": "live location (assigned vehicle)",
     "can_fuel_cost": "fuel cost tracking",

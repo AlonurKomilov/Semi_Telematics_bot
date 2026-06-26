@@ -11,6 +11,29 @@ from capabilities.ai.tools.registry import register_tool
 from capabilities.ai.tools.scope import filter_to_scope
 
 
+def _mileage_fields(t: dict) -> dict:
+    """Mileage context for a maintenance task.
+
+    ``due_miles`` is the ABSOLUTE odometer reading at which the task is due
+    (e.g. 326,620), not a distance remaining — returning it bare made the AI
+    say "oil change due in 326,620 miles".  Expose the current odometer and the
+    remaining distance so the answer reads "due at 326,620 mi (~X to go)".
+    """
+    due = t.get("due_miles")
+    odo = t.get("last_odometer")
+    remaining = None
+    try:
+        if due is not None and odo is not None:
+            remaining = round(float(due) - float(odo))
+    except (TypeError, ValueError):
+        remaining = None
+    return {
+        "due_at_miles": due,             # absolute odometer threshold
+        "current_odometer": odo,
+        "miles_remaining": remaining,    # None = unknown; negative = overdue by N
+    }
+
+
 @register_tool({
     "name": "get_vehicle_maintenance",
     "description": (
@@ -45,7 +68,7 @@ async def get_vehicle_maintenance(tool_args: dict, samsara_client,
                 "description": t.get("description", ""),
                 "status": t.get("status", ""),
                 "due_date": t.get("due_date"),
-                "due_miles": t.get("due_miles"),
+                **_mileage_fields(t),
                 "created_at": t.get("created_at", ""),
             }
             for t in active[:15]
@@ -90,7 +113,7 @@ async def get_maintenance_summary(tool_args: dict, samsara_client,
                 "type": t.get("task_type", "custom"),
                 "description": t.get("description", ""),
                 "due_date": t.get("due_date"),
-                "due_miles": t.get("due_miles"),
+                **_mileage_fields(t),
             }
             for t in overdue[:10]
         ],
@@ -103,7 +126,7 @@ async def get_maintenance_summary(tool_args: dict, samsara_client,
                 "type": t.get("task_type", "custom"),
                 "description": t.get("description", ""),
                 "due_date": t.get("due_date"),
-                "due_miles": t.get("due_miles"),
+                **_mileage_fields(t),
             }
             for t in pending[:10]
         ],

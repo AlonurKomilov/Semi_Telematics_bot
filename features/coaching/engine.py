@@ -1,6 +1,6 @@
 """Coaching evaluation engine.
 
-Pulls active coaching_rules + driver scorecards + safety event counts,
+Pulls active coaching_rules + scorecards + safety event counts,
 returns ProposedAssignment objects.  Idempotent: drivers with a pending
 assignment for the same topic within ``period_days`` are skipped.
 """

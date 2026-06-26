@@ -45,7 +45,7 @@ async def get_vehicle_location(tool_args: dict, samsara_client,
         "city": geo.get("formattedLocation", "Unknown"),
         "latitude": loc.get("latitude"),
         "longitude": loc.get("longitude"),
-        "speed_mph": round(loc.get("speed", 0) * 0.621371, 1) if loc.get("speed") else 0,
+        "speed_mph": round(loc.get("speed", 0) or 0, 1),  # already mph (no km/h conversion)
         "heading": loc.get("heading"),
         "time": loc.get("time", ""),
     }

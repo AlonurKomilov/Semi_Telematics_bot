@@ -1,4 +1,4 @@
-"""Driver Scorecard scoring engine.
+"""Scorecard scoring engine.
 
 Feature-driven composite scoring: each existing user-facing feature
 (Safety Events, Maintenance, Driver Efficiency, …) exposes a *signal*

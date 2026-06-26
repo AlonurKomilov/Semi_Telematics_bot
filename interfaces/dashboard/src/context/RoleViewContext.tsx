@@ -35,7 +35,7 @@ const VIEW_HOME_ROUTE: Record<string, string> = {
   owner: '/',
   admin: '/',
   fleet: '/live-map',
-  safety: '/driver-scorecards',
+  safety: '/scorecards',
   dispatcher: '/live-map',
   // HR lands on Drivers — the daily entry point for compliance work
   // (CDL expirations, document review).  Accounting lands on Cost

@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 
 from capabilities.scorecards.engine import Scorecard, score
-from capabilities.scorecards.rules import get_default_rules
+from capabilities.scorecards.rules.defs import get_default_rules
 from capabilities.scorecards.signals import vehicle_efficiency as veh_signals
 from features.events.scoring_signal import from_events_by_vehicle
 

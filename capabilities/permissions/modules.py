@@ -80,6 +80,8 @@ FLAG_MODULES: dict[str, frozenset[str]] = {
     "can_events_vehicle": frozenset({"safety", "hr"}),
     "can_scorecard_all": frozenset({"safety", "hr"}),
     "can_scorecard_vehicle": frozenset({"safety", "hr"}),
+    "can_manage_scorecard_rules": frozenset({"safety", "hr"}),  # Scorecards' config — masks with its feature
+
     "can_coaching_admin": frozenset({"hr", "safety"}),
     "can_coaching_view_own": frozenset({"hr", "safety"}),
     # Drivers (documents) — hr + fleet + safety

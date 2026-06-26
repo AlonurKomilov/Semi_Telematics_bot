@@ -32,7 +32,8 @@ from interfaces.api.routes import webhooks as webhooks_routes
 from capabilities.alerting import router as alerts
 from capabilities.reporting import router as reports_routes
 from capabilities.ai import router as ai_routes
-from capabilities.scorecards import router as scorecards_routes
+from features.scorecards import router as scorecards_routes
+from features.scorecards import config_router as scorecard_rules_routes
 from capabilities.billing import router as billing_routes
 from capabilities.integrations import router as integrations_routes
 from capabilities.storage import router as storage_routes
@@ -387,8 +388,8 @@ def create_api() -> FastAPI:
         app.include_router(parking_routes.router, prefix=prefix)
         app.include_router(dispatch_routes.router, prefix=prefix)
         app.include_router(scorecards_routes.router, prefix=prefix)
-        app.include_router(scorecards_routes.legacy_router, prefix=prefix)
-        app.include_router(scorecards_routes.admin_router, prefix=prefix)
+        app.include_router(scorecard_rules_routes.legacy_router, prefix=prefix)
+        app.include_router(scorecard_rules_routes.admin_router, prefix=prefix)
         app.include_router(events_routes.router, prefix=prefix)
         app.include_router(cameras_routes.router, prefix=prefix)
         app.include_router(reports_routes.router, prefix=prefix)

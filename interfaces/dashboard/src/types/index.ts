@@ -13,6 +13,7 @@ export interface Permissions {
   can_route_vehicle: boolean;
   can_scorecard_all: boolean;
   can_scorecard_vehicle: boolean;
+  can_manage_scorecard_rules: boolean;
   can_events_all: boolean;
   can_events_vehicle: boolean;
   can_faults: boolean;
@@ -422,6 +423,13 @@ export interface Column<T = Record<string, unknown>> {
    *  Receives the row object so it can use the same lookup logic
    *  the cell renderer uses. */
   filterLabel?: (row: T) => string;
+  /** Optional accessor for the CSV-export value of this cell.  Lets
+   *  badge-rendered columns export their plain-text equivalent
+   *  ("Critical" instead of a coloured pill).  Defaults to
+   *  ``filterLabel`` → ``filterValue`` → raw cell value, so columns
+   *  that already opted into filtering get sensible CSV output for
+   *  free. */
+  csvValue?: (row: T) => string;
   render?: (value: unknown, row: T) => React.ReactNode;
   /** Custom comparable value for sorting.  When set, the table sorts
    *  by ``sortKey(row)`` instead of the raw cell value.  Use for

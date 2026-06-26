@@ -85,7 +85,7 @@ async def get_recent_inspections(tool_args: dict, samsara_client,
                 "type": r.get("inspection_type") or "",
                 "status": r.get("status") or "",
                 "review_status": r.get("review_status") or "pending",
-                "defect_count": int(r.get("defect_count") or 0),
+                "defect_count": int(r.get("defects_count") or 0),  # column is defects_count (plural)
                 "inspected_at": r.get("inspected_at") or r.get("created_at") or "",
                 "summary": (r.get("notes") or "")[:200],
             }

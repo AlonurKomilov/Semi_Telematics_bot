@@ -71,7 +71,7 @@ async def safety_app(pg_db, monkeypatch):
         ]
 
     monkeypatch.setattr(
-        "capabilities.scorecards.router._svc_driver_efficiency",
+        "features.scorecards.router._svc_driver_efficiency",
         _fake_efficiency,
     )
 
@@ -173,7 +173,7 @@ class TestScorecardsRoute:
             return ["T-101", "T-202"]
 
         monkeypatch.setattr(
-            "capabilities.scorecards.router.get_user_vehicle_nums",
+            "features.scorecards.router.get_user_vehicle_nums",
             _fake_truck_nums,
         )
         async with AsyncClient(
@@ -276,11 +276,22 @@ class TestTruckFilter:
         async def _stub_prepare(_acct):
             return None
 
+        async def _stub_window(
+            account_id, *, days=7, driver_id=None, samsara_fallback=None,
+        ):
+            # No warehouse in this unit test — the no-filter path goes through
+            # the warehouse reader, so fall back to the live stub rows.
+            return await samsara_fallback() if samsara_fallback else list(rows)
+
         monkeypatch.setattr(
             "capabilities.telemetry.service.get_client", _stub_get_client,
         )
         monkeypatch.setattr(
             "capabilities.telemetry.service.prepare_companies", _stub_prepare,
+        )
+        monkeypatch.setattr(
+            "capabilities.telemetry.warehouse_reader.get_driver_efficiency_window",
+            _stub_window,
         )
         return rows
 
@@ -372,7 +383,7 @@ class TestPillarShapeContract:
                 "insufficient_data": False,
             }]
         monkeypatch.setattr(
-            "capabilities.scorecards.router._svc_evaluate_subjects",
+            "features.scorecards.router._svc_evaluate_subjects",
             _fake_evaluate,
         )
         async with AsyncClient(

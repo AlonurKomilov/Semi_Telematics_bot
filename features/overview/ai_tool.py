@@ -44,8 +44,13 @@ async def get_account_stats(tool_args: dict, samsara_client,
         if (cel.get("stopIsOn") or cel.get("protectIsOn")
                 or cel.get("emissionsIsOn")):
             critical.append(v)
-    low_fuel = [v for v in fleet
-                if (v.get("fuel", {}).get("value") or 100) <= 20]
+    # ``or 100`` would swallow a legitimate 0% (empty tank) as "not low" — use
+    # an explicit None check so a truck at 0% is counted, not excluded.
+    low_fuel = []
+    for v in fleet:
+        pct = (v.get("fuel") or {}).get("value")
+        if pct is not None and pct <= 20:
+            low_fuel.append(v)
     try:
         health = filter_to_scope(await _svc_health(account_id), tool_args, key="name")
         alerts = sum(1 for v in health if v.get("_health_alerts"))
