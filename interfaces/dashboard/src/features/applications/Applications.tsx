@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import type { ReactNode } from 'react';
-import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink, Bell, Mail, MessageSquare, Monitor, CheckCheck, Download, ShieldCheck, LayoutGrid, List, Users, Search, ArrowUp, ArrowDown, ChevronsUpDown, Building2, Upload, Pencil, Trash2 } from 'lucide-react';
+import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink, Bell, Mail, MessageSquare, Monitor, CheckCheck, Download, ShieldCheck, LayoutGrid, List, Users, Search, ArrowUp, ArrowDown, ChevronsUpDown, Building2, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiJSON, apiFetch } from '../../api/client';
 import { PageHeader } from '../../components/shell';
@@ -41,6 +41,9 @@ interface PickerCompany {
   req_experience_years: number; req_min_age: number; req_cdl_class: string;
   // Apply-form base theme: 'light' | 'dark'.
   form_theme: string;
+  // Legal/compliance details that fill the consent disclosures.
+  legal_address: string; compliance_email: string;
+  cra_name: string; cra_address: string; cra_phone: string; cra_site: string;
 }
 
 // Authed carrier logo for the create-link preview (an <img src> can't carry
@@ -68,29 +71,13 @@ function LinkCompanyLogo({ id, hasLogo, version = 0, size = 48 }: {
   );
 }
 
-// Authed carrier hero photo for the create-link preview.
-function LinkCompanyBanner({ id, version = 0 }: { id: number; version?: number }) {
-  const [url, setUrl] = useState('');
-  useEffect(() => {
-    let dead = false; let made = '';
-    apiFetch(`/applications/companies/${id}/banner`).then(async (res) => {
-      if (!res.ok) return;
-      const blob = await res.blob();
-      if (dead) return;
-      made = URL.createObjectURL(blob); setUrl(made);
-    }).catch(() => { /* none */ });
-    return () => { dead = true; if (made) URL.revokeObjectURL(made); };
-  }, [id, version]);
-  if (!url) return null;
-  return <img src={url} alt="" className="mt-2 h-28 w-full rounded-md border border-border object-cover" />;
-}
-
-// Preview + cosmetic touch-up for the carrier a link is branded for.  The
-// recruiter can fix the logo / accent / contact / pitch WITHOUT owner access
-// to Settings·Companies; the name + MC/DOT stay owner-managed (read-only).
-// Accent colour + light/dark base are edited live INSIDE the preview (see
-// PreviewThemeBar) — this panel owns the content brand (logo / contact /
-// pitch / photo / pre-qual requirements).
+// Cosmetic touch-up for the carrier a link is branded for.  The recruiter can
+// fix the contact / pitch / requirements WITHOUT owner access to
+// Settings·Companies; the name + MC/DOT stay owner-managed (read-only).  The
+// VISUAL design — logo, hero photo and every brand colour — is edited live in
+// the Preview (see ApplyPreview / PreviewThemeBar), so it never drifts from
+// what an applicant sees; this panel owns the form's DATA (contact / pitch /
+// pre-qual requirements / FCRA agency).
 function CompanyBrandPanel({ company, onChanged }: { company: PickerCompany; onChanged: () => void }) {
   const [website, setWebsite] = useState(company.website || '');
   const [phone, setPhone] = useState(company.phone || '');
@@ -99,24 +86,24 @@ function CompanyBrandPanel({ company, onChanged }: { company: PickerCompany; onC
   const [reqYears, setReqYears] = useState(company.req_experience_years ?? 1);
   const [reqAge, setReqAge] = useState(company.req_min_age ?? 21);
   const [reqClass, setReqClass] = useState(company.req_cdl_class || 'A');
+  const LEGAL_KEYS = ['legal_address', 'compliance_email', 'cra_name', 'cra_address', 'cra_phone', 'cra_site'] as const;
+  const legalOf = (co: PickerCompany) => Object.fromEntries(LEGAL_KEYS.map((k) => [k, co[k] || ''])) as Record<string, string>;
+  const [legal, setLegal] = useState<Record<string, string>>(legalOf(company));
+  const setL = (k: string, v: string) => setLegal((s) => ({ ...s, [k]: v }));
   const [busy, setBusy] = useState(false);
-  const [logoBusy, setLogoBusy] = useState(false);
-  const [logoVersion, setLogoVersion] = useState(0);
-  const [bannerBusy, setBannerBusy] = useState(false);
-  const [bannerVersion, setBannerVersion] = useState(0);
   useEffect(() => {
     setWebsite(company.website || ''); setPhone(company.phone || '');
     setHeadline(company.headline || ''); setPerks(company.perks || '');
     setReqYears(company.req_experience_years ?? 1); setReqAge(company.req_min_age ?? 21);
-    setReqClass(company.req_cdl_class || 'A');
-    setLogoVersion(0); setBannerVersion(0);
-  }, [company.id, company.website, company.phone, company.headline, company.perks,
-      company.req_experience_years, company.req_min_age, company.req_cdl_class]);
+    setReqClass(company.req_cdl_class || 'A'); setLegal(legalOf(company));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [company.id]);
 
+  const legalDirty = LEGAL_KEYS.some((k) => legal[k] !== (company[k] || ''));
   const dirty = website !== (company.website || '')
     || phone !== (company.phone || '') || headline !== (company.headline || '') || perks !== (company.perks || '')
     || reqYears !== (company.req_experience_years ?? 1) || reqAge !== (company.req_min_age ?? 21)
-    || reqClass !== (company.req_cdl_class || 'A');
+    || reqClass !== (company.req_cdl_class || 'A') || legalDirty;
 
   const saveBrand = async () => {
     setBusy(true);
@@ -124,77 +111,44 @@ function CompanyBrandPanel({ company, onChanged }: { company: PickerCompany; onC
       await apiJSON(`/applications/companies/${company.id}/brand`, {
         method: 'PATCH',
         body: { website, phone, headline, perks,
-                req_experience_years: reqYears, req_min_age: reqAge, req_cdl_class: reqClass },
+                req_experience_years: reqYears, req_min_age: reqAge, req_cdl_class: reqClass,
+                ...legal },
       });
       toast.success('Brand updated');
       onChanged();
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Update failed'); }
     finally { setBusy(false); }
   };
-  const uploadBanner = async (f: File) => {
-    setBannerBusy(true);
-    try {
-      const fd = new FormData(); fd.append('file', f);
-      const res = await apiFetch(`/applications/companies/${company.id}/banner`, { method: 'POST', body: fd });
-      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.detail || 'Upload failed'); }
-      toast.success('Photo updated'); setBannerVersion((v) => v + 1); onChanged();
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Upload failed'); }
-    finally { setBannerBusy(false); }
-  };
-  const removeBanner = async () => {
-    setBannerBusy(true);
-    try {
-      await apiFetch(`/applications/companies/${company.id}/banner`, { method: 'DELETE' });
-      setBannerVersion((v) => v + 1); onChanged();
-    } catch { /* non-fatal */ } finally { setBannerBusy(false); }
-  };
-  const uploadLogo = async (f: File) => {
-    setLogoBusy(true);
-    try {
-      const fd = new FormData(); fd.append('file', f);
-      const res = await apiFetch(`/applications/companies/${company.id}/logo`, { method: 'POST', body: fd });
-      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.detail || 'Upload failed'); }
-      toast.success('Logo updated'); setLogoVersion((v) => v + 1); onChanged();
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Upload failed'); }
-    finally { setLogoBusy(false); }
-  };
-  const removeLogo = async () => {
-    setLogoBusy(true);
-    try {
-      await apiFetch(`/applications/companies/${company.id}/logo`, { method: 'DELETE' });
-      setLogoVersion((v) => v + 1); onChanged();
-    } catch { /* non-fatal */ } finally { setLogoBusy(false); }
-  };
 
   return (
     <div className="mt-3 rounded-md border border-border bg-background/40 p-4">
       <div className="flex items-start gap-4">
-        <LinkCompanyLogo id={company.id} hasLogo={company.has_logo} version={logoVersion} />
+        <LinkCompanyLogo id={company.id} hasLogo={company.has_logo} />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">{company.display_name || company.code}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {company.mc_number ? `MC ${company.mc_number}` : 'MC —'} · {company.usdot_number ? `USDOT ${company.usdot_number}` : 'USDOT —'}
             <span className="ml-1 opacity-70">· name &amp; MC/DOT managed by owner</span>
           </p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <label className="cursor-pointer">
-              <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
-                disabled={logoBusy}
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); e.currentTarget.value = ''; }} />
-              <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted px-2.5 py-1.5 text-xs text-foreground hover:bg-muted/70">
-                <Upload size={13} /> {company.has_logo ? 'Replace logo' : 'Upload logo'}
-              </span>
-            </label>
-            {company.has_logo && (
-              <button type="button" onClick={removeLogo} disabled={logoBusy}
-                className="text-xs text-muted-foreground hover:text-danger">Remove</button>
-            )}
-          </div>
+          <a href={`/applications/preview/${company.id}`} target="_blank" rel="noopener noreferrer"
+            className="mt-2 inline-flex items-center gap-1.5 text-xs text-primary hover:underline">
+            <ExternalLink size={13} /> Logo, hero photo &amp; theme colours — edit live in Preview
+          </a>
         </div>
       </div>
-      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <Input placeholder="Website" value={website} onChange={(e) => setWebsite(e.target.value)} />
-        <Input placeholder="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+      <div className="mt-3">
+        <p className="text-2xs text-muted-foreground">Carrier contact — shown on the form footer + the §391.23 consent document (with the owner-set name/MC/DOT). Filled once, used everywhere.</p>
+        <div className="mt-1 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <Input placeholder="Website" value={website} onChange={(e) => setWebsite(e.target.value)} />
+          <Input placeholder="Phone *" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <Input placeholder="Mailing address (street, city, state, zip) *" value={legal.legal_address} onChange={(e) => setL('legal_address', e.target.value)} />
+          <Input placeholder="Safety / compliance email *" value={legal.compliance_email} onChange={(e) => setL('compliance_email', e.target.value)} />
+        </div>
+        {(!phone || !legal.legal_address || !legal.compliance_email) && (
+          <p className={`mt-2 rounded px-2 py-1 text-2xs ${toneClasses('warn')}`}>
+            Add the carrier's <b>phone, mailing address &amp; email</b> — the §391.23 consent document is incomplete without them.
+          </p>
+        )}
       </div>
       <div className="mt-2 grid grid-cols-1 gap-2">
         <Input placeholder="Headline — e.g. Top pay. Home weekly. Modern trucks."
@@ -202,21 +156,6 @@ function CompanyBrandPanel({ company, onChanged }: { company: PickerCompany; onC
         <Textarea placeholder="Perks — one per line (e.g. $0.65/mile · Home weekends · 2022+ trucks · Full benefits)"
           value={perks} rows={3} maxLength={800} onChange={(e) => setPerks(e.target.value)} />
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <span className="text-xs text-muted-foreground">Hero photo</span>
-        <label className="cursor-pointer">
-          <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={bannerBusy}
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadBanner(f); e.currentTarget.value = ''; }} />
-          <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted px-2.5 py-1.5 text-xs text-foreground hover:bg-muted/70">
-            <Upload size={13} /> {company.has_banner ? 'Replace photo' : 'Add photo'}
-          </span>
-        </label>
-        {company.has_banner && (
-          <button type="button" onClick={removeBanner} disabled={bannerBusy}
-            className="text-xs text-muted-foreground hover:text-danger">Remove</button>
-        )}
-      </div>
-      {company.has_banner && <LinkCompanyBanner id={company.id} version={bannerVersion} />}
       <div className="mt-3 border-t border-border pt-3">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Pre-qual requirements</p>
         <p className="mt-0.5 text-2xs text-muted-foreground">Adapts the apply form's eligibility questions for this carrier.</p>
@@ -240,6 +179,16 @@ function CompanyBrandPanel({ company, onChanged }: { company: PickerCompany; onC
               {['A', 'B', 'C'].map((x) => <option key={x} value={x}>{x}</option>)}
             </select>
           </label>
+        </div>
+      </div>
+      <div className="mt-3 border-t border-border pt-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Background-check agency (FCRA)</p>
+        <p className="mt-0.5 text-2xs text-muted-foreground">The consumer-reporting agency named in the FCRA disclosure. The legal wording is fixed — you only fill these blanks.</p>
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <Input placeholder="Agency name (e.g. TR Information Services)" value={legal.cra_name} onChange={(e) => setL('cra_name', e.target.value)} />
+          <Input placeholder="Agency phone" value={legal.cra_phone} onChange={(e) => setL('cra_phone', e.target.value)} />
+          <Input placeholder="Agency address" value={legal.cra_address} onChange={(e) => setL('cra_address', e.target.value)} />
+          <Input placeholder="Agency website(s)" value={legal.cra_site} onChange={(e) => setL('cra_site', e.target.value)} />
         </div>
       </div>
       <div className="mt-3 flex items-center justify-between">
@@ -454,6 +403,13 @@ export default function Applications() {
   useEffect(() => { loadCompanies(); }, [loadCompanies]);
 
   const createLink = async () => {
+    // A branded link whose carrier is missing the §391.23 contact details
+    // would generate an incomplete consent document — warn before creating.
+    if (companyId) {
+      const co = companies.find((x) => String(x.id) === companyId);
+      if (co && (!co.phone || !co.legal_address || !co.compliance_email)
+        && !confirm("This carrier is missing its phone, mailing address, or compliance email — the §391.23 consent document will be incomplete. Create the link anyway?")) return;
+    }
     setCreating(true);
     try {
       await apiJSON('/applications/links', {

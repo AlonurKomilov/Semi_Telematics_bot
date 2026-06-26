@@ -117,9 +117,16 @@ async def create_tables(conn) -> None:
             req_min_age          INTEGER NOT NULL DEFAULT 21,
             req_cdl_class        TEXT    NOT NULL DEFAULT 'A',
             form_theme           TEXT    NOT NULL DEFAULT 'light',
+            surface_color        TEXT    NOT NULL DEFAULT '',
             header_color         TEXT    NOT NULL DEFAULT '',
             bg_color             TEXT    NOT NULL DEFAULT '',
             heading_color        TEXT    NOT NULL DEFAULT '',
+            legal_address        TEXT    NOT NULL DEFAULT '',
+            compliance_email     TEXT    NOT NULL DEFAULT '',
+            cra_name             TEXT    NOT NULL DEFAULT '',
+            cra_address          TEXT    NOT NULL DEFAULT '',
+            cra_phone            TEXT    NOT NULL DEFAULT '',
+            cra_site             TEXT    NOT NULL DEFAULT '',
             created_at      TEXT    NOT NULL,
             UNIQUE(account_id, code)
         );
@@ -510,7 +517,7 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_user_companies_user
             ON user_companies(user_id);
 
-        -- ── Driver Scorecards (composite scoring engine) ──────────
+        -- ── Scorecards (composite scoring engine) ──────────
         CREATE TABLE IF NOT EXISTS score_rules (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id      INTEGER NOT NULL,

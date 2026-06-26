@@ -259,9 +259,17 @@ async def public_link_brand(
         "req_cdl_class": co.req_cdl_class,
         # Base theme + optional extra colours (header band / page bg).
         "form_theme": co.form_theme,
+        "surface_color": co.surface_color,
         "header_color": co.header_color,
         "bg_color": co.bg_color,
         "heading_color": co.heading_color,
+        # Legal/compliance details that fill the consent disclosures.
+        "legal_address": co.legal_address,
+        "compliance_email": co.compliance_email,
+        "cra_name": co.cra_name,
+        "cra_address": co.cra_address,
+        "cra_phone": co.cra_phone,
+        "cra_site": co.cra_site,
     }}
 
 
@@ -368,8 +376,12 @@ async def list_recruiter_companies(
          "has_banner": bool(c.banner_object_id),
          "req_experience_years": c.req_experience_years,
          "req_min_age": c.req_min_age, "req_cdl_class": c.req_cdl_class,
-         "form_theme": c.form_theme, "header_color": c.header_color, "bg_color": c.bg_color,
-         "heading_color": c.heading_color}
+         "form_theme": c.form_theme, "surface_color": c.surface_color,
+         "header_color": c.header_color, "bg_color": c.bg_color,
+         "heading_color": c.heading_color,
+         "legal_address": c.legal_address, "compliance_email": c.compliance_email,
+         "cra_name": c.cra_name, "cra_address": c.cra_address,
+         "cra_phone": c.cra_phone, "cra_site": c.cra_site}
         for c in companies
     ]}
 
@@ -396,9 +408,17 @@ class BrandUpdate(BaseModel):
     req_cdl_class: str | None = Field(None, pattern=r"^[ABC]$")
     # Apply-form base theme + optional extra colours (hex or empty=default).
     form_theme: str | None = Field(None, pattern=r"^(light|dark)$")
+    surface_color: str | None = Field(None, pattern=r"^(#[0-9a-fA-F]{6})?$")
     header_color: str | None = Field(None, pattern=r"^(#[0-9a-fA-F]{6})?$")
     bg_color: str | None = Field(None, pattern=r"^(#[0-9a-fA-F]{6})?$")
     heading_color: str | None = Field(None, pattern=r"^(#[0-9a-fA-F]{6})?$")
+    # Legal/compliance details that fill the consent disclosures (blanks only).
+    legal_address: str | None = Field(None, max_length=200)
+    compliance_email: str | None = Field(None, max_length=120)
+    cra_name: str | None = Field(None, max_length=160)
+    cra_address: str | None = Field(None, max_length=200)
+    cra_phone: str | None = Field(None, max_length=40)
+    cra_site: str | None = Field(None, max_length=200)
 
 
 @router.patch("/companies/{company_id:int}/brand")

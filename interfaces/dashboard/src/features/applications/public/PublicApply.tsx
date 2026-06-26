@@ -8,7 +8,7 @@ import { Truck, Clock, ShieldCheck, CheckCircle2, ArrowLeft, ArrowRight, Lock } 
 import { STEPS } from './steps';
 import { deepSet, DISCLOSURE_VERSION, todayISO } from './lib';
 import type { Data } from './lib';
-import { brandTintStyle, onColorStyle } from './theme';
+import { brandTintStyle, onColorStyle, surfaceThemeStyle } from './theme';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api';
 
@@ -20,10 +20,15 @@ export interface Brand {
   headline: string; perks: string[]; has_banner: boolean;
   // Per-carrier pre-qual gate thresholds.
   req_experience_years: number; req_min_age: number; req_cdl_class: string;
-  // Base theme the form renders on: 'light' | 'dark'.
+  // Base theme the form renders on: 'light' | 'dark' (legacy).
   form_theme: string;
+  // Surface colour — derives the whole neutral palette (card/text/borders).
+  surface_color: string;
   // Optional extra colours (empty → base default).
   header_color: string; bg_color: string; heading_color: string;
+  // Legal/compliance details that fill the Step 8 consent disclosures.
+  legal_address: string; compliance_email: string;
+  cra_name: string; cra_address: string; cra_phone: string; cra_site: string;
 }
 
 // Recruiter preview: the authed dashboard wrapper passes the carrier brand
@@ -90,7 +95,8 @@ function Header({ compact, brand, token, logoUrl, bannerUrl }: {
   return (
     <header className="border-b border-border bg-card" style={hdrStyle}>
       {!compact && bannerSrc && (
-        <img src={bannerSrc} alt="" className="h-40 w-full object-cover sm:h-48" />
+        <img src={bannerSrc} alt=""
+          className="h-44 w-full object-cover object-center sm:h-56 lg:h-72" />
       )}
       {accent && <div className="h-1 w-full" style={{ backgroundColor: accent }} />}
       <div className="mx-auto max-w-5xl px-4 py-5 sm:px-6">
@@ -138,9 +144,13 @@ function Header({ compact, brand, token, logoUrl, bannerUrl }: {
   );
 }
 
-function Stepper({ current, max, onJump }: { current: number; max: number; onJump: (i: number) => void }) {
+function Stepper({ current, max, onJump, style }: {
+  current: number; max: number; onJump: (i: number) => void; style?: React.CSSProperties;
+}) {
   return (
-    <nav aria-label="Application progress" className="hidden lg:block">
+    // `style` carries readable text vars when a custom page Background is set,
+    // so the sidebar never goes dark-on-dark (the card stays base-themed).
+    <nav aria-label="Application progress" className="hidden lg:block" style={style}>
       <div className="sticky top-6 flex flex-col gap-1">
         {STEPS.map((s, i) => {
           const done = i < current, on = i === current, reachable = i <= max;
@@ -224,14 +234,18 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
       .then((j) => setBrand(j?.company || null))
       .catch(() => { /* generic look on failure */ });
   }, [token, preview]);
-  // Tint the primary UI to the carrier colour (button/stepper/progress/
-  // links), apply the carrier's base theme (light/dark) scoped to the form,
-  // and an optional custom page background.
-  const tint = brandTintStyle(brand?.brand_color);
-  const brandStyle: React.CSSProperties | undefined = brand?.bg_color
-    ? { ...(tint || {}), backgroundColor: brand.bg_color }
-    : tint;
-  const rootClass = `min-h-screen bg-background${brand?.form_theme === 'dark' ? ' dark' : ''}`;
+  // Compose the form's theme from carrier colours, all scoped to the form
+  // root: a derived neutral palette from the Surface colour (card / text /
+  // borders / muted), the accent tint (button/steps/links/ring), and an
+  // optional custom page background.  No `.dark` class — the Surface colour
+  // is the single base now.
+  const merged: React.CSSProperties = {
+    ...(surfaceThemeStyle(brand?.surface_color) || {}),
+    ...(brandTintStyle(brand?.brand_color) || {}),
+    ...(brand?.bg_color ? { backgroundColor: brand.bg_color } : {}),
+  };
+  const brandStyle: React.CSSProperties | undefined = Object.keys(merged).length ? merged : undefined;
+  const rootClass = 'min-h-screen bg-background';
 
   const [step, setStep] = useState(0);
   const [maxReached, setMaxReached] = useState(0);
@@ -287,7 +301,20 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
       return;
     }
     if (hasErrors) { setAttempted((a) => ({ ...a, [step]: true })); return; }
-    if (isLast) { submit(); return; }
+    if (isLast) {
+      // Final gate: EVERY step must be complete, not just this one — a driver
+      // may have jumped back via the stepper and blanked an earlier required
+      // field.  Bounce to the first incomplete step and reveal its errors.
+      const bad = STEPS.findIndex((s) => Object.keys(s.validate(data)).length > 0);
+      if (bad >= 0) {
+        setAttempted((a) => ({ ...a, [bad]: true }));
+        setStep(bad);
+        setTimeout(scrollUp, 30);
+        return;
+      }
+      submit();
+      return;
+    }
     const n = step + 1;
     setStep(n);
     setMaxReached((m) => Math.max(m, n));
@@ -332,9 +359,9 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
         </div>
       )}
       <Header brand={brand} token={token} logoUrl={preview?.logoUrl} bannerUrl={preview?.bannerUrl} />
-      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+      <main className={`mx-auto max-w-5xl px-4 py-6 sm:px-6${preview ? ' pb-32' : ''}`}>
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[15rem_1fr]">
-          <Stepper current={step} max={maxReached} onJump={jump} />
+          <Stepper current={step} max={maxReached} onJump={jump} style={onColorStyle(brand?.bg_color)} />
           <form ref={cardRef} onSubmit={next} noValidate className="rounded-lg border border-border bg-card">
             {/* Honeypot: off-screen + aria-hidden + not tabbable + a name no
                 autofiller targets, so a real applicant never fills it; a
@@ -342,20 +369,26 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
             <input type="text" name="contact_time" tabIndex={-1} autoComplete="off"
               aria-hidden="true" value={honeypot} onChange={(e) => setHoneypot(e.target.value)}
               style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} />
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <div className="flex flex-col gap-2 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs text-muted-foreground">Step {step + 1} of {STEPS.length}</p>
                 <h2 className="text-lg font-semibold text-foreground">{cur.title}</h2>
               </div>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1">
                 {STEPS.map((_, i) => (
-                  <span key={i} className={`h-1.5 w-5 rounded-full ${i < step ? 'bg-primary' : i === step ? 'bg-primary/60' : 'bg-muted'}`} />
+                  <span key={i} className={`h-1.5 w-5 rounded-full ${i <= step ? 'bg-primary' : 'bg-muted'}`} />
                 ))}
               </div>
             </div>
             <div className="px-5 py-5">
               <Render data={data} set={set} errors={visibleErrors}
-                req={brand ? { years: brand.req_experience_years, age: brand.req_min_age, cls: brand.req_cdl_class } : undefined} />
+                req={brand ? { years: brand.req_experience_years, age: brand.req_min_age, cls: brand.req_cdl_class } : undefined}
+                carrier={brand ? {
+                  name: brand.name, dot: brand.usdot_number, mc: brand.mc_number, phone: brand.phone,
+                  legal_address: brand.legal_address, compliance_email: brand.compliance_email,
+                  cra_name: brand.cra_name, cra_address: brand.cra_address,
+                  cra_phone: brand.cra_phone, cra_site: brand.cra_site,
+                } : undefined} />
               {submitError && (
                 <p className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                   <b>Submission failed.</b> {submitError}

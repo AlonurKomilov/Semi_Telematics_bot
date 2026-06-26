@@ -81,6 +81,7 @@ def _app_payload(**over):
         # (server-enforced in _validate_application), mirroring the form.
         "consents": {"truthful": True, "psp": True, "mvr": True,
                      "clearinghouse": True, "fcra": True, "drug": True,
+                     "employment_verification": True,
                      "sigMode": "type", "sigName": "Jane Roe"},
     }
     base.update(over)
@@ -1083,6 +1084,12 @@ class TestGateRequirements:
             assert (await c.patch(f"/api/applications/companies/{co.id}/brand",
                                   headers=headers, json={"form_theme": "blue"})).status_code == 422
 
+            # Surface colour (derives the whole neutral palette) round-trips.
+            assert b0["surface_color"] == ""
+            assert (await c.patch(f"/api/applications/companies/{co.id}/brand", headers=headers,
+                                  json={"surface_color": "#0f172a"})).status_code == 200
+            assert (await c.get(f"/api/applications/brand?token={link['token']}")).json()["company"]["surface_color"] == "#0f172a"
+
             # Extra colours: header band + page bg + heading round-trip; bad hex → 422.
             assert b0["header_color"] == "" and b0["bg_color"] == "" and b0["heading_color"] == ""
             assert (await c.patch(f"/api/applications/companies/{co.id}/brand", headers=headers,
@@ -1145,3 +1152,43 @@ class TestLinkEditDelete:
             assert (await c.delete(f"/api/applications/links/{foreign['id']}", headers=headers)).status_code == 404
             assert (await c.patch(f"/api/applications/links/{foreign['id']}", headers=headers,
                                   json={"label": "x"})).status_code == 404
+
+
+class TestConsentDocuments:
+    """Legal/compliance fields fill the FMCSA/FCRA disclosures, and the new
+    Employee-Verification (§391.23) is a REQUIRED consent."""
+
+    async def test_legal_fields_and_required_consent(self, api):
+        app, db = api
+        acct = await db.create_account("Doc Co")
+        co = await db.add_company(acct.id, "DC", display_name="Doc Carrier")
+        rec = await db.create_user(770001, acct.id, role=Role.RECRUITER)
+        headers = _recruiter_headers(rec, acct)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            # Recruiter fills the legal/compliance blanks.
+            r = await c.patch(f"/api/applications/companies/{co.id}/brand", headers=headers,
+                              json={"legal_address": "1 Main St, Cincinnati, OH 45215",
+                                    "compliance_email": "safety@x.com", "cra_name": "TR Information Services",
+                                    "cra_phone": "800-894-9141", "cra_address": "PO Box 780254, Orlando, FL",
+                                    "cra_site": "fullsearch.com"})
+            assert r.status_code == 200
+
+            # The public brand surfaces them so the form fills the disclosures.
+            link = await db.create_application_link(acct.id, company_id=co.id)
+            comp = (await c.get(f"/api/applications/brand?token={link['token']}")).json()["company"]
+            assert comp["legal_address"].startswith("1 Main St") and comp["cra_name"] == "TR Information Services"
+
+            # employment_verification is now REQUIRED — submit without it → 422.
+            missing = _app_payload(consents={"truthful": True, "psp": True, "mvr": True,
+                                             "clearinghouse": True, "fcra": True, "drug": True,
+                                             "sigMode": "type", "sigName": "Jane Roe"})
+            r2 = await c.post("/api/applications/apply",
+                              data={"link_token": link["token"], "application": missing}, files=_GOOD_FILES)
+            assert r2.status_code == 422 and "employment_verification" in r2.text
+
+            # With it → accepted (and stored).
+            r3 = await c.post("/api/applications/apply",
+                              data={"link_token": link["token"], "application": _app_payload()}, files=_GOOD_FILES)
+            assert r3.status_code == 200, r3.text
+            full = await db.get_driver_application(acct.id, r3.json()["application_id"])
+            assert full["consents"].get("employment_verification") is True

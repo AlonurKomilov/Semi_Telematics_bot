@@ -144,10 +144,17 @@ def build_dq_packet_pdf(
         ("Preferred role", x.get("preferredRole")),
     ], styles))
 
-    # Employment (10-year history)
+    # Employment (10-year history) — §391.21(b).  An applicant may attest to
+    # no employment in the window; capture that + their account of the time.
+    work = app.get("work") or {}
     jobs = app.get("employment") or []
-    _section(story, styles, f"Employment history ({len(jobs)})")
-    if jobs:
+    if str(work.get("employed")) == "no":
+        _section(story, styles, "Employment history")
+        story.append(Paragraph("Applicant attests to no employment (incl. self-employment) in the past 10 years.", styles["DQBody"]))
+        if work.get("explain"):
+            story.append(Paragraph(f"<b>Account for this period:</b> {_esc(work.get('explain'))}", styles["DQBody"]))
+    elif jobs:
+        _section(story, styles, f"Employment history ({len(jobs)})")
         rows = [[Paragraph("<b>Employer</b>", styles["DQSmall"]), Paragraph("<b>Dates</b>", styles["DQSmall"]),
                  Paragraph("<b>FMCSA</b>", styles["DQSmall"]), Paragraph("<b>Reason / gap</b>", styles["DQSmall"])]]
         for j in jobs:
@@ -167,6 +174,7 @@ def build_dq_packet_pdf(
         ]))
         story.append(t)
     else:
+        _section(story, styles, "Employment history")
         story.append(Paragraph("None provided.", styles["DQBody"]))
 
     # Incidents
@@ -183,9 +191,11 @@ def build_dq_packet_pdf(
     cons = app.get("consents") or {}
     _section(story, styles, "Authorizations & certification")
     consent_rows = [
-        ("FMCSA PSP", cons.get("psp")), ("Motor Vehicle Record", cons.get("mvr")),
+        ("PSP Disclosure & Authorization", cons.get("psp")), ("Motor Vehicle Record", cons.get("mvr")),
         ("Drug & Alcohol Clearinghouse", cons.get("clearinghouse")),
-        ("Background check (FCRA)", cons.get("fcra")), ("Pre-employment drug screen", cons.get("drug")),
+        ("Consumer report / FCRA disclosure", cons.get("fcra")),
+        ("Employee Verification (49 CFR §391.23)", cons.get("employment_verification")),
+        ("Pre-employment drug screen", cons.get("drug")),
         ("Truthful & complete certification", cons.get("truthful")),
     ]
     story.append(_kv([(k, "✓ Authorized" if v else "✗ Not given") for k, v in consent_rows], styles))

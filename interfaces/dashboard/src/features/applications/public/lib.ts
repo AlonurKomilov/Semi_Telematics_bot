@@ -92,11 +92,13 @@ export const YES_NO = [
 export const YEARS_AT_ADDR = ['<1', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10+'];
 export const CDL_CLASSES = ['A', 'B', 'C'];
 
+// The individual CDL endorsement codes (49 CFR §383.153).  'X' (the combined
+// tank + hazmat code) is intentionally omitted: a driver who holds both just
+// checks H and N, so listing X too would double-count the same qualification.
 export const ENDORSEMENTS = [
   { code: 'H', label: 'Hazmat' },
   { code: 'N', label: 'Tank' },
   { code: 'T', label: 'Doubles / Triples' },
-  { code: 'X', label: 'Tank + Hazmat' },
   { code: 'P', label: 'Passenger' },
   { code: 'S', label: 'School Bus' },
 ];
@@ -104,9 +106,12 @@ export const ENDORSEMENTS = [
 export const YEARS_CDL = ['1', '2', '3', '4', '5', '6-9', '10-14', '15-19', '20+'];
 export const TOTAL_MILES = ['<100,000', '100k–250k', '250k–500k', '500k–1M', '1M–2M', '2M+'];
 
+// Physical trailer / equipment types the driver has operated.  Deliberately
+// NOT "Hazmat" — that's a cargo class, captured by the H endorsement + the
+// Step 3 Hazmat-clearance field, so it doesn't belong in an equipment list.
 export const EQUIPMENT_TYPES = [
   'Dry van', 'Reefer', 'Flatbed', 'Step deck', 'Tanker', 'Hopper',
-  'Auto hauler', 'Doubles', 'Triples', 'Hazmat', 'Heavy haul / oversize',
+  'Auto hauler', 'Doubles', 'Triples', 'Heavy haul / oversize',
   'Intermodal / container',
 ];
 export const REGIONS = [
@@ -139,7 +144,7 @@ export const HEARD_SOURCES = ['Indeed', 'Google Search', 'Facebook', 'TikTok', '
 
 // Disclosure text version — sent to the server so the certified copy is
 // auditable.  Bump when the legal text below (Step 8) changes.
-export const DISCLOSURE_VERSION = '2026-06-1';
+export const DISCLOSURE_VERSION = '2026-06-22';
 
 // ── blank repeater items ────────────────────────────────────────────
 export const blankJob = (): Data => ({

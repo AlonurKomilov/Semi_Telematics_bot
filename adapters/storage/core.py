@@ -320,9 +320,16 @@ class _DatabaseCore:
             req_min_age=int(d.get("req_min_age") or 21),
             req_cdl_class=str(d.get("req_cdl_class") or "A"),
             form_theme=str(d.get("form_theme") or "light"),
+            surface_color=str(d.get("surface_color") or ""),
             header_color=str(d.get("header_color") or ""),
             bg_color=str(d.get("bg_color") or ""),
             heading_color=str(d.get("heading_color") or ""),
+            legal_address=str(d.get("legal_address") or ""),
+            compliance_email=str(d.get("compliance_email") or ""),
+            cra_name=str(d.get("cra_name") or ""),
+            cra_address=str(d.get("cra_address") or ""),
+            cra_phone=str(d.get("cra_phone") or ""),
+            cra_site=str(d.get("cra_site") or ""),
         )
 
     def _row_to_user(self, row) -> User:

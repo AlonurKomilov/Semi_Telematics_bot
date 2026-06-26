@@ -27,7 +27,10 @@ MAX_ARRAY = 30
 
 # Consents that authorize the FMCSA/FCRA background queries the carrier is
 # legally required to obtain.  Keys mirror the public form's CONSENTS list.
-REQUIRED_CONSENTS = ("psp", "mvr", "clearinghouse", "fcra", "drug", "truthful")
+# ``employment_verification`` is the 49 CFR §391.23 prior-employer records
+# release (added 2026-06-22 with the full disclosure documents).
+REQUIRED_CONSENTS = ("psp", "mvr", "clearinghouse", "fcra", "drug", "truthful",
+                     "employment_verification")
 
 # Every pre-hire check a recruiter can record.  ``REQUIRED_VETTING`` is the
 # subset that must all be marked done before an applicant can be approved

@@ -98,12 +98,24 @@ class Company:
     req_experience_years: int = 1
     req_min_age: int = 21
     req_cdl_class: str = "A"
-    # Apply-form base theme: 'light' (default) or 'dark'.
+    # Apply-form base theme: 'light' (default) or 'dark'.  Legacy — superseded
+    # by ``surface_color`` (derives the whole neutral palette); kept for
+    # back-compat.
     form_theme: str = "light"
+    # Apply-form base surface (card + page); text/borders/muted are derived
+    # from it client-side.  Empty → default light theme.
+    surface_color: str = ""
     # Optional extra apply-form colours (empty → base-theme default).
     header_color: str = ""
     bg_color: str = ""
     heading_color: str = ""
+    # Legal/compliance details that fill the apply-form consent disclosures.
+    legal_address: str = ""
+    compliance_email: str = ""
+    cra_name: str = ""
+    cra_address: str = ""
+    cra_phone: str = ""
+    cra_site: str = ""
 
 @dataclass
 class User:

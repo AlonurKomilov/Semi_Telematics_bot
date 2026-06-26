@@ -6,16 +6,21 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Monitor, Smartphone } from 'lucide-react';
+import { Monitor, Smartphone, ImagePlus } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { Button } from '../../components/ui/button';
+import { toneClasses } from '../../lib/status';
 import PublicApply, { type Brand } from './public/PublicApply';
-import { applyPublicFormTheme } from './public/theme';
+import { applyPublicFormTheme, surfaceContrastWeak } from './public/theme';
 
-// Live theme editor that floats over the preview — adjust the carrier's
-// accent + light/dark base and watch the form re-tint in real time, then
-// save.  Rendered OUTSIDE the form root, so it stays on the dashboard's
-// (light) theme and is always legible even over a dark-base preview.
+// A staged (not-yet-saved) logo/hero change: a picked file (with its preview
+// object URL), an explicit removal, or null = no change.  Committed on Save.
+type AssetPending = { file: File; url: string } | 'remove' | null;
+
+// Live design editor that floats over the preview — swap the carrier's logo
+// and hero photo and adjust every brand colour, watching the form update in
+// real time, then save.  Rendered OUTSIDE the form root, so it stays on the
+// dashboard's (light) theme and is always legible even over a dark surface.
 function Swatch({ label, value, onChange }: { label: string; value: string; onChange: (c: string) => void }) {
   return (
     <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -27,10 +32,35 @@ function Swatch({ label, value, onChange }: { label: string; value: string; onCh
   );
 }
 
-function PreviewThemeBar({ brand, saving, device, onColor, onBase, onDevice, onSave }: {
+// A logo / hero image control: a small thumbnail that opens a file picker to
+// upload-or-replace, plus a × to remove.  Like the colour swatches, a pick or
+// remove is STAGED — shown live but only written to the carrier on Save.
+function AssetControl({ label, url, present, busy, onPick, onClear }: {
+  label: string; url?: string; present: boolean; busy: boolean;
+  onPick: (f: File) => void; onClear: () => void;
+}) {
+  return (
+    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      {label}
+      <label title={`${present ? 'Replace' : 'Upload'} ${label.toLowerCase()}`}
+        className={`inline-flex h-7 w-9 items-center justify-center overflow-hidden rounded border border-border bg-card ${busy ? 'opacity-50' : 'cursor-pointer hover:border-primary'}`}>
+        <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={busy}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) onPick(f); e.currentTarget.value = ''; }} />
+        {url ? <img src={url} alt="" className="h-full w-full object-contain" /> : <ImagePlus size={14} />}
+      </label>
+      {present && <button type="button" onClick={onClear} disabled={busy} title="remove" className="text-2xs hover:text-danger disabled:opacity-50">×</button>}
+    </span>
+  );
+}
+
+function PreviewThemeBar({ brand, saving, device, logoUrl, bannerUrl, logoPresent, bannerPresent, onColor, onDevice, onAsset, onClearAsset, onSave }: {
   brand: Brand; saving: boolean; device: 'desktop' | 'mobile';
-  onColor: (key: 'brand_color' | 'header_color' | 'bg_color' | 'heading_color', c: string) => void;
-  onBase: (t: string) => void; onDevice: (d: 'desktop' | 'mobile') => void; onSave: () => void;
+  logoUrl?: string; bannerUrl?: string; logoPresent: boolean; bannerPresent: boolean;
+  onColor: (key: 'brand_color' | 'surface_color' | 'header_color' | 'bg_color' | 'heading_color', c: string) => void;
+  onDevice: (d: 'desktop' | 'mobile') => void;
+  onAsset: (kind: 'logo' | 'banner', f: File) => void;
+  onClearAsset: (kind: 'logo' | 'banner') => void;
+  onSave: () => void;
 }) {
   return (
     <div className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-card px-4 py-2.5 text-foreground shadow-lg">
@@ -46,23 +76,22 @@ function PreviewThemeBar({ brand, saving, device, onColor, onBase, onDevice, onS
         </span>
       </span>
       <span className="h-5 w-px bg-border" aria-hidden="true" />
+      <span className="text-xs font-medium text-muted-foreground">Brand</span>
+      <AssetControl label="Logo" url={logoUrl} present={logoPresent} busy={saving}
+        onPick={(f) => onAsset('logo', f)} onClear={() => onClearAsset('logo')} />
+      <AssetControl label="Hero" url={bannerUrl} present={bannerPresent} busy={saving}
+        onPick={(f) => onAsset('banner', f)} onClear={() => onClearAsset('banner')} />
+      <span className="h-5 w-px bg-border" aria-hidden="true" />
       <span className="text-xs font-medium text-muted-foreground">Theme</span>
+      <Swatch label="Surface" value={brand.surface_color} onChange={(c) => onColor('surface_color', c)} />
       <Swatch label="Accent" value={brand.brand_color} onChange={(c) => onColor('brand_color', c)} />
       <Swatch label="Header" value={brand.header_color} onChange={(c) => onColor('header_color', c)} />
       <Swatch label="Background" value={brand.bg_color} onChange={(c) => onColor('bg_color', c)} />
       <Swatch label="Heading" value={brand.heading_color} onChange={(c) => onColor('heading_color', c)} />
-      <span className="flex items-center gap-2 text-xs text-muted-foreground">
-        Base
-        <span className="inline-flex overflow-hidden rounded-md border border-border">
-          {(['light', 'dark'] as const).map((t) => (
-            <button key={t} type="button" onClick={() => onBase(t)}
-              className={`px-2.5 py-1 text-xs capitalize ${brand.form_theme === t ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground hover:bg-muted/70'}`}>
-              {t}
-            </button>
-          ))}
-        </span>
-      </span>
-      <Button size="sm" onClick={onSave} disabled={saving}>{saving ? '…' : 'Save theme'}</Button>
+      {surfaceContrastWeak(brand.surface_color) && (
+        <span className={`rounded px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}>Surface is mid-tone — text may be low-contrast</span>
+      )}
+      <Button size="sm" onClick={onSave} disabled={saving}>{saving ? '…' : 'Save'}</Button>
     </div>
   );
 }
@@ -72,7 +101,9 @@ interface RawCompany {
   website: string; phone: string; mc_number: string; usdot_number: string;
   headline: string; perks: string; has_banner: boolean;
   req_experience_years: number; req_min_age: number; req_cdl_class: string;
-  form_theme: string; header_color: string; bg_color: string; heading_color: string;
+  form_theme: string; surface_color: string; header_color: string; bg_color: string; heading_color: string;
+  legal_address: string; compliance_email: string;
+  cra_name: string; cra_address: string; cra_phone: string; cra_site: string;
 }
 
 export default function ApplyPreview() {
@@ -90,6 +121,14 @@ export default function ApplyPreview() {
   const [bannerUrl, setBannerUrl] = useState<string | undefined>();
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(false);
+  // Staged logo/hero edits — shown live but only written to the carrier on
+  // Save (like the colours), so a recruiter can preview "how does it look
+  // without the logo?" without it going live until they commit.
+  const [logoPending, setLogoPending] = useState<AssetPending>(null);
+  const [bannerPending, setBannerPending] = useState<AssetPending>(null);
+  // Object URLs minted from picked files — revoked on unmount.
+  const madeUrls = useRef<string[]>([]);
+  useEffect(() => () => { madeUrls.current.forEach(URL.revokeObjectURL); }, []);
   // Device view + iframe-context detection.  When THIS preview is rendered
   // inside the mobile iframe (window.self !== top), it shows just the form
   // (no toolbar) — and the narrow iframe gives the form a real phone
@@ -99,6 +138,8 @@ export default function ApplyPreview() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const brandRef = useRef<Brand | null>(brand);
   brandRef.current = brand;
+  const pendRef = useRef<{ logo: AssetPending; banner: AssetPending }>({ logo: logoPending, banner: bannerPending });
+  pendRef.current = { logo: logoPending, banner: bannerPending };
 
   // Stream live theme edits into the mobile iframe so it updates in real
   // time, exactly like the desktop view.  Parent → iframe via postMessage;
@@ -114,19 +155,32 @@ export default function ApplyPreview() {
     if (inFrame) return;
     const onMsg = (e: MessageEvent) => {
       if (e.origin === ORIGIN && e.data?.type === 'preview-ready') {
-        iframeRef.current?.contentWindow?.postMessage(
-          { type: 'preview-brand', brand: brandRef.current }, ORIGIN);
+        const w = iframeRef.current?.contentWindow;
+        w?.postMessage({ type: 'preview-brand', brand: brandRef.current }, ORIGIN);
+        // A freshly-mounted mobile iframe loads the SAVED images itself — also
+        // re-send any STAGED change so unsaved edits show there too.
+        (['logo', 'banner'] as const).forEach((kind) => {
+          const p = pendRef.current[kind];
+          if (p) w?.postMessage({ type: 'preview-asset', kind, blob: p === 'remove' ? null : p.file }, ORIGIN);
+        });
       }
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
   }, [inFrame, ORIGIN]);
-  // Frame mode: receive live brand from the parent + announce readiness.
+  // Frame mode: receive live brand + asset swaps from the parent + announce
+  // readiness.  Images arrive as raw Blobs (structured-clone copies them
+  // across the document boundary — a parent `blob:` URL wouldn't resolve
+  // here), so the frame object-URLs them itself.
   useEffect(() => {
     if (!inFrame) return;
     const onMsg = (e: MessageEvent) => {
-      if (e.origin === ORIGIN && e.data?.type === 'preview-brand' && e.data.brand) {
-        setBrand(e.data.brand);
+      if (e.origin !== ORIGIN) return;
+      if (e.data?.type === 'preview-brand' && e.data.brand) setBrand(e.data.brand);
+      if (e.data?.type === 'preview-asset') {
+        const { kind, blob } = e.data as { kind: 'logo' | 'banner'; blob: Blob | null };
+        const u = blob ? URL.createObjectURL(blob) : undefined;
+        if (kind === 'logo') setLogoUrl(u); else setBannerUrl(u);
       }
     };
     window.addEventListener('message', onMsg);
@@ -134,22 +188,72 @@ export default function ApplyPreview() {
     return () => window.removeEventListener('message', onMsg);
   }, [inFrame, ORIGIN]);
 
-  // Live edits to any colour / base re-render the form immediately; Save
-  // persists the whole theme to the carrier.
-  const onColor = (key: 'brand_color' | 'header_color' | 'bg_color' | 'heading_color', c: string) =>
+  // Live edits to any colour re-render the form immediately; Save persists the
+  // whole brand (colours + logo + hero) to the carrier in one commit.
+  const onColor = (key: 'brand_color' | 'surface_color' | 'header_color' | 'bg_color' | 'heading_color', c: string) =>
     setBrand((b) => (b ? { ...b, [key]: c } : b));
-  const setBase = (t: string) => setBrand((b) => (b ? { ...b, form_theme: t } : b));
+
+  // Stage a logo/hero change locally + stream it into the mobile iframe (as a
+  // raw Blob — a parent blob: URL wouldn't resolve across the frame).  Nothing
+  // touches the server until Save.
+  const setPending = (kind: 'logo' | 'banner', val: AssetPending) => {
+    const cur = kind === 'logo' ? logoPending : bannerPending;
+    if (cur && cur !== 'remove') URL.revokeObjectURL(cur.url);
+    (kind === 'logo' ? setLogoPending : setBannerPending)(val);
+    if (device === 'mobile') {
+      const blob = val && val !== 'remove' ? val.file : null;
+      iframeRef.current?.contentWindow?.postMessage({ type: 'preview-asset', kind, blob }, ORIGIN);
+    }
+  };
+  const pickAsset = (kind: 'logo' | 'banner', f: File) => {
+    if (f.size > 2 * 1024 * 1024) { toast.error('Image is too large — max 2 MB.'); return; }
+    const url = URL.createObjectURL(f); madeUrls.current.push(url);
+    setPending(kind, { file: f, url });
+  };
+  const clearAsset = (kind: 'logo' | 'banner') => {
+    // Removing a SAVED image stages a deletion; discarding an only-staged
+    // upload just reverts to nothing (no deletion to commit).
+    const savedHas = kind === 'logo' ? brand?.has_logo : brand?.has_banner;
+    setPending(kind, savedHas ? 'remove' : null);
+  };
+
   const saveTheme = async () => {
     if (!brand) return;
     setSaving(true);
     try {
+      // 1. Commit staged logo/hero on their own (multipart) endpoints.
+      for (const kind of ['logo', 'banner'] as const) {
+        const p = kind === 'logo' ? logoPending : bannerPending;
+        if (!p) continue;
+        if (p === 'remove') {
+          const res = await apiFetch(`/applications/companies/${companyId}/${kind}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error(kind === 'logo' ? 'Could not remove the logo.' : 'Could not remove the hero photo.');
+        } else {
+          const fd = new FormData(); fd.append('file', p.file);
+          const res = await apiFetch(`/applications/companies/${companyId}/${kind}`, { method: 'POST', body: fd });
+          if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.detail || 'Image upload failed.'); }
+        }
+      }
+      // 2. Commit the colours.
       await apiJSON(`/applications/companies/${companyId}/brand`, {
         method: 'PATCH',
-        body: { brand_color: brand.brand_color, form_theme: brand.form_theme,
+        body: { brand_color: brand.brand_color, surface_color: brand.surface_color,
                 header_color: brand.header_color, bg_color: brand.bg_color,
                 heading_color: brand.heading_color },
       });
-      toast.success('Theme saved');
+      // 3. Fold now-saved images into the originals + clear staging (keep the
+      // staged object URL as the new live image — it's revoked on unmount).
+      if (logoPending) {
+        setLogoUrl(logoPending === 'remove' ? undefined : logoPending.url);
+        setBrand((b) => (b ? { ...b, has_logo: logoPending !== 'remove' } : b));
+        setLogoPending(null);
+      }
+      if (bannerPending) {
+        setBannerUrl(bannerPending === 'remove' ? undefined : bannerPending.url);
+        setBrand((b) => (b ? { ...b, has_banner: bannerPending !== 'remove' } : b));
+        setBannerPending(null);
+      }
+      toast.success('Saved');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Save failed');
     } finally {
@@ -173,8 +277,10 @@ export default function ApplyPreview() {
           perks: (c.perks || '').split('\n').map((s) => s.trim()).filter(Boolean),
           has_banner: c.has_banner,
           req_experience_years: c.req_experience_years, req_min_age: c.req_min_age, req_cdl_class: c.req_cdl_class,
-          form_theme: c.form_theme, header_color: c.header_color, bg_color: c.bg_color,
+          form_theme: c.form_theme, surface_color: c.surface_color, header_color: c.header_color, bg_color: c.bg_color,
           heading_color: c.heading_color,
+          legal_address: c.legal_address, compliance_email: c.compliance_email,
+          cra_name: c.cra_name, cra_address: c.cra_address, cra_phone: c.cra_phone, cra_site: c.cra_site,
         });
         const loadImg = async (path: string, set: (u: string) => void) => {
           try {
@@ -196,14 +302,22 @@ export default function ApplyPreview() {
   if (err) return <div className="p-8 text-sm text-muted-foreground">{err}</div>;
   if (!brand) return <div className="p-8 text-sm text-muted-foreground">Loading preview…</div>;
 
+  // What the form should SHOW right now = the staged change if any, else the
+  // saved image.  `present` (image exists, so offer a × ) follows the same rule.
+  const logoDisp = logoPending === 'remove' ? undefined : logoPending ? logoPending.url : logoUrl;
+  const bannerDisp = bannerPending === 'remove' ? undefined : bannerPending ? bannerPending.url : bannerUrl;
+  const logoPresent = logoPending === 'remove' ? false : logoPending ? true : brand.has_logo;
+  const bannerPresent = bannerPending === 'remove' ? false : bannerPending ? true : brand.has_banner;
+
   // Inside the mobile iframe: render JUST the form (no toolbar).  The narrow
   // iframe is its own viewport, so the form's mobile breakpoints fire for real.
+  // Its logo/banner are driven by the parent's postMessage stream (above).
   if (inFrame) return <PublicApply preview={{ brand, logoUrl, bannerUrl }} />;
 
   return (
     <>
       {device === 'desktop' ? (
-        <PublicApply preview={{ brand, logoUrl, bannerUrl }} />
+        <PublicApply preview={{ brand, logoUrl: logoDisp, bannerUrl: bannerDisp }} />
       ) : (
         <div className="flex min-h-screen justify-center bg-muted/40 py-8">
           {/* A real iframe at phone width → the form sees a phone viewport.
@@ -213,7 +327,9 @@ export default function ApplyPreview() {
         </div>
       )}
       <PreviewThemeBar brand={brand} saving={saving} device={device}
-        onColor={onColor} onBase={setBase} onDevice={setDevice} onSave={saveTheme} />
+        logoUrl={logoDisp} bannerUrl={bannerDisp} logoPresent={logoPresent} bannerPresent={bannerPresent}
+        onColor={onColor} onDevice={setDevice}
+        onAsset={pickAsset} onClearAsset={clearAsset} onSave={saveTheme} />
     </>
   );
 }

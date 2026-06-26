@@ -2,7 +2,8 @@
 //
 // Each step is { title, sub, Render, validate }.  Render reads/writes the
 // shared `data` object by path; validate returns an error map (empty = ok).
-import { Plus, Trash2, ShieldCheck } from 'lucide-react';
+import { useState } from 'react';
+import { Plus, Trash2, ShieldCheck, ChevronDown, FileText } from 'lucide-react';
 import {
   deepGet, V, run, US_STATES, YES_NO, YEARS_AT_ADDR, CDL_CLASSES, ENDORSEMENTS,
   YEARS_CDL, TOTAL_MILES, EQUIPMENT_TYPES, REGIONS, PREFERRED_ROLE,
@@ -13,6 +14,8 @@ import type { Data, Errors } from './lib';
 import {
   Field, TextInput, TextArea, SelectInput, Choices, Check_, Chip, DocUpload, SignatureBlock,
 } from './controls';
+import { pspDisclosure, fcraDisclosure, employmentDisclosure } from './disclosures';
+import type { CarrierLegal, Disclosure, Block } from './disclosures';
 
 export interface StepDef {
   title: string;
@@ -27,6 +30,8 @@ interface RenderProps {
   set: (path: string, value: unknown) => void;
   errors: Errors;
   req?: GateReq;
+  // Carrier legal/contact details that fill the Step 8 consent disclosures.
+  carrier?: CarrierLegal;
 }
 
 const grid = 'grid grid-cols-1 gap-4 sm:grid-cols-2';
@@ -90,9 +95,17 @@ const Step2: StepDef = {
     if (V.required(p.state)) e['personal.state'] = 'Required';
     const zip = run(p.zip, [V.required, V.zip]); if (zip) e['personal.zip'] = zip;
     if (V.required(p.yearsAtAddr)) e['personal.yearsAtAddr'] = 'Required';
-    // FMCSA: 3-year residence history when current address < 3 years.
-    if (needsAddressHistory(p.yearsAtAddr) && (!Array.isArray(d.addressHistory) || d.addressHistory.length === 0))
-      e['addressHistory._'] = 'Add your previous address(es) to cover the last 3 years';
+    // FMCSA: 3-year residence history when current address < 3 years.  Each
+    // previous address must carry a street + the dates it covers.
+    if (needsAddressHistory(p.yearsAtAddr)) {
+      const hist: Data[] = Array.isArray(d.addressHistory) ? d.addressHistory : [];
+      if (hist.length === 0) e['addressHistory._'] = 'Add your previous address(es) to cover the last 3 years';
+      hist.forEach((a, i) => {
+        if (V.required(a.addr1)) e[`addressHistory.${i}.addr1`] = 'Required';
+        if (V.required(a.from)) e[`addressHistory.${i}.from`] = 'Required';
+        if (V.required(a.to)) e[`addressHistory.${i}.to`] = 'Required';
+      });
+    }
     return e;
   },
   Render: ({ data, set, errors }) => {
@@ -173,11 +186,11 @@ const Step2: StepDef = {
                       className="text-muted-foreground hover:text-destructive"><Trash2 size={14} /></button>
                   </div>
                   <div className={grid}>
-                    <Field label="Street" className={full}><TextInput value={a.addr1} onChange={(v) => setHist(hist.map((x, idx) => idx === i ? { ...x, addr1: v } : x))} /></Field>
+                    <Field label="Street" className={full} required error={errors[`addressHistory.${i}.addr1`]}><TextInput value={a.addr1} onChange={(v) => setHist(hist.map((x, idx) => idx === i ? { ...x, addr1: v } : x))} error={!!errors[`addressHistory.${i}.addr1`]} /></Field>
                     <Field label="City"><TextInput value={a.city} onChange={(v) => setHist(hist.map((x, idx) => idx === i ? { ...x, city: v } : x))} /></Field>
                     <Field label="State"><SelectInput value={a.state} onChange={(v) => setHist(hist.map((x, idx) => idx === i ? { ...x, state: v } : x))} options={US_STATES} mono /></Field>
-                    <Field label="From"><TextInput type="month" value={a.from} onChange={(v) => setHist(hist.map((x, idx) => idx === i ? { ...x, from: v } : x))} mono /></Field>
-                    <Field label="To"><TextInput type="month" value={a.to} onChange={(v) => setHist(hist.map((x, idx) => idx === i ? { ...x, to: v } : x))} mono /></Field>
+                    <Field label="From" required error={errors[`addressHistory.${i}.from`]}><TextInput type="month" value={a.from} onChange={(v) => setHist(hist.map((x, idx) => idx === i ? { ...x, from: v } : x))} mono error={!!errors[`addressHistory.${i}.from`]} /></Field>
+                    <Field label="To" required error={errors[`addressHistory.${i}.to`]}><TextInput type="month" value={a.to} onChange={(v) => setHist(hist.map((x, idx) => idx === i ? { ...x, to: v } : x))} mono error={!!errors[`addressHistory.${i}.to`]} /></Field>
                   </div>
                 </div>
               ))}
@@ -339,6 +352,15 @@ const Step5: StepDef = {
   title: 'Employment History', sub: 'Last 10 years · FMCSA',
   validate: (d) => {
     const e: Errors = {};
+    const employed = (d.work || {}).employed;
+    if (!employed) { e['work.employed'] = 'Required'; return e; }
+    // Attested no employment in the window → just require the "account for
+    // the time" note (FMCSA still needs the period explained); no job list.
+    if (employed === 'no') {
+      if (V.required((d.work || {}).explain)) e['work.explain'] = 'Required';
+      return e;
+    }
+    // Employed → the 10-year history is required and each row is validated.
     const jobs: Data[] = d.employment || [];
     if (jobs.length === 0) { e['employment._'] = 'Add at least one position'; return e; }
     jobs.forEach((j, i) => {
@@ -353,8 +375,24 @@ const Step5: StepDef = {
     const jobs: Data[] = data.employment || [];
     const setJobs = (next: Data[]) => set('employment', next);
     const upd = (i: number, key: string, val: unknown) => setJobs(jobs.map((j, idx) => idx === i ? { ...j, [key]: val } : j));
+    const work = data.work || {};
+    const employed = work.employed;
+    // Selecting "no" clears any stray employer rows so the stored record can't
+    // contradict the attestation (no "no employment" alongside a job list).
+    const onGate = (v: string) => { set('work.employed', v); if (v === 'no') setJobs([]); };
     return (
       <div className="flex flex-col gap-4">
+        <Field label="Have you been employed (including self-employment) at any point in the last 10 years?"
+          required error={errors['work.employed']}>
+          <Choices value={employed} onChange={onGate} options={YES_NO} name="work-employed" />
+        </Field>
+        {employed === 'no' && (
+          <Field label="Account for this period" hint="FMCSA — schooling, military, unemployment, etc." required error={errors['work.explain']}>
+            <TextArea value={work.explain} onChange={(v) => set('work.explain', v)} rows={4}
+              placeholder="Briefly describe what you were doing during this time…" />
+          </Field>
+        )}
+        {employed === 'yes' && (<>
         <p className="text-sm text-muted-foreground">List the last 10 years of employment, most recent first. Account for any gaps.</p>
         {errors['employment._'] && <p className="text-xs text-destructive">{errors['employment._']}</p>}
         {jobs.map((j, i) => (
@@ -401,6 +439,7 @@ const Step5: StepDef = {
           className="inline-flex w-fit items-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-muted">
           <Plus size={16} /> {jobs.length === 0 ? 'Add first employer' : 'Add another employer'}
         </button>
+        </>)}
       </div>
     );
   },
@@ -414,6 +453,19 @@ const Step6: StepDef = {
     const inc = d.incidents || {};
     for (const k of ['hasAccidents', 'hasViolations', 'hasSuspensions', 'hasDenial'])
       if (!inc[k]) e[`incidents.${k}`] = 'Required';
+    // A disclosed "yes" must be backed by detail — ≥1 dated record, or a note.
+    if (inc.hasAccidents === 'yes') {
+      const acc: Data[] = inc.accidents || [];
+      if (acc.length === 0) e['incidents.accidents._'] = 'Add the accident(s) you disclosed';
+      acc.forEach((a, i) => { if (V.required(a.date)) e[`incidents.accidents.${i}.date`] = 'Required'; });
+    }
+    if (inc.hasViolations === 'yes') {
+      const vio: Data[] = inc.violations || [];
+      if (vio.length === 0) e['incidents.violations._'] = 'Add the violation(s) you disclosed';
+      vio.forEach((a, i) => { if (V.required(a.date)) e[`incidents.violations.${i}.date`] = 'Required'; });
+    }
+    if ((inc.hasSuspensions === 'yes' || inc.hasDenial === 'yes') && V.required(inc.suspensionsDesc))
+      e['incidents.suspensionsDesc'] = 'Required';
     return e;
   },
   Render: ({ data, set, errors }) => {
@@ -438,12 +490,13 @@ const Step6: StepDef = {
               <span className={sectionTitle}>Accident records</span>
               <button type="button" onClick={() => setAcc([...accidents, blankAccident()])} className="inline-flex items-center gap-1 text-xs text-primary hover:underline"><Plus size={14} /> Add</button>
             </div>
+            {errors['incidents.accidents._'] && <p className="mb-2 text-xs text-destructive">{errors['incidents.accidents._']}</p>}
             <div className="flex flex-col gap-4">
               {accidents.map((a, i) => (
                 <div key={i} className="rounded border border-border/60 p-3">
                   <div className="mb-2 flex justify-end"><button type="button" onClick={() => setAcc(accidents.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-destructive"><Trash2 size={14} /></button></div>
                   <div className={grid}>
-                    <Field label="Date"><TextInput type="date" value={a.date} onChange={(v) => updAcc(i, 'date', v)} mono /></Field>
+                    <Field label="Date" required error={errors[`incidents.accidents.${i}.date`]}><TextInput type="date" value={a.date} onChange={(v) => updAcc(i, 'date', v)} mono error={!!errors[`incidents.accidents.${i}.date`]} /></Field>
                     <Field label="Location"><TextInput value={a.location} onChange={(v) => updAcc(i, 'location', v)} /></Field>
                     <Field label="Type"><SelectInput value={a.type} onChange={(v) => updAcc(i, 'type', v)} options={ACCIDENT_TYPES} /></Field>
                     <Field label="Injuries / fatalities"><SelectInput value={a.injuries} onChange={(v) => updAcc(i, 'injuries', v)} options={INJURY_LEVELS} /></Field>
@@ -462,12 +515,13 @@ const Step6: StepDef = {
               <span className={sectionTitle}>Violation records</span>
               <button type="button" onClick={() => setVio([...violations, blankViolation()])} className="inline-flex items-center gap-1 text-xs text-primary hover:underline"><Plus size={14} /> Add</button>
             </div>
+            {errors['incidents.violations._'] && <p className="mb-2 text-xs text-destructive">{errors['incidents.violations._']}</p>}
             <div className="flex flex-col gap-4">
               {violations.map((a, i) => (
                 <div key={i} className="rounded border border-border/60 p-3">
                   <div className="mb-2 flex justify-end"><button type="button" onClick={() => setVio(violations.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-destructive"><Trash2 size={14} /></button></div>
                   <div className={grid}>
-                    <Field label="Date"><TextInput type="date" value={a.date} onChange={(v) => updVio(i, 'date', v)} mono /></Field>
+                    <Field label="Date" required error={errors[`incidents.violations.${i}.date`]}><TextInput type="date" value={a.date} onChange={(v) => updVio(i, 'date', v)} mono error={!!errors[`incidents.violations.${i}.date`]} /></Field>
                     <Field label="State"><SelectInput value={a.state} onChange={(v) => updVio(i, 'state', v)} options={US_STATES} mono /></Field>
                     <Field label="Charge"><TextInput value={a.charge} onChange={(v) => updVio(i, 'charge', v)} /></Field>
                     <Field label="Penalty"><TextInput value={a.penalty} onChange={(v) => updVio(i, 'penalty', v)} /></Field>
@@ -481,8 +535,8 @@ const Step6: StepDef = {
         {gate('hasSuspensions', 'Has your license ever been suspended, revoked, or cancelled?')}
         {gate('hasDenial', 'Have you ever been denied a license or permit to operate a CMV?')}
         {(inc.hasSuspensions === 'yes' || inc.hasDenial === 'yes') && (
-          <Field label="Please describe" hint="dates, jurisdictions, reason, and resolution">
-            <TextArea value={inc.suspensionsDesc} onChange={(v) => set('incidents.suspensionsDesc', v)} rows={4} />
+          <Field label="Please describe" hint="dates, jurisdictions, reason, and resolution" required error={errors['incidents.suspensionsDesc']}>
+            <TextArea value={inc.suspensionsDesc} onChange={(v) => set('incidents.suspensionsDesc', v)} rows={4} error={!!errors['incidents.suspensionsDesc']} />
           </Field>
         )}
       </div>
@@ -564,22 +618,115 @@ const Step7: StepDef = {
   },
 };
 
-// ── Step 8 · Consents & Signature ───────────────────────────────────
-const CONSENTS = [
-  { key: 'psp', label: 'FMCSA Pre-Employment Screening Program (PSP)', desc: 'Authorize retrieval of crash and inspection history from the FMCSA Motor Carrier Management Information System (MCMIS).' },
-  { key: 'mvr', label: 'Motor Vehicle Record (MVR)', desc: 'Authorize the carrier to obtain my driving record from each state where I have been licensed in the past 3 years.' },
-  { key: 'clearinghouse', label: 'FMCSA Drug & Alcohol Clearinghouse', desc: 'Authorize a full query for drug & alcohol program violations under 49 CFR §382.701.' },
-  { key: 'fcra', label: 'Consumer report (FCRA disclosure)', desc: 'I have read the separate FCRA disclosure and authorize a background check, including criminal history.' },
+// ── Steps 8–10 · Consents & Signature ───────────────────────────────
+// PSP and the FCRA background-check disclosure are isolated onto their OWN
+// steps: both carry a "stand-alone document" requirement (FMCSA PSP notice;
+// FCRA §1681b(b)(2)(A)), so they may not share a screen with other consents.
+// The final step keeps the §391.23 Employee-Verification doc + the remaining
+// plain-checkbox consents + the signature.
+const CHECK_CONSENTS = [
+  { key: 'mvr', label: 'Motor Vehicle Record (MVR)', desc: 'Authorize the carrier to obtain my driving record from each state where I have been licensed in the past 3 years. (Also covered under the consumer-report / FCRA authorization above.)' },
+  { key: 'clearinghouse', label: 'FMCSA Drug & Alcohol Clearinghouse', desc: 'I give general consent for the carrier to query the FMCSA Drug & Alcohol Clearinghouse under 49 CFR §382.701. I understand a pre-employment full query also requires my separate electronic consent in the Clearinghouse itself.' },
   { key: 'drug', label: 'Pre-employment drug screen', desc: 'I agree to submit to a DOT-regulated drug test prior to operating a commercial motor vehicle.' },
   { key: 'truthful', label: 'Truthful & complete statements', desc: 'I certify that all statements in this application are true and complete. False or omitted information is grounds for rejection or termination.' },
 ];
+const FINAL_CONSENT_KEYS = ['employment_verification', ...CHECK_CONSENTS.map((x) => x.key)];
+const EMPTY_LEGAL: CarrierLegal = {
+  name: '', dot: '', mc: '', phone: '', legal_address: '',
+  compliance_email: '', cra_name: '', cra_address: '', cra_phone: '', cra_site: '',
+};
 
-const Step8: StepDef = {
+// Renders one disclosure's blocks (read-only legal text).
+function DisclosureBody({ blocks }: { blocks: Block[] }) {
+  return (
+    <div className="flex flex-col gap-2.5 text-xs leading-relaxed text-muted-foreground">
+      {blocks.map((b, i) => {
+        if (b.kind === 'h') return <p key={i} className="text-xs font-semibold uppercase tracking-wide text-foreground">{b.text}</p>;
+        if (b.kind === 'p') return <p key={i}>{b.text}</p>;
+        if (b.kind === 'note') return <p key={i} className="rounded bg-muted/50 p-2 text-2xs italic">{b.text}</p>;
+        if (b.kind === 'ul') return <ul key={i} className="ml-4 list-disc space-y-1">{b.items.map((it, j) => <li key={j}>{it}</li>)}</ul>;
+        return (
+          <div key={i} className="grid grid-cols-1 gap-x-4 gap-y-0.5 sm:grid-cols-2">
+            {b.rows.map(([k, v], j) => <p key={j}><span className="text-foreground">{k}:</span> {v}</p>)}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Expandable "review → acknowledge" card for a full disclosure.
+function DisclosureCard({ doc, checked, error, onChange }: {
+  doc: Disclosure; checked: boolean; error?: string; onChange: (b: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`rounded-md border ${error ? 'border-destructive/50' : 'border-border'} bg-card`}>
+      <button type="button" onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-2 px-4 py-3 text-left">
+        <FileText size={16} className="shrink-0 text-muted-foreground" />
+        <span className="flex-1 text-sm font-medium text-foreground">{doc.title}</span>
+        <ChevronDown size={16} className={`shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="max-h-72 overflow-y-auto border-t border-border px-4 py-3">
+          <DisclosureBody blocks={doc.blocks} />
+        </div>
+      )}
+      <div className="border-t border-border px-4 py-3">
+        <Check_ checked={checked} onChange={onChange}>
+          <span className="text-sm">I have read and authorize the <span className="font-medium">{doc.title}</span>.</span>
+        </Check_>
+        {!open && <button type="button" onClick={() => setOpen(true)} className="mt-1 ml-7 block text-2xs text-primary hover:underline">Read the full document</button>}
+      </div>
+    </div>
+  );
+}
+
+// A standalone step that presents ONE disclosure in full (expanded) with
+// nothing else but its authorization — satisfies the "stand-alone document"
+// rule for PSP and the FCRA background-check disclosure.
+function disclosureStep(id: 'psp' | 'fcra', title: string, sub: string): StepDef {
+  const build = id === 'psp' ? pspDisclosure : fcraDisclosure;
+  return {
+    title, sub,
+    validate: (d) => ((d.consents || {})[id] ? {} : { [`consents.${id}`]: 'Required' }),
+    Render: ({ data, set, errors, carrier }) => {
+      const doc = build(carrier || EMPTY_LEGAL);
+      const c = data.consents || {};
+      return (
+        <div className="flex flex-col gap-4">
+          <div className="flex items-start gap-2 rounded-md border border-info-bd bg-info-bg p-3 text-sm text-info">
+            <ShieldCheck size={18} className="mt-0.5 shrink-0" />
+            <p>Federal law requires this authorization, and it must be presented on its own. Please read the full document below, then check the box to authorize.</p>
+          </div>
+          <div className="rounded-md border border-border bg-card p-4">
+            <p className="mb-2 text-sm font-semibold text-foreground">{doc.title}</p>
+            <div className="max-h-[26rem] overflow-y-auto rounded border border-border p-3">
+              <DisclosureBody blocks={doc.blocks} />
+            </div>
+          </div>
+          <div className={`rounded-md border ${errors[`consents.${id}`] ? 'border-destructive/50' : 'border-border'} bg-card px-4 py-3`}>
+            <Check_ checked={!!c[id]} onChange={(b) => set(`consents.${id}`, b)}>
+              <span className="text-sm">I have read and authorize the <span className="font-medium">{doc.title}</span>.</span>
+            </Check_>
+          </div>
+          {errors[`consents.${id}`] && <p className="text-xs text-destructive">This authorization is required to continue.</p>}
+        </div>
+      );
+    },
+  };
+}
+
+const Step8Psp = disclosureStep('psp', 'PSP Authorization', 'FMCSA crash & inspection history');
+const Step9Fcra = disclosureStep('fcra', 'Background Check Authorization', 'FCRA consumer report');
+
+const Step10: StepDef = {
   title: 'Consents & Signature', sub: 'Authorizations',
   validate: (d) => {
     const e: Errors = {};
     const c = d.consents || {};
-    for (const { key } of CONSENTS) if (!c[key]) e[`consents.${key}`] = 'Required';
+    for (const key of FINAL_CONSENT_KEYS) if (!c[key]) e[`consents.${key}`] = 'Required';
     if (V.required(c.sigDate)) e['consents.sigDate'] = 'Required';
     const mode = c.sigMode || 'type';
     if (mode === 'type') {
@@ -591,18 +738,24 @@ const Step8: StepDef = {
     }
     return e;
   },
-  Render: ({ data, set, errors }) => {
+  Render: ({ data, set, errors, carrier }) => {
     const c = data.consents || {};
     const fullName = `${(data.personal || {}).first || ''} ${(data.personal || {}).last || ''}`.trim();
-    const anyConsentErr = CONSENTS.some(({ key }) => errors[`consents.${key}`]);
+    const anyConsentErr = FINAL_CONSENT_KEYS.some((key) => errors[`consents.${key}`]);
+    const empDoc = employmentDisclosure(carrier || EMPTY_LEGAL);
     return (
       <div className="flex flex-col gap-5">
         <div className="flex items-start gap-2 rounded-md border border-info-bd bg-info-bg p-3 text-sm text-info">
           <ShieldCheck size={18} className="mt-0.5 shrink-0" />
-          <p>Federal law requires your authorization before we can run these checks. Review each item and check the box to consent. Your data is encrypted and used only for this hiring decision.</p>
+          <p>Final authorizations. Review the document below and check each box. Your data is encrypted and used only for this hiring decision.</p>
+        </div>
+        <div>
+          <p className={`${sectionTitle} mb-2`}>Required consent document</p>
+          <DisclosureCard doc={empDoc} checked={!!c.employment_verification}
+            error={errors['consents.employment_verification']} onChange={(b) => set('consents.employment_verification', b)} />
         </div>
         <div className="flex flex-col gap-3">
-          {CONSENTS.map(({ key, label, desc }) => (
+          {CHECK_CONSENTS.map(({ key, label, desc }) => (
             <Check_ key={key} checked={!!c[key]} onChange={(b) => set(`consents.${key}`, b)}>
               <span className="font-medium">{label}</span>
               <span className="mt-0.5 block text-xs text-muted-foreground">{desc}</span>
@@ -631,4 +784,4 @@ const Step8: StepDef = {
   },
 };
 
-export const STEPS: StepDef[] = [Step1, Step2, Step3, Step4, Step5, Step6, Step7, Step8];
+export const STEPS: StepDef[] = [Step1, Step2, Step3, Step4, Step5, Step6, Step7, Step8Psp, Step9Fcra, Step10];

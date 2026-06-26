@@ -5099,6 +5099,53 @@ async def migrate_company_heading_color(conn) -> None:
         logger.info("Migration 127: heading_color likely exists — %s", e)
 
 
+@_register("128_company_legal_compliance")
+async def migrate_company_legal_compliance(conn) -> None:
+    """Carrier legal/compliance details that fill the apply-form FMCSA/FCRA
+    consent disclosures: mailing address, compliance email, and the
+    background-check agency (CRA) name/address/phone/site.  Recruiter-filled
+    BLANKS only — the legal language itself is fixed in code.  Idempotent."""
+    cols = [
+        ("legal_address", "TEXT NOT NULL DEFAULT ''"),
+        ("compliance_email", "TEXT NOT NULL DEFAULT ''"),
+        ("cra_name", "TEXT NOT NULL DEFAULT ''"),
+        ("cra_address", "TEXT NOT NULL DEFAULT ''"),
+        ("cra_phone", "TEXT NOT NULL DEFAULT ''"),
+        ("cra_site", "TEXT NOT NULL DEFAULT ''"),
+    ]
+    for name, ddl in cols:
+        try:
+            await conn.execute(f"ALTER TABLE companies ADD COLUMN {name} {ddl}")
+            await conn.commit()
+            logger.info("Migration 128: added companies.%s", name)
+        except Exception as e:
+            logger.info("Migration 128: companies.%s likely exists — %s", name, e)
+
+
+@_register("129_company_surface_color")
+async def migrate_company_surface_color(conn) -> None:
+    """``surface_color`` — the apply-form's base surface (card + page).  The
+    form derives readable text / borders / muted fills from it (see
+    surfaceThemeStyle), replacing the old light/dark toggle.  Empty → the
+    default light theme.  Backfills existing dark-base carriers so they keep
+    a dark look.  Idempotent."""
+    try:
+        await conn.execute("ALTER TABLE companies ADD COLUMN surface_color TEXT NOT NULL DEFAULT ''")
+        await conn.commit()
+        logger.info("Migration 129: added companies.surface_color")
+    except Exception as e:
+        logger.info("Migration 129: surface_color likely exists — %s", e)
+    try:
+        await conn.execute(
+            "UPDATE companies SET surface_color = '#0a0a0a' "
+            "WHERE form_theme = 'dark' AND (surface_color IS NULL OR surface_color = '')"
+        )
+        await conn.commit()
+        logger.info("Migration 129: backfilled surface_color for dark-base carriers")
+    except Exception as e:
+        logger.info("Migration 129: surface_color backfill skipped — %s", e)
+
+
 @_register("128_drop_derived_service_perms")
 async def migrate_drop_derived_service_perms(conn) -> None:
     """Strip the now-DERIVED service flags from every stored

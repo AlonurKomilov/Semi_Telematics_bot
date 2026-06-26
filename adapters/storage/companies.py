@@ -131,7 +131,9 @@ class CompaniesMixin(_MixinBase):
                    "logo_object_id", "brand_color", "website", "phone",
                    "headline", "perks", "banner_object_id",
                    "req_experience_years", "req_min_age", "req_cdl_class",
-                   "form_theme", "header_color", "bg_color", "heading_color"}
+                   "form_theme", "surface_color", "header_color", "bg_color", "heading_color",
+                   "legal_address", "compliance_email", "cra_name", "cra_address",
+                   "cra_phone", "cra_site"}
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
             return False

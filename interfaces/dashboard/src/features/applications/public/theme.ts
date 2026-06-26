@@ -54,7 +54,48 @@ export function brandTintStyle(brandColor?: string): import('react').CSSProperti
     ['--brand']: brandColor,
     ['--primary']: brandColor,
     ['--primary-foreground']: readableTextOn(brandColor),
+    ['--ring']: brandColor,   // focus rings follow the brand accent
   } as import('react').CSSProperties;
+}
+
+// Derive a FULL, readable neutral palette from one "surface" colour (the
+// card + page base) — replacing the light/dark toggle.  Text is auto-
+// contrasted (readableTextOn); borders / muted fills / inputs are blended
+// from the surface toward that text via color-mix (works for any surface,
+// light or dark).  Status colours (info/ok/warn/destructive) and the brand
+// accent are intentionally NOT touched here.  Empty → the default theme.
+export function surfaceThemeStyle(surface?: string): import('react').CSSProperties | undefined {
+  if (!surface) return undefined;
+  const fg = readableTextOn(surface);
+  // pct% of the text colour blended into the surface — higher = more contrast.
+  const mix = (pct: number) => `color-mix(in oklab, ${fg} ${pct}%, ${surface})`;
+  return {
+    ['--background']: surface,
+    ['--foreground']: fg,
+    ['--card']: surface,
+    ['--card-foreground']: fg,
+    ['--popover']: surface,
+    ['--popover-foreground']: fg,
+    ['--muted']: mix(8),
+    ['--muted-foreground']: mix(55),
+    ['--border']: mix(16),
+    ['--input']: mix(16),
+    ['--secondary']: mix(10),
+    ['--secondary-foreground']: fg,
+    ['--accent']: mix(10),
+    ['--accent-foreground']: fg,
+  } as import('react').CSSProperties;
+}
+
+// Is a surface colour a poor base for BOTH black and white text? (mid-tones
+// where neither gives strong contrast).  Used to warn the recruiter.
+export function surfaceContrastWeak(surface?: string): boolean {
+  if (!surface) return false;
+  const h = surface.replace('#', '');
+  if (h.length < 6) return false;
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.42 && lum < 0.62;   // mid-tone — neither black nor white is crisp
 }
 
 // Style for an element whose BACKGROUND is a custom carrier colour (the
