@@ -1,10 +1,15 @@
-"""telemetry capability — health, weather, efficiency data facade."""
+"""Data warehouses — analytical, tiered stores built + pruned by the
+``data_lifecycle`` engines.
 
-from capabilities.warehouse.service import (  # noqa: F401
-    get_vehicle_health,
-    get_fleet_weather,
-    get_fleet_efficiency,
-    get_vehicles_with_faults,
-    get_low_fuel_vehicles,
-    get_driver_efficiency,
-)
+Each sub-package is one warehouse (its own tables, aggregation, and read
+facade); the generic build/delete machinery lives in
+``capabilities/data_lifecycle`` (rollups + retention), which every warehouse
+registers with.  This umbrella holds no shared code yet — the aggregation is
+always domain-specific — so it's just the home for the warehouses themselves.
+
+  * ``telemetry`` — the vehicle telemetry warehouse (live state → 5-min →
+    hourly → daily tiers; health, faults, weather, efficiency facade).
+
+A second analytical domain (e.g. scorecards) becomes a sibling sub-package and
+reuses the same ``data_lifecycle`` engines.
+"""

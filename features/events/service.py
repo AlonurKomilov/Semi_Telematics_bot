@@ -22,7 +22,7 @@ async def get_events(
     async def _live():
         return await client.get_events(days=days, company=company)
 
-    from capabilities.warehouse import warehouse_reader as _wh
+    from capabilities.warehouse.telemetry import warehouse_reader as _wh
     rows = await _wh.get_safety_events(
         account_id, days=days, samsara_fallback=_live,
     )

@@ -22,7 +22,7 @@ async def get_geofences(
     async def _live():
         return await client.get_geofences(company=company)
 
-    from capabilities.warehouse import warehouse_reader as _wh
+    from capabilities.warehouse.telemetry import warehouse_reader as _wh
     return await _wh.get_geofences(
         account_id, company=company, samsara_fallback=_live,
     )

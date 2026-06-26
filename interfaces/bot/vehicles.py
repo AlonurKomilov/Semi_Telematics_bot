@@ -20,7 +20,7 @@ from features.vehicles.service import (
     get_vehicles_overview as _svc_vehicles_overview,
     get_vehicle_detail as _svc_vehicle_detail,
 )
-from capabilities.warehouse.service import get_vehicles_with_faults as _svc_with_faults
+from capabilities.warehouse.telemetry.service import get_vehicles_with_faults as _svc_with_faults
 
 from interfaces.bot.config import logger
 from interfaces.bot.state import _active_messages, get_client

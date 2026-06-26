@@ -22,7 +22,7 @@ from interfaces.api.routes import health
 from features.overview import router as overview_routes
 from interfaces.api.routes import user as user_routes
 from features.settings import router as settings_routes
-from capabilities.warehouse import router as telemetry_routes
+from capabilities.warehouse.telemetry import router as telemetry_routes
 from capabilities.jobs import router as jobs_routes
 from interfaces.api.routes import system as system_routes
 from features.applications import router as applications_routes

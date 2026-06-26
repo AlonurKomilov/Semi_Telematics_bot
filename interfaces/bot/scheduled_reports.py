@@ -41,7 +41,7 @@ from features.vehicles.service import (
     prepare_companies,
     get_vehicles_overview as _svc_vehicles_overview,
 )
-from capabilities.warehouse.service import (
+from capabilities.warehouse.telemetry.service import (
     get_vehicles_with_faults as _svc_vehicles_with_faults,
 )
 

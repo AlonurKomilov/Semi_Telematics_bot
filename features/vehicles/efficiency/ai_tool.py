@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
 from capabilities.ai.tools.scope import filter_to_scope
-from capabilities.warehouse.service import get_fleet_efficiency as _svc_fleet_eff
+from capabilities.warehouse.telemetry.service import get_fleet_efficiency as _svc_fleet_eff
 
 
 @register_tool({

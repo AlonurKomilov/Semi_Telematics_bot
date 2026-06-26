@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
 from capabilities.ai.tools.scope import filter_to_scope
-from capabilities.warehouse.service import get_low_fuel_vehicles as _svc_low_fuel
+from capabilities.warehouse.telemetry.service import get_low_fuel_vehicles as _svc_low_fuel
 
 
 @register_tool({

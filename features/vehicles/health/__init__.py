@@ -13,6 +13,6 @@ from the bot) never drags another hub's machinery (e.g. reporting's
 pdf_base) into the import graph.
 
 Data comes from the telemetry warehouse via
-``capabilities.warehouse.service.get_vehicle_health`` — the component
+``capabilities.warehouse.telemetry.service.get_vehicle_health`` — the component
 contributes *behavior* to the hubs, the platform owns ingestion.
 """

@@ -27,7 +27,7 @@ async def get_vehicle_health(
     async def _live():
         return await client.get_vehicle_health(company=company)
 
-    from capabilities.warehouse import warehouse_reader as _wh
+    from capabilities.warehouse.telemetry import warehouse_reader as _wh
     return await _wh.get_vehicle_health(
         account_id, company=company, samsara_fallback=_live,
     )
@@ -48,7 +48,7 @@ async def get_fleet_weather(
     async def _live():
         return await client.get_fleet_weather(company=company)
 
-    from capabilities.warehouse import warehouse_reader as _wh
+    from capabilities.warehouse.telemetry import warehouse_reader as _wh
     return await _wh.get_fleet_weather(
         account_id, company=company, samsara_fallback=_live,
     )
@@ -70,7 +70,7 @@ async def get_fleet_efficiency(
     async def _live():
         return await client.get_fleet_efficiency(days=days, company=company)
 
-    from capabilities.warehouse import warehouse_reader as _wh
+    from capabilities.warehouse.telemetry import warehouse_reader as _wh
     return await _wh.get_fleet_efficiency(
         account_id, days=days, company=company, samsara_fallback=_live,
     )
@@ -101,7 +101,7 @@ async def get_vehicles_with_faults(
                 v["_severity"] = classify_fault_severity(v)
         return faulted, total, breakdown
 
-    from capabilities.warehouse import warehouse_reader as _wh
+    from capabilities.warehouse.telemetry import warehouse_reader as _wh
     faulted, total, breakdown = await _wh.get_vehicles_with_faults(
         account_id, company=company, samsara_fallback=_live,
     )
@@ -130,7 +130,7 @@ async def get_low_fuel_vehicles(
     async def _live():
         return await client.get_low_fuel_vehicles(threshold, company=company)
 
-    from capabilities.warehouse import warehouse_reader as _wh
+    from capabilities.warehouse.telemetry import warehouse_reader as _wh
     fleet = await _wh.get_current_vehicles(
         account_id, company=company, samsara_fallback=_live,
     )
@@ -214,7 +214,7 @@ async def get_driver_efficiency(
     async def _live():
         return await client.get_driver_efficiency(days=days, company=company)
 
-    from capabilities.warehouse import warehouse_reader as _wh
+    from capabilities.warehouse.telemetry import warehouse_reader as _wh
     # The truck filter (below) matches ``_vehicle_summaries[].vehicle.name``,
     # which ONLY the live reader provides — the warehouse efficiency table has
     # no vehicle join, so reading it for a vehicle filter would silently return

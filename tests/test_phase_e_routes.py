@@ -71,14 +71,14 @@ async def phase_e_app(pg_db, monkeypatch):
         ]
 
     monkeypatch.setattr(
-        "capabilities.warehouse.warehouse_reader.get_vehicle_telemetry_hourly",
+        "capabilities.warehouse.telemetry.warehouse_reader.get_vehicle_telemetry_hourly",
         _fake_timeline,
     )
 
     # Default: warehouse flag ON for the timeline + heatmap reads.  Tests that
     # need it OFF flip it back via monkeypatch.
     monkeypatch.setattr(
-        "capabilities.warehouse.warehouse_reader._enabled", lambda: True,
+        "capabilities.warehouse.telemetry.warehouse_reader._enabled", lambda: True,
     )
 
     # ── Stubs for /heatmap ────────────────────────────────────────
@@ -157,13 +157,13 @@ class TestVehicleTimelineRoute:
 
     async def test_empty_points_when_flag_off(self, phase_e_app, monkeypatch):
         monkeypatch.setattr(
-            "capabilities.warehouse.warehouse_reader._enabled", lambda: False,
+            "capabilities.warehouse.telemetry.warehouse_reader._enabled", lambda: False,
         )
         # The reader short-circuits on flag off.
         async def _empty(account_id, *, vehicle_id=None, hours=168):
             return []
         monkeypatch.setattr(
-            "capabilities.warehouse.warehouse_reader.get_vehicle_telemetry_hourly",
+            "capabilities.warehouse.telemetry.warehouse_reader.get_vehicle_telemetry_hourly",
             _empty,
         )
         async with AsyncClient(
@@ -213,7 +213,7 @@ class TestHeatmapRoute:
 
     async def test_empty_when_flag_off(self, phase_e_app, monkeypatch):
         monkeypatch.setattr(
-            "capabilities.warehouse.warehouse_reader._enabled", lambda: False,
+            "capabilities.warehouse.telemetry.warehouse_reader._enabled", lambda: False,
         )
         async with AsyncClient(
             transport=ASGITransport(app=phase_e_app["app"]), base_url="http://t"

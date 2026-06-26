@@ -47,7 +47,7 @@ async def test_aggregate_hour_window_accepts_arbitrary_hour():
     """The helper must accept any hour_start, not just 'just-closed
     hour'.  Mock the tenant DB and verify the SQL was bound to the
     requested window, not to ``now``."""
-    from capabilities.warehouse.aggregator import _aggregate_hour_window
+    from capabilities.warehouse.telemetry.aggregator import _aggregate_hour_window
 
     tenant = MagicMock()
     cur = MagicMock()
@@ -72,7 +72,7 @@ async def test_aggregate_hour_window_accepts_arbitrary_hour():
 
 @pytest.mark.asyncio
 async def test_aggregate_day_window_accepts_arbitrary_day():
-    from capabilities.warehouse.aggregator import _aggregate_day_window
+    from capabilities.warehouse.telemetry.aggregator import _aggregate_day_window
 
     tenant = MagicMock()
     cur = MagicMock()
@@ -100,7 +100,7 @@ async def test_backfill_aggregations_walks_each_hour_in_window(monkeypatch):
     (30 days × 24 hours + the in-progress hour) and _aggregate_day_window
     30 times.  The trailing in-progress hour gets re-aggregated by the
     next live cron tick — UPSERT semantics make this safe."""
-    from capabilities.warehouse import aggregator as ingestor
+    from capabilities.warehouse.telemetry import aggregator as ingestor
 
     tenant = MagicMock()
     monkeypatch.setattr(
@@ -138,7 +138,7 @@ async def test_backfill_aggregations_walks_each_hour_in_window(monkeypatch):
 async def test_backfill_aggregations_smaller_window(monkeypatch):
     """7-day backfill should call 7*24 + 1 = 169 hours, 7 days
     (the +1 is the in-progress hour, see test above)."""
-    from capabilities.warehouse import aggregator as ingestor
+    from capabilities.warehouse.telemetry import aggregator as ingestor
 
     tenant = MagicMock()
     monkeypatch.setattr(
@@ -160,7 +160,7 @@ async def test_backfill_aggregations_smaller_window(monkeypatch):
 async def test_backfill_aggregations_continues_when_one_hour_fails(monkeypatch):
     """A per-hour aggregation failure should log + skip, not abort
     the whole 30-day backfill — partial data is still useful."""
-    from capabilities.warehouse import aggregator as ingestor
+    from capabilities.warehouse.telemetry import aggregator as ingestor
 
     tenant = MagicMock()
     monkeypatch.setattr(
@@ -189,7 +189,7 @@ async def test_backfill_aggregations_continues_when_one_hour_fails(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_backfill_aggregations_returns_zero_when_no_tenant(monkeypatch):
-    from capabilities.warehouse import aggregator as ingestor
+    from capabilities.warehouse.telemetry import aggregator as ingestor
 
     monkeypatch.setattr(
         ingestor, "get_tenant_db", AsyncMock(return_value=None),
@@ -207,7 +207,7 @@ async def test_m5_backfill_calls_aggregations_on_success(monkeypatch):
     so the calendar projection's median path has data the moment M5
     finishes (rather than waiting ~7 days for the cron to catch up)."""
     from capabilities.integrations.shared import history_backfill
-    from capabilities.warehouse import aggregator as ingestor
+    from capabilities.warehouse.telemetry import aggregator as ingestor
 
     # Mock the M5 setup so it gets to the chain-into-aggregations
     # point: integration row exists, status connected, toggle on,
@@ -273,7 +273,7 @@ async def test_m5_backfill_aggregations_failure_does_not_flip_state(monkeypatch)
     aggregations failure just means the live cron will catch up over
     the next 7 days)."""
     from capabilities.integrations.shared import history_backfill
-    from capabilities.warehouse import aggregator as ingestor
+    from capabilities.warehouse.telemetry import aggregator as ingestor
 
     integration = MagicMock()
     integration.status = "connected"

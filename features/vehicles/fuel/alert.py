@@ -17,7 +17,7 @@ from capabilities.alerting.pipeline import (
     send_alert, is_vehicle_suppressed,
 )
 from capabilities.formatting import format_low_fuel_alert
-from capabilities.warehouse.service import get_low_fuel_vehicles as _svc_low_fuel
+from capabilities.warehouse.telemetry.service import get_low_fuel_vehicles as _svc_low_fuel
 from infra.bot_registry import get_app_for_account
 from infra.config import FUEL_THRESHOLD, FUEL_HYSTERESIS_PERCENT
 from infra.context import set_tenant_display

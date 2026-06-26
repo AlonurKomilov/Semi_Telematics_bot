@@ -1,0 +1,10 @@
+"""telemetry capability — health, weather, efficiency data facade."""
+
+from capabilities.warehouse.telemetry.service import (  # noqa: F401
+    get_vehicle_health,
+    get_fleet_weather,
+    get_fleet_efficiency,
+    get_vehicles_with_faults,
+    get_low_fuel_vehicles,
+    get_driver_efficiency,
+)
