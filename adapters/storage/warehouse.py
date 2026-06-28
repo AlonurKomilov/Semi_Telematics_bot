@@ -616,14 +616,16 @@ class WarehouseMixin(_MixinBase):
                 ts,
             ))
         if values:
+            # granularity='hourly' bucket in the unified vehicle_telemetry
+            # table; bucket_start carries the old hour_utc label.
             await self._db.executemany(
                 """
-                INSERT INTO vehicle_telemetry_hourly (
-                    account_id, vehicle_id, hour_utc,
+                INSERT INTO vehicle_telemetry (
+                    account_id, vehicle_id, granularity, bucket_start,
                     miles, drive_min, idle_min,
                     max_speed_mph, harsh_event_count, ingested_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(account_id, vehicle_id, hour_utc) DO UPDATE SET
+                ) VALUES (?, ?, 'hourly', ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(account_id, vehicle_id, granularity, bucket_start) DO UPDATE SET
                     miles=excluded.miles,
                     drive_min=excluded.drive_min,
                     idle_min=excluded.idle_min,
@@ -648,23 +650,25 @@ class WarehouseMixin(_MixinBase):
         the weekly bot scorecard."""
         from datetime import timedelta
         since = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:00:00")
-        where = ["account_id = ?", "hour_utc >= ?"]
+        where = ["account_id = ?", "granularity = 'hourly'", "bucket_start >= ?"]
         args: list[Any] = [account_id, since]
         if vehicle_id:
             where.append("vehicle_id = ?")
             args.append(vehicle_id)
-        # Hard-coded column list — see comment in get_current_vehicles
-        # for the asyncpg compatibility reason.
+        # Output keys (positional zip — see get_current_vehicles for the
+        # asyncpg compatibility reason); ``hour_utc`` is the unified table's
+        # ``bucket_start`` for the hourly grain, kept as the public key.
         cols = [
             "vehicle_id", "hour_utc", "miles", "drive_min", "idle_min",
             "max_speed_mph", "harsh_event_count",
         ]
         cur = await self._db.execute(
             f"""
-            SELECT {', '.join(cols)}
-            FROM vehicle_telemetry_hourly
+            SELECT vehicle_id, bucket_start, miles, drive_min, idle_min,
+                   max_speed_mph, harsh_event_count
+            FROM vehicle_telemetry
             WHERE {' AND '.join(where)}
-            ORDER BY hour_utc DESC
+            ORDER BY bucket_start DESC
             """,
             tuple(args),
         )
@@ -699,8 +703,8 @@ class WarehouseMixin(_MixinBase):
         cur = await self._db.execute(
             """
             SELECT vehicle_id, SUM(miles) AS total_miles
-              FROM vehicle_telemetry_hourly
-             WHERE account_id = ? AND hour_utc >= ?
+              FROM vehicle_telemetry
+             WHERE account_id = ? AND granularity = 'hourly' AND bucket_start >= ?
              GROUP BY vehicle_id
             """,
             (account_id, since),
@@ -878,9 +882,10 @@ class WarehouseMixin(_MixinBase):
             since_day = (now - timedelta(days=lookback_days)).date().isoformat()
             cur = await self._db.execute(
                 """
-                SELECT vehicle_id, MAX(day_utc) AS last_drive_day
-                  FROM vehicle_metrics_daily
-                 WHERE account_id = ? AND day_utc >= ? AND drive_min > 0
+                SELECT vehicle_id, MAX(bucket_start) AS last_drive_day
+                  FROM vehicle_telemetry
+                 WHERE account_id = ? AND granularity = 'daily'
+                   AND bucket_start >= ? AND drive_min > 0
                  GROUP BY vehicle_id
                 """,
                 (account_id, since_day),
@@ -1074,10 +1079,10 @@ class WarehouseMixin(_MixinBase):
         ).date().isoformat()
         cur = await self._db.execute(
             """
-            SELECT vehicle_id, day_utc, COALESCE(miles, 0) AS miles
-              FROM vehicle_metrics_daily
-             WHERE account_id = ? AND day_utc >= ?
-             ORDER BY vehicle_id, day_utc
+            SELECT vehicle_id, bucket_start, COALESCE(miles, 0) AS miles
+              FROM vehicle_telemetry
+             WHERE account_id = ? AND granularity = 'daily' AND bucket_start >= ?
+             ORDER BY vehicle_id, bucket_start
             """,
             (account_id, since_day),
         )
@@ -1193,11 +1198,11 @@ class WarehouseMixin(_MixinBase):
             }
         # Tier 2 — end-of-day reading from the long-retention daily table.
         cur = await self._db.execute(
-            "SELECT odometer_eod, engine_hours_eod, day_utc "
-            "FROM vehicle_metrics_daily "
-            "WHERE account_id = ? AND vehicle_id = ? AND day_utc <= ? "
-            "AND odometer_eod IS NOT NULL "
-            "ORDER BY day_utc DESC LIMIT 1",
+            "SELECT odometer_eod, engine_hours_eod, bucket_start AS day_utc "
+            "FROM vehicle_telemetry "
+            "WHERE account_id = ? AND vehicle_id = ? AND granularity = 'daily' "
+            "AND bucket_start <= ? AND odometer_eod IS NOT NULL "
+            "ORDER BY bucket_start DESC LIMIT 1",
             (account_id, vehicle_id, on_date),
         )
         row = await cur.fetchone()
@@ -1251,9 +1256,10 @@ class WarehouseMixin(_MixinBase):
         snap = dict(await cur.fetchone() or {})
         # Daily EOD tier (long-retention) — bare YYYY-MM-DD day labels.
         cur = await self._db.execute(
-            "SELECT MIN(day_utc) AS first_day, MAX(day_utc) AS last_day "
-            "FROM vehicle_metrics_daily "
-            "WHERE account_id = ? AND vehicle_id = ? AND odometer_eod IS NOT NULL",
+            "SELECT MIN(bucket_start) AS first_day, MAX(bucket_start) AS last_day "
+            "FROM vehicle_telemetry "
+            "WHERE account_id = ? AND vehicle_id = ? AND granularity = 'daily' "
+            "AND odometer_eod IS NOT NULL",
             (account_id, vehicle_id),
         )
         daily = dict(await cur.fetchone() or {})
@@ -1308,6 +1314,35 @@ class WarehouseMixin(_MixinBase):
                 }
             except Exception:
                 out[table] = {"count": 0, "last_at": None}
+        return out
+
+    async def get_telemetry_tier_freshness(
+        self, account_id: int,
+    ) -> dict[str, dict]:
+        """Per-granularity ``{count, last_at}`` for the unified
+        ``vehicle_telemetry`` table — powers the operator telemetry-cascade
+        diagnostic, where hourly/daily/weekly share one physical table and
+        ``get_feed_freshness`` (one row per table) can't tell them apart."""
+        out: dict[str, dict] = {
+            g: {"count": 0, "last_at": None}
+            for g in ("hourly", "daily", "weekly")
+        }
+        try:
+            cur = await self._db.execute(
+                "SELECT granularity, COUNT(*) AS n, MAX(ingested_at) AS last_at "
+                "FROM vehicle_telemetry WHERE account_id = ? GROUP BY granularity",
+                (account_id,),
+            )
+            for row in await cur.fetchall():
+                d = dict(zip(("granularity", "n", "last_at"), row))
+                g = str(d.get("granularity") or "")
+                if g:
+                    out[g] = {
+                        "count": int(d.get("n") or 0),
+                        "last_at": d.get("last_at"),
+                    }
+        except Exception:
+            pass
         return out
 
     async def vehicle_state_snapshot_has_day(
@@ -1472,16 +1507,18 @@ class WarehouseMixin(_MixinBase):
                 ts,
             ))
         if values:
+            # granularity='daily' bucket in the unified vehicle_telemetry
+            # table; bucket_start carries the old day_utc label.
             await self._db.executemany(
                 """
-                INSERT INTO vehicle_metrics_daily (
-                    account_id, vehicle_id, day_utc,
+                INSERT INTO vehicle_telemetry (
+                    account_id, vehicle_id, granularity, bucket_start,
                     miles, drive_min, idle_min,
                     max_speed_mph, avg_fuel_pct,
                     harsh_event_count, fault_count_eod,
                     odometer_eod, engine_hours_eod, ingested_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT (account_id, vehicle_id, day_utc) DO UPDATE SET
+                ) VALUES (?, ?, 'daily', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (account_id, vehicle_id, granularity, bucket_start) DO UPDATE SET
                     miles=excluded.miles,
                     drive_min=excluded.drive_min,
                     idle_min=excluded.idle_min,
@@ -1491,8 +1528,8 @@ class WarehouseMixin(_MixinBase):
                     fault_count_eod=excluded.fault_count_eod,
                     -- Keep a prior non-null EOD reading if a later re-run
                     -- (e.g. after snapshot pruning) can't recompute it.
-                    odometer_eod=COALESCE(excluded.odometer_eod, vehicle_metrics_daily.odometer_eod),
-                    engine_hours_eod=COALESCE(excluded.engine_hours_eod, vehicle_metrics_daily.engine_hours_eod),
+                    odometer_eod=COALESCE(excluded.odometer_eod, vehicle_telemetry.odometer_eod),
+                    engine_hours_eod=COALESCE(excluded.engine_hours_eod, vehicle_telemetry.engine_hours_eod),
                     ingested_at=excluded.ingested_at
                 """,
                 values,
@@ -1507,9 +1544,82 @@ class WarehouseMixin(_MixinBase):
         from datetime import timedelta
         cutoff_day = (datetime.now(timezone.utc) - timedelta(days=days_keep)).date().isoformat()
         cur = await self._db.execute(
-            "DELETE FROM vehicle_metrics_daily "
-            "WHERE account_id = ? AND day_utc < ?",
+            "DELETE FROM vehicle_telemetry "
+            "WHERE account_id = ? AND granularity = 'daily' AND bucket_start < ?",
             (account_id, cutoff_day),
+        )
+        await self._db.commit()
+        return getattr(cur, "rowcount", 0) or 0
+
+    async def upsert_vehicle_metrics_weekly(
+        self,
+        account_id: int,
+        rows: Iterable[dict[str, Any]],
+    ) -> int:
+        """Upsert weekly roll-up rows (granularity='weekly' in the unified
+        ``vehicle_telemetry`` table).  ``bucket_start`` is the ISO-week
+        Monday (YYYY-MM-DD, UTC).  Same columns as the daily tier; the
+        long-horizon store for multi-year trends without keeping 730 daily
+        rows per vehicle."""
+        ts = _now_iso()
+        values: list[tuple] = []
+        for r in rows:
+            vid = str(r.get("vehicle_id") or "").strip()
+            week = str(r.get("week_utc") or r.get("bucket_start") or "").strip()
+            if not vid or not week:
+                continue
+            values.append((
+                account_id, vid, week,
+                float(r.get("miles") or 0),
+                float(r.get("drive_min") or 0),
+                float(r.get("idle_min") or 0),
+                _opt_float(r.get("max_speed_mph")),
+                _opt_float(r.get("avg_fuel_pct")),
+                int(r.get("harsh_event_count") or 0),
+                int(r.get("fault_count_eod") or 0),
+                _opt_float(r.get("odometer_eod")),
+                _opt_float(r.get("engine_hours_eod")),
+                ts,
+            ))
+        if values:
+            await self._db.executemany(
+                """
+                INSERT INTO vehicle_telemetry (
+                    account_id, vehicle_id, granularity, bucket_start,
+                    miles, drive_min, idle_min,
+                    max_speed_mph, avg_fuel_pct,
+                    harsh_event_count, fault_count_eod,
+                    odometer_eod, engine_hours_eod, ingested_at
+                ) VALUES (?, ?, 'weekly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (account_id, vehicle_id, granularity, bucket_start) DO UPDATE SET
+                    miles=excluded.miles,
+                    drive_min=excluded.drive_min,
+                    idle_min=excluded.idle_min,
+                    max_speed_mph=excluded.max_speed_mph,
+                    avg_fuel_pct=excluded.avg_fuel_pct,
+                    harsh_event_count=excluded.harsh_event_count,
+                    fault_count_eod=excluded.fault_count_eod,
+                    odometer_eod=COALESCE(excluded.odometer_eod, vehicle_telemetry.odometer_eod),
+                    engine_hours_eod=COALESCE(excluded.engine_hours_eod, vehicle_telemetry.engine_hours_eod),
+                    ingested_at=excluded.ingested_at
+                """,
+                values,
+            )
+        await self._db.commit()
+        return len(values)
+
+    async def prune_vehicle_telemetry_weekly(
+        self, account_id: int, *, days_keep: int = 1825,
+    ) -> int:
+        """Drop weekly roll-up rows older than the retention window
+        (default ~5 years — the tier is tiny, so the long window is cheap
+        and backs multi-year year-over-year trends)."""
+        from datetime import timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days_keep)).date().isoformat()
+        cur = await self._db.execute(
+            "DELETE FROM vehicle_telemetry "
+            "WHERE account_id = ? AND granularity = 'weekly' AND bucket_start < ?",
+            (account_id, cutoff),
         )
         await self._db.commit()
         return getattr(cur, "rowcount", 0) or 0
@@ -1724,21 +1834,24 @@ class WarehouseMixin(_MixinBase):
         """
         from datetime import timedelta
         since_day = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
-        where = ["account_id = ?", "day_utc >= ?"]
+        where = ["account_id = ?", "granularity = 'daily'", "bucket_start >= ?"]
         args: list[Any] = [account_id, since_day]
         if vehicle_id:
             where.append("vehicle_id = ?")
             args.append(vehicle_id)
+        # Output keys (positional zip); ``day_utc`` is the unified table's
+        # ``bucket_start`` for the daily grain, kept as the public key.
         cols = [
             "vehicle_id", "day_utc", "miles", "drive_min", "idle_min",
             "max_speed_mph", "avg_fuel_pct", "harsh_event_count",
         ]
         cur = await self._db.execute(
             f"""
-            SELECT {', '.join(cols)}
-              FROM vehicle_metrics_daily
+            SELECT vehicle_id, bucket_start, miles, drive_min, idle_min,
+                   max_speed_mph, avg_fuel_pct, harsh_event_count
+              FROM vehicle_telemetry
              WHERE {' AND '.join(where)}
-             ORDER BY day_utc ASC
+             ORDER BY bucket_start ASC
             """,
             tuple(args),
         )
@@ -1773,9 +1886,9 @@ class WarehouseMixin(_MixinBase):
                    COALESCE(AVG(avg_fuel_pct), 0)       AS avg_fuel_pct,
                    COALESCE(SUM(harsh_event_count), 0)  AS harsh_events,
                    COUNT(*)                             AS days_with_data
-              FROM vehicle_metrics_daily
+              FROM vehicle_telemetry
              WHERE account_id = ? AND vehicle_id = ?
-               AND day_utc >= ?
+               AND granularity = 'daily' AND bucket_start >= ?
             """,
             (account_id, vehicle_id, since_day),
         )
@@ -1865,8 +1978,8 @@ class WarehouseMixin(_MixinBase):
                    COALESCE(SUM(drive_min), 0) AS drive_min,
                    COALESCE(SUM(idle_min), 0)  AS idle_min,
                    COUNT(*)                    AS days_with_data
-              FROM vehicle_metrics_daily
-             WHERE account_id = ? AND day_utc >= ?
+              FROM vehicle_telemetry
+             WHERE account_id = ? AND granularity = 'daily' AND bucket_start >= ?
              GROUP BY vehicle_id
             """,
             (account_id, since_day),
@@ -1905,8 +2018,8 @@ class WarehouseMixin(_MixinBase):
             "%Y-%m-%dT%H:00:00",
         )
         cur = await self._db.execute(
-            "DELETE FROM vehicle_telemetry_hourly "
-            "WHERE account_id = ? AND hour_utc < ?",
+            "DELETE FROM vehicle_telemetry "
+            "WHERE account_id = ? AND granularity = 'hourly' AND bucket_start < ?",
             (account_id, cutoff),
         )
         await self._db.commit()

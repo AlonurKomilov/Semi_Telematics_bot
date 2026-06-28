@@ -91,6 +91,42 @@ async def test_aggregate_day_window_accepts_arbitrary_day():
     assert params[2] == "2026-05-15T00:00:00"
 
 
+# ── _aggregate_week_window contract ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_aggregate_week_window_rolls_daily_into_weekly():
+    """The weekly window reads the DAILY granularity over the whole 7-day
+    span and upserts one weekly row per vehicle, carrying the latest EOD
+    odometer in the week."""
+    from capabilities.warehouse.telemetry.aggregator import _aggregate_week_window
+
+    tenant = MagicMock()
+    cur = MagicMock()
+    # (vehicle_id, miles, drive_min, idle_min, max_speed, avg_fuel,
+    #  harsh, fault_eod, odometer_eod, engine_hours_eod)
+    cur.fetchall = AsyncMock(return_value=[
+        ("v1", 700.0, 300.0, 60.0, 70.0, 50.0, 3, 0, 12345.0, 800.0),
+    ])
+    tenant._db.execute = AsyncMock(return_value=cur)
+    tenant.upsert_vehicle_metrics_weekly = AsyncMock(return_value=1)
+
+    monday = datetime(2026, 5, 11, 0, 0, tzinfo=timezone.utc)  # an ISO Monday
+    n = await _aggregate_week_window(tenant, 7, monday)
+    assert n == 1
+
+    # Read bound to the whole week [2026-05-11, 2026-05-18) on the daily grain.
+    params = tenant._db.execute.call_args.args[1]
+    assert params == (7, "2026-05-11", "2026-05-18")
+
+    # The summed row was forwarded to the weekly upsert.
+    rows = tenant.upsert_vehicle_metrics_weekly.call_args.args[1]
+    assert rows[0]["vehicle_id"] == "v1"
+    assert rows[0]["week_utc"] == "2026-05-11"
+    assert rows[0]["miles"] == 700.0
+    assert rows[0]["odometer_eod"] == 12345.0
+
+
 # ── backfill_aggregations contract ──────────────────────────────
 
 

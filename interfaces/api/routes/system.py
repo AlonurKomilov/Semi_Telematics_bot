@@ -772,13 +772,16 @@ async def scheduler_jobs(
 
 
 # The downsampling cascade — provider-agnostic warehouse plumbing, NOT a
-# Samsara feed.  ``(label, table, ts_col, note)``; ts_col is the ingest-time
-# column so freshness reflects the job running, not the source time.
+# Samsara feed.  ``(label, table, ts_col, note, granularity)``; ts_col is the
+# ingest-time column so freshness reflects the job running, not the source
+# time.  The three aggregate tiers share the unified ``vehicle_telemetry``
+# table, split by ``granularity`` (None = its own physical table).
 _TELEMETRY_CASCADE = (
-    ("Live state",     "vehicle_state",            "updated_at",  "ingest · every 1 min"),
-    ("5-min history",  "vehicle_state_snapshot",   "captured_at", "computed · every 5 min · keep 7d"),
-    ("Hourly roll-up", "vehicle_telemetry_hourly", "ingested_at", "computed · :05 · keep 90d"),
-    ("Daily roll-up",  "vehicle_metrics_daily",    "ingested_at", "computed · 00:05 UTC · keep 730d"),
+    ("Live state",     "vehicle_state",          "updated_at",  "ingest · every 1 min", None),
+    ("5-min history",  "vehicle_state_snapshot", "captured_at", "computed · every 5 min · keep 7d", None),
+    ("Hourly roll-up", "vehicle_telemetry",      "ingested_at", "computed · :05 · keep 90d", "hourly"),
+    ("Daily roll-up",  "vehicle_telemetry",      "ingested_at", "computed · 00:05 UTC · keep 730d", "daily"),
+    ("Weekly roll-up", "vehicle_telemetry",      "ingested_at", "computed · Mon 00:10 UTC · keep ~5y", "weekly"),
 )
 
 
@@ -798,19 +801,22 @@ async def account_telemetry_cascade(
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(status_code=404, detail="account not found")
+    # Live + 5-min raw each own a physical table; the aggregate tiers share
+    # vehicle_telemetry split by granularity, so they need a separate query.
     fresh = await tenant.get_feed_freshness(
-        account_id, [(t[1], t[2]) for t in _TELEMETRY_CASCADE],
+        account_id, [(t[1], t[2]) for t in _TELEMETRY_CASCADE if t[4] is None],
     )
-    tiers = [
-        {
+    by_grain = await tenant.get_telemetry_tier_freshness(account_id)
+    tiers = []
+    for (label, table, _ts, note, grain) in _TELEMETRY_CASCADE:
+        f = (by_grain.get(grain) if grain else fresh.get(table)) or {}
+        tiers.append({
             "label": label,
             "table": table,
             "note": note,
-            "count": (fresh.get(table) or {}).get("count", 0),
-            "last_ingest_at": (fresh.get(table) or {}).get("last_at"),
-        }
-        for (label, table, _ts, note) in _TELEMETRY_CASCADE
-    ]
+            "count": f.get("count", 0),
+            "last_ingest_at": f.get("last_at"),
+        })
     return {"account_id": account_id, "tiers": tiers}
 
 

@@ -589,8 +589,9 @@ async def test_aggregate_day_window_captures_eod(tenant):
     await aggregator._aggregate_day_window(tenant, 1, day)
 
     cur = await tenant._db.execute(
-        "SELECT odometer_eod, engine_hours_eod FROM vehicle_metrics_daily "
-        "WHERE account_id = ? AND vehicle_id = ? AND day_utc = ?",
+        "SELECT odometer_eod, engine_hours_eod FROM vehicle_telemetry "
+        "WHERE account_id = ? AND vehicle_id = ? "
+        "AND granularity = 'daily' AND bucket_start = ?",
         (1, "v1", "2026-06-15"),
     )
     row = dict(await cur.fetchone())

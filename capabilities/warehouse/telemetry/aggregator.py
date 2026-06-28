@@ -1,11 +1,11 @@
 """Vehicle telemetry warehouse — aggregation (the roll-up tier builders).
 
 These functions downsample data ALREADY in the warehouse into the tiered
-history (``vehicle_state_snapshot`` → ``vehicle_telemetry_hourly`` →
-``vehicle_metrics_daily``).  They are PROVIDER-AGNOSTIC — they read local
-tables and make no integration call — and are registered as the vehicle
-roll-up cascade with the data-lifecycle hub (see
-``features/vehicles/lifecycle.py``).
+history: the raw 5-min ``vehicle_state_snapshot`` rolls up into the unified
+``vehicle_telemetry`` aggregate table (``granularity`` hourly → daily →
+weekly).  They are PROVIDER-AGNOSTIC — they read local tables and make no
+integration call — and are registered as the vehicle roll-up cascade with
+the data-lifecycle hub (see ``features/vehicles/lifecycle.py``).
 
 The provider-specific INGEST that fills the raw tables lives WITH each
 integration (``capabilities/integrations/samsara/sync.py``), not here — the
@@ -287,10 +287,11 @@ async def _aggregate_day_window(
                MAX(COALESCE(max_speed_mph, 0))     AS max_speed_mph,
                AVG(COALESCE(avg_fuel_pct, 0))      AS avg_fuel_pct,
                SUM(COALESCE(harsh_event_count, 0)) AS harsh_event_count
-          FROM vehicle_telemetry_hourly
+          FROM vehicle_telemetry
          WHERE account_id = ?
-           AND hour_utc >= ?
-           AND hour_utc <  ?
+           AND granularity = 'hourly'
+           AND bucket_start >= ?
+           AND bucket_start <  ?
          GROUP BY vehicle_id
         """,
         (account_id, hour_start_label, hour_end_label),
@@ -379,6 +380,100 @@ async def aggregate_metrics_daily(account_id: int) -> int:
     logger.info(
         "aggregate_metrics_daily acct=%d day=%s rows=%d",
         account_id, day_label, n,
+    )
+    return n
+
+
+async def _aggregate_week_window(
+    tenant,
+    account_id: int,
+    week_start: datetime,
+) -> int:
+    """Aggregate ONE ISO week (Mon..Sun) into the weekly tier.
+
+    Rolls the up-to-7 daily rows in ``[week_start, week_start + 7d)`` into
+    one weekly row per vehicle.  ``week_start`` must be a Monday 00:00 UTC.
+    End-of-day odometer / engine-hours carry the LATEST daily reading in
+    the week (both monotonic → MAX == last reading), so the weekly tier
+    stays usable for long-horizon back-dated reads.
+    """
+    week_end = week_start + timedelta(days=7)
+    week_label = week_start.strftime("%Y-%m-%d")
+    day_start_label = week_start.strftime("%Y-%m-%d")
+    day_end_label = week_end.strftime("%Y-%m-%d")
+
+    cols = [
+        "vehicle_id", "miles", "drive_min", "idle_min",
+        "max_speed_mph", "avg_fuel_pct", "harsh_event_count",
+        "fault_count_eod", "odometer_eod", "engine_hours_eod",
+    ]
+    cur = await tenant._db.execute(
+        """
+        SELECT vehicle_id,
+               SUM(COALESCE(miles, 0))             AS miles,
+               SUM(COALESCE(drive_min, 0))         AS drive_min,
+               SUM(COALESCE(idle_min, 0))          AS idle_min,
+               MAX(COALESCE(max_speed_mph, 0))     AS max_speed_mph,
+               AVG(COALESCE(avg_fuel_pct, 0))      AS avg_fuel_pct,
+               SUM(COALESCE(harsh_event_count, 0)) AS harsh_event_count,
+               MAX(COALESCE(fault_count_eod, 0))   AS fault_count_eod,
+               MAX(odometer_eod)                   AS odometer_eod,
+               MAX(engine_hours_eod)               AS engine_hours_eod
+          FROM vehicle_telemetry
+         WHERE account_id = ?
+           AND granularity = 'daily'
+           AND bucket_start >= ?
+           AND bucket_start <  ?
+         GROUP BY vehicle_id
+        """,
+        (account_id, day_start_label, day_end_label),
+    )
+    rows: list[dict[str, Any]] = []
+    for r in await cur.fetchall():
+        d = dict(zip(cols, r))
+        vid = str(d.get("vehicle_id") or "")
+        if not vid:
+            continue
+        rows.append({
+            "vehicle_id":        vid,
+            "week_utc":          week_label,
+            "miles":             float(d.get("miles") or 0),
+            "drive_min":         float(d.get("drive_min") or 0),
+            "idle_min":          float(d.get("idle_min") or 0),
+            "max_speed_mph":     d.get("max_speed_mph"),
+            "avg_fuel_pct":      d.get("avg_fuel_pct"),
+            "harsh_event_count": int(d.get("harsh_event_count") or 0),
+            "fault_count_eod":   int(d.get("fault_count_eod") or 0),
+            "odometer_eod":      d.get("odometer_eod"),
+            "engine_hours_eod":  d.get("engine_hours_eod"),
+        })
+    if not rows:
+        return 0
+    return await tenant.upsert_vehicle_metrics_weekly(account_id, rows)
+
+
+async def aggregate_metrics_weekly(account_id: int) -> int:
+    """Roll the just-completed ISO week's daily rows into the weekly tier.
+
+    Live-path wrapper around ``_aggregate_week_window`` — runs Mondays at
+    00:10 UTC (after the daily roll-up) and targets the previous Mon..Sun
+    week.  Aligns to Monday so a backfill call on any weekday still targets
+    whole weeks.
+
+    Weekly is the long-horizon tier (~5-year retention): multi-year
+    year-over-year trends without scanning 730 daily rows per vehicle.
+    """
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        return 0
+    now = datetime.now(timezone.utc)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    this_week_monday = today - timedelta(days=today.weekday())
+    last_week_monday = this_week_monday - timedelta(days=7)
+    n = await _aggregate_week_window(tenant, account_id, last_week_monday)
+    logger.info(
+        "aggregate_metrics_weekly acct=%d week=%s rows=%d",
+        account_id, last_week_monday.strftime("%Y-%m-%d"), n,
     )
     return n
 

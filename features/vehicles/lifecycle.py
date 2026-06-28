@@ -24,6 +24,7 @@ from capabilities.data_lifecycle.rollups.registry import (
 )
 from capabilities.warehouse.telemetry.aggregator import (
     aggregate_metrics_daily,
+    aggregate_metrics_weekly,
     aggregate_telemetry_hourly,
     snapshot_vehicle_state,
 )
@@ -56,6 +57,14 @@ register_cascade(
                 aggregate_metrics_daily,
                 "Roll the hourly tier into the daily tier",
             ),
+            RollupStage(
+                # Mondays 00:10 UTC — after the daily roll-up (00:05) has
+                # closed out Sunday, so the just-completed week is whole.
+                "warehouse_metrics_weekly",
+                {"cron": "10 0 * * 1", "tz": "UTC"},
+                aggregate_metrics_weekly,
+                "Roll the daily tier into the weekly tier",
+            ),
         ),
     )
 )
@@ -71,10 +80,11 @@ from capabilities.data_lifecycle.retention.registry import (  # noqa: E402
 
 # Target names are the feature-component identity (``vehicle.<component>``),
 # decoupled from the physical table the executor prunes:
-#   vehicle.timeline_5min   -> vehicle_state_snapshot   (5-min state history)
-#   vehicle.timeline_hourly -> vehicle_telemetry_hourly (hourly roll-up)
-#   vehicle.metrics_daily   -> vehicle_metrics_daily    (daily roll-up + EOD odometer)
-#   vehicle.faults          -> vehicle_fault_detail     (CLEARED DTC history only)
+#   vehicle.timeline_5min   -> vehicle_state_snapshot      (5-min raw state)
+#   vehicle.timeline_hourly -> vehicle_telemetry (hourly)  (hourly roll-up)
+#   vehicle.metrics_daily   -> vehicle_telemetry (daily)   (daily roll-up + EOD odometer)
+#   vehicle.timeline_weekly -> vehicle_telemetry (weekly)  (weekly roll-up, long horizon)
+#   vehicle.faults          -> vehicle_fault_detail        (CLEARED DTC history only)
 register_target(RetentionTarget(
     "vehicle.timeline_5min", "Vehicle timeline (5-min state history)", "tenant",
     lambda db, acct, days: db.prune_vehicle_state_snapshots(acct, days_keep=days),
@@ -86,6 +96,10 @@ register_target(RetentionTarget(
 register_target(RetentionTarget(
     "vehicle.metrics_daily", "Vehicle daily metrics (+ end-of-day odometer)", "tenant",
     lambda db, acct, days: db.prune_vehicle_metrics_daily(acct, days_keep=days),
+))
+register_target(RetentionTarget(
+    "vehicle.timeline_weekly", "Vehicle timeline (weekly roll-up)", "tenant",
+    lambda db, acct, days: db.prune_vehicle_telemetry_weekly(acct, days_keep=days),
 ))
 # Cleared DTCs only — the executor never touches active faults (cleared_at
 # IS NULL), so live faults are kept regardless of the window.
@@ -101,6 +115,9 @@ register_need(RetentionNeed(
 ))
 register_need(RetentionNeed(
     "vehicles", "vehicle.timeline_hourly", 90, "vehicle timeline trend lines",
+))
+register_need(RetentionNeed(
+    "vehicles", "vehicle.timeline_weekly", 1825, "multi-year year-over-year trend lines",
 ))
 register_need(RetentionNeed(
     "vehicles", "vehicle.faults", 365, "resolved-fault diagnostic history",

@@ -29,6 +29,7 @@ _JOB_META = {
     "warehouse_state_snapshot":       ("Telematics", "Capture the 5-min vehicle-state history"),
     "warehouse_telemetry_hourly":     ("Telematics", "Roll 5-min snapshots into the hourly tier"),
     "warehouse_metrics_daily":        ("Telematics", "Roll the hourly tier into the daily tier"),
+    "warehouse_metrics_weekly":       ("Telematics", "Roll the daily tier into the weekly tier"),
     "warehouse_vehicle_health":       ("Telematics", "Ingest current vehicle health"),
     "warehouse_vehicle_faults":       ("Telematics", "Ingest current vehicle faults (DTCs)"),
     "warehouse_safety_events":        ("Telematics", "Ingest safety / harsh-driving events"),

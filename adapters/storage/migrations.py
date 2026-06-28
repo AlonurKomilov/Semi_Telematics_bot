@@ -5190,3 +5190,105 @@ async def migrate_drop_derived_service_perms(conn) -> None:
         "(can_alerts_all/can_alerts_vehicle/can_ai_chat) from %d "
         "role_permissions override(s)", changed,
     )
+
+
+@_register("131_vehicle_telemetry_unified")
+async def migrate_vehicle_telemetry_unified(conn) -> None:
+    """Merge ``vehicle_telemetry_hourly`` + ``vehicle_metrics_daily`` into
+    ONE granularity-keyed warehouse table ``vehicle_telemetry``.
+
+    The two aggregate tiers had nearly identical shapes but drifted names
+    (``hour_utc``/``day_utc``; the hourly tier even carries a dead legacy
+    ``top_speed_mph`` alongside ``max_speed_mph``) and forced a new table
+    per grain.  One table keyed by ``granularity`` ('hourly'|'daily'|
+    'weekly') ends that and lets the weekly tier exist with zero new DDL.
+
+    Backfill copies BOTH old tables in.  The daily end-of-day odometer
+    CANNOT be recomputed past the 7-day ``vehicle_state_snapshot`` horizon,
+    so it must be COPIED, not rebuilt — the daily table is the durable EOD
+    store (see [[eod_odometer_history]]).  The old tables are LEFT IN PLACE
+    as a dead backup; a later migration drops them once this has baked.
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS vehicle_telemetry (
+            account_id        INTEGER NOT NULL,
+            vehicle_id        TEXT    NOT NULL,
+            vehicle_name      TEXT    NOT NULL DEFAULT '',
+            granularity       TEXT    NOT NULL,
+            bucket_start      TEXT    NOT NULL,
+            miles             REAL    NOT NULL DEFAULT 0,
+            drive_min         REAL    NOT NULL DEFAULT 0,
+            idle_min          REAL    NOT NULL DEFAULT 0,
+            max_speed_mph     REAL,
+            avg_fuel_pct      REAL,
+            harsh_event_count INTEGER NOT NULL DEFAULT 0,
+            fault_count_eod   INTEGER NOT NULL DEFAULT 0,
+            odometer_eod      REAL,
+            engine_hours_eod  REAL,
+            ingested_at       TEXT    NOT NULL DEFAULT '',
+            PRIMARY KEY (account_id, vehicle_id, granularity, bucket_start)
+        )
+    """)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_vehicle_telemetry_grain "
+        "ON vehicle_telemetry(account_id, granularity, bucket_start DESC)"
+    )
+    await conn.commit()
+
+    # Backfill the hourly tier.  (avg_fuel_pct exists on the old hourly
+    # table but was never populated — copied for completeness; stays NULL.)
+    await conn.execute("""
+        INSERT INTO vehicle_telemetry (
+            account_id, vehicle_id, vehicle_name, granularity, bucket_start,
+            miles, drive_min, idle_min, max_speed_mph, avg_fuel_pct,
+            harsh_event_count, ingested_at
+        )
+        SELECT account_id, vehicle_id, vehicle_name, 'hourly', hour_utc,
+               miles, drive_min, idle_min, max_speed_mph, avg_fuel_pct,
+               harsh_event_count, ingested_at
+          FROM vehicle_telemetry_hourly
+        ON CONFLICT (account_id, vehicle_id, granularity, bucket_start) DO NOTHING
+    """)
+    # Backfill the daily tier (carries the long-retention EOD odometer).
+    await conn.execute("""
+        INSERT INTO vehicle_telemetry (
+            account_id, vehicle_id, granularity, bucket_start,
+            miles, drive_min, idle_min, max_speed_mph, avg_fuel_pct,
+            harsh_event_count, fault_count_eod, odometer_eod, engine_hours_eod,
+            ingested_at
+        )
+        SELECT account_id, vehicle_id, 'daily', day_utc,
+               miles, drive_min, idle_min, max_speed_mph, avg_fuel_pct,
+               harsh_event_count, fault_count_eod, odometer_eod, engine_hours_eod,
+               ingested_at
+          FROM vehicle_metrics_daily
+        ON CONFLICT (account_id, vehicle_id, granularity, bucket_start) DO NOTHING
+    """)
+    await conn.commit()
+    logger.info("Migration 131: vehicle_telemetry unified table created + backfilled")
+
+    # RLS — match the protection vehicle_telemetry_hourly already has
+    # (migration 057).  Gated by ENABLE_RLS, same shape as 057/103/105.
+    import os
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        logger.info("Migration 131: ENABLE_RLS not set; RLS policy skipped")
+        return
+    try:
+        await conn.execute("ALTER TABLE vehicle_telemetry ENABLE ROW LEVEL SECURITY")
+        await conn.execute("ALTER TABLE vehicle_telemetry FORCE ROW LEVEL SECURITY")
+        await conn.execute("DROP POLICY IF EXISTS tenant_isolation ON vehicle_telemetry")
+        await conn.execute(
+            """
+            CREATE POLICY tenant_isolation ON vehicle_telemetry
+            USING       (account_id::text = current_setting('app.account_id', true))
+            WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+            """
+        )
+        await conn.commit()
+        logger.info("Migration 131: tenant_isolation RLS applied to vehicle_telemetry")
+    except Exception as e:
+        logger.error("Migration 131: RLS apply on vehicle_telemetry failed — %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
