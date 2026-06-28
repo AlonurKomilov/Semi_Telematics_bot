@@ -138,7 +138,7 @@ def build_dq_packet_pdf(
     x = app.get("experience") or {}
     _section(story, styles, "Driving experience")
     story.append(_kv([
-        ("Years CDL", x.get("yearsCdl")), ("Total miles", x.get("totalMiles")),
+        ("Years CDL", x.get("yearsCdl")),
         ("Equipment", ", ".join(x.get("equipment") or [])),
         ("Regions", ", ".join(x.get("regions") or [])),
         ("Preferred role", x.get("preferredRole")),

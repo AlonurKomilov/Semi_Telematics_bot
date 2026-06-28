@@ -104,7 +104,6 @@ export const ENDORSEMENTS = [
 ];
 
 export const YEARS_CDL = ['1', '2', '3', '4', '5', '6-9', '10-14', '15-19', '20+'];
-export const TOTAL_MILES = ['<100,000', '100k–250k', '250k–500k', '500k–1M', '1M–2M', '2M+'];
 
 // Physical trailer / equipment types the driver has operated.  Deliberately
 // NOT "Hazmat" — that's a cargo class, captured by the H endorsement + the

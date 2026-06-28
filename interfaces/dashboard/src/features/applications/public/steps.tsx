@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { Plus, Trash2, ShieldCheck, ChevronDown, FileText } from 'lucide-react';
 import {
   deepGet, V, run, US_STATES, YES_NO, YEARS_AT_ADDR, CDL_CLASSES, ENDORSEMENTS,
-  YEARS_CDL, TOTAL_MILES, EQUIPMENT_TYPES, REGIONS, PREFERRED_ROLE,
+  YEARS_CDL, EQUIPMENT_TYPES, REGIONS, PREFERRED_ROLE,
   ACCIDENT_TYPES, INJURY_LEVELS, PREVENTABLE, CONVICTION_STATUS, CONTACT_OK,
   HEARD_SOURCES, blankJob, blankAddress, blankAccident, blankViolation,
 } from './lib';
@@ -20,6 +20,10 @@ import type { CarrierLegal, Disclosure, Block } from './disclosures';
 export interface StepDef {
   title: string;
   sub: string;
+  // Optional phase label.  Consecutive steps sharing a group render under one
+  // sidebar heading and a "<group> · N of M" counter, so the legally-separate
+  // PSP / FCRA / final-consent screens read as one "Final Authorizations" run.
+  group?: string;
   Render: (p: RenderProps) => JSX.Element;
   validate: (data: Data) => Errors;
 }
@@ -220,7 +224,7 @@ const Step2: StepDef = {
 
 // ── Step 3 · CDL & Documents ────────────────────────────────────────
 const Step3: StepDef = {
-  title: 'CDL & Documents', sub: 'License + uploads',
+  title: 'CDL & Documents', sub: 'License + uploads', group: 'License & Experience',
   validate: (d) => {
     const e: Errors = {};
     const c = d.cdl || {};
@@ -296,12 +300,11 @@ const Step3: StepDef = {
 
 // ── Step 4 · Driving Experience ─────────────────────────────────────
 const Step4: StepDef = {
-  title: 'Driving Experience', sub: 'Equipment & history',
+  title: 'Driving Experience', sub: 'Equipment & history', group: 'License & Experience',
   validate: (d) => {
     const e: Errors = {};
     const x = d.experience || {};
     if (V.required(x.yearsCdl)) e['experience.yearsCdl'] = 'Required';
-    if (V.required(x.totalMiles)) e['experience.totalMiles'] = 'Required';
     if (!x.equipment || x.equipment.length === 0) e['experience.equipment'] = 'Select at least one';
     if (!x.regions || x.regions.length === 0) e['experience.regions'] = 'Select at least one';
     return e;
@@ -317,12 +320,6 @@ const Step4: StepDef = {
         <div className={grid}>
           <Field label="Years driving CDL" required error={errors['experience.yearsCdl']}>
             <SelectInput value={x.yearsCdl} onChange={(v) => set('experience.yearsCdl', v)} options={YEARS_CDL} error={!!errors['experience.yearsCdl']} />
-          </Field>
-          <Field label="Total career miles" required error={errors['experience.totalMiles']}>
-            <SelectInput value={x.totalMiles} onChange={(v) => set('experience.totalMiles', v)} options={TOTAL_MILES} error={!!errors['experience.totalMiles']} />
-          </Field>
-          <Field label="Longest single run" className={full}>
-            <TextInput value={x.longestRun} onChange={(v) => set('experience.longestRun', v)} mono />
           </Field>
         </div>
         <Field label="Equipment operated" required error={errors['experience.equipment']}>
@@ -683,13 +680,29 @@ function DisclosureCard({ doc, checked, error, onChange }: {
   );
 }
 
+// A short consent whose text IS the authorization (no separate document).
+// Same card frame as DisclosureCard so the final step reads as one consistent
+// stack of consent cards rather than "one document card + bare checkboxes".
+function ConsentCard({ label, desc, checked, error, onChange }: {
+  label: string; desc: string; checked: boolean; error?: string; onChange: (b: boolean) => void;
+}) {
+  return (
+    <div className={`rounded-md border ${error ? 'border-destructive/50' : 'border-border'} bg-card px-4 py-3`}>
+      <Check_ checked={checked} onChange={onChange}>
+        <span className="text-sm font-medium text-foreground">{label}</span>
+        <span className="mt-0.5 block text-xs text-muted-foreground">{desc}</span>
+      </Check_>
+    </div>
+  );
+}
+
 // A standalone step that presents ONE disclosure in full (expanded) with
 // nothing else but its authorization — satisfies the "stand-alone document"
 // rule for PSP and the FCRA background-check disclosure.
 function disclosureStep(id: 'psp' | 'fcra', title: string, sub: string): StepDef {
   const build = id === 'psp' ? pspDisclosure : fcraDisclosure;
   return {
-    title, sub,
+    title, sub, group: 'Final Authorizations',
     validate: (d) => ((d.consents || {})[id] ? {} : { [`consents.${id}`]: 'Required' }),
     Render: ({ data, set, errors, carrier }) => {
       const doc = build(carrier || EMPTY_LEGAL);
@@ -722,7 +735,7 @@ const Step8Psp = disclosureStep('psp', 'PSP Authorization', 'FMCSA crash & inspe
 const Step9Fcra = disclosureStep('fcra', 'Background Check Authorization', 'FCRA consumer report');
 
 const Step10: StepDef = {
-  title: 'Consents & Signature', sub: 'Authorizations',
+  title: 'Consents & Signature', sub: 'Authorizations', group: 'Final Authorizations',
   validate: (d) => {
     const e: Errors = {};
     const c = d.consents || {};
@@ -750,17 +763,17 @@ const Step10: StepDef = {
           <p>Final authorizations. Review the document below and check each box. Your data is encrypted and used only for this hiring decision.</p>
         </div>
         <div>
-          <p className={`${sectionTitle} mb-2`}>Required consent document</p>
-          <DisclosureCard doc={empDoc} checked={!!c.employment_verification}
-            error={errors['consents.employment_verification']} onChange={(b) => set('consents.employment_verification', b)} />
-        </div>
-        <div className="flex flex-col gap-3">
-          {CHECK_CONSENTS.map(({ key, label, desc }) => (
-            <Check_ key={key} checked={!!c[key]} onChange={(b) => set(`consents.${key}`, b)}>
-              <span className="font-medium">{label}</span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">{desc}</span>
-            </Check_>
-          ))}
+          <p className={`${sectionTitle} mb-2`}>Required consents</p>
+          <div className="flex flex-col gap-3">
+            {/* The one consent backed by a full legal document keeps its
+                expandable card; the short ones share the same card frame. */}
+            <DisclosureCard doc={empDoc} checked={!!c.employment_verification}
+              error={errors['consents.employment_verification']} onChange={(b) => set('consents.employment_verification', b)} />
+            {CHECK_CONSENTS.map(({ key, label, desc }) => (
+              <ConsentCard key={key} label={label} desc={desc} checked={!!c[key]}
+                error={errors[`consents.${key}`]} onChange={(b) => set(`consents.${key}`, b)} />
+            ))}
+          </div>
         </div>
         {anyConsentErr && <p className="text-xs text-destructive">All authorizations are required to submit.</p>}
         <div>

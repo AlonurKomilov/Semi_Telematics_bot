@@ -144,27 +144,50 @@ function Header({ compact, brand, token, logoUrl, bannerUrl }: {
   );
 }
 
+// Collapse consecutive same-group steps into one "display unit", so the grouped
+// Final-Authorizations screens count + show as a SINGLE step — one sidebar row,
+// one progress dot, "Step 8 of 8" — while each still renders on its own screen.
+interface DisplayUnit { label: string; sub: string; group?: string; steps: number[] }
+// Sidebar sub-label for each grouped unit (a group spans several screens, so
+// it can't borrow one member's sub).
+const GROUP_SUB: Record<string, string> = {
+  'License & Experience': 'CDL, documents & experience',
+  'Final Authorizations': 'PSP · Background check · Consents',
+};
+const UNITS: DisplayUnit[] = [];
+STEPS.forEach((s, i) => {
+  const last = UNITS[UNITS.length - 1];
+  if (s.group && last && last.group === s.group) last.steps.push(i);
+  else UNITS.push({ label: s.group || s.title, sub: s.group ? (GROUP_SUB[s.group] ?? '') : s.sub, group: s.group, steps: [i] });
+});
+const unitIndexOf = (stepIndex: number) => UNITS.findIndex((u) => u.steps.includes(stepIndex));
+
 function Stepper({ current, max, onJump, style }: {
   current: number; max: number; onJump: (i: number) => void; style?: React.CSSProperties;
 }) {
+  const curUnit = unitIndexOf(current);
   return (
     // `style` carries readable text vars when a custom page Background is set,
     // so the sidebar never goes dark-on-dark (the card stays base-themed).
     <nav aria-label="Application progress" className="hidden lg:block" style={style}>
       <div className="sticky top-6 flex flex-col gap-1">
-        {STEPS.map((s, i) => {
-          const done = i < current, on = i === current, reachable = i <= max;
+        {UNITS.map((u, ui) => {
+          const lastStep = u.steps[u.steps.length - 1];
+          const done = current > lastStep, on = ui === curUnit, reachable = max >= u.steps[0];
+          // Jump to the furthest sub-step already reached in this unit, so a
+          // grouped unit never bounces the driver back to its first screen.
+          const target = u.steps.filter((i) => i <= max).pop() ?? u.steps[0];
           return (
-            <button key={i} type="button" disabled={!reachable} onClick={() => reachable && onJump(i)}
+            <button key={ui} type="button" disabled={!reachable} onClick={() => reachable && onJump(target)}
               className={`flex items-start gap-3 rounded-md px-3 py-2 text-left transition-colors ${
                 on ? 'bg-primary/10' : reachable ? 'hover:bg-muted' : 'opacity-50'
               }`}>
               <span className={`flex size-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${
                 done ? 'border-primary bg-primary text-primary-foreground' : on ? 'border-primary text-primary' : 'border-border text-muted-foreground'
-              }`}>{done ? <CheckCircle2 size={14} /> : i + 1}</span>
+              }`}>{done ? <CheckCircle2 size={14} /> : ui + 1}</span>
               <span>
-                <span className={`block text-sm ${on ? 'font-medium text-foreground' : 'text-foreground'}`}>{s.title}</span>
-                <span className="block text-xs text-muted-foreground">{s.sub}</span>
+                <span className={`block text-sm ${on ? 'font-medium text-foreground' : 'text-foreground'}`}>{u.label}</span>
+                <span className="block text-xs text-muted-foreground">{u.sub}</span>
               </span>
             </button>
           );
@@ -261,6 +284,12 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
 
   const set = (path: string, value: unknown) => setData((d) => deepSet(d, path, value));
   const cur = STEPS[step];
+  // The grouped consent screens collapse into ONE display unit, so the counter,
+  // sidebar, and progress bar treat them as a single "Step 8 of 8".  Within it,
+  // a "· N of 3" sub-counter shows which legally-separate screen is on view.
+  const curUnit = unitIndexOf(step);
+  const groupSize = cur.group ? STEPS.filter((s) => s.group === cur.group).length : 0;
+  const groupPos = cur.group ? STEPS.slice(0, step + 1).filter((s) => s.group === cur.group).length : 0;
   const errors = useMemo(() => cur.validate(data), [cur, data]);
   const hasErrors = Object.keys(errors).length > 0;
   const visibleErrors = attempted[step] ? errors : {};
@@ -371,12 +400,14 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
               style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} />
             <div className="flex flex-col gap-2 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-xs text-muted-foreground">Step {step + 1} of {STEPS.length}</p>
+                <p className="text-xs text-muted-foreground">
+                  {cur.group ? `${cur.group} · ${groupPos} of ${groupSize}` : `Step ${curUnit + 1} of ${UNITS.length}`}
+                </p>
                 <h2 className="text-lg font-semibold text-foreground">{cur.title}</h2>
               </div>
               <div className="flex flex-wrap gap-1">
-                {STEPS.map((_, i) => (
-                  <span key={i} className={`h-1.5 w-5 rounded-full ${i <= step ? 'bg-primary' : 'bg-muted'}`} />
+                {UNITS.map((_, ui) => (
+                  <span key={ui} className={`h-1.5 w-5 rounded-full ${ui <= curUnit ? 'bg-primary' : 'bg-muted'}`} />
                 ))}
               </div>
             </div>
