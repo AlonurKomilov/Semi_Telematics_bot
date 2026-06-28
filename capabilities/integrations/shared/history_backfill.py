@@ -888,8 +888,8 @@ async def backfill_vehicle_history(
                     )
 
             # Chain hourly + daily aggregations so the calendar
-            # projection's median path (which reads from
-            # ``vehicle_metrics_daily``) has data the moment this
+            # projection's median path (which reads the daily tier of
+            # ``vehicle_telemetry``) has data the moment this
             # backfill finishes — otherwise the operator would see
             # snapshot rows but the calendar would still be empty
             # for ~7 more days while the live aggregators caught up.

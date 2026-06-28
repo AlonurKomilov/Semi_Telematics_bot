@@ -628,8 +628,8 @@ async def vehicle_timeline(
 ):
     """Hourly telemetry roll-up for a single vehicle (warehouse).
 
-    Returns oldest-first ``points`` from ``vehicle_telemetry_hourly``.
-    Returns empty list when the warehouse flag is off or the table is cold.
+    Returns oldest-first ``points`` from the hourly tier of ``vehicle_telemetry``.
+    Returns empty list when the warehouse flag is off or the tier is cold.
     """
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)

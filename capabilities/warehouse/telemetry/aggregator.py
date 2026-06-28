@@ -117,7 +117,7 @@ async def _aggregate_hour_window(
     account_id: int,
     hour_start: datetime,
 ) -> int:
-    """Aggregate ONE hour into ``vehicle_telemetry_hourly``.
+    """Aggregate ONE hour into the hourly tier of ``vehicle_telemetry``.
 
     Shared body of the live cron path and the backfill path.  Window
     is ``[hour_start, hour_start + 1h)`` so the caller controls
@@ -232,8 +232,8 @@ async def _aggregate_hour_window(
 
 
 async def aggregate_telemetry_hourly(account_id: int) -> int:
-    """Roll the last closed hour into one row per vehicle in
-    ``vehicle_telemetry_hourly``.
+    """Roll the last closed hour into one row per vehicle in the
+    hourly tier of ``vehicle_telemetry``.
 
     Live-path wrapper around ``_aggregate_hour_window`` — computes
     the just-closed hour and delegates.  Miles come from snapshot
@@ -262,7 +262,7 @@ async def _aggregate_day_window(
     account_id: int,
     day_start: datetime,
 ) -> int:
-    """Aggregate ONE UTC day into ``vehicle_metrics_daily``.
+    """Aggregate ONE UTC day into the daily tier of ``vehicle_telemetry``.
 
     Shared body of the live cron path and the backfill path.  Sums
     the 24 hourly buckets in ``[day_start, day_start + 1d)`` and
@@ -358,7 +358,7 @@ async def _aggregate_day_window(
 
 async def aggregate_metrics_daily(account_id: int) -> int:
     """Roll the previous UTC day's hourly buckets into one daily row
-    per vehicle in ``vehicle_metrics_daily``.
+    per vehicle in the daily tier of ``vehicle_telemetry``.
 
     Live-path wrapper around ``_aggregate_day_window`` — computes
     "yesterday UTC" and delegates.  Runs at 00:05 UTC daily.
@@ -491,9 +491,9 @@ async def backfill_aggregations(
 
     Pipeline:
       1. For each hour in the last ``days * 24`` hours: re-aggregate
-         from ``vehicle_state_snapshot`` into ``vehicle_telemetry_hourly``.
+         from ``vehicle_state_snapshot`` into the hourly tier.
       2. For each UTC day in the last ``days`` days: roll the hourly
-         buckets into one row per vehicle in ``vehicle_metrics_daily``.
+         buckets into one row per vehicle in the daily tier.
 
     Both steps are idempotent (UPSERT semantics) so running this
     alongside the live cron jobs is safe — the cron writes the same

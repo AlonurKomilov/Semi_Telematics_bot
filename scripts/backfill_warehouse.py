@@ -104,7 +104,7 @@ async def _run_for(account_id: int, *, skip_events: bool, skip_efficiency: bool)
         logger.info("  driver_efficiency_daily  %d rows", n)
 
     n = await aggregate_telemetry_hourly(account_id)
-    logger.info("  vehicle_telemetry_hourly %d rows", n)
+    logger.info("  vehicle_telemetry (hourly) %d rows", n)
 
 
 async def main(argv: list[str]) -> int:

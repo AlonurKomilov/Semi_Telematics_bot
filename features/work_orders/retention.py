@@ -1,8 +1,8 @@
 """Work Orders' data-retention need — contributes to the Retention hub.
 
 Back-dated work orders resolve their odometer/engine-hours from the
-end-of-day reading in ``vehicle_metrics_daily`` (the 730-day tier), so a
-WO dated up to ~2 years ago still shows the mileage the truck had then.
+end-of-day reading in the daily tier of ``vehicle_telemetry`` (730-day
+retention), so a WO dated up to ~2 years ago still shows the mileage then.
 """
 
 from capabilities.data_lifecycle.retention.registry import RetentionNeed, register_need

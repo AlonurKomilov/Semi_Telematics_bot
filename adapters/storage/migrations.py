@@ -5292,3 +5292,74 @@ async def migrate_vehicle_telemetry_unified(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+@_register("132_drop_legacy_telemetry_tiers")
+async def migrate_drop_legacy_telemetry_tiers(conn) -> None:
+    """Drop the pre-merge aggregate tables now that 131 unified them into
+    ``vehicle_telemetry``.
+
+    GUARDED — only drops when ``vehicle_telemetry`` already holds at least
+    as many rows per granularity as each old table.  This codebase has a
+    history of migrations marking themselves *applied* after a partial
+    failure (see 035 → 036), so a guard — not trust — is what makes the
+    drop safe: if 131's backfill silently half-failed, the unified counts
+    fall short, the guard trips, and the old tables are KEPT untouched.
+
+    Designed to run in the SAME release right after 131 — no pruning has
+    run yet, so the per-tier counts match exactly and the guard passes
+    cleanly.  If the guard ever trips (incomplete backfill), the tables are
+    left as the recoverable backup.  Backfill is provably lossless (old PKs
+    map 1:1 into ``(account, vehicle, granularity, bucket_start)``), so the
+    happy path is the expected one.
+    """
+    async def _count(sql: str):
+        """Row count, or None when the table is missing (rolls back the
+        aborted txn so the next query runs clean on Postgres)."""
+        try:
+            cur = await conn.execute(sql)
+            rows = await cur.fetchall()
+            return int(rows[0][0]) if rows and rows[0] and rows[0][0] is not None else 0
+        except Exception:
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+            return None
+
+    old_hourly = await _count("SELECT COUNT(*) FROM vehicle_telemetry_hourly")
+    old_daily = await _count("SELECT COUNT(*) FROM vehicle_metrics_daily")
+    if old_hourly is None and old_daily is None:
+        logger.info("Migration 132: legacy tiers already absent; nothing to drop")
+        return
+
+    new_hourly = await _count(
+        "SELECT COUNT(*) FROM vehicle_telemetry WHERE granularity = 'hourly'"
+    ) or 0
+    new_daily = await _count(
+        "SELECT COUNT(*) FROM vehicle_telemetry WHERE granularity = 'daily'"
+    ) or 0
+
+    # Guard: for each old table that still exists, unified must hold >= its rows.
+    safe_hourly = (old_hourly is None) or (new_hourly >= old_hourly)
+    safe_daily = (old_daily is None) or (new_daily >= old_daily)
+    if not (safe_hourly and safe_daily):
+        logger.warning(
+            "Migration 132: KEEPING legacy tiers — unified row counts below "
+            "the old tables (hourly new=%s old=%s, daily new=%s old=%s). The "
+            "131 backfill looks incomplete; old tables preserved as backup.",
+            new_hourly, old_hourly, new_daily, old_daily,
+        )
+        return
+
+    for tbl in ("vehicle_telemetry_hourly", "vehicle_metrics_daily"):
+        try:
+            await conn.execute(f"DROP TABLE IF EXISTS {tbl}")
+            await conn.commit()
+            logger.info("Migration 132: dropped legacy table %s", tbl)
+        except Exception as e:
+            logger.error("Migration 132: failed to drop %s — %s", tbl, e)
+            try:
+                await conn.rollback()
+            except Exception:
+                pass

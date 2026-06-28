@@ -361,8 +361,8 @@ async def list_tasks(
     #   * Skip closed / cancelled tasks (already in history).
     if items:
         try:
-            # Velocity comes from the daily roll-up table
-            # (``vehicle_metrics_daily``, 730-day retention) so the
+            # Velocity comes from the daily tier of ``vehicle_telemetry``
+            # (730-day retention) so the
             # requested 30-day window is actually honoured.  Median of
             # drive-day miles is robust to weekend / repair / spare-
             # truck idle distributions that would drag a mean

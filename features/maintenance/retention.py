@@ -1,7 +1,7 @@
 """Maintenance's data-retention need — contributes to the Retention hub.
 
-The service-due projection reads per-day miles from
-``vehicle_metrics_daily`` to estimate each vehicle's velocity over a long
+The service-due projection reads per-day miles from the daily tier of
+``vehicle_telemetry`` to estimate each vehicle's velocity over a long
 window, so the daily tier must persist.
 """
 
