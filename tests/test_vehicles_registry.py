@@ -122,6 +122,43 @@ async def test_upsert_from_integration_idempotent_and_preserves_operator_fields(
 
 
 @pytest.mark.asyncio
+async def test_upsert_blank_spec_does_not_wipe_existing_cross_source(db):
+    """Cross-source data-loss guard: a Samsara tick with NO VIN/make
+    (passes '') must NOT erase the VIN/make a prior sync (Datatruck) filled
+    in.  Without fill-don't-wipe, Samsara's 60s ingest blanked the Datatruck
+    VIN every minute — the row showed empty even though Datatruck delivered
+    it."""
+    # Datatruck-style sync fills the paperwork Samsara lacks.
+    await db.upsert_from_integration(42, [{
+        "company_code": "CFT", "unit_number": "103",
+        "vin": "1ABC123", "make": "Freightliner",
+        "plate_number": "TX-9", "year": 2021,
+    }], source="datatruck")
+
+    # Samsara tick on the SAME unit — live tracker, blank paperwork.
+    await db.upsert_from_integration(42, [{
+        "company_code": "CFT", "unit_number": "103",
+        "vin": "", "make": "", "plate_number": "", "year": None,
+        "telematics_ref": "samsara_99",
+    }], source="samsara")
+
+    v = (await db.list_vehicles(42))[0]
+    assert v.vin == "1ABC123"                # preserved, NOT wiped
+    assert v.make == "Freightliner"          # preserved
+    assert v.plate_number == "TX-9"          # preserved
+    assert v.year == 2021                    # preserved
+    assert v.telematics_ref == "samsara_99"  # Samsara filled what it HAS
+
+    # Fill-don't-wipe blocks BLANKS only — a real incoming value still wins.
+    await db.upsert_from_integration(42, [{
+        "company_code": "CFT", "unit_number": "103", "plate_number": "TX-NEW",
+    }], source="samsara")
+    v2 = (await db.list_vehicles(42))[0]
+    assert v2.plate_number == "TX-NEW"       # non-empty value overwrites
+    assert v2.vin == "1ABC123"               # untouched field still preserved
+
+
+@pytest.mark.asyncio
 async def test_upsert_skips_blank_unit_and_empty_list(db):
     assert await db.upsert_from_integration(42, [], source="samsara") == 0
     n = await db.upsert_from_integration(

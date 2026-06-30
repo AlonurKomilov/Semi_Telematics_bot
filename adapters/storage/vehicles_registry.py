@@ -445,12 +445,15 @@ class VehiclesRegistryMixin(_MixinBase):
         ``(account_id, company_code, unit_number)``.
 
         Used by (a) the migration-105 backfill from ``vehicle_state``
-        and (b) the 60s ingestor as it sees Samsara vehicles, and
-        (later) the Datatruck projection.  Integration-owned columns
-        (spec + telematics_ref) refresh on conflict, but
-        ``vehicle_type`` and operator-set ``status``/``notes`` are
-        PRESERVED — an operator who reclassified a unit or added a note
-        keeps it across syncs.  Rows without a unit_number are skipped.
+        and (b) the 60s ingestor as it sees Samsara vehicles, and (c) any
+        integration projecting a roster.  Integration-owned spec columns
+        (vin / plate / make / model / year / telematics_ref) FILL-DON'T-WIPE:
+        a source overwrites them only when it carries a NON-EMPTY value, so
+        two sources complete each other (Samsara has no VIN, Datatruck does)
+        instead of one blanking the other's data every tick.  ``vehicle_type``
+        and operator-set ``status``/``notes`` are PRESERVED (omitted from the
+        update) — an operator who reclassified a unit or added a note keeps it
+        across syncs.  Rows without a unit_number are skipped.
 
         Returns the number of rows written.
         """
@@ -471,13 +474,23 @@ class VehiclesRegistryMixin(_MixinBase):
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
                        ON CONFLICT(account_id, company_code, unit_number)
                        DO UPDATE SET
-                           vin            = excluded.vin,
-                           plate_number   = excluded.plate_number,
-                           make           = excluded.make,
-                           model          = excluded.model,
-                           year           = excluded.year,
+                           -- Fill-don't-wipe: a source overwrites a spec
+                           -- field only when it actually has a value, so a
+                           -- Samsara tick (no VIN/make) can't blank out what
+                           -- Datatruck's projection filled in — and vice
+                           -- versa.  Mirrors the enrich-only manner
+                           -- project_external_vehicles already uses.
+                           vin            = COALESCE(NULLIF(excluded.vin, ''),             vehicles.vin),
+                           plate_number   = COALESCE(NULLIF(excluded.plate_number, ''),   vehicles.plate_number),
+                           make           = COALESCE(NULLIF(excluded.make, ''),           vehicles.make),
+                           model          = COALESCE(NULLIF(excluded.model, ''),          vehicles.model),
+                           year           = COALESCE(excluded.year,                       vehicles.year),
+                           telematics_ref = COALESCE(NULLIF(excluded.telematics_ref, ''), vehicles.telematics_ref),
+                           -- source DOES refresh: it marks the latest
+                           -- integration that wrote spec (a manual row adopts
+                           -- its integration on first sync).  Operator
+                           -- vehicle_type/status/notes preserved by omission.
                            source         = excluded.source,
-                           telematics_ref = excluded.telematics_ref,
                            is_active      = 1,
                            updated_at     = excluded.updated_at""",
                     (
