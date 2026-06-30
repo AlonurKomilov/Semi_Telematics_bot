@@ -39,6 +39,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 from adapters.telematics.protocol import Capability
+from capabilities.integrations.shared.helpers import (
+    _for_each_account_with_capability,
+)
 from infra import cache as _redis
 from infra.platform import get_platform_db, get_tenant_db
 from infra.services import get_telematics_client
@@ -961,3 +964,43 @@ async def collect_sync_overview(account_id: int) -> dict[str, Any]:
             "sync": await get_sync_status(account_id, name),
         }
     return out
+
+
+# ── Scheduler job factories ──────────────────────────────────────────
+#
+# The periodic counterpart to the manual "Sync now" button: one auto-sync
+# job per resource, fanning out across every account whose toggle for that
+# resource's capability is ON.  Reuses the SAME provider-agnostic fan-out
+# Samsara's ingest jobs use (``_for_each_account_with_capability``), passing
+# ``provider_id="datatruck"`` — so accounts without Datatruck connected, or
+# with the toggle off, are skipped (a tick is then a cheap no-op).  The
+# cadence is declared once in the catalog (``feature_defaults[cap]
+# ["interval_min"]``) and read by the scheduler, so it isn't duplicated here.
+
+
+def _make_sync_job(resource: str, capability: str):
+    """Build the auto-sync scheduler job for one Datatruck resource."""
+    async def _sync_one(account_id: int) -> None:
+        # sync_resource never raises — a failed account lands in its
+        # returned status dict, so one bad token can't abort the fan-out.
+        await sync_resource(account_id, resource)
+    _sync_one.__name__ = f"datatruck_sync_{resource}"
+
+    async def _job(_app=None) -> None:
+        await _for_each_account_with_capability(
+            capability, _sync_one, provider_id=_PROVIDER_ID,
+        )
+    _job.__name__ = f"job_sync_{resource}"
+    _job.__doc__ = (
+        f"Auto-sync Datatruck {resource} for every account with the "
+        f"{capability} toggle enabled."
+    )
+    return _job
+
+
+# resource name → job callable, built once from the RESOURCES registry so a
+# new resource gets an auto-sync job with zero extra wiring here.
+SYNC_JOBS: dict[str, Any] = {
+    resource: _make_sync_job(resource, spec.capability)
+    for resource, spec in RESOURCES.items()
+}

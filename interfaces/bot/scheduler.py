@@ -38,6 +38,12 @@ _JOB_META = {
     "warehouse_fleet_efficiency":     ("Telematics", "Ingest fleet-efficiency aggregates"),
     "warehouse_geofence_definitions": ("Telematics", "Sync geofence definitions"),
     "fault_cache_warmup":             ("Telematics", "Warm the vehicle-fault cache on startup"),
+    # ── Datatruck (TMS) auto-sync ──
+    "datatruck_sync_drivers":         ("TMS", "Sync Datatruck drivers"),
+    "datatruck_sync_trucks":          ("TMS", "Sync Datatruck trucks"),
+    "datatruck_sync_trailers":        ("TMS", "Sync Datatruck trailers"),
+    "datatruck_sync_orders":          ("TMS", "Sync Datatruck loads / orders"),
+    "datatruck_sync_work_orders":     ("TMS", "Sync Datatruck work orders"),
     # ── Alerts (per-feature checks + delivery/escalation) ──
     "events_check":                   ("Alerts", "Check for new safety events to alert on"),
     "geofence_check":                 ("Alerts", "Check geofence entries/exits to alert on"),
@@ -368,6 +374,30 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         hours=1, args=[app], id="warehouse_geofence_definitions",
         max_instances=1, coalesce=True,
     )
+
+    # ── Datatruck (TMS) auto-sync ─────────────────────────────────
+    # Periodic counterpart to the manual "Sync now" button.  One job per
+    # resource, each fanning out only to accounts whose toggle for that
+    # resource is ON (the fan-out skips the rest, so a tick is a cheap
+    # no-op otherwise).  Cadence is read from the catalog so it lives in
+    # ONE place; default-disabled resources (trailers/orders/work_orders)
+    # register a job but won't pull until an account enables the toggle —
+    # the same always-registered / per-account-gated model the Samsara
+    # ingest jobs above use.  Lazy import so non-TMS installs still boot.
+    from adapters.telematics.catalog import PROVIDER_CATALOG as _dt_catalog
+    from capabilities.integrations.datatruck.sync import (
+        RESOURCES as _dt_resources,
+        SYNC_JOBS as _dt_jobs,
+    )
+    _dt_defaults = _dt_catalog["datatruck"].feature_defaults
+    for _res, _dt_job in _dt_jobs.items():
+        _dt_cap = _dt_resources[_res].capability
+        _dt_interval = int((_dt_defaults.get(_dt_cap) or {}).get("interval_min", 30))
+        scheduler.add_job(
+            _dt_job, "interval",
+            minutes=_dt_interval, args=[app], id=f"datatruck_sync_{_res}",
+            max_instances=1, coalesce=True,
+        )
 
     # ── Integration-health probes ──────────────────────────────────
     # Every 15 min: probe each active account × connected integration's

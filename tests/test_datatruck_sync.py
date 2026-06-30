@@ -745,3 +745,37 @@ def test_norm_work_order_assigned_to_string_and_object():
         "assigned_to": {"id": 9, "full_name": "Pat Driver", "username": "pd"},
     })
     assert out2["assigned_to"] == "Pat Driver"
+
+
+# ── Scheduler auto-sync jobs ──────────────────────────────────
+
+
+def test_sync_jobs_cover_every_resource():
+    """Every Datatruck resource gets an auto-sync job, so a newly-added
+    resource can't silently lack a scheduler runner."""
+    from capabilities.integrations.datatruck.sync import SYNC_JOBS
+
+    assert set(SYNC_JOBS) == set(RESOURCES)
+
+
+@pytest.mark.asyncio
+async def test_sync_job_fans_out_gated_by_datatruck_toggle(monkeypatch):
+    """A resource's job fans out through the provider-agnostic helper,
+    passing that resource's capability + provider_id='datatruck' — so the
+    shared gate skips accounts that aren't connected or have the toggle
+    off (no Datatruck-specific gating logic duplicated in the job)."""
+    import capabilities.integrations.datatruck.sync as dt
+
+    seen: dict = {}
+
+    async def _fake_fanout(capability, coro_factory, *, provider_id="samsara"):
+        seen["capability"] = capability
+        seen["provider_id"] = provider_id
+        seen["factory_name"] = getattr(coro_factory, "__name__", "")
+
+    monkeypatch.setattr(dt, "_for_each_account_with_capability", _fake_fanout)
+
+    await dt.SYNC_JOBS["trucks"]()
+    assert seen["capability"] == dt.RESOURCES["trucks"].capability
+    assert seen["provider_id"] == "datatruck"
+    assert seen["factory_name"] == "datatruck_sync_trucks"
