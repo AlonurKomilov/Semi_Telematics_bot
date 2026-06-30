@@ -710,6 +710,25 @@ class VehiclesRegistryMixin(_MixinBase):
             except Exception:
                 pass
 
+    async def find_duplicate_vehicles(self, account_id: int) -> list[dict]:
+        """Active vehicles that share a non-empty VIN — an unambiguous
+        duplicate (the same physical asset registered twice, e.g. from before
+        VIN reconciliation, or imported by hand).  One entry per VIN with the
+        row ids + units, so an operator merge tool can fold them."""
+        existing = await self.list_vehicles(account_id)
+        by_vin: dict[str, list] = {}
+        for v in existing:
+            if v.is_active and v.vin:
+                by_vin.setdefault(v.vin.strip().upper(), []).append(v)
+        return [
+            {
+                "vin": vs[0].vin,
+                "vehicle_ids": [v.id for v in vs],
+                "units": [v.unit_number for v in vs],
+            }
+            for vs in by_vin.values() if len(vs) > 1
+        ]
+
     async def plan_external_vehicles(
         self,
         account_id: int,
@@ -807,6 +826,10 @@ class VehiclesRegistryMixin(_MixinBase):
         by_key = {
             (v.company_code, v.unit_number.strip().lower()): v for v in existing
         }
+        # VIN index for reconciliation — a Datatruck-first row (no company
+        # scoping) must be ENRICHED, not duplicated, when Samsara later reports
+        # the same physical truck under a company.
+        by_vin = {v.vin.strip().upper(): v for v in existing if v.vin}
         now = self._now()
         written = 0
         conflict_ops: list = []
@@ -817,6 +840,16 @@ class VehiclesRegistryMixin(_MixinBase):
                     continue
                 company = str(r.get("company_code") or "")
                 match = by_key.get((company, unit.lower()))
+                matched_by_vin = False
+                if match is None:
+                    # VIN reconciliation — if this source carries a VIN that
+                    # already exists on another row (e.g. a Datatruck-created,
+                    # company-less row), enrich THAT row instead of inserting a
+                    # duplicate of the same physical truck.
+                    inc_vin = str(r.get("vin") or "").strip().upper()
+                    if inc_vin and inc_vin in by_vin:
+                        match = by_vin[inc_vin]
+                        matched_by_vin = True
 
                 if match is None:
                     # Net-new row — provenance starts as this source for each
@@ -866,6 +899,12 @@ class VehiclesRegistryMixin(_MixinBase):
                 if tref:
                     sets.append("telematics_ref = ?")
                     params.append(tref)
+                # VIN-reconciled a company-less row → adopt the real company
+                # this source provides (safe: an exact (company, unit) match
+                # would have been found above, so no UNIQUE clash).
+                if matched_by_vin and not match.company_code and company:
+                    sets.append("company_code = ?")
+                    params.append(company)
                 # source refreshes to the latest integration to touch the row.
                 sets.append("source = ?")
                 params.append(source)

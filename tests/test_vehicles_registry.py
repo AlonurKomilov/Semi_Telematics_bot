@@ -308,6 +308,42 @@ async def test_resolve_conflict_pins_chosen_value(db):
     assert await db.count_open_conflicts(42) == 0
 
 
+# ── Identity reconciliation / de-dup (kind C) ─────────────────
+
+
+@pytest.mark.asyncio
+async def test_upsert_vin_reconciles_instead_of_duplicating(db):
+    """Datatruck-first: a truck Datatruck synced (no company scoping) must NOT
+    be duplicated when Samsara later reports it under a company — Samsara
+    reconciles on VIN, enriches the row, and adopts the company."""
+    await db.project_external_vehicles(42, [{
+        "unit_number": "103", "vin": "1ABC123", "make": "Freightliner",
+    }], vehicle_type="truck", source="datatruck")
+    await db.upsert_from_integration(42, [{
+        "company_code": "CFT", "unit_number": "103", "vin": "1ABC123",
+        "telematics_ref": "sam_9",
+    }], source="samsara")
+    rows = await db.list_vehicles(42)
+    assert len(rows) == 1                       # reconciled, NOT duplicated
+    v = rows[0]
+    assert v.vin == "1ABC123"
+    assert v.telematics_ref == "sam_9"          # Samsara enriched it
+    assert v.company_code == "CFT"              # adopted the real company
+
+
+@pytest.mark.asyncio
+async def test_find_duplicate_vehicles_by_vin(db):
+    """Two active rows sharing a non-empty VIN surface as a duplicate."""
+    await db.add_vehicle(42, unit_number="A1", vin="DUPVIN", company_code="X")
+    await db.add_vehicle(42, unit_number="A2", vin="DUPVIN", company_code="Y")
+    await db.add_vehicle(42, unit_number="B1", vin="UNIQUEVIN")
+    dups = await db.find_duplicate_vehicles(42)
+    assert len(dups) == 1
+    assert dups[0]["vin"] == "DUPVIN"
+    assert len(dups[0]["vehicle_ids"]) == 2
+    assert set(dups[0]["units"]) == {"A1", "A2"}
+
+
 @pytest.mark.asyncio
 async def test_upsert_skips_blank_unit_and_empty_list(db):
     assert await db.upsert_from_integration(42, [], source="samsara") == 0
