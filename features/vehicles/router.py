@@ -459,10 +459,11 @@ class SourcePrecedenceUpdate(BaseModel):
 
 @router.get("/source-precedence")
 async def get_source_precedence(
-    user: dict = Depends(require_permission("can_manage_vehicles")),
+    user: dict = Depends(require_permission("can_manage_integrations")),
 ):
     """Per-field primary source + the choices, for the Integrations-page
-    'When sources disagree' panel."""
+    'When sources disagree' panel.  Gated by ``can_manage_integrations`` —
+    same permission as the Integrations page it lives on."""
     account_id = int(user["account_id"])
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
@@ -473,10 +474,10 @@ async def get_source_precedence(
 @router.put("/source-precedence")
 async def put_source_precedence(
     body: SourcePrecedenceUpdate,
-    user: dict = Depends(require_permission("can_manage_vehicles")),
+    user: dict = Depends(require_permission("can_manage_integrations")),
 ):
     """Set the per-field primary source.  The other source still fills gaps;
-    operator hand-edits always win."""
+    operator hand-edits always win.  Gated by ``can_manage_integrations``."""
     account_id = int(user["account_id"])
     tenant = await _get_tenant_db(account_id)
     if tenant is None:

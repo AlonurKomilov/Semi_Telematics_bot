@@ -670,7 +670,13 @@ class VehiclesRegistryMixin(_MixinBase):
         entity_type, entity_id, field = str(row[0]), int(row[1]), str(row[2])
         if entity_type != "vehicle":
             return None
-        await self.update_vehicle(account_id, entity_id, **{field: chosen_value})
+        value: Any = chosen_value
+        if field == "year":           # year is an INTEGER column
+            try:
+                value = int(chosen_value) if str(chosen_value).strip() else None
+            except (TypeError, ValueError):
+                value = None
+        await self.update_vehicle(account_id, entity_id, **{field: value})
         await self._db.execute(
             "UPDATE data_conflicts SET status = 'resolved', resolved_by = ?, "
             "resolved_value = ?, updated_at = ? WHERE id = ? AND account_id = ?",

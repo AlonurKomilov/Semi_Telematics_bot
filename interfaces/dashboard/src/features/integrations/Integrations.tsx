@@ -20,6 +20,7 @@ import { CardSkeleton, PageHeader } from '../../components/shell';
 import IntegrationCard from './IntegrationCard';
 import BackfillStatusBadge from './BackfillStatusBadge';
 import SourcePrecedencePanel from './SourcePrecedencePanel';
+import ConflictsPanel from './ConflictsPanel';
 import {
   connectIntegration,
   disconnectIntegration,
@@ -160,6 +161,7 @@ export default function Integrations() {
         )}
       </div>
 
+      {showPrecedence && <ConflictsPanel />}
       {showPrecedence && <SourcePrecedencePanel />}
 
       {upcoming.length > 0 && (

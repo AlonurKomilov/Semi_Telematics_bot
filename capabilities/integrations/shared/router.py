@@ -26,6 +26,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from adapters.telematics import (
     PROVIDER_CATALOG,
@@ -88,6 +89,53 @@ async def list_integrations(user: dict = Depends(_owner_only)):
     return {
         "catalog":      catalog,
         "integrations": [serialize_integration(ai) for ai in rows],
+    }
+
+
+# ── Cross-source data conflicts ──────────────────────────────────
+#
+# When two integrations carry a different non-empty value for the same field,
+# precedence picks a winner but the disagreement is recorded.  These endpoints
+# back the Integrations-page "Review conflicts" panel.  Gated by the SAME
+# permission as the page itself (``can_manage_integrations``) — whoever is
+# granted the Integration feature can resolve its conflicts.
+
+
+@router.get("/conflicts")
+async def list_data_conflicts(user: dict = Depends(_owner_only)):
+    """Open cross-source data conflicts for the account."""
+    account_id = int(user["account_id"])
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    return {"conflicts": await tenant.list_open_conflicts(account_id)}
+
+
+class ResolveConflictRequest(BaseModel):
+    chosen_value: str
+
+
+@router.post("/conflicts/{conflict_id}/resolve")
+async def resolve_data_conflict(
+    conflict_id: int,
+    body: ResolveConflictRequest,
+    user: dict = Depends(_owner_only),
+):
+    """Resolve a conflict by choosing a value — writes it onto the entity and
+    PINS it (no later sync can undo the decision), then closes the conflict."""
+    account_id = int(user["account_id"])
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    v = await tenant.resolve_field_conflict(
+        account_id, conflict_id,
+        chosen_value=body.chosen_value, resolved_by=int(user.get("id") or 0),
+    )
+    if v is None:
+        raise HTTPException(404, "conflict not found or already resolved")
+    return {
+        "resolved": True,
+        "conflicts": await tenant.list_open_conflicts(account_id),
     }
 
 

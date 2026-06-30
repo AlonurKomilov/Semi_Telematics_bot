@@ -54,6 +54,34 @@ export async function putSourcePrecedence(
   });
 }
 
+// ── Cross-source data conflicts ──────────────────────────────────
+
+export interface DataConflict {
+  id: number;
+  entity_type: string;
+  entity_id: number;
+  field: string;
+  current_value: string;
+  current_source: string;
+  incoming_value: string;
+  incoming_source: string;
+  detected_at: string;
+}
+
+export async function getConflicts(): Promise<{ conflicts: DataConflict[] }> {
+  return apiJSON<{ conflicts: DataConflict[] }>(`${BASE}/conflicts`);
+}
+
+export async function resolveConflict(
+  conflictId: number,
+  chosenValue: string,
+): Promise<{ resolved: boolean; conflicts: DataConflict[] }> {
+  return apiJSON(`${BASE}/conflicts/${conflictId}/resolve`, {
+    method: 'POST',
+    body: { chosen_value: chosenValue },
+  });
+}
+
 export async function connectIntegration(
   providerId: string,
   credentials: Record<string, unknown>,
