@@ -149,13 +149,80 @@ async def test_upsert_blank_spec_does_not_wipe_existing_cross_source(db):
     assert v.year == 2021                    # preserved
     assert v.telematics_ref == "samsara_99"  # Samsara filled what it HAS
 
-    # Fill-don't-wipe blocks BLANKS only — a real incoming value still wins.
+    # Under source precedence (default: Datatruck owns the plate), Samsara —
+    # the LOWER-priority source — does NOT overwrite even with a real value.
     await db.upsert_from_integration(42, [{
-        "company_code": "CFT", "unit_number": "103", "plate_number": "TX-NEW",
+        "company_code": "CFT", "unit_number": "103", "plate_number": "TX-SAMSARA",
     }], source="samsara")
     v2 = (await db.list_vehicles(42))[0]
-    assert v2.plate_number == "TX-NEW"       # non-empty value overwrites
-    assert v2.vin == "1ABC123"               # untouched field still preserved
+    assert v2.plate_number == "TX-9"         # Datatruck (higher priority) kept
+
+    # The owner (Datatruck) DOES overwrite its own field with a new value.
+    await db.upsert_from_integration(42, [{
+        "company_code": "CFT", "unit_number": "103", "plate_number": "TX-NEW",
+    }], source="datatruck")
+    v3 = (await db.list_vehicles(42))[0]
+    assert v3.plate_number == "TX-NEW"       # higher-priority source overwrites
+    assert v3.vin == "1ABC123"               # untouched field still preserved
+
+
+@pytest.mark.asyncio
+async def test_precedence_owner_wins_a_genuine_conflict(db):
+    """Two sources, two DIFFERENT non-empty makes.  Default precedence makes
+    Datatruck the owner of paperwork, so it wins regardless of WRITE ORDER —
+    not 'whoever wrote last'."""
+    # Samsara writes a make first.
+    await db.upsert_from_integration(42, [{
+        "company_code": "CFT", "unit_number": "55", "make": "Frtlnr",
+    }], source="samsara")
+    # Datatruck (higher priority for make) sends a different make → wins.
+    await db.upsert_from_integration(42, [{
+        "company_code": "CFT", "unit_number": "55", "make": "Freightliner",
+    }], source="datatruck")
+    assert (await db.list_vehicles(42))[0].make == "Freightliner"
+    # A later Samsara tick can't take it back (lower priority).
+    await db.upsert_from_integration(42, [{
+        "company_code": "CFT", "unit_number": "55", "make": "Frtlnr",
+    }], source="samsara")
+    assert (await db.list_vehicles(42))[0].make == "Freightliner"
+
+
+@pytest.mark.asyncio
+async def test_precedence_is_configurable_per_field(db):
+    """The owner can flip a field's precedence: make Samsara authoritative
+    for ``make``, and now Samsara's value wins over Datatruck's."""
+    import json
+    # A real account row — set_account_setting has a FK to accounts.
+    aid = (await db.create_account("Precedence Co")).id
+    await db.set_account_setting(
+        aid, "vehicle_field_precedence",
+        json.dumps({"make": ["samsara", "datatruck"]}),
+    )
+    await db.upsert_from_integration(aid, [{
+        "company_code": "CFT", "unit_number": "55", "make": "Freightliner",
+    }], source="datatruck")
+    # Samsara is now primary for make → overwrites Datatruck's value.
+    await db.upsert_from_integration(aid, [{
+        "company_code": "CFT", "unit_number": "55", "make": "Samsara-Make",
+    }], source="samsara")
+    assert (await db.list_vehicles(aid))[0].make == "Samsara-Make"
+
+
+@pytest.mark.asyncio
+async def test_operator_pin_is_never_overwritten_by_sync(db):
+    """A field the operator edits is pinned (provenance=manual); no
+    integration — even the higher-priority one — overwrites it (Layer 2)."""
+    await db.upsert_from_integration(42, [{
+        "company_code": "CFT", "unit_number": "77", "vin": "SAMVIN",
+    }], source="samsara")
+    vid = (await db.list_vehicles(42))[0].id
+    # Operator hand-corrects the VIN.
+    await db.update_vehicle(42, vid, vin="OPERATOR-VIN")
+    # Datatruck (higher priority for VIN) tries a different VIN → blocked.
+    await db.upsert_from_integration(42, [{
+        "company_code": "CFT", "unit_number": "77", "vin": "DATATRUCK-VIN",
+    }], source="datatruck")
+    assert (await db.list_vehicles(42))[0].vin == "OPERATOR-VIN"
 
 
 @pytest.mark.asyncio

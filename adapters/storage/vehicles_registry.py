@@ -21,7 +21,8 @@ Postgres RLS when ``ENABLE_RLS=1``).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
@@ -47,6 +48,82 @@ _VALID_TYPES = ("truck", "trailer", "other")
 
 # Spec fields an integration sync may fill on an existing (matched) row.
 _SPEC_FILL = ("vin", "plate_number", "make", "model", "year")
+
+# ── Source precedence (Layer 1) ───────────────────────────────────────
+#
+# When two integrations carry a DIFFERENT non-empty value for the same spec
+# field, who wins?  An explicit, per-account-overridable priority order per
+# field — NOT "whoever synced most recently".  Default: Datatruck (the TMS,
+# system-of-record for paperwork) outranks Samsara (telematics) for the
+# spec fields; the owner can flip any field later (e.g. Samsara-first VIN).
+# ``manual`` (an operator edit) always outranks every integration.
+DEFAULT_FIELD_PRECEDENCE: dict[str, tuple[str, ...]] = {
+    "vin":          ("datatruck", "samsara"),
+    "plate_number": ("datatruck", "samsara"),
+    "make":         ("datatruck", "samsara"),
+    "model":        ("datatruck", "samsara"),
+    "year":         ("datatruck", "samsara"),
+}
+PRECEDENCE_SETTING_KEY = "vehicle_field_precedence"
+_MANUAL_SOURCE = "manual"
+
+
+def _is_unset(v: Any) -> bool:
+    """A spec value counts as 'not provided' — so it never overwrites."""
+    return v is None or v == "" or v == 0
+
+
+def _source_rank(source: str, order: tuple[str, ...]) -> int:
+    """Lower = higher priority.  ``manual`` always wins; a source not named
+    in the order is lowest (can fill a gap but can't outrank a named one)."""
+    if source == _MANUAL_SOURCE:
+        return -1
+    try:
+        return list(order).index(source)
+    except ValueError:
+        return len(order) + 1
+
+
+def _merge_spec_fields(
+    existing: "Vehicle | None",
+    incoming: dict[str, Any],
+    source: str,
+    precedence: dict[str, tuple[str, ...]],
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Decide which spec fields an integration write may change, and update
+    the provenance map.  Returns ``(updates, new_provenance)`` where
+    ``updates`` is only the spec fields that should be written.
+
+    Rules, in order, per field:
+      * blank-skip — an empty incoming value never overwrites.
+      * fill-empty — an empty current value is always filled.
+      * manual pin — a field owned by ``manual`` is never overwritten.
+      * precedence — overwrite only when this source ranks >= the field's
+        current owner; a lower-priority source is kept out (Phase 2 will
+        record that as a conflict instead of dropping it silently).
+
+    A missing provenance entry falls back to the row's existing ``source``,
+    so rows that predate this column behave correctly without a backfill.
+    """
+    prov: dict[str, str] = dict(getattr(existing, "field_provenance", None) or {}) if existing else {}
+    updates: dict[str, Any] = {}
+    for f in _SPEC_FILL:
+        inc = incoming.get(f)
+        if _is_unset(inc):
+            continue
+        cur = getattr(existing, f, None) if existing else None
+        if _is_unset(cur):
+            updates[f] = inc
+            prov[f] = source
+            continue
+        owner = prov.get(f) or (getattr(existing, "source", None) if existing else None)
+        if owner == _MANUAL_SOURCE:
+            continue
+        order = precedence.get(f, ())
+        if _source_rank(source, order) <= _source_rank(owner or "", order):
+            updates[f] = inc
+            prov[f] = source
+    return updates, prov
 
 
 def _index_existing(existing: list["Vehicle"]) -> tuple[dict, dict, dict]:
@@ -107,6 +184,17 @@ class Vehicle:
     is_active: bool
     created_at: str
     updated_at: str
+    # {spec_field: source} — who last authoritatively set each spec field.
+    field_provenance: dict = field(default_factory=dict)
+
+
+def _parse_provenance(raw: Any) -> dict:
+    if isinstance(raw, dict):
+        return raw
+    try:
+        return json.loads(raw) if raw else {}
+    except (TypeError, ValueError):
+        return {}
 
 
 def _row_to_vehicle(r) -> Vehicle:
@@ -118,13 +206,14 @@ def _row_to_vehicle(r) -> Vehicle:
         source=r[11] or "manual", telematics_ref=r[12] or "",
         notes=r[13] or "", is_active=bool(r[14]),
         created_at=r[15] or "", updated_at=r[16] or "",
+        field_provenance=_parse_provenance(r[17] if len(r) > 17 else None),
     )
 
 
 _SELECT = (
     "SELECT id, account_id, company_code, unit_number, vehicle_type, vin, "
     "plate_number, make, model, year, status, source, telematics_ref, "
-    "notes, is_active, created_at, updated_at FROM vehicles"
+    "notes, is_active, created_at, updated_at, field_provenance FROM vehicles"
 )
 
 
@@ -233,9 +322,14 @@ class VehiclesRegistryMixin(_MixinBase):
         self, account_id: int, vehicle_id: int, **fields: Any,
     ) -> bool:
         """Partial update — only the keys present in ``fields`` (and in
-        ``_FIELDS``) are written.  Returns True when a row changed."""
+        ``_FIELDS``) are written.  Returns True when a row changed.
+
+        Operator edits PIN the spec fields they touch: each edited spec field
+        is stamped ``manual`` in ``field_provenance`` so no later integration
+        sync overwrites the human's correction (Layer 2)."""
         sets: list[str] = []
         params: list[Any] = []
+        edited_spec: list[str] = []
         for key in _FIELDS:
             if key in fields and fields[key] is not None:
                 if key == "vehicle_type" and fields[key] not in _VALID_TYPES:
@@ -244,8 +338,23 @@ class VehiclesRegistryMixin(_MixinBase):
                     )
                 sets.append(f"{key} = ?")
                 params.append(fields[key])
+                if key in _SPEC_FILL:
+                    edited_spec.append(key)
         if not sets:
             return False
+        if edited_spec:
+            # Pin the edited spec fields so syncs can't undo the correction.
+            cur = await self._db.execute(
+                "SELECT field_provenance FROM vehicles "
+                "WHERE id = ? AND account_id = ?",
+                (vehicle_id, account_id),
+            )
+            row = await cur.fetchone()
+            prov = _parse_provenance(dict(row).get("field_provenance")) if row else {}
+            for f in edited_spec:
+                prov[f] = _MANUAL_SOURCE
+            sets.append("field_provenance = ?")
+            params.append(json.dumps(prov))
         sets.append("updated_at = ?")
         params.extend([self._now(), vehicle_id, account_id])
         cur = await self._db.execute(
@@ -299,15 +408,17 @@ class VehiclesRegistryMixin(_MixinBase):
           3. **No match** → insert a new row (source=given, the given
              vehicle_type).
 
-        On a match we ENRICH — fill only the spec fields the existing
-        row is missing (this is how a Datatruck sync backfills the VIN
-        onto a Samsara-sourced truck) without clobbering operator edits,
-        the existing ``source``, ``vehicle_type``, ``status`` or notes.
+        On a match we MERGE by source precedence (see
+        ``_merge_spec_fields``): this source fills empty fields and may
+        overwrite a *lower*-priority source's value, but never an operator
+        pin — and it never touches the existing ``source`` /
+        ``vehicle_type`` / ``status`` / ``notes``.
 
-        Returns the number of rows inserted-or-enriched.
+        Returns the number of rows inserted-or-merged.
         """
         if not rows:
             return 0
+        precedence = await self.get_vehicle_field_precedence(account_id)
         existing = await self.list_vehicles(account_id)
         by_vin, by_plate, by_unit = _index_existing(existing)
 
@@ -322,17 +433,14 @@ class VehiclesRegistryMixin(_MixinBase):
                 match, _how = _match_existing(r, by_vin, by_plate, by_unit)
 
                 if match is not None:
-                    # Enrich: fill only empty spec fields.
-                    sets: list[str] = []
-                    params: list[Any] = []
-                    for f in _SPEC_FILL:
-                        incoming = r.get(f)
-                        cur = getattr(match, f)
-                        empty = cur in (None, "", 0)
-                        if empty and incoming not in (None, ""):
-                            sets.append(f"{f} = ?")
-                            params.append(incoming)
-                    if sets:
+                    updates, prov = _merge_spec_fields(
+                        match, r, source, precedence,
+                    )
+                    if updates:
+                        sets = [f"{f} = ?" for f in _SPEC_FILL if f in updates]
+                        params = [updates[f] for f in _SPEC_FILL if f in updates]
+                        sets.append("field_provenance = ?")
+                        params.append(json.dumps(prov))
                         sets.append("updated_at = ?")
                         params.extend([now, match.id, account_id])
                         await self._db.execute(
@@ -343,13 +451,15 @@ class VehiclesRegistryMixin(_MixinBase):
                         written += 1
                     continue
 
-                # No match → insert new.
+                # No match → insert new (provenance = this source per non-empty spec).
+                prov = {f: source for f in _SPEC_FILL if not _is_unset(r.get(f))}
                 await self._db.execute(
                     """INSERT INTO vehicles
                        (account_id, company_code, unit_number, vehicle_type,
                         vin, plate_number, make, model, year, status, source,
-                        telematics_ref, notes, is_active, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                        telematics_ref, notes, is_active, field_provenance,
+                        created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
                        ON CONFLICT(account_id, company_code, unit_number)
                        DO NOTHING""",
                     (
@@ -358,11 +468,36 @@ class VehiclesRegistryMixin(_MixinBase):
                         str(r.get("plate_number") or ""),
                         str(r.get("make") or ""), str(r.get("model") or ""),
                         r.get("year"), str(r.get("status") or "active"),
-                        source, "", "", now, now,
+                        source, "", "", json.dumps(prov), now, now,
                     ),
                 )
                 written += 1
         return written
+
+    async def get_vehicle_field_precedence(
+        self, account_id: int,
+    ) -> dict[str, tuple[str, ...]]:
+        """Per-account source precedence for vehicle spec fields, merged over
+        the sensible default (Datatruck owns paperwork).  Stored as a JSON
+        ``{field: [source, …]}`` object under the ``vehicle_field_precedence``
+        account setting; absent / invalid keys fall back to the default."""
+        merged = {k: tuple(v) for k, v in DEFAULT_FIELD_PRECEDENCE.items()}
+        try:
+            raw = await self.get_account_setting(
+                account_id, PRECEDENCE_SETTING_KEY, "",
+            )
+        except Exception:
+            raw = ""
+        if raw:
+            try:
+                override = json.loads(raw)
+            except (TypeError, ValueError):
+                override = None
+            if isinstance(override, dict):
+                for f, order in override.items():
+                    if f in merged and isinstance(order, list) and order:
+                        merged[f] = tuple(str(s) for s in order)
+        return merged
 
     async def plan_external_vehicles(
         self,
@@ -441,24 +576,26 @@ class VehiclesRegistryMixin(_MixinBase):
         *,
         source: str,
     ) -> int:
-        """Idempotent bulk upsert keyed on
+        """Upsert an integration's vehicle roster, keyed on
         ``(account_id, company_code, unit_number)``.
 
-        Used by (a) the migration-105 backfill from ``vehicle_state``
-        and (b) the 60s ingestor as it sees Samsara vehicles, and (c) any
-        integration projecting a roster.  Integration-owned spec columns
-        (vin / plate / make / model / year / telematics_ref) FILL-DON'T-WIPE:
-        a source overwrites them only when it carries a NON-EMPTY value, so
-        two sources complete each other (Samsara has no VIN, Datatruck does)
-        instead of one blanking the other's data every tick.  ``vehicle_type``
-        and operator-set ``status``/``notes`` are PRESERVED (omitted from the
-        update) — an operator who reclassified a unit or added a note keeps it
-        across syncs.  Rows without a unit_number are skipped.
-
-        Returns the number of rows written.
+        Used by the migration-105 backfill, the 60s Samsara ingestor, and any
+        roster sync.  Spec fields (vin / plate / make / model / year) are
+        merged by SOURCE PRECEDENCE (see ``_merge_spec_fields``): an empty
+        value never wipes; an empty field is filled; a field owned by a
+        higher-priority source — or pinned by an operator (``manual``) — is
+        never overwritten by a lower-priority sync.  ``telematics_ref`` is the
+        live link and fill-don't-wipe; ``vehicle_type`` / operator ``status``
+        / ``notes`` are never touched here.  Rows without a unit_number are
+        skipped.  Returns the number of rows written.
         """
         if not rows:
             return 0
+        precedence = await self.get_vehicle_field_precedence(account_id)
+        existing = await self.list_vehicles(account_id)
+        by_key = {
+            (v.company_code, v.unit_number.strip().lower()): v for v in existing
+        }
         now = self._now()
         written = 0
         async with self.transaction():
@@ -466,49 +603,68 @@ class VehiclesRegistryMixin(_MixinBase):
                 unit = str(r.get("unit_number") or "").strip()
                 if not unit:
                     continue
+                company = str(r.get("company_code") or "")
+                match = by_key.get((company, unit.lower()))
+
+                if match is None:
+                    # Net-new row — provenance starts as this source for each
+                    # non-empty spec field it carries.
+                    prov = {
+                        f: source for f in _SPEC_FILL if not _is_unset(r.get(f))
+                    }
+                    await self._db.execute(
+                        """INSERT INTO vehicles
+                           (account_id, company_code, unit_number, vehicle_type,
+                            vin, plate_number, make, model, year, status, source,
+                            telematics_ref, notes, is_active, field_provenance,
+                            created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+                           ON CONFLICT(account_id, company_code, unit_number)
+                           DO NOTHING""",
+                        (
+                            account_id, company, unit,
+                            str(r.get("vehicle_type") or "truck"),
+                            str(r.get("vin") or ""),
+                            str(r.get("plate_number") or ""),
+                            str(r.get("make") or ""),
+                            str(r.get("model") or ""),
+                            r.get("year"),
+                            str(r.get("status") or "active"),
+                            source,
+                            str(r.get("telematics_ref") or ""),
+                            str(r.get("notes") or ""),
+                            json.dumps(prov), now, now,
+                        ),
+                    )
+                    written += 1
+                    continue
+
+                # Existing row — merge spec fields by precedence + provenance.
+                updates, prov = _merge_spec_fields(match, r, source, precedence)
+                sets: list[str] = []
+                params: list[Any] = []
+                for f in _SPEC_FILL:
+                    if f in updates:
+                        sets.append(f"{f} = ?")
+                        params.append(updates[f])
+                # telematics_ref is the live link (Samsara's id) — fill-don't-wipe.
+                tref = str(r.get("telematics_ref") or "")
+                if tref:
+                    sets.append("telematics_ref = ?")
+                    params.append(tref)
+                # source refreshes to the latest integration to touch the row.
+                sets.append("source = ?")
+                params.append(source)
+                sets.append("field_provenance = ?")
+                params.append(json.dumps(prov))
+                sets.append("is_active = 1")
+                sets.append("updated_at = ?")
+                params.append(now)
+                params.extend([match.id, account_id])
                 await self._db.execute(
-                    """INSERT INTO vehicles
-                       (account_id, company_code, unit_number, vehicle_type,
-                        vin, plate_number, make, model, year, status, source,
-                        telematics_ref, notes, is_active, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-                       ON CONFLICT(account_id, company_code, unit_number)
-                       DO UPDATE SET
-                           -- Fill-don't-wipe: a source overwrites a spec
-                           -- field only when it actually has a value, so a
-                           -- Samsara tick (no VIN/make) can't blank out what
-                           -- Datatruck's projection filled in — and vice
-                           -- versa.  Mirrors the enrich-only manner
-                           -- project_external_vehicles already uses.
-                           vin            = COALESCE(NULLIF(excluded.vin, ''),             vehicles.vin),
-                           plate_number   = COALESCE(NULLIF(excluded.plate_number, ''),   vehicles.plate_number),
-                           make           = COALESCE(NULLIF(excluded.make, ''),           vehicles.make),
-                           model          = COALESCE(NULLIF(excluded.model, ''),          vehicles.model),
-                           year           = COALESCE(excluded.year,                       vehicles.year),
-                           telematics_ref = COALESCE(NULLIF(excluded.telematics_ref, ''), vehicles.telematics_ref),
-                           -- source DOES refresh: it marks the latest
-                           -- integration that wrote spec (a manual row adopts
-                           -- its integration on first sync).  Operator
-                           -- vehicle_type/status/notes preserved by omission.
-                           source         = excluded.source,
-                           is_active      = 1,
-                           updated_at     = excluded.updated_at""",
-                    (
-                        account_id,
-                        str(r.get("company_code") or ""),
-                        unit,
-                        str(r.get("vehicle_type") or "truck"),
-                        str(r.get("vin") or ""),
-                        str(r.get("plate_number") or ""),
-                        str(r.get("make") or ""),
-                        str(r.get("model") or ""),
-                        r.get("year"),
-                        str(r.get("status") or "active"),
-                        source,
-                        str(r.get("telematics_ref") or ""),
-                        str(r.get("notes") or ""),
-                        now, now,
-                    ),
+                    f"UPDATE vehicles SET {', '.join(sets)} "
+                    "WHERE id = ? AND account_id = ?",
+                    tuple(params),
                 )
                 written += 1
         return written

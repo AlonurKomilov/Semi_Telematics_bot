@@ -5363,3 +5363,29 @@ async def migrate_drop_legacy_telemetry_tiers(conn) -> None:
                 await conn.rollback()
             except Exception:
                 pass
+
+
+@_register("133_vehicles_field_provenance")
+async def migrate_vehicles_field_provenance(conn) -> None:
+    """Add ``vehicles.field_provenance`` — a JSON map ``{spec_field: source}``
+    recording WHICH source last authoritatively set each spec field.
+
+    Powers source-precedence merges (a lower-priority integration can't
+    overwrite a higher-priority source's value) and operator pins (a field
+    whose provenance is ``manual`` is never overwritten by a sync).  No
+    backfill needed: the merge engine treats a MISSING entry as "owned by
+    the row's existing ``source``", so existing rows behave correctly and
+    provenance fills in as syncs run.  Idempotent (skips if the column is
+    already present)."""
+    try:
+        await conn.execute(
+            "ALTER TABLE vehicles ADD COLUMN field_provenance TEXT NOT NULL DEFAULT '{}'"
+        )
+        await conn.commit()
+        logger.info("Migration 133: added vehicles.field_provenance")
+    except Exception as e:
+        logger.debug("vehicles.field_provenance skipped: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
