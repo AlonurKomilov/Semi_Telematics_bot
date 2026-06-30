@@ -445,6 +445,46 @@ async def fleet_utilization_summary(
     return {"days": days, "vehicles": enriched}
 
 
+# ── Source precedence (when Samsara + Datatruck disagree) ──────────
+#
+# Owner-level policy: which integration wins each vehicle spec field.  Placed
+# among the LITERAL routes (before the parametric ``/{vehicle_name}``) so the
+# path isn't swallowed as a vehicle name.
+
+
+class SourcePrecedenceUpdate(BaseModel):
+    # {spec_field: primary_source}, e.g. {"vin": "datatruck", "make": "samsara"}.
+    primary: dict[str, str] = Field(default_factory=dict)
+
+
+@router.get("/source-precedence")
+async def get_source_precedence(
+    user: dict = Depends(require_permission("can_manage_vehicles")),
+):
+    """Per-field primary source + the choices, for the Integrations-page
+    'When sources disagree' panel."""
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    return await tenant.get_vehicle_precedence_options(account_id)
+
+
+@router.put("/source-precedence")
+async def put_source_precedence(
+    body: SourcePrecedenceUpdate,
+    user: dict = Depends(require_permission("can_manage_vehicles")),
+):
+    """Set the per-field primary source.  The other source still fills gaps;
+    operator hand-edits always win."""
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    await tenant.set_vehicle_field_precedence(account_id, body.primary)
+    return await tenant.get_vehicle_precedence_options(account_id)
+
+
 @router.get("/{vehicle_name}")
 async def vehicle_detail(
     vehicle_name: str,

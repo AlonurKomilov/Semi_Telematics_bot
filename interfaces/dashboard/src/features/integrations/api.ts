@@ -26,6 +26,34 @@ export async function listIntegrations(): Promise<IntegrationsListResponse> {
   return apiJSON<IntegrationsListResponse>(BASE);
 }
 
+// ── Vehicle source precedence (when Samsara + Datatruck disagree) ──
+// Lives under /vehicles (owner policy on vehicle data) but is surfaced on
+// the Integrations page, so the client wrapper lives here.
+
+export interface PrecedenceField {
+  key: string;
+  label: string;
+  primary: string;
+}
+
+export interface SourcePrecedence {
+  sources: string[];
+  fields: PrecedenceField[];
+}
+
+export async function getSourcePrecedence(): Promise<SourcePrecedence> {
+  return apiJSON<SourcePrecedence>('/vehicles/source-precedence');
+}
+
+export async function putSourcePrecedence(
+  primary: Record<string, string>,
+): Promise<SourcePrecedence> {
+  return apiJSON<SourcePrecedence>('/vehicles/source-precedence', {
+    method: 'PUT',
+    body: { primary },
+  });
+}
+
 export async function connectIntegration(
   providerId: string,
   credentials: Record<string, unknown>,

@@ -226,6 +226,25 @@ async def test_operator_pin_is_never_overwritten_by_sync(db):
 
 
 @pytest.mark.asyncio
+async def test_set_precedence_round_trips_and_validates(db):
+    """The config setter expands a per-field primary pick into a full order,
+    ignores unknown fields / sources, and round-trips through the options
+    payload the panel reads."""
+    aid = (await db.create_account("Prec Co")).id
+    await db.set_vehicle_field_precedence(aid, {
+        "make": "samsara",     # valid → applied
+        "vin": "bogus",        # invalid source → ignored (stays default)
+        "nope": "samsara",     # unknown field → ignored
+    })
+    opts = await db.get_vehicle_precedence_options(aid)
+    by = {f["key"]: f["primary"] for f in opts["fields"]}
+    assert by["make"] == "samsara"
+    assert by["vin"] == "datatruck"          # default kept
+    assert "nope" not in by
+    assert opts["sources"] == ["datatruck", "samsara"]
+
+
+@pytest.mark.asyncio
 async def test_upsert_skips_blank_unit_and_empty_list(db):
     assert await db.upsert_from_integration(42, [], source="samsara") == 0
     n = await db.upsert_from_integration(

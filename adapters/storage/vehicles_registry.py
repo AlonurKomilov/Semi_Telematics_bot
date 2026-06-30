@@ -67,6 +67,17 @@ DEFAULT_FIELD_PRECEDENCE: dict[str, tuple[str, ...]] = {
 PRECEDENCE_SETTING_KEY = "vehicle_field_precedence"
 _MANUAL_SOURCE = "manual"
 
+# Integrations that can write vehicle spec fields — the choices the
+# precedence UI offers, and the order used to expand a per-field "primary"
+# pick into a full priority list.
+VEHICLE_SPEC_SOURCES = ("datatruck", "samsara")
+
+# Human labels for the configurable spec fields (the precedence panel).
+_VEHICLE_FIELD_LABELS = {
+    "vin": "VIN", "plate_number": "Plate", "make": "Make",
+    "model": "Model", "year": "Year",
+}
+
 
 def _is_unset(v: Any) -> bool:
     """A spec value counts as 'not provided' — so it never overwrites."""
@@ -498,6 +509,45 @@ class VehiclesRegistryMixin(_MixinBase):
                     if f in merged and isinstance(order, list) and order:
                         merged[f] = tuple(str(s) for s in order)
         return merged
+
+    async def set_vehicle_field_precedence(
+        self, account_id: int, primary_by_field: dict[str, str],
+    ) -> dict[str, list[str]]:
+        """Persist a per-field PRIMARY-source choice as the account's vehicle
+        field precedence.  Validates field + source names; expands each
+        primary into the full order ``[primary, …other known sources]`` so
+        the lower-priority source still fills gaps.  Unknown / invalid keys
+        are ignored.  Returns the stored ``{field: [source, …]}`` map."""
+        order_map: dict[str, list[str]] = {}
+        for f, primary in (primary_by_field or {}).items():
+            if f not in DEFAULT_FIELD_PRECEDENCE:
+                continue
+            if primary not in VEHICLE_SPEC_SOURCES:
+                continue
+            order_map[f] = [primary] + [
+                s for s in VEHICLE_SPEC_SOURCES if s != primary
+            ]
+        await self.set_account_setting(
+            account_id, PRECEDENCE_SETTING_KEY, json.dumps(order_map),
+        )
+        return order_map
+
+    async def get_vehicle_precedence_options(self, account_id: int) -> dict:
+        """UI payload for the source-precedence panel: each configurable spec
+        field with its label + current PRIMARY source, plus the sources to
+        choose from."""
+        prec = await self.get_vehicle_field_precedence(account_id)
+        return {
+            "sources": list(VEHICLE_SPEC_SOURCES),
+            "fields": [
+                {
+                    "key": f,
+                    "label": _VEHICLE_FIELD_LABELS.get(f, f),
+                    "primary": (prec.get(f) or VEHICLE_SPEC_SOURCES)[0],
+                }
+                for f in DEFAULT_FIELD_PRECEDENCE
+            ],
+        }
 
     async def plan_external_vehicles(
         self,

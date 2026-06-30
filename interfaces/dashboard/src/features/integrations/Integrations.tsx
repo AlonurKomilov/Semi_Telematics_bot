@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { CardSkeleton, PageHeader } from '../../components/shell';
 import IntegrationCard from './IntegrationCard';
 import BackfillStatusBadge from './BackfillStatusBadge';
+import SourcePrecedencePanel from './SourcePrecedencePanel';
 import {
   connectIntegration,
   disconnectIntegration,
@@ -128,6 +129,14 @@ export default function Integrations() {
   const available = catalog.filter((c) => c.status === 'available' || c.status === 'beta');
   const upcoming = catalog.filter((c) => c.status === 'coming_soon');
 
+  // The source-precedence panel only makes sense when 2+ vehicle-writing
+  // integrations are connected (otherwise there's no source to disagree with).
+  const VEHICLE_SOURCES = ['samsara', 'datatruck'];
+  const connectedVehicleSources = integrations.filter(
+    (ai) => VEHICLE_SOURCES.includes(ai.provider_id) && ai.status === 'connected',
+  );
+  const showPrecedence = connectedVehicleSources.length >= 2;
+
   return (
     <div>
       <PageHeader
@@ -150,6 +159,8 @@ export default function Integrations() {
           }),
         )}
       </div>
+
+      {showPrecedence && <SourcePrecedencePanel />}
 
       {upcoming.length > 0 && (
         <>
