@@ -22,8 +22,11 @@ Postgres RLS when ``ENABLE_RLS=1``).
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Optional
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     class _MixinBase:
@@ -100,24 +103,28 @@ def _merge_spec_fields(
     incoming: dict[str, Any],
     source: str,
     precedence: dict[str, tuple[str, ...]],
-) -> tuple[dict[str, Any], dict[str, str]]:
-    """Decide which spec fields an integration write may change, and update
-    the provenance map.  Returns ``(updates, new_provenance)`` where
-    ``updates`` is only the spec fields that should be written.
+) -> tuple[dict[str, Any], dict[str, str], list[dict], list[str]]:
+    """Decide which spec fields an integration write may change, update the
+    provenance map, and surface genuine cross-source conflicts.
 
-    Rules, in order, per field:
-      * blank-skip — an empty incoming value never overwrites.
-      * fill-empty — an empty current value is always filled.
-      * manual pin — a field owned by ``manual`` is never overwritten.
-      * precedence — overwrite only when this source ranks >= the field's
-        current owner; a lower-priority source is kept out (Phase 2 will
-        record that as a conflict instead of dropping it silently).
+    Returns ``(updates, new_provenance, conflicts, cleared_fields)``:
+      * ``updates``        — spec fields to write.
+      * ``new_provenance`` — the merged ``{field: source}`` map.
+      * ``conflicts``      — fields where two integration sources carry a
+        DIFFERENT non-empty value.  Each is ``{field, current_value,
+        current_source (the stored winner), incoming_value, incoming_source
+        (the other)}`` — recorded so an operator can review (Layer 3).
+      * ``cleared_fields`` — fields where the two sources now AGREE, so any
+        prior open conflict can be cleared.
 
-    A missing provenance entry falls back to the row's existing ``source``,
-    so rows that predate this column behave correctly without a backfill.
+    Rules per field: blank-skip → fill-empty → agree (clear) → manual-pin →
+    precedence (the configured owner wins; a manual pin beats all).  A missing
+    provenance entry falls back to the row's existing ``source``.
     """
     prov: dict[str, str] = dict(getattr(existing, "field_provenance", None) or {}) if existing else {}
     updates: dict[str, Any] = {}
+    conflicts: list[dict] = []
+    cleared: list[str] = []
     for f in _SPEC_FILL:
         inc = incoming.get(f)
         if _is_unset(inc):
@@ -127,14 +134,27 @@ def _merge_spec_fields(
             updates[f] = inc
             prov[f] = source
             continue
+        if str(inc) == str(cur):
+            cleared.append(f)            # sources agree → resolve any conflict
+            continue
         owner = prov.get(f) or (getattr(existing, "source", None) if existing else None)
         if owner == _MANUAL_SOURCE:
-            continue
+            continue                     # operator pin — not a source conflict
         order = precedence.get(f, ())
         if _source_rank(source, order) <= _source_rank(owner or "", order):
             updates[f] = inc
             prov[f] = source
-    return updates, prov
+            win_val, win_src, lose_val, lose_src = inc, source, cur, owner
+        else:
+            win_val, win_src, lose_val, lose_src = cur, owner, inc, source
+        # A genuine disagreement between two DIFFERENT integration sources.
+        if owner and owner != source:
+            conflicts.append({
+                "field": f,
+                "current_value": win_val, "current_source": win_src,
+                "incoming_value": lose_val, "incoming_source": lose_src,
+            })
+    return updates, prov, conflicts, cleared
 
 
 def _index_existing(existing: list["Vehicle"]) -> tuple[dict, dict, dict]:
@@ -435,6 +455,7 @@ class VehiclesRegistryMixin(_MixinBase):
 
         now = self._now()
         written = 0
+        conflict_ops: list = []
         async with self.transaction():
             for r in rows:
                 unit = str(r.get("unit_number") or "").strip()
@@ -444,7 +465,7 @@ class VehiclesRegistryMixin(_MixinBase):
                 match, _how = _match_existing(r, by_vin, by_plate, by_unit)
 
                 if match is not None:
-                    updates, prov = _merge_spec_fields(
+                    updates, prov, conflicts, cleared = _merge_spec_fields(
                         match, r, source, precedence,
                     )
                     if updates:
@@ -460,6 +481,8 @@ class VehiclesRegistryMixin(_MixinBase):
                             tuple(params),
                         )
                         written += 1
+                    if conflicts or cleared:
+                        conflict_ops.append((match.id, conflicts, cleared))
                     continue
 
                 # No match → insert new (provenance = this source per non-empty spec).
@@ -483,6 +506,7 @@ class VehiclesRegistryMixin(_MixinBase):
                     ),
                 )
                 written += 1
+        await self._sync_conflicts_batch(account_id, conflict_ops)
         return written
 
     async def get_vehicle_field_precedence(
@@ -548,6 +572,137 @@ class VehiclesRegistryMixin(_MixinBase):
                 for f in DEFAULT_FIELD_PRECEDENCE
             ],
         }
+
+    # ── Cross-source data conflicts (Layer 3) ──────────────────────
+    #
+    # Generic on (entity_type, entity_id) so other domains can reuse the
+    # store; vehicles is the first consumer.  Recorded by the merge engine
+    # when two integrations carry a different non-empty value for a field.
+
+    async def record_field_conflict(
+        self, account_id: int, entity_type: str, entity_id: int, c: dict,
+    ) -> None:
+        """Upsert one OPEN conflict for ``(entity, field)``; refreshes the
+        values when re-detected on a later sync."""
+        now = self._now()
+        await self._db.execute(
+            """INSERT INTO data_conflicts
+               (account_id, entity_type, entity_id, field,
+                current_value, current_source, incoming_value, incoming_source,
+                status, detected_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
+               ON CONFLICT(account_id, entity_type, entity_id, field)
+               DO UPDATE SET
+                   current_value   = excluded.current_value,
+                   current_source  = excluded.current_source,
+                   incoming_value  = excluded.incoming_value,
+                   incoming_source = excluded.incoming_source,
+                   status          = 'open',
+                   resolved_by     = NULL,
+                   resolved_value  = NULL,
+                   updated_at      = excluded.updated_at""",
+            (
+                account_id, entity_type, entity_id, str(c.get("field") or ""),
+                str(c.get("current_value") if c.get("current_value") is not None else ""),
+                str(c.get("current_source") or ""),
+                str(c.get("incoming_value") if c.get("incoming_value") is not None else ""),
+                str(c.get("incoming_source") or ""),
+                now, now,
+            ),
+        )
+
+    async def clear_field_conflict(
+        self, account_id: int, entity_type: str, entity_id: int, field: str,
+    ) -> None:
+        """Drop any OPEN conflict for ``(entity, field)`` — the two sources
+        came back into agreement (auto-resolved)."""
+        await self._db.execute(
+            "DELETE FROM data_conflicts WHERE account_id = ? AND entity_type = ? "
+            "AND entity_id = ? AND field = ? AND status = 'open'",
+            (account_id, entity_type, entity_id, field),
+        )
+
+    async def list_open_conflicts(
+        self, account_id: int, *, entity_type: str | None = None,
+    ) -> list[dict]:
+        """Open conflicts for the account, newest first."""
+        where = ["account_id = ?", "status = 'open'"]
+        args: list[Any] = [account_id]
+        if entity_type:
+            where.append("entity_type = ?")
+            args.append(entity_type)
+        cols = [
+            "id", "entity_type", "entity_id", "field", "current_value",
+            "current_source", "incoming_value", "incoming_source", "detected_at",
+        ]
+        cur = await self._db.execute(
+            f"SELECT {', '.join(cols)} FROM data_conflicts "
+            f"WHERE {' AND '.join(where)} ORDER BY detected_at DESC, id DESC",
+            tuple(args),
+        )
+        return [dict(zip(cols, row)) for row in await cur.fetchall()]
+
+    async def count_open_conflicts(self, account_id: int) -> int:
+        cur = await self._db.execute(
+            "SELECT COUNT(*) FROM data_conflicts "
+            "WHERE account_id = ? AND status = 'open'",
+            (account_id,),
+        )
+        rows = await cur.fetchall()
+        return int(rows[0][0]) if rows and rows[0] else 0
+
+    async def resolve_field_conflict(
+        self, account_id: int, conflict_id: int, *,
+        chosen_value: Any, resolved_by: int,
+    ) -> "Vehicle | None":
+        """Resolve a conflict: write the chosen value onto the entity (via
+        ``update_vehicle``, which PINS it so no sync undoes the decision) and
+        mark the conflict resolved (kept for audit).  Returns the updated
+        vehicle, or None if the conflict isn't an open vehicle conflict."""
+        cur = await self._db.execute(
+            "SELECT entity_type, entity_id, field FROM data_conflicts "
+            "WHERE id = ? AND account_id = ? AND status = 'open'",
+            (conflict_id, account_id),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        entity_type, entity_id, field = str(row[0]), int(row[1]), str(row[2])
+        if entity_type != "vehicle":
+            return None
+        await self.update_vehicle(account_id, entity_id, **{field: chosen_value})
+        await self._db.execute(
+            "UPDATE data_conflicts SET status = 'resolved', resolved_by = ?, "
+            "resolved_value = ?, updated_at = ? WHERE id = ? AND account_id = ?",
+            (resolved_by, str(chosen_value), self._now(), conflict_id, account_id),
+        )
+        await self._db.commit()
+        return await self.get_vehicle(account_id, entity_id)
+
+    async def _sync_conflicts_batch(self, account_id: int, ops: list) -> None:
+        """Record/clear cross-source conflicts AFTER the vehicle writes commit
+        — best-effort + isolated, so the conflict store (auxiliary) can never
+        abort or fail a sync.  ``ops`` = list of ``(entity_id, conflicts,
+        cleared)``."""
+        if not ops:
+            return
+        try:
+            for entity_id, conflicts, cleared in ops:
+                for c in conflicts:
+                    await self.record_field_conflict(
+                        account_id, "vehicle", entity_id, c,
+                    )
+                for fld in cleared:
+                    await self.clear_field_conflict(
+                        account_id, "vehicle", entity_id, fld,
+                    )
+            await self._db.commit()
+        except Exception as e:
+            logger.debug("conflict sync skipped acct=%d: %s", account_id, e)
+            try:
+                await self._db.rollback()
+            except Exception:
+                pass
 
     async def plan_external_vehicles(
         self,
@@ -648,6 +803,7 @@ class VehiclesRegistryMixin(_MixinBase):
         }
         now = self._now()
         written = 0
+        conflict_ops: list = []
         async with self.transaction():
             for r in rows:
                 unit = str(r.get("unit_number") or "").strip()
@@ -690,7 +846,9 @@ class VehiclesRegistryMixin(_MixinBase):
                     continue
 
                 # Existing row — merge spec fields by precedence + provenance.
-                updates, prov = _merge_spec_fields(match, r, source, precedence)
+                updates, prov, conflicts, cleared = _merge_spec_fields(
+                    match, r, source, precedence,
+                )
                 sets: list[str] = []
                 params: list[Any] = []
                 for f in _SPEC_FILL:
@@ -717,4 +875,7 @@ class VehiclesRegistryMixin(_MixinBase):
                     tuple(params),
                 )
                 written += 1
+                if conflicts or cleared:
+                    conflict_ops.append((match.id, conflicts, cleared))
+        await self._sync_conflicts_batch(account_id, conflict_ops)
         return written

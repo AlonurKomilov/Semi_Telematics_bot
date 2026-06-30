@@ -5389,3 +5389,62 @@ async def migrate_vehicles_field_provenance(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+@_register("134_data_conflicts")
+async def migrate_data_conflicts(conn) -> None:
+    """Cross-source data conflicts — when two integrations carry a DIFFERENT
+    non-empty value for the same field, record it so an operator can review +
+    resolve (Phase 2 / Layer 3).  Generic on ``(entity_type, entity_id)`` so
+    work-orders / other domains can reuse the store; vehicles is the first
+    consumer.  One open conflict per ``(account, entity_type, entity_id, field)``."""
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS data_conflicts (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            entity_type     TEXT    NOT NULL,
+            entity_id       INTEGER NOT NULL,
+            field           TEXT    NOT NULL,
+            current_value   TEXT    NOT NULL DEFAULT '',
+            current_source  TEXT    NOT NULL DEFAULT '',
+            incoming_value  TEXT    NOT NULL DEFAULT '',
+            incoming_source TEXT    NOT NULL DEFAULT '',
+            status          TEXT    NOT NULL DEFAULT 'open',
+            detected_at     TEXT    NOT NULL DEFAULT '',
+            updated_at      TEXT    NOT NULL DEFAULT '',
+            resolved_by     INTEGER,
+            resolved_value  TEXT,
+            UNIQUE(account_id, entity_type, entity_id, field)
+        )
+    """)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_data_conflicts_open "
+        "ON data_conflicts(account_id, status)"
+    )
+    await conn.commit()
+    logger.info("Migration 134: data_conflicts table created")
+
+    # RLS — tenant-scoped, same gated pattern as 057/131.
+    import os
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        logger.info("Migration 134: ENABLE_RLS not set; RLS policy skipped")
+        return
+    try:
+        await conn.execute("ALTER TABLE data_conflicts ENABLE ROW LEVEL SECURITY")
+        await conn.execute("ALTER TABLE data_conflicts FORCE ROW LEVEL SECURITY")
+        await conn.execute("DROP POLICY IF EXISTS tenant_isolation ON data_conflicts")
+        await conn.execute(
+            """
+            CREATE POLICY tenant_isolation ON data_conflicts
+            USING       (account_id::text = current_setting('app.account_id', true))
+            WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+            """
+        )
+        await conn.commit()
+        logger.info("Migration 134: tenant_isolation RLS applied to data_conflicts")
+    except Exception as e:
+        logger.error("Migration 134: RLS apply on data_conflicts failed — %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass

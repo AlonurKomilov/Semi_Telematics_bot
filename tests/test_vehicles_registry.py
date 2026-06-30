@@ -244,6 +244,70 @@ async def test_set_precedence_round_trips_and_validates(db):
     assert opts["sources"] == ["datatruck", "samsara"]
 
 
+# ── Cross-source conflicts (Layer 3) ──────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_conflict_recorded_when_sources_disagree(db):
+    """Two sources, two DIFFERENT non-empty makes → an open conflict naming
+    the stored winner + the other value (so the operator can review)."""
+    await db.upsert_from_integration(42, [{
+        "company_code": "CFT", "unit_number": "88", "make": "Freightliner",
+    }], source="datatruck")
+    await db.upsert_from_integration(42, [{
+        "company_code": "CFT", "unit_number": "88", "make": "Frtlnr",
+    }], source="samsara")
+    conflicts = await db.list_open_conflicts(42, entity_type="vehicle")
+    makes = [c for c in conflicts if c["field"] == "make"]
+    assert len(makes) == 1
+    c = makes[0]
+    assert c["current_value"] == "Freightliner"   # stored winner (Datatruck)
+    assert c["current_source"] == "datatruck"
+    assert c["incoming_value"] == "Frtlnr"         # the other (Samsara)
+    assert c["incoming_source"] == "samsara"
+    assert await db.count_open_conflicts(42) == 1
+
+
+@pytest.mark.asyncio
+async def test_conflict_clears_when_sources_agree(db):
+    """A disagreement that later resolves itself (the lower source corrects
+    upstream) auto-clears the open conflict."""
+    await db.upsert_from_integration(42, [{
+        "company_code": "CFT", "unit_number": "88", "make": "Freightliner",
+    }], source="datatruck")
+    await db.upsert_from_integration(42, [{
+        "company_code": "CFT", "unit_number": "88", "make": "Frtlnr",
+    }], source="samsara")
+    assert await db.count_open_conflicts(42) == 1
+    await db.upsert_from_integration(42, [{
+        "company_code": "CFT", "unit_number": "88", "make": "Freightliner",
+    }], source="samsara")
+    assert await db.count_open_conflicts(42) == 0
+
+
+@pytest.mark.asyncio
+async def test_resolve_conflict_pins_chosen_value(db):
+    """Resolving picks a value, writes it onto the vehicle, PINS it (so no
+    sync undoes the call), and closes the conflict."""
+    await db.upsert_from_integration(42, [{
+        "company_code": "CFT", "unit_number": "88", "make": "Freightliner",
+    }], source="datatruck")
+    await db.upsert_from_integration(42, [{
+        "company_code": "CFT", "unit_number": "88", "make": "Frtlnr",
+    }], source="samsara")
+    cid = (await db.list_open_conflicts(42, entity_type="vehicle"))[0]["id"]
+    v = await db.resolve_field_conflict(42, cid, chosen_value="Frtlnr", resolved_by=1)
+    assert v is not None and v.make == "Frtlnr"
+    assert await db.count_open_conflicts(42) == 0
+    # Pinned — a later higher-priority Datatruck sync can't change it back,
+    # and raises no new conflict (an operator pin isn't a source conflict).
+    await db.upsert_from_integration(42, [{
+        "company_code": "CFT", "unit_number": "88", "make": "Freightliner",
+    }], source="datatruck")
+    assert (await db.list_vehicles(42))[0].make == "Frtlnr"
+    assert await db.count_open_conflicts(42) == 0
+
+
 @pytest.mark.asyncio
 async def test_upsert_skips_blank_unit_and_empty_list(db):
     assert await db.upsert_from_integration(42, [], source="samsara") == 0
