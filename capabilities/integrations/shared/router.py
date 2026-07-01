@@ -33,6 +33,7 @@ from adapters.telematics import (
     Capability,
     resolve_capability_cadence,
 )
+from capabilities.integrations import reconciliation
 from capabilities.integrations.shared.history_backfill import (
     backfill_vehicle_history,
     get_backfill_status,
@@ -108,7 +109,7 @@ async def list_data_conflicts(user: dict = Depends(_owner_only)):
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
-    return {"conflicts": await tenant.list_open_conflicts(account_id)}
+    return {"conflicts": await reconciliation.list_open(tenant, account_id)}
 
 
 class ResolveConflictRequest(BaseModel):
@@ -127,15 +128,15 @@ async def resolve_data_conflict(
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
-    v = await tenant.resolve_field_conflict(
-        account_id, conflict_id,
+    resolved = await reconciliation.resolve(
+        tenant, account_id, conflict_id,
         chosen_value=body.chosen_value, resolved_by=int(user.get("id") or 0),
     )
-    if v is None:
+    if resolved is None:
         raise HTTPException(404, "conflict not found or already resolved")
     return {
         "resolved": True,
-        "conflicts": await tenant.list_open_conflicts(account_id),
+        "conflicts": await reconciliation.list_open(tenant, account_id),
     }
 
 

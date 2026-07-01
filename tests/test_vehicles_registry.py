@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import pytest
 
+from capabilities.integrations import reconciliation as recon
+
 
 @pytest.mark.asyncio
 async def test_add_list_get_round_trip(db):
@@ -231,12 +233,12 @@ async def test_set_precedence_round_trips_and_validates(db):
     ignores unknown fields / sources, and round-trips through the options
     payload the panel reads."""
     aid = (await db.create_account("Prec Co")).id
-    await db.set_vehicle_field_precedence(aid, {
+    await recon.set_precedence(db, aid, "vehicle", {
         "make": "samsara",     # valid → applied
         "vin": "bogus",        # invalid source → ignored (stays default)
         "nope": "samsara",     # unknown field → ignored
     })
-    opts = await db.get_vehicle_precedence_options(aid)
+    opts = await recon.precedence_options(db, aid, "vehicle")
     by = {f["key"]: f["primary"] for f in opts["fields"]}
     assert by["make"] == "samsara"
     assert by["vin"] == "datatruck"          # default kept
@@ -257,7 +259,7 @@ async def test_conflict_recorded_when_sources_disagree(db):
     await db.upsert_from_integration(42, [{
         "company_code": "CFT", "unit_number": "88", "make": "Frtlnr",
     }], source="samsara")
-    conflicts = await db.list_open_conflicts(42, entity_type="vehicle")
+    conflicts = await recon.list_open(db, 42, entity_type="vehicle")
     makes = [c for c in conflicts if c["field"] == "make"]
     assert len(makes) == 1
     c = makes[0]
@@ -265,7 +267,7 @@ async def test_conflict_recorded_when_sources_disagree(db):
     assert c["current_source"] == "datatruck"
     assert c["incoming_value"] == "Frtlnr"         # the other (Samsara)
     assert c["incoming_source"] == "samsara"
-    assert await db.count_open_conflicts(42) == 1
+    assert await recon.count_open(db, 42) == 1
 
 
 @pytest.mark.asyncio
@@ -278,11 +280,11 @@ async def test_conflict_clears_when_sources_agree(db):
     await db.upsert_from_integration(42, [{
         "company_code": "CFT", "unit_number": "88", "make": "Frtlnr",
     }], source="samsara")
-    assert await db.count_open_conflicts(42) == 1
+    assert await recon.count_open(db, 42) == 1
     await db.upsert_from_integration(42, [{
         "company_code": "CFT", "unit_number": "88", "make": "Freightliner",
     }], source="samsara")
-    assert await db.count_open_conflicts(42) == 0
+    assert await recon.count_open(db, 42) == 0
 
 
 @pytest.mark.asyncio
@@ -295,17 +297,18 @@ async def test_resolve_conflict_pins_chosen_value(db):
     await db.upsert_from_integration(42, [{
         "company_code": "CFT", "unit_number": "88", "make": "Frtlnr",
     }], source="samsara")
-    cid = (await db.list_open_conflicts(42, entity_type="vehicle"))[0]["id"]
-    v = await db.resolve_field_conflict(42, cid, chosen_value="Frtlnr", resolved_by=1)
-    assert v is not None and v.make == "Frtlnr"
-    assert await db.count_open_conflicts(42) == 0
+    cid = (await recon.list_open(db, 42, entity_type="vehicle"))[0]["id"]
+    res = await recon.resolve(db, 42, cid, chosen_value="Frtlnr", resolved_by=1)
+    assert res is not None
+    assert (await db.list_vehicles(42))[0].make == "Frtlnr"
+    assert await recon.count_open(db, 42) == 0
     # Pinned — a later higher-priority Datatruck sync can't change it back,
     # and raises no new conflict (an operator pin isn't a source conflict).
     await db.upsert_from_integration(42, [{
         "company_code": "CFT", "unit_number": "88", "make": "Freightliner",
     }], source="datatruck")
     assert (await db.list_vehicles(42))[0].make == "Frtlnr"
-    assert await db.count_open_conflicts(42) == 0
+    assert await recon.count_open(db, 42) == 0
 
 
 # ── Identity reconciliation / de-dup (kind C) ─────────────────

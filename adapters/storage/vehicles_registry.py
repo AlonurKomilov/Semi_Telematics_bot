@@ -26,6 +26,9 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Optional
 
+from capabilities.integrations import reconciliation as recon
+from capabilities.integrations.reconciliation import MANUAL_SOURCE, is_unset
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -52,14 +55,17 @@ _VALID_TYPES = ("truck", "trailer", "other")
 # Spec fields an integration sync may fill on an existing (matched) row.
 _SPEC_FILL = ("vin", "plate_number", "make", "model", "year")
 
-# ── Source precedence (Layer 1) ───────────────────────────────────────
+# ── Source precedence + reconciliation (Layer 1) ──────────────────────
 #
-# When two integrations carry a DIFFERENT non-empty value for the same spec
-# field, who wins?  An explicit, per-account-overridable priority order per
-# field — NOT "whoever synced most recently".  Default: Datatruck (the TMS,
-# system-of-record for paperwork) outranks Samsara (telematics) for the
-# spec fields; the owner can flip any field later (e.g. Samsara-first VIN).
-# ``manual`` (an operator edit) always outranks every integration.
+# The merge / precedence / conflict MECHANISM lives in the shared, integration-
+# owned hub (``capabilities/integrations/reconciliation``).  Here we only
+# declare the vehicle entity's reconcilable shape + how to APPLY a resolution;
+# the write paths below call ``recon.merge_fields`` / ``recon.sync_batch`` and
+# read precedence via ``recon.get_precedence``.
+#
+# Default precedence: Datatruck (the TMS, system-of-record for paperwork)
+# outranks Samsara (telematics) for the spec fields; the owner can flip any
+# field later.  A ``manual`` operator edit always outranks every integration.
 DEFAULT_FIELD_PRECEDENCE: dict[str, tuple[str, ...]] = {
     "vin":          ("datatruck", "samsara"),
     "plate_number": ("datatruck", "samsara"),
@@ -67,14 +73,8 @@ DEFAULT_FIELD_PRECEDENCE: dict[str, tuple[str, ...]] = {
     "model":        ("datatruck", "samsara"),
     "year":         ("datatruck", "samsara"),
 }
-PRECEDENCE_SETTING_KEY = "vehicle_field_precedence"
-_MANUAL_SOURCE = "manual"
-
-# Integrations that can write vehicle spec fields — the choices the
-# precedence UI offers, and the order used to expand a per-field "primary"
-# pick into a full priority list.
+# Integrations that can write vehicle spec fields (the precedence UI choices).
 VEHICLE_SPEC_SOURCES = ("datatruck", "samsara")
-
 # Human labels for the configurable spec fields (the precedence panel).
 _VEHICLE_FIELD_LABELS = {
     "vin": "VIN", "plate_number": "Plate", "make": "Make",
@@ -82,79 +82,29 @@ _VEHICLE_FIELD_LABELS = {
 }
 
 
-def _is_unset(v: Any) -> bool:
-    """A spec value counts as 'not provided' — so it never overwrites."""
-    return v is None or v == "" or v == 0
+async def _apply_vehicle_field(
+    db: Any, account_id: int, entity_id: int, field: str, value: Any,
+) -> None:
+    """Write a resolved-conflict value onto a vehicle + PIN it: ``update_vehicle``
+    stamps the field ``manual`` in provenance so no later sync undoes the
+    operator's choice.  Registered as the 'vehicle' resolution applier."""
+    if field == "year":           # year is an INTEGER column
+        try:
+            value = int(value) if str(value).strip() else None
+        except (TypeError, ValueError):
+            value = None
+    await db.update_vehicle(account_id, entity_id, **{field: value})
 
 
-def _source_rank(source: str, order: tuple[str, ...]) -> int:
-    """Lower = higher priority.  ``manual`` always wins; a source not named
-    in the order is lowest (can fill a gap but can't outrank a named one)."""
-    if source == _MANUAL_SOURCE:
-        return -1
-    try:
-        return list(order).index(source)
-    except ValueError:
-        return len(order) + 1
-
-
-def _merge_spec_fields(
-    existing: "Vehicle | None",
-    incoming: dict[str, Any],
-    source: str,
-    precedence: dict[str, tuple[str, ...]],
-) -> tuple[dict[str, Any], dict[str, str], list[dict], list[str]]:
-    """Decide which spec fields an integration write may change, update the
-    provenance map, and surface genuine cross-source conflicts.
-
-    Returns ``(updates, new_provenance, conflicts, cleared_fields)``:
-      * ``updates``        — spec fields to write.
-      * ``new_provenance`` — the merged ``{field: source}`` map.
-      * ``conflicts``      — fields where two integration sources carry a
-        DIFFERENT non-empty value.  Each is ``{field, current_value,
-        current_source (the stored winner), incoming_value, incoming_source
-        (the other)}`` — recorded so an operator can review (Layer 3).
-      * ``cleared_fields`` — fields where the two sources now AGREE, so any
-        prior open conflict can be cleared.
-
-    Rules per field: blank-skip → fill-empty → agree (clear) → manual-pin →
-    precedence (the configured owner wins; a manual pin beats all).  A missing
-    provenance entry falls back to the row's existing ``source``.
-    """
-    prov: dict[str, str] = dict(getattr(existing, "field_provenance", None) or {}) if existing else {}
-    updates: dict[str, Any] = {}
-    conflicts: list[dict] = []
-    cleared: list[str] = []
-    for f in _SPEC_FILL:
-        inc = incoming.get(f)
-        if _is_unset(inc):
-            continue
-        cur = getattr(existing, f, None) if existing else None
-        if _is_unset(cur):
-            updates[f] = inc
-            prov[f] = source
-            continue
-        if str(inc) == str(cur):
-            cleared.append(f)            # sources agree → resolve any conflict
-            continue
-        owner = prov.get(f) or (getattr(existing, "source", None) if existing else None)
-        if owner == _MANUAL_SOURCE:
-            continue                     # operator pin — not a source conflict
-        order = precedence.get(f, ())
-        if _source_rank(source, order) <= _source_rank(owner or "", order):
-            updates[f] = inc
-            prov[f] = source
-            win_val, win_src, lose_val, lose_src = inc, source, cur, owner
-        else:
-            win_val, win_src, lose_val, lose_src = cur, owner, inc, source
-        # A genuine disagreement between two DIFFERENT integration sources.
-        if owner and owner != source:
-            conflicts.append({
-                "field": f,
-                "current_value": win_val, "current_source": win_src,
-                "incoming_value": lose_val, "incoming_source": lose_src,
-            })
-    return updates, prov, conflicts, cleared
+# Declare 'vehicle' with the shared hub — this is the whole "by feature" hook.
+recon.register_reconciled_entity(
+    "vehicle",
+    fields=_SPEC_FILL,
+    default_precedence=DEFAULT_FIELD_PRECEDENCE,
+    field_labels=_VEHICLE_FIELD_LABELS,
+    sources=VEHICLE_SPEC_SOURCES,
+    apply_resolution=_apply_vehicle_field,
+)
 
 
 def _index_existing(existing: list["Vehicle"]) -> tuple[dict, dict, dict]:
@@ -383,7 +333,7 @@ class VehiclesRegistryMixin(_MixinBase):
             row = await cur.fetchone()
             prov = _parse_provenance(dict(row).get("field_provenance")) if row else {}
             for f in edited_spec:
-                prov[f] = _MANUAL_SOURCE
+                prov[f] = MANUAL_SOURCE
             sets.append("field_provenance = ?")
             params.append(json.dumps(prov))
         sets.append("updated_at = ?")
@@ -440,7 +390,7 @@ class VehiclesRegistryMixin(_MixinBase):
              vehicle_type).
 
         On a match we MERGE by source precedence (see
-        ``_merge_spec_fields``): this source fills empty fields and may
+        ``recon.merge_fields``): this source fills empty fields and may
         overwrite a *lower*-priority source's value, but never an operator
         pin — and it never touches the existing ``source`` /
         ``vehicle_type`` / ``status`` / ``notes``.
@@ -449,7 +399,7 @@ class VehiclesRegistryMixin(_MixinBase):
         """
         if not rows:
             return 0
-        precedence = await self.get_vehicle_field_precedence(account_id)
+        precedence = await recon.get_precedence(self, account_id, "vehicle")
         existing = await self.list_vehicles(account_id)
         by_vin, by_plate, by_unit = _index_existing(existing)
 
@@ -465,8 +415,15 @@ class VehiclesRegistryMixin(_MixinBase):
                 match, _how = _match_existing(r, by_vin, by_plate, by_unit)
 
                 if match is not None:
-                    updates, prov, conflicts, cleared = _merge_spec_fields(
-                        match, r, source, precedence,
+                    mr = recon.merge_fields(
+                        current={f: getattr(match, f) for f in _SPEC_FILL},
+                        provenance=match.field_provenance,
+                        owner_fallback=match.source,
+                        incoming=r, source=source,
+                        fields=_SPEC_FILL, precedence=precedence,
+                    )
+                    updates, prov, conflicts, cleared = (
+                        mr.updates, mr.provenance, mr.conflicts, mr.cleared,
                     )
                     if updates:
                         sets = [f"{f} = ?" for f in _SPEC_FILL if f in updates]
@@ -486,7 +443,7 @@ class VehiclesRegistryMixin(_MixinBase):
                     continue
 
                 # No match → insert new (provenance = this source per non-empty spec).
-                prov = {f: source for f in _SPEC_FILL if not _is_unset(r.get(f))}
+                prov = {f: source for f in _SPEC_FILL if not is_unset(r.get(f))}
                 await self._db.execute(
                     """INSERT INTO vehicles
                        (account_id, company_code, unit_number, vehicle_type,
@@ -506,209 +463,8 @@ class VehiclesRegistryMixin(_MixinBase):
                     ),
                 )
                 written += 1
-        await self._sync_conflicts_batch(account_id, conflict_ops)
+        await recon.sync_batch(self, account_id, "vehicle", conflict_ops)
         return written
-
-    async def get_vehicle_field_precedence(
-        self, account_id: int,
-    ) -> dict[str, tuple[str, ...]]:
-        """Per-account source precedence for vehicle spec fields, merged over
-        the sensible default (Datatruck owns paperwork).  Stored as a JSON
-        ``{field: [source, …]}`` object under the ``vehicle_field_precedence``
-        account setting; absent / invalid keys fall back to the default."""
-        merged = {k: tuple(v) for k, v in DEFAULT_FIELD_PRECEDENCE.items()}
-        try:
-            raw = await self.get_account_setting(
-                account_id, PRECEDENCE_SETTING_KEY, "",
-            )
-        except Exception:
-            raw = ""
-        if raw:
-            try:
-                override = json.loads(raw)
-            except (TypeError, ValueError):
-                override = None
-            if isinstance(override, dict):
-                for f, order in override.items():
-                    if f in merged and isinstance(order, list) and order:
-                        merged[f] = tuple(str(s) for s in order)
-        return merged
-
-    async def set_vehicle_field_precedence(
-        self, account_id: int, primary_by_field: dict[str, str],
-    ) -> dict[str, list[str]]:
-        """Persist a per-field PRIMARY-source choice as the account's vehicle
-        field precedence.  Validates field + source names; expands each
-        primary into the full order ``[primary, …other known sources]`` so
-        the lower-priority source still fills gaps.  Unknown / invalid keys
-        are ignored.  Returns the stored ``{field: [source, …]}`` map."""
-        order_map: dict[str, list[str]] = {}
-        for f, primary in (primary_by_field or {}).items():
-            if f not in DEFAULT_FIELD_PRECEDENCE:
-                continue
-            if primary not in VEHICLE_SPEC_SOURCES:
-                continue
-            order_map[f] = [primary] + [
-                s for s in VEHICLE_SPEC_SOURCES if s != primary
-            ]
-        await self.set_account_setting(
-            account_id, PRECEDENCE_SETTING_KEY, json.dumps(order_map),
-        )
-        return order_map
-
-    async def get_vehicle_precedence_options(self, account_id: int) -> dict:
-        """UI payload for the source-precedence panel: each configurable spec
-        field with its label + current PRIMARY source, plus the sources to
-        choose from."""
-        prec = await self.get_vehicle_field_precedence(account_id)
-        return {
-            "sources": list(VEHICLE_SPEC_SOURCES),
-            "fields": [
-                {
-                    "key": f,
-                    "label": _VEHICLE_FIELD_LABELS.get(f, f),
-                    "primary": (prec.get(f) or VEHICLE_SPEC_SOURCES)[0],
-                }
-                for f in DEFAULT_FIELD_PRECEDENCE
-            ],
-        }
-
-    # ── Cross-source data conflicts (Layer 3) ──────────────────────
-    #
-    # Generic on (entity_type, entity_id) so other domains can reuse the
-    # store; vehicles is the first consumer.  Recorded by the merge engine
-    # when two integrations carry a different non-empty value for a field.
-
-    async def record_field_conflict(
-        self, account_id: int, entity_type: str, entity_id: int, c: dict,
-    ) -> None:
-        """Upsert one OPEN conflict for ``(entity, field)``; refreshes the
-        values when re-detected on a later sync."""
-        now = self._now()
-        await self._db.execute(
-            """INSERT INTO data_conflicts
-               (account_id, entity_type, entity_id, field,
-                current_value, current_source, incoming_value, incoming_source,
-                status, detected_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
-               ON CONFLICT(account_id, entity_type, entity_id, field)
-               DO UPDATE SET
-                   current_value   = excluded.current_value,
-                   current_source  = excluded.current_source,
-                   incoming_value  = excluded.incoming_value,
-                   incoming_source = excluded.incoming_source,
-                   status          = 'open',
-                   resolved_by     = NULL,
-                   resolved_value  = NULL,
-                   updated_at      = excluded.updated_at""",
-            (
-                account_id, entity_type, entity_id, str(c.get("field") or ""),
-                str(c.get("current_value") if c.get("current_value") is not None else ""),
-                str(c.get("current_source") or ""),
-                str(c.get("incoming_value") if c.get("incoming_value") is not None else ""),
-                str(c.get("incoming_source") or ""),
-                now, now,
-            ),
-        )
-
-    async def clear_field_conflict(
-        self, account_id: int, entity_type: str, entity_id: int, field: str,
-    ) -> None:
-        """Drop any OPEN conflict for ``(entity, field)`` — the two sources
-        came back into agreement (auto-resolved)."""
-        await self._db.execute(
-            "DELETE FROM data_conflicts WHERE account_id = ? AND entity_type = ? "
-            "AND entity_id = ? AND field = ? AND status = 'open'",
-            (account_id, entity_type, entity_id, field),
-        )
-
-    async def list_open_conflicts(
-        self, account_id: int, *, entity_type: str | None = None,
-    ) -> list[dict]:
-        """Open conflicts for the account, newest first."""
-        where = ["account_id = ?", "status = 'open'"]
-        args: list[Any] = [account_id]
-        if entity_type:
-            where.append("entity_type = ?")
-            args.append(entity_type)
-        cols = [
-            "id", "entity_type", "entity_id", "field", "current_value",
-            "current_source", "incoming_value", "incoming_source", "detected_at",
-        ]
-        cur = await self._db.execute(
-            f"SELECT {', '.join(cols)} FROM data_conflicts "
-            f"WHERE {' AND '.join(where)} ORDER BY detected_at DESC, id DESC",
-            tuple(args),
-        )
-        return [dict(zip(cols, row)) for row in await cur.fetchall()]
-
-    async def count_open_conflicts(self, account_id: int) -> int:
-        cur = await self._db.execute(
-            "SELECT COUNT(*) FROM data_conflicts "
-            "WHERE account_id = ? AND status = 'open'",
-            (account_id,),
-        )
-        rows = await cur.fetchall()
-        return int(rows[0][0]) if rows and rows[0] else 0
-
-    async def resolve_field_conflict(
-        self, account_id: int, conflict_id: int, *,
-        chosen_value: Any, resolved_by: int,
-    ) -> "Vehicle | None":
-        """Resolve a conflict: write the chosen value onto the entity (via
-        ``update_vehicle``, which PINS it so no sync undoes the decision) and
-        mark the conflict resolved (kept for audit).  Returns the updated
-        vehicle, or None if the conflict isn't an open vehicle conflict."""
-        cur = await self._db.execute(
-            "SELECT entity_type, entity_id, field FROM data_conflicts "
-            "WHERE id = ? AND account_id = ? AND status = 'open'",
-            (conflict_id, account_id),
-        )
-        row = await cur.fetchone()
-        if not row:
-            return None
-        entity_type, entity_id, field = str(row[0]), int(row[1]), str(row[2])
-        if entity_type != "vehicle":
-            return None
-        value: Any = chosen_value
-        if field == "year":           # year is an INTEGER column
-            try:
-                value = int(chosen_value) if str(chosen_value).strip() else None
-            except (TypeError, ValueError):
-                value = None
-        await self.update_vehicle(account_id, entity_id, **{field: value})
-        await self._db.execute(
-            "UPDATE data_conflicts SET status = 'resolved', resolved_by = ?, "
-            "resolved_value = ?, updated_at = ? WHERE id = ? AND account_id = ?",
-            (resolved_by, str(chosen_value), self._now(), conflict_id, account_id),
-        )
-        await self._db.commit()
-        return await self.get_vehicle(account_id, entity_id)
-
-    async def _sync_conflicts_batch(self, account_id: int, ops: list) -> None:
-        """Record/clear cross-source conflicts AFTER the vehicle writes commit
-        — best-effort + isolated, so the conflict store (auxiliary) can never
-        abort or fail a sync.  ``ops`` = list of ``(entity_id, conflicts,
-        cleared)``."""
-        if not ops:
-            return
-        try:
-            for entity_id, conflicts, cleared in ops:
-                for c in conflicts:
-                    await self.record_field_conflict(
-                        account_id, "vehicle", entity_id, c,
-                    )
-                for fld in cleared:
-                    await self.clear_field_conflict(
-                        account_id, "vehicle", entity_id, fld,
-                    )
-            await self._db.commit()
-        except Exception as e:
-            logger.debug("conflict sync skipped acct=%d: %s", account_id, e)
-            try:
-                await self._db.rollback()
-            except Exception:
-                pass
 
     async def find_duplicate_vehicles(self, account_id: int) -> list[dict]:
         """Active vehicles that share a non-empty VIN — an unambiguous
@@ -811,7 +567,7 @@ class VehiclesRegistryMixin(_MixinBase):
 
         Used by the migration-105 backfill, the 60s Samsara ingestor, and any
         roster sync.  Spec fields (vin / plate / make / model / year) are
-        merged by SOURCE PRECEDENCE (see ``_merge_spec_fields``): an empty
+        merged by SOURCE PRECEDENCE (see ``recon.merge_fields``): an empty
         value never wipes; an empty field is filled; a field owned by a
         higher-priority source — or pinned by an operator (``manual``) — is
         never overwritten by a lower-priority sync.  ``telematics_ref`` is the
@@ -821,7 +577,7 @@ class VehiclesRegistryMixin(_MixinBase):
         """
         if not rows:
             return 0
-        precedence = await self.get_vehicle_field_precedence(account_id)
+        precedence = await recon.get_precedence(self, account_id, "vehicle")
         existing = await self.list_vehicles(account_id)
         by_key = {
             (v.company_code, v.unit_number.strip().lower()): v for v in existing
@@ -855,7 +611,7 @@ class VehiclesRegistryMixin(_MixinBase):
                     # Net-new row — provenance starts as this source for each
                     # non-empty spec field it carries.
                     prov = {
-                        f: source for f in _SPEC_FILL if not _is_unset(r.get(f))
+                        f: source for f in _SPEC_FILL if not is_unset(r.get(f))
                     }
                     await self._db.execute(
                         """INSERT INTO vehicles
@@ -885,8 +641,15 @@ class VehiclesRegistryMixin(_MixinBase):
                     continue
 
                 # Existing row — merge spec fields by precedence + provenance.
-                updates, prov, conflicts, cleared = _merge_spec_fields(
-                    match, r, source, precedence,
+                mr = recon.merge_fields(
+                    current={f: getattr(match, f) for f in _SPEC_FILL},
+                    provenance=match.field_provenance,
+                    owner_fallback=match.source,
+                    incoming=r, source=source,
+                    fields=_SPEC_FILL, precedence=precedence,
+                )
+                updates, prov, conflicts, cleared = (
+                    mr.updates, mr.provenance, mr.conflicts, mr.cleared,
                 )
                 sets: list[str] = []
                 params: list[Any] = []
@@ -922,5 +685,5 @@ class VehiclesRegistryMixin(_MixinBase):
                 written += 1
                 if conflicts or cleared:
                     conflict_ops.append((match.id, conflicts, cleared))
-        await self._sync_conflicts_batch(account_id, conflict_ops)
+        await recon.sync_batch(self, account_id, "vehicle", conflict_ops)
         return written

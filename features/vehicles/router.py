@@ -33,6 +33,7 @@ from interfaces.api.deps import (
     require_permission,
     paginate,
 )
+from capabilities.integrations import reconciliation
 from features.vehicles.service import (
     get_vehicles_overview as _svc_vehicles_overview,
     get_vehicle_detail as _svc_vehicle_detail,
@@ -468,7 +469,7 @@ async def get_source_precedence(
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
-    return await tenant.get_vehicle_precedence_options(account_id)
+    return await reconciliation.precedence_options(tenant, account_id, "vehicle")
 
 
 @router.put("/source-precedence")
@@ -482,8 +483,8 @@ async def put_source_precedence(
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
-    await tenant.set_vehicle_field_precedence(account_id, body.primary)
-    return await tenant.get_vehicle_precedence_options(account_id)
+    await reconciliation.set_precedence(tenant, account_id, "vehicle", body.primary)
+    return await reconciliation.precedence_options(tenant, account_id, "vehicle")
 
 
 @router.get("/{vehicle_name}")
