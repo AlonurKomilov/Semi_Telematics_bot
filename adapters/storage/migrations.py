@@ -5649,3 +5649,70 @@ async def migrate_co_owners(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+@_register("138_application_drafts")
+async def migrate_application_drafts(conn) -> None:
+    """Create ``application_drafts`` — save-and-resume for the public apply
+    form.
+
+    One row per (link, applicant email): the in-progress form JSON is held
+    ENCRYPTED (it's pre-consent PII) alongside a few clear columns that are
+    the only thing recruiters may see (name, step progress, timestamps).
+    ``resume_token`` is the emailed cross-device unlock (+ the email itself
+    re-entered as the second factor); ``draft_secret`` is the in-session
+    write credential so a stranger can't overwrite someone's draft.
+    Drafts are short-lived: purged by retention after 14 days idle and
+    deleted on submit.
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS application_drafts (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id       INTEGER NOT NULL REFERENCES accounts(id),
+            link_token       TEXT    NOT NULL,
+            email            TEXT    NOT NULL,
+            resume_token     TEXT    NOT NULL UNIQUE,
+            draft_secret     TEXT    NOT NULL,
+            first_name       TEXT    NOT NULL DEFAULT '',
+            last_name        TEXT    NOT NULL DEFAULT '',
+            step             INTEGER NOT NULL DEFAULT 0,
+            steps_total      INTEGER NOT NULL DEFAULT 0,
+            data_encrypted   TEXT    NOT NULL DEFAULT '',
+            link_emailed_at  TEXT,
+            reminder_sent_at TEXT,
+            created_at       TEXT    NOT NULL,
+            updated_at       TEXT    NOT NULL,
+            UNIQUE(account_id, link_token, email)
+        )
+    """)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_app_drafts_account "
+        "ON application_drafts(account_id, updated_at)"
+    )
+    await conn.commit()
+    logger.info("Migration 138: created application_drafts table")
+
+    # RLS — tenant-scoped, same gated pattern as 131/134/135.
+    import os
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        logger.info("Migration 138: ENABLE_RLS not set; RLS policy skipped")
+        return
+    try:
+        await conn.execute("ALTER TABLE application_drafts ENABLE ROW LEVEL SECURITY")
+        await conn.execute("ALTER TABLE application_drafts FORCE ROW LEVEL SECURITY")
+        await conn.execute("DROP POLICY IF EXISTS tenant_isolation ON application_drafts")
+        await conn.execute(
+            """
+            CREATE POLICY tenant_isolation ON application_drafts
+            USING       (account_id::text = current_setting('app.account_id', true))
+            WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+            """
+        )
+        await conn.commit()
+        logger.info("Migration 138: tenant_isolation RLS applied to application_drafts")
+    except Exception as e:
+        logger.error("Migration 138: RLS apply on application_drafts failed — %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass

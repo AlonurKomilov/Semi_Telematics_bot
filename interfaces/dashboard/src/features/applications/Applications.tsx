@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import type { ReactNode } from 'react';
-import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink, Bell, Mail, MessageSquare, Monitor, CheckCheck, Download, ShieldCheck, LayoutGrid, List, Users, Search, Building2, Pencil, Trash2 } from 'lucide-react';
+import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink, Bell, Mail, MessageSquare, Monitor, CheckCheck, Download, ShieldCheck, LayoutGrid, List, Users, Search, Building2, Pencil, Trash2, Clock3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiJSON, apiFetch } from '../../api/client';
 import { PageHeader } from '../../components/shell';
@@ -552,6 +552,9 @@ export default function Applications() {
         )}
       </section>
 
+      {/* ── In-progress drafts (save & resume funnel stage) ─────── */}
+      <InProgressDrafts />
+
       {/* ── Applications (table or board) ──────────────────────── */}
       <section className="bg-card border border-border rounded-lg overflow-hidden">
         <div className="flex flex-wrap items-center gap-1.5 p-3 border-b border-border">
@@ -727,6 +730,112 @@ export default function Applications() {
           onChanged={() => { loadApps(); }} />
       )}
     </div>
+  );
+}
+
+// ── In-progress drafts ──────────────────────────────────────────────
+// Applicants who started but haven't submitted (server-side save&resume).
+// Deliberately shows ONLY name / masked contact / progress — the draft
+// body is pre-consent PII recruiters must not read.  [Remind] re-emails
+// the applicant their resume link (capped server-side to 1/20h).
+interface DraftRow {
+  id: number; first_name: string; last_name: string; email_masked: string;
+  step: number; steps_total: number; link_label: string;
+  created_at: string; updated_at: string; reminder_sent_at: string | null;
+}
+
+function InProgressDrafts() {
+  const tz = useTimezone();
+  const [rows, setRows] = useState<DraftRow[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [remindBusy, setRemindBusy] = useState<number | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await apiJSON<{ items: DraftRow[] }>('/applications/drafts');
+      setRows(r.items || []);
+    } catch { /* section is optional — stay hidden on failure */ }
+    finally { setLoaded(true); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const remind = async (id: number) => {
+    setRemindBusy(id);
+    try {
+      const r = await apiJSON<{ sent: boolean }>(`/applications/drafts/${id}/remind`, { method: 'POST' });
+      if (r.sent) { toast.success('Reminder sent'); load(); }
+      else toast.error('Email is not configured on this server');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not send the reminder');
+    } finally { setRemindBusy(null); }
+  };
+
+  if (!loaded || rows.length === 0) return null;   // no drafts → no section
+
+  const columns: AnyColumn[] = [
+    {
+      key: 'first_name', label: 'Applicant', sortable: true,
+      render: (_v, row) => {
+        const r = row as unknown as DraftRow;
+        const name = `${r.first_name} ${r.last_name}`.trim();
+        return <span className="font-medium text-foreground">{name || '(no name yet)'}</span>;
+      },
+    },
+    {
+      key: 'email_masked', label: 'Contact',
+      render: (v) => <span className="font-mono text-xs text-muted-foreground">{String(v)}</span>,
+    },
+    {
+      key: 'step', label: 'Progress', sortable: true,
+      render: (_v, row) => {
+        const r = row as unknown as DraftRow;
+        const total = r.steps_total || 1;
+        const pct = Math.min(100, Math.round(((r.step + 1) / total) * 100));
+        return (
+          <span className="flex items-center gap-2">
+            <span className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
+              <span className="block h-full bg-primary" style={{ width: `${pct}%` }} />
+            </span>
+            <span className="text-xs text-muted-foreground">{Math.min(r.step + 1, total)} of {total}</span>
+          </span>
+        );
+      },
+      sortKey: (row) => (row as unknown as DraftRow).step,
+    },
+    {
+      key: 'link_label', label: 'Link', filterable: true,
+      render: (v) => <span className="text-muted-foreground">{String(v || '—')}</span>,
+    },
+    {
+      key: 'updated_at', label: 'Last active', sortable: true,
+      render: (v) => <span className="text-muted-foreground">{formatDate(String(v), { timeZone: tz })}</span>,
+    },
+    {
+      key: 'id', label: '',
+      render: (_v, row) => {
+        const r = row as unknown as DraftRow;
+        return (
+          <Button size="xs" variant="outline" disabled={remindBusy === r.id}
+            onClick={(e) => { e.stopPropagation(); remind(r.id); }}>
+            {remindBusy === r.id ? '…' : 'Remind'}
+          </Button>
+        );
+      },
+    },
+  ];
+
+  return (
+    <section className="bg-card border border-border rounded-lg p-4">
+      <h2 className="text-base font-semibold flex items-center gap-2 mb-1">
+        <Clock3 size={16} className="text-muted-foreground" /> In progress ({rows.length})
+      </h2>
+      <p className="text-xs text-muted-foreground mb-3">
+        Started but not submitted. Drafts stay private until submission — you see
+        progress only. Reminders re-send the applicant their resume link.
+      </p>
+      <DataTable columns={columns} data={rows as unknown as Record<string, unknown>[]}
+        enableToolbar={false} enablePagination={rows.length > 25} />
+    </section>
   );
 }
 

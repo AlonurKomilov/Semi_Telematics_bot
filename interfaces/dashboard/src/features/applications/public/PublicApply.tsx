@@ -6,7 +6,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Truck, Clock, ShieldCheck, CheckCircle2, ArrowLeft, ArrowRight, Lock } from 'lucide-react';
 import { STEPS } from './steps';
-import { deepGet, deepSet, DISCLOSURE_VERSION, todayISO } from './lib';
+import {
+  deepGet, deepSet, DISCLOSURE_VERSION, todayISO,
+  saveDraftRemote, sendDraftLink, resumeDraftRemote,
+} from './lib';
 import type { Data } from './lib';
 import { brandTintStyle, onColorStyle, surfaceThemeStyle } from './theme';
 
@@ -42,8 +45,19 @@ function resolveToken(): string {
   const fromQuery = q.get('token') || q.get('apply');
   if (fromQuery) return fromQuery.trim();
   const seg = window.location.pathname.split('/').filter(Boolean)[0];
+  // /resume/<token> is the cross-device unlock route, not a link token.
+  if (seg === 'resume') return '';
   return seg ? seg.trim() : '';
 }
+
+// The emailed resume token (apply.<apex>/resume/<token>), or ''.
+function resolveResumeToken(): string {
+  const segs = window.location.pathname.split('/').filter(Boolean);
+  return segs[0] === 'resume' && segs[1] ? segs[1].trim() : '';
+}
+
+// Light email check for "cloud sync can start" — the server re-validates.
+const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 // Pull the raw File objects out for the multipart parts.
 function extractFiles(data: Data): Record<string, File | undefined> {
@@ -246,7 +260,20 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
   // the network calls (track-view / brand / submit) are skipped below, and an
   // empty token means no token-based <img> URLs are built — so the form never
   // requests /brand-logo?token=… (which 404s for the non-existent preview).
-  const token = preview ? '' : realToken;
+  // State (not const) because the /resume/<rtoken> unlock flow learns the
+  // link token from the server AFTER mount.
+  const [token, setToken] = useState(preview ? '' : realToken);
+  // Cross-device resume: apply.<apex>/resume/<rtoken> renders an unlock
+  // screen (email = second factor) until the draft opens.
+  const [resumeToken] = useState(preview ? '' : resolveResumeToken());
+  const [unlockEmail, setUnlockEmail] = useState('');
+  const [unlockBusy, setUnlockBusy] = useState(false);
+  const [unlockErr, setUnlockErr] = useState('');
+  // Server-side draft sync: the write credential + sync status.
+  const [draftSecret, setDraftSecret] = useState<string | null>(null);
+  const [savedCloud, setSavedCloud] = useState(false);
+  const syncBlocked = useRef(false);   // another session owns the draft → local-only
+  const [laterState, setLaterState] = useState<'idle' | 'sending' | 'sent' | 'fail'>('idle');
   // Pre-seed the signature defaults (today's date, type mode) so Step 8
   // never has to write state during render.
   const [data, setData] = useState<Data>(() => ({ consents: { sigDate: todayISO(), sigMode: 'type' } }));
@@ -347,6 +374,68 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
   };
   const discardSaved = () => { clearDraft(); setResumeDraft(null); };
 
+  // ── Cloud sync (save & resume across devices) ─────────────────────
+  // Once the applicant's email is valid, the (file-stripped) draft also
+  // syncs server-side so an emailed link can reopen it anywhere.  Strictly
+  // additive to the localStorage save — any failure leaves local intact.
+  const applicantEmail = String(deepGet(data, 'personal.email') || '').trim();
+  useEffect(() => {
+    if (preview || !token || done || resumeDraft) return;
+    if (maxReached < 1 || !EMAIL_OK.test(applicantEmail)) return;
+    const id = setTimeout(async () => {
+      const res = await saveDraftRemote({
+        link_token: token, email: applicantEmail, draft_secret: draftSecret,
+        first_name: String(deepGet(data, 'personal.first') || '').slice(0, 80),
+        last_name: String(deepGet(data, 'personal.last') || '').slice(0, 80),
+        step, steps_total: STEPS.length, data: stripFilesForDraft(data),
+      });
+      if (res) { setDraftSecret(res.draft_secret); setSavedCloud(true); }
+    }, 1500);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, step, maxReached, preview, token, done, resumeDraft, draftSecret, applicantEmail]);
+
+  // "Save & finish later" — force a sync, then email the resume link.
+  const saveForLater = async () => {
+    if (!token || !EMAIL_OK.test(applicantEmail) || laterState === 'sending') return;
+    setLaterState('sending');
+    const res = await saveDraftRemote({
+      link_token: token, email: applicantEmail, draft_secret: draftSecret,
+      first_name: String(deepGet(data, 'personal.first') || '').slice(0, 80),
+      last_name: String(deepGet(data, 'personal.last') || '').slice(0, 80),
+      step, steps_total: STEPS.length, data: stripFilesForDraft(data),
+    });
+    const secret = res?.draft_secret ?? draftSecret;
+    if (res) { setDraftSecret(res.draft_secret); setSavedCloud(true); }
+    if (!secret) { setLaterState('fail'); return; }
+    const ok = await sendDraftLink({ link_token: token, email: applicantEmail, draft_secret: secret });
+    setLaterState(ok ? 'sent' : 'fail');
+  };
+
+  // Cross-device unlock: emailed token + the applicant's email → the draft.
+  const unlock = async () => {
+    const em = unlockEmail.trim();
+    if (!EMAIL_OK.test(em)) { setUnlockErr('Enter the email address you applied with.'); return; }
+    setUnlockBusy(true);
+    setUnlockErr('');
+    const d = await resumeDraftRemote(resumeToken, em);
+    setUnlockBusy(false);
+    if (!d) {
+      setUnlockErr("We couldn't find a saved application for that email — the link may have expired.");
+      return;
+    }
+    setData({ consents: { sigDate: todayISO(), sigMode: 'type' }, ...d.data });
+    const s = Math.min(d.step ?? 0, STEPS.length - 1);
+    setStep(s);
+    setMaxReached(s);
+    setDraftSecret(d.draft_secret);
+    setSavedCloud(true);
+    setToken(d.link_token);
+    // Land the URL on the link itself so brand images resolve + a reload
+    // keeps working (the local auto-save now keys on the link token).
+    try { history.replaceState(null, '', `/${d.link_token}`); } catch { /* ignore */ }
+  };
+
   const set = (path: string, value: unknown) => setData((d) => deepSet(d, path, value));
   // Prefill helper for the CDL fast-fill: writes only when the field is
   // still blank, checked atomically against the LATEST state — so an OCR
@@ -434,6 +523,38 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Cross-device resume: unlock screen until the draft opens (the email is
+  // the second factor — the link alone reveals nothing).
+  if (resumeToken && !token && !preview) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header compact />
+        <div className="mx-auto max-w-md px-4 py-16">
+          <h2 className="text-xl font-semibold text-foreground">Continue your application</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            For your security, confirm the email address you applied with — your
+            saved answers will open right where you left off.
+          </p>
+          <input
+            type="email" autoFocus value={unlockEmail} placeholder="you@example.com"
+            onChange={(e) => setUnlockEmail(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') unlock(); }}
+            className="mt-5 w-full rounded-md border border-border bg-card px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-primary"
+          />
+          {unlockErr && <p className="mt-2 text-xs text-destructive">{unlockErr}</p>}
+          <button type="button" onClick={unlock} disabled={unlockBusy}
+            className="mt-4 w-full rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
+            {unlockBusy ? 'Opening…' : 'Continue my application'}
+          </button>
+          <p className="mt-4 text-xs text-muted-foreground">
+            Saved applications expire after 14 days of inactivity. Uploaded
+            documents will need to be re-attached.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (!token && !preview) {
     return (
       <div className="min-h-screen bg-background">
@@ -498,7 +619,7 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
                   {cur.group ? `${cur.group} · ${groupPos} of ${groupSize}` : `Step ${curUnit + 1} of ${UNITS.length}`}
                   {savedTick && (step > 0 || maxReached > 0) && (
                     <span className="ml-2 inline-flex items-center gap-1 text-2xs text-muted-foreground/70">
-                      <CheckCircle2 size={12} /> Saved on this device
+                      <CheckCircle2 size={12} /> {savedCloud ? 'Saved' : 'Saved on this device'}
                     </span>
                   )}
                 </p>
@@ -526,11 +647,25 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
                 </p>
               )}
             </div>
-            <div className="flex items-center justify-between border-t border-border px-5 py-4">
-              <button type="button" onClick={back} disabled={step === 0 || submitting}
-                className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted disabled:opacity-40">
-                <ArrowLeft size={16} /> Back
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-5 py-4">
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={back} disabled={step === 0 || submitting}
+                  className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted disabled:opacity-40">
+                  <ArrowLeft size={16} /> Back
+                </button>
+                {!preview && token && EMAIL_OK.test(applicantEmail) && maxReached >= 1 && (
+                  laterState === 'sent' ? (
+                    <span className="text-xs text-muted-foreground">Check your email — your link is on its way.</span>
+                  ) : (
+                    <button type="button" onClick={saveForLater} disabled={laterState === 'sending'}
+                      className="text-xs text-primary hover:underline disabled:opacity-50">
+                      {laterState === 'sending' ? 'Sending…'
+                        : laterState === 'fail' ? 'Email failed — try again'
+                        : 'Save & finish later'}
+                    </button>
+                  )
+                )}
+              </div>
               <button type="submit" disabled={submitting || (!!preview && isLast)}
                 className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
                 {preview

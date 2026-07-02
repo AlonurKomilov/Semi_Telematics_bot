@@ -399,6 +399,27 @@ async def create_tables(conn) -> None:
             created_at  TEXT    NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS application_drafts (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id       INTEGER NOT NULL REFERENCES accounts(id),
+            link_token       TEXT    NOT NULL,
+            email            TEXT    NOT NULL,
+            resume_token     TEXT    NOT NULL UNIQUE,
+            draft_secret     TEXT    NOT NULL,
+            first_name       TEXT    NOT NULL DEFAULT '',
+            last_name        TEXT    NOT NULL DEFAULT '',
+            step             INTEGER NOT NULL DEFAULT 0,
+            steps_total      INTEGER NOT NULL DEFAULT 0,
+            data_encrypted   TEXT    NOT NULL DEFAULT '',
+            link_emailed_at  TEXT,
+            reminder_sent_at TEXT,
+            created_at       TEXT    NOT NULL,
+            updated_at       TEXT    NOT NULL,
+            UNIQUE(account_id, link_token, email)
+        );
+        CREATE INDEX IF NOT EXISTS idx_app_drafts_account
+            ON application_drafts(account_id, updated_at);
+
         CREATE TABLE IF NOT EXISTS driver_applications (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id        INTEGER NOT NULL REFERENCES accounts(id),

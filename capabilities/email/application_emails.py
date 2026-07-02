@@ -55,3 +55,50 @@ def send_new_application_email(
     except Exception as e:  # best-effort — never break the submission
         logger.debug("send_new_application_email to %s failed: %s", to, e)
         return False
+
+
+def send_resume_link_email(
+    *, to: str, carrier_name: str, resume_url: str, reminder: bool = False,
+) -> bool:
+    """Send an applicant the link to continue their saved application.
+
+    Two triggers share the template: the applicant's own "Save & finish
+    later" and a recruiter's manual reminder nudge — only the opening line
+    differs.  The link alone doesn't open the draft (the applicant re-enters
+    their email on the resume page), so a forwarded email exposes nothing.
+    """
+    if not is_email_configured() or not to:
+        return False
+    safe_carrier = html.escape(carrier_name or _company_name())
+    lead = (
+        "Your driver application is waiting — pick up right where you left off."
+        if not reminder else
+        "Just a reminder — your driver application is still waiting for you."
+    )
+    inner = (
+        f'<h2 style="margin:0 0 12px;font-size:18px">Finish your application with '
+        f"{safe_carrier}</h2>"
+        f'<p style="margin:0 0 16px">{lead}</p>'
+        f'<p style="margin:0 0 24px">'
+        f'<a href="{html.escape(resume_url)}" style="background:#2563eb;color:#fff;'
+        f"text-decoration:none;padding:10px 18px;border-radius:8px;"
+        f'display:inline-block;font-size:14px">Continue my application</a></p>'
+        f'<p style="margin:0;color:#6b7280;font-size:13px">For your security, '
+        f"you'll confirm your email address on that page before your saved "
+        f"answers open. The link expires after 14 days of inactivity.</p>"
+    )
+    try:
+        return send_email(
+            to=to,
+            subject=f"Finish your application with {carrier_name or _company_name()}",
+            body=(
+                f"{lead}\n\nContinue here: {resume_url}\n\n"
+                "You'll confirm your email address on that page before your "
+                "saved answers open. The link expires after 14 days of inactivity.\n"
+            ),
+            html_body=_shell(inner),
+            extra_headers={"Auto-Submitted": "auto-generated"},
+        )
+    except Exception as e:  # best-effort
+        logger.debug("send_resume_link_email to %s failed: %s", to, e)
+        return False

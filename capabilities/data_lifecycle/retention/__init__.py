@@ -21,6 +21,7 @@ _CONTRIBUTORS = (
     "features.work_orders.retention",     # consumer need on vehicle.metrics_daily
     "features.drivers.retention",         # owns driver.efficiency_daily
     "features.events.retention",          # owns safety_events
+    "features.applications.retention",    # owns applications.drafts (save & resume)
     "capabilities.scorecards.retention",  # owns scorecards.score_history
     "capabilities.email.retention",       # owns email.delivery_events
     "infra.scan_retention",               # owns platform.scan_log (AV scan audit)

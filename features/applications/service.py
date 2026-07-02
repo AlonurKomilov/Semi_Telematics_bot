@@ -146,6 +146,15 @@ def review_base_url() -> str:
     ).rstrip("/")
 
 
+def apply_base_url() -> str:
+    """Base origin of the PUBLIC apply form (the resume-link email target)."""
+    base = os.getenv("APPLY_BASE_URL")
+    if base:
+        return base.rstrip("/")
+    # Default deploys serve the form on apply.<apex> alongside dash.<apex>.
+    return review_base_url().replace("://dash.", "://apply.")
+
+
 # ── New-application notification fan-out ────────────────────────────
 
 

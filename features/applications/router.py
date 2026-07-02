@@ -189,6 +189,16 @@ async def submit_application(
             created["id"], reference, applicant_name,
         )
 
+    # The submitted application supersedes any saved draft — drop it so the
+    # recruiter's "In progress" list never shows an already-submitted person.
+    try:
+        if personal.get("email"):
+            await platform_db.delete_application_draft(
+                account_id, link_token=link_token.strip(), email=personal["email"],
+            )
+    except Exception:   # best-effort cleanup; never fail the submission
+        pass
+
     logger.info("Driver application %s submitted for account %s", reference, account_id)
     return {"success": True, "reference": reference, "application_id": created["id"]}
 
@@ -351,6 +361,190 @@ async def ocr_cdl(
     from features.applications.ocr import extract_cdl_fields
     fields = await extract_cdl_fields(raw, account_id=link["account_id"])
     return {"fields": fields}
+
+
+# ── Save & resume (drafts) ──────────────────────────────────────────
+# The in-progress form syncs server-side once the applicant's email is
+# known, so they can continue on ANY device via an emailed resume link.
+# The draft body is pre-consent PII: stored encrypted, never readable by
+# recruiters (their list shows name/progress only), unlocked only by the
+# resume token + the matching email, and purged after 14 idle days.
+
+_MAX_DRAFT_BYTES = 256 * 1024
+
+
+def _db_time(s: object):
+    """Stored timestamp (``_now()`` tz-aware isoformat, or a pg cast) → naive
+    UTC datetime; ``None`` when unparseable.  Naive-vs-aware comparisons raise
+    TypeError, so everything is normalised to naive UTC before comparing."""
+    from datetime import datetime, timezone
+    try:
+        dt = datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
+    except (ValueError, TypeError):
+        return None
+
+
+class DraftSave(BaseModel):
+    link_token: str = Field(..., max_length=64)
+    email: str = Field(..., max_length=200)
+    draft_secret: str | None = Field(None, max_length=64)
+    first_name: str = Field("", max_length=80)
+    last_name: str = Field("", max_length=80)
+    step: int = Field(0, ge=0, le=50)
+    steps_total: int = Field(0, ge=0, le=50)
+    data: dict = Field(default_factory=dict)
+
+
+@router.post("/draft")
+@limiter.limit("120/hour")
+async def save_draft(
+    request: Request, body: DraftSave, platform_db=Depends(get_platform_db),
+):
+    """Upsert the caller's draft.  Returns the in-session write credential;
+    the resume token travels ONLY by email (see /draft/send-link)."""
+    link = await platform_db.resolve_application_link(body.link_token.strip())
+    if not link:
+        raise HTTPException(status_code=404, detail="Link not available")
+    email = body.email.strip().lower()
+    if not service.EMAIL_RE.match(email):
+        raise HTTPException(status_code=422, detail="Valid email required")
+    raw = json.dumps(body.data, ensure_ascii=False)
+    if len(raw.encode("utf-8")) > _MAX_DRAFT_BYTES:
+        raise HTTPException(status_code=413, detail="Draft too large")
+    from infra.crypto import encrypt
+    saved = await platform_db.upsert_application_draft(
+        link["account_id"], link_token=body.link_token.strip(), email=email,
+        draft_secret=body.draft_secret,
+        first_name=body.first_name.strip()[:80], last_name=body.last_name.strip()[:80],
+        step=body.step, steps_total=body.steps_total,
+        data_encrypted=encrypt(raw),
+    )
+    if saved is None:
+        # A draft exists for this (link, email) but the caller doesn't hold
+        # its secret — refuse to clobber it.
+        raise HTTPException(status_code=403, detail="Draft belongs to another session")
+    return {"saved": True, "draft_secret": saved["draft_secret"]}
+
+
+class DraftSendLink(BaseModel):
+    link_token: str = Field(..., max_length=64)
+    email: str = Field(..., max_length=200)
+    draft_secret: str = Field(..., max_length=64)
+
+
+@router.post("/draft/send-link")
+@limiter.limit("6/hour")
+async def send_draft_link(
+    request: Request, body: DraftSendLink, platform_db=Depends(get_platform_db),
+):
+    """Email the applicant their cross-device resume link."""
+    link = await platform_db.resolve_application_link(body.link_token.strip())
+    if not link:
+        raise HTTPException(status_code=404, detail="Link not available")
+    email = body.email.strip().lower()
+    # Prove draft ownership WITHOUT touching the draft: read-only secret check.
+    probe = await platform_db.get_application_draft_by_secret(
+        link["account_id"], link_token=body.link_token.strip(), email=email,
+        draft_secret=body.draft_secret,
+    )
+    if probe is None:
+        raise HTTPException(status_code=403, detail="No saved draft for this session")
+    _link, co = await _link_company(platform_db, body.link_token.strip())
+    carrier = (co.display_name or co.code) if co else ""
+    resume_url = f"{service.apply_base_url()}/resume/{probe['resume_token']}"
+    from capabilities.email.application_emails import send_resume_link_email
+    sent = send_resume_link_email(to=email, carrier_name=carrier, resume_url=resume_url)
+    if sent:
+        await platform_db.mark_draft_emailed(probe["id"])
+    return {"sent": bool(sent)}
+
+
+class DraftResume(BaseModel):
+    resume_token: str = Field(..., max_length=64)
+    email: str = Field(..., max_length=200)
+
+
+@router.post("/draft/resume")
+@limiter.limit("12/hour")
+async def resume_draft(
+    request: Request, body: DraftResume, platform_db=Depends(get_platform_db),
+):
+    """Unlock a draft: the emailed token AND the matching email (re-entered
+    by the applicant) are both required.  Expired drafts refuse."""
+    row = await platform_db.get_application_draft_by_resume(
+        body.resume_token.strip(), body.email,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="No saved application found")
+    from datetime import datetime, timedelta
+    updated = _db_time(row["updated_at"])
+    if updated is not None and datetime.utcnow() > updated + timedelta(days=14):
+        raise HTTPException(status_code=410, detail="This saved application has expired")
+    from infra.crypto import decrypt
+    try:
+        data = json.loads(decrypt(row["data_encrypted"]) or "{}")
+    except (ValueError, TypeError):
+        data = {}
+    return {
+        "link_token": row["link_token"],
+        "draft_secret": row["draft_secret"],
+        "step": row["step"],
+        "data": data,
+    }
+
+
+@router.get("/drafts")
+async def list_drafts(
+    user: dict = Depends(require_permission("can_manage_applications")),
+    platform_db=Depends(get_platform_db),
+):
+    """Recruiter view of in-progress applications — name/progress only.
+
+    The draft BODY is pre-consent PII and is deliberately never exposed
+    here; the email is masked (contact happens via the Remind nudge, not
+    by recruiters copying addresses)."""
+    rows = await platform_db.list_application_drafts(user["account_id"])
+    def _mask(e: str) -> str:
+        name, _, dom = (e or "").partition("@")
+        return (name[:1] + "***@" + dom) if dom else "***"
+    return {"items": [{
+        "id": r["id"], "first_name": r["first_name"], "last_name": r["last_name"],
+        "email_masked": _mask(r["email"]),
+        "step": r["step"], "steps_total": r["steps_total"],
+        "link_label": r.get("link_label") or "",
+        "created_at": r["created_at"], "updated_at": r["updated_at"],
+        "reminder_sent_at": r.get("reminder_sent_at"),
+    } for r in rows]}
+
+
+@router.post("/drafts/{draft_id:int}/remind")
+async def remind_draft(
+    draft_id: int,
+    user: dict = Depends(require_permission("can_manage_applications")),
+    platform_db=Depends(get_platform_db),
+):
+    """Re-send the resume link to the applicant (recruiter nudge).  Capped
+    to one reminder per 20 hours per draft."""
+    row = await platform_db.get_application_draft(user["account_id"], draft_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    from datetime import datetime, timedelta
+    last = _db_time(row.get("reminder_sent_at")) if row.get("reminder_sent_at") else None
+    if last is not None and datetime.utcnow() < last + timedelta(hours=20):
+        raise HTTPException(status_code=429, detail="Reminder already sent recently")
+    _link, co = await _link_company(platform_db, row["link_token"])
+    carrier = (co.display_name or co.code) if co else ""
+    resume_url = f"{service.apply_base_url()}/resume/{row['resume_token']}"
+    from capabilities.email.application_emails import send_resume_link_email
+    sent = send_resume_link_email(
+        to=row["email"], carrier_name=carrier, resume_url=resume_url, reminder=True,
+    )
+    if sent:
+        await platform_db.mark_draft_emailed(row["id"], reminder=True)
+    return {"sent": bool(sent)}
 
 
 class StatusCheckRequest(BaseModel):

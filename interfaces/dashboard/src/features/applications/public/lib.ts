@@ -170,6 +170,55 @@ export interface CdlOcrFields {
   endorsements?: string[]; restrictions?: string;
 }
 
+// ── Save & resume (server-side drafts) ──────────────────────────────
+// All three calls are best-effort: failures resolve to null/false and the
+// form keeps working from localStorage — cloud sync is an upgrade, never a
+// dependency.
+export interface DraftSaveResult { draft_secret: string }
+
+export async function saveDraftRemote(body: {
+  link_token: string; email: string; draft_secret?: string | null;
+  first_name: string; last_name: string; step: number; steps_total: number;
+  data: Data;
+}): Promise<DraftSaveResult | null> {
+  try {
+    const res = await fetch(`${API_BASE}/applications/draft`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return null;
+    const j = await res.json().catch(() => null);
+    return j?.draft_secret ? { draft_secret: j.draft_secret } : null;
+  } catch { return null; }
+}
+
+export async function sendDraftLink(body: {
+  link_token: string; email: string; draft_secret: string;
+}): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/applications/draft/send-link`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return false;
+    const j = await res.json().catch(() => null);
+    return !!j?.sent;
+  } catch { return false; }
+}
+
+export interface ResumedDraft { link_token: string; draft_secret: string; step: number; data: Data }
+
+export async function resumeDraftRemote(resume_token: string, email: string): Promise<ResumedDraft | null> {
+  try {
+    const res = await fetch(`${API_BASE}/applications/draft/resume`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resume_token, email }),
+    });
+    if (!res.ok) return null;
+    return await res.json().catch(() => null);
+  } catch { return null; }
+}
+
 export async function ocrCdl(token: string, file: File): Promise<CdlOcrFields | null> {
   try {
     const fd = new FormData();

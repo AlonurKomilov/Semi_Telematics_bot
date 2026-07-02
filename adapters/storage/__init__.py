@@ -82,6 +82,7 @@ from .ai_chat import AIChatHistoryMixin
 from .errors import ErrorLogMixin
 from .scan_log import ScanLogMixin
 from .applications import ApplicationsMixin
+from .application_drafts import ApplicationDraftsMixin
 from .carrier_directory import CarrierDirectoryMixin
 from .account_integrations import AccountIntegrationsMixin, AccountIntegration  # noqa: F401
 from .datatruck import DatatruckStorageMixin
@@ -130,6 +131,7 @@ class Database(
     ErrorLogMixin,
     ScanLogMixin,
     ApplicationsMixin,
+    ApplicationDraftsMixin,
     CarrierDirectoryMixin,
     DatatruckStorageMixin,
     VehiclesRegistryMixin,
