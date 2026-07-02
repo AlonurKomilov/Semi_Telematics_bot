@@ -360,6 +360,10 @@ class ResourceSpec:
     # ``work_orders`` table (the SSOT) so synced shop invoices land on
     # the Work Orders page beside hand-entered ones.
     project_work_orders: bool = False
+    # When True, each synced page is ALSO linked onto the account's
+    # existing driver-users (match by CDL → email; enrich-only, never
+    # creates users — the one-time onboarding import does creation).
+    project_drivers: bool = False
     # When set, each list record is RE-FETCHED from this per-id endpoint
     # before normalizing, because the openapi list shape is leaner than
     # the detail view (work orders: the list omits invoice id, payment
@@ -381,6 +385,7 @@ RESOURCES: dict[str, ResourceSpec] = {
             upsert_method="upsert_datatruck_drivers",
             stats_method="datatruck_drivers_stats",
             max_pages=30,
+            project_drivers=True,
             feature="Drivers",
         ),
         ResourceSpec(
@@ -617,6 +622,14 @@ async def _persist_rows(
         except Exception as e:
             logger.debug(
                 "datatruck work-order projection skipped acct=%d: %s",
+                account_id, e,
+            )
+    if spec.project_drivers:
+        try:
+            await tenant.project_datatruck_drivers(account_id, normalized)
+        except Exception as e:
+            logger.debug(
+                "datatruck driver projection skipped acct=%d: %s",
                 account_id, e,
             )
     return written

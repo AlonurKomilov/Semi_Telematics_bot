@@ -20,10 +20,13 @@ own Drive quota and are uncapped here.
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Optional
+
+from capabilities.integrations import reconciliation as recon
 
 
 # Driver-profile columns containing personally-identifiable information.
@@ -193,6 +196,90 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+# ── Integration roster reconciliation (Datatruck link) ─────────────────
+#
+# A driver IS a ``users`` row (role='driver'); integrations LINK to it and
+# fill gaps — they never define it, and a sync tick never creates users
+# (the one-time "Import from Datatruck" onboarding action does creation
+# deliberately).  Match keys, strongest first:
+#   1. an existing ``datatruck_driver_id`` (idempotent re-sync)
+#   2. CDL / license number — encrypted at rest, so matched in memory on
+#      the decrypted roster (fleets are small; never via SQL)
+#   3. email — ``users.email`` is stored lowercased plaintext
+# NAME IS NEVER A MATCH KEY (two "John Smith"s are common).
+#
+# Reconcilable fields are merged through the shared hub.  Existing values
+# are operator-owned by default (``owner_fallback='manual'``): HR-entered
+# data is never overwritten by a sync — integrations only fill gaps.
+DRIVER_RECON_FIELDS = ("display_name", "phone")
+DEFAULT_DRIVER_PRECEDENCE = {
+    "display_name": ("datatruck", "samsara"),
+    "phone":        ("datatruck", "samsara"),
+}
+_DRIVER_FIELD_LABELS = {"display_name": "Name", "phone": "Phone"}
+
+# ``data_conflicts`` stores values in PLAINTEXT — never record a conflict
+# for a PII-encrypted column (phone, cdl_number).  Those stay fill-only;
+# only non-secret fields may surface in the review panel.
+_DRIVER_CONFLICT_SAFE_FIELDS = frozenset({"display_name"})
+
+
+def _parse_driver_provenance(raw: Any) -> dict:
+    if isinstance(raw, dict):
+        return raw
+    try:
+        return json.loads(raw) if raw else {}
+    except (TypeError, ValueError):
+        return {}
+
+
+def _norm_cdl(v: Any) -> str:
+    """Normalize a license number for exact matching: uppercase, strip
+    spaces/dashes (formatting varies between the TMS and HR entry)."""
+    return str(v or "").strip().upper().replace(" ", "").replace("-", "")
+
+
+def _extract_datatruck_cdl(r: dict) -> str:
+    """Pull a license number out of a normalized Datatruck driver row.
+    ``_norm_driver`` doesn't promote it, but the raw payload often carries
+    it under one of several vendor spellings."""
+    payload = r.get("payload")
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except (TypeError, ValueError):
+            payload = {}
+    payload = payload or {}
+    for k in ("cdl_number", "cdl", "license_number", "licenseNumber",
+              "license", "driver_license", "dl_number"):
+        v = payload.get(k)
+        if v:
+            return str(v).strip()
+    return ""
+
+
+async def _apply_driver_field(
+    db: Any, account_id: int, entity_id: int, field: str, value: Any,
+) -> None:
+    """Resolution applier for the 'driver' entity: write the chosen value
+    onto the driver's ``users`` row (encrypting PII) and PIN it so no later
+    sync undoes the operator's decision."""
+    await db.write_driver_field_pinned(account_id, entity_id, field, value)
+
+
+# Declare 'driver' with the shared reconciliation hub — precedence,
+# conflict detection, and resolution now cover drivers with no new
+# engine code (same one-call contract the vehicle registry uses).
+recon.register_reconciled_entity(
+    "driver",
+    fields=DRIVER_RECON_FIELDS,
+    default_precedence=DEFAULT_DRIVER_PRECEDENCE,
+    field_labels=_DRIVER_FIELD_LABELS,
+    sources=("datatruck", "samsara"),
+    apply_resolution=_apply_driver_field,
+)
+
+
 # ── Profile mixin ──────────────────────────────────────────────
 
 
@@ -253,6 +340,29 @@ class DriverProfileMixin(_MixinBase):
         for col in list(clean.keys()):
             if col in _PII_COLUMNS:
                 clean[col] = _maybe_encrypt(clean[col])
+        # Operator edits PIN the reconcilable fields they touch (stamp
+        # 'manual' in driver_field_provenance) so no integration sync
+        # overwrites the human's correction — same Layer-2 semantic as
+        # the vehicle registry.
+        pin = [
+            k for k in clean
+            if k in DRIVER_RECON_FIELDS or k in ("cdl_number", "cdl_state", "cdl_class")
+        ]
+        if pin:
+            try:
+                cur = await self._db.execute(
+                    "SELECT driver_field_provenance FROM users WHERE id = ?",
+                    (user_id,),
+                )
+                row = await cur.fetchone()
+                prov = _parse_driver_provenance(row[0]) if row else {}
+                for f in pin:
+                    prov[f] = recon.MANUAL_SOURCE
+                clean["driver_field_provenance"] = json.dumps(prov)
+            except Exception as e:
+                # Pre-migration DB (column absent) — the update itself
+                # must still work; pinning just doesn't apply yet.
+                logger.debug("driver provenance pin skipped: %s", e)
         cols = ", ".join(f"{k} = ?" for k in clean)
         params = tuple(clean.values()) + (user_id,)
         async with self.transaction():
@@ -261,6 +371,158 @@ class DriverProfileMixin(_MixinBase):
                 params,
             )
         return cur.rowcount > 0
+
+    async def write_driver_field_pinned(
+        self, account_id: int, user_id: int, field: str, value: Any,
+    ) -> None:
+        """Write one reconcilable field onto a driver's ``users`` row and
+        PIN it (provenance='manual').  Used by conflict resolution — the
+        operator's chosen value must survive every later sync.  PII columns
+        are encrypted on the way in; the write is account-scoped."""
+        if field in _PII_COLUMNS:
+            value = _maybe_encrypt(value)
+        cur = await self._db.execute(
+            "SELECT driver_field_provenance FROM users "
+            "WHERE id = ? AND account_id = ?",
+            (user_id, account_id),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return
+        prov = _parse_driver_provenance(row[0])
+        prov[field] = recon.MANUAL_SOURCE
+        async with self.transaction():
+            await self._db.execute(
+                f"UPDATE users SET {field} = ?, driver_field_provenance = ? "
+                "WHERE id = ? AND account_id = ?",
+                (value, json.dumps(prov), user_id, account_id),
+            )
+
+    async def project_datatruck_drivers(
+        self, account_id: int, rows: list[dict],
+    ) -> int:
+        """Link a synced Datatruck driver list onto the account's EXISTING
+        driver-users — enrich, never create (the one-time "Import from
+        Datatruck" onboarding action creates; a sync tick must not).
+
+        Match priority per incoming row:
+          1. already-linked ``datatruck_driver_id`` (idempotent re-sync)
+          2. CDL / license number — decrypted in memory, normalized exact
+          3. email — ``users.email`` lowercased exact
+        A key shared by >1 driver is ambiguous → skipped (never guess).
+
+        Matched drivers merge display_name/phone through the reconciliation
+        hub (existing values are operator-owned → fill-empty only), fill an
+        empty ``cdl_number`` from the payload (encrypted, no conflict
+        record — conflicts store plaintext and CDL/phone are PII), and get
+        ``datatruck_driver_id`` stamped.  Returns rows linked-or-updated.
+        """
+        if not rows:
+            return 0
+        profiles = await self.list_drivers(account_id)  # decrypted CDL/phone
+        if not profiles:
+            return 0
+        # email / link / provenance aren't on DriverProfile — one extra read.
+        cur = await self._db.execute(
+            "SELECT id, email, datatruck_driver_id, driver_field_provenance "
+            "FROM users WHERE account_id = ? AND role = 'driver'",
+            (account_id,),
+        )
+        extra = {
+            r[0]: (str(r[1] or ""), str(r[2] or ""), _parse_driver_provenance(r[3]))
+            for r in await cur.fetchall()
+        }
+
+        by_ref: dict[str, Any] = {}
+        by_cdl: dict[str, Any] = {}
+        by_email: dict[str, Any] = {}
+        cdl_dupes: set[str] = set()
+        email_dupes: set[str] = set()
+        for p in profiles:
+            email, ref, _prov = extra.get(p.user_id, ("", "", {}))
+            if ref:
+                by_ref[ref] = p
+            cdl = _norm_cdl(p.cdl_number)
+            if cdl:
+                if cdl in by_cdl:
+                    cdl_dupes.add(cdl)
+                else:
+                    by_cdl[cdl] = p
+            em = email.strip().lower()
+            if em:
+                if em in by_email:
+                    email_dupes.add(em)
+                else:
+                    by_email[em] = p
+
+        precedence = await recon.get_precedence(self, account_id, "driver")
+        written = 0
+        conflict_ops: list = []
+        async with self.transaction():
+            for r in rows:
+                ref = str(r.get("external_id") or "").strip()
+                if not ref:
+                    continue
+                inc_cdl = _extract_datatruck_cdl(r)
+                p = by_ref.get(ref)
+                if p is None and inc_cdl:
+                    key = _norm_cdl(inc_cdl)
+                    if key and key not in cdl_dupes:
+                        p = by_cdl.get(key)
+                if p is None:
+                    em = str(r.get("email") or "").strip().lower()
+                    if em and em not in email_dupes:
+                        p = by_email.get(em)
+                if p is None:
+                    continue  # left for the onboarding import to create
+
+                _email, ref_existing, prov = extra.get(p.user_id, ("", "", {}))
+                mr = recon.merge_fields(
+                    current={"display_name": p.display_name, "phone": p.phone},
+                    provenance=prov,
+                    owner_fallback=recon.MANUAL_SOURCE,
+                    incoming=r, source="datatruck",
+                    fields=DRIVER_RECON_FIELDS, precedence=precedence,
+                )
+                sets: list[str] = []
+                params: list[Any] = []
+                for f in DRIVER_RECON_FIELDS:
+                    if f in mr.updates:
+                        sets.append(f"{f} = ?")
+                        params.append(
+                            _maybe_encrypt(mr.updates[f])
+                            if f in _PII_COLUMNS else mr.updates[f],
+                        )
+                # Fill an EMPTY CDL from the payload (fill-only, encrypted).
+                if inc_cdl and not (p.cdl_number or "").strip():
+                    sets.append("cdl_number = ?")
+                    params.append(_maybe_encrypt(inc_cdl))
+                    mr.provenance["cdl_number"] = "datatruck"
+                if ref_existing != ref:
+                    sets.append("datatruck_driver_id = ?")
+                    params.append(ref)
+                if not sets and not mr.cleared:
+                    continue  # nothing to change for this driver
+                sets.append("driver_field_provenance = ?")
+                params.append(json.dumps(mr.provenance))
+                params.extend([p.user_id, account_id])
+                await self._db.execute(
+                    f"UPDATE users SET {', '.join(sets)} "
+                    "WHERE id = ? AND account_id = ?",
+                    tuple(params),
+                )
+                written += 1
+                safe_conflicts = [
+                    c for c in mr.conflicts
+                    if c["field"] in _DRIVER_CONFLICT_SAFE_FIELDS
+                ]
+                safe_cleared = [
+                    f for f in mr.cleared if f in _DRIVER_CONFLICT_SAFE_FIELDS
+                ]
+                if safe_conflicts or safe_cleared:
+                    conflict_ops.append((p.user_id, safe_conflicts, safe_cleared))
+        await recon.sync_batch(self, account_id, "driver", conflict_ops)
+        return written
 
     async def list_drivers(
         self, account_id: int, include_terminated: bool = False,

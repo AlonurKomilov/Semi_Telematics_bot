@@ -160,6 +160,10 @@ async def run_all(conn) -> None:
     # (hidden from readers, restorable / deletable by the operator).
     await migrate_kb_quarantine_columns(conn)
     await migrate_create_scan_rescan_jobs(conn)
+    # Datatruck driver linking — users.datatruck_driver_id (the TMS-side
+    # binding, sibling of samsara_driver_id) + users.driver_field_provenance
+    # (per-field source map for the reconciliation hub).
+    await migrate_add_users_datatruck_driver_columns(conn)
 
 
 async def migrate_ai_chat_history(conn) -> None:
@@ -2962,3 +2966,38 @@ async def migrate_ai_usage_routing_columns(conn) -> None:
         await conn.commit()
     except Exception as e:
         logger.debug("ai_usage routing columns ADD skipped (%s)", e)
+
+
+async def migrate_add_users_datatruck_driver_columns(conn) -> None:
+    """Add the Datatruck-side driver binding + reconciliation provenance.
+
+    * ``users.datatruck_driver_id`` — which Datatruck driver this 4truck
+      driver IS (sibling of ``samsara_driver_id``).  Set by the Datatruck
+      driver projection when it matches an existing driver by CDL/email,
+      and by the one-time "Import from Datatruck" onboarding action.
+    * ``users.driver_field_provenance`` — ``{field: source}`` map recording
+      who last authoritatively set each reconcilable driver field; powers
+      the reconciliation hub's fill-don't-wipe / operator-pin semantics
+      (same model as ``vehicles.field_provenance``).
+
+    Idempotent — column-existence check before each ALTER."""
+    try:
+        cur = await conn.execute("PRAGMA table_info(users)")
+        cols = {r[1] for r in await cur.fetchall()}
+        for col_name, col_decl in (
+            ("datatruck_driver_id",     "TEXT"),
+            ("driver_field_provenance", "TEXT NOT NULL DEFAULT '{}'"),
+        ):
+            if col_name in cols:
+                continue
+            await conn.execute(
+                f"ALTER TABLE users ADD COLUMN {col_name} {col_decl}"
+            )
+            logger.info("Migration: added users.%s column", col_name)
+        await conn.commit()
+    except Exception as e:
+        logger.error("datatruck driver columns migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
